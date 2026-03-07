@@ -1,0 +1,50 @@
+# HUME - Plan
+
+## Tech Stack
+
+| Component | Choice | Notes |
+|-----------|--------|-------|
+| Language | Rust | Memory-safe, expressive, excellent TUI ecosystem |
+| Terminal I/O | TBD | crossterm is the likely choice (cross-platform) |
+| TUI framework | TBD | ratatui, or raw crossterm for more control |
+| Text storage | TBD | rope / gap buffer / piece table |
+| Build system | Cargo | Standard Rust tooling |
+
+## Architecture (WIP)
+
+To be designed. Key components will include:
+- **Core**: Buffer management, text storage, edit operations
+- **Editor**: Mode management, command handling, key mapping
+- **Terminal**: Input handling, rendering, screen management
+- **UI**: Status line, command bar, splits/tabs
+
+## Milestones
+
+### M0 — Bootstrapping (current)
+- [x] Project vision and README
+- [x] Language decision: Rust
+- [ ] Decide on core libraries (terminal I/O, TUI framework)
+- [ ] Decide on text storage data structure
+- [ ] Decide on editing model (vim-like, kakoune-like, hybrid)
+- [ ] Initialize Rust project with Cargo
+- [ ] First render: open a file and display it
+
+### M1 — Minimal viewer
+- [ ] Open and display a file with scrolling
+- [ ] Line numbers
+- [ ] Status bar with filename and position
+- [ ] Quit command
+
+### M2 — Modal editing
+- [ ] Normal mode with cursor movement
+- [ ] Insert mode with text input
+- [ ] Command mode (`:` commands)
+- [ ] Basic editing: insert, delete, backspace
+
+### Future milestones
+- Undo/redo
+- Search and replace
+- Multiple buffers / splits
+- Syntax highlighting
+- Configuration
+- LSP support
