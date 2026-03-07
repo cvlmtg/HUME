@@ -8,6 +8,7 @@
 | Terminal I/O | TBD | crossterm is the likely choice (cross-platform) |
 | TUI framework | TBD | ratatui, or raw crossterm for more control |
 | Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
+| Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
 | Build system | Cargo | Standard Rust tooling |
 
 ## Architecture (WIP)
@@ -17,6 +18,8 @@ To be designed. Key components will include:
 - **Editor**: Mode management, command handling, key mapping
 - **Terminal**: Input handling, rendering, screen management
 - **UI**: Status line, command bar, splits/tabs
+- **Scripting**: Steel (Scheme) engine for plugins and configuration
+- **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
 
 ## Milestones
 
@@ -46,5 +49,6 @@ To be designed. Key components will include:
 - Search and replace
 - Multiple buffers / splits
 - Syntax highlighting
-- Configuration
-- LSP support
+- Steel scripting engine + plugin API
+- Configuration via Steel
+- LSP support (Rust transport + Steel behavior layer)
