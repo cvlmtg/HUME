@@ -7,7 +7,7 @@
 | Language | Rust | Memory-safe, expressive, excellent TUI ecosystem |
 | Terminal I/O | TBD | crossterm is the likely choice (cross-platform) |
 | TUI framework | TBD | ratatui, or raw crossterm for more control |
-| Text storage | TBD | rope / gap buffer / piece table |
+| Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
 | Build system | Cargo | Standard Rust tooling |
 
 ## Architecture (WIP)
@@ -24,7 +24,7 @@ To be designed. Key components will include:
 - [x] Project vision and README
 - [x] Language decision: Rust
 - [ ] Decide on core libraries (terminal I/O, TUI framework)
-- [ ] Decide on text storage data structure
+- [x] Decide on text storage data structure: rope via `ropey`
 - [ ] Decide on editing model (vim-like, kakoune-like, hybrid)
 - [ ] Initialize Rust project with Cargo
 - [ ] First render: open a file and display it
@@ -42,7 +42,7 @@ To be designed. Key components will include:
 - [ ] Basic editing: insert, delete, backspace
 
 ### Future milestones
-- Undo/redo
+- Tree-structured undo/redo (vim-style undo tree)
 - Search and replace
 - Multiple buffers / splits
 - Syntax highlighting

@@ -22,11 +22,11 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Language | **Rust** | Memory-safe, zero-cost abstractions, best TUI ecosystem (crossterm + ratatui). Expressive type system with pattern matching, algebraic types, and macros. Ideal for a learning project. |
+| Text storage | **Rope** (via `ropey` crate) | Efficient for large files, O(log n) edits anywhere, built-in line indexing. Structural sharing makes tree-structured undo cheap. Used by Helix. |
 
 ## Open Questions
 
 - Editing model: vim-like vs kakoune-like (select-then-act) vs something new?
-- Buffer architecture: rope, gap buffer, piece table?
 - Rendering approach: immediate mode vs retained mode?
 - Configuration format: TOML, Lua scripting, or something else?
 - Syntax highlighting: tree-sitter integration?
