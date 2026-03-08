@@ -23,3 +23,16 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 These must be respected from the first line of code — retrofitting is expensive:
 - **Selections**: Always `Vec<Selection>`. Single cursor is a vec of length 1. All edit operations iterate over selections.
 - **Display lines**: The renderer iterates "display lines" (buffer line or virtual line), never buffer lines directly. Initially 1:1, but the abstraction is required for virtual lines later.
+
+## Rust coding philosophy
+This project is both a product and a learning journey. Write the best Rust possible, and teach as you go.
+- **Idiomatic first**: Use the type system, iterators, pattern matching, and ownership as intended. Don't fight the borrow checker. Follow current best practices.
+- **Performance by design**: Choose the right data structures and algorithms upfront. Avoid allocations in hot paths, use iterators over index loops.
+- **No magic**: No macro-heavy abstractions that hide what's happening. Macros only when they genuinely reduce boilerplate.
+- **Clean and readable**: Performance and clarity are not at odds in Rust — the compiler optimizes idiomatic patterns well. When in doubt, prefer the version a newcomer can follow.
+
+## Teaching Guidelines
+- When writing non-obvious code, add a brief inline comment explaining *why*, not just *what*
+- When choosing between multiple valid approaches, briefly note why you picked this one
+- Point out when you're using an important Rust concept (ownership, lifetimes, traits, iterators, etc.)
+- When using a Rust feature that might be unfamiliar (lifetimes, trait bounds, zero-cost abstractions), explain why it's the right tool — in code comments or conversation.
