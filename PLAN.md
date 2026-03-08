@@ -21,6 +21,7 @@ To be designed. Key components will include:
 - **Layout**: Custom layout system — divides screen `Rect` into sub-regions (tab bar, editor panes, status line, command line). Splits are nested `Rect` divisions.
 - **Overlays**: Completion menus, popups, hover info — rendered last on top of main content. Ratatui diffs handle cleanup on dismiss.
 - **UI**: Tab bar, status line, command line, split panes
+- **Decorations**: Annotation layer for virtual lines/text (diagnostics, ghost text, code lenses, inlay hints, git blame). Buffer-position-anchored, auto-updated on edits, queryable by line. Multiple sources (LSP, plugins, git).
 - **Scripting**: Steel (Scheme) engine for plugins and configuration
 - **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
 
@@ -55,3 +56,4 @@ To be designed. Key components will include:
 - Steel scripting engine + plugin API
 - Configuration via Steel
 - LSP support (Rust transport + Steel behavior layer)
+- Virtual lines / decoration layer (inline diagnostics, ghost text, code lenses, inlay hints)
