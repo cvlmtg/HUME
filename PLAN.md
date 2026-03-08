@@ -18,7 +18,9 @@ To be designed. Key components will include:
 - **Core**: Buffer management, text storage, edit operations, selections (`Vec<Selection>` from day one)
 - **Editor**: Mode management, command handling, key mapping (keys → named commands, no key-to-key indirection)
 - **Terminal**: Input handling, rendering, screen management
-- **UI**: Status line, command bar, splits/tabs
+- **Layout**: Custom layout system — divides screen `Rect` into sub-regions (tab bar, editor panes, status line, command line). Splits are nested `Rect` divisions.
+- **Overlays**: Completion menus, popups, hover info — rendered last on top of main content. Ratatui diffs handle cleanup on dismiss.
+- **UI**: Tab bar, status line, command line, split panes
 - **Scripting**: Steel (Scheme) engine for plugins and configuration
 - **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
 
