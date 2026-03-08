@@ -8,7 +8,7 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 
 - **Primary**: macOS
 - **Secondary**: Linux, Windows (Git Bash / WSL)
-- **Terminal compatibility**: Modern terminals only — no legacy protocol support
+- **Terminal compatibility**: Modern terminals — prefer kitty keyboard protocol, fall back to legacy encoding when unavailable
 
 ## Design Principles
 
@@ -30,3 +30,23 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Editing model | **Select-then-act** (Helix/Kakoune) | Motions create selections, actions operate on them. No separate visual mode. Design for multiple selections from day one (`Vec<Selection>`). Text objects and keystroke macros supported. |
 | Terminal I/O | **crossterm** | Cross-platform terminal I/O. Handles raw mode, key events, escape sequences. |
 | Rendering | **ratatui as diffing engine** | Use ratatui's `Buffer`/`Terminal` for cell-level rendering and double-buffer diffing. No widgets. Immediate mode thinking with retained-mode optimization. |
+| Terminal protocol | **Prefer kitty keyboard, fall back** | Detect kitty keyboard protocol support at startup. Use it when available for unambiguous key encoding, modifier reporting, and key release events. Fall back to legacy encoding otherwise (like Helix does). |
+
+## Modern Terminal Requirements
+
+HUME requires **true color (24-bit)** and **synchronized output**. The **kitty keyboard protocol** is preferred but optional (graceful fallback).
+
+### Terminal Capability Landscape
+
+| Terminal | OS | True color | Kitty keyboard | Sync output | Notes |
+|----------|-----|:---:|:---:|:---:|-------|
+| **Kitty** | macOS, Linux | yes | yes | yes | Gold standard for protocol support |
+| **Ghostty** | macOS, Linux | yes | yes | yes | New, very capable, fast adoption |
+| **WezTerm** | macOS, Linux, Win | yes | yes | yes | Excellent cross-platform option |
+| **Alacritty** | macOS, Linux, Win | yes | yes (0.15+) | yes | GPU-accelerated, minimal |
+| **foot** | Linux (Wayland) | yes | yes | yes | Lightweight Wayland-native |
+| **iTerm2** | macOS | yes | **no** (CSI u variant) | yes | Most popular macOS terminal — no kitty protocol |
+| **Windows Terminal** | Windows | yes | partial | yes | Default Windows terminal |
+| **Terminal.app** | macOS | yes (Ventura+) | no | no | Apple's built-in — limited |
+| **GNOME Terminal** | Linux | yes | no | yes | Common Linux default |
+| **Konsole** | Linux | yes | no | yes | KDE default |

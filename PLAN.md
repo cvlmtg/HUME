@@ -5,7 +5,7 @@
 | Component | Choice | Notes |
 |-----------|--------|-------|
 | Language | Rust | Memory-safe, expressive, excellent TUI ecosystem |
-| Terminal I/O | `crossterm` | Cross-platform terminal I/O |
+| Terminal I/O | `crossterm` | Cross-platform terminal I/O; kitty keyboard protocol preferred with legacy fallback |
 | Rendering | `ratatui` (diffing only) | Cell-level Buffer/Terminal for double-buffer diffing; no widgets |
 | Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
 | Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
