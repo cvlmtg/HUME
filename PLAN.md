@@ -45,19 +45,31 @@ Every editing command, text object, and selection operation must be tested. Appr
 - [x] Decide on text storage data structure: rope via `ropey`
 - [x] Decide on editing model: Helix-style select-then-act
 - [ ] Initialize Rust project with Cargo
-- [ ] First render: open a file and display it
 
-### M1 — Minimal viewer
+### M1 — Core engine
+Build the core with no UI dependency. Drive entirely from tests.
+- [ ] Buffer type: wrap `ropey::Rope` with HUME's buffer API
+- [ ] Selection type: `Vec<Selection>` with anchor + head, single cursor as vec of length 1
+- [ ] Basic edit operations: insert, delete, backspace — operating over all selections
+- [ ] Motions: character, word, line, paragraph movement
+- [ ] Text objects: inside/around word, quotes, brackets, line
+- [ ] Selection manipulation: extend, shrink, split, merge overlapping selections
+- [ ] Undo/redo: tree-structured undo with changesets
+- [ ] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
+- [ ] Thorough unit tests for every operation and edge case
+
+### M2 — First render
+- [ ] Display-line abstraction (buffer line or virtual line)
 - [ ] Open and display a file with scrolling
 - [ ] Line numbers
 - [ ] Status bar with filename and position
 - [ ] Quit command
 
-### M2 — Modal editing
-- [ ] Normal mode with cursor movement
+### M3 — Modal editing
+- [ ] Normal mode with cursor movement (drives core motions)
 - [ ] Insert mode with text input
 - [ ] Command mode (`:` commands)
-- [ ] Basic editing: insert, delete, backspace
+- [ ] Keymap: command-based dispatch from Steel config
 
 ### Future milestones
 - Tree-structured undo/redo (vim-style undo tree)
