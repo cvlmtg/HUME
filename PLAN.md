@@ -17,7 +17,7 @@
 To be designed. Key components will include:
 - **Core**: Buffer management, text storage, edit operations, selections (`Vec<Selection>` from day one)
 - **Editor**: Mode management, command handling, key mapping (keys → named commands, no key-to-key indirection)
-- **Terminal**: Input handling, rendering, screen management
+- **Terminal**: Input handling, rendering, screen management. **Important**: The renderer must iterate over "display lines" (not buffer lines) from day one. A display line is either a real buffer line or a virtual line. Initially every display line maps 1:1 to a buffer line, but this abstraction is required for virtual lines later and is expensive to retrofit.
 - **Layout**: Custom layout system — divides screen `Rect` into sub-regions (tab bar, editor panes, status line, command line). Splits are nested `Rect` divisions.
 - **Overlays**: Completion menus, popups, hover info — rendered last on top of main content. Ratatui diffs handle cleanup on dismiss.
 - **UI**: Tab bar, status line, command line, split panes
