@@ -12,6 +12,14 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - **Update GOALS.md** when a decision is made (add to the decisions table, remove from open questions)
 - **Update PLAN.md** when the plan changes (milestones, tech stack, architecture)
 - **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option` — no `.unwrap()` in non-test code.
-- **Modern terminals only**: Do not add compatibility shims for legacy terminals. Target terminals supporting 24-bit color, kitty keyboard protocol, etc.
+- **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable (like Helix does). No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `crossterm` or similar abstractions for platform differences — no platform-specific code unless behind `cfg` gates.
 - **Keep it simple**: This is a learning project. Prefer clarity over cleverness, and direct solutions over premature abstraction.
+- **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands.
+- **Editing model**: Select-then-act (Helix/Kakoune). Keys bind to named commands, not to other key sequences. No key-to-key remapping.
+- **Scripting**: Steel (Scheme) for plugins and configuration. Rust handles performance-critical paths; Steel handles behavior and customization.
+
+## Day-one architectural invariants
+These must be respected from the first line of code — retrofitting is expensive:
+- **Selections**: Always `Vec<Selection>`. Single cursor is a vec of length 1. All edit operations iterate over selections.
+- **Display lines**: The renderer iterates "display lines" (buffer line or virtual line), never buffer lines directly. Initially 1:1, but the abstraction is required for virtual lines later.
