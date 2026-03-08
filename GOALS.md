@@ -32,6 +32,14 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Rendering | **ratatui as diffing engine** | Use ratatui's `Buffer`/`Terminal` for cell-level rendering and double-buffer diffing. No widgets. Immediate mode thinking with retained-mode optimization. |
 | Terminal protocol | **Prefer kitty keyboard, fall back** | Detect kitty keyboard protocol support at startup. Use it when available for unambiguous key encoding, modifier reporting, and key release events. Fall back to legacy encoding otherwise (like Helix does). |
 
+## Layer Responsibilities
+
+| Layer | Responsibility |
+|-------|---------------|
+| **Core** | Buffer (rope), selections, edit operations, undo history. Knows nothing about keys or UI. |
+| **Editor** | Modes, command dispatch, keymap lookup. Translates key events into core commands. |
+| **Terminal/Renderer** | Screen output, display lines, overlays. Reads core state, never writes to it directly. |
+
 ## Modern Terminal Requirements
 
 HUME requires **true color (24-bit)** and **synchronized output**. The **kitty keyboard protocol** is preferred but optional (graceful fallback).
