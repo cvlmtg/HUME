@@ -16,7 +16,7 @@
 
 To be designed. Key components will include:
 - **Core**: Buffer management, text storage, edit operations
-- **Editor**: Mode management, command handling, key mapping
+- **Editor**: Mode management, command handling, key mapping (keys → named commands, no key-to-key indirection)
 - **Terminal**: Input handling, rendering, screen management
 - **UI**: Status line, command bar, splits/tabs
 - **Scripting**: Steel (Scheme) engine for plugins and configuration
