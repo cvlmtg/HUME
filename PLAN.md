@@ -15,7 +15,7 @@
 ## Architecture (WIP)
 
 To be designed. Key components will include:
-- **Core**: Buffer management, text storage, edit operations
+- **Core**: Buffer management, text storage, edit operations, selections (`Vec<Selection>` from day one)
 - **Editor**: Mode management, command handling, key mapping (keys → named commands, no key-to-key indirection)
 - **Terminal**: Input handling, rendering, screen management
 - **UI**: Status line, command bar, splits/tabs
@@ -29,7 +29,7 @@ To be designed. Key components will include:
 - [x] Language decision: Rust
 - [ ] Decide on core libraries (terminal I/O, TUI framework)
 - [x] Decide on text storage data structure: rope via `ropey`
-- [ ] Decide on editing model (vim-like, kakoune-like, hybrid)
+- [x] Decide on editing model: Helix-style select-then-act
 - [ ] Initialize Rust project with Cargo
 - [ ] First render: open a file and display it
 
