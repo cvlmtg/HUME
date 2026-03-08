@@ -28,7 +28,5 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Syntax highlighting | **Tree-sitter** | Incremental parsing, structural understanding. Enables text objects and structural navigation beyond just colors. Production-proven (Neovim, Helix, Zed, GitHub). |
 | Key mapping | **Command-based** (Helix model) | Keys bind to named commands, not to other keys. No recursive/non-recursive distinction needed. Keymaps defined in Steel config. Supports nested keys for sequences/chords. |
 | Editing model | **Select-then-act** (Helix/Kakoune) | Motions create selections, actions operate on them. No separate visual mode. Design for multiple selections from day one (`Vec<Selection>`). Text objects and keystroke macros supported. |
-
-## Open Questions
-
-- Rendering approach: immediate mode vs retained mode?
+| Terminal I/O | **crossterm** | Cross-platform terminal I/O. Handles raw mode, key events, escape sequences. |
+| Rendering | **ratatui as diffing engine** | Use ratatui's `Buffer`/`Terminal` for cell-level rendering and double-buffer diffing. No widgets. Immediate mode thinking with retained-mode optimization. |

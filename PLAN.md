@@ -5,8 +5,8 @@
 | Component | Choice | Notes |
 |-----------|--------|-------|
 | Language | Rust | Memory-safe, expressive, excellent TUI ecosystem |
-| Terminal I/O | TBD | crossterm is the likely choice (cross-platform) |
-| TUI framework | TBD | ratatui, or raw crossterm for more control |
+| Terminal I/O | `crossterm` | Cross-platform terminal I/O |
+| Rendering | `ratatui` (diffing only) | Cell-level Buffer/Terminal for double-buffer diffing; no widgets |
 | Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
 | Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
 | Syntax highlighting | `tree-sitter` | Incremental parsing; also powers text objects and structural navigation |
@@ -27,7 +27,7 @@ To be designed. Key components will include:
 ### M0 — Bootstrapping (current)
 - [x] Project vision and README
 - [x] Language decision: Rust
-- [ ] Decide on core libraries (terminal I/O, TUI framework)
+- [x] Decide on core libraries: crossterm + ratatui (diffing engine only)
 - [x] Decide on text storage data structure: rope via `ropey`
 - [x] Decide on editing model: Helix-style select-then-act
 - [ ] Initialize Rust project with Cargo
