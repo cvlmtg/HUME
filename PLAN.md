@@ -9,6 +9,7 @@
 | TUI framework | TBD | ratatui, or raw crossterm for more control |
 | Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
 | Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
+| Syntax highlighting | `tree-sitter` | Incremental parsing; also powers text objects and structural navigation |
 | Build system | Cargo | Standard Rust tooling |
 
 ## Architecture (WIP)
@@ -48,7 +49,7 @@ To be designed. Key components will include:
 - Tree-structured undo/redo (vim-style undo tree)
 - Search and replace
 - Multiple buffers / splits
-- Syntax highlighting
+- Syntax highlighting via tree-sitter
 - Steel scripting engine + plugin API
 - Configuration via Steel
 - LSP support (Rust transport + Steel behavior layer)
