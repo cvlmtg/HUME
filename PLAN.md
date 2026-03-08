@@ -11,6 +11,7 @@
 | Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
 | Syntax highlighting | `tree-sitter` | Incremental parsing; also powers text objects and structural navigation |
 | Build system | Cargo | Standard Rust tooling |
+| Testing | `cargo test` + crates | Built-in unit/integration/doc tests. Add `pretty_assertions`, `proptest`, `insta` as needed. |
 
 ## Architecture (WIP)
 
@@ -24,6 +25,16 @@ To be designed. Key components will include:
 - **Decorations**: Annotation layer for virtual lines/text (diagnostics, ghost text, code lenses, inlay hints, git blame). Buffer-position-anchored, auto-updated on edits, queryable by line. Multiple sources (LSP, plugins, git).
 - **Scripting**: Steel (Scheme) engine for plugins and configuration
 - **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
+
+## Testing Strategy
+
+Every editing command, text object, and selection operation must be tested. Approach by layer:
+
+- **Unit tests** (built-in `#[test]`): Every command, motion, and text object in isolation. Tests live next to the code they test.
+- **Property-based tests** (`proptest`): Buffer integrity invariants — random sequences of insert/delete/undo/redo must never corrupt the rope or desync selections.
+- **Snapshot tests** (`insta`): Renderer output — capture screen state and compare against saved snapshots.
+- **Integration tests** (`tests/` directory): End-to-end editing sequences — open file, perform edits, verify final state.
+- **`pretty_assertions`**: Better diff output for string/buffer comparisons in all test types.
 
 ## Milestones
 
