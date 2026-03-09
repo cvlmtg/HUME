@@ -30,9 +30,9 @@ To be designed. Key components will include:
 
 Every editing command, text object, and selection operation must be tested. Approach by layer:
 
-- **Unit tests** (built-in `#[test]`): Every command, motion, and text object in isolation. Tests live next to the code they test.
+- **Core editing tests (M1)**: Helix-style state triples — `(initial_state, operations, expected_state)` with a compact DSL using markers for cursor and selection (e.g. `#[hello|]# world`). Fast, focused, self-documenting. No UI dependency.
+- **Renderer tests (M2+)**: `insta` inline snapshots — implement `render_to_string()` producing ASCII with cursor/selection markers. Expected output embedded directly in test source (`@"..."`). Auto-updateable via `cargo insta review`.
 - **Property-based tests** (`proptest`): Buffer integrity invariants — random sequences of insert/delete/undo/redo must never corrupt the rope or desync selections.
-- **Snapshot tests** (`insta`): Renderer output — capture screen state and compare against saved snapshots.
 - **Integration tests** (`tests/` directory): End-to-end editing sequences — open file, perform edits, verify final state.
 - **`pretty_assertions`**: Better diff output for string/buffer comparisons in all test types.
 
