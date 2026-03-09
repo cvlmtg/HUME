@@ -35,6 +35,7 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Theming | **Hierarchical scopes** (Helix-compatible) | Dot-notation scopes (`keyword.function`, `ui.cursor`) with automatic fallback. Follow Helix scope convention. Read Helix TOML themes natively; Steel themes as primary format. Discoverability via `:theme-debug` and token inspection. |
 | Package manager | **Built-in, declarative, replaceable** | Config declares plugins (`username/repo`). `:plugin-sync` reconciles disk to config (install/update/remove). Git-based, no registry, no auto dependency resolution. Built in Steel, replaceable by users. |
 | Indent queries | **Helix format** (`indent.scm`) | Reuse Helix's existing per-language indent queries directly. No drawbacks identified; avoids reinventing a query format and gives us a large library of languages for free. |
+| Unicode handling | **Grapheme clusters from day one** | All motions and selections operate on grapheme clusters via `unicode-segmentation`, not bytes or chars. Handles emoji, combining characters, CJK wide chars correctly. Avoids painful retrofitting. |
 
 ## Layer Responsibilities
 
