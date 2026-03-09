@@ -31,6 +31,7 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Terminal I/O | **crossterm** | Cross-platform terminal I/O. Handles raw mode, key events, escape sequences. |
 | Rendering | **ratatui as diffing engine** | Use ratatui's `Buffer`/`Terminal` for cell-level rendering and double-buffer diffing. No widgets. Immediate mode thinking with retained-mode optimization. |
 | Terminal protocol | **Prefer kitty keyboard, fall back** | Detect kitty keyboard protocol support at startup. Use it when available for unambiguous key encoding, modifier reporting, and key release events. Fall back to legacy encoding otherwise (like Helix does). |
+| Documentation | **Markdown + auto-generated command reference** | Hand-written Markdown guides for concepts. Command reference auto-generated from Rust doc comments. In-editor `:help` renders Markdown in a read-only buffer. |
 
 ## Layer Responsibilities
 
