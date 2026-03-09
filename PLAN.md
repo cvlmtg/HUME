@@ -82,3 +82,4 @@ Build the core with no UI dependency. Drive entirely from tests.
 - Virtual lines / decoration layer (inline diagnostics, ghost text, code lenses, inlay hints)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
+- Package manager: Declarative sync model, git-based, `:plugin-sync` / `:plugin-update` / `:plugin-status`
