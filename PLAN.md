@@ -54,6 +54,10 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Motions: character, word, line, paragraph movement
 - [ ] Text objects: inside/around word, quotes, brackets, line
 - [ ] Selection manipulation: extend, shrink, split, merge overlapping selections
+- [ ] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
+- [ ] Registers: named yank/paste buffers (`"a`–`"z`) including system clipboard register (`"+`)
+- [ ] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
+- [ ] Repeat last command (`.` equivalent)
 - [ ] Undo/redo: tree-structured undo with changesets
 - [ ] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
 - [ ] Thorough unit tests for every operation and edge case
@@ -70,12 +74,24 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Insert mode with text input
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
+- [ ] Auto-pairs: auto-close brackets, quotes (configurable)
+- [ ] Matching bracket highlight
+- [ ] Cursor line highlight
 
 ### Future milestones
 - Tree-structured undo/redo (vim-style undo tree)
-- Search and replace
+- Search and replace with incremental search and live match highlighting
+- File picker / fuzzy finder (Helix-style picker with fuzzy matching)
+- Jump list (navigate back/forward through cursor position history)
+- Surround operations (add/change/delete surrounding characters)
 - Multiple buffers / splits
 - Syntax highlighting via tree-sitter
+- Soft wrap (option to wrap long lines vs horizontal scroll)
+- Code folding (tree-sitter powered collapse/expand)
+- Mouse support (click to position cursor, scroll, basic selection)
+- Git gutter signs (added/modified/deleted line indicators)
+- Whitespace rendering (show tabs, trailing spaces, etc.)
+- File watcher (detect external file changes, prompt to reload)
 - Steel scripting engine + plugin API
 - Configuration via Steel
 - LSP support (Rust transport + Steel behavior layer)
