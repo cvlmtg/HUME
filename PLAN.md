@@ -81,3 +81,4 @@ Build the core with no UI dependency. Drive entirely from tests.
 - LSP support (Rust transport + Steel behavior layer)
 - Virtual lines / decoration layer (inline diagnostics, ghost text, code lenses, inlay hints)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
+- Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
