@@ -63,3 +63,4 @@ HUME requires **true color (24-bit)** and **synchronized output**. The **kitty k
 | **Terminal.app** | macOS | yes (Ventura+) | no | no | Apple's built-in — limited |
 | **GNOME Terminal** | Linux | yes | no | yes | Common Linux default |
 | **Konsole** | Linux | yes | no | yes | KDE default |
+| **tmux** | cross-platform | yes (with config) | **no** | yes (3.3+) | Multiplexer — sits between emulator and app; does not pass through kitty protocol |
