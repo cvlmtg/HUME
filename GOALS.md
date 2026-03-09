@@ -34,6 +34,7 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Documentation | **Markdown + auto-generated command reference** | Hand-written Markdown guides for concepts. Command reference auto-generated from Rust doc comments. In-editor `:help` renders Markdown in a read-only buffer. |
 | Theming | **Hierarchical scopes** (Helix-compatible) | Dot-notation scopes (`keyword.function`, `ui.cursor`) with automatic fallback. Follow Helix scope convention. Read Helix TOML themes natively; Steel themes as primary format. Discoverability via `:theme-debug` and token inspection. |
 | Package manager | **Built-in, declarative, replaceable** | Config declares plugins (`username/repo`). `:plugin-sync` reconciles disk to config (install/update/remove). Git-based, no registry, no auto dependency resolution. Built in Steel, replaceable by users. |
+| Indent queries | **Helix format** (`indent.scm`) | Reuse Helix's existing per-language indent queries directly. No drawbacks identified; avoids reinventing a query format and gives us a large library of languages for free. |
 
 ## Layer Responsibilities
 
