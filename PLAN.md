@@ -38,13 +38,13 @@ Every editing command, text object, and selection operation must be tested. Appr
 
 ## Milestones
 
-### M0 — Bootstrapping (current)
+### M0 — Bootstrapping (complete)
 - [x] Project vision and README
 - [x] Language decision: Rust
 - [x] Decide on core libraries: crossterm + ratatui (diffing engine only)
 - [x] Decide on text storage data structure: rope via `ropey`
 - [x] Decide on editing model: Helix-style select-then-act
-- [ ] Initialize Rust project with Cargo
+- [x] Initialize Rust project with Cargo
 
 ### M1 — Core engine
 Build the core with no UI dependency. Drive entirely from tests.
