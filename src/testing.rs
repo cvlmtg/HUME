@@ -10,18 +10,18 @@
 /// | Marker | Meaning |
 /// |--------|---------|
 /// | `\|`   | Collapsed cursor (anchor == head). |
-/// | `#[`   | Start of a selection. |
-/// | `\|` inside `#[…]#` | Head (cursor) position. Characters between `#[` and `\|` are *before* the cursor; characters between `\|` and `]#` are *after* it. |
-/// | `]#`   | End of a selection. |
+/// | `#[`   | Start of a selection (anchor position). |
+/// | `\|` inside `#[…]#` | Head (cursor) position. **Forward** `#[ABC\|C]#`: ABC are the selected chars before the cursor; C is the single cursor character (at `head`). **Backward** `#[\|CCC]#`: `\|` is right after `#[` and CCC are the selected chars after the cursor. |
+/// | `]#`   | End of a selection. For forward selections, placed one past `head` (i.e. after the cursor char). For backward selections, placed at `anchor`. |
 ///
 /// ## Examples
 ///
 /// ```text
-/// "|hello"           — cursor before 'h' (offset 0)
-/// "hello|"           — cursor after 'o' (offset 5)
-/// "hel|lo"           — cursor between 'l' and 'l' (offset 3)
-/// "#[hel|l]#o world" — forward selection: anchor=0, head=3
-/// "#[|hel]#lo"       — backward selection: anchor=3, head=0
+/// "|hello"           — cursor on 'h' (offset 0)
+/// "hello|"           — cursor at end of buffer (offset 5, past last char)
+/// "hel|lo"           — cursor on the second 'l' (offset 3)
+/// "#[hel|l]#o world" — forward selection: anchor=0, head=3 (cursor on 'l')
+/// "#[|hel]#lo"       — backward selection: anchor=3, head=0 (cursor on 'h')
 /// "#[a|b]# #[c|d]#"  — two forward selections
 /// ```
 ///
@@ -305,7 +305,18 @@ mod tests {
 
     #[test]
     fn parse_forward_selection() {
-        // #[hel|lo]# → anchor=0, head=3; text = "hello"
+        // "#[hel|lo]# world" — anchor=0 (at #[), head=3 (at |).
+        //
+        // "lo" and " world" are both real buffer content — nothing is
+        // discarded. The DSL is permissive: any chars between | and ]# go
+        // into the buffer just like chars outside the markers. They represent
+        // selected text after the cursor that the test author chose to show
+        // inside the brackets for readability.
+        //
+        // The canonical serializer always places ]# at head+1, showing only
+        // the single cursor character between | and ]#, so it would emit
+        // "#[hel|l]#o world" for this selection. Both forms parse identically:
+        // anchor=0, head=3, buffer="hello world".
         let (buf, sels) = parse_state("#[hel|lo]# world");
         assert_eq!(buf.to_string(), "hello world");
         let s = sels.primary();
@@ -324,7 +335,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_selection_at_end_of_buffer() {
+    fn parse_selection_near_end_of_buffer() {
+        // The ]# marker is the last thing in the input string, so the
+        // selection extends to the end of the annotated text (but not
+        // the end of the buffer — 'e' at offset 7 is unselected).
         let (buf, sels) = parse_state("hi #[the|re]#");
         assert_eq!(buf.to_string(), "hi there");
         let s = sels.primary();
@@ -385,6 +399,15 @@ mod tests {
     }
 
     #[test]
+    fn serialize_backward_selection() {
+        // anchor=3, head=0 → cursor ON 'h' (char 0), anchor at offset 3.
+        // #[ and | both at 0, ]# at anchor=3.
+        let buf = Buffer::from_str("hello");
+        let sels = SelectionSet::single(Selection::new(3, 0));
+        assert_eq!(serialize_state(&buf, &sels), "#[|hel]#lo");
+    }
+
+    #[test]
     fn serialize_forward_selection() {
         // anchor=0, head=3 → cursor ON 'l' (char 3).
         // #[ at 0, | at 3, ]# at 4 (one past cursor char).
@@ -413,6 +436,11 @@ mod tests {
         // "#[hel|lo]# world" is a valid *input* (parses to anchor=0, head=3)
         // but is not canonical — its round-trip output is "#[hel|l]#o world".
         assert_eq!(round_trip("#[hel|l]#o world"), "#[hel|l]#o world");
+    }
+
+    #[test]
+    fn roundtrip_backward_selection() {
+        assert_eq!(round_trip("#[|hel]#lo"), "#[|hel]#lo");
     }
 
     #[test]
