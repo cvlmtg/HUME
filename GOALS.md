@@ -36,6 +36,7 @@ A modern, modal text editor that runs in the terminal. Built for the joy of buil
 | Package manager | **Built-in, declarative, replaceable** | Config declares plugins (`username/repo`). `:plugin-sync` reconciles disk to config (install/update/remove). Git-based, no registry, no auto dependency resolution. Built in Steel, replaceable by users. |
 | Indent queries | **Helix format** (`indent.scm`) | Reuse Helix's existing per-language indent queries directly. No drawbacks identified; avoids reinventing a query format and gives us a large library of languages for free. |
 | Unicode handling | **Grapheme clusters from day one** | All motions and selections operate on grapheme clusters via `unicode-segmentation`, not bytes or chars. Handles emoji, combining characters, CJK wide chars correctly. Avoids painful retrofitting. |
+| Symbol rename | **LSP-first, tree-sitter fallback** | Use `textDocument/rename` when an LSP server is active — it is scope-aware and works across files. Fall back automatically to a tree-sitter local rename (using `locals.scm` scope queries) when no LSP is available — file-local only, but still scope-correct within the file. Same keybinding in both cases; the degraded fallback is transparent to the user. |
 
 ## Layer Responsibilities
 
