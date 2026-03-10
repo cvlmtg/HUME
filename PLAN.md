@@ -86,6 +86,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - Surround operations (add/change/delete surrounding characters)
 - Multiple buffers / splits
 - Syntax highlighting via tree-sitter
+- Tree-sitter structural features: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable)
 - Soft wrap (option to wrap long lines vs horizontal scroll)
 - Code folding (tree-sitter powered collapse/expand)
 - Mouse support (click to position cursor, scroll, basic selection)
@@ -94,7 +95,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - File watcher (detect external file changes, prompt to reload)
 - Steel scripting engine + plugin API
 - Configuration via Steel
-- LSP support (Rust transport + Steel behavior layer)
+- LSP support (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename` (falls back to tree-sitter local rename when LSP unavailable)
 - Virtual lines / decoration layer (inline diagnostics, ghost text, code lenses, inlay hints)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
