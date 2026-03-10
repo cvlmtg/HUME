@@ -46,7 +46,10 @@ impl Selection {
         self.anchor.min(self.head)
     }
 
-    /// The larger of the two offsets — the end of the selected range (exclusive).
+    /// The larger of the two offsets — the far end of the selected range.
+    ///
+    /// In the inclusive cursor model this char IS part of the selection (the
+    /// cursor or anchor sits on it). This is NOT an exclusive bound.
     pub(crate) fn end(&self) -> usize {
         self.anchor.max(self.head)
     }
@@ -322,7 +325,7 @@ mod tests {
 
     #[test]
     fn merge_overlapping_selections() {
-        // [0,5) and [3,8) overlap — should merge to [0,8).
+        // (anchor=0,head=5) and (anchor=3,head=8) overlap — should merge.
         let set = SelectionSet::from_vec(
             vec![Selection::new(0, 5), Selection::new(3, 8)],
             0,
@@ -335,7 +338,7 @@ mod tests {
 
     #[test]
     fn merge_adjacent_selections() {
-        // [0,3) and [3,6) are adjacent (touching) — should merge.
+        // (anchor=0,head=3) and (anchor=3,head=6) touch at offset 3 — should merge.
         let set = SelectionSet::from_vec(
             vec![Selection::new(0, 3), Selection::new(3, 6)],
             0,
@@ -358,7 +361,7 @@ mod tests {
 
     #[test]
     fn merge_contained_selection() {
-        // [0,8) contains [2,5) — should merge to [0,8).
+        // (anchor=0,head=8) fully contains (anchor=2,head=5) — should merge.
         let set = SelectionSet::from_vec(
             vec![Selection::new(0, 8), Selection::new(2, 5)],
             0,
