@@ -117,12 +117,18 @@ impl Buffer {
         Self { rope }
     }
 
-    /// Materialise the entire buffer as a `String`.
-    ///
-    /// This allocates. Use it for tests, file I/O, and display — not in hot
-    /// edit paths.
-    pub(crate) fn to_string(&self) -> String {
-        self.rope.to_string()
+}
+
+// Implementing `Display` gives us `.to_string()` for free via the blanket
+// `impl<T: Display> ToString for T`. This is the idiomatic Rust way — an
+// inherent `to_string` method would shadow that blanket impl and trigger
+// the `clippy::inherent_to_string` lint.
+//
+// Use `.to_string()` for tests, file I/O, and display — not in hot edit paths
+// (it allocates a full String from the rope).
+impl std::fmt::Display for Buffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.rope.fmt(f)
     }
 }
 

@@ -351,7 +351,7 @@ mod tests {
         let (buf, sels) = parse_state("|foo| bar");
         assert_eq!(buf.to_string(), "foo bar");
         assert_eq!(sels.len(), 2);
-        assert_eq!(sels.iter_sorted().nth(0).unwrap().head, 0);
+        assert_eq!(sels.iter_sorted().next().unwrap().head, 0);
         assert_eq!(sels.iter_sorted().nth(1).unwrap().head, 3);
     }
 
