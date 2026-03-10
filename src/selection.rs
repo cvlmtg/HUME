@@ -129,8 +129,11 @@ impl SelectionSet {
     /// Apply `f` to every selection and return a new `SelectionSet`.
     ///
     /// The primary index is preserved. The returned set may violate the
-    /// non-overlapping invariant if `f` produces overlapping results — call
-    /// `merge_overlapping` afterwards when that is possible.
+    /// non-overlapping invariant if `f` produces overlapping results.
+    ///
+    /// Use this when you can guarantee that `f` is order-preserving and cannot
+    /// produce overlapping selections (e.g. `|s| s.shift(delta)`). If you are
+    /// not sure, use [`map_and_merge`](Self::map_and_merge) instead.
     pub(crate) fn map<F>(self, mut f: F) -> Self
     where
         F: FnMut(Selection) -> Selection,
@@ -138,6 +141,21 @@ impl SelectionSet {
         let primary = self.primary;
         let selections = self.selections.into_iter().map(&mut f).collect();
         Self { selections, primary }
+    }
+
+    /// Apply `f` to every selection, then merge any overlapping results.
+    ///
+    /// This is the safe default for motions and any transform where `f` might
+    /// move selections out of order or cause them to overlap (e.g. two cursors
+    /// on the same line both moving to end-of-line land on the same position).
+    ///
+    /// Prefer plain [`map`](Self::map) only when you can prove `f` is
+    /// order-preserving and overlap-free — it avoids the O(n log n) sort.
+    pub(crate) fn map_and_merge<F>(self, f: F) -> Self
+    where
+        F: FnMut(Selection) -> Selection,
+    {
+        self.map(f).merge_overlapping()
     }
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
