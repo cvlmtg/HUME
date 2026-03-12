@@ -66,6 +66,17 @@ impl Selection {
     pub(crate) fn shift(self, delta: isize) -> Self {
         let anchor = (self.anchor as isize + delta) as usize;
         let head = (self.head as isize + delta) as usize;
+        // Catch underflow early in tests. A wrapped value will be enormous.
+        debug_assert!(
+            anchor <= isize::MAX as usize,
+            "shift underflow on anchor: {} + {delta} wrapped",
+            self.anchor
+        );
+        debug_assert!(
+            head <= isize::MAX as usize,
+            "shift underflow on head: {} + {delta} wrapped",
+            self.head
+        );
         Self { anchor, head }
     }
 }
@@ -223,7 +234,6 @@ impl SelectionSet {
             }
             if sel.start() >= primary_before.start()
                 && sel.end() <= primary_before.end()
-                || (sel.anchor == primary_before.anchor && sel.head == primary_before.head)
             {
                 new_primary = merged.len();
             }
@@ -396,6 +406,24 @@ mod tests {
         assert_eq!(set.len(), 1);
         assert_eq!(set.primary().start(), 0);
         assert_eq!(set.primary().end(), 10);
+    }
+
+    #[test]
+    fn merge_overlapping_backward_selections() {
+        // Two backward selections that overlap: (anchor=8, head=3) and
+        // (anchor=10, head=5). After sorting by start(), the merge should
+        // produce a single backward selection spanning 3–10.
+        let set = SelectionSet::from_vec(
+            vec![Selection::new(8, 3), Selection::new(10, 5)],
+            0,
+        )
+        .merge_overlapping();
+        assert_eq!(set.len(), 1);
+        let s = set.primary();
+        assert_eq!(s.start(), 3);
+        assert_eq!(s.end(), 10);
+        // Merged result should be backward (head < anchor).
+        assert!(s.head < s.anchor, "merged backward selections should stay backward");
     }
 
     #[test]
