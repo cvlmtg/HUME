@@ -50,7 +50,7 @@ Every editing command, text object, and selection operation must be tested. Appr
 Build the core with no UI dependency. Drive entirely from tests.
 - [x] Buffer type: wrap `ropey::Rope` with HUME's buffer API
 - [x] Selection type: `Vec<Selection>` with anchor + head, single cursor as vec of length 1
-- [ ] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
+- [x] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
 - [ ] Basic edit operations: insert, delete, backspace — operating over all selections
 - [ ] Motions: character, word, line, paragraph movement
 - [ ] Text objects: inside/around word, quotes, brackets, line

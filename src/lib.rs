@@ -1,4 +1,5 @@
 pub(crate) mod buffer;
+pub(crate) mod grapheme;
 pub(crate) mod selection;
 
 // The test DSL is compiled only when running tests. It lives in its own
