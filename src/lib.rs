@@ -1,4 +1,5 @@
 pub(crate) mod buffer;
+pub(crate) mod edit;
 pub(crate) mod grapheme;
 pub(crate) mod selection;
 

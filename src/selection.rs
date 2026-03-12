@@ -117,6 +117,14 @@ impl SelectionSet {
         self.selections[self.primary]
     }
 
+    /// The index of the primary selection within the sorted selections Vec.
+    ///
+    /// Useful when rebuilding a `SelectionSet` after transforming all selections
+    /// and you need to preserve which one is primary.
+    pub(crate) fn primary_index(&self) -> usize {
+        self.primary
+    }
+
     /// Number of selections.
     pub(crate) fn len(&self) -> usize {
         self.selections.len()
