@@ -48,8 +48,8 @@ Every editing command, text object, and selection operation must be tested. Appr
 
 ### M1 — Core engine
 Build the core with no UI dependency. Drive entirely from tests.
-- [ ] Buffer type: wrap `ropey::Rope` with HUME's buffer API
-- [ ] Selection type: `Vec<Selection>` with anchor + head, single cursor as vec of length 1
+- [x] Buffer type: wrap `ropey::Rope` with HUME's buffer API
+- [x] Selection type: `Vec<Selection>` with anchor + head, single cursor as vec of length 1
 - [ ] Basic edit operations: insert, delete, backspace — operating over all selections
 - [ ] Motions: character, word, line, paragraph movement
 - [ ] Text objects: inside/around word, quotes, brackets, line
