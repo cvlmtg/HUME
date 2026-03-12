@@ -1,58 +1,15 @@
 use crate::buffer::Buffer;
+use crate::changeset::ChangeSetBuilder;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::selection::{Selection, SelectionSet};
 
-// ── Core helper ───────────────────────────────────────────────────────────────
-
-/// Apply `f` to every selection left-to-right, accumulating the net char-count
-/// change from each edit so that subsequent selections see their correct
-/// positions in the already-mutated buffer.
-///
-/// # Why left-to-right with delta?
-///
-/// The natural instinct is "apply right-to-left so earlier positions stay
-/// valid". That is correct for the *input* positions — but the *output*
-/// positions (the new cursors `f` returns) are then invalidated when a
-/// subsequent left-side edit shifts the buffer. Tracking the cumulative delta
-/// and adjusting each input selection before calling `f` sidesteps the
-/// problem entirely: every call sees a consistently-positioned `adjusted`
-/// selection and leaves a result that is already correct in the final buffer.
-///
-/// # Primary tracking
-///
-/// The primary index is carried through from the original `SelectionSet`.
-/// `merge_overlapping` (called at the end) adjusts it further if adjacent
-/// cursors collapse into one.
-fn apply_to_each<F>(buf: &Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet)
-where
-    F: FnMut(&Buffer, Selection) -> (Buffer, Selection),
-{
-    let primary_idx = sels.primary_index();
-    let sorted: Vec<Selection> = sels.iter_sorted().copied().collect();
-
-    let mut current_buf = buf.clone();
-    let mut new_sels: Vec<Selection> = Vec::with_capacity(sorted.len());
-    // `delta` is the net change in char count from all edits so far.
-    // Positive = characters were inserted; negative = deleted.
-    let mut delta: isize = 0;
-
-    for sel in sorted {
-        // Shift this selection's offsets to account for all previous edits.
-        let adjusted = sel.shift(delta);
-        let old_len = current_buf.len_chars() as isize;
-        let (new_buf, new_sel) = f(&current_buf, adjusted);
-        delta += new_buf.len_chars() as isize - old_len;
-        current_buf = new_buf;
-        new_sels.push(new_sel);
-    }
-
-    // Rebuild with merge in case adjacent cursors converged (e.g. two cursors
-    // on neighbouring chars both deleted forward — both land at the same spot).
-    let new_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
-    (current_buf, new_set)
-}
-
 // ── Public operations ─────────────────────────────────────────────────────────
+//
+// Each operation builds a `ChangeSet` via the builder, working entirely in
+// **original-buffer coordinates**. This is the key advantage over the old
+// `apply_to_each` approach: no cumulative delta tracking, no intermediate
+// buffer clones. The builder's `new_pos()` gives cursor positions directly
+// in the result buffer's coordinate space.
 
 /// Insert `ch` at every selection.
 ///
@@ -66,18 +23,32 @@ where
 /// selection with typed character" — all via the same loop.
 pub(crate) fn insert_char(buf: &Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet) {
     let ch_str = ch.to_string();
-    apply_to_each(buf, sels, |buf, sel| {
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
+    let primary_idx = sels.primary_index();
+
+    for sel in sels.iter_sorted() {
         let start = sel.start();
-        if sel.is_cursor() {
-            // Insert at cursor; cursor advances past the new character.
-            (buf.insert(start, &ch_str), Selection::cursor(start + 1))
-        } else {
-            // Delete the selected region (inclusive end → exclusive +1), then insert.
-            let end_excl = sel.end() + 1;
-            let new_buf = buf.remove(start, end_excl).insert(start, &ch_str);
-            (new_buf, Selection::cursor(start + 1))
+
+        // Retain everything between the builder's current position and this
+        // selection — these chars are untouched by this edit.
+        b.retain(start - b.old_pos());
+
+        if !sel.is_cursor() {
+            // Delete the selected region. end() is inclusive, so +1 for the
+            // exclusive bound that the builder expects.
+            b.delete(sel.end() + 1 - start);
         }
-    })
+
+        // Insert the character. The cursor lands right after it.
+        b.insert(&ch_str);
+        new_sels.push(Selection::cursor(b.new_pos()));
+    }
+
+    b.retain_rest();
+    let new_buf = b.finish().apply(buf);
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    (new_buf, new_sel_set)
 }
 
 /// Delete the grapheme cluster at the cursor, or delete the selected region.
@@ -91,23 +62,41 @@ pub(crate) fn delete_char_forward(
     buf: &Buffer,
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet) {
-    apply_to_each(buf, sels, |buf, sel| {
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
+    let primary_idx = sels.primary_index();
+
+    for sel in sels.iter_sorted() {
         if sel.is_cursor() {
             let p = sel.head;
             if p >= buf.len_chars() {
-                // At end of buffer — nothing to delete.
-                return (buf.clone(), sel);
+                // At end of buffer — nothing to delete. Retain up to here
+                // (which may be zero if we're already there) and record the
+                // cursor at the current new-doc position.
+                b.retain(p - b.old_pos());
+                new_sels.push(Selection::cursor(b.new_pos()));
+                continue;
             }
-            // Delete one grapheme cluster starting at `p`.
+            // Delete one grapheme cluster starting at `p`. We call
+            // next_grapheme_boundary on the *original* buffer — all
+            // positions in the builder are in original-buffer space.
             let end = next_grapheme_boundary(buf, p);
-            (buf.remove(p, end), Selection::cursor(p))
+            b.retain(p - b.old_pos());
+            b.delete(end - p);
+            new_sels.push(Selection::cursor(b.new_pos()));
         } else {
-            // Delete the selected region (end() is inclusive).
             let start = sel.start();
             let end_excl = sel.end() + 1;
-            (buf.remove(start, end_excl), Selection::cursor(start))
+            b.retain(start - b.old_pos());
+            b.delete(end_excl - start);
+            new_sels.push(Selection::cursor(b.new_pos()));
         }
-    })
+    }
+
+    b.retain_rest();
+    let new_buf = b.finish().apply(buf);
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    (new_buf, new_sel_set)
 }
 
 /// Delete the grapheme cluster before the cursor, or delete the selected region.
@@ -122,22 +111,36 @@ pub(crate) fn delete_char_backward(
     buf: &Buffer,
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet) {
-    apply_to_each(buf, sels, |buf, sel| {
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
+    let primary_idx = sels.primary_index();
+
+    for sel in sels.iter_sorted() {
         if sel.is_cursor() {
             let p = sel.head;
             if p == 0 {
                 // At start of buffer — nothing to delete.
-                return (buf.clone(), sel);
+                new_sels.push(Selection::cursor(b.new_pos()));
+                continue;
             }
-            // Delete the grapheme cluster whose last char is at offset p-1.
+            // Delete the grapheme cluster ending just before `p`.
             let prev = prev_grapheme_boundary(buf, p);
-            (buf.remove(prev, p), Selection::cursor(prev))
+            b.retain(prev - b.old_pos());
+            b.delete(p - prev);
+            new_sels.push(Selection::cursor(b.new_pos()));
         } else {
             let start = sel.start();
             let end_excl = sel.end() + 1;
-            (buf.remove(start, end_excl), Selection::cursor(start))
+            b.retain(start - b.old_pos());
+            b.delete(end_excl - start);
+            new_sels.push(Selection::cursor(b.new_pos()));
         }
-    })
+    }
+
+    b.retain_rest();
+    let new_buf = b.finish().apply(buf);
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    (new_buf, new_sel_set)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -206,8 +209,9 @@ mod tests {
 
     #[test]
     fn insert_char_two_cursors() {
-        // Cursors at 0 and 3. Left-to-right: insert 'x' at 0, delta=1;
-        // insert 'x' at adjusted(3+1=4). Result: "xfoox bar", cursors at 1 and 5.
+        // Cursors at 0 and 3. Insert 'x' at both positions.
+        // Changeset: Insert("x"), Retain(3), Insert("x"), Retain(4).
+        // Result: "xfoox bar", cursors at 1 and 5.
         assert_state!(
             "|foo| bar",
             |(buf, sels)| insert_char(&buf, sels, 'x'),
@@ -256,9 +260,9 @@ mod tests {
 
     #[test]
     fn delete_forward_two_cursors() {
-        // Cursors at 0 ('h') and 2 ('l'). Delete 'h' → "ello", cursor 0, delta=-1.
-        // Adjust cursor 2 → 1; delete 'l' at 1 in "ello" → "elo", cursor 1.
-        // Buffer "elo", cursors at 0 and 1 (distinct positions, no merge).
+        // Cursors at 0 ('h') and 2 ('l'). Delete 'h' and first 'l'.
+        // Changeset: Delete(1), Retain(1), Delete(1), Retain(2).
+        // Result: "elo", cursors at 0 and 1.
         assert_state!(
             "|he|llo",
             |(buf, sels)| delete_char_forward(&buf, sels),
@@ -322,12 +326,10 @@ mod tests {
 
     #[test]
     fn delete_backward_two_cursors() {
-        // Cursors at 2 and 4. Backspace at 2: delete offset 1 ('e'), cursor 1, delta=-1.
-        // Adjust cursor 4 → 3; backspace at 3: delete offset 2 ('l'), cursor 2.
-        // Buffer "hlло" → "hlo"... let me trace: "hello", cursors at 2 and 4.
-        // Backspace at cursor 2: prev(2)=1, delete [1,2) → "hllo", cursor 1, delta=-1.
-        // Adjusted cursor 4 → 3; backspace at 3: prev(3)=2, delete [2,3) in "hllo" → "hlo", cursor 2.
-        // Result: "hlo", cursors at [1, 2].
+        // Cursors at 2 and 4 in "hello". Backspace at 2 deletes 'e' (offset 1).
+        // Backspace at 4 deletes 'l' (offset 3).
+        // Changeset: Retain(1), Delete(1), Retain(1), Delete(1), Retain(1).
+        // Result: "hlo", cursors at 1 and 2.
         assert_state!(
             "he|ll|o",
             |(buf, sels)| delete_char_backward(&buf, sels),
@@ -348,9 +350,8 @@ mod tests {
 
     #[test]
     fn delete_backward_adjacent_cursors_merge() {
-        // Cursors at 2 and 3. Backspace at 2: delete offset 1, cursor 1, delta=-1.
-        // Adjusted 3 → 2; backspace at 2: delete offset 1 in updated buf, cursor 1.
-        // Both land at 1 → merge.
+        // Cursors at 2 and 3. Backspace at 2: delete offset 1. Backspace at 3:
+        // delete offset 2 in original. Both cursors land at 1 → merge.
         assert_state!(
             "he|l|lo",
             |(buf, sels)| delete_char_backward(&buf, sels),
