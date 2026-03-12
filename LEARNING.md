@@ -89,3 +89,61 @@ The boundary between layers is strict: `grapheme.rs` **consumes** char offsets
 and **produces** char offsets that happen to land on grapheme boundaries.
 Everything above it works purely in char offsets and never needs to know about
 bytes or grapheme internals.
+
+---
+
+## Edit Operations: Acting on Selections
+
+### The select-then-act model
+
+In HUME, edit operations never act on a bare cursor position. They act on a
+`SelectionSet` — which is always a `Vec<Selection>`. Each `Selection` is either:
+
+- **Collapsed** (`anchor == head`): a plain cursor with no selected text.
+- **Non-collapsed** (`anchor != head`): a region of selected text.
+
+An operation like "insert character `x`" means:
+
+- For a **collapsed selection**: insert `x` at the cursor position.
+- For a **non-collapsed selection**: replace the selected region with `x` (delete
+  the selection, then insert).
+
+This is the same rule in both cases — "replace the selected region with the
+input, where an empty selection replaces nothing". Single-cursor editing,
+visual-mode editing, and multicursor editing all fall out of the same loop.
+
+### The right-to-left rule
+
+A `SelectionSet` can contain multiple selections simultaneously (multicursor).
+When an edit touches multiple positions, **the order of application matters**.
+
+Consider inserting `!` with two cursors at offsets 3 and 7 in `"foo bar"`:
+
+```
+Before:   f o o   b a r
+offsets:  0 1 2 3 4 5 6
+cursors:        ^       ^
+                3       7
+```
+
+If we apply left-to-right (offset 3 first):
+
+1. Insert `!` at 3 → buffer becomes `"foo! bar"` (8 chars).
+   The character that used to be at offset 7 (`r`) is now at offset **8**.
+2. Insert `!` at 7 → we insert at the old offset, hitting `a` instead of `r`.
+   **Wrong result: `"foo! ba!r"`**
+
+If we apply right-to-left (offset 7 first):
+
+1. Insert `!` at 7 → buffer becomes `"foo bar!"` (8 chars).
+   Offsets 0–6 are **unchanged** — nothing to the left shifted.
+2. Insert `!` at 3 → buffer becomes `"foo! bar!"`.
+   **Correct result: `"foo! bar!"`**
+
+The rule: **sort selections by position descending and apply edits from the
+rightmost position to the leftmost**. An edit at position N never affects
+offsets less than N, so all earlier selections remain valid.
+
+After all edits, each selection's offset must be adjusted to account for the
+characters inserted or removed before it — but because we went right-to-left,
+each adjustment is independent and can be calculated from the edit delta alone.
