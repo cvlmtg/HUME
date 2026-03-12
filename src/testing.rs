@@ -194,7 +194,10 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
             // cursor character visually appear between `|` and `]#`.
             markers[sel.anchor].push("#[");
             markers[sel.head].push("|");
-            markers[sel.head + 1].push("]#");
+            // `]#` goes one past the cursor char. Clamp to `n` when head
+            // is at the very end of the buffer (head == n can happen for
+            // selections parsed from non-canonical DSL input like "#[abc|]#").
+            markers[(sel.head + 1).min(n)].push("]#");
         } else {
             // Backward selection: anchor > head.
             // Format: #[|...anchor_text...]#  — | at head (start), ]# at anchor (end).
@@ -414,6 +417,18 @@ mod tests {
         let buf = Buffer::from_str("hello world");
         let sels = SelectionSet::single(Selection::new(0, 3));
         assert_eq!(serialize_state(&buf, &sels), "#[hel|l]#o world");
+    }
+
+    #[test]
+    fn serialize_forward_selection_head_at_eof() {
+        // In the inclusive cursor model, a non-cursor selection with
+        // head == len_chars is technically invalid (no character to sit on),
+        // but serialize_state should handle it gracefully rather than panic.
+        let buf = Buffer::from_str("hello");
+        let sels = SelectionSet::single(Selection::new(0, 5));
+        // ]# is clamped to position 5 (len_chars) instead of 6 (out of bounds).
+        let s = serialize_state(&buf, &sels);
+        assert_eq!(s, "#[hello|]#");
     }
 
     // ── Round-trip ────────────────────────────────────────────────────────────

@@ -170,6 +170,25 @@ mod tests {
     }
 
     #[test]
+    fn combining_char_next_mid_cluster() {
+        // Offset 1 is *inside* the é cluster (between 'e' and U+0301).
+        // next() should still find the next boundary at 2, not at 1+1=2
+        // by coincidence — it must consult the grapheme algorithm.
+        let buf = Buffer::from_str("e\u{0301}x");
+        assert_eq!(next_grapheme_boundary(&buf, 1), 2);
+    }
+
+    #[test]
+    fn combining_char_prev_mid_cluster() {
+        // prev(1) from inside the é cluster should return 0 (start of cluster),
+        // not 1-1=0 by coincidence — test with a prefix to break the coincidence.
+        // "ae\u{0301}x" — offset 2 is inside the é cluster (between 'e' and U+0301).
+        let buf = Buffer::from_str("ae\u{0301}x");
+        assert_eq!(buf.len_chars(), 4);
+        assert_eq!(prev_grapheme_boundary(&buf, 2), 1); // back to start of é, not to 'a'
+    }
+
+    #[test]
     fn combining_char_prev() {
         // prev from end of "é" (char offset 2) must jump back to 0, not to 1.
         let buf = Buffer::from_str("e\u{0301}x");
