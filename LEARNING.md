@@ -173,6 +173,90 @@ coordinate space. The only positions that need adjusting are the *inputs* —
 the original selections recorded before any edits ran. The `delta` handles
 exactly that.
 
-This is what `apply_to_each` in `src/edit.rs` implements: left-to-right
-iteration with a running `delta` that shifts each input selection before the
-closure is called.
+This is what the `ChangeSetBuilder` in `src/changeset.rs` implements
+internally: as it emits Retain/Delete/Insert operations, it tracks both an
+`old_pos` (consumed from old doc) and a `new_pos` (produced in new doc). The
+builder's `new_pos()` gives each cursor's position in the result buffer
+directly — no separate delta variable needed.
+
+---
+
+## Changesets: Describing Edits as Data
+
+### What is a changeset?
+
+A changeset is a **compact, invertible description** of a document
+transformation. Instead of mutating the buffer for each selection, we build
+one changeset that describes all the edits, then apply it once.
+
+The representation is a sequence of three operations:
+
+| Operation | Meaning |
+|-----------|---------|
+| `Retain(n)` | Skip `n` chars unchanged |
+| `Delete(n)` | Remove `n` chars from the old doc |
+| `Insert(s)` | Add `s` to the new doc |
+
+**Example:** Insert `!` at positions 0 and 6 in `"hello world"`:
+
+```
+Insert("!"), Retain(6), Insert("!"), Retain(5)
+```
+
+This single object describes the entire multi-cursor edit. Apply it once
+to get `"!hello !world"`.
+
+### Why not just mutate the buffer directly?
+
+Direct mutation (clone + edit per selection) works, but the edit is lost
+after application — there is no record of what changed. A changeset preserves
+the edit as data, which enables:
+
+1. **Undo/redo.** Invert the changeset to get an undo operation:
+   - `Retain(n)` → `Retain(n)` (no change)
+   - `Delete(n)` → `Insert(deleted text)` (re-insert what was removed)
+   - `Insert(s)` → `Delete(len(s))` (remove what was added)
+
+   Applying the inverse to the result buffer gives back the original.
+
+2. **Composition.** Two sequential changesets A→B and B→C can be merged into
+   a single A→C changeset. This is essential for grouping keystrokes into
+   undo steps (typing a word should undo as one operation, not per-character).
+
+3. **Position mapping.** Given a position in the old document, `map_pos`
+   computes where it ends up in the new document — accounting for all
+   insertions and deletions. An `Assoc` parameter (Before/After) controls
+   which side of an insertion the position sticks to.
+
+### The builder pattern
+
+Edit operations build changesets incrementally using `ChangeSetBuilder`. The
+builder tracks two cursors:
+
+- `old_pos` — how far we have consumed in the old document
+- `new_pos` — how far we have produced in the new document
+
+This dual tracking replaces the manual delta accumulator. After each
+`insert()` call, `new_pos()` tells you exactly where a cursor should land
+in the result buffer.
+
+```text
+Builder state for insert_char('x') with cursor at offset 3 in "hello":
+
+  b.retain(3)     →  old_pos=3, new_pos=3    (skip "hel")
+  b.insert("x")   →  old_pos=3, new_pos=4    (insert 'x')
+  b.retain_rest()  →  old_pos=5, new_pos=6    (keep "lo")
+
+  Result: Retain(3), Insert("x"), Retain(2)
+  Cursor: b.new_pos() at time of insert = 4  →  "helx|lo"
+```
+
+All positions are in **original-buffer space** — no delta tracking, no
+intermediate buffer clones. The builder handles the coordinate translation
+internally.
+
+### Implementation
+
+- `src/changeset.rs` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
+- `src/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
+- `src/edit.rs` — edit operations build changesets via the builder

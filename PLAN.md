@@ -52,6 +52,8 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Selection type: `Vec<Selection>` with anchor + head, single cursor as vec of length 1
 - [x] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
 - [x] Basic edit operations: insert, delete, backspace — operating over all selections
+- [x] ChangeSet: OT-style edit descriptions (Retain/Delete/Insert) with apply, map_pos, invert, compose. Builder pattern for constructing changesets. Edit operations refactored to build changesets.
+- [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of editing for future undo/redo
 - [ ] Motions: character, word, line, paragraph movement
 - [ ] Text objects: inside/around word, quotes, brackets, line
 - [ ] Selection manipulation: extend, shrink, split, merge overlapping selections
