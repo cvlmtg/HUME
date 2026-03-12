@@ -112,7 +112,7 @@ This is the same rule in both cases — "replace the selected region with the
 input, where an empty selection replaces nothing". Single-cursor editing,
 visual-mode editing, and multicursor editing all fall out of the same loop.
 
-### The right-to-left rule
+### Multi-selection edit ordering
 
 A `SelectionSet` can contain multiple selections simultaneously (multicursor).
 When an edit touches multiple positions, **the order of application matters**.
@@ -126,24 +126,53 @@ cursors:        ^       ^
                 3       7
 ```
 
-If we apply left-to-right (offset 3 first):
+**Naïve left-to-right (broken):**
 
 1. Insert `!` at 3 → buffer becomes `"foo! bar"` (8 chars).
    The character that used to be at offset 7 (`r`) is now at offset **8**.
-2. Insert `!` at 7 → we insert at the old offset, hitting `a` instead of `r`.
+2. Insert `!` at 7 → we insert at the *stale* offset, hitting `a` instead of `r`.
    **Wrong result: `"foo! ba!r"`**
 
-If we apply right-to-left (offset 7 first):
+The input positions go stale as soon as the first edit shifts the buffer.
 
-1. Insert `!` at 7 → buffer becomes `"foo bar!"` (8 chars).
-   Offsets 0–6 are **unchanged** — nothing to the left shifted.
-2. Insert `!` at 3 → buffer becomes `"foo! bar!"`.
-   **Correct result: `"foo! bar!"`**
+**Right-to-left (solves the input problem, creates an output problem):**
 
-The rule: **sort selections by position descending and apply edits from the
-rightmost position to the leftmost**. An edit at position N never affects
-offsets less than N, so all earlier selections remain valid.
+Apply edits from the rightmost selection to the leftmost. An edit at position N
+never shifts any offset to its left, so the next (leftward) input position is
+still valid.
 
-After all edits, each selection's offset must be adjusted to account for the
-characters inserted or removed before it — but because we went right-to-left,
-each adjustment is independent and can be calculated from the edit delta alone.
+Consider `"hello world"` with cursors at **0** (on `h`) and **6** (on `w`),
+inserting `!`:
+
+1. Insert `!` at 6 → `"hello !world"`. Store new cursor at **7**. ✓
+2. Insert `!` at 0 → `"!hello !world"`. New cursor at **1**. ✓
+
+The input positions were fine — but step 2 shifted everything right by 1, so
+the cursor stored in step 1 (**7**) is now wrong. It should be **8**. A
+retroactive correction pass is required after the loop, which adds complexity.
+
+**Left-to-right with cumulative delta (the actual algorithm):**
+
+Process selections in ascending order. Before each edit, adjust the selection's
+position by `delta` — the net char-count change from all *previous* edits.
+The resulting new cursors are already correct in the final buffer; no retroactive
+pass is needed.
+
+Same example — `"hello world"`, cursors at **0** and **6**, inserting `!`:
+
+1. `delta = 0`. Insert `!` at `0 + 0 = 0` → `"!hello world"`. New cursor **1**.
+   `delta = +1` (one char inserted).
+2. Adjust input: `6 + 1 = 7`. Insert `!` at 7 → `"!hello !world"`. New cursor **8**.
+
+Both cursors (**1** and **8**) are already correct in `"!hello !world"`. No
+second pass needed.
+
+**Why output positions are automatically correct:** each new cursor is produced
+*after* the current edit, so it's already expressed in the buffer's current
+coordinate space. The only positions that need adjusting are the *inputs* —
+the original selections recorded before any edits ran. The `delta` handles
+exactly that.
+
+This is what `apply_to_each` in `src/edit.rs` implements: left-to-right
+iteration with a running `delta` that shifts each input selection before the
+closure is called.
