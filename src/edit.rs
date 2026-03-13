@@ -6,10 +6,9 @@ use crate::selection::{Selection, SelectionSet};
 // ── Public operations ─────────────────────────────────────────────────────────
 //
 // Each operation builds a `ChangeSet` via the builder, working entirely in
-// **original-buffer coordinates**. This is the key advantage over the old
-// `apply_to_each` approach: no cumulative delta tracking, no intermediate
-// buffer clones. The builder's `new_pos()` gives cursor positions directly
-// in the result buffer's coordinate space.
+// **original-buffer coordinates**. The builder's `new_pos()` gives cursor
+// positions directly in the result buffer's coordinate space — no cumulative
+// delta tracking, no intermediate buffer clones.
 
 /// Insert `ch` at every selection.
 ///
@@ -22,7 +21,11 @@ use crate::selection::{Selection, SelectionSet};
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
 pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet) {
-    let ch_str = ch.to_string();
+    // Encode the char into a stack buffer — avoids a heap allocation for
+    // every keystroke (the builder's `insert` takes `&str`).
+    let mut encode_buf = [0u8; 4];
+    let ch_str = ch.encode_utf8(&mut encode_buf);
+
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
     let primary_idx = sels.primary_index();
@@ -41,7 +44,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         }
 
         // Insert the character. The cursor lands right after it.
-        b.insert(&ch_str);
+        b.insert(ch_str);
         new_sels.push(Selection::cursor(b.new_pos()));
     }
 
