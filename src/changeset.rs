@@ -574,6 +574,17 @@ impl ChangeSetBuilder {
         self
     }
 
+    /// Insert a single Unicode character.
+    ///
+    /// Convenience wrapper around [`insert`](Self::insert) that handles the
+    /// `char → &str` conversion without allocating. `char` cannot be used as
+    /// `&str` directly in Rust: `str` is a UTF-8 byte sequence and a `char`
+    /// is a Unicode scalar value that may encode to 1–4 bytes.
+    pub(crate) fn insert_char(&mut self, ch: char) -> &mut Self {
+        let mut buf = [0u8; 4];
+        self.insert(ch.encode_utf8(&mut buf))
+    }
+
     /// Current position in the old document (chars consumed so far).
     pub(crate) fn old_pos(&self) -> usize {
         self.old_pos
