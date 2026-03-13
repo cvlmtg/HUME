@@ -26,17 +26,41 @@ pub(crate) enum Operation {
 
 /// Sticky-side preference when mapping a position through an insertion.
 ///
-/// When an old-document position falls exactly at an insertion point,
-/// `Assoc` decides whether the mapped position lands before or after the
-/// inserted text. Think of it as: does the cursor "stick" to the left
-/// edge or the right edge of new text appearing at its position?
+/// When an old-document position coincides exactly with an insertion point,
+/// `Assoc` resolves the ambiguity: does the mapped position land *before*
+/// or *after* the new text?
+///
+/// ```text
+/// Old doc:  h e l | l o          (cursor at offset 3, marked with |)
+///                 ↓
+/// Insert "XY" at 3
+///                 ↓
+/// New doc:  h e l X Y l o
+///           Before → 3  (cursor stays glued to what was left of it)
+///           After  → 5  (cursor moves past the inserted text)
+/// ```
+///
+/// **When you need this:** `Assoc` is only relevant when calling `map_pos`
+/// to move positions that were *not* produced by the edit itself — for
+/// example:
+/// - **External position tracking** — LSP diagnostic ranges, bookmarks, and
+///   marks live in old-doc space and must be re-anchored after every edit.
+/// - **Collaborative editing** — remote cursor positions arrive in old-doc
+///   space and must be mapped through locally applied changesets.
+///
+/// Edit operations in HUME compute new cursor positions directly from
+/// `ChangeSetBuilder::new_pos()`, so they never consult `map_pos`. Undo/redo
+/// uses a store-and-restore strategy (the inverse `Transaction` carries the
+/// original `SelectionSet`), also without `map_pos`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
-    /// Example: cursor at offset 3, text inserted at 3 → cursor stays at 3.
+    /// Use this for anchors and positions that should remain pinned to the
+    /// character that was at this offset before the edit.
     Before,
     /// Move past inserted text ("sticky right").
-    /// Example: cursor at offset 3, "ab" inserted at 3 → cursor moves to 5.
+    /// Use this for cursors that should advance past text inserted at their
+    /// position (e.g. when replaying where the user's cursor ended up).
     After,
 }
 
