@@ -117,67 +117,36 @@ visual-mode editing, and multicursor editing all fall out of the same loop.
 A `SelectionSet` can contain multiple selections simultaneously (multicursor).
 When an edit touches multiple positions, **the order of application matters**.
 
-Consider inserting `!` with two cursors at offsets 3 and 7 in `"foo bar"`:
-
-```
-Before:   f o o   b a r
-offsets:  0 1 2 3 4 5 6
-cursors:        ^       ^
-                3       7
-```
-
-**Naïve left-to-right (broken):**
-
-1. Insert `!` at 3 → buffer becomes `"foo! bar"` (8 chars).
-   The character that used to be at offset 7 (`r`) is now at offset **8**.
-2. Insert `!` at 7 → we insert at the *stale* offset, hitting `a` instead of `r`.
-   **Wrong result: `"foo! ba!r"`**
-
-The input positions go stale as soon as the first edit shifts the buffer.
-
-**Right-to-left (solves the input problem, creates an output problem):**
-
-Apply edits from the rightmost selection to the leftmost. An edit at position N
-never shifts any offset to its left, so the next (leftward) input position is
-still valid.
-
 Consider `"hello world"` with cursors at **0** (on `h`) and **6** (on `w`),
 inserting `!`:
 
-1. Insert `!` at 6 → `"hello !world"`. Store new cursor at **7**. ✓
-2. Insert `!` at 0 → `"!hello !world"`. New cursor at **1**. ✓
+If we apply edits left-to-right, mutating the buffer each time, the first
+insert shifts all subsequent offsets. Cursor 2 was recorded as **6** in the
+original buffer, but after inserting at 0 the `w` is now at **7**. Inserting
+at the stale offset **6** puts the `!` in the wrong place.
 
-The input positions were fine — but step 2 shifted everything right by 1, so
-the cursor stored in step 1 (**7**) is now wrong. It should be **8**. A
-retroactive correction pass is required after the loop, which adds complexity.
+One fix is to process edits right-to-left: an edit at position N never shifts
+any offset to its left, so leftward input positions stay valid. But the
+*output* cursors computed in earlier (rightward) steps become stale once a
+later (leftward) edit shifts text to their right, requiring a retroactive
+correction pass.
 
-**Left-to-right with cumulative delta (the actual algorithm):**
-
-Process selections in ascending order. Before each edit, adjust the selection's
-position by `delta` — the net char-count change from all *previous* edits.
-The resulting new cursors are already correct in the final buffer; no retroactive
-pass is needed.
-
-Same example — `"hello world"`, cursors at **0** and **6**, inserting `!`:
+A cleaner approach is left-to-right with a cumulative delta:
 
 1. `delta = 0`. Insert `!` at `0 + 0 = 0` → `"!hello world"`. New cursor **1**.
    `delta = +1` (one char inserted).
 2. Adjust input: `6 + 1 = 7`. Insert `!` at 7 → `"!hello !world"`. New cursor **8**.
 
 Both cursors (**1** and **8**) are already correct in `"!hello !world"`. No
-second pass needed.
+second pass needed. Output positions are automatically correct because each
+new cursor is produced *after* the current edit, already in the buffer's
+current coordinate space.
 
-**Why output positions are automatically correct:** each new cursor is produced
-*after* the current edit, so it's already expressed in the buffer's current
-coordinate space. The only positions that need adjusting are the *inputs* —
-the original selections recorded before any edits ran. The `delta` handles
-exactly that.
-
-This is what the `ChangeSetBuilder` in `src/changeset.rs` implements
-internally: as it emits Retain/Delete/Insert operations, it tracks both an
-`old_pos` (consumed from old doc) and a `new_pos` (produced in new doc). The
-builder's `new_pos()` gives each cursor's position in the result buffer
-directly — no separate delta variable needed.
+In HUME, the `ChangeSetBuilder` eliminates the manual delta entirely. All
+positions passed to the builder are in **original-buffer space** — the builder
+tracks `old_pos` (consumed from old doc) and `new_pos` (produced in new doc)
+internally. After each insert, `new_pos()` gives the cursor's position in the
+result buffer directly. See the Changesets section below for details.
 
 ---
 
