@@ -116,6 +116,52 @@ fn push_merge(ops: &mut Vec<Operation>, op: Operation) {
     }
 }
 
+// ── compose helpers ──────────────────────────────────────────────────────────
+
+/// How many chars does this operation "consume" from its input side?
+///
+/// - `Retain(n)` and `Delete(n)` consume `n` chars from the old doc.
+/// - `Insert` consumes `n` chars from the intermediate doc (its char length).
+///
+/// This is used by `compose` to find the minimum consumption for lockstep
+/// advancement.
+fn op_consuming_len(op: &Operation) -> usize {
+    match op {
+        Operation::Retain(n) | Operation::Delete(n) => *n,
+        Operation::Insert(s) => s.chars().count(),
+    }
+}
+
+/// Consume `n` chars from `op` and return the remainder (or the next op
+/// from the iterator if `op` is fully consumed).
+///
+/// For `Retain(k)` and `Delete(k)`: if `k > n`, return the same variant
+/// with `k - n`; otherwise fetch the next op.
+///
+/// For `Insert(s)`: if `s` has more than `n` chars, return `Insert` with
+/// the remaining chars (after skipping the first `n`); otherwise fetch next.
+fn advance_op(
+    op: Operation,
+    n: usize,
+    iter: &mut impl Iterator<Item = Operation>,
+) -> Option<Operation> {
+    let remainder = match op {
+        Operation::Retain(k) if k > n => Some(Operation::Retain(k - n)),
+        Operation::Delete(k) if k > n => Some(Operation::Delete(k - n)),
+        Operation::Insert(s) => {
+            let total = s.chars().count();
+            if total > n {
+                let rest: String = s.chars().skip(n).collect();
+                Some(Operation::Insert(rest))
+            } else {
+                None
+            }
+        }
+        _ => None, // fully consumed
+    };
+    remainder.or_else(|| iter.next())
+}
+
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
@@ -434,52 +480,6 @@ impl ChangeSet {
             len_after,
         }
     }
-}
-
-// ── compose helpers ──────────────────────────────────────────────────────────
-
-/// How many chars does this operation "consume" from its input side?
-///
-/// - `Retain(n)` and `Delete(n)` consume `n` chars from the old doc.
-/// - `Insert` consumes `n` chars from the intermediate doc (its char length).
-///
-/// This is used by `compose` to find the minimum consumption for lockstep
-/// advancement.
-fn op_consuming_len(op: &Operation) -> usize {
-    match op {
-        Operation::Retain(n) | Operation::Delete(n) => *n,
-        Operation::Insert(s) => s.chars().count(),
-    }
-}
-
-/// Consume `n` chars from `op` and return the remainder (or the next op
-/// from the iterator if `op` is fully consumed).
-///
-/// For `Retain(k)` and `Delete(k)`: if `k > n`, return the same variant
-/// with `k - n`; otherwise fetch the next op.
-///
-/// For `Insert(s)`: if `s` has more than `n` chars, return `Insert` with
-/// the remaining chars (after skipping the first `n`); otherwise fetch next.
-fn advance_op(
-    op: Operation,
-    n: usize,
-    iter: &mut impl Iterator<Item = Operation>,
-) -> Option<Operation> {
-    let remainder = match op {
-        Operation::Retain(k) if k > n => Some(Operation::Retain(k - n)),
-        Operation::Delete(k) if k > n => Some(Operation::Delete(k - n)),
-        Operation::Insert(s) => {
-            let total = s.chars().count();
-            if total > n {
-                let rest: String = s.chars().skip(n).collect();
-                Some(Operation::Insert(rest))
-            } else {
-                None
-            }
-        }
-        _ => None, // fully consumed
-    };
-    remainder.or_else(|| iter.next())
 }
 
 // ── ChangeSetBuilder ─────────────────────────────────────────────────────────

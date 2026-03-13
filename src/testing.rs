@@ -41,6 +41,18 @@
 use crate::buffer::Buffer;
 use crate::selection::{Selection, SelectionSet};
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Count the number of Unicode scalar values in `s`.
+///
+/// We use `str::chars().count()` which is O(n) in the byte length of the
+/// string. Since this is called only during test setup (not in hot paths)
+/// that is perfectly acceptable.
+#[inline]
+fn char_count(s: &str) -> usize {
+    s.chars().count()
+}
+
 // ── State parsing ─────────────────────────────────────────────────────────────
 
 /// Parse a marker-annotated string into `(Buffer, SelectionSet)`.
@@ -217,18 +229,6 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
         }
     }
     out
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Count the number of Unicode scalar values in `s`.
-///
-/// We use `str::chars().count()` which is O(n) in the byte length of the
-/// string. Since this is called only during test setup (not in hot paths)
-/// that is perfectly acceptable.
-#[inline]
-fn char_count(s: &str) -> usize {
-    s.chars().count()
 }
 
 // ── Assertion macro ───────────────────────────────────────────────────────────
