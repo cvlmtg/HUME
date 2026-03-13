@@ -50,11 +50,13 @@ impl Transaction {
     }
 
     /// Apply this transaction to a buffer, returning the new buffer and
-    /// the new selection state. Consumes the buffer — the old buffer is not
-    /// needed because undo uses changeset inversion, not buffer snapshots.
-    pub(crate) fn apply(&self, buf: Buffer) -> (Buffer, SelectionSet) {
+    /// the new selection state. Consumes both the buffer and the transaction —
+    /// the old buffer is unneeded (undo uses changeset inversion, not
+    /// snapshots) and a transaction is applied exactly once before being
+    /// discarded or replaced.
+    pub(crate) fn apply(self, buf: Buffer) -> (Buffer, SelectionSet) {
         let new_buf = self.changes.apply(buf);
-        (new_buf, self.selection.clone())
+        (new_buf, self.selection)
     }
 
     /// The text-change portion of this transaction.
