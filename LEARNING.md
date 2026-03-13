@@ -201,8 +201,16 @@ the edit as data, which enables:
 
 3. **Position mapping.** Given a position in the old document, `map_pos`
    computes where it ends up in the new document — accounting for all
-   insertions and deletions. An `Assoc` parameter (Before/After) controls
+   insertions and deletions. An `Assoc` parameter (`Before`/`After`) controls
    which side of an insertion the position sticks to.
+
+   Note that edit operations and undo/redo never call `map_pos`. Edit
+   operations use `new_pos()` directly; undo/redo restores selections from the
+   stored `Transaction` (see below). `Assoc` is reserved for **external
+   positions** — things that exist independently of any specific edit, like LSP
+   diagnostic ranges or bookmarks. When a diagnostic sits at offset 5 and text
+   is inserted at offset 5, `Assoc::Before` keeps it glued to the left of the
+   insertion; `Assoc::After` pushes it past.
 
 ### The builder pattern
 
@@ -230,6 +238,37 @@ Builder state for insert_char('x') with cursor at offset 3 in "hello":
 All positions are in **original-buffer space** — no delta tracking, no
 intermediate buffer clones. The builder handles the coordinate translation
 internally.
+
+### Transactions: changesets with cursor state
+
+A `ChangeSet` describes only the text change. A `Transaction` pairs it with the
+**post-apply** `SelectionSet` — where the cursors land *after* the changeset is
+applied. This invariant holds for every Transaction, forward or inverse.
+
+At edit time you build **two** Transactions from the same changeset:
+
+```text
+// 1. Capture the inverse BEFORE apply consumes the buffer.
+let inv_cs  = cs.invert(&old_buf);
+let new_buf = cs.apply(old_buf);          // old_buf is consumed here
+
+// 2. Build both Transactions from the same cs/inv_cs.
+let forward = Transaction::new(cs,     post_edit_sels);  // for redo
+let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
+```
+
+The inverse Transaction's `selection` is `pre_edit_sels` — the cursors from
+*before* the edit — because that is where applying the inverse will leave the
+cursors. The "always post-apply" invariant holds: after running the inverse,
+the cursors are at `pre_edit_sels`.
+
+**Timing matters.** `invert(&old_buf)` must be called before `apply(old_buf)`.
+`apply` consumes the buffer (the old rope is gone). `invert` needs the original
+content to reconstruct the `Insert` operations for deleted text — it captures
+the deleted chars from the live rope at inversion time.
+
+The history manager stores inverse Transactions. Applying one restores both the
+text and the cursor positions in a single step.
 
 ### Implementation
 
