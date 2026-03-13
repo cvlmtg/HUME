@@ -26,8 +26,9 @@ impl Transaction {
     }
 
     /// Apply this transaction to a buffer, returning the new buffer and
-    /// the new selection state.
-    pub(crate) fn apply(&self, buf: &Buffer) -> (Buffer, SelectionSet) {
+    /// the new selection state. Consumes the buffer — the old buffer is not
+    /// needed because undo uses changeset inversion, not buffer snapshots.
+    pub(crate) fn apply(&self, buf: Buffer) -> (Buffer, SelectionSet) {
         let new_buf = self.changes.apply(buf);
         (new_buf, self.selection.clone())
     }
@@ -63,7 +64,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(1));
         let txn = Transaction::new(cs, sels.clone());
 
-        let (new_buf, new_sels) = txn.apply(&buf);
+        let (new_buf, new_sels) = txn.apply(buf);
         assert_eq!(new_buf.to_string(), "!hello");
         assert_eq!(new_sels.primary().head, 1);
     }
