@@ -16,15 +16,33 @@ use std::ops::Range;
 /// Why an immutable-style API? `insert` and `remove` return a *new* `Buffer`
 /// instead of mutating in place. Ropey clones are O(log n) in time and space
 /// because the rope's B-tree nodes are reference-counted and shared between
-/// the old and new version. This "structural sharing" makes cloning cheap, and
-/// it is the foundation of our tree-structured undo: each undo node holds a
-/// snapshot of the full buffer.
+/// the old and new version ("structural sharing"). This makes cloning cheap
+/// when needed, though the primary undo mechanism is changeset inversion
+/// (see `ChangeSet::invert`), not buffer snapshots.
 #[derive(Debug, Clone)]
 pub(crate) struct Buffer {
     rope: Rope,
 }
 
 impl Buffer {
+    /// Wrap a raw `Rope` into a `Buffer`. Inverse of `into_rope`.
+    ///
+    /// Used by `ChangeSet::apply` to construct the result buffer after
+    /// mutating the rope directly.
+    pub(crate) fn from_rope(rope: Rope) -> Self {
+        Self { rope }
+    }
+
+    /// Consume the buffer and return the inner `Rope`.
+    ///
+    /// This transfers ownership without cloning — the caller gets the rope
+    /// and this `Buffer` ceases to exist. Used by `ChangeSet::apply` to
+    /// mutate the rope in place (O(log n) per edit) instead of flattening
+    /// to a String and rebuilding (O(n)).
+    pub(crate) fn into_rope(self) -> Rope {
+        self.rope
+    }
+
     /// Create an empty buffer.
     pub(crate) fn empty() -> Self {
         Self { rope: Rope::new() }

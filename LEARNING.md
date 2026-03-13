@@ -172,8 +172,15 @@ The representation is a sequence of three operations:
 Insert("!"), Retain(6), Insert("!"), Retain(5)
 ```
 
-This single object describes the entire multi-cursor edit. Apply it once
-to get `"!hello !world"`.
+This single object describes the entire multi-cursor edit. `apply` consumes
+the buffer and executes Delete/Insert operations directly on the rope —
+each O(log n). Retain operations are free (the chars are already there).
+Total cost: O(k log n) for k non-retain operations.
+
+Because `apply` consumes the buffer, the old buffer no longer exists after
+application. This is fine — the inverse changeset captures everything needed
+to reconstruct it (see undo/redo below). The caller must call `invert`
+before `apply` if it needs the inverse.
 
 ### Why not just mutate the buffer directly?
 

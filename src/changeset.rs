@@ -144,13 +144,19 @@ impl ChangeSet {
 
     /// Apply this changeset to `buf`, producing a new buffer.
     ///
-    /// Walks the operation sequence and builds the result by copying slices
-    /// from the old buffer (for `Retain`) or appending literal text (for
-    /// `Insert`). `Delete` simply skips over old-buffer chars.
+    /// Consumes the buffer and mutates its rope directly via `Rope::remove`
+    /// and `Rope::insert` — each O(log n). Retain operations are free (the
+    /// chars are already in the rope). Total cost: O(k log n) for k
+    /// non-retain operations, compared to the O(n) cost of flattening the
+    /// rope to a `String` and rebuilding.
+    ///
+    /// The changeset's positions are in **old-document space**. A running
+    /// `delta` translates them to the mutated rope's current coordinates,
+    /// the same pattern used throughout HUME's multi-selection editing.
     ///
     /// # Panics
     /// Panics if `buf.len_chars() != self.len_before`.
-    pub(crate) fn apply(&self, buf: &Buffer) -> Buffer {
+    pub(crate) fn apply(&self, buf: Buffer) -> Buffer {
         assert_eq!(
             buf.len_chars(),
             self.len_before,
@@ -159,37 +165,35 @@ impl ChangeSet {
             self.len_before,
         );
 
-        let mut result = String::new();
-        let mut old_pos = 0usize;
+        let mut rope = buf.into_rope();
+
+        // `delta` tracks the net char-count shift from all mutations so far.
+        // Changeset positions are in old-doc space; `old_pos + delta` gives
+        // the corresponding position in the mutated rope.
+        let mut delta: isize = 0;
+        let mut old_pos: usize = 0;
 
         for op in &self.ops {
             match op {
                 Operation::Retain(n) => {
-                    // Copy n chars from the old buffer into the result.
-                    let slice = buf.slice(old_pos..old_pos + n);
-                    // RopeSlice implements Display, but collecting via
-                    // to_string() is the simplest correct path here.
-                    result.push_str(&slice.to_string());
+                    // Nothing to do — these chars are already in the rope.
                     old_pos += n;
                 }
                 Operation::Delete(n) => {
-                    // Skip n chars in the old buffer — they don't appear in the result.
+                    let start = (old_pos as isize + delta) as usize;
+                    rope.remove(start..start + n);
                     old_pos += n;
+                    delta -= *n as isize;
                 }
                 Operation::Insert(s) => {
-                    // Append the inserted text. old_pos doesn't move.
-                    result.push_str(s);
+                    let pos = (old_pos as isize + delta) as usize;
+                    rope.insert(pos, s);
+                    delta += s.chars().count() as isize;
                 }
             }
         }
 
-        debug_assert_eq!(
-            old_pos, self.len_before,
-            "ChangeSet::apply: didn't consume entire old buffer ({old_pos} vs {})",
-            self.len_before,
-        );
-
-        Buffer::from_str(&result)
+        Buffer::from_rope(rope)
     }
 
     // ── map_pos ──────────────────────────────────────────────────────────────
@@ -767,7 +771,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello");
+        assert_eq!(cs.apply(buf).to_string(), "hello");
     }
 
     #[test]
@@ -778,7 +782,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello world");
+        assert_eq!(cs.apply(buf).to_string(), "hello world");
     }
 
     #[test]
@@ -789,7 +793,7 @@ mod tests {
         b.insert(" world");
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello world");
+        assert_eq!(cs.apply(buf).to_string(), "hello world");
     }
 
     #[test]
@@ -801,7 +805,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello");
+        assert_eq!(cs.apply(buf).to_string(), "hello");
     }
 
     #[test]
@@ -812,7 +816,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "world");
+        assert_eq!(cs.apply(buf).to_string(), "world");
     }
 
     #[test]
@@ -823,7 +827,7 @@ mod tests {
         b.delete(6); // delete " world"
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello");
+        assert_eq!(cs.apply(buf).to_string(), "hello");
     }
 
     #[test]
@@ -835,7 +839,7 @@ mod tests {
         b.insert("rust");
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "hello rust");
+        assert_eq!(cs.apply(buf).to_string(), "hello rust");
     }
 
     #[test]
@@ -849,7 +853,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "!hello !world");
+        assert_eq!(cs.apply(buf).to_string(), "!hello !world");
     }
 
     #[test]
@@ -859,7 +863,7 @@ mod tests {
         b.delete(5);
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "");
+        assert_eq!(cs.apply(buf).to_string(), "");
     }
 
     #[test]
@@ -869,7 +873,7 @@ mod tests {
         b.insert("x");
         let cs = b.finish();
 
-        assert_eq!(cs.apply(&buf).to_string(), "x");
+        assert_eq!(cs.apply(buf).to_string(), "x");
     }
 
     // ── map_pos tests ────────────────────────────────────────────────────────
@@ -1028,7 +1032,7 @@ mod tests {
 
     #[test]
     fn invert_roundtrip() {
-        // apply(cs, buf) then apply(invert, result) should give back buf.
+        // Invert before apply — apply consumes the buffer.
         let buf = Buffer::from_str("hello world");
         let mut b = ChangeSetBuilder::new(11);
         b.retain(6);
@@ -1036,11 +1040,11 @@ mod tests {
         b.insert("rust");
         let cs = b.finish();
 
-        let result = cs.apply(&buf);
+        let inv = cs.invert(&buf);
+        let result = cs.apply(buf);
         assert_eq!(result.to_string(), "hello rust");
 
-        let inv = cs.invert(&buf);
-        let restored = inv.apply(&result);
+        let restored = inv.apply(result);
         assert_eq!(restored.to_string(), "hello world");
     }
 
@@ -1054,11 +1058,11 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        let result = cs.apply(&buf);
+        let inv = cs.invert(&buf);
+        let result = cs.apply(buf);
         assert_eq!(result.to_string(), "aXYe");
 
-        let inv = cs.invert(&buf);
-        let restored = inv.apply(&result);
+        let restored = inv.apply(result);
         assert_eq!(restored.to_string(), "abcde");
     }
 
@@ -1073,11 +1077,11 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        let result = cs.apply(&buf);
+        let inv = cs.invert(&buf);
+        let result = cs.apply(buf);
         assert_eq!(result.to_string(), "!hello !world");
 
-        let inv = cs.invert(&buf);
-        let restored = inv.apply(&result);
+        let restored = inv.apply(result);
         assert_eq!(restored.to_string(), "hello world");
     }
 
@@ -1139,8 +1143,8 @@ mod tests {
 
         let composed = a.compose(&b);
         // Verify equivalence: composed.apply(buf) == b.apply(a.apply(buf))
-        let step_by_step = b.apply(&a.apply(&buf));
-        let direct = composed.apply(&buf);
+        let step_by_step = b.apply(a.apply(buf.clone()));
+        let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XaYbc");
     }
@@ -1164,7 +1168,7 @@ mod tests {
 
         let composed = a.compose(&b);
         assert!(composed.is_empty(), "insert then delete should cancel");
-        assert_eq!(composed.apply(&buf).to_string(), "abc");
+        assert_eq!(composed.apply(buf).to_string(), "abc");
     }
 
     #[test]
@@ -1185,8 +1189,8 @@ mod tests {
         let b = b_b.finish();
 
         let composed = a.compose(&b);
-        let step_by_step = b.apply(&a.apply(&buf));
-        let direct = composed.apply(&buf);
+        let step_by_step = b.apply(a.apply(buf.clone()));
+        let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XYlo");
     }
@@ -1215,8 +1219,8 @@ mod tests {
         let b = b_b.finish();
 
         let composed = a.compose(&b);
-        let step_by_step = b.apply(&a.apply(&buf));
-        let direct = composed.apply(&buf);
+        let step_by_step = b.apply(a.apply(buf.clone()));
+        let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ade");
     }
@@ -1241,8 +1245,8 @@ mod tests {
         let b = b_b.finish();
 
         let composed = a.compose(&b);
-        let step_by_step = b.apply(&a.apply(&buf));
-        let direct = composed.apply(&buf);
+        let step_by_step = b.apply(a.apply(buf.clone()));
+        let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ABxyz");
     }
@@ -1321,12 +1325,9 @@ mod tests {
         #[test]
         fn prop_invert_roundtrip(text in arb_text(20)) {
             let doc_len = text.len();
-            // We need the changeset strategy to depend on doc_len, so we
-            // generate a fixed text then build a changeset for it.
             let buf = Buffer::from_str(&text);
+            let original_text = text.clone();
 
-            // Build a changeset manually from a simple transformation:
-            // delete the first half, insert "X" at the start.
             let half = doc_len / 2;
             let mut b = ChangeSetBuilder::new(doc_len);
             b.delete(half);
@@ -1334,10 +1335,11 @@ mod tests {
             b.retain_rest();
             let cs = b.finish();
 
-            let result = cs.apply(&buf);
+            // Invert before apply — apply consumes the buffer.
             let inv = cs.invert(&buf);
-            let restored = inv.apply(&result);
-            prop_assert_eq!(restored.to_string(), buf.to_string());
+            let result = cs.apply(buf);
+            let restored = inv.apply(result);
+            prop_assert_eq!(restored.to_string(), original_text);
         }
 
         /// Composing two changesets produces the same result as applying them
@@ -1355,7 +1357,7 @@ mod tests {
             b1.retain_rest();
             let cs1 = b1.finish();
 
-            let mid = cs1.apply(&buf);
+            let mid = cs1.apply(buf.clone());
             let mid_len = mid.len_chars();
 
             // Second changeset: retain half, insert "CD", retain rest.
@@ -1366,9 +1368,9 @@ mod tests {
             b2.retain_rest();
             let cs2 = b2.finish();
 
-            let step_by_step = cs2.apply(&mid);
+            let step_by_step = cs2.apply(mid);
             let composed = cs1.compose(&cs2);
-            let direct = composed.apply(&buf);
+            let direct = composed.apply(buf);
 
             prop_assert_eq!(direct.to_string(), step_by_step.to_string());
         }
@@ -1385,10 +1387,12 @@ mod tests {
         ) {
             let (text, cs) = cs;
             let buf = Buffer::from_str(&text);
-            let result = cs.apply(&buf);
+
+            // Invert before apply — apply consumes the buffer.
             let inv = cs.invert(&buf);
-            let restored = inv.apply(&result);
-            prop_assert_eq!(restored.to_string(), buf.to_string());
+            let result = cs.apply(buf);
+            let restored = inv.apply(result);
+            prop_assert_eq!(restored.to_string(), text);
         }
     }
 }

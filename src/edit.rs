@@ -21,7 +21,7 @@ use crate::selection::{Selection, SelectionSet};
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub(crate) fn insert_char(buf: &Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet) {
+pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet) {
     let ch_str = ch.to_string();
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
@@ -59,7 +59,7 @@ pub(crate) fn insert_char(buf: &Buffer, sels: SelectionSet, ch: char) -> (Buffer
 /// - **Non-collapsed selection**: delete the entire selected region. Cursor
 ///   collapses to `start()`.
 pub(crate) fn delete_char_forward(
-    buf: &Buffer,
+    buf: Buffer,
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet) {
     let mut b = ChangeSetBuilder::new(buf.len_chars());
@@ -80,7 +80,7 @@ pub(crate) fn delete_char_forward(
             // Delete one grapheme cluster starting at `p`. We call
             // next_grapheme_boundary on the *original* buffer — all
             // positions in the builder are in original-buffer space.
-            let end = next_grapheme_boundary(buf, p);
+            let end = next_grapheme_boundary(&buf, p);
             b.retain(p - b.old_pos());
             b.delete(end - p);
             new_sels.push(Selection::cursor(b.new_pos()));
@@ -108,7 +108,7 @@ pub(crate) fn delete_char_forward(
 ///   collapses to `start()`. (Same as `delete_char_forward` for selections —
 ///   pressing Delete or Backspace on a selection both clear it.)
 pub(crate) fn delete_char_backward(
-    buf: &Buffer,
+    buf: Buffer,
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet) {
     let mut b = ChangeSetBuilder::new(buf.len_chars());
@@ -124,7 +124,7 @@ pub(crate) fn delete_char_backward(
                 continue;
             }
             // Delete the grapheme cluster ending just before `p`.
-            let prev = prev_grapheme_boundary(buf, p);
+            let prev = prev_grapheme_boundary(&buf, p);
             b.retain(prev - b.old_pos());
             b.delete(p - prev);
             new_sels.push(Selection::cursor(b.new_pos()));
@@ -155,24 +155,24 @@ mod tests {
     #[test]
     fn insert_char_at_cursor_start() {
         // Cursor on 'h'; 'x' inserted before it; cursor advances to 'h'.
-        assert_state!("|hello", |(buf, sels)| insert_char(&buf, sels, 'x'), "x|hello");
+        assert_state!("|hello", |(buf, sels)| insert_char(buf, sels,'x'), "x|hello");
     }
 
     #[test]
     fn insert_char_at_cursor_middle() {
         // Cursor on second 'l' (offset 3); 'x' inserted, cursor on 'l'.
-        assert_state!("hel|lo", |(buf, sels)| insert_char(&buf, sels, 'x'), "helx|lo");
+        assert_state!("hel|lo", |(buf, sels)| insert_char(buf, sels,'x'), "helx|lo");
     }
 
     #[test]
     fn insert_char_at_cursor_eof() {
         // Cursor at EOF (offset 5); 'x' appended; cursor at new EOF.
-        assert_state!("hello|", |(buf, sels)| insert_char(&buf, sels, 'x'), "hellox|");
+        assert_state!("hello|", |(buf, sels)| insert_char(buf, sels,'x'), "hellox|");
     }
 
     #[test]
     fn insert_char_into_empty_buffer() {
-        assert_state!("|", |(buf, sels)| insert_char(&buf, sels, 'x'), "x|");
+        assert_state!("|", |(buf, sels)| insert_char(buf, sels,'x'), "x|");
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
         // Delete [0,4), insert 'x', cursor at 1.
         assert_state!(
             "#[hel|l]#o",
-            |(buf, sels)| insert_char(&buf, sels, 'x'),
+            |(buf, sels)| insert_char(buf, sels,'x'),
             "x|o"
         );
     }
@@ -190,7 +190,7 @@ mod tests {
     fn insert_char_replaces_whole_buffer() {
         assert_state!(
             "#[hell|o]#",
-            |(buf, sels)| insert_char(&buf, sels, 'x'),
+            |(buf, sels)| insert_char(buf, sels,'x'),
             "x|"
         );
     }
@@ -202,7 +202,7 @@ mod tests {
         // Buffer "hello" → remove "hell" → "o", insert 'x' → "xo".
         assert_state!(
             "#[|hel]#lo",
-            |(buf, sels)| insert_char(&buf, sels, 'x'),
+            |(buf, sels)| insert_char(buf, sels,'x'),
             "x|o"
         );
     }
@@ -214,7 +214,7 @@ mod tests {
         // Result: "xfoox bar", cursors at 1 and 5.
         assert_state!(
             "|foo| bar",
-            |(buf, sels)| insert_char(&buf, sels, 'x'),
+            |(buf, sels)| insert_char(buf, sels,'x'),
             "x|foox| bar"
         );
     }
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn insert_char_unicode() {
         // Insert a multi-byte char (2 bytes in UTF-8, 1 char offset).
-        assert_state!("caf|é", |(buf, sels)| insert_char(&buf, sels, 'à'), "cafà|é");
+        assert_state!("caf|é", |(buf, sels)| insert_char(buf, sels,'à'), "cafà|é");
     }
 
     // ── delete_char_forward ───────────────────────────────────────────────────
@@ -230,22 +230,22 @@ mod tests {
     #[test]
     fn delete_forward_at_cursor_start() {
         // Cursor on 'h'; deletes 'h'; cursor stays at 0 (now on 'e').
-        assert_state!("|hello", |(buf, sels)| delete_char_forward(&buf, sels), "|ello");
+        assert_state!("|hello", |(buf, sels)| delete_char_forward(buf, sels), "|ello");
     }
 
     #[test]
     fn delete_forward_at_cursor_middle() {
-        assert_state!("h|ello", |(buf, sels)| delete_char_forward(&buf, sels), "h|llo");
+        assert_state!("h|ello", |(buf, sels)| delete_char_forward(buf, sels), "h|llo");
     }
 
     #[test]
     fn delete_forward_at_eof_is_noop() {
-        assert_state!("hello|", |(buf, sels)| delete_char_forward(&buf, sels), "hello|");
+        assert_state!("hello|", |(buf, sels)| delete_char_forward(buf, sels), "hello|");
     }
 
     #[test]
     fn delete_forward_empty_buffer_is_noop() {
-        assert_state!("|", |(buf, sels)| delete_char_forward(&buf, sels), "|");
+        assert_state!("|", |(buf, sels)| delete_char_forward(buf, sels), "|");
     }
 
     #[test]
@@ -253,7 +253,7 @@ mod tests {
         // Selection [0,3] inclusive → remove [0,4) → "o", cursor at 0.
         assert_state!(
             "#[hel|l]#o",
-            |(buf, sels)| delete_char_forward(&buf, sels),
+            |(buf, sels)| delete_char_forward(buf, sels),
             "|o"
         );
     }
@@ -265,7 +265,7 @@ mod tests {
         // Result: "elo", cursors at 0 and 1.
         assert_state!(
             "|he|llo",
-            |(buf, sels)| delete_char_forward(&buf, sels),
+            |(buf, sels)| delete_char_forward(buf, sels),
             "|e|lo"
         );
     }
@@ -275,7 +275,7 @@ mod tests {
         // Cursors at 2 and 3. Both delete forward; both land at 2 → merge.
         assert_state!(
             "he|l|lo",
-            |(buf, sels)| delete_char_forward(&buf, sels),
+            |(buf, sels)| delete_char_forward(buf, sels),
             "he|o"
         );
     }
@@ -285,7 +285,7 @@ mod tests {
         // "e\u{0301}x": é is 2 chars, 1 grapheme. Cursor at 0 deletes whole cluster.
         assert_state!(
             "|e\u{0301}x",
-            |(buf, sels)| delete_char_forward(&buf, sels),
+            |(buf, sels)| delete_char_forward(buf, sels),
             "|x"
         );
     }
@@ -295,23 +295,23 @@ mod tests {
     #[test]
     fn delete_backward_at_cursor_end() {
         // Cursor at EOF (offset 5); backspace deletes 'o'; cursor at 4.
-        assert_state!("hello|", |(buf, sels)| delete_char_backward(&buf, sels), "hell|");
+        assert_state!("hello|", |(buf, sels)| delete_char_backward(buf, sels), "hell|");
     }
 
     #[test]
     fn delete_backward_at_cursor_middle() {
         // Cursor at 3 ('l'); backspace deletes 'l' at 2; cursor at 2.
-        assert_state!("hel|lo", |(buf, sels)| delete_char_backward(&buf, sels), "he|lo");
+        assert_state!("hel|lo", |(buf, sels)| delete_char_backward(buf, sels), "he|lo");
     }
 
     #[test]
     fn delete_backward_at_start_is_noop() {
-        assert_state!("|hello", |(buf, sels)| delete_char_backward(&buf, sels), "|hello");
+        assert_state!("|hello", |(buf, sels)| delete_char_backward(buf, sels), "|hello");
     }
 
     #[test]
     fn delete_backward_empty_buffer_is_noop() {
-        assert_state!("|", |(buf, sels)| delete_char_backward(&buf, sels), "|");
+        assert_state!("|", |(buf, sels)| delete_char_backward(buf, sels), "|");
     }
 
     #[test]
@@ -319,7 +319,7 @@ mod tests {
         // Same as delete_forward for non-collapsed: removes selected region.
         assert_state!(
             "#[hel|l]#o",
-            |(buf, sels)| delete_char_backward(&buf, sels),
+            |(buf, sels)| delete_char_backward(buf, sels),
             "|o"
         );
     }
@@ -332,7 +332,7 @@ mod tests {
         // Result: "hlo", cursors at 1 and 2.
         assert_state!(
             "he|ll|o",
-            |(buf, sels)| delete_char_backward(&buf, sels),
+            |(buf, sels)| delete_char_backward(buf, sels),
             "h|l|o"
         );
     }
@@ -343,7 +343,7 @@ mod tests {
         // prev_grapheme_boundary(2) = 0. Deletes entire é cluster.
         assert_state!(
             "e\u{0301}|x",
-            |(buf, sels)| delete_char_backward(&buf, sels),
+            |(buf, sels)| delete_char_backward(buf, sels),
             "|x"
         );
     }
@@ -354,7 +354,7 @@ mod tests {
         // delete offset 2 in original. Both cursors land at 1 → merge.
         assert_state!(
             "he|l|lo",
-            |(buf, sels)| delete_char_backward(&buf, sels),
+            |(buf, sels)| delete_char_backward(buf, sels),
             "h|lo"
         );
     }
