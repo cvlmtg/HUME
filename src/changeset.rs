@@ -407,7 +407,7 @@ impl ChangeSet {
             // original doc that B never saw. Checked first so it takes
             // priority over the B's Insert case below.
             if matches!(&a_cur, Some(Operation::Delete(_))) {
-                push_merge(&mut result, a_cur.take().unwrap());
+                push_merge(&mut result, a_cur.take().expect("guarded by matches!"));
                 a_cur = a_ops.next();
                 continue;
             }
@@ -416,7 +416,7 @@ impl ChangeSet {
             // exist in A's output. Pulling via `take()` moves the op directly
             // into `push_merge` with no extra allocation.
             if matches!(&b_cur, Some(Operation::Insert(_))) {
-                push_merge(&mut result, b_cur.take().unwrap());
+                push_merge(&mut result, b_cur.take().expect("guarded by matches!"));
                 b_cur = b_ops.next();
                 continue;
             }
@@ -468,8 +468,16 @@ impl ChangeSet {
                     }
 
                     // Advance both sides by `min`, keeping any remainder.
-                    a_cur = advance_op(a_cur.take().unwrap(), min, &mut a_ops);
-                    b_cur = advance_op(b_cur.take().unwrap(), min, &mut b_ops);
+                    a_cur = advance_op(
+                        a_cur.take().expect("guaranteed Some by match arm"),
+                        min,
+                        &mut a_ops,
+                    );
+                    b_cur = advance_op(
+                        b_cur.take().expect("guaranteed Some by match arm"),
+                        min,
+                        &mut b_ops,
+                    );
                 }
             }
         }
@@ -1403,6 +1411,59 @@ mod tests {
             let result = cs.apply(buf);
             let restored = inv.apply(result);
             prop_assert_eq!(restored.to_string(), text);
+        }
+
+        /// Compose is associative: (a∘b)∘c produces the same result as a∘(b∘c).
+        ///
+        /// This is a fundamental OT invariant — if it breaks, grouping
+        /// keystrokes into undo steps via repeated compose would be order-
+        /// dependent.
+        #[test]
+        fn prop_compose_associativity(
+            text in arb_text(20),
+        ) {
+            let doc_len = text.len();
+            let buf = Buffer::from_str(&text);
+
+            // Build three sequential changesets A→B, B→C, C→D.
+            let q = doc_len / 4;
+            let mut b1 = ChangeSetBuilder::new(doc_len);
+            b1.delete(q);
+            b1.insert("X");
+            b1.retain_rest();
+            let a = b1.finish();
+
+            let mid1 = a.clone().apply(buf.clone());
+            let mid1_len = mid1.len_chars();
+
+            let h = mid1_len / 2;
+            let mut b2 = ChangeSetBuilder::new(mid1_len);
+            b2.retain(h);
+            b2.insert("YY");
+            b2.retain_rest();
+            let b = b2.finish();
+
+            let mid2 = b.clone().apply(mid1);
+            let mid2_len = mid2.len_chars();
+
+            let t = mid2_len / 3;
+            let mut b3 = ChangeSetBuilder::new(mid2_len);
+            b3.retain(t);
+            b3.delete(1.min(mid2_len - t));
+            b3.retain_rest();
+            let c = b3.finish();
+
+            // (a∘b)∘c
+            let ab = a.clone().compose(b.clone());
+            let ab_c = ab.compose(c.clone());
+
+            // a∘(b∘c)
+            let bc = b.compose(c);
+            let a_bc = a.compose(bc);
+
+            let result_left = ab_c.apply(buf.clone());
+            let result_right = a_bc.apply(buf);
+            prop_assert_eq!(result_left.to_string(), result_right.to_string());
         }
     }
 }

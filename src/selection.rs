@@ -466,4 +466,58 @@ mod tests {
         let updated = set.replace(1, Selection::cursor(10));
         assert_eq!(updated.selections[1].head, 10);
     }
+
+    // ── map_and_merge ────────────────────────────────────────────────────────
+
+    #[test]
+    fn map_and_merge_collapses_to_same_position() {
+        // Two cursors at different positions that a motion maps to the same
+        // spot — e.g. "go to end of line" when both are on the same line.
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(2), Selection::cursor(7)],
+            0,
+        );
+        let merged = set.map_and_merge(|_| Selection::cursor(10));
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged.primary().head, 10);
+    }
+
+    #[test]
+    fn map_and_merge_reorders_reversed_positions() {
+        // A motion that reverses the order: cursor at 2 maps to 8, cursor
+        // at 7 maps to 1. After merge the result should be sorted [1, 8].
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(2), Selection::cursor(7)],
+            1, // primary is the second one (at 7)
+        );
+        let merged = set.map_and_merge(|s| {
+            if s.head == 2 {
+                Selection::cursor(8)
+            } else {
+                Selection::cursor(1)
+            }
+        });
+        assert_eq!(merged.len(), 2);
+        // Sorted by position: first at 1, second at 8.
+        assert_eq!(merged.selections[0].head, 1);
+        assert_eq!(merged.selections[1].head, 8);
+        // Primary was the cursor at 7 → mapped to 1 → now at index 0.
+        assert_eq!(merged.primary().head, 1);
+    }
+
+    #[test]
+    fn map_and_merge_overlapping_ranges() {
+        // Two non-overlapping selections that a motion causes to overlap.
+        let set = SelectionSet::from_vec(
+            vec![Selection::new(0, 3), Selection::new(5, 8)],
+            0,
+        );
+        // Shift both left by 3 — first becomes (0,0) clamped, second (2,5).
+        // In practice the first wraps, so let's do a simpler overlap:
+        // map both to the same range.
+        let merged = set.map_and_merge(|_| Selection::new(2, 5));
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged.primary().start(), 2);
+        assert_eq!(merged.primary().end(), 5);
+    }
 }
