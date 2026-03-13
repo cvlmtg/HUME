@@ -5,9 +5,33 @@ use crate::selection::SelectionSet;
 /// A `Transaction` bundles a text change with the resulting selection state.
 ///
 /// This is the unit of editing: every user action (insert, delete, motion
-/// that modifies text) produces a `Transaction`. Undo/redo will operate on
-/// transactions — the `ChangeSet` can be inverted to undo the text change,
-/// and the stored selection can be restored.
+/// that modifies text) produces a `Transaction`. `selection` is always the
+/// **post-apply** selection — where the cursors land *after* applying
+/// `changes` to the document. This invariant holds for both forward and
+/// inverse Transactions.
+///
+/// ## Undo pattern
+///
+/// At edit time, build **two** Transactions from the same `ChangeSet`:
+///
+/// ```text
+/// let inv_cs = cs.invert(&old_buf);          // must happen BEFORE apply
+/// let new_buf = cs.apply(old_buf);           // consumes old_buf
+///
+/// let forward = Transaction::new(cs,     post_edit_sels);  // for redo
+/// let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
+/// ```
+///
+/// The inverse Transaction's `selection` is the pre-edit selection because
+/// that is where cursors land after applying the inverse changeset. The
+/// history manager stores `inverse`; applying it later restores both text
+/// and cursor state in one step.
+///
+/// **Timing constraint:** `invert(&old_buf)` must be called *before*
+/// `apply(old_buf)` — `apply` consumes the buffer and `invert` needs the
+/// original content to reconstruct deleted text.
+///
+/// ## Separation of concerns
 ///
 /// Separating `ChangeSet` (pure text transform) from `Transaction` (text +
 /// selections) keeps the changeset algebra clean: `compose`, `invert`, and
