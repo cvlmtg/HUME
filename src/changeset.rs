@@ -335,39 +335,48 @@ impl ChangeSet {
     ///
     /// # Panics
     /// Panics if `self.len_after != other.len_before`.
-    pub(crate) fn compose(&self, other: &ChangeSet) -> ChangeSet {
+    pub(crate) fn compose(self, other: ChangeSet) -> ChangeSet {
         assert_eq!(
             self.len_after, other.len_before,
             "compose: self.len_after ({}) != other.len_before ({})",
             self.len_after, other.len_before,
         );
 
+        let len_before = self.len_before;
+        let len_after = other.len_after;
+
         let mut result: Vec<Operation> = Vec::new();
 
         // We use partial-consumption iterators. Each "current" slot holds
-        // the remainder of the operation being consumed.
-        let mut a_ops = self.ops.iter().cloned();
-        let mut b_ops = other.ops.iter().cloned();
+        // the remainder of the operation being consumed. `into_iter()` moves
+        // ops out of the vecs without cloning — `Operation` values are owned
+        // directly in the cursor slots.
+        let mut a_ops = self.ops.into_iter();
+        let mut b_ops = other.ops.into_iter();
         let mut a_cur: Option<Operation> = a_ops.next();
         let mut b_cur: Option<Operation> = b_ops.next();
 
         loop {
+            // A's Delete goes straight through — it removes chars from the
+            // original doc that B never saw. Checked first so it takes
+            // priority over the B's Insert case below.
+            if matches!(&a_cur, Some(Operation::Delete(_))) {
+                push_merge(&mut result, a_cur.take().unwrap());
+                a_cur = a_ops.next();
+                continue;
+            }
+
+            // B's Insert goes straight through — it adds text that didn't
+            // exist in A's output. Pulling via `take()` moves the op directly
+            // into `push_merge` with no extra allocation.
+            if matches!(&b_cur, Some(Operation::Insert(_))) {
+                push_merge(&mut result, b_cur.take().unwrap());
+                b_cur = b_ops.next();
+                continue;
+            }
+
             match (&a_cur, &b_cur) {
                 (None, None) => break,
-
-                // A's Delete goes straight through — it removes chars from
-                // the original doc that B never saw.
-                (Some(Operation::Delete(n)), _) => {
-                    push_merge(&mut result, Operation::Delete(*n));
-                    a_cur = a_ops.next();
-                }
-
-                // B's Insert goes straight through — it adds text that
-                // didn't exist in A's output.
-                (_, Some(Operation::Insert(s))) => {
-                    push_merge(&mut result, Operation::Insert(s.clone()));
-                    b_cur = b_ops.next();
-                }
 
                 // Both exhausted is handled above. One exhausted means the
                 // changesets are inconsistent.
@@ -421,8 +430,8 @@ impl ChangeSet {
 
         ChangeSet {
             ops: result,
-            len_before: self.len_before,
-            len_after: other.len_after,
+            len_before,
+            len_after,
         }
     }
 }
@@ -1100,8 +1109,9 @@ mod tests {
         cs_b.retain_rest();
         let cs = cs_b.finish();
 
-        let composed = id.compose(&cs);
-        assert_eq!(composed.ops, cs.ops);
+        // cs is PartialEq — clone it so we can compare after compose consumes it.
+        let composed = id.compose(cs.clone());
+        assert_eq!(composed, cs);
         assert_eq!(composed.len_before, 5);
         assert_eq!(composed.len_after, 6);
     }
@@ -1119,8 +1129,8 @@ mod tests {
         id_b.retain_rest();
         let id = id_b.finish();
 
-        let composed = cs.compose(&id);
-        assert_eq!(composed.ops, cs.ops);
+        let composed = cs.clone().compose(id);
+        assert_eq!(composed, cs);
     }
 
     #[test]
@@ -1141,9 +1151,9 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let composed = a.compose(&b);
-        // Verify equivalence: composed.apply(buf) == b.apply(a.apply(buf))
-        let step_by_step = b.apply(a.apply(buf.clone()));
+        // Step-by-step oracle: apply a then b separately.
+        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let composed = a.compose(b);
         let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XaYbc");
@@ -1166,7 +1176,7 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let composed = a.compose(&b);
+        let composed = a.compose(b);
         assert!(composed.is_empty(), "insert then delete should cancel");
         assert_eq!(composed.apply(buf).to_string(), "abc");
     }
@@ -1188,8 +1198,8 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let composed = a.compose(&b);
-        let step_by_step = b.apply(a.apply(buf.clone()));
+        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let composed = a.compose(b);
         let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XYlo");
@@ -1218,8 +1228,8 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let composed = a.compose(&b);
-        let step_by_step = b.apply(a.apply(buf.clone()));
+        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let composed = a.compose(b);
         let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ade");
@@ -1244,8 +1254,8 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let composed = a.compose(&b);
-        let step_by_step = b.apply(a.apply(buf.clone()));
+        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let composed = a.compose(b);
         let direct = composed.apply(buf);
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ABxyz");
@@ -1368,8 +1378,8 @@ mod tests {
             b2.retain_rest();
             let cs2 = b2.finish();
 
-            let step_by_step = cs2.apply(mid);
-            let composed = cs1.compose(&cs2);
+            let step_by_step = cs2.clone().apply(mid);
+            let composed = cs1.compose(cs2);
             let direct = composed.apply(buf);
 
             prop_assert_eq!(direct.to_string(), step_by_step.to_string());
