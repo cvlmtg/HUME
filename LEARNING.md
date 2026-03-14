@@ -115,38 +115,13 @@ visual-mode editing, and multicursor editing all fall out of the same loop.
 ### Multi-selection edit ordering
 
 A `SelectionSet` can contain multiple selections simultaneously (multicursor).
-When an edit touches multiple positions, **the order of application matters**.
+When an edit touches multiple positions, **the order of application matters**:
+inserting a character at offset 0 shifts every position to its right, so
+naively applying edits one-by-one would corrupt subsequent offsets.
 
-Consider `"hello world"` with cursors at **0** (on `h`) and **6** (on `w`),
-inserting `!`:
-
-If we apply edits left-to-right, mutating the buffer each time, the first
-insert shifts all subsequent offsets. Cursor 2 was recorded as **6** in the
-original buffer, but after inserting at 0 the `w` is now at **7**. Inserting
-at the stale offset **6** puts the `!` in the wrong place.
-
-One fix is to process edits right-to-left: an edit at position N never shifts
-any offset to its left, so leftward input positions stay valid. But the
-*output* cursors computed in earlier (rightward) steps become stale once a
-later (leftward) edit shifts text to their right, requiring a retroactive
-correction pass.
-
-A cleaner approach is left-to-right with a cumulative delta:
-
-1. `delta = 0`. Insert `!` at `0 + 0 = 0` → `"!hello world"`. New cursor **1**.
-   `delta = +1` (one char inserted).
-2. Adjust input: `6 + 1 = 7`. Insert `!` at 7 → `"!hello !world"`. New cursor **8**.
-
-Both cursors (**1** and **8**) are already correct in `"!hello !world"`. No
-second pass needed. Output positions are automatically correct because each
-new cursor is produced *after* the current edit, already in the buffer's
-current coordinate space.
-
-In HUME, the `ChangeSetBuilder` eliminates the manual delta entirely. All
-positions passed to the builder are in **original-buffer space** — the builder
-tracks `old_pos` (consumed from old doc) and `new_pos` (produced in new doc)
-internally. After each insert, `new_pos()` gives the cursor's position in the
-result buffer directly. See the Changesets section below for details.
+HUME avoids this entirely with `ChangeSetBuilder`: all input positions are
+expressed in **original-buffer coordinates**, and the builder handles the
+translation internally. See the Changesets section below.
 
 ---
 
