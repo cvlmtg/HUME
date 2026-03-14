@@ -2,6 +2,7 @@ pub(crate) mod buffer;
 pub(crate) mod changeset;
 pub(crate) mod edit;
 pub(crate) mod grapheme;
+pub(crate) mod motion;
 pub(crate) mod selection;
 pub(crate) mod transaction;
 
