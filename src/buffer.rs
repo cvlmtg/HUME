@@ -107,6 +107,12 @@ impl Buffer {
         self.rope.slice(..)
     }
 
+    /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
+    pub(crate) fn char_at(&self, char_idx: usize) -> Option<char> {
+        if char_idx >= self.len_chars() { return None; }
+        Some(self.rope.char(char_idx))
+    }
+
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///
     /// All char offsets at or after `at` in the old buffer are shifted forward
