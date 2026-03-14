@@ -363,6 +363,75 @@ fn next_word_end(
     pos
 }
 
+// ── Paragraph motion helpers ─────────────────────────────────────────────────
+
+/// Returns `true` if `line` is an empty line — either zero chars or exactly
+/// one newline. Whitespace-only lines are NOT empty (matching Helix semantics).
+fn is_empty_line(buf: &Buffer, line: usize) -> bool {
+    let start = buf.line_to_char(line);
+    let end = line_end_exclusive(buf, line);
+    // Zero chars (last line of an empty buffer) or exactly one '\n'.
+    end == start || (end == start + 1 && buf.char_at(start) == Some('\n'))
+}
+
+// ── Paragraph motions (inner) ─────────────────────────────────────────────────
+
+/// Move to the start of the next paragraph (`]p`).
+///
+/// Two-phase forward scan:
+/// 1. Skip non-empty lines (the current paragraph).
+/// 2. Skip empty lines (the gap after the paragraph).
+///
+/// Lands on the first char of the next paragraph, or `len_chars()` if there is
+/// no paragraph below (EOF). At EOF already: no-op.
+fn next_paragraph(buf: &Buffer, head: usize) -> usize {
+    let mut line = buf.char_to_line(head);
+    let total = buf.len_lines();
+
+    // Phase 1: skip the current paragraph (non-empty lines).
+    while line < total && !is_empty_line(buf, line) {
+        line += 1;
+    }
+    // Phase 2: skip the gap (empty lines).
+    while line < total && is_empty_line(buf, line) {
+        line += 1;
+    }
+
+    if line >= total {
+        buf.len_chars() // no paragraph below — land at EOF
+    } else {
+        buf.line_to_char(line)
+    }
+}
+
+/// Move to the first empty line above the current paragraph (`[p`).
+///
+/// Three-phase backward scan:
+/// 1. Skip empty lines backward (if already in a gap — jump over it).
+/// 2. Skip non-empty lines backward (the current paragraph).
+/// 3. Scan to the TOP of the gap above (in case there are multiple empty lines).
+///
+/// Lands on the first (topmost) empty line of the gap above, or line 0 if
+/// there is no paragraph above. At line 0 already: no-op.
+fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
+    let mut line = buf.char_to_line(head);
+
+    // Phase 1: skip empty lines backward (handles starting inside a gap).
+    while line > 0 && is_empty_line(buf, line) {
+        line -= 1;
+    }
+    // Phase 2: skip non-empty lines backward (current paragraph).
+    while line > 0 && !is_empty_line(buf, line) {
+        line -= 1;
+    }
+    // Phase 3: scan to the top of the gap — there may be multiple empty lines.
+    while line > 0 && is_empty_line(buf, line - 1) {
+        line -= 1;
+    }
+
+    buf.line_to_char(line)
+}
+
 // ── Named commands (public API) ───────────────────────────────────────────────
 //
 // Named commands follow the edit convention — `(Buffer, SelectionSet) ->
@@ -506,6 +575,30 @@ pub(crate) fn cmd_extend_next_word_end(buf: Buffer, sels: SelectionSet) -> (Buff
     let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
         next_word_end(b, h, is_word_boundary)
     });
+    (buf, new_sels)
+}
+
+/// Move all cursors to the start of the next paragraph (`]p`).
+pub(crate) fn cmd_next_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Move, next_paragraph);
+    (buf, new_sels)
+}
+
+/// Move all cursors to the first empty line above the current paragraph (`[p`).
+pub(crate) fn cmd_prev_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Move, prev_paragraph);
+    (buf, new_sels)
+}
+
+/// Extend selection to the start of the next paragraph.
+pub(crate) fn cmd_extend_next_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, next_paragraph);
+    (buf, new_sels)
+}
+
+/// Extend selection to the first empty line above the current paragraph.
+pub(crate) fn cmd_extend_prev_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, prev_paragraph);
     (buf, new_sels)
 }
 
@@ -953,5 +1046,154 @@ mod tests {
     #[test]
     fn extend_prev_word_start_backward() {
         assert_state!("hello |world", |(buf, sels)| cmd_extend_prev_word_start(buf, sels), "#[|hello ]#world");
+    }
+
+    // ── next_paragraph (]p) ───────────────────────────────────────────────────
+
+    #[test]
+    fn next_paragraph_basic() {
+        // Skip "hello\nworld" paragraph and the empty gap line, land on "foo".
+        assert_state!(
+            "|hello\nworld\n\nfoo",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "hello\nworld\n\n|foo"
+        );
+    }
+
+    #[test]
+    fn next_paragraph_no_paragraph_below() {
+        // No empty line below — land at EOF.
+        assert_state!(
+            "|hello\nworld",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "hello\nworld|"
+        );
+    }
+
+    #[test]
+    fn next_paragraph_from_empty_line() {
+        // Starting on an empty line — skip the gap, land on the next paragraph.
+        assert_state!(
+            "|\n\nfoo",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "\n\n|foo"
+        );
+    }
+
+    #[test]
+    fn next_paragraph_multiple_empty_lines() {
+        // Multiple empty lines in the gap — skip all of them.
+        assert_state!(
+            "|\n\n\nfoo",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "\n\n\n|foo"
+        );
+    }
+
+    #[test]
+    fn next_paragraph_empty_buffer() {
+        assert_state!("|", |(buf, sels)| cmd_next_paragraph(buf, sels), "|");
+    }
+
+    #[test]
+    fn next_paragraph_at_eof() {
+        assert_state!("hello|", |(buf, sels)| cmd_next_paragraph(buf, sels), "hello|");
+    }
+
+    // ── prev_paragraph ([p) ───────────────────────────────────────────────────
+
+    #[test]
+    fn prev_paragraph_basic() {
+        // Land on the empty gap line above "world".
+        assert_state!(
+            "hello\n\nwor|ld",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "hello\n|\nworld"
+        );
+    }
+
+    #[test]
+    fn prev_paragraph_multiple_empty_lines() {
+        // Multiple empty lines — land on the first (topmost) one.
+        assert_state!(
+            "hello\n\n\nwor|ld",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "hello\n|\n\nworld"
+        );
+    }
+
+    #[test]
+    fn prev_paragraph_no_paragraph_above() {
+        // No gap above — land on line 0 (no-op if already there).
+        assert_state!(
+            "|hello\nworld",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "|hello\nworld"
+        );
+    }
+
+    #[test]
+    fn prev_paragraph_from_empty_line() {
+        // Starting on the empty gap line — skip gap + paragraph, land on the
+        // empty line above the paragraph before it.
+        assert_state!(
+            "hello\n|\nworld",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "|hello\n\nworld"
+        );
+    }
+
+    // ── multi-paragraph navigation ────────────────────────────────────────────
+
+    #[test]
+    fn next_paragraph_sequential() {
+        // Two consecutive ]p motions walk through three paragraphs.
+        assert_state!(
+            "|a\n\nb\n\nc",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "a\n\n|b\n\nc"
+        );
+        assert_state!(
+            "a\n\n|b\n\nc",
+            |(buf, sels)| cmd_next_paragraph(buf, sels),
+            "a\n\nb\n\n|c"
+        );
+    }
+
+    #[test]
+    fn prev_paragraph_sequential() {
+        // Two consecutive [p motions walk backward through three paragraphs.
+        assert_state!(
+            "a\n\nb\n\n|c",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "a\n\nb\n|\nc"
+        );
+        assert_state!(
+            "a\n\nb\n|\nc",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels),
+            "a\n|\nb\n\nc"
+        );
+    }
+
+    // ── extend variants ───────────────────────────────────────────────────────
+
+    #[test]
+    fn extend_next_paragraph_creates_selection() {
+        // Anchor stays at 0, head moves to 'w' at the start of "world".
+        assert_state!(
+            "|hello\n\nworld",
+            |(buf, sels)| cmd_extend_next_paragraph(buf, sels),
+            "#[hello\n\n|w]#orld"
+        );
+    }
+
+    #[test]
+    fn extend_prev_paragraph_creates_selection() {
+        // Anchor stays on 'w', head moves back to the empty gap line.
+        assert_state!(
+            "hello\n\n|world",
+            |(buf, sels)| cmd_extend_prev_paragraph(buf, sels),
+            "hello\n#[|\n]#world"
+        );
     }
 }
