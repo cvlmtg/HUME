@@ -9,7 +9,7 @@
 ///
 /// | Marker | Meaning |
 /// |--------|---------|
-/// | `\|`   | Collapsed cursor (anchor == head). |
+/// | `\|`   | Single-character selection (anchor == head). Cursor sits on the character at this offset. |
 /// | `#[`   | Start of a selection (anchor position). |
 /// | `\|` inside `#[…]#` | Head (cursor) position. **Forward** `#[ABC\|C]#`: ABC are the selected chars before the cursor; C is the single cursor character (at `head`). **Backward** `#[\|CCC]#`: `\|` is right after `#[` and CCC are the selected chars after the cursor. |
 /// | `]#`   | End of a selection. For forward selections, placed one past `head` (i.e. after the cursor char). For backward selections, placed at `anchor`. |
@@ -27,7 +27,7 @@
 ///
 /// ## Cursor model
 ///
-/// Helix's cursor is *inclusive* — it sits **on** a character, not between
+/// The cursor is *inclusive* — it sits **on** a character, not between
 /// characters. `head` is the char offset of the cursor character.
 ///
 /// In a forward selection `#[ABC|C]#`:
@@ -97,7 +97,7 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
                 state = State::InSelection { anchor_offset: anchor };
             }
 
-            // ── Cursor `|` outside a selection → collapsed cursor ─────────
+            // ── Cursor `|` outside a selection → single-character selection ──
             (State::Normal, '|') => {
                 let pos = char_count(&text);
                 selections.push(Selection::cursor(pos));

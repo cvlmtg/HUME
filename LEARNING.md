@@ -97,20 +97,21 @@ bytes or grapheme internals.
 ### The select-then-act model
 
 In HUME, edit operations never act on a bare cursor position. They act on a
-`SelectionSet` — which is always a `Vec<Selection>`. Each `Selection` is either:
+`SelectionSet` — which is always a `Vec<Selection>`. Selections are always
+**inclusive**: `anchor == head` is a 1-char selection covering the character at
+that index, not a zero-width point. Each `Selection` is either:
 
-- **Collapsed** (`anchor == head`): a plain cursor with no selected text.
-- **Non-collapsed** (`anchor != head`): a region of selected text.
+- **Single-character** (`anchor == head`): the cursor sits on exactly one character.
+- **Multi-character** (`anchor != head`): a contiguous region of selected text.
 
 An operation like "insert character `x`" means:
 
-- For a **collapsed selection**: insert `x` at the cursor position.
-- For a **non-collapsed selection**: replace the selected region with `x` (delete
-  the selection, then insert).
+- For a **single-character selection**: insert `x` before the cursor character;
+  the cursor advances to the next character.
+- For a **multi-character selection**: replace the entire selected region with `x`.
 
-This is the same rule in both cases — "replace the selected region with the
-input, where an empty selection replaces nothing". Single-cursor editing,
-visual-mode editing, and multicursor editing all fall out of the same loop.
+This is the same rule in both cases. Single-cursor editing, visual-mode editing,
+and multicursor editing all fall out of the same loop.
 
 ### Multi-selection edit ordering
 

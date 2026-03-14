@@ -28,7 +28,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Day-one architectural invariants
 These must be respected from the first line of code — retrofitting is expensive:
-- **Selections**: Always `Vec<Selection>`. Single cursor is a vec of length 1. All edit operations iterate over selections.
+- **Selections**: Always `Vec<Selection>`. Single cursor is a vec of length 1. All edit operations iterate over selections. Selections are always inclusive — `anchor == head` is a 1-char selection covering the character at that index, never a zero-width point.
 - **Display lines**: The renderer iterates "display lines" (buffer line or virtual line), never buffer lines directly. Initially 1:1, but the abstraction is required for virtual lines later.
 - **Grapheme clusters**: All motions, selections, and edit operations work on grapheme clusters (`unicode-segmentation`), never raw bytes or `char`. This is the text boundary abstraction — retrofitting is expensive.
 
