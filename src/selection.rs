@@ -4,10 +4,12 @@
 /// sequence of Unicode scalar values. The cursor (the moving end that the user
 /// sees blinking) is always at `head`.
 ///
-/// A *collapsed* selection (anchor == head) represents a plain cursor with no
-/// selected text. In Helix/Kakoune's model the cursor covers the character *at*
-/// `head`, so the visible cursor block sits on that character. When the buffer
-/// is empty, both offsets are 0.
+/// When `anchor == head`, the selection covers a single character — the one at
+/// index `head`. This is the smallest possible selection, not a zero-width
+/// point. The cursor block sits on that character, matching Helix/Kakoune's
+/// inclusive model. The only exception is at EOF (`head == buf.len_chars()`),
+/// where there is no character to sit on; that position is valid but renders
+/// the cursor past the last character.
 ///
 /// # Directional selections
 ///
@@ -25,18 +27,18 @@ pub(crate) struct Selection {
 }
 
 impl Selection {
-    /// A collapsed cursor at `pos` (no selected text).
+    /// A single-character selection at `pos` (anchor == head == pos).
     pub(crate) fn cursor(pos: usize) -> Self {
         Self { anchor: pos, head: pos }
     }
 
     /// A directional range from `anchor` to `head`.
-    /// Passing `anchor == head` is fine — it produces a collapsed cursor.
+    /// Passing `anchor == head` produces a single-character selection.
     pub(crate) fn new(anchor: usize, head: usize) -> Self {
         Self { anchor, head }
     }
 
-    /// Is this a collapsed cursor (no selected text)?
+    /// Is this a single-character selection (anchor == head)?
     pub(crate) fn is_cursor(&self) -> bool {
         self.anchor == self.head
     }

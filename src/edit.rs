@@ -12,9 +12,9 @@ use crate::selection::{Selection, SelectionSet};
 
 /// Insert `ch` at every selection.
 ///
-/// - **Collapsed cursor**: `ch` is inserted at the cursor position; the cursor
-///   advances by one (landing on the character that follows the new one).
-/// - **Non-collapsed selection**: the selected region is deleted first, then
+/// - **Single-character selection**: `ch` is inserted before the cursor
+///   character; the cursor advances to land on the character that follows it.
+/// - **Multi-character selection**: the selected region is deleted first, then
 ///   `ch` is inserted at the start of the former selection. The cursor lands
 ///   one past the inserted character.
 ///
@@ -51,11 +51,11 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
 
 /// Delete the grapheme cluster at the cursor, or delete the selected region.
 ///
-/// - **Collapsed cursor**: delete the grapheme cluster starting at `head`
+/// - **Single-character selection**: delete the grapheme cluster at `head`
 ///   (the character the cursor sits on). Cursor stays at the same offset
 ///   (it now points to what was the next character). No-op at end of buffer.
-/// - **Non-collapsed selection**: delete the entire selected region. Cursor
-///   collapses to `start()`.
+/// - **Multi-character selection**: delete the entire selected region. Cursor
+///   lands on `start()`.
 pub(crate) fn delete_char_forward(
     buf: Buffer,
     sels: SelectionSet,
@@ -99,12 +99,12 @@ pub(crate) fn delete_char_forward(
 
 /// Delete the grapheme cluster before the cursor, or delete the selected region.
 ///
-/// - **Collapsed cursor**: delete the grapheme cluster that ends just before
-///   `head` (i.e. the one the user would see to the left of the cursor).
-///   Cursor moves back to the start of the deleted cluster. No-op at start.
-/// - **Non-collapsed selection**: delete the entire selected region. Cursor
-///   collapses to `start()`. (Same as `delete_char_forward` for selections —
-///   pressing Delete or Backspace on a selection both clear it.)
+/// - **Single-character selection**: delete the grapheme cluster that ends
+///   just before `head` (the character to the left of the cursor). Cursor
+///   moves back to the start of the deleted cluster. No-op at start.
+/// - **Multi-character selection**: delete the entire selected region. Cursor
+///   lands on `start()`. (Same as `delete_char_forward` for selections —
+///   Delete and Backspace both clear a selection.)
 pub(crate) fn delete_char_backward(
     buf: Buffer,
     sels: SelectionSet,
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn delete_backward_selection() {
-        // Same as delete_forward for non-collapsed: removes selected region.
+        // Same as delete_forward for multi-char selections: removes selected region.
         assert_state!(
             "#[hel|l]#o",
             |(buf, sels)| delete_char_backward(buf, sels),

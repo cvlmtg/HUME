@@ -15,7 +15,7 @@ use crate::selection::{Selection, SelectionSet};
 /// | `Select` | `old_head` | `new_head` | `w`, `b` — select from here to target |
 /// | `Extend` | `old_anchor` | `new_head` | shift-variants — grow selection |
 ///
-/// `Move` always produces a collapsed cursor (anchor == head).
+/// `Move` always produces a single-character selection (anchor == head).
 /// `Select` creates a fresh selection whose anchor is the *current* cursor position.
 /// `Extend` keeps the existing anchor, only moving the head.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub(crate) enum MotionMode {
 /// position from one old position. `apply_motion` handles the anchor
 /// semantics (via `mode`) and multi-cursor bookkeeping.
 ///
-/// Uses `map_and_merge` so that cursors which converge to the same position
+/// Uses `map_and_merge` so that selections which converge to the same position
 /// after the motion are automatically merged.
 pub(crate) fn apply_motion(
     buf: &Buffer,
