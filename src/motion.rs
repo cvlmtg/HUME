@@ -136,8 +136,9 @@ fn goto_line_end(buf: &Buffer, head: usize) -> usize {
 
 /// Jump to the first non-blank character on the current line.
 ///
-/// "Blank" means ASCII space or tab. If the line is entirely blank, the cursor
-/// lands at the line start (the newline or end of buffer).
+/// "Blank" means ASCII space or tab. Matches Helix behaviour: if no non-blank
+/// character exists on the line (e.g. a line of only spaces), the motion is a
+/// no-op and the cursor stays at its current position.
 fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
     let line = buf.char_to_line(head);
     let line_start = buf.line_to_char(line);
@@ -147,10 +148,11 @@ fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
     while pos < end_excl {
         match buf.char_at(pos) {
             Some(' ') | Some('\t') => pos += 1,
-            _ => break,
+            Some('\n') | None => break, // end of line content without finding non-blank
+            Some(_) => return pos,      // found a non-blank char
         }
     }
-    pos
+    head // no non-blank found — no-op, matching Helix
 }
 
 /// Move the cursor down one line, preserving the char-offset column.
@@ -493,8 +495,9 @@ mod tests {
 
     #[test]
     fn goto_first_nonblank_all_blank_line() {
-        // Line is all spaces + newline — no non-blank found, cursor lands on the '\n'.
-        assert_state!("|   \n", |(buf, sels)| cmd_goto_first_nonblank(buf, sels), "   |\n");
+        // Line is all spaces — no non-blank found, cursor is unchanged (Helix behaviour).
+        assert_state!("|   \n", |(buf, sels)| cmd_goto_first_nonblank(buf, sels), "|   \n");
+        assert_state!(" | \n", |(buf, sels)| cmd_goto_first_nonblank(buf, sels), " | \n");
     }
 
     // ── move_down ─────────────────────────────────────────────────────────────
