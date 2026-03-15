@@ -17,12 +17,12 @@
 /// ## Examples
 ///
 /// ```text
-/// "|hello"           — cursor on 'h' (offset 0)
-/// "hello|"           — cursor at end of buffer (offset 5, past last char)
-/// "hel|lo"           — cursor on the second 'l' (offset 3)
-/// "#[hel|l]#o world" — forward selection: anchor=0, head=3 (cursor on 'l')
-/// "#[|hel]#lo"       — backward selection: anchor=3, head=0 (cursor on 'h')
-/// "#[a|b]# #[c|d]#"  — two forward selections
+/// "|hello\n"           — cursor on 'h' (offset 0)
+/// "hello|\n"           — cursor on '\n' (offset 5, the structural trailing newline)
+/// "hel|lo\n"           — cursor on the second 'l' (offset 3)
+/// "#[hel|l]#o world\n" — forward selection: anchor=0, head=3 (cursor on 'l')
+/// "#[|hel]#lo\n"       — backward selection: anchor=3, head=0 (cursor on 'h')
+/// "#[a|b]# #[c|d]#\n"  — two forward selections
 /// ```
 ///
 /// ## Cursor model
@@ -175,6 +175,14 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
         input
     );
 
+    assert!(
+        text.ends_with('\n'),
+        "parse_state: DSL string must produce a buffer ending with '\\n' (got {:?}).\n\
+         Every buffer has a structural trailing newline — include it explicitly.\n\
+         E.g. use \"|hello\\n\" not \"|hello\", \"hello|\\n\" not \"hello|\", \"|\\n\" not \"|\".",
+        input
+    );
+
     let buf = Buffer::from_str(&text);
     let sel_set = SelectionSet::from_vec(selections, 0);
     (buf, sel_set)
@@ -186,10 +194,10 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
 /// diffs show the annotated marker text rather than raw char offsets.
 pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
     let full = buf.to_string();
-    // Strip the structural trailing \n (present in every buffer) so that
-    // test strings show visible content only. A cursor on the trailing \n
-    // appears as "|" at the very end — e.g., "hello|" means cursor on \n.
-    let text = full.strip_suffix('\n').unwrap_or(&full);
+    // Include the structural trailing \n in the serialized output so that
+    // DSL strings are explicit about buffer content. Every valid buffer ends
+    // with \n, so every serialized string ends with \n too.
+    let text = &full;
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
 
@@ -248,9 +256,9 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
 ///
 /// ```
 /// assert_state!(
-///     "|hello",                                    // initial state
+///     "|hello\n",                                   // initial state
 ///     |(buf, sels)| delete_char_forward(buf, sels), // operation
-///     "|ello",                                     // expected state
+///     "|ello\n",                                    // expected state
 /// );
 /// ```
 ///
@@ -288,7 +296,7 @@ mod tests {
 
     #[test]
     fn parse_collapsed_cursor_at_start() {
-        let (buf, sels) = parse_state("|hello");
+        let (buf, sels) = parse_state("|hello\n");
         assert_eq!(buf.to_string(), "hello\n"); // trailing \n always present
         assert_eq!(sels.len(), 1);
         let s = sels.primary();
@@ -298,21 +306,21 @@ mod tests {
 
     #[test]
     fn parse_collapsed_cursor_at_end() {
-        let (buf, sels) = parse_state("hello|");
+        let (buf, sels) = parse_state("hello|\n");
         assert_eq!(buf.to_string(), "hello\n"); // cursor at 5 = on the trailing \n
         assert_eq!(sels.primary().head, 5);
     }
 
     #[test]
     fn parse_collapsed_cursor_in_middle() {
-        let (buf, sels) = parse_state("hel|lo");
+        let (buf, sels) = parse_state("hel|lo\n");
         assert_eq!(buf.to_string(), "hello\n");
         assert_eq!(sels.primary().head, 3);
     }
 
     #[test]
     fn parse_forward_selection() {
-        // "#[hel|lo]# world" — anchor=0 (at #[), head=3 (at |).
+        // "#[hel|lo]# world\n" — anchor=0 (at #[), head=3 (at |).
         //
         // "lo" and " world" are both real buffer content — nothing is
         // discarded. The DSL is permissive: any chars between | and ]# go
@@ -322,9 +330,9 @@ mod tests {
         //
         // The canonical serializer always places ]# at head+1, showing only
         // the single cursor character between | and ]#, so it would emit
-        // "#[hel|l]#o world" for this selection. Both forms parse identically:
-        // anchor=0, head=3, buffer="hello world".
-        let (buf, sels) = parse_state("#[hel|lo]# world");
+        // "#[hel|l]#o world\n" for this selection. Both forms parse identically:
+        // anchor=0, head=3, buffer="hello world\n".
+        let (buf, sels) = parse_state("#[hel|lo]# world\n");
         assert_eq!(buf.to_string(), "hello world\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 0);
@@ -333,8 +341,8 @@ mod tests {
 
     #[test]
     fn parse_backward_selection() {
-        // #[|hel]#lo → anchor=3, head=0
-        let (buf, sels) = parse_state("#[|hel]#lo");
+        // #[|hel]#lo\n → anchor=3, head=0
+        let (buf, sels) = parse_state("#[|hel]#lo\n");
         assert_eq!(buf.to_string(), "hello\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 3);
@@ -343,10 +351,10 @@ mod tests {
 
     #[test]
     fn parse_selection_near_end_of_buffer() {
-        // The ]# marker is the last thing in the input string, so the
-        // selection extends to the end of the annotated text (but not
-        // the end of the buffer — 'e' at offset 7 is unselected).
-        let (buf, sels) = parse_state("hi #[the|re]#");
+        // The ]# marker is followed only by \n, so the selection extends to
+        // the end of the annotated text (but not the trailing \n — 'e' at
+        // offset 7 is unselected).
+        let (buf, sels) = parse_state("hi #[the|re]#\n");
         assert_eq!(buf.to_string(), "hi there\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 3);
@@ -355,7 +363,7 @@ mod tests {
 
     #[test]
     fn parse_two_collapsed_cursors() {
-        let (buf, sels) = parse_state("|foo| bar");
+        let (buf, sels) = parse_state("|foo| bar\n");
         assert_eq!(buf.to_string(), "foo bar\n");
         assert_eq!(sels.len(), 2);
         assert_eq!(sels.iter_sorted().next().unwrap().head, 0);
@@ -364,7 +372,7 @@ mod tests {
 
     #[test]
     fn parse_two_forward_selections() {
-        let (buf, sels) = parse_state("#[a|bc]# #[d|ef]#");
+        let (buf, sels) = parse_state("#[a|bc]# #[d|ef]#\n");
         assert_eq!(buf.to_string(), "abc def\n");
         assert_eq!(sels.len(), 2);
         let mut it = sels.iter_sorted();
@@ -377,14 +385,14 @@ mod tests {
     #[test]
     fn parse_cursor_on_unicode_char() {
         // "é" is U+00E9, a single Unicode scalar value (1 char).
-        let (buf, sels) = parse_state("caf|é");
+        let (buf, sels) = parse_state("caf|é\n");
         assert_eq!(buf.to_string(), "café\n");
         assert_eq!(sels.primary().head, 3);
     }
 
     #[test]
     fn parse_empty_selection_collapsed_at_zero() {
-        let (buf, sels) = parse_state("|");
+        let (buf, sels) = parse_state("|\n");
         assert_eq!(buf.to_string(), "\n"); // empty buffer = only the trailing \n
         assert_eq!(sels.primary().head, 0);
     }
@@ -395,14 +403,15 @@ mod tests {
     fn serialize_collapsed_cursor_at_start() {
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::cursor(0));
-        assert_eq!(serialize_state(&buf, &sels), "|hello");
+        assert_eq!(serialize_state(&buf, &sels), "|hello\n");
     }
 
     #[test]
     fn serialize_collapsed_cursor_at_end() {
+        // cursor at 5 = on the structural trailing \n.
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::cursor(5));
-        assert_eq!(serialize_state(&buf, &sels), "hello|");
+        assert_eq!(serialize_state(&buf, &sels), "hello|\n");
     }
 
     #[test]
@@ -411,7 +420,7 @@ mod tests {
         // #[ and | both at 0, ]# at anchor=3.
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::new(3, 0));
-        assert_eq!(serialize_state(&buf, &sels), "#[|hel]#lo");
+        assert_eq!(serialize_state(&buf, &sels), "#[|hel]#lo\n");
     }
 
     #[test]
@@ -420,17 +429,17 @@ mod tests {
         // #[ at 0, | at 3, ]# at 4 (one past cursor char).
         let buf = Buffer::from_str("hello world");
         let sels = SelectionSet::single(Selection::new(0, 3));
-        assert_eq!(serialize_state(&buf, &sels), "#[hel|l]#o world");
+        assert_eq!(serialize_state(&buf, &sels), "#[hel|l]#o world\n");
     }
 
     #[test]
     fn serialize_forward_selection_head_at_eof() {
-        // head=5 is the trailing \n in "hello\n" — a valid position.
-        // After stripping the trailing \n, the cursor appears at the end.
+        // head=5 is the trailing \n in "hello\n". The \n is the cursor char,
+        // so it appears between | and ]# in the serialized output.
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::new(0, 5));
         let s = serialize_state(&buf, &sels);
-        assert_eq!(s, "#[hello|]#");
+        assert_eq!(s, "#[hello|\n]#");
     }
 
     // ── Round-trip ────────────────────────────────────────────────────────────
@@ -442,31 +451,31 @@ mod tests {
 
     #[test]
     fn roundtrip_collapsed_cursor() {
-        assert_eq!(round_trip("|hello"), "|hello");
-        assert_eq!(round_trip("hello|"), "hello|");
-        assert_eq!(round_trip("hel|lo"), "hel|lo");
+        assert_eq!(round_trip("|hello\n"), "|hello\n");
+        assert_eq!(round_trip("hello|\n"), "hello|\n");
+        assert_eq!(round_trip("hel|lo\n"), "hel|lo\n");
     }
 
     #[test]
     fn roundtrip_forward_selection() {
         // Canonical form: ]# sits one past the cursor char.
-        // "#[hel|lo]# world" is a valid *input* (parses to anchor=0, head=3)
-        // but is not canonical — its round-trip output is "#[hel|l]#o world".
-        assert_eq!(round_trip("#[hel|l]#o world"), "#[hel|l]#o world");
+        // "#[hel|lo]# world\n" is a valid *input* (parses to anchor=0, head=3)
+        // but is not canonical — its round-trip output is "#[hel|l]#o world\n".
+        assert_eq!(round_trip("#[hel|l]#o world\n"), "#[hel|l]#o world\n");
     }
 
     #[test]
     fn roundtrip_backward_selection() {
-        assert_eq!(round_trip("#[|hel]#lo"), "#[|hel]#lo");
+        assert_eq!(round_trip("#[|hel]#lo\n"), "#[|hel]#lo\n");
     }
 
     #[test]
     fn roundtrip_two_cursors() {
-        assert_eq!(round_trip("|foo| bar"), "|foo| bar");
+        assert_eq!(round_trip("|foo| bar\n"), "|foo| bar\n");
     }
 
     #[test]
     fn roundtrip_empty_buffer_cursor() {
-        assert_eq!(round_trip("|"), "|");
+        assert_eq!(round_trip("|\n"), "|\n");
     }
 }
