@@ -43,14 +43,23 @@ impl Buffer {
         self.rope
     }
 
-    /// Create an empty buffer.
+    /// Create an empty buffer (contains only the structural trailing newline).
     pub(crate) fn empty() -> Self {
-        Self { rope: Rope::new() }
+        Self { rope: Rope::from_str("\n") }
     }
 
     /// Create a buffer pre-populated with `text`.
+    ///
+    /// A trailing `\n` is appended if `text` does not already end with one,
+    /// upholding the invariant that editing buffers always end with a newline.
     pub(crate) fn from_str(text: &str) -> Self {
-        Self { rope: Rope::from_str(text) }
+        if text.ends_with('\n') {
+            Self { rope: Rope::from_str(text) }
+        } else {
+            let mut rope = Rope::from_str(text);
+            rope.insert_char(rope.len_chars(), '\n');
+            Self { rope }
+        }
     }
 
     /// Total number of Unicode scalar values (chars) in the buffer.
@@ -60,9 +69,10 @@ impl Buffer {
         self.rope.len_chars()
     }
 
-    /// Returns `true` if the buffer contains no characters.
+    /// Returns `true` if the buffer contains no visible content — i.e., it
+    /// holds only the structural trailing newline.
     pub(crate) fn is_empty(&self) -> bool {
-        self.rope.len_chars() == 0
+        self.rope.len_chars() <= 1
     }
 
     /// Total number of lines. A buffer always has at least one line, even when
@@ -174,19 +184,19 @@ mod tests {
     #[test]
     fn empty_buffer() {
         let buf = Buffer::empty();
-        assert_eq!(buf.len_chars(), 0);
-        assert_eq!(buf.len_lines(), 1); // always at least one line
+        assert_eq!(buf.len_chars(), 1); // structural trailing \n
+        assert_eq!(buf.len_lines(), 2); // "\n" → line 0 = "\n", line 1 = ""
         assert!(buf.is_empty());
-        assert_eq!(buf.to_string(), "");
+        assert_eq!(buf.to_string(), "\n");
     }
 
     #[test]
     fn from_str_ascii() {
         let buf = Buffer::from_str("hello\nworld");
-        assert_eq!(buf.len_chars(), 11);
-        assert_eq!(buf.len_lines(), 2);
+        assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
+        assert_eq!(buf.len_lines(), 3);  // line 0, line 1, trailing empty line
         assert!(!buf.is_empty());
-        assert_eq!(buf.to_string(), "hello\nworld");
+        assert_eq!(buf.to_string(), "hello\nworld\n");
     }
 
     #[test]
@@ -202,7 +212,7 @@ mod tests {
         // (U+0065 + U+0301 combining accent). `from_str` accepts whatever Rust
         // gives us. Here we use the precomposed form — one char.
         let buf = Buffer::from_str("café");
-        assert_eq!(buf.len_chars(), 4); // c a f é
+        assert_eq!(buf.len_chars(), 5); // c a f é \n
     }
 
     #[test]
@@ -226,39 +236,40 @@ mod tests {
     fn insert_at_start() {
         let buf = Buffer::from_str("world");
         let new = buf.insert(0, "hello ");
-        assert_eq!(new.to_string(), "hello world");
+        assert_eq!(new.to_string(), "hello world\n");
         // Original is unchanged — structural sharing.
-        assert_eq!(buf.to_string(), "world");
+        assert_eq!(buf.to_string(), "world\n");
     }
 
     #[test]
     fn insert_at_end() {
+        // Insert before the trailing \n (position 5 in "hello\n").
         let buf = Buffer::from_str("hello");
         let new = buf.insert(5, " world");
-        assert_eq!(new.to_string(), "hello world");
+        assert_eq!(new.to_string(), "hello world\n");
     }
 
     #[test]
     fn insert_in_middle() {
         let buf = Buffer::from_str("helo");
-        let new = buf.insert(3, "l"); // "hel" + "l" + "o"
-        assert_eq!(new.to_string(), "hello");
+        let new = buf.insert(3, "l"); // "hel" + "l" + "o\n"
+        assert_eq!(new.to_string(), "hello\n");
     }
 
     #[test]
     fn remove_whole() {
         let buf = Buffer::from_str("hello");
-        let new = buf.remove(0, 5);
-        assert_eq!(new.to_string(), "");
+        let new = buf.remove(0, 5); // removes "hello", leaving "\n"
+        assert_eq!(new.to_string(), "\n");
         assert!(new.is_empty());
-        assert_eq!(buf.to_string(), "hello"); // original unchanged
+        assert_eq!(buf.to_string(), "hello\n"); // original unchanged
     }
 
     #[test]
     fn remove_range() {
         let buf = Buffer::from_str("hello world");
         let new = buf.remove(5, 11); // remove " world"
-        assert_eq!(new.to_string(), "hello");
+        assert_eq!(new.to_string(), "hello\n");
     }
 
     #[test]

@@ -138,8 +138,8 @@ mod tests {
 
     #[test]
     fn ascii_next_walk() {
-        // Walk forward through every grapheme in an ASCII string.
-        // Each ASCII char is its own grapheme, so boundaries are 0,1,2,…,5.
+        // Walk forward through every grapheme in "hello\n" (6 chars).
+        // Each char is its own grapheme, so boundaries are 0,1,2,…,6.
         let buf = Buffer::from_str("hello");
         let boundaries: Vec<usize> =
             std::iter::successors(Some(0usize), |&c| {
@@ -147,7 +147,7 @@ mod tests {
                 if n > c { Some(n) } else { None }
             })
             .collect();
-        assert_eq!(boundaries, vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(boundaries, vec![0, 1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
@@ -161,12 +161,12 @@ mod tests {
 
     #[test]
     fn combining_char_next() {
-        // "e\u{0301}x" is 3 chars but 2 grapheme clusters: ["é", "x"].
+        // "e\u{0301}x\n" is 4 chars, 3 grapheme clusters: ["é", "x", "\n"].
         // next(0) must skip both chars of the combining cluster and return 2.
         let buf = Buffer::from_str("e\u{0301}x");
-        assert_eq!(buf.len_chars(), 3);
+        assert_eq!(buf.len_chars(), 4);
         assert_eq!(next_grapheme_boundary(&buf, 0), 2); // skip the whole é cluster
-        assert_eq!(next_grapheme_boundary(&buf, 2), 3); // x
+        assert_eq!(next_grapheme_boundary(&buf, 2), 3); // x → \n boundary
     }
 
     #[test]
@@ -182,9 +182,9 @@ mod tests {
     fn combining_char_prev_mid_cluster() {
         // prev(1) from inside the é cluster should return 0 (start of cluster),
         // not 1-1=0 by coincidence — test with a prefix to break the coincidence.
-        // "ae\u{0301}x" — offset 2 is inside the é cluster (between 'e' and U+0301).
+        // "ae\u{0301}x\n" — offset 2 is inside the é cluster (between 'e' and U+0301).
         let buf = Buffer::from_str("ae\u{0301}x");
-        assert_eq!(buf.len_chars(), 4);
+        assert_eq!(buf.len_chars(), 5);
         assert_eq!(prev_grapheme_boundary(&buf, 2), 1); // back to start of é, not to 'a'
     }
 
@@ -200,10 +200,10 @@ mod tests {
 
     #[test]
     fn zwj_emoji_next() {
-        // U+1F468 ZWJ U+1F469 ZWJ U+1F467 — 5 chars, 1 grapheme cluster.
+        // U+1F468 ZWJ U+1F469 ZWJ U+1F467 — 5 chars, 1 grapheme cluster; + "\n".
         // next(0) must return 5 — the whole family is one cluster.
         let buf = Buffer::from_str("👨‍👩‍👧");
-        assert_eq!(buf.len_chars(), 5);
+        assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
         assert_eq!(next_grapheme_boundary(&buf, 0), 5);
     }
 
@@ -217,14 +217,14 @@ mod tests {
 
     #[test]
     fn mixed_string_boundaries() {
-        // "Hello 👨‍👩‍👧!" — chars: H(0) e(1) l(2) l(3) o(4) (space)(5)
-        //                         👨(6) ZWJ(7) 👩(8) ZWJ(9) 👧(10) !(11)
-        // Graphemes: H, e, l, l, o, ' ', [👨‍👩‍👧], !
-        // Boundaries: 0, 1, 2, 3, 4, 5, 6, 11, 12
+        // "Hello 👨‍👩‍👧!\n" — chars: H(0) e(1) l(2) l(3) o(4) (space)(5)
+        //                           👨(6) ZWJ(7) 👩(8) ZWJ(9) 👧(10) !(11) \n(12)
+        // Graphemes: H, e, l, l, o, ' ', [👨‍👩‍👧], !, \n
+        // Boundaries: 0, 1, 2, 3, 4, 5, 6, 11, 12, 13
         let buf = Buffer::from_str("Hello 👨‍👩‍👧!");
-        assert_eq!(buf.len_chars(), 12);
+        assert_eq!(buf.len_chars(), 13);
 
-        let expected = vec![0usize, 1, 2, 3, 4, 5, 6, 11, 12];
+        let expected = vec![0usize, 1, 2, 3, 4, 5, 6, 11, 12, 13];
         let got: Vec<usize> =
             std::iter::successors(Some(0usize), |&c| {
                 let n = next_grapheme_boundary(&buf, c);
@@ -238,9 +238,10 @@ mod tests {
 
     #[test]
     fn next_at_end_returns_len() {
+        // "hi\n" is 3 chars. next(2) steps past '\n' to len_chars=3.
         let buf = Buffer::from_str("hi");
-        assert_eq!(next_grapheme_boundary(&buf, 2), 2); // at end
-        assert_eq!(next_grapheme_boundary(&buf, 99), 2); // past end — clamped
+        assert_eq!(next_grapheme_boundary(&buf, 2), 3); // '\n' → one past it = len_chars
+        assert_eq!(next_grapheme_boundary(&buf, 99), 3); // past end — clamped to len_chars
     }
 
     #[test]
@@ -251,8 +252,9 @@ mod tests {
 
     #[test]
     fn empty_buffer_next() {
+        // Buffer::empty() = "\n" (1 char). next(0) steps past '\n' to len_chars=1.
         let buf = Buffer::empty();
-        assert_eq!(next_grapheme_boundary(&buf, 0), 0);
+        assert_eq!(next_grapheme_boundary(&buf, 0), 1);
     }
 
     #[test]
