@@ -81,6 +81,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Cursor line highlight
 
 ### Future milestones
+- **Motion selection model**: decide between Helix (jump/collapse) and Kakoune (select-through) for paragraph and goto-line motions. Currently Helix. One-word change per command (`MotionMode::Move` → `Select`). Decide after trying both in the running UI.
 - Tree-structured undo/redo (vim-style undo tree)
 - Search and replace with incremental search and live match highlighting
 - File picker / fuzzy finder (Helix-style picker with fuzzy matching)
