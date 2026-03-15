@@ -54,7 +54,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Basic edit operations: insert, delete, backspace — operating over all selections
 - [x] ChangeSet: OT-style edit descriptions (Retain/Delete/Insert) with apply, map_pos, invert, compose. Builder pattern for constructing changesets. Edit operations refactored to build changesets.
 - [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of editing for future undo/redo
-- [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping (whether shift extends, or `v` toggles extend mode) is an M3/keybinding concern — both Kakoune and Helix models are compatible.
+- [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping is an M3/keybinding concern.
 - [ ] Text objects: inside/around word, quotes, brackets, line
 - [ ] Selection manipulation: extend, shrink, split, merge overlapping selections
 - [ ] Registers: named yank/paste buffers (`"a`–`"z`) including system clipboard register (`"+`)
@@ -76,6 +76,9 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Insert mode with text input
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
+- [ ] Extend mode: `x` toggles extend mode (all terminals); `Ctrl+motion` as extend shortcut when kitty keyboard protocol is active. In extend mode all motions extend the current selection instead of replacing it. Ctrl rejected as universal modifier due to fatal legacy-terminal collisions.
+- [ ] Line selection: needs a key binding (not `x` — taken by extend mode; not yet decided)
+- [ ] Paragraph navigation: bind `{` / `}` (prev/next paragraph). Free in both Helix and Kakoune. Preferred over Helix's `[p` / `]p`.
 - [ ] Auto-pairs: auto-close brackets, quotes (configurable)
 - [ ] Matching bracket highlight
 - [ ] Cursor line highlight
