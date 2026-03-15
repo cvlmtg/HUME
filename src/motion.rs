@@ -247,7 +247,8 @@ fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
 
 /// Word and Punctuation are treated as the same "long word" class — only
 /// transitions involving Space or Eol count.
-fn is_long_word_boundary(a: CharClass, b: CharClass) -> bool {
+#[allow(non_snake_case)]
+fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
     let merge = |c: CharClass| {
         if c == CharClass::Punctuation { CharClass::Word } else { c }
     };
@@ -263,7 +264,7 @@ fn is_long_word_boundary(a: CharClass, b: CharClass) -> bool {
 /// (but not newlines), and lands on the next word/punct start or on a newline.
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
-/// `is_long_word_boundary` for `W`.
+/// `is_WORD_boundary` for `W`.
 fn next_word_start(
     buf: &Buffer,
     head: usize,
@@ -529,9 +530,10 @@ pub(crate) fn cmd_next_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, S
 }
 
 /// Select to the start of the next WORD (W — treats word+punct as one class).
-pub(crate) fn cmd_next_long_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+#[allow(non_snake_case)]
+pub(crate) fn cmd_next_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_start(b, h, is_long_word_boundary)
+        next_word_start(b, h, is_WORD_boundary)
     });
     (buf, new_sels)
 }
@@ -545,9 +547,10 @@ pub(crate) fn cmd_prev_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, S
 }
 
 /// Select to the start of the previous WORD (B).
-pub(crate) fn cmd_prev_long_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+#[allow(non_snake_case)]
+pub(crate) fn cmd_prev_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        prev_word_start(b, h, is_long_word_boundary)
+        prev_word_start(b, h, is_WORD_boundary)
     });
     (buf, new_sels)
 }
@@ -561,9 +564,37 @@ pub(crate) fn cmd_next_word_end(buf: Buffer, sels: SelectionSet) -> (Buffer, Sel
 }
 
 /// Select to the end of the next WORD (E).
-pub(crate) fn cmd_next_long_word_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+#[allow(non_snake_case)]
+pub(crate) fn cmd_next_WORD_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_end(b, h, is_long_word_boundary)
+        next_word_end(b, h, is_WORD_boundary)
+    });
+    (buf, new_sels)
+}
+
+/// Extend selection to the start of the next WORD.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_next_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
+        next_word_start(b, h, is_WORD_boundary)
+    });
+    (buf, new_sels)
+}
+
+/// Extend selection to the start of the previous WORD.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_prev_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
+        prev_word_start(b, h, is_WORD_boundary)
+    });
+    (buf, new_sels)
+}
+
+/// Extend selection to the end of the next WORD.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_next_WORD_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
+        next_word_end(b, h, is_WORD_boundary)
     });
     (buf, new_sels)
 }
@@ -1026,9 +1057,9 @@ mod tests {
     // ── WORD variants (W / B / E) ─────────────────────────────────────────────
 
     #[test]
-    fn next_long_word_start_skips_punct() {
+    fn next_WORD_start_skips_punct() {
         // W treats word+punct as one class — "hello.world" is a single WORD.
-        assert_state!("|hello.world bar\n", |(buf, sels)| cmd_next_long_word_start(buf, sels), "#[hello.world |b]#ar\n");
+        assert_state!("|hello.world bar\n", |(buf, sels)| cmd_next_WORD_start(buf, sels), "#[hello.world |b]#ar\n");
     }
 
     #[test]
@@ -1038,15 +1069,15 @@ mod tests {
     }
 
     #[test]
-    fn prev_long_word_start_skips_punct() {
+    fn prev_WORD_start_skips_punct() {
         // B: "hello.world" is one WORD, jump to its start.
-        assert_state!("hello.wor|ld bar\n", |(buf, sels)| cmd_prev_long_word_start(buf, sels), "#[|hello.wor]#ld bar\n");
+        assert_state!("hello.wor|ld bar\n", |(buf, sels)| cmd_prev_WORD_start(buf, sels), "#[|hello.wor]#ld bar\n");
     }
 
     #[test]
-    fn next_long_word_end_skips_punct() {
+    fn next_WORD_end_skips_punct() {
         // E: land on last char of the WORD (including adjacent punct).
-        assert_state!("|hello.world bar\n", |(buf, sels)| cmd_next_long_word_end(buf, sels), "#[hello.worl|d]# bar\n");
+        assert_state!("|hello.world bar\n", |(buf, sels)| cmd_next_WORD_end(buf, sels), "#[hello.worl|d]# bar\n");
     }
 
     // ── extend variants ───────────────────────────────────────────────────────
@@ -1060,6 +1091,44 @@ mod tests {
     #[test]
     fn extend_prev_word_start_backward() {
         assert_state!("hello |world\n", |(buf, sels)| cmd_extend_prev_word_start(buf, sels), "#[|hello ]#world\n");
+    }
+
+    // ── extend WORD variants ──────────────────────────────────────────────────
+
+    #[test]
+    fn extend_next_WORD_start_skips_punct() {
+        // Cursor inside "hello.world" — extend to next WORD start, skipping punct as part of WORD.
+        assert_state!("|hello.world foo\n", |(buf, sels)| cmd_extend_next_WORD_start(buf, sels), "#[hello.world |f]#oo\n");
+    }
+
+    #[test]
+    fn extend_next_WORD_start_grows_existing_selection() {
+        // Existing forward selection — extend head to the next WORD start.
+        assert_state!("#[hel|l]#o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_start(buf, sels), "#[hello.world |f]#oo\n");
+    }
+
+    #[test]
+    fn extend_prev_WORD_start_backward() {
+        // Cursor after a WORD that includes punctuation — extend back to its start.
+        assert_state!("hello.world |foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.world ]#foo\n");
+    }
+
+    #[test]
+    fn extend_prev_WORD_start_from_inside_WORD() {
+        // Cursor in middle of "hello.world" — extend back to the start of that WORD.
+        assert_state!("hello.wor|ld foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.wor]#ld foo\n");
+    }
+
+    #[test]
+    fn extend_next_WORD_end_skips_punct() {
+        // Cursor at start of "hello.world" — extend to its end (last char of the WORD).
+        assert_state!("|hello.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(buf, sels), "#[hello.worl|d]# foo\n");
+    }
+
+    #[test]
+    fn extend_next_WORD_end_grows_existing_selection() {
+        // Existing forward selection — extend head to end of next WORD.
+        assert_state!("#[hel|l]#o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(buf, sels), "#[hello.worl|d]# foo\n");
     }
 
     // ── next_paragraph (]p) ───────────────────────────────────────────────────
