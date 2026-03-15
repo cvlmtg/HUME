@@ -1,6 +1,18 @@
 use ropey::Rope;
 use std::ops::Range;
 
+/// Ensure `rope` ends with a `\n`, appending one if it doesn't.
+///
+/// Every `Buffer` must end with a structural trailing newline so that the
+/// cursor always has a character to sit on. This helper is the single
+/// enforcement point — all constructors funnel through it.
+fn ensure_trailing_newline(mut rope: Rope) -> Rope {
+    if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' {
+        rope.insert_char(rope.len_chars(), '\n');
+    }
+    rope
+}
+
 /// The core text storage type.
 ///
 /// `Buffer` wraps a [`ropey::Rope`], which is a balanced B-tree of Unicode
@@ -28,7 +40,11 @@ impl Buffer {
     /// Wrap a raw `Rope` into a `Buffer`. Inverse of `into_rope`.
     ///
     /// Used by `ChangeSet::apply` to construct the result buffer after
-    /// mutating the rope directly.
+    /// mutating the rope directly. This is the *raw* constructor — it does
+    /// **not** enforce the trailing `\n` invariant so that the changeset
+    /// algebra (invert/compose) remains self-consistent. The invariant is
+    /// upheld at the editing-operation level: `delete_char_forward` refuses
+    /// to delete the structural `\n`, so no user-facing changeset can remove it.
     pub(crate) fn from_rope(rope: Rope) -> Self {
         Self { rope }
     }
@@ -53,13 +69,7 @@ impl Buffer {
     /// A trailing `\n` is appended if `text` does not already end with one,
     /// upholding the invariant that editing buffers always end with a newline.
     pub(crate) fn from_str(text: &str) -> Self {
-        if text.ends_with('\n') {
-            Self { rope: Rope::from_str(text) }
-        } else {
-            let mut rope = Rope::from_str(text);
-            rope.insert_char(rope.len_chars(), '\n');
-            Self { rope }
-        }
+        Self { rope: ensure_trailing_newline(Rope::from_str(text)) }
     }
 
     /// Total number of Unicode scalar values (chars) in the buffer.
@@ -72,7 +82,11 @@ impl Buffer {
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
     pub(crate) fn is_empty(&self) -> bool {
-        self.rope.len_chars() <= 1
+        debug_assert!(
+            self.rope.len_chars() > 0,
+            "Buffer invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
+        );
+        self.rope.len_chars() == 1
     }
 
     /// Total number of lines. A buffer always has at least one line, even when
@@ -180,6 +194,18 @@ impl Eq for Buffer {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_rope_is_raw() {
+        // from_rope is the changeset algebra path — it does NOT enforce the
+        // trailing \n so that invert/compose remain self-consistent.
+        // The invariant is upheld by from_str / empty (user entry points) and
+        // by the editing-operation guards (e.g. delete_char_forward is a no-op
+        // on the structural \n).
+        let rope = Rope::from_str("hello\n");
+        let buf = Buffer::from_rope(rope);
+        assert_eq!(buf.to_string(), "hello\n");
+    }
 
     #[test]
     fn empty_buffer() {
