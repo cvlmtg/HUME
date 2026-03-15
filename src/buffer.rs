@@ -1,5 +1,43 @@
 use ropey::Rope;
+use std::borrow::Cow;
 use std::ops::Range;
+
+/// Whether the original file used LF or CRLF line endings.
+///
+/// Stored in the buffer so we can write the file back with the same endings.
+/// Internally, all buffer content is normalized to LF — `\r` is never present
+/// in the rope after loading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LineEnding {
+    /// Unix / macOS (default)
+    Lf,
+    /// Windows / DOS
+    CrLf,
+}
+
+/// Strip `\r` from `\r\n` pairs (CRLF → LF). Bare `\r` (old Mac) is left as-is.
+///
+/// Returns the normalized text (borrowed if no CRLF found, owned otherwise)
+/// and the detected `LineEnding`. If any `\r\n` pair is present, `CrLf` is
+/// returned even if some lines use LF only ("mixed" files are treated as CRLF).
+fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
+    if !text.contains('\r') {
+        return (Cow::Borrowed(text), LineEnding::Lf);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut found_crlf = false;
+    while let Some(ch) = chars.next() {
+        if ch == '\r' && chars.peek() == Some(&'\n') {
+            found_crlf = true;
+            // Skip the \r; the \n will be pushed on the next iteration.
+            continue;
+        }
+        out.push(ch);
+    }
+    let ending = if found_crlf { LineEnding::CrLf } else { LineEnding::Lf };
+    (Cow::Owned(out), ending)
+}
 
 /// Ensure `rope` ends with a `\n`, appending one if it doesn't.
 ///
@@ -34,6 +72,9 @@ fn ensure_trailing_newline(mut rope: Rope) -> Rope {
 #[derive(Debug, Clone)]
 pub(crate) struct Buffer {
     rope: Rope,
+    /// Original line-ending style. The rope is always LF-normalized internally;
+    /// this field records what to write back on save.
+    line_ending: LineEnding,
 }
 
 impl Buffer {
@@ -46,7 +87,9 @@ impl Buffer {
     /// upheld at the editing-operation level: `delete_char_forward` refuses
     /// to delete the structural `\n`, so no user-facing changeset can remove it.
     pub(crate) fn from_rope(rope: Rope) -> Self {
-        Self { rope }
+        // Raw constructor for ChangeSet::apply — no CRLF normalization needed
+        // because the source buffer was already normalized on load.
+        Self { rope, line_ending: LineEnding::Lf }
     }
 
     /// Consume the buffer and return the inner `Rope`.
@@ -61,25 +104,36 @@ impl Buffer {
 
     /// Create an empty buffer (contains only the structural trailing newline).
     pub(crate) fn empty() -> Self {
-        Self { rope: Rope::from_str("\n") }
+        Self { rope: Rope::from_str("\n"), line_ending: LineEnding::Lf }
     }
 
     /// Create a buffer pre-populated with `text`.
     ///
-    /// A trailing `\n` is appended if `text` does not already end with one,
-    /// upholding the invariant that editing buffers always end with a newline.
+    /// CRLF (`\r\n`) line endings are normalized to LF; the original style is
+    /// stored in `line_ending` for use when writing back to disk. Bare `\r`
+    /// (old Mac) is preserved as-is.
     ///
-    /// We check `text.ends_with('\n')` on the raw `&str` (O(1) byte check)
-    /// rather than using `ensure_trailing_newline` on the rope (O(log n)
-    /// traversal), since we still have the original string here.
+    /// A trailing `\n` is appended if the normalized text doesn't end with one.
+    /// We check `ends_with('\n')` on the `&str` (O(1) byte check) rather than
+    /// `ensure_trailing_newline` on the rope (O(log n) traversal).
     pub(crate) fn from_str(text: &str) -> Self {
-        if text.ends_with('\n') {
-            Self { rope: Rope::from_str(text) }
+        let (normalized, line_ending) = normalize_crlf(text);
+        let rope = if normalized.ends_with('\n') {
+            Rope::from_str(&normalized)
         } else {
-            let mut rope = Rope::from_str(text);
-            rope.insert_char(rope.len_chars(), '\n');
-            Self { rope }
-        }
+            let mut r = Rope::from_str(&normalized);
+            r.insert_char(r.len_chars(), '\n');
+            r
+        };
+        Self { rope, line_ending }
+    }
+
+    /// The line-ending style of the original file.
+    ///
+    /// The rope is always stored with LF (`\n`) only; this records what
+    /// to write back on save.
+    pub(crate) fn line_ending(&self) -> LineEnding {
+        self.line_ending
     }
 
     /// Total number of Unicode scalar values (chars) in the buffer.
@@ -159,7 +213,7 @@ impl Buffer {
         // Clone is O(log n) due to ropey's structural sharing.
         let mut rope = self.rope.clone();
         rope.insert(at, text);
-        Self { rope }
+        Self { rope, line_ending: self.line_ending }
     }
 
     /// Returns a new buffer with the char range `[from, to)` removed.
@@ -172,7 +226,7 @@ impl Buffer {
     pub(crate) fn remove(&self, from: usize, to: usize) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(from..to);
-        Self { rope }
+        Self { rope, line_ending: self.line_ending }
     }
 
 }
@@ -190,7 +244,9 @@ impl std::fmt::Display for Buffer {
     }
 }
 
-// `PartialEq` for tests: compare the text content.
+// `PartialEq` for tests: compare text content only.
+// `line_ending` is file-origin metadata — two buffers with identical content
+// but different original line endings are considered equal.
 impl PartialEq for Buffer {
     fn eq(&self, other: &Self) -> bool {
         self.rope == other.rope
@@ -233,6 +289,37 @@ mod tests {
         assert_eq!(buf.len_lines(), 3);  // line 0, line 1, trailing empty line
         assert!(!buf.is_empty());
         assert_eq!(buf.to_string(), "hello\nworld\n");
+    }
+
+    #[test]
+    fn from_str_lf_line_ending() {
+        let buf = Buffer::from_str("hello\n");
+        assert_eq!(buf.line_ending(), LineEnding::Lf);
+    }
+
+    #[test]
+    fn from_str_crlf_normalized() {
+        let buf = Buffer::from_str("hello\r\nworld\r\n");
+        // \r stripped — content is pure LF
+        assert_eq!(buf.to_string(), "hello\nworld\n");
+        assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
+        assert_eq!(buf.line_ending(), LineEnding::CrLf);
+    }
+
+    #[test]
+    fn from_str_mixed_crlf_lf() {
+        // Mixed: CRLF wins if any \r\n present.
+        let buf = Buffer::from_str("hello\r\nworld\n");
+        assert_eq!(buf.to_string(), "hello\nworld\n");
+        assert_eq!(buf.line_ending(), LineEnding::CrLf);
+    }
+
+    #[test]
+    fn from_str_bare_cr_preserved() {
+        // Old Mac bare \r is left as-is (treated as content, not a line ending).
+        let buf = Buffer::from_str("hello\rworld\n");
+        assert_eq!(buf.to_string(), "hello\rworld\n");
+        assert_eq!(buf.line_ending(), LineEnding::Lf);
     }
 
     #[test]
