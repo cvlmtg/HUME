@@ -56,10 +56,12 @@ pub(crate) fn apply_motion(
 
 /// Move one grapheme cluster to the right.
 ///
-/// Returns `buf.len_chars()` when already at or past the end — the grapheme
-/// API handles clamping so callers never get an out-of-bounds offset.
+/// Clamps to `buf.len_chars() - 1` so the cursor never moves past the
+/// trailing `\n` (which is always the last character in the buffer).
 fn move_right(buf: &Buffer, head: usize) -> usize {
-    next_grapheme_boundary(buf, head)
+    let next = next_grapheme_boundary(buf, head);
+    // len_chars() - 1 is safe: the buffer always has at least one char (\n).
+    next.min(buf.len_chars() - 1)
 }
 
 /// Move one grapheme cluster to the left.
@@ -172,6 +174,14 @@ fn move_down_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> u
 
     let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
     let target_start = buf.line_to_char(line + 1);
+
+    // The phantom trailing line (produced by the structural trailing \n) has
+    // target_start == len_chars(). Moving into it would place the cursor past
+    // all characters — stay put instead.
+    if target_start >= buf.len_chars() {
+        return head;
+    }
+
     let target_end = line_end_exclusive(buf, line + 1);
     let target = target_start + col;
 
@@ -279,7 +289,9 @@ fn next_word_start(
         prev_class = cur_class;
         pos += 1;
     }
-    pos // EOF
+    // Clamp to last valid position (the trailing \n). len - 1 is safe because
+    // the buffer always has at least one character.
+    pos.min(len - 1)
 }
 
 /// Move to the start of the previous word.
@@ -398,7 +410,9 @@ fn next_paragraph(buf: &Buffer, head: usize) -> usize {
     }
 
     if line >= total {
-        buf.len_chars() // no paragraph below — land at EOF
+        // No paragraph below — land on the trailing \n (last valid position).
+        // len_chars() - 1 is safe: every buffer has at least one char.
+        buf.len_chars() - 1
     } else {
         buf.line_to_char(line)
     }

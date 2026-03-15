@@ -185,7 +185,11 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
 /// This is the inverse of `parse_state`. It is used in assertions so that
 /// diffs show the annotated marker text rather than raw char offsets.
 pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
-    let text = buf.to_string();
+    let full = buf.to_string();
+    // Strip the structural trailing \n (present in every buffer) so that
+    // test strings show visible content only. A cursor on the trailing \n
+    // appears as "|" at the very end — e.g., "hello|" means cursor on \n.
+    let text = full.strip_suffix('\n').unwrap_or(&full);
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
 
@@ -285,7 +289,7 @@ mod tests {
     #[test]
     fn parse_collapsed_cursor_at_start() {
         let (buf, sels) = parse_state("|hello");
-        assert_eq!(buf.to_string(), "hello");
+        assert_eq!(buf.to_string(), "hello\n"); // trailing \n always present
         assert_eq!(sels.len(), 1);
         let s = sels.primary();
         assert!(s.is_cursor());
@@ -295,14 +299,14 @@ mod tests {
     #[test]
     fn parse_collapsed_cursor_at_end() {
         let (buf, sels) = parse_state("hello|");
-        assert_eq!(buf.to_string(), "hello");
+        assert_eq!(buf.to_string(), "hello\n"); // cursor at 5 = on the trailing \n
         assert_eq!(sels.primary().head, 5);
     }
 
     #[test]
     fn parse_collapsed_cursor_in_middle() {
         let (buf, sels) = parse_state("hel|lo");
-        assert_eq!(buf.to_string(), "hello");
+        assert_eq!(buf.to_string(), "hello\n");
         assert_eq!(sels.primary().head, 3);
     }
 
@@ -321,7 +325,7 @@ mod tests {
         // "#[hel|l]#o world" for this selection. Both forms parse identically:
         // anchor=0, head=3, buffer="hello world".
         let (buf, sels) = parse_state("#[hel|lo]# world");
-        assert_eq!(buf.to_string(), "hello world");
+        assert_eq!(buf.to_string(), "hello world\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 0);
         assert_eq!(s.head, 3);
@@ -331,7 +335,7 @@ mod tests {
     fn parse_backward_selection() {
         // #[|hel]#lo → anchor=3, head=0
         let (buf, sels) = parse_state("#[|hel]#lo");
-        assert_eq!(buf.to_string(), "hello");
+        assert_eq!(buf.to_string(), "hello\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 3);
         assert_eq!(s.head, 0);
@@ -343,7 +347,7 @@ mod tests {
         // selection extends to the end of the annotated text (but not
         // the end of the buffer — 'e' at offset 7 is unselected).
         let (buf, sels) = parse_state("hi #[the|re]#");
-        assert_eq!(buf.to_string(), "hi there");
+        assert_eq!(buf.to_string(), "hi there\n");
         let s = sels.primary();
         assert_eq!(s.anchor, 3);
         assert_eq!(s.head, 6);
@@ -352,7 +356,7 @@ mod tests {
     #[test]
     fn parse_two_collapsed_cursors() {
         let (buf, sels) = parse_state("|foo| bar");
-        assert_eq!(buf.to_string(), "foo bar");
+        assert_eq!(buf.to_string(), "foo bar\n");
         assert_eq!(sels.len(), 2);
         assert_eq!(sels.iter_sorted().next().unwrap().head, 0);
         assert_eq!(sels.iter_sorted().nth(1).unwrap().head, 3);
@@ -361,7 +365,7 @@ mod tests {
     #[test]
     fn parse_two_forward_selections() {
         let (buf, sels) = parse_state("#[a|bc]# #[d|ef]#");
-        assert_eq!(buf.to_string(), "abc def");
+        assert_eq!(buf.to_string(), "abc def\n");
         assert_eq!(sels.len(), 2);
         let mut it = sels.iter_sorted();
         let s0 = it.next().unwrap();
@@ -374,14 +378,14 @@ mod tests {
     fn parse_cursor_on_unicode_char() {
         // "é" is U+00E9, a single Unicode scalar value (1 char).
         let (buf, sels) = parse_state("caf|é");
-        assert_eq!(buf.to_string(), "café");
+        assert_eq!(buf.to_string(), "café\n");
         assert_eq!(sels.primary().head, 3);
     }
 
     #[test]
     fn parse_empty_selection_collapsed_at_zero() {
         let (buf, sels) = parse_state("|");
-        assert_eq!(buf.to_string(), "");
+        assert_eq!(buf.to_string(), "\n"); // empty buffer = only the trailing \n
         assert_eq!(sels.primary().head, 0);
     }
 
@@ -421,12 +425,10 @@ mod tests {
 
     #[test]
     fn serialize_forward_selection_head_at_eof() {
-        // In the inclusive cursor model, a non-cursor selection with
-        // head == len_chars is technically invalid (no character to sit on),
-        // but serialize_state should handle it gracefully rather than panic.
+        // head=5 is the trailing \n in "hello\n" — a valid position.
+        // After stripping the trailing \n, the cursor appears at the end.
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::new(0, 5));
-        // ]# is clamped to position 5 (len_chars) instead of 6 (out of bounds).
         let s = serialize_state(&buf, &sels);
         assert_eq!(s, "#[hello|]#");
     }

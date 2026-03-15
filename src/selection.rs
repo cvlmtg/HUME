@@ -7,9 +7,11 @@
 /// When `anchor == head`, the selection covers a single character — the one at
 /// index `head`. This is the smallest possible selection, not a zero-width
 /// point. The cursor block sits on that character, matching Helix/Kakoune's
-/// inclusive model. The only exception is at EOF (`head == buf.len_chars()`),
-/// where there is no character to sit on; that position is valid but renders
-/// the cursor past the last character.
+/// inclusive model.
+///
+/// `head` must always be a valid char index (`< buf.len_chars()`). Since every
+/// buffer always ends with a trailing `\n`, there is always at least one
+/// character to sit on — even in an "empty" buffer.
 ///
 /// # Directional selections
 ///

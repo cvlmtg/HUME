@@ -53,7 +53,8 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
 ///
 /// - **Single-character selection**: delete the grapheme cluster at `head`
 ///   (the character the cursor sits on). Cursor stays at the same offset
-///   (it now points to what was the next character). No-op at end of buffer.
+///   (it now points to what was the next character). No-op when the cursor
+///   is on the trailing `\n` (the structural last character of every buffer).
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`.
 pub(crate) fn delete_char_forward(
@@ -67,10 +68,9 @@ pub(crate) fn delete_char_forward(
     for sel in sels.iter_sorted() {
         if sel.is_cursor() {
             let p = sel.head;
-            if p >= buf.len_chars() {
-                // At end of buffer — nothing to delete. Retain up to here
-                // (which may be zero if we're already there) and record the
-                // cursor at the current new-doc position.
+            if p + 1 >= buf.len_chars() {
+                // Cursor is on the last character (the structural trailing \n)
+                // — deleting it would violate the buffer invariant. No-op.
                 b.retain(p - b.old_pos());
                 new_sels.push(Selection::cursor(b.new_pos()));
                 continue;

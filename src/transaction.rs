@@ -81,8 +81,9 @@ mod tests {
 
     #[test]
     fn transaction_apply() {
+        // "hello\n" = 6 chars; insert "!" at start → "!hello\n".
         let buf = Buffer::from_str("hello");
-        let mut b = ChangeSetBuilder::new(5);
+        let mut b = ChangeSetBuilder::new(6);
         b.insert("!");
         b.retain_rest();
         let cs = b.finish();
@@ -91,7 +92,7 @@ mod tests {
         let txn = Transaction::new(cs, sels.clone());
 
         let (new_buf, new_sels) = txn.apply(buf);
-        assert_eq!(new_buf.to_string(), "!hello");
+        assert_eq!(new_buf.to_string(), "!hello\n");
         assert_eq!(new_sels.primary().head, 1);
     }
 }
