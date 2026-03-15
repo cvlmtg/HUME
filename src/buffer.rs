@@ -68,8 +68,18 @@ impl Buffer {
     ///
     /// A trailing `\n` is appended if `text` does not already end with one,
     /// upholding the invariant that editing buffers always end with a newline.
+    ///
+    /// We check `text.ends_with('\n')` on the raw `&str` (O(1) byte check)
+    /// rather than using `ensure_trailing_newline` on the rope (O(log n)
+    /// traversal), since we still have the original string here.
     pub(crate) fn from_str(text: &str) -> Self {
-        Self { rope: ensure_trailing_newline(Rope::from_str(text)) }
+        if text.ends_with('\n') {
+            Self { rope: Rope::from_str(text) }
+        } else {
+            let mut rope = Rope::from_str(text);
+            rope.insert_char(rope.len_chars(), '\n');
+            Self { rope }
+        }
     }
 
     /// Total number of Unicode scalar values (chars) in the buffer.
