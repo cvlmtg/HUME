@@ -1,5 +1,6 @@
 use crate::buffer::Buffer;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_end_exclusive, CharClass};
 use crate::selection::{Selection, SelectionSet};
 
 // ── Motion mode ───────────────────────────────────────────────────────────────
@@ -72,16 +73,6 @@ fn move_left(buf: &Buffer, head: usize) -> usize {
 }
 
 // ── Line motion helpers ───────────────────────────────────────────────────────
-
-/// Exclusive end of `line`: char offset of the first char on the *next* line,
-/// or `buf.len_chars()` for the last line.
-fn line_end_exclusive(buf: &Buffer, line: usize) -> usize {
-    if line + 1 < buf.len_lines() {
-        buf.line_to_char(line + 1)
-    } else {
-        buf.len_chars()
-    }
-}
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,
 /// walking forward from `line_start`. Used by vertical motions after computing
@@ -212,47 +203,6 @@ fn move_up_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> usi
     } else {
         snap_to_grapheme_boundary(buf, target_start, target)
     }
-}
-
-// ── Word motion helpers ───────────────────────────────────────────────────────
-
-/// Broad category of a character for word-boundary detection.
-///
-/// `Eol` is distinct from `Space` so that `w` can stop at newlines (matching
-/// Helix), rather than treating `\n` as ordinary whitespace to skip over.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CharClass {
-    Word,        // alphanumeric + underscore
-    Punctuation, // other non-whitespace, non-newline
-    Space,       // space, tab
-    Eol,         // newline
-}
-
-fn classify_char(ch: char) -> CharClass {
-    if ch == '\n' {
-        CharClass::Eol
-    } else if ch == ' ' || ch == '\t' {
-        CharClass::Space
-    } else if ch.is_alphanumeric() || ch == '_' {
-        CharClass::Word
-    } else {
-        CharClass::Punctuation
-    }
-}
-
-/// Any category change is a word boundary.
-fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
-    a != b
-}
-
-/// Word and Punctuation are treated as the same "long word" class — only
-/// transitions involving Space or Eol count.
-#[allow(non_snake_case)]
-fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
-    let merge = |c: CharClass| {
-        if c == CharClass::Punctuation { CharClass::Word } else { c }
-    };
-    merge(a) != merge(b)
 }
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────

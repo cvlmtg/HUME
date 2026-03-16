@@ -55,7 +55,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] ChangeSet: OT-style edit descriptions (Retain/Delete/Insert) with apply, map_pos, invert, compose. Builder pattern for constructing changesets. Edit operations refactored to build changesets.
 - [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of editing for future undo/redo
 - [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping is an M3/keybinding concern.
-- [ ] Text objects: inside/around word, quotes, brackets, line
+- [x] Text objects: inside/around word, quotes, brackets, line
 - [ ] Selection manipulation: extend, shrink, split, merge overlapping selections
 - [ ] Registers: named yank/paste buffers (`"a`–`"z`) including system clipboard register (`"+`)
 - [ ] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
