@@ -2,8 +2,10 @@ pub(crate) mod buffer;
 pub(crate) mod changeset;
 pub(crate) mod edit;
 pub(crate) mod grapheme;
+pub(crate) mod helpers;
 pub(crate) mod motion;
 pub(crate) mod selection;
+pub(crate) mod text_object;
 pub(crate) mod transaction;
 
 // The test DSL is compiled only when running tests. It lives in its own
