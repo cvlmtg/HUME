@@ -395,3 +395,294 @@ failure modes; `From` + `?` compose them with no boilerplate.
 HUME's rule: `debug_assert` for engine internals, `assert` for builder
 contracts that imply a programming mistake too severe to recover from, `Result`
 for anything that crosses the plugin boundary.
+
+---
+
+## Motions vs Text Objects
+
+### The conceptual split
+
+Both motions and text objects take a cursor position and produce a selection.
+The difference is in how the anchor of that selection is determined:
+
+| Concept | Inner fn output | Anchor of resulting selection |
+|---------|----------------|-------------------------------|
+| Motion | new *head* position | determined by `MotionMode` (may come from old selection state) |
+| Text object | absolute `(start, end)` range | always `start` — independent of previous selection |
+
+A motion inner function only answers "where does the head go?". With
+`MotionMode::Select` (which `w` uses), the anchor is set to the *old* head,
+so pressing `w` selects the span from the current cursor to the next word
+start — it is not a bare cursor jump. With `MotionMode::Move` (`h`, `l`), the
+anchor collapses to the new head, producing a single-character selection.
+
+A text object bypasses `MotionMode` entirely. It returns a complete range and
+the framework always creates `Selection::new(start, end)` — the previous
+anchor is discarded.
+
+This distinction drives two separate framework functions: `apply_motion` and
+`apply_text_object`.
+
+### The inner function pattern
+
+Both frameworks follow the same design: the inner function is *pure and
+ignorant of multi-cursor*. It receives one position and returns one result.
+The framework function handles iterating over all selections and merging any
+that converge to the same range.
+
+```rust
+// Motion inner function: position → position
+fn move_right(buf: &Buffer, head: usize) -> usize { ... }
+
+// Text object inner function: position → Option<(start, end)>
+fn inner_word(buf: &Buffer, pos: usize) -> Option<(usize, usize)> { ... }
+```
+
+Returning `Option` from a text object inner function means "no match at this
+position". On `None`, the existing selection is preserved — `mi(` when not
+inside parens is a no-op, matching Helix behaviour.
+
+### `map_and_merge`
+
+Both `apply_motion` and `apply_text_object` use `map_and_merge` on the
+`SelectionSet`. After mapping each selection through the inner function, any
+selections that have converged to the same range are automatically merged into
+one. This is essential for multicursor correctness: if two cursors are both
+inside the same bracket pair and you press `mi(`, you don't want two identical
+overlapping selections — you want one.
+
+---
+
+## MotionMode: Separating Position from Anchor Semantics
+
+### A concrete walkthrough
+
+Buffer: `"hello world\n"`, cursor on `'h'` (position 0).
+
+Before `w` is pressed, the `SelectionSet` contains one selection:
+
+```
+Selection { anchor: 0, head: 0 }   ← single-char selection on 'h'
+```
+
+Pressing `w` calls `apply_motion(buf, sels, MotionMode::Select, next_word_start)`.
+
+**Step 1 — inner motion function.** `next_word_start(buf, head=0)` scans forward:
+
+```
+pos 0: 'h' → Word
+pos 1: 'e' → Word  (no boundary)
+pos 2: 'l' → Word  (no boundary)
+pos 3: 'l' → Word  (no boundary)
+pos 4: 'o' → Word  (no boundary)
+pos 5: ' ' → Space (boundary! but Space is Space → skip, don't stop here)
+pos 6: 'w' → Word  (boundary! and not Space → STOP, return 6)
+```
+
+The inner function returns `6`. It knows nothing about the old selection.
+
+**Step 2 — apply `MotionMode::Select`.** `apply_motion` builds the new selection:
+
+```
+Select → anchor = old_head (0), head = new_head (6)
+Result: Selection { anchor: 0, head: 6 }
+```
+
+This covers positions 0–6 inclusive: `h e l l o   w` — seven characters.
+The selection runs from where the cursor *was* to where it *landed*.
+
+**This is the traversed span, not the destination word.** The character at
+position 6 is `'w'` — the first character of `"world"`, where the cursor
+landed. To select all of `"world"`, you would use the `iw` text object instead.
+`w` selects what it crosses on the way there.
+
+### The three modes side by side
+
+Starting from `{ anchor: 0, head: 0 }` on `'h'`, with `next_word_start`
+returning `6`:
+
+| Mode | Rule | Result | What the user sees |
+|------|------|--------|-------------------|
+| `Move`   | `anchor = new_head` | `{ anchor: 6, head: 6 }` | cursor jumps to `'w'`, no selection grows — `h`/`l` work this way |
+| `Select` | `anchor = old_head` | `{ anchor: 0, head: 6 }` | `"hello w"` selected — `w` works this way (Kakoune model) |
+| `Extend` | `anchor = old_anchor` | `{ anchor: 0, head: 6 }` | same here because old_anchor was also 0 |
+
+`Extend` differs from `Select` when a live selection already exists. Suppose
+the user earlier extended a selection so that `anchor=0, head=3`. Pressing an
+`Extend` variant keeps `anchor=0` and only moves the head to 6. Pressing a
+`Select` variant resets the anchor to the current head (3) and extends from
+there to 6 — discarding the earlier anchor.
+
+**Kakoune vs Helix**: in Kakoune, `w` uses `Select` — anchor at old cursor,
+head at next word start, selecting the traversed span. In Helix's normal mode,
+`w` uses `Move` — the cursor just jumps, producing a single-char selection at
+the destination. HUME follows Kakoune's model for word motions.
+
+The practical consequence becomes clear when you want to **change the second
+word** on a line, starting from column 0 in `"hello world"`:
+
+*Kakoune* (`w` = Select): chain motions — each one reanchors at the previous
+head and extends from there.
+```
+w   → anchor=0 ('h'), head=6 ('w') — traversed "hello w", not useful yet
+e   → anchor=6 ('w'), head=10 ('d') — 'e' reanchors at current head, extends to word end
+c   → change "world"
+```
+The selection is built up incrementally across two chained motions: `wec`.
+
+*Helix* (`w` = Move): motions are pure navigation; grab a region with a text
+object after landing.
+```
+w    → cursor jumps to 'w' (pos 6), single-char selection — no span accumulated
+iw   → text object selects "world" from current cursor
+c    → change "world"
+```
+Helix style: navigate first, then name the region: `w` then `iw` then `c`.
+
+Kakoune's chaining model is more composable — motions double as selection
+builders. Helix's model is more predictable — `w` always means "go there",
+never "select up to there".
+
+### Why separate the inner function from the mode
+
+The inner function `fn(&Buffer, usize) -> usize` only computes a position —
+it is a pure coordinate calculation. The mode is a concern of the keymap layer
+(which knows what the user intended), not of the motion itself. This means:
+
+- Adding a new motion (e.g. "next paragraph") requires writing one position
+  function; it automatically gains all three mode variants for free.
+- Testing the motion is simple: just assert on the returned position.
+
+```rust
+match mode {
+    MotionMode::Move   => Selection::cursor(new_head),
+    MotionMode::Select => Selection::new(sel.head, new_head),
+    MotionMode::Extend => Selection::new(sel.anchor, new_head),
+}
+```
+
+---
+
+## CharClass: Word Boundaries and the Eol Split
+
+### word vs WORD
+
+Vim and Helix distinguish two kinds of "word":
+
+- `word` (lowercase): a run of alphanumeric/underscore characters, a run of
+  punctuation, or a run of whitespace. Any category change is a boundary.
+- `WORD` (uppercase): a run of any non-whitespace characters. Only a
+  whitespace boundary counts.
+
+In `helpers.rs`, this is captured by `CharClass` and two boundary predicates:
+
+```rust
+pub enum CharClass { Word, Punctuation, Space, Eol }
+
+// word: any class change is a boundary
+fn is_word_boundary(a: CharClass, b: CharClass) -> bool { a != b }
+
+// WORD: treat Punctuation as Word — only whitespace/Eol changes count
+fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
+    let merge = |c| if c == Punctuation { Word } else { c };
+    merge(a) != merge(b)
+}
+```
+
+Text object and motion implementations take the boundary predicate as a
+parameter (`impl Fn(CharClass, CharClass) -> bool`), so `inner_word_impl`
+serves both `iw` and `iW` without duplication.
+
+### Why Eol is its own class
+
+`\n` could be treated as `Space` — after all, it is whitespace. But if it were,
+`w` (move to next word start) would skip over newlines the same way it skips
+spaces, meaning it could jump two logical lines in one keypress.
+
+Helix stops `w` at newlines: moving forward from the last word on a line lands
+on the `\n`, not on the first word of the next line. Making `Eol` a distinct
+class in `CharClass` is what enforces this — the `\n` is always a class
+boundary, so word-forward stops there.
+
+---
+
+## Inner vs Around: The Text Object Convention
+
+Every text object in HUME comes in two flavours, following Vim/Helix convention:
+
+- **`inner` (`i` prefix)**: the content *without* the delimiters. `i(` selects
+  the text inside parentheses; `iw` selects the word without surrounding space.
+- **`around` (`a` prefix)**: the content *including* the delimiters. `a(`
+  selects the parentheses and their contents; `aw` selects the word plus one
+  adjacent whitespace run.
+
+In code, `inner_bracket` and `around_bracket` share `find_bracket_pair` to
+locate the pair, then diverge on what range to return:
+
+```rust
+fn inner_bracket(buf, pos, open, close) -> Option<(usize, usize)> {
+    let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
+    Some((open_pos + 1, close_pos - 1))  // exclude the brackets
+}
+
+fn around_bracket(buf, pos, open, close) -> Option<(usize, usize)> {
+    find_bracket_pair(buf, pos, open, close)  // include the brackets
+}
+```
+
+The around-word rule is more nuanced: prefer including trailing whitespace
+(so deleting `aw` leaves no double-space), fall back to leading whitespace if
+there is no trailing space. This matches Vim's long-established behaviour.
+
+---
+
+## Quote Scanning: Parity Instead of Depth
+
+### Why quotes are different from brackets
+
+Brackets use distinct open and close characters (`(` vs `)`), which allows a
+depth-tracking scan: increment depth on open, decrement on close, stop at
+depth zero. This correctly handles nesting.
+
+Quotes use the *same* character for open and close (`"..."`, `'...'`). There
+is no depth to track, and nesting is ambiguous anyway (most languages don't
+allow nested same-character quotes). A different algorithm is needed.
+
+### The parity scan
+
+`find_quote_pair` scans the current line and uses parity to assign roles:
+
+```
+Position:  0   1   2   3   4   5   6   7
+           "   h   e   l   l   o   "   !
+           ↑                   ↑
+         odd (open)          even (close)
+```
+
+Every quote character found on the line alternates between "opening" (odd
+occurrence) and "closing" (even occurrence). When a complete pair is found,
+the algorithm checks whether `pos` falls inside it (`open_pos <= pos <= close_pos`).
+
+```rust
+let mut open: Option<usize> = None;
+for i in line_start..line_end {
+    if buf.char_at(i) == Some(quote) {
+        match open {
+            None        => open = Some(i),            // odd → opening
+            Some(op)    => {                           // even → closing
+                if op <= pos && pos <= i {
+                    return Some((op, i));
+                }
+                open = None;                           // reset for next pair
+            }
+        }
+    }
+}
+```
+
+A cursor ON a quote character is handled by the same parity logic: whether
+that quote is the opener or closer depends on how many quotes precede it on
+the line. The scan resolves this automatically.
+
+Quotes don't span lines in M1 — the scan is bounded to `line_start..line_end`.
+Bracket text objects do span lines (their scans walk the full buffer).
