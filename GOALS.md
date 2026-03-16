@@ -67,3 +67,9 @@ HUME requires **true color (24-bit)** and **synchronized output**. The **kitty k
 | **GNOME Terminal** | Linux | yes | no | yes | Common Linux default |
 | **Konsole** | Linux | yes | no | yes | KDE default |
 | **tmux** | cross-platform | yes (with config) | **no** | yes (3.3+) | Multiplexer — sits between emulator and app; does not pass through kitty protocol |
+
+## Open Questions
+
+| Question | Context |
+|----------|---------|
+| Multiline quote text objects | Quote text objects (`i"`, `i'`, `` i` ``) are line-bounded because the parity scan gives wrong results when earlier lines contain unmatched quotes. Brackets don't have this problem (asymmetric delimiters allow depth tracking). Tree-sitter can resolve the ambiguity — use syntax-aware matching when a grammar is loaded, fall back to line-bounded parity otherwise. |
