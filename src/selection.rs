@@ -214,45 +214,77 @@ impl SelectionSet {
         // original order — important for picking the primary correctly.
         self.selections.sort_by_key(|s| s.start());
 
-        let mut merged: Vec<Selection> = Vec::with_capacity(self.selections.len());
+        // In-place compaction using a read/write cursor pattern.
+        //
+        // Classic technique: `write` marks the last "kept" slot, `read`
+        // advances through the rest. When two adjacent entries overlap we
+        // merge into `selections[write]`; otherwise we bump `write` and
+        // copy the new entry there. At the end, `truncate` drops the
+        // leftover tail. This avoids allocating a second Vec — we reuse
+        // the memory we already own.
+        let mut write = 0;
         let mut new_primary = 0;
 
-        for sel in self.selections {
-            if let Some(last) = merged.last_mut() {
-                // Two selections overlap or are adjacent (last.end == sel.start).
-                if sel.start() <= last.end() {
-                    // Extend `last` to cover `sel` as well.
-                    // Head comes from whichever selection reaches furthest —
-                    // this preserves the direction of the "dominant" selection.
-                    if sel.end() > last.end() {
-                        // If `sel` was a backward selection (head < anchor), keep
-                        // the backward direction on the merged result.
-                        if sel.head <= sel.anchor {
-                            last.head = last.start().min(sel.head);
-                            last.anchor = sel.end();
-                        } else {
-                            last.anchor = last.start();
-                            last.head = sel.end();
-                        }
+        for read in 1..self.selections.len() {
+            // Copy `sel` out first — Selection is `Copy` (two `usize`
+            // fields), so this is a cheap stack copy, not a heap clone.
+            let sel = self.selections[read];
+
+            // Reborrow `self.selections[write]` mutably so we can extend
+            // it if there's overlap. Rust's borrow checker is happy
+            // because we copied `sel` out above — we're not holding two
+            // references into the same slice simultaneously.
+            let last = &mut self.selections[write];
+
+            if sel.start() <= last.end() {
+                // Overlap or adjacent — extend `last` to cover `sel`.
+                // Head comes from whichever selection reaches furthest —
+                // this preserves the direction of the "dominant" selection.
+                if sel.end() > last.end() {
+                    // If `sel` was a backward selection (head < anchor), keep
+                    // the backward direction on the merged result.
+                    if sel.head <= sel.anchor {
+                        last.head = last.start().min(sel.head);
+                        last.anchor = sel.end();
+                    } else {
+                        last.anchor = last.start();
+                        last.head = sel.end();
                     }
-                    // Track where the primary ended up.
-                    if primary_before.start() >= last.start()
-                        && primary_before.end() <= last.end()
-                    {
-                        new_primary = merged.len() - 1;
-                    }
-                    continue;
                 }
+                // Track where the primary ended up.
+                if primary_before.start() >= last.start()
+                    && primary_before.end() <= last.end()
+                {
+                    new_primary = write;
+                }
+            } else {
+                // No overlap — finalize the current write slot, then advance.
+                let done = &self.selections[write];
+                if done.start() >= primary_before.start()
+                    && done.end() <= primary_before.end()
+                {
+                    new_primary = write;
+                }
+                write += 1;
+                // Move `sel` into the next write slot. Because Selection is
+                // Copy, this is a plain assignment — no heap work.
+                self.selections[write] = sel;
             }
-            if sel.start() >= primary_before.start()
-                && sel.end() <= primary_before.end()
-            {
-                new_primary = merged.len();
-            }
-            merged.push(sel);
         }
 
-        Self { selections: merged, primary: new_primary }
+        // Check the final write slot for primary.
+        let done = &self.selections[write];
+        if done.start() >= primary_before.start()
+            && done.end() <= primary_before.end()
+        {
+            new_primary = write;
+        }
+
+        // Drop everything after `write`. `truncate` adjusts the Vec's
+        // length without reallocating — the capacity stays the same.
+        self.selections.truncate(write + 1);
+
+        Self { selections: self.selections, primary: new_primary }
     }
 
     /// Build a `SelectionSet` directly from a non-empty `Vec<Selection>`,
