@@ -89,7 +89,7 @@ impl Buffer {
     pub(crate) fn from_rope(rope: Rope) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
-        debug_assert!(
+        assert!(
             rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
             "Buffer invariant violated: rope must end with '\\n' (len={})",
             rope.len_chars(),
