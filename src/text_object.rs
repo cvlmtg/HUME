@@ -322,28 +322,29 @@ bracket_cmds!(cmd_inner_angle, cmd_around_angle, '<', '>');
 
 /// Find the quote pair on the current line that encloses or is nearest to `pos`.
 ///
-/// Quotes don't span lines (M1 limitation). Strategy: collect all positions of
-/// `quote` on the current line, pair them sequentially (0+1, 2+3, …), then find
-/// the pair that contains `pos`.
+/// Quotes don't span lines (M1 limitation). Strategy: scan the current line
+/// tracking parity — odd occurrences are opening quotes, even occurrences are
+/// closing quotes. Returns the pair that contains `pos`.
 ///
-/// If `pos` is ON a quote char, it can be either an open or close quote depending
-/// on parity — the sequential pairing resolves this naturally.
+/// If `pos` is ON a quote char, parity resolves whether it is open or close.
 fn find_quote_pair(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
     let line_start = buf.line_to_char(line);
     let line_end = line_end_exclusive(buf, line);
 
-    // Collect all positions of `quote` on this line.
-    let positions: Vec<usize> = (line_start..line_end)
-        .filter(|&i| buf.char_at(i) == Some(quote))
-        .collect();
-
-    // Pair sequentially and find the one containing `pos`.
-    for chunk in positions.chunks(2) {
-        if let [open, close] = *chunk {
-            // The cursor is "inside" a pair if open <= pos <= close.
-            if open <= pos && pos <= close {
-                return Some((open, close));
+    // Single pass: track the opening quote position; on every second hit we
+    // have a complete pair and can test whether `pos` falls inside it.
+    let mut open: Option<usize> = None;
+    for i in line_start..line_end {
+        if buf.char_at(i) == Some(quote) {
+            match open {
+                None => open = Some(i), // odd occurrence → opening quote
+                Some(open_pos) => {     // even occurrence → closing quote
+                    if open_pos <= pos && pos <= i {
+                        return Some((open_pos, i));
+                    }
+                    open = None; // reset for next pair
+                }
             }
         }
     }
