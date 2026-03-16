@@ -46,6 +46,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
     b.retain_rest();
     let new_buf = b.finish().apply(buf);
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
     (new_buf, new_sel_set)
 }
 
@@ -94,6 +95,7 @@ pub(crate) fn delete_char_forward(
     b.retain_rest();
     let new_buf = b.finish().apply(buf);
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
     (new_buf, new_sel_set)
 }
 
@@ -138,6 +140,7 @@ pub(crate) fn delete_char_backward(
     b.retain_rest();
     let new_buf = b.finish().apply(buf);
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
     (new_buf, new_sel_set)
 }
 

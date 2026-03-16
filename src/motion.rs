@@ -43,14 +43,16 @@ pub(crate) fn apply_motion(
     mode: MotionMode,
     motion: impl Fn(&Buffer, usize) -> usize,
 ) -> SelectionSet {
-    sels.map_and_merge(|sel| {
+    let result = sels.map_and_merge(|sel| {
         let new_head = motion(buf, sel.head);
         match mode {
             MotionMode::Move => Selection::cursor(new_head),
             MotionMode::Select => Selection::new(sel.head, new_head),
             MotionMode::Extend => Selection::new(sel.anchor, new_head),
         }
-    })
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
 }
 
 // ── Character motions (inner) ─────────────────────────────────────────────────

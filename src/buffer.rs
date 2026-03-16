@@ -89,6 +89,11 @@ impl Buffer {
     pub(crate) fn from_rope(rope: Rope) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
+        debug_assert!(
+            rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
+            "Buffer invariant violated: rope must end with '\\n' (len={})",
+            rope.len_chars(),
+        );
         Self { rope, line_ending: LineEnding::Lf }
     }
 
@@ -150,7 +155,7 @@ impl Buffer {
             self.rope.len_chars() > 0,
             "Buffer invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
         );
-        self.rope.len_chars() == 1
+        self.rope.len_chars() == 1 && self.rope.char(0) == '\n'
     }
 
     /// Total number of lines. A buffer always has at least one line, even when

@@ -239,6 +239,11 @@ impl ChangeSet {
             }
         }
 
+        debug_assert!(
+            rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
+            "ChangeSet::apply produced a buffer without trailing newline — \
+             a Delete operation covered the structural '\\n'",
+        );
         Buffer::from_rope(rope)
     }
 
@@ -1312,28 +1317,31 @@ mod tests {
 
     /// Generate a random valid `ChangeSet` for a document of `doc_len` chars.
     ///
-    /// Strategy: partition the old document into segments, each assigned a
-    /// random operation (retain or delete). Insert random text between any
-    /// two segments with some probability.
+    /// Strategy: partition the document's *content* (`doc_len - 1` chars) into
+    /// segments, each assigned a random operation (retain or delete). Insert
+    /// random text between segments with some probability. The structural
+    /// trailing `\n` (last char) is always retained — user-facing changesets
+    /// must never delete it.
     fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
-        // Generate a sequence of (action, length) pairs that consume
-        // exactly doc_len old chars, plus random inserts.
-        let max_ops = (doc_len + 1).min(8); // keep it bounded
+        // Only operate on the content chars; the trailing \n is handled
+        // separately below. saturating_sub guards the impossible doc_len == 0.
+        let content_len = doc_len.saturating_sub(1);
+        let max_ops = (content_len + 1).min(8); // keep it bounded
         proptest::collection::vec(
             (
                 prop_oneof![Just(0u8), Just(1u8), Just(2u8)], // 0=retain, 1=delete, 2=insert
                 1..=5usize,                                    // segment length
                 arb_text(4),                                   // text for inserts
             ),
-            1..=max_ops,
+            0..=max_ops,
         )
         .prop_map(move |raw_ops| {
             let mut builder = ChangeSetBuilder::new(doc_len);
-            let mut remaining = doc_len;
+            let mut remaining = content_len;
 
             for (action, len, text) in raw_ops {
                 if remaining == 0 {
-                    // Only inserts are possible once we've consumed all old chars.
+                    // Only inserts are possible once we've consumed all content chars.
                     if action == 2 && !text.is_empty() {
                         builder.insert(&text);
                     }
@@ -1361,10 +1369,10 @@ mod tests {
                 }
             }
 
-            // Retain any remaining old chars to finish the changeset.
-            if remaining > 0 {
-                builder.retain(remaining);
-            }
+            // Retain any unconsumed content chars, then always retain the
+            // structural trailing \n — user edits must never delete it.
+            builder.retain(remaining); // no-op if remaining == 0
+            builder.retain(1);         // structural \n
             builder.finish()
         })
     }
