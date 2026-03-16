@@ -297,6 +297,32 @@ impl SelectionSet {
         assert!(primary < selections.len(), "primary index out of bounds");
         Self { selections, primary }
     }
+
+    /// Assert (in debug builds) that every selection's `head` and `anchor`
+    /// are within bounds for a buffer of `buf_len` chars.
+    ///
+    /// The invariant is `head < buf_len` and `anchor < buf_len` — selections
+    /// are zero-indexed and must not point past the last character (the
+    /// structural trailing `\n`).
+    ///
+    /// Call this at every chokepoint where a `(Buffer, SelectionSet)` pair is
+    /// produced: edit operations, motions, and `Transaction::apply`.
+    #[inline]
+    pub(crate) fn debug_assert_valid(&self, buf_len: usize) {
+        debug_assert!(buf_len > 0, "Buffer must have at least 1 char (the structural \\n)");
+        for (i, sel) in self.selections.iter().enumerate() {
+            debug_assert!(
+                sel.head < buf_len,
+                "Selection {i}: head {} >= buf_len {buf_len} — cursor is past the end of the buffer",
+                sel.head,
+            );
+            debug_assert!(
+                sel.anchor < buf_len,
+                "Selection {i}: anchor {} >= buf_len {buf_len} — anchor is past the end of the buffer",
+                sel.anchor,
+            );
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

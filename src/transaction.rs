@@ -56,6 +56,7 @@ impl Transaction {
     /// discarded or replaced.
     pub(crate) fn apply(self, buf: Buffer) -> (Buffer, SelectionSet) {
         let new_buf = self.changes.apply(buf);
+        self.selection.debug_assert_valid(new_buf.len_chars());
         (new_buf, self.selection)
     }
 
