@@ -1,6 +1,7 @@
 pub(crate) mod buffer;
 pub(crate) mod changeset;
 pub(crate) mod edit;
+pub(crate) mod error;
 pub(crate) mod grapheme;
 pub(crate) mod helpers;
 pub(crate) mod motion;

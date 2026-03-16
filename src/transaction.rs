@@ -1,5 +1,6 @@
 use crate::buffer::Buffer;
 use crate::changeset::ChangeSet;
+use crate::error::ValidationError;
 use crate::selection::SelectionSet;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
@@ -49,15 +50,26 @@ impl Transaction {
         Self { changes, selection }
     }
 
-    /// Apply this transaction to a buffer, returning the new buffer and
-    /// the new selection state. Consumes both the buffer and the transaction —
+    /// Apply this transaction to a buffer, returning the new buffer and the
+    /// new selection state. Consumes both the buffer and the transaction —
     /// the old buffer is unneeded (undo uses changeset inversion, not
     /// snapshots) and a transaction is applied exactly once before being
     /// discarded or replaced.
-    pub(crate) fn apply(self, buf: Buffer) -> (Buffer, SelectionSet) {
+    ///
+    /// Returns `Err` if the transaction's selections are out of bounds for the
+    /// post-apply buffer. This is the trust boundary for plugin-constructed
+    /// transactions: named commands in `edit.rs` build their state correctly
+    /// by construction and call [`ChangeSet::apply`] directly, but a plugin
+    /// assembling a [`Transaction`] manually could supply selections that
+    /// point past the end of the buffer.
+    ///
+    /// # Errors
+    /// [`ValidationError::SelectionOutOfBounds`] if any head or anchor
+    /// is `>= buf_len` after applying the changeset.
+    pub(crate) fn apply(self, buf: Buffer) -> Result<(Buffer, SelectionSet), ValidationError> {
         let new_buf = self.changes.apply(buf);
-        self.selection.debug_assert_valid(new_buf.len_chars());
-        (new_buf, self.selection)
+        self.selection.validate(new_buf.len_chars())?;
+        Ok((new_buf, self.selection))
     }
 
     /// The text-change portion of this transaction.
@@ -92,8 +104,31 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(1));
         let txn = Transaction::new(cs, sels.clone());
 
-        let (new_buf, new_sels) = txn.apply(buf);
+        let (new_buf, new_sels) = txn.apply(buf).unwrap();
         assert_eq!(new_buf.to_string(), "!hello\n");
         assert_eq!(new_sels.primary().head, 1);
+    }
+
+    #[test]
+    fn transaction_apply_rejects_out_of_bounds_selection() {
+        // "hi\n" = 3 chars; a no-op changeset; but selection points to index 99.
+        let buf = Buffer::from_str("hi");
+        let mut b = ChangeSetBuilder::new(3);
+        b.retain_rest();
+        let cs = b.finish();
+
+        // Cursor at 99 is way past buf_len (3) — this is what a buggy plugin
+        // might produce.
+        let sels = SelectionSet::single(Selection::cursor(99));
+        let txn = Transaction::new(cs, sels);
+
+        let err = txn.apply(buf).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ValidationError::SelectionOutOfBounds { index: 0, field: "head", value: 99, buf_len: 3 }
+            ),
+            "unexpected error: {err}"
+        );
     }
 }

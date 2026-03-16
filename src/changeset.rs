@@ -239,7 +239,7 @@ impl ChangeSet {
             }
         }
 
-        debug_assert!(
+        assert!(
             rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
             "ChangeSet::apply produced a buffer without trailing newline — \
              a Delete operation covered the structural '\\n'",
@@ -1507,5 +1507,26 @@ mod tests {
             let result_right = a_bc.apply(buf);
             prop_assert_eq!(result_left.to_string(), result_right.to_string());
         }
+    }
+
+    // ── Invariant enforcement tests ───────────────────────────────────────────
+
+    #[test]
+    #[should_panic(expected = "ChangeSet::apply produced a buffer without trailing newline")]
+    fn apply_panics_if_trailing_newline_deleted() {
+        // "hi\n" = 3 chars. Delete all 3 chars including the structural '\n'.
+        // This is what a buggy plugin might produce via the raw builder.
+        let buf = Buffer::from_str("hi");
+        let mut b = ChangeSetBuilder::new(3);
+        b.delete(3);
+        // Skip retain_rest — we've consumed all chars with the delete.
+        // Manually finish to bypass the "forgot retain_rest" message and hit
+        // the trailing-newline assert in apply.
+        let cs = ChangeSet {
+            ops: b.ops,
+            len_before: 3,
+            len_after: 0,
+        };
+        cs.apply(buf); // should panic
     }
 }

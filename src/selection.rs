@@ -1,3 +1,5 @@
+use crate::error::ValidationError;
+
 /// A single selection range within a buffer.
 ///
 /// Both `anchor` and `head` are **char offsets** — indices into the buffer's
@@ -322,6 +324,39 @@ impl SelectionSet {
                 sel.anchor,
             );
         }
+    }
+
+    /// Validate that every selection's `head` and `anchor` are in bounds for
+    /// a buffer of `buf_len` chars. Returns `Err` with a descriptive error if
+    /// any position is out of range.
+    ///
+    /// Unlike [`debug_assert_valid`][Self::debug_assert_valid], this check
+    /// runs in all builds — including release. Call it at the trust boundary
+    /// where plugin-constructed [`Transaction`][crate::transaction::Transaction]s
+    /// enter the system.
+    pub(crate) fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
+        if buf_len == 0 {
+            return Err(ValidationError::EmptyBuffer);
+        }
+        for (index, sel) in self.selections.iter().enumerate() {
+            if sel.head >= buf_len {
+                return Err(ValidationError::SelectionOutOfBounds {
+                    index,
+                    field: "head",
+                    value: sel.head,
+                    buf_len,
+                });
+            }
+            if sel.anchor >= buf_len {
+                return Err(ValidationError::SelectionOutOfBounds {
+                    index,
+                    field: "anchor",
+                    value: sel.anchor,
+                    buf_len,
+                });
+            }
+        }
+        Ok(())
     }
 }
 
