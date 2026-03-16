@@ -89,7 +89,10 @@ impl Buffer {
     pub(crate) fn from_rope(rope: Rope) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
-        assert!(
+        // The trailing-\n invariant is now enforced by ChangeSet::apply returning
+        // Result before this constructor is called. This debug_assert is retained
+        // as defense-in-depth for internal bugs in non-production builds.
+        debug_assert!(
             rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
             "Buffer invariant violated: rope must end with '\\n' (len={})",
             rope.len_chars(),
@@ -100,11 +103,18 @@ impl Buffer {
     /// Consume the buffer and return the inner `Rope`.
     ///
     /// This transfers ownership without cloning — the caller gets the rope
-    /// and this `Buffer` ceases to exist. Used by `ChangeSet::apply` to
-    /// mutate the rope in place (O(log n) per edit) instead of flattening
-    /// to a String and rebuilding (O(n)).
+    /// and this `Buffer` ceases to exist.
     pub(crate) fn into_rope(self) -> Rope {
         self.rope
+    }
+
+    /// Borrow the inner `Rope`.
+    ///
+    /// Ropey's `Rope::clone` is O(1) (Arc-based tree), so calling
+    /// `.rope().clone()` is cheap and is the preferred way to get a mutable
+    /// copy for operations that take `&Buffer` instead of consuming it.
+    pub(crate) fn rope(&self) -> &Rope {
+        &self.rope
     }
 
     /// Create an empty buffer (contains only the structural trailing newline).
