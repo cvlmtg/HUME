@@ -1,6 +1,6 @@
 use crate::buffer::Buffer;
 use crate::changeset::ChangeSet;
-use crate::error::ValidationError;
+use crate::error::TransactionError;
 use crate::selection::SelectionSet;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
@@ -51,25 +51,28 @@ impl Transaction {
     }
 
     /// Apply this transaction to a buffer, returning the new buffer and the
-    /// new selection state. Consumes both the buffer and the transaction —
-    /// the old buffer is unneeded (undo uses changeset inversion, not
-    /// snapshots) and a transaction is applied exactly once before being
-    /// discarded or replaced.
+    /// new selection state.
     ///
-    /// Returns `Err` if the transaction's selections are out of bounds for the
-    /// post-apply buffer. This is the trust boundary for plugin-constructed
-    /// transactions: named commands in `edit.rs` build their state correctly
-    /// by construction and call [`ChangeSet::apply`] directly, but a plugin
-    /// assembling a [`Transaction`] manually could supply selections that
-    /// point past the end of the buffer.
+    /// Takes `buf` by reference so the original buffer remains available to
+    /// the caller on the error path — no undo needed. On success the caller
+    /// should drop the old buffer (or push an inverse transaction to the undo
+    /// stack before doing so).
+    ///
+    /// This is the trust boundary for plugin-constructed transactions. Named
+    /// commands in `edit.rs` build changesets by construction and call
+    /// [`ChangeSet::apply`] directly, bypassing this method. A plugin
+    /// assembling a [`Transaction`] manually goes through here and gets a
+    /// clear error instead of silent corruption or a crash.
     ///
     /// # Errors
-    /// [`ValidationError::SelectionOutOfBounds`] if any head or anchor
-    /// is `>= buf_len` after applying the changeset.
-    pub(crate) fn apply(self, buf: Buffer) -> Result<(Buffer, SelectionSet), ValidationError> {
-        let new_buf = self.changes.apply(buf);
+    /// - [`TransactionError::Apply`] if the changeset is invalid for `buf`
+    ///   (length mismatch or deleted the structural trailing `\n`).
+    /// - [`TransactionError::Validation`] if any selection head or anchor is
+    ///   out of bounds for the post-apply buffer.
+    pub(crate) fn apply(&self, buf: &Buffer) -> Result<(Buffer, SelectionSet), TransactionError> {
+        let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
-        Ok((new_buf, self.selection))
+        Ok((new_buf, self.selection.clone()))
     }
 
     /// The text-change portion of this transaction.
@@ -89,6 +92,7 @@ impl Transaction {
 mod tests {
     use super::*;
     use crate::changeset::ChangeSetBuilder;
+    use crate::error::{ApplyError, ValidationError};
     use crate::selection::Selection;
     use pretty_assertions::assert_eq;
 
@@ -104,7 +108,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(1));
         let txn = Transaction::new(cs, sels.clone());
 
-        let (new_buf, new_sels) = txn.apply(buf).unwrap();
+        let (new_buf, new_sels) = txn.apply(&buf).unwrap();
         assert_eq!(new_buf.to_string(), "!hello\n");
         assert_eq!(new_sels.primary().head, 1);
     }
@@ -122,11 +126,32 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(99));
         let txn = Transaction::new(cs, sels);
 
-        let err = txn.apply(buf).unwrap_err();
+        let err = txn.apply(&buf).unwrap_err();
         assert!(
             matches!(
                 err,
-                ValidationError::SelectionOutOfBounds { index: 0, field: "head", value: 99, buf_len: 3 }
+                TransactionError::Validation(
+                    ValidationError::SelectionOutOfBounds { index: 0, field: "head", value: 99, buf_len: 3 }
+                )
+            ),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn transaction_apply_rejects_length_mismatch() {
+        // Changeset built for 10 chars, but buffer is 3 chars.
+        let buf = Buffer::from_str("hi");
+        let mut b = ChangeSetBuilder::new(10);
+        b.retain_rest();
+        let cs = b.finish();
+
+        let txn = Transaction::new(cs, SelectionSet::single(Selection::cursor(0)));
+        let err = txn.apply(&buf).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                TransactionError::Apply(ApplyError::LengthMismatch { buf_len: 3, expected: 10 })
             ),
             "unexpected error: {err}"
         );

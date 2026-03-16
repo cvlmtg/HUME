@@ -1,4 +1,5 @@
 use crate::buffer::Buffer;
+use crate::error::ApplyError;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -200,18 +201,24 @@ impl ChangeSet {
     /// `delta` translates them to the mutated rope's current coordinates,
     /// the same pattern used throughout HUME's multi-selection editing.
     ///
-    /// # Panics
-    /// Panics if `buf.len_chars() != self.len_before`.
-    pub(crate) fn apply(&self, buf: Buffer) -> Buffer {
-        assert_eq!(
-            buf.len_chars(),
-            self.len_before,
-            "ChangeSet::apply: buffer length {} doesn't match len_before {}",
-            buf.len_chars(),
-            self.len_before,
-        );
+    /// # Errors
+    ///
+    /// - [`ApplyError::LengthMismatch`] if `buf.len_chars() != self.len_before`.
+    /// - [`ApplyError::TrailingNewlineMissing`] if the result rope doesn't end
+    ///   with `\n` (the changeset deleted the structural trailing newline).
+    ///
+    /// On error the original `buf` is untouched — the caller still owns it.
+    pub(crate) fn apply(&self, buf: &Buffer) -> Result<Buffer, ApplyError> {
+        if buf.len_chars() != self.len_before {
+            return Err(ApplyError::LengthMismatch {
+                buf_len: buf.len_chars(),
+                expected: self.len_before,
+            });
+        }
 
-        let mut rope = buf.into_rope();
+        // Clone the rope (O(1) — ropey uses Arc-based tree nodes). We mutate
+        // the clone so that `buf` remains valid on the error path.
+        let mut rope = buf.rope().clone();
 
         // `delta` tracks the net char-count shift from all mutations so far.
         // Changeset positions are in old-doc space; `old_pos + delta` gives
@@ -239,12 +246,10 @@ impl ChangeSet {
             }
         }
 
-        assert!(
-            rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
-            "ChangeSet::apply produced a buffer without trailing newline — \
-             a Delete operation covered the structural '\\n'",
-        );
-        Buffer::from_rope(rope)
+        if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' {
+            return Err(ApplyError::TrailingNewlineMissing);
+        }
+        Ok(Buffer::from_rope(rope))
     }
 
     // ── map_pos ──────────────────────────────────────────────────────────────
@@ -805,7 +810,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
     }
 
     #[test]
@@ -817,7 +822,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello world\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello world\n");
     }
 
     #[test]
@@ -830,7 +835,7 @@ mod tests {
         b.retain_rest();     // retain "\n"
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello world\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello world\n");
     }
 
     #[test]
@@ -843,7 +848,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
     }
 
     #[test]
@@ -855,7 +860,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "world\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "world\n");
     }
 
     #[test]
@@ -868,7 +873,7 @@ mod tests {
         b.retain_rest(); // retain "\n"
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
     }
 
     #[test]
@@ -882,7 +887,7 @@ mod tests {
         b.retain_rest(); // retain "\n"
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "hello rust\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello rust\n");
     }
 
     #[test]
@@ -896,7 +901,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "!hello !world\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "!hello !world\n");
     }
 
     #[test]
@@ -908,7 +913,7 @@ mod tests {
         b.retain_rest(); // retain the structural trailing \n
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "\n");
     }
 
     #[test]
@@ -920,7 +925,7 @@ mod tests {
         b.retain_rest(); // retain "\n"
         let cs = b.finish();
 
-        assert_eq!(cs.apply(buf).to_string(), "x\n");
+        assert_eq!(cs.apply(&buf).unwrap().to_string(), "x\n");
     }
 
     // ── map_pos tests ────────────────────────────────────────────────────────
@@ -1090,10 +1095,10 @@ mod tests {
         let cs = b.finish();
 
         let inv = cs.invert(&buf);
-        let result = cs.apply(buf);
+        let result = cs.apply(&buf).unwrap();
         assert_eq!(result.to_string(), "hello rust\n");
 
-        let restored = inv.apply(result);
+        let restored = inv.apply(&result).unwrap();
         assert_eq!(restored.to_string(), "hello world\n");
     }
 
@@ -1109,10 +1114,10 @@ mod tests {
         let cs = b.finish();
 
         let inv = cs.invert(&buf);
-        let result = cs.apply(buf);
+        let result = cs.apply(&buf).unwrap();
         assert_eq!(result.to_string(), "aXYe\n");
 
-        let restored = inv.apply(result);
+        let restored = inv.apply(&result).unwrap();
         assert_eq!(restored.to_string(), "abcde\n");
     }
 
@@ -1128,10 +1133,10 @@ mod tests {
         let cs = b.finish();
 
         let inv = cs.invert(&buf);
-        let result = cs.apply(buf);
+        let result = cs.apply(&buf).unwrap();
         assert_eq!(result.to_string(), "!hello !world\n");
 
-        let restored = inv.apply(result);
+        let restored = inv.apply(&result).unwrap();
         assert_eq!(restored.to_string(), "hello world\n");
     }
 
@@ -1194,9 +1199,10 @@ mod tests {
         let b = b_b.finish();
 
         // Step-by-step oracle: apply a then b separately.
-        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let mid = a.clone().apply(&buf).unwrap();
+        let step_by_step = b.clone().apply(&mid).unwrap();
         let composed = a.compose(b);
-        let direct = composed.apply(buf);
+        let direct = composed.apply(&buf).unwrap();
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XaYbc\n");
     }
@@ -1221,7 +1227,7 @@ mod tests {
 
         let composed = a.compose(b);
         assert!(composed.is_empty(), "insert then delete should cancel");
-        assert_eq!(composed.apply(buf).to_string(), "abc\n");
+        assert_eq!(composed.apply(&buf).unwrap().to_string(), "abc\n");
     }
 
     #[test]
@@ -1242,9 +1248,10 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let mid = a.clone().apply(&buf).unwrap();
+        let step_by_step = b.clone().apply(&mid).unwrap();
         let composed = a.compose(b);
-        let direct = composed.apply(buf);
+        let direct = composed.apply(&buf).unwrap();
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "XYlo\n");
     }
@@ -1271,9 +1278,10 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let mid = a.clone().apply(&buf).unwrap();
+        let step_by_step = b.clone().apply(&mid).unwrap();
         let composed = a.compose(b);
-        let direct = composed.apply(buf);
+        let direct = composed.apply(&buf).unwrap();
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ade\n");
     }
@@ -1298,9 +1306,10 @@ mod tests {
         b_b.retain_rest();
         let b = b_b.finish();
 
-        let step_by_step = b.clone().apply(a.clone().apply(buf.clone()));
+        let mid = a.clone().apply(&buf).unwrap();
+        let step_by_step = b.clone().apply(&mid).unwrap();
         let composed = a.compose(b);
-        let direct = composed.apply(buf);
+        let direct = composed.apply(&buf).unwrap();
         assert_eq!(direct.to_string(), step_by_step.to_string());
         assert_eq!(direct.to_string(), "ABxyz\n");
     }
@@ -1392,10 +1401,10 @@ mod tests {
             b.retain_rest();
             let cs = b.finish();
 
-            // Invert before apply — apply consumes the buffer.
+            // Invert before apply — buf remains valid on error since apply takes &Buffer.
             let inv = cs.invert(&buf);
-            let result = cs.apply(buf);
-            let restored = inv.apply(result);
+            let result = cs.apply(&buf).unwrap();
+            let restored = inv.apply(&result).unwrap();
             prop_assert_eq!(restored.to_string(), original_content);
         }
 
@@ -1414,7 +1423,7 @@ mod tests {
             b1.retain_rest();
             let cs1 = b1.finish();
 
-            let mid = cs1.apply(buf.clone());
+            let mid = cs1.apply(&buf).unwrap();
             let mid_len = mid.len_chars();
 
             // Second changeset: retain half, insert "CD", retain rest.
@@ -1425,9 +1434,9 @@ mod tests {
             b2.retain_rest();
             let cs2 = b2.finish();
 
-            let step_by_step = cs2.clone().apply(mid);
+            let step_by_step = cs2.clone().apply(&mid).unwrap();
             let composed = cs1.compose(cs2);
-            let direct = composed.apply(buf);
+            let direct = composed.apply(&buf).unwrap();
 
             prop_assert_eq!(direct.to_string(), step_by_step.to_string());
         }
@@ -1448,10 +1457,10 @@ mod tests {
             let buf = Buffer::from_str(&text);
             let original_content = buf.to_string();
 
-            // Invert before apply — apply consumes the buffer.
+            // Invert before apply — buf remains valid on error since apply takes &Buffer.
             let inv = cs.invert(&buf);
-            let result = cs.apply(buf);
-            let restored = inv.apply(result);
+            let result = cs.apply(&buf).unwrap();
+            let restored = inv.apply(&result).unwrap();
             prop_assert_eq!(restored.to_string(), original_content);
         }
 
@@ -1475,7 +1484,7 @@ mod tests {
             b1.retain_rest();
             let a = b1.finish();
 
-            let mid1 = a.clone().apply(buf.clone());
+            let mid1 = a.clone().apply(&buf).unwrap();
             let mid1_len = mid1.len_chars();
 
             let h = mid1_len / 2;
@@ -1485,7 +1494,7 @@ mod tests {
             b2.retain_rest();
             let b = b2.finish();
 
-            let mid2 = b.clone().apply(mid1);
+            let mid2 = b.clone().apply(&mid1).unwrap();
             let mid2_len = mid2.len_chars();
 
             let t = mid2_len / 3;
@@ -1503,8 +1512,8 @@ mod tests {
             let bc = b.compose(c);
             let a_bc = a.compose(bc);
 
-            let result_left = ab_c.apply(buf.clone());
-            let result_right = a_bc.apply(buf);
+            let result_left = ab_c.apply(&buf).unwrap();
+            let result_right = a_bc.apply(&buf).unwrap();
             prop_assert_eq!(result_left.to_string(), result_right.to_string());
         }
     }
@@ -1512,21 +1521,36 @@ mod tests {
     // ── Invariant enforcement tests ───────────────────────────────────────────
 
     #[test]
-    #[should_panic(expected = "ChangeSet::apply produced a buffer without trailing newline")]
-    fn apply_panics_if_trailing_newline_deleted() {
+    fn apply_returns_err_if_trailing_newline_deleted() {
         // "hi\n" = 3 chars. Delete all 3 chars including the structural '\n'.
         // This is what a buggy plugin might produce via the raw builder.
+        // apply() must return Err and leave the original buffer untouched.
         let buf = Buffer::from_str("hi");
-        let mut b = ChangeSetBuilder::new(3);
-        b.delete(3);
-        // Skip retain_rest — we've consumed all chars with the delete.
-        // Manually finish to bypass the "forgot retain_rest" message and hit
-        // the trailing-newline assert in apply.
+        // Construct the changeset directly to bypass the builder's finish()
+        // assert (which catches old_pos != doc_len) and reach apply's
+        // trailing-newline check.
         let cs = ChangeSet {
-            ops: b.ops,
+            ops: vec![Operation::Delete(3)],
             len_before: 3,
             len_after: 0,
         };
-        cs.apply(buf); // should panic
+        let err = cs.apply(&buf).unwrap_err();
+        assert_eq!(err, ApplyError::TrailingNewlineMissing);
+        // Original buffer is untouched — we can still use it.
+        assert_eq!(buf.to_string(), "hi\n");
+    }
+
+    #[test]
+    fn apply_returns_err_on_length_mismatch() {
+        // Changeset built for 10 chars, buffer has 3.
+        let buf = Buffer::from_str("hi");
+        let mut b = ChangeSetBuilder::new(10);
+        b.retain_rest();
+        let cs = b.finish();
+
+        let err = cs.apply(&buf).unwrap_err();
+        assert_eq!(err, ApplyError::LengthMismatch { buf_len: 3, expected: 10 });
+        // Original buffer is untouched.
+        assert_eq!(buf.to_string(), "hi\n");
     }
 }
