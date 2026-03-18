@@ -8,4 +8,4 @@ Naturally, you try to understand which approach is actually better or faster. Yo
 
 So it's back to Claude. Implement changesets, update the docs, update the plan. Then you actually check the code: do we really need to convert everything to strings just to apply a changeset? do we really need to clone the buffer before modifying it?
 
-Vibe coding can be fun, but you should never blindly trust your AI agent. The lesson here: if you have a doubt or something seems off, grill your agent with questions until you’re actually satisfied.
+Agentic programming can be fun, but you should never blindly trust your AI agent. The lesson here: if you have a doubt or something seems off, grill your agent with questions until you’re actually satisfied.

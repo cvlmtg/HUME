@@ -8,5 +8,4 @@ I have written this editor for my own use, and release it without expectation. I
 
 ---
 
-This is a vibe coding playground — built for the joy of building, guided by curiosity rather than roadmap. There is no expectation that it will ever reach production, but feel free to try it out. Use with caution.
-
+This project is built for the joy of building, guided by curiosity rather than roadmap. There is no expectation that it will ever reach production, but feel free to try it out. Use with caution.
