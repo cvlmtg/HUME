@@ -1,7 +1,7 @@
 # HUME — Project Instructions
 
 ## What is this?
-HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, written in Rust. This is a vibe coding / learning project — not a production product.
+HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, written in Rust. This is an agentic programming / learning project.
 
 ## Key files
 - `README.md` — Project description
