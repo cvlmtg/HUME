@@ -9,3 +9,10 @@ Naturally, you try to understand which approach is actually better or faster. Yo
 So it's back to Claude. Implement changesets, update the docs, update the plan. Then you actually check the code: do we really need to convert everything to strings just to apply a changeset? do we really need to clone the buffer before modifying it?
 
 Agentic programming can be fun, but you should never blindly trust your AI agent. The lesson here: if you have a doubt or something seems off, grill your agent with questions until you’re actually satisfied.
+
+## 19/03/2026 Asking questions
+
+You can tell the agent to analyze your goals and ask questions if something is unclear. It works, it's nice, but most of the time the UI isn't the best. I mean, a moment ago copilot-cli told me that the toolbar gets the `isVisible` prop, but then when the user sel...
+"Sel.." what? If the question is truncated how can I answer?
+So from now on I'll explicitly ask to "briefly describe any unclear or conflicting instructions, or any issue that comes up", so I can update my goals accordingly.
+*Hopefully this should avo---*
