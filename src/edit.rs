@@ -144,6 +144,183 @@ pub(crate) fn delete_char_backward(
     (new_buf, new_sel_set)
 }
 
+/// Delete every selection.
+///
+/// - **Single-character selection (cursor)**: delete the character under the
+///   cursor. The cursor lands on the character that slides into that position,
+///   or stays put if we are at the end of the buffer. No-op when the cursor is
+///   on the structural trailing `\n` (deleting it would violate the buffer
+///   invariant).
+/// - **Multi-character selection**: delete the entire selected region. The
+///   cursor lands at `start()`.
+///
+/// This is the normal-mode `d` operation. It does NOT capture the deleted text
+/// into a register — the caller is responsible for that:
+///
+/// ```ignore
+/// let yanked = yank_selections(&buf, &sels);
+/// let (new_buf, new_sels) = delete_selection(buf, sels);
+/// registers.write(DEFAULT_REGISTER, yanked);
+/// ```
+pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(sels.len());
+    let primary_idx = sels.primary_index();
+
+    for sel in sels.iter_sorted() {
+        if sel.is_cursor() {
+            let p = sel.head;
+            if p + 1 >= buf.len_chars() {
+                // Cursor is on the structural trailing \n — no-op.
+                b.retain(p - b.old_pos());
+                new_sels.push(Selection::cursor(b.new_pos()));
+                continue;
+            }
+            // Delete one grapheme cluster at `p`.
+            let end = next_grapheme_boundary(&buf, p);
+            b.retain(p - b.old_pos());
+            b.delete(end - p);
+            new_sels.push(Selection::cursor(b.new_pos()));
+        } else {
+            let start = sel.start();
+            // end() is inclusive — +1 for the exclusive bound.
+            let end_excl = sel.end() + 1;
+            b.retain(start - b.old_pos());
+            b.delete(end_excl - start);
+            new_sels.push(Selection::cursor(b.new_pos()));
+        }
+    }
+
+    b.retain_rest();
+    let new_buf = b
+        .finish()
+        .apply(&buf)
+        .expect("delete_selection: internal changeset is always valid");
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
+    (new_buf, new_sel_set)
+}
+
+/// Paste `values` after each selection (normal-mode `p`).
+///
+/// The insertion point is just after `sel.end()` — i.e., the character
+/// immediately to the right of the last selected character. The cursor lands
+/// on the **last character** of the pasted text.
+///
+/// **Multi-cursor semantics:**
+/// - If `values.len() == sels.len()`: each selection gets its own slot (N-to-N).
+/// - Otherwise: all `values` are joined (no separator) into a single string,
+///   and that full string is pasted at every cursor (Helix fallback).
+///
+/// **Edge case — structural `\n`:** if the insertion point would fall after the
+/// trailing `\n`, text is inserted before it so the buffer invariant is
+/// maintained. In practice this only happens when pasting after a selection
+/// that covers the structural `\n`.
+///
+/// An empty `values` slice is a no-op.
+pub(crate) fn paste_after(
+    buf: Buffer,
+    sels: SelectionSet,
+    values: &[String],
+) -> (Buffer, SelectionSet) {
+    if values.is_empty() {
+        return (buf, sels);
+    }
+
+    let n_sels = sels.len();
+    let n_vals = values.len();
+
+    // When counts mismatch, every cursor gets the full joined content.
+    // Compute once up front so the loop can borrow it as a plain &str.
+    let joined: String = if n_sels != n_vals { values.join("") } else { String::new() };
+
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(n_sels);
+    let primary_idx = sels.primary_index();
+
+    let last_char = buf.len_chars() - 1; // index of structural \n
+
+    for (i, sel) in sels.iter_sorted().enumerate() {
+        // N-to-N if counts match; full joined string otherwise.
+        let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
+        if text.is_empty() {
+            // Nothing to insert — keep cursor at current head.
+            b.retain(sel.head - b.old_pos());
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            continue;
+        }
+
+        // Insert point: one past the end of the selection, clamped to stay
+        // before the structural \n.
+        let insert_at = (sel.end() + 1).min(last_char);
+        b.retain(insert_at - b.old_pos());
+        b.insert(text);
+        // Cursor lands on the last char of the inserted text.
+        // new_pos() is now just past the insertion; subtract 1 for last char.
+        new_sels.push(Selection::cursor(b.new_pos() - 1));
+    }
+
+    b.retain_rest();
+    let new_buf = b
+        .finish()
+        .apply(&buf)
+        .expect("paste_after: internal changeset is always valid");
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
+    (new_buf, new_sel_set)
+}
+
+/// Paste `values` before each selection (normal-mode `P`).
+///
+/// The insertion point is `sel.start()` — just before the first selected
+/// character. The cursor lands on the **last character** of the pasted text.
+///
+/// **Multi-cursor semantics:** identical to [`paste_after`].
+///
+/// An empty `values` slice is a no-op.
+pub(crate) fn paste_before(
+    buf: Buffer,
+    sels: SelectionSet,
+    values: &[String],
+) -> (Buffer, SelectionSet) {
+    if values.is_empty() {
+        return (buf, sels);
+    }
+
+    let n_sels = sels.len();
+    let n_vals = values.len();
+
+    let joined: String = if n_sels != n_vals { values.join("") } else { String::new() };
+
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels: Vec<Selection> = Vec::with_capacity(n_sels);
+    let primary_idx = sels.primary_index();
+
+    for (i, sel) in sels.iter_sorted().enumerate() {
+        let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
+        if text.is_empty() {
+            b.retain(sel.head - b.old_pos());
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            continue;
+        }
+
+        let insert_at = sel.start();
+        b.retain(insert_at - b.old_pos());
+        b.insert(text);
+        // Cursor on the last inserted char.
+        new_sels.push(Selection::cursor(b.new_pos() - 1));
+    }
+
+    b.retain_rest();
+    let new_buf = b
+        .finish()
+        .apply(&buf)
+        .expect("paste_before: internal changeset is always valid");
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(new_buf.len_chars());
+    (new_buf, new_sel_set)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -357,6 +534,227 @@ mod tests {
             "he-[l]>-[l]>o\n",
             |(buf, sels)| delete_char_backward(buf, sels),
             "h-[l]>o\n"
+        );
+    }
+
+    // ── delete_selection ──────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_selection_cursor_deletes_char() {
+        // Cursor on 'h' — deletes 'h'; cursor lands on 'e' (what was next).
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[e]>llo\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_cursor_at_end_of_word() {
+        // Cursor on 'o' (last word char) — deletes 'o'; cursor lands on '\n'.
+        assert_state!(
+            "hell-[o]>\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "hell-[\n]>"
+        );
+    }
+
+    #[test]
+    fn delete_selection_cursor_on_structural_newline_is_noop() {
+        // Cursor on the trailing '\n' — buffer invariant, no-op.
+        assert_state!(
+            "hello-[\n]>",
+            |(buf, sels)| delete_selection(buf, sels),
+            "hello-[\n]>"
+        );
+    }
+
+    #[test]
+    fn delete_selection_empty_buffer_is_noop() {
+        // Only the structural '\n' — cursor is on it, no-op.
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[\n]>"
+        );
+    }
+
+    #[test]
+    fn delete_selection_multi_char_forward() {
+        // Forward selection covering "hell" — cursor lands at start (pos 0).
+        assert_state!(
+            "-[hell]>o\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[o]>\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_multi_char_backward() {
+        // Backward selection — same result as forward; cursor lands at start.
+        assert_state!(
+            "<[hell]-o\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[o]>\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_two_cursors() {
+        // Cursors on 'h' (pos 0) and 'l' (pos 2) — both deleted independently.
+        assert_state!(
+            "-[h]>el-[l]>o\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[e]>l-[o]>\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_adjacent_selections_merge_cursors() {
+        // Cursors on 'h' (0) and 'e' (1) — after deleting both, cursors both
+        // land at 0 and merge into one.
+        assert_state!(
+            "-[h]>-[e]>llo\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[l]>lo\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_grapheme_cluster() {
+        // "e\u{0301}" is 2 chars (e + combining acute) but one grapheme cluster.
+        // Cursor on 'e' (pos 0) deletes the entire cluster (both chars).
+        assert_state!(
+            "-[e]>\u{0301}x\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[x]>\n"
+        );
+    }
+
+    // ── paste_after ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn paste_after_single_cursor() {
+        // Cursor on 'h' — insert "XY" after 'h'; cursor lands on last inserted char 'Y'.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            "hX-[Y]>ello\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_mid_word() {
+        // Cursor on 'e' (pos 1) — insert "XY" after 'e'.
+        assert_state!(
+            "h-[e]>llo\n",
+            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            "heX-[Y]>llo\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_cursor_on_structural_newline() {
+        // Cursor on the trailing '\n' — insertion is clamped to pos 5 (before '\n').
+        // "hello\n" → "helloXY\n"; cursor lands on 'Y' (pos 6).
+        assert_state!(
+            "hello-[\n]>",
+            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            "helloX-[Y]>\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_two_cursors_n_to_n() {
+        // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
+        // Buffer: h(0)e(1)l(2)l(3)o(4)\n(5) → hABelloCD\n
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            "hA-[B]>elloC-[D]>\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_count_mismatch_uses_joined() {
+        // 2 cursors, 1 value → both cursors get the full "XY".
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            "hX-[Y]>elloX-[Y]>\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_multi_char_selection() {
+        // Forward selection covering "hel" — paste after 'l' (pos 2).
+        assert_state!(
+            "-[hel]>lo\n",
+            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            "helX-[Y]>lo\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_unicode() {
+        // Paste a string with a combining character. Cursor lands on last char.
+        assert_state!(
+            "-[h]>i\n",
+            |(buf, sels)| paste_after(buf, sels, &["e\u{0301}".to_string()]),
+            "he-[\u{0301}]>i\n"
+        );
+    }
+
+    // ── paste_before ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn paste_before_single_cursor() {
+        // Cursor on 'h' — insert "XY" before 'h'; cursor lands on 'Y'.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            "X-[Y]>hello\n"
+        );
+    }
+
+    #[test]
+    fn paste_before_mid_word() {
+        // Cursor on 'e' (pos 1) — insert "XY" before 'e'.
+        assert_state!(
+            "h-[e]>llo\n",
+            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            "hX-[Y]>ello\n"
+        );
+    }
+
+    #[test]
+    fn paste_before_two_cursors_n_to_n() {
+        // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
+        // Buffer after: AB + hell + CD + o + \n
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| paste_before(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            "A-[B]>hellC-[D]>o\n"
+        );
+    }
+
+    #[test]
+    fn paste_before_count_mismatch_uses_joined() {
+        // 2 cursors, 1 value → both cursors get the full "XY".
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            "X-[Y]>hellX-[Y]>o\n"
+        );
+    }
+
+    #[test]
+    fn paste_before_multi_char_selection() {
+        // Forward selection covering "hel" — paste before 'h' (pos 0).
+        assert_state!(
+            "-[hel]>lo\n",
+            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            "X-[Y]>hello\n"
         );
     }
 }
