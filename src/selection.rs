@@ -348,15 +348,6 @@ impl SelectionSet {
         self
     }
 
-    /// Append `sel` to the selection list without merging.
-    ///
-    /// The caller is responsible for calling [`merge_overlapping`][Self::merge_overlapping]
-    /// afterward if overlaps are possible. The primary index is unchanged.
-    pub(crate) fn push(mut self, sel: Selection) -> Self {
-        self.selections.push(sel);
-        self
-    }
-
     /// Assert (in debug builds) that every selection's `head` and `anchor`
     /// are within bounds for a buffer of `buf_len` chars.
     ///
@@ -788,25 +779,6 @@ mod tests {
         assert_eq!(cycled, set);
     }
 
-    // ── push ─────────────────────────────────────────────────────────────────
-
-    #[test]
-    fn push_adds_selection() {
-        let set = SelectionSet::single(Selection::cursor(0));
-        let result = set.push(Selection::cursor(5));
-        assert_eq!(result.len(), 2);
-        assert_eq!(result.primary_index(), 0); // primary unchanged
-    }
-
-    #[test]
-    fn push_then_merge() {
-        // Push an overlapping selection, then merge — should deduplicate.
-        let set = SelectionSet::single(Selection::new(0, 5));
-        let result = set.push(Selection::new(3, 8)).merge_overlapping();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result.primary().start(), 0);
-        assert_eq!(result.primary().end(), 8);
-    }
 
     #[test]
     fn map_and_merge_overlapping_ranges() {
