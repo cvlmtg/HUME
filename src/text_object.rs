@@ -396,27 +396,27 @@ mod tests {
     fn inner_line_middle() {
         // Selection covers `world`, head=d (last char before \n).
         assert_state!(
-            "hello\n|world\nfoo\n",
+            "hello\n-[w]>orld\nfoo\n",
             |(buf, sels)| cmd_inner_line(buf, sels),
-            "hello\n#[worl|d]#\nfoo\n"
+            "hello\n-[world]>\nfoo\n"
         );
     }
 
     #[test]
     fn inner_line_start_of_line() {
         assert_state!(
-            "|hello world\n",
+            "-[h]>ello world\n",
             |(buf, sels)| cmd_inner_line(buf, sels),
-            "#[hello worl|d]#\n"
+            "-[hello world]>\n"
         );
     }
 
     #[test]
     fn inner_line_end_of_content() {
         assert_state!(
-            "hello worl|d\n",
+            "hello worl-[d]>\n",
             |(buf, sels)| cmd_inner_line(buf, sels),
-            "#[hello worl|d]#\n"
+            "-[hello world]>\n"
         );
     }
 
@@ -425,9 +425,9 @@ mod tests {
         // An empty line is just "\n" — no content, so inner_line returns None
         // and the selection is preserved.
         assert_state!(
-            "hello\n|\nworld\n",
+            "hello\n-[\n]>world\n",
             |(buf, sels)| cmd_inner_line(buf, sels),
-            "hello\n|\nworld\n"
+            "hello\n-[\n]>world\n"
         );
     }
 
@@ -435,9 +435,9 @@ mod tests {
     fn around_line_includes_newline() {
         // Selection covers `world\n`; head is the newline char.
         assert_state!(
-            "hello\n|world\nfoo\n",
+            "hello\n-[w]>orld\nfoo\n",
             |(buf, sels)| cmd_around_line(buf, sels),
-            "hello\n#[world|\n]#foo\n"
+            "hello\n-[world\n]>foo\n"
         );
     }
 
@@ -446,9 +446,9 @@ mod tests {
         // An empty line is just "\n"; around_line selects that single char.
         // anchor == head, so serialises as a cursor (|).
         assert_state!(
-            "hello\n|\nworld\n",
+            "hello\n-[\n]>world\n",
             |(buf, sels)| cmd_around_line(buf, sels),
-            "hello\n|\nworld\n"
+            "hello\n-[\n]>world\n"
         );
     }
 
@@ -458,18 +458,18 @@ mod tests {
     fn inner_word_middle() {
         // head=o (last char of `hello`).
         assert_state!(
-            "|hello world\n",
+            "-[h]>ello world\n",
             |(buf, sels)| cmd_inner_word(buf, sels),
-            "#[hell|o]# world\n"
+            "-[hello]> world\n"
         );
     }
 
     #[test]
     fn inner_word_cursor_at_end_of_word() {
         assert_state!(
-            "hell|o world\n",
+            "hell-[o]> world\n",
             |(buf, sels)| cmd_inner_word(buf, sels),
-            "#[hell|o]# world\n"
+            "-[hello]> world\n"
         );
     }
 
@@ -479,9 +479,9 @@ mod tests {
         // inner_word selects the entire whitespace run (both spaces).
         // head = second space, serialised as `#[ | ]#`.
         assert_state!(
-            "foo|  bar\n",
+            "foo-[ ]> bar\n",
             |(buf, sels)| cmd_inner_word(buf, sels),
-            "foo#[ | ]#bar\n"
+            "foo-[  ]>bar\n"
         );
     }
 
@@ -489,9 +489,9 @@ mod tests {
     fn inner_word_cursor_on_punctuation() {
         // Both `!!` are Punctuation — selected as one run.
         assert_state!(
-            "foo|!!\n",
+            "foo-[!]>!\n",
             |(buf, sels)| cmd_inner_word(buf, sels),
-            "foo#[!|!]#\n"
+            "foo-[!!]>\n"
         );
     }
 
@@ -499,9 +499,9 @@ mod tests {
     fn around_word_includes_trailing_space() {
         // Trailing space is included; head = the space char.
         assert_state!(
-            "|hello world\n",
+            "-[h]>ello world\n",
             |(buf, sels)| cmd_around_word(buf, sels),
-            "#[hello| ]#world\n"
+            "-[hello ]>world\n"
         );
     }
 
@@ -509,9 +509,9 @@ mod tests {
     fn around_word_no_trailing_space_uses_leading() {
         // "world" at end of line has no trailing space, so leading space included.
         assert_state!(
-            "hello |world\n",
+            "hello -[w]>orld\n",
             |(buf, sels)| cmd_around_word(buf, sels),
-            "hello#[ worl|d]#\n"
+            "hello-[ world]>\n"
         );
     }
 
@@ -521,9 +521,9 @@ mod tests {
     fn inner_WORD_spans_punctuation() {
         // `hello.world` is one WORD (no whitespace boundary within it).
         assert_state!(
-            "|hello.world foo\n",
+            "-[h]>ello.world foo\n",
             |(buf, sels)| cmd_inner_WORD(buf, sels),
-            "#[hello.worl|d]# foo\n"
+            "-[hello.world]> foo\n"
         );
     }
 
@@ -532,9 +532,9 @@ mod tests {
     #[test]
     fn inner_paren_cursor_inside() {
         assert_state!(
-            "(|hello)\n",
+            "(-[h]>ello)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(#[hell|o]#)\n"
+            "(-[hello]>)\n"
         );
     }
 
@@ -542,9 +542,9 @@ mod tests {
     fn around_paren_cursor_inside() {
         // around includes the parens themselves; head = `)`.
         assert_state!(
-            "(|hello)\n",
+            "(-[h]>ello)\n",
             |(buf, sels)| cmd_around_paren(buf, sels),
-            "#[(hello|)]#\n"
+            "-[(hello)]>\n"
         );
     }
 
@@ -552,27 +552,27 @@ mod tests {
     fn inner_paren_cursor_on_open() {
         // Cursor ON `(` — treated as if inside; same result as cursor inside.
         assert_state!(
-            "|(hello)\n",
+            "-[(]>hello)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(#[hell|o]#)\n"
+            "(-[hello]>)\n"
         );
     }
 
     #[test]
     fn inner_paren_cursor_on_close() {
         assert_state!(
-            "(hello|)\n",
+            "(hello-[)]>\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(#[hell|o]#)\n"
+            "(-[hello]>)\n"
         );
     }
 
     #[test]
     fn inner_paren_empty_is_noop() {
         assert_state!(
-            "|()\n",
+            "-[(]>)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "|()\n"
+            "-[(]>)\n"
         );
     }
 
@@ -581,9 +581,9 @@ mod tests {
         // Cursor inside inner `(b)` — selects `b`, which is a single char.
         // anchor == head, so serialises as a cursor.
         assert_state!(
-            "(a(|b)c)\n",
+            "(a(-[b]>)c)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(a(|b)c)\n"
+            "(a(-[b]>)c)\n"
         );
     }
 
@@ -592,45 +592,45 @@ mod tests {
         // Cursor on `a` (outside inner parens) — innermost enclosing pair
         // is the outer `(...)`, selects `a(b)c`.
         assert_state!(
-            "(|a(b)c)\n",
+            "(-[a]>(b)c)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(#[a(b)|c]#)\n"
+            "(-[a(b)c]>)\n"
         );
     }
 
     #[test]
     fn inner_brace_basic() {
         assert_state!(
-            "{|hello}\n",
+            "{-[h]>ello}\n",
             |(buf, sels)| cmd_inner_brace(buf, sels),
-            "{#[hell|o]#}\n"
+            "{-[hello]>}\n"
         );
     }
 
     #[test]
     fn inner_bracket_basic() {
         assert_state!(
-            "[|hello]\n",
+            "[-[h]>ello]\n",
             |(buf, sels)| cmd_inner_bracket(buf, sels),
-            "[#[hell|o]#]\n"
+            "[-[hello]>]\n"
         );
     }
 
     #[test]
     fn inner_angle_basic() {
         assert_state!(
-            "<|hello>\n",
+            "<-[h]>ello>\n",
             |(buf, sels)| cmd_inner_angle(buf, sels),
-            "<#[hell|o]#>\n"
+            "<-[hello]>>\n"
         );
     }
 
     #[test]
     fn inner_paren_no_match_is_noop() {
         assert_state!(
-            "hel|lo\n",
+            "hel-[l]>o\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "hel|lo\n"
+            "hel-[l]>o\n"
         );
     }
 
@@ -639,9 +639,9 @@ mod tests {
         // Bracket pair spans two lines; inner content is `\nhello\n`.
         // anchor = `\n` after `(`, head = `\n` before `)`.
         assert_state!(
-            "(\n|hello\n)\n",
+            "(\n-[h]>ello\n)\n",
             |(buf, sels)| cmd_inner_paren(buf, sels),
-            "(#[\nhello|\n]#)\n"
+            "(-[\nhello\n]>)\n"
         );
     }
 
@@ -650,9 +650,9 @@ mod tests {
     #[test]
     fn inner_double_quote_cursor_inside() {
         assert_state!(
-            "\"hel|lo\"\n",
+            "\"hel-[l]>o\"\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "\"#[hell|o]#\"\n"
+            "\"-[hello]>\"\n"
         );
     }
 
@@ -660,36 +660,36 @@ mod tests {
     fn around_double_quote_cursor_inside() {
         // around includes both quote chars; head = closing `"`.
         assert_state!(
-            "\"hel|lo\"\n",
+            "\"hel-[l]>o\"\n",
             |(buf, sels)| cmd_around_double_quote(buf, sels),
-            "#[\"hello|\"]#\n"
+            "-[\"hello\"]>\n"
         );
     }
 
     #[test]
     fn inner_double_quote_cursor_on_open() {
         assert_state!(
-            "|\"hello\"\n",
+            "-[\"]>hello\"\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "\"#[hell|o]#\"\n"
+            "\"-[hello]>\"\n"
         );
     }
 
     #[test]
     fn inner_double_quote_cursor_on_close() {
         assert_state!(
-            "\"hello|\"\n",
+            "\"hello-[\"]>\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "\"#[hell|o]#\"\n"
+            "\"-[hello]>\"\n"
         );
     }
 
     #[test]
     fn inner_double_quote_empty_is_noop() {
         assert_state!(
-            "|\"\"foo\n",
+            "-[\"]>\"foo\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "|\"\"foo\n"
+            "-[\"]>\"foo\n"
         );
     }
 
@@ -697,36 +697,36 @@ mod tests {
     fn inner_double_quote_second_pair() {
         // Two pairs on the same line — cursor in second pair selects second.
         assert_state!(
-            "\"a\" \"b|c\"\n",
+            "\"a\" \"b-[c]>\"\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "\"a\" \"#[b|c]#\"\n"
+            "\"a\" \"-[bc]>\"\n"
         );
     }
 
     #[test]
     fn inner_single_quote_basic() {
         assert_state!(
-            "'hel|lo'\n",
+            "'hel-[l]>o'\n",
             |(buf, sels)| cmd_inner_single_quote(buf, sels),
-            "'#[hell|o]#'\n"
+            "'-[hello]>'\n"
         );
     }
 
     #[test]
     fn inner_backtick_basic() {
         assert_state!(
-            "`hel|lo`\n",
+            "`hel-[l]>o`\n",
             |(buf, sels)| cmd_inner_backtick(buf, sels),
-            "`#[hell|o]#`\n"
+            "`-[hello]>`\n"
         );
     }
 
     #[test]
     fn inner_double_quote_not_inside_is_noop() {
         assert_state!(
-            "hel|lo\n",
+            "hel-[l]>o\n",
             |(buf, sels)| cmd_inner_double_quote(buf, sels),
-            "hel|lo\n"
+            "hel-[l]>o\n"
         );
     }
 }
