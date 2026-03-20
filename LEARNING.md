@@ -136,8 +136,9 @@ to every selection in the set simultaneously. The *primary* is just the
 2. **Viewport scrolling**: the editor scrolls to keep the primary visible.
    Other cursors may be off-screen — that is fine and expected.
 
-3. **Single-selection commands**: `,` (keep primary only) and `Alt-,` (remove
-   primary) operate on exactly one selection. The primary determines which one.
+3. **Single-selection commands**: `cmd_keep_primary_selection` (keep primary
+   only) and `cmd_remove_primary_selection` (remove primary) operate on
+   exactly one selection. The primary determines which one.
 
 4. **Registers** (not yet implemented): when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
@@ -145,10 +146,12 @@ to every selection in the set simultaneously. The *primary* is just the
    cursor. If the cursor count doesn't match at paste time, the full register
    content is pasted at every cursor as a fallback.
 
-**Why cycle the primary?** In a keyboard-only multi-cursor world, `)` and `(`
-are how you "focus" a different cursor — to make the viewport scroll to it,
-read its position in the status bar, or target it with `Alt-,`. There is no
-mouse click to promote a cursor; cycling is the keyboard equivalent.
+**Why cycle the primary?** In a keyboard-only multi-cursor world,
+`cmd_cycle_primary_forward` and `cmd_cycle_primary_backward` are how you
+"focus" a different cursor — to make the viewport scroll to it, read its
+position in the status bar, or target it with `cmd_remove_primary_selection`.
+There is no mouse click to promote a cursor; cycling is the keyboard
+equivalent.
 
 Internally, `SelectionSet.primary` is an index into the sorted
 `Vec<Selection>`. The index is updated whenever the set changes: merges that

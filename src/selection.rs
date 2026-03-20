@@ -107,8 +107,8 @@ pub(crate) struct SelectionSet {
     selections: Vec<Selection>,
 
     /// Index of the "primary" selection — the one displayed in the status bar
-    /// and used for operations that act on a single selection (e.g., `%`
-    /// reduce to primary).
+    /// and used for operations that act on a single selection (e.g.,
+    /// `cmd_keep_primary_selection`).
     primary: usize,
 }
 
@@ -313,8 +313,8 @@ impl SelectionSet {
     /// Remove the selection at `idx` and return the updated set.
     ///
     /// If `idx` is the primary, the new primary becomes the next selection
-    /// in document order, wrapping to the last one if the removed selection
-    /// was the last. If `len() == 1`, returns `self` unchanged — you cannot
+    /// in document order, wrapping around to the first if the removed
+    /// selection was the last. If `len() == 1`, returns `self` unchanged — you cannot
     /// remove the only selection. Panics if `idx >= len()`.
     pub(crate) fn remove(mut self, idx: usize) -> Self {
         if self.selections.len() <= 1 {
@@ -698,14 +698,14 @@ mod tests {
     }
 
     #[test]
-    fn remove_primary_at_end_wraps_to_last() {
+    fn remove_primary_at_end_wraps_to_first() {
         let set = SelectionSet::from_vec(
             vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
             2, // primary is the last one
         );
         let result = set.remove(2);
         assert_eq!(result.len(), 2);
-        // idx=2 % new_len=2 = 0
+        // idx=2 % new_len=2 = 0 → wraps to the first selection
         assert_eq!(result.primary().head, 0);
     }
 

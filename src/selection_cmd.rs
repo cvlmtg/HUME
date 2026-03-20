@@ -1,5 +1,5 @@
 use crate::buffer::Buffer;
-use crate::grapheme::prev_grapheme_boundary;
+use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{line_end_exclusive, snap_to_grapheme_boundary};
 use crate::selection::{Selection, SelectionSet};
 
@@ -122,9 +122,9 @@ pub(crate) fn cmd_split_selection_on_newlines(
 
     // The new primary is the first piece of the original primary.
     let new_primary = piece_start[primary_idx];
-    // Split selections can't overlap (they come from non-overlapping originals
-    // and cover disjoint lines), so merge is a no-op but we call it for safety.
-    let new_set = SelectionSet::from_vec(new_sels, new_primary).merge_overlapping();
+    // Split selections cover disjoint line ranges and can't overlap, so no
+    // merge is needed. `from_vec` preserves the sorted order we built.
+    let new_set = SelectionSet::from_vec(new_sels, new_primary);
     new_set.debug_assert_valid(buf.len_chars());
     (buf, new_set)
 }
@@ -144,9 +144,9 @@ pub(crate) fn cmd_trim_selection_whitespace(
         let end = sel.end();
         let forward = sel.anchor <= sel.head;
 
-        // Walk forward from start, skipping whitespace.
+        // Walk forward from start, skipping whitespace (grapheme boundary steps).
         while start <= end && is_whitespace(&buf, start) {
-            start += 1;
+            start = next_grapheme_boundary(&buf, start);
         }
 
         // If we consumed everything, the selection is all whitespace.
@@ -154,10 +154,10 @@ pub(crate) fn cmd_trim_selection_whitespace(
             return Selection::cursor(sel.head);
         }
 
-        // Walk backward from end, skipping whitespace.
+        // Walk backward from end, skipping whitespace (grapheme boundary steps).
         let mut new_end = end;
         while new_end > start && is_whitespace(&buf, new_end) {
-            new_end -= 1;
+            new_end = prev_grapheme_boundary(&buf, new_end);
         }
 
         make_sel(start, new_end, forward)
@@ -199,13 +199,14 @@ pub(crate) fn cmd_copy_selection_on_prev_line(
 /// down and `-1` for up.
 fn copy_selection_vertically(buf: Buffer, sels: SelectionSet, direction: isize) -> (Buffer, SelectionSet) {
     let primary_idx = sels.primary_index();
-    let sorted: Vec<Selection> = sels.iter_sorted().copied().collect();
-
-    let mut all_sels: Vec<Selection> = sorted.clone();
+    // Collect originals into `all_sels`. Copies are appended below.
+    let mut all_sels: Vec<Selection> = sels.iter_sorted().copied().collect();
+    let original_len = all_sels.len();
     // Index in `all_sels` for the copy of the old primary, if one was added.
     let mut primary_copy_idx: Option<usize> = None;
 
-    for (i, sel) in sorted.iter().enumerate() {
+    for i in 0..original_len {
+        let sel = all_sels[i];
         let anchor_line = buf.char_to_line(sel.anchor) as isize;
         let head_line = buf.char_to_line(sel.head) as isize;
 
@@ -634,5 +635,179 @@ mod tests {
         let (buf, sels) = parse_state("f|oo\nbar\n");
         let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
         assert_eq!(sels_out.len(), 1); // no copy added
+    }
+
+    #[test]
+    fn copy_to_prev_line_clamps_column() {
+        // "hi\nhello\n" — cursor at column 4 of line 1 ('o').
+        // Line 0 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
+        // "hi\n" = offsets 0-2, "hello\n" = offsets 3-8.
+        // Cursor at col 4 of line 1 = offset 3+4 = 7 ('o').
+        let (buf, sels) = parse_state("hi\nhell|o\n");
+        let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        // Copy should land at last char of "hi" = 'i' at offset 1.
+        assert_eq!(sels_out.primary().head, 1);
+    }
+
+    // ── additional collapse edge cases ─────────────────────────────────────
+
+    #[test]
+    fn collapse_empty_buffer() {
+        assert_state!("|\n", |(buf, sels)| cmd_collapse_selection(buf, sels), "|\n");
+    }
+
+    #[test]
+    fn collapse_two_selections_same_head_merges() {
+        // Two selections with different anchors but the same head collapse to
+        // one cursor — map_and_merge must reduce the count.
+        let buf = crate::buffer::Buffer::from_str("hello\n");
+        let sels = crate::selection::SelectionSet::from_vec(
+            vec![
+                crate::selection::Selection::new(0, 3), // head at 3
+                crate::selection::Selection::new(1, 3), // head at 3
+            ],
+            0,
+        );
+        let (_, result) = cmd_collapse_selection(buf, sels);
+        assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
+        assert_eq!(result.primary().head, 3);
+    }
+
+    // ── additional flip edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn flip_multiple_selections() {
+        // Two forward selections both flip to backward.
+        assert_state!(
+            "#[hel|l]#o #[wor|l]#d\n",
+            |(buf, sels)| cmd_flip_selections(buf, sels),
+            "#[|hel]#lo #[|wor]#ld\n"
+        );
+    }
+
+    // ── additional keep_primary edge cases ─────────────────────────────────
+
+    #[test]
+    fn keep_primary_when_primary_is_not_first() {
+        // Cycle primary to the second cursor, then keep — should keep that one.
+        let (buf, sels) = parse_state("|hel|lo\n"); // primary at index 0 (head=0)
+        let (buf, sels) = cmd_cycle_primary_forward(buf, sels); // primary now at index 1 (head=3)
+        let (_, sels_out) = cmd_keep_primary_selection(buf, sels);
+        assert_eq!(sels_out.len(), 1);
+        assert_eq!(sels_out.primary().head, 3); // kept the second one
+    }
+
+    // ── additional remove_primary edge cases ───────────────────────────────
+
+    #[test]
+    fn remove_primary_at_end_wraps_to_first() {
+        // Three cursors at 0, 3, 6. Cycle to last, then remove — should wrap
+        // to the first remaining cursor (index 0 of the new set).
+        let (buf, sels) = parse_state("|hel|lo|\n"); // 3 cursors, primary at 0
+        let (buf, sels) = cmd_cycle_primary_backward(buf, sels); // primary at last (head=6)
+        let (_, sels_out) = cmd_remove_primary_selection(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        assert_eq!(sels_out.primary().head, 0); // wrapped to first
+    }
+
+    // ── additional split edge cases ────────────────────────────────────────
+
+    #[test]
+    fn split_empty_line_in_middle() {
+        // "foo\n\nbar\n" — selection from 'f'(0) to 'r'(7) spans 3 lines.
+        // Line 0: "foo\n", line 1: "\n" (empty), line 2: "bar\n".
+        // Middle piece should be a cursor on the lone '\n' at offset 4.
+        let (buf, sels) = parse_state("#[foo\n\nba|r]#\n");
+        let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
+        assert_eq!(sels_out.len(), 3);
+        let s: Vec<_> = sels_out.iter_sorted().copied().collect();
+        // Line 0: "foo" → offsets 0–2.
+        assert_eq!(s[0].start(), 0);
+        assert_eq!(s[0].end(), 2);
+        // Line 1: empty → cursor on '\n' at offset 4.
+        assert_eq!(s[1].start(), 4);
+        assert_eq!(s[1].end(), 4);
+        // Line 2: "bar" → offsets 5–7.
+        assert_eq!(s[2].start(), 5);
+        assert_eq!(s[2].end(), 7);
+    }
+
+    #[test]
+    fn split_backward_multi_line_preserves_direction() {
+        // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
+        // Each piece should be backward (anchor > head).
+        let (buf, sels) = parse_state("#[|foo\nba]#r\n");
+        let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        let s: Vec<_> = sels_out.iter_sorted().copied().collect();
+        // Both pieces should be backward selections.
+        assert!(s[0].anchor > s[0].head, "line 0 piece should be backward");
+        assert!(s[1].anchor > s[1].head, "line 1 piece should be backward");
+    }
+
+    // ── additional trim edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn trim_tab_characters() {
+        // "\thello\t\n" — selection from tab(0) to tab(6) inclusive.
+        // After trim: start=1 ('h'), end=5 ('o').
+        // "\thello\t\n": \t(0),h(1),e(2),l(3),l(4),o(5),\t(6),\n(7).
+        let (buf, sels) = parse_state("#[\thell|o]#\t\n");
+        let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
+        assert_eq!(sels_out.primary().start(), 1); // past leading tab
+        assert_eq!(sels_out.primary().end(), 5);   // 'o'
+    }
+
+    #[test]
+    fn trim_backward_selection_preserves_direction() {
+        // Backward selection covering "  hello\n": anchor=7, head=0.
+        // After trim: spans 'h'(2) to 'o'(6), still backward.
+        assert_state!(
+            "#[|  hello]#\n",
+            |(buf, sels)| cmd_trim_selection_whitespace(buf, sels),
+            "  #[|hell]#o\n"
+        );
+    }
+
+    #[test]
+    fn trim_empty_buffer_collapses() {
+        // Only char is '\n' (whitespace) — all-whitespace selection collapses.
+        assert_state!("|\n", |(buf, sels)| cmd_trim_selection_whitespace(buf, sels), "|\n");
+    }
+
+    // ── additional copy edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn copy_next_backward_selection() {
+        // Backward selection on line 0: anchor=2('o'), head=0('f').
+        // DSL: #[|fo]#o\nbar\n — "fo" (2 chars) inside markers → anchor=2, head=0.
+        // (Writing 3 chars inside would make anchor=3='\n', including the newline.)
+        // Copy down: both endpoints shift to line 1 preserving column.
+        // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
+        // anchor col=2 → line 1 col 2 = offset 6 ('r'). head col=0 → offset 4 ('b').
+        let (buf, sels) = parse_state("#[|fo]#o\nbar\n");
+        let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        // The copy (primary) should be backward: anchor=6, head=4.
+        let copy = sels_out.primary();
+        assert!(copy.anchor > copy.head, "copy should preserve backward direction");
+        assert_eq!(copy.head, 4);   // 'b' at col 0 of line 1
+        assert_eq!(copy.anchor, 6); // 'r' at col 2 of line 1
+    }
+
+    #[test]
+    fn copy_next_multiple_cursors() {
+        // Two cursors on line 0 at cols 1 and 2. Both get copied to line 1.
+        // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
+        // Col 1 → offset 5 ('a'), col 2 → offset 6 ('r').
+        let (buf, sels) = parse_state("f|o|o\nbar\n");
+        let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
+        assert_eq!(sels_out.len(), 4); // 2 originals + 2 copies
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        assert!(heads.contains(&1)); // original col 1
+        assert!(heads.contains(&2)); // original col 2
+        assert!(heads.contains(&5)); // copy of col 1 on line 1
+        assert!(heads.contains(&6)); // copy of col 2 on line 1
     }
 }
