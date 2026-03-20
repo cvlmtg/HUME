@@ -344,9 +344,9 @@ mod tests {
 
     #[test]
     fn collapse_backward_selection() {
-        // Backward: anchor=3, head=0. Collapses to cursor at head=0.
+        // Backward: anchor=3, head=0, selects "hell" (4 chars). Collapses to cursor at head=0.
         assert_state!(
-            "#[|hel]#lo\n",
+            "#[|hell]#o\n",
             |(buf, sels)| cmd_collapse_selection(buf, sels),
             "|hello\n"
         );
@@ -365,18 +365,19 @@ mod tests {
 
     #[test]
     fn flip_forward_becomes_backward() {
-        // Forward: anchor=0, head=3 → backward: anchor=3, head=0.
+        // Forward: anchor=0, head=3, selects "hell". After flip: anchor=3, head=0.
         assert_state!(
             "#[hel|lo]#\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
-            "#[|hel]#lo\n"
+            "#[|hell]#o\n"
         );
     }
 
     #[test]
     fn flip_backward_becomes_forward() {
+        // Backward: anchor=3, head=0, selects "hell". After flip: anchor=0, head=3.
         assert_state!(
-            "#[|hel]#lo\n",
+            "#[|hell]#o\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
             "#[hel|lo]#\n"
         );
@@ -682,7 +683,7 @@ mod tests {
         assert_state!(
             "#[hel|l]#o #[wor|l]#d\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
-            "#[|hel]#lo #[|wor]#ld\n"
+            "#[|hell]#o #[|worl]#d\n"
         );
     }
 
@@ -737,7 +738,7 @@ mod tests {
     fn split_backward_multi_line_preserves_direction() {
         // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
         // Each piece should be backward (anchor > head).
-        let (buf, sels) = parse_state("#[|foo\nba]#r\n");
+        let (buf, sels) = parse_state("#[|foo\nbar]#\n");
         let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         assert_eq!(sels_out.len(), 2);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
@@ -761,12 +762,12 @@ mod tests {
 
     #[test]
     fn trim_backward_selection_preserves_direction() {
-        // Backward selection covering "  hello\n": anchor=7, head=0.
+        // Backward selection covering "  hello\n": anchor=7('\n'), head=0.
         // After trim: spans 'h'(2) to 'o'(6), still backward.
         assert_state!(
-            "#[|  hello]#\n",
+            "#[|  hello\n]#",
             |(buf, sels)| cmd_trim_selection_whitespace(buf, sels),
-            "  #[|hell]#o\n"
+            "  #[|hello]#\n"
         );
     }
 
@@ -780,13 +781,11 @@ mod tests {
 
     #[test]
     fn copy_next_backward_selection() {
-        // Backward selection on line 0: anchor=2('o'), head=0('f').
-        // DSL: #[|fo]#o\nbar\n — "fo" (2 chars) inside markers → anchor=2, head=0.
-        // (Writing 3 chars inside would make anchor=3='\n', including the newline.)
+        // Backward selection on line 0: anchor=2('o'), head=0('f') — selects "foo" (3 chars).
         // Copy down: both endpoints shift to line 1 preserving column.
         // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
         // anchor col=2 → line 1 col 2 = offset 6 ('r'). head col=0 → offset 4 ('b').
-        let (buf, sels) = parse_state("#[|fo]#o\nbar\n");
+        let (buf, sels) = parse_state("#[|foo]#\nbar\n");
         let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(sels_out.len(), 2);
         // The copy (primary) should be backward: anchor=6, head=4.

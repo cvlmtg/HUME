@@ -198,11 +198,11 @@ mod tests {
 
     #[test]
     fn insert_char_replaces_backward_selection() {
-        // anchor=3, head=0 covers chars 0-3 ('h','e','l','l').
+        // anchor=3, head=0 covers chars 0-3 ('h','e','l','l') — "hell" (4 chars).
         // Delete [0,4), insert 'x' at 0, cursor at 1.
         // Buffer "hello" → remove "hell" → "o", insert 'x' → "xo".
         assert_state!(
-            "#[|hel]#lo\n",
+            "#[|hell]#o\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
             "x|o\n"
         );

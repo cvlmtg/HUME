@@ -696,11 +696,11 @@ mod tests {
     #[test]
     fn extend_left_from_cursor() {
         // Collapsed cursor at 1. Extend left: anchor stays at 1, head moves to 0.
-        // Backward selection anchor=1, head=0 → "#[|h]#ello\n".
+        // Backward selection anchor=1, head=0, selects "he" (2 chars).
         assert_state!(
             "h|ello\n",
             |(buf, sels)| cmd_extend_left(buf, sels),
-            "#[|h]#ello\n"
+            "#[|he]#llo\n"
         );
     }
 
@@ -878,8 +878,8 @@ mod tests {
     #[test]
     fn extend_up_creates_selection() {
         // Cursor at offset 6 ('w'). Extend up: anchor stays at 6, head moves to 0 ('h').
-        // Backward selection: anchor=6, head=0 → "#[|hello\n]#world\n"
-        assert_state!("hello\n|world\n", |(buf, sels)| cmd_extend_up(buf, sels), "#[|hello\n]#world\n");
+        // Backward selection: anchor=6, head=0, selects "hello\nw" (7 chars).
+        assert_state!("hello\n|world\n", |(buf, sels)| cmd_extend_up(buf, sels), "#[|hello\nw]#orld\n");
     }
 
     // ── next_word_start (w) ───────────────────────────────────────────────────
@@ -940,18 +940,18 @@ mod tests {
     #[test]
     fn prev_word_start_basic() {
         // Cursor mid-word, jump back to start of current word.
-        assert_state!("hello wor|ld\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "hello #[|wor]#ld\n");
+        assert_state!("hello wor|ld\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "hello #[|worl]#d\n");
     }
 
     #[test]
     fn prev_word_start_from_word_to_punct() {
-        assert_state!("hello.wor|ld\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "hello.#[|wor]#ld\n");
+        assert_state!("hello.wor|ld\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "hello.#[|worl]#d\n");
     }
 
     #[test]
     fn prev_word_start_skips_space() {
         // From a word, skip space backward, land on start of previous word.
-        assert_state!("hello |world\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "#[|hello ]#world\n");
+        assert_state!("hello |world\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "#[|hello w]#orld\n");
     }
 
     #[test]
@@ -962,7 +962,7 @@ mod tests {
     #[test]
     fn prev_word_start_across_newline() {
         // Skip newline backward, land on word start on the previous line.
-        assert_state!("hello\n|world\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "#[|hello\n]#world\n");
+        assert_state!("hello\n|world\n", |(buf, sels)| cmd_prev_word_start(buf, sels), "#[|hello\nw]#orld\n");
     }
 
     // ── next_word_end (e) ─────────────────────────────────────────────────────
@@ -1007,7 +1007,7 @@ mod tests {
     #[test]
     fn prev_WORD_start_skips_punct() {
         // B: "hello.world" is one WORD, jump to its start.
-        assert_state!("hello.wor|ld bar\n", |(buf, sels)| cmd_prev_WORD_start(buf, sels), "#[|hello.wor]#ld bar\n");
+        assert_state!("hello.wor|ld bar\n", |(buf, sels)| cmd_prev_WORD_start(buf, sels), "#[|hello.worl]#d bar\n");
     }
 
     #[test]
@@ -1026,7 +1026,7 @@ mod tests {
 
     #[test]
     fn extend_prev_word_start_backward() {
-        assert_state!("hello |world\n", |(buf, sels)| cmd_extend_prev_word_start(buf, sels), "#[|hello ]#world\n");
+        assert_state!("hello |world\n", |(buf, sels)| cmd_extend_prev_word_start(buf, sels), "#[|hello w]#orld\n");
     }
 
     // ── extend WORD variants ──────────────────────────────────────────────────
@@ -1046,13 +1046,13 @@ mod tests {
     #[test]
     fn extend_prev_WORD_start_backward() {
         // Cursor after a WORD that includes punctuation — extend back to its start.
-        assert_state!("hello.world |foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.world ]#foo\n");
+        assert_state!("hello.world |foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.world f]#oo\n");
     }
 
     #[test]
     fn extend_prev_WORD_start_from_inside_WORD() {
         // Cursor in middle of "hello.world" — extend back to the start of that WORD.
-        assert_state!("hello.wor|ld foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.wor]#ld foo\n");
+        assert_state!("hello.wor|ld foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(buf, sels), "#[|hello.worl]#d foo\n");
     }
 
     #[test]
@@ -1212,7 +1212,7 @@ mod tests {
         assert_state!(
             "hello\n\n|world\n",
             |(buf, sels)| cmd_extend_prev_paragraph(buf, sels),
-            "hello\n#[|\n]#world\n"
+            "hello\n#[|\nw]#orld\n"
         );
     }
 }
