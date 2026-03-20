@@ -11,8 +11,6 @@ use crate::selection::{Selection, SelectionSet};
 /// character (the cursor position). Uses `map_and_merge` because two
 /// overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
-///
-/// Helix equivalent: `;`
 pub(crate) fn cmd_collapse_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = sels.map_and_merge(|s| Selection::cursor(s.head));
     new_sels.debug_assert_valid(buf.len_chars());
@@ -24,8 +22,6 @@ pub(crate) fn cmd_collapse_selection(buf: Buffer, sels: SelectionSet) -> (Buffer
 /// A forward selection (anchor ≤ head) becomes backward, and vice versa.
 /// Does not change any range bounds, so overlaps cannot arise — uses plain
 /// `map` (no merge needed).
-///
-/// Helix equivalent: `Alt-;`
 pub(crate) fn cmd_flip_selections(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     // `flip` only swaps anchor/head — no range change → no new overlaps.
     let new_sels = sels.map(|s| s.flip());
@@ -37,8 +33,6 @@ pub(crate) fn cmd_flip_selections(buf: Buffer, sels: SelectionSet) -> (Buffer, S
 ///
 /// The result is a single-selection set. This is a destructive reduction —
 /// any non-primary cursors or ranges are lost.
-///
-/// Helix equivalent: `,`
 pub(crate) fn cmd_keep_primary_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = sels.keep_primary();
     new_sels.debug_assert_valid(buf.len_chars());
@@ -50,8 +44,6 @@ pub(crate) fn cmd_keep_primary_selection(buf: Buffer, sels: SelectionSet) -> (Bu
 /// If there is only one selection, this is a no-op (the set can never be
 /// empty). After removal the primary wraps to the start if it was the last
 /// selection in document order.
-///
-/// Helix equivalent: `Alt-,`
 pub(crate) fn cmd_remove_primary_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let idx = sels.primary_index();
     let new_sels = sels.remove(idx); // no-op when len == 1
@@ -60,8 +52,6 @@ pub(crate) fn cmd_remove_primary_selection(buf: Buffer, sels: SelectionSet) -> (
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
-///
-/// Helix equivalent: `)`
 pub(crate) fn cmd_cycle_primary_forward(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = sels.cycle_primary(1);
     new_sels.debug_assert_valid(buf.len_chars());
@@ -69,8 +59,6 @@ pub(crate) fn cmd_cycle_primary_forward(buf: Buffer, sels: SelectionSet) -> (Buf
 }
 
 /// Move the primary selection to the previous one in document order, wrapping.
-///
-/// Helix equivalent: `(`
 pub(crate) fn cmd_cycle_primary_backward(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
     let new_sels = sels.cycle_primary(-1);
     new_sels.debug_assert_valid(buf.len_chars());
@@ -90,8 +78,6 @@ pub(crate) fn cmd_cycle_primary_backward(buf: Buffer, sels: SelectionSet) -> (Bu
 ///
 /// The direction (forward/backward) of the original selection is preserved on
 /// every piece. The primary becomes the first piece of the original primary.
-///
-/// Helix equivalent: `Alt-s`
 pub(crate) fn cmd_split_selection_on_newlines(
     buf: Buffer,
     sels: SelectionSet,
@@ -149,8 +135,6 @@ pub(crate) fn cmd_split_selection_on_newlines(
 /// range shrinks inward until both ends sit on non-whitespace characters. If
 /// the entire selection is whitespace the selection collapses to a cursor at
 /// the original `head`.
-///
-/// Helix equivalent: `_`
 pub(crate) fn cmd_trim_selection_whitespace(
     buf: Buffer,
     sels: SelectionSet,
@@ -192,8 +176,6 @@ pub(crate) fn cmd_trim_selection_whitespace(
 ///
 /// The primary advances to the newly added copy of the original primary. If
 /// no copy was added (last-line edge case) the primary stays on the original.
-///
-/// Helix equivalent: `C`
 pub(crate) fn cmd_copy_selection_on_next_line(
     buf: Buffer,
     sels: SelectionSet,
@@ -204,8 +186,6 @@ pub(crate) fn cmd_copy_selection_on_next_line(
 /// Duplicate each selection one line up and add it to the selection set.
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
-///
-/// Helix equivalent: `Alt-C`
 pub(crate) fn cmd_copy_selection_on_prev_line(
     buf: Buffer,
     sels: SelectionSet,
