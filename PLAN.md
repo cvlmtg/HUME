@@ -57,7 +57,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping is an M3/keybinding concern.
 - [x] Text objects: inside/around word, quotes, brackets, line
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
-- [ ] Registers: named yank/paste buffers (`"a`–`"z`) including system clipboard register (`"+`)
+- [x] Registers: named yank/paste buffers (`"a`–`"z`) + default `"` + black hole `_`; `yank_selections`, `delete_selection`, `paste_after`, `paste_before` (`src/register.rs`, `src/edit.rs`). System clipboard (`"+`) deferred to M3.
 - [ ] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
 - [ ] Repeat last command (`.` equivalent)
 - [ ] Undo/redo: tree-structured undo with changesets

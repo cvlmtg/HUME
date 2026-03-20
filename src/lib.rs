@@ -5,6 +5,7 @@ pub(crate) mod error;
 pub(crate) mod grapheme;
 pub(crate) mod helpers;
 pub(crate) mod motion;
+pub(crate) mod register;
 pub(crate) mod selection;
 pub(crate) mod selection_cmd;
 pub(crate) mod text_object;
