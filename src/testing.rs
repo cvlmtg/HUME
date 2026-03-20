@@ -12,7 +12,7 @@
 /// | `\|`   | Single-character selection (anchor == head). Cursor sits on the character at this offset. |
 /// | `#[`   | Start of a selection (anchor position). |
 /// | `\|` inside `#[…]#` | Head (cursor) position. **Forward** `#[ABC\|C]#`: ABC are the selected chars before the cursor; C is the single cursor character (at `head`). **Backward** `#[\|CCC]#`: `\|` is right after `#[` and CCC are the selected chars after the cursor. |
-/// | `]#`   | End of a selection. For forward selections, placed one past `head` (i.e. after the cursor char). For backward selections, placed at `anchor`. |
+/// | `]#`   | End of a selection. For forward selections, placed one past `head` (i.e. after the cursor char). For backward selections, placed one past `anchor` (i.e. after the anchor char). |
 ///
 /// ## Examples
 ///
@@ -21,7 +21,7 @@
 /// "hello|\n"           — cursor on '\n' (offset 5, the structural trailing newline)
 /// "hel|lo\n"           — cursor on the second 'l' (offset 3)
 /// "#[hel|l]#o world\n" — forward selection: anchor=0, head=3 (cursor on 'l')
-/// "#[|hel]#lo\n"       — backward selection: anchor=3, head=0 (cursor on 'h')
+/// "#[|hel]#lo\n"       — backward selection: anchor=2, head=0 (cursor on 'h', selects "hel")
 /// "#[a|b]# #[c|d]#\n"  — two forward selections
 /// ```
 ///
@@ -124,12 +124,20 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
                 //
                 //   Backward — `|` appeared IMMEDIATELY after `#[` (no text
                 //               between them), so anchor_offset == head_offset.
-                //               In this case the text between `|` and `]#` is
-                //               the selected region *after* the cursor, and
-                //               the anchor sits at the current char position.
-                //               anchor = current char_count, head = head_offset.
+                //               The text between `|` and `]#` IS the selected
+                //               region (inclusive of anchor). The anchor is the
+                //               last character written, i.e. char_count - 1.
+                //               Special case: zero chars between `|` and `]#`
+                //               is a degenerate cursor (`#[|]#`) — anchor=head.
                 let (anchor, head) = if *anchor_offset == *head_offset {
-                    (char_count(&text), *head_offset)
+                    let count = char_count(&text);
+                    if count == *head_offset {
+                        // #[|]# — nothing between markers → cursor
+                        (count, count)
+                    } else {
+                        // anchor = last char written (inclusive end)
+                        (count - 1, *head_offset)
+                    }
                 } else {
                     (*anchor_offset, *head_offset)
                 };
@@ -224,10 +232,11 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
             markers[(sel.head + 1).min(n)].push("]#");
         } else {
             // Backward selection: anchor > head.
-            // Format: #[|...anchor_text...]#  — | at head (start), ]# at anchor (end).
+            // Format: #[|...selected_text...]# — | at head, ]# one past anchor.
+            // The text between #[| and ]# is exactly the selected text (inclusive).
             markers[sel.head].push("#[");
             markers[sel.head].push("|");
-            markers[sel.end()].push("]#");
+            markers[(sel.end() + 1).min(n)].push("]#");
         }
     }
 
@@ -341,11 +350,11 @@ mod tests {
 
     #[test]
     fn parse_backward_selection() {
-        // #[|hel]#lo\n → anchor=3, head=0
+        // #[|hel]#lo\n → anchor=2, head=0 — selects "hel" (3 chars)
         let (buf, sels) = parse_state("#[|hel]#lo\n");
         assert_eq!(buf.to_string(), "hello\n");
         let s = sels.primary();
-        assert_eq!(s.anchor, 3);
+        assert_eq!(s.anchor, 2);
         assert_eq!(s.head, 0);
     }
 
@@ -417,10 +426,11 @@ mod tests {
     #[test]
     fn serialize_backward_selection() {
         // anchor=3, head=0 → cursor ON 'h' (char 0), anchor at offset 3.
-        // #[ and | both at 0, ]# at anchor=3.
+        // #[ and | both at 0, ]# one past anchor = position 4.
+        // Selects "hell" (positions 0..=3).
         let buf = Buffer::from_str("hello");
         let sels = SelectionSet::single(Selection::new(3, 0));
-        assert_eq!(serialize_state(&buf, &sels), "#[|hel]#lo\n");
+        assert_eq!(serialize_state(&buf, &sels), "#[|hell]#o\n");
     }
 
     #[test]
@@ -467,6 +477,16 @@ mod tests {
     #[test]
     fn roundtrip_backward_selection() {
         assert_eq!(round_trip("#[|hel]#lo\n"), "#[|hel]#lo\n");
+    }
+
+    #[test]
+    fn parse_backward_selection_degenerate_empty() {
+        // #[|]# with nothing between markers → cursor (anchor == head), not a panic.
+        let (buf, sels) = parse_state("#[|]#hello\n");
+        assert_eq!(buf.to_string(), "hello\n");
+        let s = sels.primary();
+        assert!(s.is_cursor());
+        assert_eq!(s.head, 0);
     }
 
     #[test]
