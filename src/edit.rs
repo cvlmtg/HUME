@@ -156,24 +156,24 @@ mod tests {
     #[test]
     fn insert_char_at_cursor_start() {
         // Cursor on 'h'; 'x' inserted before it; cursor advances to 'h'.
-        assert_state!("|hello\n", |(buf, sels)| insert_char(buf, sels,'x'), "x|hello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| insert_char(buf, sels,'x'), "x-[h]>ello\n");
     }
 
     #[test]
     fn insert_char_at_cursor_middle() {
         // Cursor on second 'l' (offset 3); 'x' inserted, cursor on 'l'.
-        assert_state!("hel|lo\n", |(buf, sels)| insert_char(buf, sels,'x'), "helx|lo\n");
+        assert_state!("hel-[l]>o\n", |(buf, sels)| insert_char(buf, sels,'x'), "helx-[l]>o\n");
     }
 
     #[test]
     fn insert_char_at_cursor_eof() {
         // Cursor at EOF (offset 5); 'x' appended; cursor at new EOF.
-        assert_state!("hello|\n", |(buf, sels)| insert_char(buf, sels,'x'), "hellox|\n");
+        assert_state!("hello-[\n]>", |(buf, sels)| insert_char(buf, sels,'x'), "hellox-[\n]>");
     }
 
     #[test]
     fn insert_char_into_empty_buffer() {
-        assert_state!("|\n", |(buf, sels)| insert_char(buf, sels,'x'), "x|\n");
+        assert_state!("-[\n]>", |(buf, sels)| insert_char(buf, sels,'x'), "x-[\n]>");
     }
 
     #[test]
@@ -181,18 +181,18 @@ mod tests {
         // Selection anchor=0, head=3 covers 'h','e','l','l' (4 chars).
         // Delete [0,4), insert 'x', cursor at 1.
         assert_state!(
-            "#[hel|l]#o\n",
+            "-[hell]>o\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
-            "x|o\n"
+            "x-[o]>\n"
         );
     }
 
     #[test]
     fn insert_char_replaces_whole_buffer() {
         assert_state!(
-            "#[hell|o]#\n",
+            "-[hello]>\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
-            "x|\n"
+            "x-[\n]>"
         );
     }
 
@@ -202,9 +202,9 @@ mod tests {
         // Delete [0,4), insert 'x' at 0, cursor at 1.
         // Buffer "hello" → remove "hell" → "o", insert 'x' → "xo".
         assert_state!(
-            "#[|hell]#o\n",
+            "<[hell]-o\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
-            "x|o\n"
+            "x-[o]>\n"
         );
     }
 
@@ -214,16 +214,16 @@ mod tests {
         // Changeset: Insert("x"), Retain(3), Insert("x"), Retain(4).
         // Result: "xfoox bar", cursors at 1 and 5.
         assert_state!(
-            "|foo| bar\n",
+            "-[f]>oo-[ ]>bar\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
-            "x|foox| bar\n"
+            "x-[f]>oox-[ ]>bar\n"
         );
     }
 
     #[test]
     fn insert_char_unicode() {
         // Insert a multi-byte char (2 bytes in UTF-8, 1 char offset).
-        assert_state!("caf|é\n", |(buf, sels)| insert_char(buf, sels,'à'), "cafà|é\n");
+        assert_state!("caf-[é]>\n", |(buf, sels)| insert_char(buf, sels,'à'), "cafà-[é]>\n");
     }
 
     // ── delete_char_forward ───────────────────────────────────────────────────
@@ -231,31 +231,31 @@ mod tests {
     #[test]
     fn delete_forward_at_cursor_start() {
         // Cursor on 'h'; deletes 'h'; cursor stays at 0 (now on 'e').
-        assert_state!("|hello\n", |(buf, sels)| delete_char_forward(buf, sels), "|ello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| delete_char_forward(buf, sels), "-[e]>llo\n");
     }
 
     #[test]
     fn delete_forward_at_cursor_middle() {
-        assert_state!("h|ello\n", |(buf, sels)| delete_char_forward(buf, sels), "h|llo\n");
+        assert_state!("h-[e]>llo\n", |(buf, sels)| delete_char_forward(buf, sels), "h-[l]>lo\n");
     }
 
     #[test]
     fn delete_forward_at_eof_is_noop() {
-        assert_state!("hello|\n", |(buf, sels)| delete_char_forward(buf, sels), "hello|\n");
+        assert_state!("hello-[\n]>", |(buf, sels)| delete_char_forward(buf, sels), "hello-[\n]>");
     }
 
     #[test]
     fn delete_forward_empty_buffer_is_noop() {
-        assert_state!("|\n", |(buf, sels)| delete_char_forward(buf, sels), "|\n");
+        assert_state!("-[\n]>", |(buf, sels)| delete_char_forward(buf, sels), "-[\n]>");
     }
 
     #[test]
     fn delete_forward_selection() {
         // Selection [0,3] inclusive → remove [0,4) → "o", cursor at 0.
         assert_state!(
-            "#[hel|l]#o\n",
+            "-[hell]>o\n",
             |(buf, sels)| delete_char_forward(buf, sels),
-            "|o\n"
+            "-[o]>\n"
         );
     }
 
@@ -265,9 +265,9 @@ mod tests {
         // Changeset: Delete(1), Retain(1), Delete(1), Retain(2).
         // Result: "elo", cursors at 0 and 1.
         assert_state!(
-            "|he|llo\n",
+            "-[h]>e-[l]>lo\n",
             |(buf, sels)| delete_char_forward(buf, sels),
-            "|e|lo\n"
+            "-[e]>-[l]>o\n"
         );
     }
 
@@ -275,9 +275,9 @@ mod tests {
     fn delete_forward_adjacent_cursors_merge() {
         // Cursors at 2 and 3. Both delete forward; both land at 2 → merge.
         assert_state!(
-            "he|l|lo\n",
+            "he-[l]>-[l]>o\n",
             |(buf, sels)| delete_char_forward(buf, sels),
-            "he|o\n"
+            "he-[o]>\n"
         );
     }
 
@@ -285,9 +285,9 @@ mod tests {
     fn delete_forward_grapheme_cluster() {
         // "e\u{0301}x": é is 2 chars, 1 grapheme. Cursor at 0 deletes whole cluster.
         assert_state!(
-            "|e\u{0301}x\n",
+            "-[e\u{0301}]>x\n",
             |(buf, sels)| delete_char_forward(buf, sels),
-            "|x\n"
+            "-[x]>\n"
         );
     }
 
@@ -296,32 +296,32 @@ mod tests {
     #[test]
     fn delete_backward_at_cursor_end() {
         // Cursor at EOF (offset 5); backspace deletes 'o'; cursor at 4.
-        assert_state!("hello|\n", |(buf, sels)| delete_char_backward(buf, sels), "hell|\n");
+        assert_state!("hello-[\n]>", |(buf, sels)| delete_char_backward(buf, sels), "hell-[\n]>");
     }
 
     #[test]
     fn delete_backward_at_cursor_middle() {
         // Cursor at 3 ('l'); backspace deletes 'l' at 2; cursor at 2.
-        assert_state!("hel|lo\n", |(buf, sels)| delete_char_backward(buf, sels), "he|lo\n");
+        assert_state!("hel-[l]>o\n", |(buf, sels)| delete_char_backward(buf, sels), "he-[l]>o\n");
     }
 
     #[test]
     fn delete_backward_at_start_is_noop() {
-        assert_state!("|hello\n", |(buf, sels)| delete_char_backward(buf, sels), "|hello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| delete_char_backward(buf, sels), "-[h]>ello\n");
     }
 
     #[test]
     fn delete_backward_empty_buffer_is_noop() {
-        assert_state!("|\n", |(buf, sels)| delete_char_backward(buf, sels), "|\n");
+        assert_state!("-[\n]>", |(buf, sels)| delete_char_backward(buf, sels), "-[\n]>");
     }
 
     #[test]
     fn delete_backward_selection() {
         // Same as delete_forward for multi-char selections: removes selected region.
         assert_state!(
-            "#[hel|l]#o\n",
+            "-[hell]>o\n",
             |(buf, sels)| delete_char_backward(buf, sels),
-            "|o\n"
+            "-[o]>\n"
         );
     }
 
@@ -332,9 +332,9 @@ mod tests {
         // Changeset: Retain(1), Delete(1), Retain(1), Delete(1), Retain(1).
         // Result: "hlo", cursors at 1 and 2.
         assert_state!(
-            "he|ll|o\n",
+            "he-[l]>l-[o]>\n",
             |(buf, sels)| delete_char_backward(buf, sels),
-            "h|l|o\n"
+            "h-[l]>-[o]>\n"
         );
     }
 
@@ -343,9 +343,9 @@ mod tests {
         // "e\u{0301}x": é is 2 chars (offsets 0-1). Cursor at 2 (on 'x').
         // prev_grapheme_boundary(2) = 0. Deletes entire é cluster.
         assert_state!(
-            "e\u{0301}|x\n",
+            "e\u{0301}-[x]>\n",
             |(buf, sels)| delete_char_backward(buf, sels),
-            "|x\n"
+            "-[x]>\n"
         );
     }
 
@@ -354,9 +354,9 @@ mod tests {
         // Cursors at 2 and 3. Backspace at 2: delete offset 1. Backspace at 3:
         // delete offset 2 in original. Both cursors land at 1 → merge.
         assert_state!(
-            "he|l|lo\n",
+            "he-[l]>-[l]>o\n",
             |(buf, sels)| delete_char_backward(buf, sels),
-            "h|lo\n"
+            "h-[l]>o\n"
         );
     }
 }

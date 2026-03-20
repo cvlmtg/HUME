@@ -329,16 +329,16 @@ mod tests {
     #[test]
     fn collapse_cursor_is_noop() {
         // A cursor (anchor == head) collapsing to itself — no change.
-        assert_state!("|hello\n", |(buf, sels)| cmd_collapse_selection(buf, sels), "|hello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_collapse_selection(buf, sels), "-[h]>ello\n");
     }
 
     #[test]
     fn collapse_forward_selection() {
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| cmd_collapse_selection(buf, sels),
             // head was at 'l' (offset 3)
-            "hel|lo\n"
+            "hel-[l]>o\n"
         );
     }
 
@@ -346,9 +346,9 @@ mod tests {
     fn collapse_backward_selection() {
         // Backward: anchor=3, head=0, selects "hell" (4 chars). Collapses to cursor at head=0.
         assert_state!(
-            "#[|hell]#o\n",
+            "<[hell]-o\n",
             |(buf, sels)| cmd_collapse_selection(buf, sels),
-            "|hello\n"
+            "-[h]>ello\n"
         );
     }
 
@@ -356,7 +356,7 @@ mod tests {
     fn collapse_merges_coincident_heads() {
         // Two cursors at different positions stay separate after collapse —
         // they only merge if their heads land on the exact same position.
-        let (buf, sels) = parse_state("|hel|lo\n");
+        let (buf, sels) = parse_state("-[h]>el-[l]>o\n");
         let (_, result) = cmd_collapse_selection(buf, sels);
         assert_eq!(result.len(), 2); // still 2 — they don't converge
     }
@@ -367,9 +367,9 @@ mod tests {
     fn flip_forward_becomes_backward() {
         // Forward: anchor=0, head=3, selects "hell". After flip: anchor=3, head=0.
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
-            "#[|hell]#o\n"
+            "<[hell]-o\n"
         );
     }
 
@@ -377,28 +377,28 @@ mod tests {
     fn flip_backward_becomes_forward() {
         // Backward: anchor=3, head=0, selects "hell". After flip: anchor=0, head=3.
         assert_state!(
-            "#[|hell]#o\n",
+            "<[hell]-o\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
-            "#[hel|lo]#\n"
+            "-[hell]>o\n"
         );
     }
 
     #[test]
     fn flip_cursor_is_noop() {
         // anchor == head → flip does nothing observable.
-        assert_state!("|hello\n", |(buf, sels)| cmd_flip_selections(buf, sels), "|hello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_flip_selections(buf, sels), "-[h]>ello\n");
     }
 
     #[test]
     fn flip_is_involution() {
         // Flipping twice is the identity.
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| {
                 let (buf, sels) = cmd_flip_selections(buf, sels);
                 cmd_flip_selections(buf, sels)
             },
-            "#[hel|lo]#\n"
+            "-[hell]>o\n"
         );
     }
 
@@ -408,18 +408,18 @@ mod tests {
     fn keep_primary_drops_all_others() {
         // Three cursors; primary (first yielded by DSL) is at 0. Others dropped.
         assert_state!(
-            "|hel|l|o\n",
+            "-[h]>el-[l]>-[o]>\n",
             |(buf, sels)| cmd_keep_primary_selection(buf, sels),
-            "|hello\n"
+            "-[h]>ello\n"
         );
     }
 
     #[test]
     fn keep_primary_single_unchanged() {
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| cmd_keep_primary_selection(buf, sels),
-            "#[hel|lo]#\n"
+            "-[hell]>o\n"
         );
     }
 
@@ -428,9 +428,9 @@ mod tests {
     #[test]
     fn remove_primary_single_is_noop() {
         assert_state!(
-            "|hello\n",
+            "-[h]>ello\n",
             |(buf, sels)| cmd_remove_primary_selection(buf, sels),
-            "|hello\n"
+            "-[h]>ello\n"
         );
     }
 
@@ -439,9 +439,9 @@ mod tests {
         // Two cursors at 0 and 4. Primary is first (index 0).
         // After removal: only the cursor at 4 remains, becomes primary.
         assert_state!(
-            "|hell|o\n",
+            "-[h]>ell-[o]>\n",
             |(buf, sels)| cmd_remove_primary_selection(buf, sels),
-            "hell|o\n"
+            "hell-[o]>\n"
         );
     }
 
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn cycle_forward_advances_primary() {
         // Three cursors. After cycling forward, primary should be the next one.
-        let (buf, sels) = parse_state("|hel|lo\n"); // two cursors, primary at 0
+        let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // two cursors, primary at 0
         assert_eq!(sels.primary().head, 0);
         let (buf, sels) = cmd_cycle_primary_forward(buf, sels);
         assert_eq!(sels.primary().head, 3);
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn cycle_backward_wraps_to_last() {
-        let (buf, sels) = parse_state("|hel|lo\n"); // primary at 0
+        let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at 0
         let (_, sels) = cmd_cycle_primary_backward(buf, sels);
         assert_eq!(sels.primary().head, 3); // wraps to last
     }
@@ -473,9 +473,9 @@ mod tests {
     #[test]
     fn split_single_line_is_noop() {
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| cmd_split_selection_on_newlines(buf, sels),
-            "#[hel|lo]#\n"
+            "-[hell]>o\n"
         );
     }
 
@@ -484,7 +484,7 @@ mod tests {
         // "foo\nbar\n", selection from 'f'(0) to 'r'(6) (cross-line forward).
         // "#[foo\nba|r]#\n" → anchor=0, head=6 (cursor on 'r').
         // After split: "foo" on line 0, "bar" on line 1.
-        let (buf, sels) = parse_state("#[foo\nba|r]#\n");
+        let (buf, sels) = parse_state("-[foo\nbar]>\n");
         let (buf_out, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         // Buffer unchanged.
         assert_eq!(buf_out.to_string(), "foo\nbar\n");
@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn split_three_line_selection() {
         // "a\nb\nc\n" — forward selection from 'a' to 'c'.
-        let (buf, sels) = parse_state("#[a\nb\n|c]#\n");
+        let (buf, sels) = parse_state("-[a\nb\nc]>\n");
         let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
@@ -523,7 +523,7 @@ mod tests {
     fn split_cursor_at_newline_is_noop() {
         // A cursor sitting on a newline character is a single-line selection
         // (the \n is part of its line).
-        let (buf, sels) = parse_state("foo|\nbar\n");
+        let (buf, sels) = parse_state("foo-[\n]>bar\n");
         let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         assert_eq!(sels_out.len(), 1);
         assert_eq!(sels_out.primary().head, 3); // still on \n
@@ -536,7 +536,7 @@ mod tests {
         // "  hello\n", forward selection covering the whole word + leading spaces.
         // "#[  hell|o]#\n" → anchor=0, head=6 (cursor on 'o', offsets:  (0) (1) h(2) e(3) l(4) l(5) o(6)).
         // After trim: start advances past the 2 spaces → start=2, end=6.
-        let (buf, sels) = parse_state("#[  hell|o]#\n");
+        let (buf, sels) = parse_state("-[  hello]>\n");
         let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
         assert_eq!(sels_out.primary().start(), 2); // after the two spaces
         assert_eq!(sels_out.primary().end(), 6);   // 'o' at offset 6
@@ -547,7 +547,7 @@ mod tests {
         // "hello  \n", forward selection covering "hello  " (with trailing spaces).
         // "#[hello | ]#\n" → anchor=0, head=6 (cursor on second space).
         // After trim: end walks back past 2 spaces → end=4 ('o').
-        let (buf, sels) = parse_state("#[hello | ]#\n");
+        let (buf, sels) = parse_state("-[hello  ]>\n");
         let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
         assert_eq!(sels_out.primary().start(), 0);
         assert_eq!(sels_out.primary().end(), 4); // 'o' at offset 4
@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn trim_all_whitespace_collapses_to_cursor_at_head() {
         // Selection covering only spaces — should collapse to cursor at head.
-        let (buf, sels) = parse_state("#[   |  ]#\n");
+        let (buf, sels) = parse_state("-[    ]>\n");
         let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
         assert!(sels_out.primary().is_cursor());
         // Head was at offset 3 (the `|` position in DSL).
@@ -566,9 +566,9 @@ mod tests {
     #[test]
     fn trim_no_whitespace_is_noop() {
         assert_state!(
-            "#[hel|lo]#\n",
+            "-[hell]>o\n",
             |(buf, sels)| cmd_trim_selection_whitespace(buf, sels),
-            "#[hel|lo]#\n"
+            "-[hell]>o\n"
         );
     }
 
@@ -578,7 +578,7 @@ mod tests {
     fn copy_cursor_to_next_line() {
         // "foo\nbar\n" — cursor at column 1 of line 0 ('o').
         // Copy should land at column 1 of line 1 ('a').
-        let (buf, sels) = parse_state("f|oo\nbar\n");
+        let (buf, sels) = parse_state("f-[o]>o\nbar\n");
         let (buf_out, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(buf_out.to_string(), "foo\nbar\n");
         assert_eq!(sels_out.len(), 2);
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn copy_to_next_line_on_last_line_is_noop() {
         // Cursor on the last real line — nothing to copy to.
-        let (buf, sels) = parse_state("foo\nb|ar\n");
+        let (buf, sels) = parse_state("foo\nb-[a]>r\n");
         let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(sels_out.len(), 1); // no copy added
         assert_eq!(sels_out.primary().head, 5); // cursor unchanged
@@ -605,7 +605,7 @@ mod tests {
     fn copy_to_next_line_clamps_column() {
         // "hello\nhi\n" — cursor at column 4 of line 0.
         // Line 1 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
-        let (buf, sels) = parse_state("hell|o\nhi\n");
+        let (buf, sels) = parse_state("hell-[o]>\nhi\n");
         let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(sels_out.len(), 2);
         // The copy should land at the last char of "hi" = offset 7.
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn copy_cursor_to_prev_line() {
         // Cursor at column 1 of line 1 ('a' in "bar"). Copy goes to line 0.
-        let (buf, sels) = parse_state("foo\nb|ar\n");
+        let (buf, sels) = parse_state("foo\nb-[a]>r\n");
         let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
         assert_eq!(sels_out.len(), 2);
         // Original at offset 5 (line 1, col 1). New at offset 1 (line 0, col 1).
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn copy_to_prev_line_on_first_line_is_noop() {
-        let (buf, sels) = parse_state("f|oo\nbar\n");
+        let (buf, sels) = parse_state("f-[o]>o\nbar\n");
         let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
         assert_eq!(sels_out.len(), 1); // no copy added
     }
@@ -644,7 +644,7 @@ mod tests {
         // Line 0 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
         // "hi\n" = offsets 0-2, "hello\n" = offsets 3-8.
         // Cursor at col 4 of line 1 = offset 3+4 = 7 ('o').
-        let (buf, sels) = parse_state("hi\nhell|o\n");
+        let (buf, sels) = parse_state("hi\nhell-[o]>\n");
         let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
         assert_eq!(sels_out.len(), 2);
         // Copy should land at last char of "hi" = 'i' at offset 1.
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn collapse_empty_buffer() {
-        assert_state!("|\n", |(buf, sels)| cmd_collapse_selection(buf, sels), "|\n");
+        assert_state!("-[\n]>", |(buf, sels)| cmd_collapse_selection(buf, sels), "-[\n]>");
     }
 
     #[test]
@@ -681,9 +681,9 @@ mod tests {
     fn flip_multiple_selections() {
         // Two forward selections both flip to backward.
         assert_state!(
-            "#[hel|l]#o #[wor|l]#d\n",
+            "-[hell]>o -[worl]>d\n",
             |(buf, sels)| cmd_flip_selections(buf, sels),
-            "#[|hell]#o #[|worl]#d\n"
+            "<[hell]-o <[worl]-d\n"
         );
     }
 
@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn keep_primary_when_primary_is_not_first() {
         // Cycle primary to the second cursor, then keep — should keep that one.
-        let (buf, sels) = parse_state("|hel|lo\n"); // primary at index 0 (head=0)
+        let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at index 0 (head=0)
         let (buf, sels) = cmd_cycle_primary_forward(buf, sels); // primary now at index 1 (head=3)
         let (_, sels_out) = cmd_keep_primary_selection(buf, sels);
         assert_eq!(sels_out.len(), 1);
@@ -705,7 +705,7 @@ mod tests {
     fn remove_primary_at_end_wraps_to_first() {
         // Three cursors at 0, 3, 6. Cycle to last, then remove — should wrap
         // to the first remaining cursor (index 0 of the new set).
-        let (buf, sels) = parse_state("|hel|lo|\n"); // 3 cursors, primary at 0
+        let (buf, sels) = parse_state("-[h]>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
         let (buf, sels) = cmd_cycle_primary_backward(buf, sels); // primary at last (head=6)
         let (_, sels_out) = cmd_remove_primary_selection(buf, sels);
         assert_eq!(sels_out.len(), 2);
@@ -719,7 +719,7 @@ mod tests {
         // "foo\n\nbar\n" — selection from 'f'(0) to 'r'(7) spans 3 lines.
         // Line 0: "foo\n", line 1: "\n" (empty), line 2: "bar\n".
         // Middle piece should be a cursor on the lone '\n' at offset 4.
-        let (buf, sels) = parse_state("#[foo\n\nba|r]#\n");
+        let (buf, sels) = parse_state("-[foo\n\nbar]>\n");
         let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
@@ -738,7 +738,7 @@ mod tests {
     fn split_backward_multi_line_preserves_direction() {
         // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
         // Each piece should be backward (anchor > head).
-        let (buf, sels) = parse_state("#[|foo\nbar]#\n");
+        let (buf, sels) = parse_state("<[foo\nbar]-\n");
         let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
         assert_eq!(sels_out.len(), 2);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
@@ -754,7 +754,7 @@ mod tests {
         // "\thello\t\n" — selection from tab(0) to tab(6) inclusive.
         // After trim: start=1 ('h'), end=5 ('o').
         // "\thello\t\n": \t(0),h(1),e(2),l(3),l(4),o(5),\t(6),\n(7).
-        let (buf, sels) = parse_state("#[\thell|o]#\t\n");
+        let (buf, sels) = parse_state("-[\thello]>\t\n");
         let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
         assert_eq!(sels_out.primary().start(), 1); // past leading tab
         assert_eq!(sels_out.primary().end(), 5);   // 'o'
@@ -765,16 +765,16 @@ mod tests {
         // Backward selection covering "  hello\n": anchor=7('\n'), head=0.
         // After trim: spans 'h'(2) to 'o'(6), still backward.
         assert_state!(
-            "#[|  hello\n]#",
+            "<[  hello\n]-",
             |(buf, sels)| cmd_trim_selection_whitespace(buf, sels),
-            "  #[|hello]#\n"
+            "  <[hello]-\n"
         );
     }
 
     #[test]
     fn trim_empty_buffer_collapses() {
         // Only char is '\n' (whitespace) — all-whitespace selection collapses.
-        assert_state!("|\n", |(buf, sels)| cmd_trim_selection_whitespace(buf, sels), "|\n");
+        assert_state!("-[\n]>", |(buf, sels)| cmd_trim_selection_whitespace(buf, sels), "-[\n]>");
     }
 
     // ── additional copy edge cases ─────────────────────────────────────────
@@ -785,7 +785,7 @@ mod tests {
         // Copy down: both endpoints shift to line 1 preserving column.
         // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
         // anchor col=2 → line 1 col 2 = offset 6 ('r'). head col=0 → offset 4 ('b').
-        let (buf, sels) = parse_state("#[|foo]#\nbar\n");
+        let (buf, sels) = parse_state("<[foo]-\nbar\n");
         let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(sels_out.len(), 2);
         // The copy (primary) should be backward: anchor=6, head=4.
@@ -800,7 +800,7 @@ mod tests {
         // Two cursors on line 0 at cols 1 and 2. Both get copied to line 1.
         // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
         // Col 1 → offset 5 ('a'), col 2 → offset 6 ('r').
-        let (buf, sels) = parse_state("f|o|o\nbar\n");
+        let (buf, sels) = parse_state("f-[o]>-[o]>\nbar\n");
         let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
         assert_eq!(sels_out.len(), 4); // 2 originals + 2 copies
         let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
