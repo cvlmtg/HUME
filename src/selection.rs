@@ -300,6 +300,63 @@ impl SelectionSet {
         Self { selections, primary }
     }
 
+    // ── Selection-set manipulation ────────────────────────────────────────────
+
+    /// Return a new set containing only the primary selection.
+    ///
+    /// All other selections are dropped. The primary index resets to 0.
+    pub(crate) fn keep_primary(self) -> Self {
+        let primary = self.selections[self.primary];
+        Self { selections: vec![primary], primary: 0 }
+    }
+
+    /// Remove the selection at `idx` and return the updated set.
+    ///
+    /// If `idx` is the primary, the new primary becomes the next selection
+    /// in document order, wrapping to the last one if the removed selection
+    /// was the last. If `len() == 1`, returns `self` unchanged — you cannot
+    /// remove the only selection. Panics if `idx >= len()`.
+    pub(crate) fn remove(mut self, idx: usize) -> Self {
+        if self.selections.len() <= 1 {
+            return self; // can't remove the only selection — no-op
+        }
+        assert!(idx < self.selections.len(), "remove index out of bounds");
+        self.selections.remove(idx);
+        let new_len = self.selections.len();
+        self.primary = if idx < self.primary {
+            // Removed a selection before the primary — primary shifts down.
+            self.primary - 1
+        } else if idx == self.primary {
+            // Removed the primary itself — advance to the next, wrapping.
+            idx % new_len
+        } else {
+            // Removed a selection after the primary — primary unchanged.
+            self.primary
+        };
+        self
+    }
+
+    /// Shift the primary index by `delta`, wrapping around.
+    ///
+    /// `delta = 1` moves to the next selection (forward), `-1` moves to the
+    /// previous (backward). Works correctly for `|delta| >= len()` too.
+    pub(crate) fn cycle_primary(mut self, delta: isize) -> Self {
+        let len = self.selections.len() as isize;
+        // `rem_euclid` gives a non-negative result even for negative `delta`,
+        // so we never underflow into a huge `usize` value.
+        self.primary = ((self.primary as isize + delta).rem_euclid(len)) as usize;
+        self
+    }
+
+    /// Append `sel` to the selection list without merging.
+    ///
+    /// The caller is responsible for calling [`merge_overlapping`][Self::merge_overlapping]
+    /// afterward if overlaps are possible. The primary index is unchanged.
+    pub(crate) fn push(mut self, sel: Selection) -> Self {
+        self.selections.push(sel);
+        self
+    }
+
     /// Assert (in debug builds) that every selection's `head` and `anchor`
     /// are within bounds for a buffer of `buf_len` chars.
     ///
@@ -600,6 +657,155 @@ mod tests {
         assert_eq!(merged.selections[1].head, 8);
         // Primary was the cursor at 7 → mapped to 1 → now at index 0.
         assert_eq!(merged.primary().head, 1);
+    }
+
+    // ── keep_primary ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn keep_primary_drops_others() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            1, // primary is the middle one
+        );
+        let kept = set.keep_primary();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept.primary().head, 5);
+        assert_eq!(kept.primary_index(), 0);
+    }
+
+    #[test]
+    fn keep_primary_single_is_noop() {
+        let set = SelectionSet::single(Selection::cursor(3));
+        let kept = set.clone().keep_primary();
+        assert_eq!(kept, set);
+    }
+
+    // ── remove ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn remove_before_primary_shifts_primary_down() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            2, // primary is the last one
+        );
+        let result = set.remove(0); // remove first
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.primary().head, 10); // primary shifted from index 2 to 1
+        assert_eq!(result.primary_index(), 1);
+    }
+
+    #[test]
+    fn remove_primary_advances_to_next() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            1, // primary is the middle one
+        );
+        let result = set.remove(1); // remove the primary
+        assert_eq!(result.len(), 2);
+        // Next in document order after index 1 is now index 1 (was 2, shifted down)
+        assert_eq!(result.primary().head, 10);
+    }
+
+    #[test]
+    fn remove_primary_at_end_wraps_to_last() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            2, // primary is the last one
+        );
+        let result = set.remove(2);
+        assert_eq!(result.len(), 2);
+        // idx=2 % new_len=2 = 0
+        assert_eq!(result.primary().head, 0);
+    }
+
+    #[test]
+    fn remove_after_primary_leaves_primary_unchanged() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            0, // primary is the first one
+        );
+        let result = set.remove(2); // remove last
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.primary().head, 0);
+        assert_eq!(result.primary_index(), 0);
+    }
+
+    #[test]
+    fn remove_single_is_noop() {
+        let set = SelectionSet::single(Selection::cursor(0));
+        let result = set.clone().remove(0);
+        assert_eq!(result, set); // unchanged — can't remove the only selection
+    }
+
+    // ── cycle_primary ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn cycle_primary_forward() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            0,
+        );
+        let cycled = set.cycle_primary(1);
+        assert_eq!(cycled.primary().head, 5);
+        let cycled2 = cycled.cycle_primary(1);
+        assert_eq!(cycled2.primary().head, 10);
+    }
+
+    #[test]
+    fn cycle_primary_forward_wraps() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            2,
+        );
+        let cycled = set.cycle_primary(1);
+        assert_eq!(cycled.primary().head, 0); // wraps back to start
+    }
+
+    #[test]
+    fn cycle_primary_backward() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            2,
+        );
+        let cycled = set.cycle_primary(-1);
+        assert_eq!(cycled.primary().head, 5);
+    }
+
+    #[test]
+    fn cycle_primary_backward_wraps() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            0,
+        );
+        let cycled = set.cycle_primary(-1);
+        assert_eq!(cycled.primary().head, 10); // wraps to end
+    }
+
+    #[test]
+    fn cycle_primary_single_is_noop() {
+        let set = SelectionSet::single(Selection::cursor(5));
+        let cycled = set.clone().cycle_primary(1);
+        assert_eq!(cycled, set);
+    }
+
+    // ── push ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn push_adds_selection() {
+        let set = SelectionSet::single(Selection::cursor(0));
+        let result = set.push(Selection::cursor(5));
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.primary_index(), 0); // primary unchanged
+    }
+
+    #[test]
+    fn push_then_merge() {
+        // Push an overlapping selection, then merge — should deduplicate.
+        let set = SelectionSet::single(Selection::new(0, 5));
+        let result = set.push(Selection::new(3, 8)).merge_overlapping();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.primary().start(), 0);
+        assert_eq!(result.primary().end(), 8);
     }
 
     #[test]

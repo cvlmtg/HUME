@@ -1,4 +1,5 @@
 use crate::buffer::Buffer;
+use crate::grapheme::next_grapheme_boundary;
 
 // ── Line helpers ───────────────────────────────────────────────────────────────
 
@@ -9,6 +10,22 @@ pub(crate) fn line_end_exclusive(buf: &Buffer, line: usize) -> usize {
         buf.line_to_char(line + 1)
     } else {
         buf.len_chars()
+    }
+}
+
+/// Snap `target` back to the nearest grapheme boundary at or before it,
+/// walking forward from `line_start`. Used by vertical motions after computing
+/// a char-offset column target, ensuring the cursor always lands on a cluster
+/// boundary.
+pub(crate) fn snap_to_grapheme_boundary(buf: &Buffer, line_start: usize, target: usize) -> usize {
+    let mut pos = line_start;
+    loop {
+        let next = next_grapheme_boundary(buf, pos);
+        // `next == pos` when at EOF (the function clamps to len_chars).
+        if next > target || next == pos {
+            return pos;
+        }
+        pos = next;
     }
 }
 

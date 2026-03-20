@@ -1,0 +1,658 @@
+use crate::buffer::Buffer;
+use crate::grapheme::prev_grapheme_boundary;
+use crate::helpers::{line_end_exclusive, snap_to_grapheme_boundary};
+use crate::selection::{Selection, SelectionSet};
+
+// ── Simple selection-set commands ─────────────────────────────────────────────
+
+/// Collapse every selection to a cursor at its `head`.
+///
+/// `anchor` becomes equal to `head` — the selected range shrinks to a single
+/// character (the cursor position). Uses `map_and_merge` because two
+/// overlapping selections with different heads might collapse to the same
+/// position and need to be merged.
+///
+/// Helix equivalent: `;`
+pub(crate) fn cmd_collapse_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = sels.map_and_merge(|s| Selection::cursor(s.head));
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Swap `anchor` and `head` on every selection.
+///
+/// A forward selection (anchor ≤ head) becomes backward, and vice versa.
+/// Does not change any range bounds, so overlaps cannot arise — uses plain
+/// `map` (no merge needed).
+///
+/// Helix equivalent: `Alt-;`
+pub(crate) fn cmd_flip_selections(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    // `flip` only swaps anchor/head — no range change → no new overlaps.
+    let new_sels = sels.map(|s| s.flip());
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Keep only the primary selection; drop all others.
+///
+/// The result is a single-selection set. This is a destructive reduction —
+/// any non-primary cursors or ranges are lost.
+///
+/// Helix equivalent: `,`
+pub(crate) fn cmd_keep_primary_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = sels.keep_primary();
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Remove the primary selection and advance the primary to the next one.
+///
+/// If there is only one selection, this is a no-op (the set can never be
+/// empty). After removal the primary wraps to the start if it was the last
+/// selection in document order.
+///
+/// Helix equivalent: `Alt-,`
+pub(crate) fn cmd_remove_primary_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let idx = sels.primary_index();
+    let new_sels = sels.remove(idx); // no-op when len == 1
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Move the primary selection to the next one in document order, wrapping.
+///
+/// Helix equivalent: `)`
+pub(crate) fn cmd_cycle_primary_forward(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = sels.cycle_primary(1);
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Move the primary selection to the previous one in document order, wrapping.
+///
+/// Helix equivalent: `(`
+pub(crate) fn cmd_cycle_primary_backward(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+    let new_sels = sels.cycle_primary(-1);
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+// ── Buffer-aware selection commands ───────────────────────────────────────────
+
+/// Split each multi-line selection into one selection per line.
+///
+/// Single-line selections are left unchanged. For a selection spanning lines
+/// L1..L2:
+/// - Line L1: from the selection's start to the last non-`\n` char on L1
+///   (or the `\n` itself if the line is empty).
+/// - Lines L1+1..L2-1: full lines from start to last non-`\n` char.
+/// - Line L2: from the line start to the selection's end.
+///
+/// The direction (forward/backward) of the original selection is preserved on
+/// every piece. The primary becomes the first piece of the original primary.
+///
+/// Helix equivalent: `Alt-s`
+pub(crate) fn cmd_split_selection_on_newlines(
+    buf: Buffer,
+    sels: SelectionSet,
+) -> (Buffer, SelectionSet) {
+    let primary_idx = sels.primary_index();
+    let mut new_sels: Vec<Selection> = Vec::new();
+    // Maps each old selection (by sorted index) to the first index of its
+    // pieces in `new_sels`.
+    let mut piece_start: Vec<usize> = Vec::new();
+
+    for sel in sels.iter_sorted() {
+        let start = sel.start();
+        let end = sel.end();
+        let start_line = buf.char_to_line(start);
+        let end_line = buf.char_to_line(end);
+        let forward = sel.anchor <= sel.head;
+
+        let first_piece_idx = new_sels.len();
+
+        if start_line == end_line {
+            // Single-line: keep as-is.
+            new_sels.push(*sel);
+        } else {
+            // First line piece: from selection start to end of line content.
+            let first_end = line_content_end(&buf, start_line);
+            new_sels.push(make_sel(start, first_end, forward));
+
+            // Middle lines: full lines.
+            for line in (start_line + 1)..end_line {
+                let ls = buf.line_to_char(line);
+                let le = line_content_end(&buf, line);
+                new_sels.push(make_sel(ls, le, forward));
+            }
+
+            // Last line piece: from line start to selection end.
+            let last_ls = buf.line_to_char(end_line);
+            new_sels.push(make_sel(last_ls, end, forward));
+        }
+
+        piece_start.push(first_piece_idx);
+    }
+
+    // The new primary is the first piece of the original primary.
+    let new_primary = piece_start[primary_idx];
+    // Split selections can't overlap (they come from non-overlapping originals
+    // and cover disjoint lines), so merge is a no-op but we call it for safety.
+    let new_set = SelectionSet::from_vec(new_sels, new_primary).merge_overlapping();
+    new_set.debug_assert_valid(buf.len_chars());
+    (buf, new_set)
+}
+
+/// Trim leading and trailing whitespace from every selection's range.
+///
+/// "Whitespace" here means space (` `), tab (`\t`), and newline (`\n`). The
+/// range shrinks inward until both ends sit on non-whitespace characters. If
+/// the entire selection is whitespace the selection collapses to a cursor at
+/// the original `head`.
+///
+/// Helix equivalent: `_`
+pub(crate) fn cmd_trim_selection_whitespace(
+    buf: Buffer,
+    sels: SelectionSet,
+) -> (Buffer, SelectionSet) {
+    let new_sels = sels.map_and_merge(|sel| {
+        let mut start = sel.start();
+        let end = sel.end();
+        let forward = sel.anchor <= sel.head;
+
+        // Walk forward from start, skipping whitespace.
+        while start <= end && is_whitespace(&buf, start) {
+            start += 1;
+        }
+
+        // If we consumed everything, the selection is all whitespace.
+        if start > end {
+            return Selection::cursor(sel.head);
+        }
+
+        // Walk backward from end, skipping whitespace.
+        let mut new_end = end;
+        while new_end > start && is_whitespace(&buf, new_end) {
+            new_end -= 1;
+        }
+
+        make_sel(start, new_end, forward)
+    });
+    new_sels.debug_assert_valid(buf.len_chars());
+    (buf, new_sels)
+}
+
+/// Duplicate each selection one line down and add it to the selection set.
+///
+/// The copy preserves the column offsets of both `anchor` and `head`,
+/// clamped to the length of the target line and snapped to a grapheme
+/// boundary. If the target line does not exist (i.e., the selection's
+/// bottommost line is the last real line), no copy is added for that
+/// selection.
+///
+/// The primary advances to the newly added copy of the original primary. If
+/// no copy was added (last-line edge case) the primary stays on the original.
+///
+/// Helix equivalent: `C`
+pub(crate) fn cmd_copy_selection_on_next_line(
+    buf: Buffer,
+    sels: SelectionSet,
+) -> (Buffer, SelectionSet) {
+    copy_selection_vertically(buf, sels, 1)
+}
+
+/// Duplicate each selection one line up and add it to the selection set.
+///
+/// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
+///
+/// Helix equivalent: `Alt-C`
+pub(crate) fn cmd_copy_selection_on_prev_line(
+    buf: Buffer,
+    sels: SelectionSet,
+) -> (Buffer, SelectionSet) {
+    copy_selection_vertically(buf, sels, -1)
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/// Core implementation for copy-to-next/prev-line. `direction` is `1` for
+/// down and `-1` for up.
+fn copy_selection_vertically(buf: Buffer, sels: SelectionSet, direction: isize) -> (Buffer, SelectionSet) {
+    let primary_idx = sels.primary_index();
+    let sorted: Vec<Selection> = sels.iter_sorted().copied().collect();
+
+    let mut all_sels: Vec<Selection> = sorted.clone();
+    // Index in `all_sels` for the copy of the old primary, if one was added.
+    let mut primary_copy_idx: Option<usize> = None;
+
+    for (i, sel) in sorted.iter().enumerate() {
+        let anchor_line = buf.char_to_line(sel.anchor) as isize;
+        let head_line = buf.char_to_line(sel.head) as isize;
+
+        // The outermost line in the copy direction determines the offset target.
+        let outer_line = if direction > 0 {
+            anchor_line.max(head_line) // bottommost for "down"
+        } else {
+            anchor_line.min(head_line) // topmost for "up"
+        };
+        let target_outer = outer_line + direction;
+
+        if target_outer < 0 {
+            continue; // would go before the start of the buffer
+        }
+        let target_outer = target_outer as usize;
+
+        // The phantom trailing line (line_to_char == len_chars) has no content.
+        if buf.line_to_char(target_outer) >= buf.len_chars() {
+            continue;
+        }
+
+        // Shift each endpoint by the same delta.
+        let delta = target_outer as isize - outer_line;
+
+        let new_anchor = column_on_shifted_line(&buf, sel.anchor, anchor_line as usize, delta);
+        let new_head = column_on_shifted_line(&buf, sel.head, head_line as usize, delta);
+
+        let new_sel = Selection::new(new_anchor, new_head);
+
+        if i == primary_idx {
+            primary_copy_idx = Some(all_sels.len());
+        }
+        all_sels.push(new_sel);
+    }
+
+    let desired_primary = primary_copy_idx.unwrap_or(primary_idx);
+    let new_set = SelectionSet::from_vec(all_sels, desired_primary).merge_overlapping();
+    new_set.debug_assert_valid(buf.len_chars());
+    (buf, new_set)
+}
+
+/// Return the position that `anchor_or_head` would land on after shifting its
+/// line by `delta` lines, preserving the char-offset column and clamping to
+/// the target line's content.
+fn column_on_shifted_line(
+    buf: &Buffer,
+    pos: usize,
+    pos_line: usize,
+    delta: isize,
+) -> usize {
+    let col = pos - buf.line_to_char(pos_line);
+    let target_line = (pos_line as isize + delta) as usize;
+    place_column(buf, target_line, col)
+}
+
+/// Place the cursor at `col` chars from the start of `line`, clamping to the
+/// last content character and snapping to a grapheme boundary.
+fn place_column(buf: &Buffer, line: usize, col: usize) -> usize {
+    let line_start = buf.line_to_char(line);
+    let end_excl = line_end_exclusive(buf, line);
+    let target = line_start + col;
+
+    if target >= end_excl {
+        // Column overshoots — clamp to the last content char on the line.
+        line_content_end(buf, line)
+    } else {
+        snap_to_grapheme_boundary(buf, line_start, target)
+    }
+}
+
+/// Last non-`\n` char on `line`, or the `\n` itself if the line is empty.
+///
+/// Mirrors the `goto_line_end` logic from `motion.rs` but operates on a line
+/// index rather than a head position.
+fn line_content_end(buf: &Buffer, line: usize) -> usize {
+    let line_start = buf.line_to_char(line);
+    let end_excl = line_end_exclusive(buf, line);
+
+    if end_excl == line_start {
+        return line_start; // empty buffer (no content at all)
+    }
+
+    let last = end_excl - 1;
+    if buf.char_at(last) == Some('\n') {
+        if last == line_start {
+            line_start // empty line — cursor on the `\n`
+        } else {
+            prev_grapheme_boundary(buf, last) // step back past the `\n`
+        }
+    } else {
+        prev_grapheme_boundary(buf, end_excl) // last line with no trailing newline
+    }
+}
+
+/// Build a `Selection` with the given `start`/`end` and `forward` direction.
+fn make_sel(start: usize, end: usize, forward: bool) -> Selection {
+    if forward {
+        Selection::new(start, end)
+    } else {
+        Selection::new(end, start)
+    }
+}
+
+/// Is the character at `pos` a whitespace character (space, tab, or newline)?
+fn is_whitespace(buf: &Buffer, pos: usize) -> bool {
+    matches!(buf.char_at(pos), Some(' ') | Some('\t') | Some('\n'))
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::assert_state;
+    use crate::testing::parse_state;
+    use pretty_assertions::assert_eq;
+
+    // ── cmd_collapse_selection ─────────────────────────────────────────────
+
+    #[test]
+    fn collapse_cursor_is_noop() {
+        // A cursor (anchor == head) collapsing to itself — no change.
+        assert_state!("|hello\n", |(buf, sels)| cmd_collapse_selection(buf, sels), "|hello\n");
+    }
+
+    #[test]
+    fn collapse_forward_selection() {
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| cmd_collapse_selection(buf, sels),
+            // head was at 'l' (offset 3)
+            "hel|lo\n"
+        );
+    }
+
+    #[test]
+    fn collapse_backward_selection() {
+        // Backward: anchor=3, head=0. Collapses to cursor at head=0.
+        assert_state!(
+            "#[|hel]#lo\n",
+            |(buf, sels)| cmd_collapse_selection(buf, sels),
+            "|hello\n"
+        );
+    }
+
+    #[test]
+    fn collapse_merges_coincident_heads() {
+        // Two cursors at different positions stay separate after collapse —
+        // they only merge if their heads land on the exact same position.
+        let (buf, sels) = parse_state("|hel|lo\n");
+        let (_, result) = cmd_collapse_selection(buf, sels);
+        assert_eq!(result.len(), 2); // still 2 — they don't converge
+    }
+
+    // ── cmd_flip_selections ────────────────────────────────────────────────
+
+    #[test]
+    fn flip_forward_becomes_backward() {
+        // Forward: anchor=0, head=3 → backward: anchor=3, head=0.
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| cmd_flip_selections(buf, sels),
+            "#[|hel]#lo\n"
+        );
+    }
+
+    #[test]
+    fn flip_backward_becomes_forward() {
+        assert_state!(
+            "#[|hel]#lo\n",
+            |(buf, sels)| cmd_flip_selections(buf, sels),
+            "#[hel|lo]#\n"
+        );
+    }
+
+    #[test]
+    fn flip_cursor_is_noop() {
+        // anchor == head → flip does nothing observable.
+        assert_state!("|hello\n", |(buf, sels)| cmd_flip_selections(buf, sels), "|hello\n");
+    }
+
+    #[test]
+    fn flip_is_involution() {
+        // Flipping twice is the identity.
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| {
+                let (buf, sels) = cmd_flip_selections(buf, sels);
+                cmd_flip_selections(buf, sels)
+            },
+            "#[hel|lo]#\n"
+        );
+    }
+
+    // ── cmd_keep_primary_selection ─────────────────────────────────────────
+
+    #[test]
+    fn keep_primary_drops_all_others() {
+        // Three cursors; primary (first yielded by DSL) is at 0. Others dropped.
+        assert_state!(
+            "|hel|l|o\n",
+            |(buf, sels)| cmd_keep_primary_selection(buf, sels),
+            "|hello\n"
+        );
+    }
+
+    #[test]
+    fn keep_primary_single_unchanged() {
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| cmd_keep_primary_selection(buf, sels),
+            "#[hel|lo]#\n"
+        );
+    }
+
+    // ── cmd_remove_primary_selection ───────────────────────────────────────
+
+    #[test]
+    fn remove_primary_single_is_noop() {
+        assert_state!(
+            "|hello\n",
+            |(buf, sels)| cmd_remove_primary_selection(buf, sels),
+            "|hello\n"
+        );
+    }
+
+    #[test]
+    fn remove_primary_two_selections() {
+        // Two cursors at 0 and 4. Primary is first (index 0).
+        // After removal: only the cursor at 4 remains, becomes primary.
+        assert_state!(
+            "|hell|o\n",
+            |(buf, sels)| cmd_remove_primary_selection(buf, sels),
+            "hell|o\n"
+        );
+    }
+
+    // ── cmd_cycle_primary_forward ──────────────────────────────────────────
+
+    #[test]
+    fn cycle_forward_advances_primary() {
+        // Three cursors. After cycling forward, primary should be the next one.
+        let (buf, sels) = parse_state("|hel|lo\n"); // two cursors, primary at 0
+        assert_eq!(sels.primary().head, 0);
+        let (buf, sels) = cmd_cycle_primary_forward(buf, sels);
+        assert_eq!(sels.primary().head, 3);
+        // Cycle again — wraps back to first.
+        let (_, sels) = cmd_cycle_primary_forward(buf, sels);
+        assert_eq!(sels.primary().head, 0);
+    }
+
+    // ── cmd_cycle_primary_backward ─────────────────────────────────────────
+
+    #[test]
+    fn cycle_backward_wraps_to_last() {
+        let (buf, sels) = parse_state("|hel|lo\n"); // primary at 0
+        let (_, sels) = cmd_cycle_primary_backward(buf, sels);
+        assert_eq!(sels.primary().head, 3); // wraps to last
+    }
+
+    // ── cmd_split_selection_on_newlines ────────────────────────────────────
+
+    #[test]
+    fn split_single_line_is_noop() {
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| cmd_split_selection_on_newlines(buf, sels),
+            "#[hel|lo]#\n"
+        );
+    }
+
+    #[test]
+    fn split_two_line_selection() {
+        // "foo\nbar\n", selection from 'f'(0) to 'r'(6) (cross-line forward).
+        // "#[foo\nba|r]#\n" → anchor=0, head=6 (cursor on 'r').
+        // After split: "foo" on line 0, "bar" on line 1.
+        let (buf, sels) = parse_state("#[foo\nba|r]#\n");
+        let (buf_out, sels_out) = cmd_split_selection_on_newlines(buf, sels);
+        // Buffer unchanged.
+        assert_eq!(buf_out.to_string(), "foo\nbar\n");
+        // Two selections.
+        assert_eq!(sels_out.len(), 2);
+        let s: Vec<_> = sels_out.iter_sorted().copied().collect();
+        // First: covers "foo" on line 0 (offsets 0–2).
+        assert_eq!(s[0].start(), 0);
+        assert_eq!(s[0].end(), 2);
+        // Second: covers "bar" on line 1 (offsets 4–6).
+        assert_eq!(s[1].start(), 4);
+        assert_eq!(s[1].end(), 6);
+        // Primary is first piece of original primary (index 0).
+        assert_eq!(sels_out.primary_index(), 0);
+    }
+
+    #[test]
+    fn split_three_line_selection() {
+        // "a\nb\nc\n" — forward selection from 'a' to 'c'.
+        let (buf, sels) = parse_state("#[a\nb\n|c]#\n");
+        let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
+        assert_eq!(sels_out.len(), 3);
+        let s: Vec<_> = sels_out.iter_sorted().copied().collect();
+        // Line 0: just 'a' at offset 0.
+        assert_eq!(s[0].start(), 0);
+        assert_eq!(s[0].end(), 0);
+        // Line 1: just 'b' at offset 2.
+        assert_eq!(s[1].start(), 2);
+        assert_eq!(s[1].end(), 2);
+        // Line 2: just 'c' at offset 4.
+        assert_eq!(s[2].start(), 4);
+        assert_eq!(s[2].end(), 4);
+    }
+
+    #[test]
+    fn split_cursor_at_newline_is_noop() {
+        // A cursor sitting on a newline character is a single-line selection
+        // (the \n is part of its line).
+        let (buf, sels) = parse_state("foo|\nbar\n");
+        let (_, sels_out) = cmd_split_selection_on_newlines(buf, sels);
+        assert_eq!(sels_out.len(), 1);
+        assert_eq!(sels_out.primary().head, 3); // still on \n
+    }
+
+    // ── cmd_trim_selection_whitespace ──────────────────────────────────────
+
+    #[test]
+    fn trim_leading_spaces() {
+        // "  hello\n", forward selection covering the whole word + leading spaces.
+        // "#[  hell|o]#\n" → anchor=0, head=6 (cursor on 'o', offsets:  (0) (1) h(2) e(3) l(4) l(5) o(6)).
+        // After trim: start advances past the 2 spaces → start=2, end=6.
+        let (buf, sels) = parse_state("#[  hell|o]#\n");
+        let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
+        assert_eq!(sels_out.primary().start(), 2); // after the two spaces
+        assert_eq!(sels_out.primary().end(), 6);   // 'o' at offset 6
+    }
+
+    #[test]
+    fn trim_trailing_spaces() {
+        // "hello  \n", forward selection covering "hello  " (with trailing spaces).
+        // "#[hello | ]#\n" → anchor=0, head=6 (cursor on second space).
+        // After trim: end walks back past 2 spaces → end=4 ('o').
+        let (buf, sels) = parse_state("#[hello | ]#\n");
+        let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
+        assert_eq!(sels_out.primary().start(), 0);
+        assert_eq!(sels_out.primary().end(), 4); // 'o' at offset 4
+    }
+
+    #[test]
+    fn trim_all_whitespace_collapses_to_cursor_at_head() {
+        // Selection covering only spaces — should collapse to cursor at head.
+        let (buf, sels) = parse_state("#[   |  ]#\n");
+        let (_, sels_out) = cmd_trim_selection_whitespace(buf, sels);
+        assert!(sels_out.primary().is_cursor());
+        // Head was at offset 3 (the `|` position in DSL).
+        assert_eq!(sels_out.primary().head, 3);
+    }
+
+    #[test]
+    fn trim_no_whitespace_is_noop() {
+        assert_state!(
+            "#[hel|lo]#\n",
+            |(buf, sels)| cmd_trim_selection_whitespace(buf, sels),
+            "#[hel|lo]#\n"
+        );
+    }
+
+    // ── cmd_copy_selection_on_next_line ────────────────────────────────────
+
+    #[test]
+    fn copy_cursor_to_next_line() {
+        // "foo\nbar\n" — cursor at column 1 of line 0 ('o').
+        // Copy should land at column 1 of line 1 ('a').
+        let (buf, sels) = parse_state("f|oo\nbar\n");
+        let (buf_out, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
+        assert_eq!(buf_out.to_string(), "foo\nbar\n");
+        assert_eq!(sels_out.len(), 2);
+        // Original cursor at offset 1 stays.
+        // New cursor at offset 5 (line 1, col 1: 'a' is at 4, 'b' at 4...
+        // "foo\n" = offsets 0-3, "bar\n" = offsets 4-7. Col 1 = offset 5.
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        assert!(heads.contains(&1), "original cursor should remain at col 1 of line 0");
+        assert!(heads.contains(&5), "new cursor should be at col 1 of line 1");
+        // Primary should be the new copy (the one on line 1).
+        assert_eq!(sels_out.primary().head, 5);
+    }
+
+    #[test]
+    fn copy_to_next_line_on_last_line_is_noop() {
+        // Cursor on the last real line — nothing to copy to.
+        let (buf, sels) = parse_state("foo\nb|ar\n");
+        let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
+        assert_eq!(sels_out.len(), 1); // no copy added
+        assert_eq!(sels_out.primary().head, 5); // cursor unchanged
+    }
+
+    #[test]
+    fn copy_to_next_line_clamps_column() {
+        // "hello\nhi\n" — cursor at column 4 of line 0.
+        // Line 1 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
+        let (buf, sels) = parse_state("hell|o\nhi\n");
+        let (_, sels_out) = cmd_copy_selection_on_next_line(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        // The copy should land at the last char of "hi" = offset 7.
+        // "hello\n" = offsets 0-5, "hi\n" = offsets 6-8.
+        // Last non-\n char = 'i' at offset 7.
+        let copy = sels_out.primary();
+        assert_eq!(copy.head, 7);
+    }
+
+    // ── cmd_copy_selection_on_prev_line ────────────────────────────────────
+
+    #[test]
+    fn copy_cursor_to_prev_line() {
+        // Cursor at column 1 of line 1 ('a' in "bar"). Copy goes to line 0.
+        let (buf, sels) = parse_state("foo\nb|ar\n");
+        let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
+        assert_eq!(sels_out.len(), 2);
+        // Original at offset 5 (line 1, col 1). New at offset 1 (line 0, col 1).
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        assert!(heads.contains(&5), "original cursor should remain");
+        assert!(heads.contains(&1), "new cursor should be at col 1 of line 0");
+        // Primary is the new copy (on line 0).
+        assert_eq!(sels_out.primary().head, 1);
+    }
+
+    #[test]
+    fn copy_to_prev_line_on_first_line_is_noop() {
+        let (buf, sels) = parse_state("f|oo\nbar\n");
+        let (_, sels_out) = cmd_copy_selection_on_prev_line(buf, sels);
+        assert_eq!(sels_out.len(), 1); // no copy added
+    }
+}
