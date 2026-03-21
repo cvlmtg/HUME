@@ -170,6 +170,35 @@ to every selection in the set simultaneously. The *primary* is just the
    macro register). `q3` records into register `3`. `Q` replays from `q`,
    `Q3` replays from `3`.
 
+   **Why Vim-style macros over Helix-style?** Helix has a single macro slot
+   (`Q` records, `Q` replays). Users complained — one slot is enough for a
+   single task, but when you need two independent macros (e.g. one that
+   transforms a line, another that moves between sections) you must
+   re-record the first each time. HUME's register-based macros solve this
+   without the full `a`–`z` namespace overhead. Ten slots (`0`–`9`) covers
+   real workflows; the `q` default keeps the common case a one-key operation.
+
+5. **Paste-as-replace** (`src/edit.rs`): In a select-then-act model, `p`/`P`
+   has to handle two distinct cases:
+
+   - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the
+     register contents *after* or *before* the cursor char. Same as Vim's `p`/`P`.
+   - **Explicit selection** (more than 1 char, created intentionally): *replace*
+     the selected text with the register contents, and return the displaced text
+     to the caller so it can be written back to the register (a swap).
+
+   The key insight is `sel.is_cursor()` — the selection state already encodes
+   whether the user made an intentional selection. No separate `R` command
+   needed. No `"0` register hack needed (in Vim, yanking always writes `"0`
+   in addition to `"`, so after a delete you can still paste the pre-delete
+   yank with `"0p`; HUME avoids the problem by never clobbering the register
+   on replace).
+
+   The return type of `paste_after`/`paste_before` is `(Buffer, SelectionSet,
+   Vec<String>)`. The third element contains the displaced text (empty strings
+   for cursor pastes). The editor layer writes it back to the source register,
+   completing the swap.
+
 **Why cycle the primary?** In a keyboard-only multi-cursor world,
 `cmd_cycle_primary_forward` and `cmd_cycle_primary_backward` are how you
 "focus" a different cursor — to make the viewport scroll to it, read its
