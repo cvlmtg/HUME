@@ -195,9 +195,9 @@ to every selection in the set simultaneously. The *primary* is just the
    on replace).
 
    The return type of `paste_after`/`paste_before` is `(Buffer, SelectionSet,
-   Vec<String>)`. The third element contains the displaced text (empty strings
-   for cursor pastes). The editor layer writes it back to the source register,
-   completing the swap.
+   ChangeSet, Vec<String>)`. The fourth element contains the displaced text
+   (empty strings for cursor pastes). The editor layer writes it back to the
+   source register, completing the swap.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world,
 `cmd_cycle_primary_forward` and `cmd_cycle_primary_backward` are how you
@@ -235,15 +235,15 @@ The representation is a sequence of three operations:
 Insert("!"), Retain(6), Insert("!"), Retain(5)
 ```
 
-This single object describes the entire multi-cursor edit. `apply` consumes
-the buffer and executes Delete/Insert operations directly on the rope —
+This single object describes the entire multi-cursor edit. `apply` takes the
+buffer by reference, clones the underlying rope (O(1) — Ropey uses Arc-based
+structural sharing), and executes Delete/Insert operations on the clone —
 each O(log n). Retain operations are free (the chars are already there).
 Total cost: O(k log n) for k non-retain operations.
 
-Because `apply` consumes the buffer, the old buffer no longer exists after
-application. This is fine — the inverse changeset captures everything needed
-to reconstruct it (see undo/redo below). The caller must call `invert`
-before `apply` if it needs the inverse.
+The original buffer remains intact after `apply`. The caller must still call
+`invert` before `apply` if it needs the inverse, because `invert` reads
+deleted text from the original rope at inversion time.
 
 ### Why not just mutate the buffer directly?
 
@@ -311,9 +311,9 @@ applied. This invariant holds for every Transaction, forward or inverse.
 At edit time you build **two** Transactions from the same changeset:
 
 ```text
-// 1. Capture the inverse BEFORE apply consumes the buffer.
+// 1. Capture the inverse BEFORE apply — both read from the same old_buf.
 let inv_cs  = cs.invert(&old_buf);
-let new_buf = cs.apply(old_buf);          // old_buf is consumed here
+let new_buf = cs.apply(&old_buf);         // old_buf still valid after this
 
 // 2. Build both Transactions from the same cs/inv_cs.
 let forward = Transaction::new(cs,     post_edit_sels);  // for redo
@@ -325,19 +325,23 @@ The inverse Transaction's `selection` is `pre_edit_sels` — the cursors from
 cursors. The "always post-apply" invariant holds: after running the inverse,
 the cursors are at `pre_edit_sels`.
 
-**Timing matters.** `invert(&old_buf)` must be called before `apply(old_buf)`.
-`apply` consumes the buffer (the old rope is gone). `invert` needs the original
-content to reconstruct the `Insert` operations for deleted text — it captures
-the deleted chars from the live rope at inversion time.
+**Timing matters.** `invert(&old_buf)` must be called before discarding
+`old_buf`. `invert` reads deleted text from the original rope to reconstruct
+the `Insert` operations — it captures those chars at inversion time. In
+practice `Document::apply_edit` enforces this: it calls `cs.invert(&self.buf)`
+while `self.buf` still holds the pre-edit content, then overwrites it.
 
-The history manager stores inverse Transactions. Applying one restores both the
-text and the cursor positions in a single step.
+The history manager stores both Transactions. Applying the inverse restores
+both the text and the cursor positions in a single step (undo); applying the
+forward Transaction redoes the edit.
 
 ### Implementation
 
 - `src/changeset.rs` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
 - `src/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
 - `src/edit.rs` — edit operations build changesets via the builder
+- `src/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
+- `src/document.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
 
 ---
 
@@ -438,8 +442,8 @@ just a `ChangeSet` on the stack. Rust's ownership model drops it automatically
 when the error branch is taken and it goes out of scope.
 
 ```rust
-let inv_cs = cs.invert(&buf);          // build inverse first
-match cs.apply(&buf) {
+let inv_cs = cs.invert(&buf);           // build inverse first
+match cs.apply(&buf) {                  // apply takes &buf — original intact
     Ok(new_buf)  => { /* push inv_cs to undo stack */ }
     Err(e)       => { /* inv_cs dropped here — no cleanup needed */ }
 }
