@@ -53,7 +53,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
 - [x] Basic edit operations: insert, delete, backspace — operating over all selections
 - [x] ChangeSet: OT-style edit descriptions (Retain/Delete/Insert) with apply, map_pos, invert, compose. Builder pattern for constructing changesets. Edit operations refactored to build changesets.
-- [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of editing for future undo/redo
+- [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of undo/redo
 - [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping is an M3/keybinding concern.
 - [x] Text objects: inside/around word, quotes, brackets, line
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
