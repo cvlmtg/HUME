@@ -341,6 +341,14 @@ forward Transaction redoes the edit.
 - `src/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
 - `src/edit.rs` — edit operations build changesets via the builder
 - `src/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
+
+  An **arena** is a `Vec` that owns all the nodes of a tree or graph. Instead
+  of linking nodes with pointers or `Rc<RefCell<...>>`, each node stores plain
+  integer indices into the `Vec`. Lookups are O(1) array accesses; there are no
+  reference cycles for the borrow checker to worry about; and the allocator sees
+  one contiguous allocation instead of many small heap objects. The trade-off is
+  that nodes are never individually freed — the whole arena is dropped at once.
+  For an undo tree that only grows, this is fine.
 - `src/document.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
 
 ---
