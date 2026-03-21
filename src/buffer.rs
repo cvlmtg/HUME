@@ -122,26 +122,6 @@ impl Buffer {
         Self { rope: Rope::from_str("\n"), line_ending: LineEnding::Lf }
     }
 
-    /// Create a buffer pre-populated with `text`.
-    ///
-    /// CRLF (`\r\n`) line endings are normalized to LF; the original style is
-    /// stored in `line_ending` for use when writing back to disk. Bare `\r`
-    /// (old Mac) is preserved as-is.
-    ///
-    /// A trailing `\n` is appended if the normalized text doesn't end with one.
-    /// We check `ends_with('\n')` on the `&str` (O(1) byte check) rather than
-    /// `ensure_trailing_newline` on the rope (O(log n) traversal).
-    pub(crate) fn from_str(text: &str) -> Self {
-        let (normalized, line_ending) = normalize_crlf(text);
-        let rope = if normalized.ends_with('\n') {
-            Rope::from_str(&normalized)
-        } else {
-            let mut r = Rope::from_str(&normalized);
-            r.insert_char(r.len_chars(), '\n');
-            r
-        };
-        Self { rope, line_ending }
-    }
 
     /// The line-ending style of the original file.
     ///
@@ -246,6 +226,44 @@ impl Buffer {
 
 }
 
+// `From<&str>` is the right trait for infallible construction from a string
+// slice — as opposed to `FromStr`, which is reserved for *fallible* parsing
+// (it returns `Result`). Because our construction always succeeds (worst case
+// we append a '\n'), `From` is the correct choice.
+//
+// Implementing `From<&str>` automatically gives us:
+//   - `Buffer::from("text")` — explicit conversion
+//   - `"text".into()` where the target type is known to be `Buffer`
+//   - Blanket `impl Into<Buffer> for &str` (Rust derives this from From for free)
+//
+// Why not an inherent `from_str` method?
+//   An inherent `fn from_str(text: &str) -> Self` shadows the `FromStr` trait
+//   method of the same name without actually implementing the trait, making it
+//   look like a parse operation that *should* be fallible. The `From` trait
+//   signals "this is an infallible type conversion", which is exactly what we
+//   want here.
+//
+// Deref coercion note: `From` trait resolution does NOT trigger Rust's
+// automatic deref coercions — `Buffer::from(&my_string)` won't compile
+// because `&String ≠ &str` from the type-checker's perspective. Call sites
+// with a `String` must be explicit: `Buffer::from(my_string.as_str())`.
+// This is a common Rust surprise; the explicit call is also clearer to read.
+impl From<&str> for Buffer {
+    fn from(text: &str) -> Self {
+        let (normalized, line_ending) = normalize_crlf(text);
+        // O(1) byte check on the &str before building the rope, avoiding the
+        // O(log n) rope traversal that `ensure_trailing_newline` would need.
+        let rope = if normalized.ends_with('\n') {
+            Rope::from_str(&normalized)
+        } else {
+            let mut r = Rope::from_str(&normalized);
+            r.insert_char(r.len_chars(), '\n');
+            r
+        };
+        Self { rope, line_ending }
+    }
+}
+
 // Implementing `Display` gives us `.to_string()` for free via the blanket
 // `impl<T: Display> ToString for T`. This is the idiomatic Rust way — an
 // inherent `to_string` method would shadow that blanket impl and trigger
@@ -280,7 +298,7 @@ mod tests {
     fn from_rope_is_raw() {
         // from_rope is the changeset algebra path — it does NOT enforce the
         // trailing \n so that invert/compose remain self-consistent.
-        // The invariant is upheld by from_str / empty (user entry points) and
+        // The invariant is upheld by From<&str> / empty (user entry points) and
         // by the editing-operation guards (e.g. delete_char_forward is a no-op
         // on the structural \n).
         let rope = Rope::from_str("hello\n");
@@ -299,7 +317,7 @@ mod tests {
 
     #[test]
     fn from_str_ascii() {
-        let buf = Buffer::from_str("hello\nworld");
+        let buf = Buffer::from("hello\nworld");
         assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
         assert_eq!(buf.len_lines(), 3);  // line 0, line 1, trailing empty line
         assert!(!buf.is_empty());
@@ -308,13 +326,13 @@ mod tests {
 
     #[test]
     fn from_str_lf_line_ending() {
-        let buf = Buffer::from_str("hello\n");
+        let buf = Buffer::from("hello\n");
         assert_eq!(buf.line_ending(), LineEnding::Lf);
     }
 
     #[test]
     fn from_str_crlf_normalized() {
-        let buf = Buffer::from_str("hello\r\nworld\r\n");
+        let buf = Buffer::from("hello\r\nworld\r\n");
         // \r stripped — content is pure LF
         assert_eq!(buf.to_string(), "hello\nworld\n");
         assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
@@ -324,7 +342,7 @@ mod tests {
     #[test]
     fn from_str_mixed_crlf_lf() {
         // Mixed: CRLF wins if any \r\n present.
-        let buf = Buffer::from_str("hello\r\nworld\n");
+        let buf = Buffer::from("hello\r\nworld\n");
         assert_eq!(buf.to_string(), "hello\nworld\n");
         assert_eq!(buf.line_ending(), LineEnding::CrLf);
     }
@@ -332,7 +350,7 @@ mod tests {
     #[test]
     fn from_str_bare_cr_preserved() {
         // Old Mac bare \r is left as-is (treated as content, not a line ending).
-        let buf = Buffer::from_str("hello\rworld\n");
+        let buf = Buffer::from("hello\rworld\n");
         assert_eq!(buf.to_string(), "hello\rworld\n");
         assert_eq!(buf.line_ending(), LineEnding::Lf);
     }
@@ -340,22 +358,22 @@ mod tests {
     #[test]
     fn from_str_trailing_newline() {
         // A trailing newline creates an extra empty line.
-        let buf = Buffer::from_str("hello\n");
+        let buf = Buffer::from("hello\n");
         assert_eq!(buf.len_lines(), 2);
     }
 
     #[test]
     fn from_str_unicode() {
         // "é" can be represented as a single char (U+00E9) or as two chars
-        // (U+0065 + U+0301 combining accent). `from_str` accepts whatever Rust
-        // gives us. Here we use the precomposed form — one char.
-        let buf = Buffer::from_str("café");
+        // (U+0065 + U+0301 combining accent). `Buffer::from` accepts whatever
+        // Rust gives us. Here we use the precomposed form — one char.
+        let buf = Buffer::from("café");
         assert_eq!(buf.len_chars(), 5); // c a f é \n
     }
 
     #[test]
     fn line_to_char() {
-        let buf = Buffer::from_str("hello\nworld\nfoo");
+        let buf = Buffer::from("hello\nworld\nfoo");
         assert_eq!(buf.line_to_char(0), 0);  // "hello" starts at 0
         assert_eq!(buf.line_to_char(1), 6);  // "world" starts after "hello\n"
         assert_eq!(buf.line_to_char(2), 12); // "foo" starts after "world\n"
@@ -363,7 +381,7 @@ mod tests {
 
     #[test]
     fn char_to_line() {
-        let buf = Buffer::from_str("hello\nworld\nfoo");
+        let buf = Buffer::from("hello\nworld\nfoo");
         assert_eq!(buf.char_to_line(0), 0);  // 'h' is on line 0
         assert_eq!(buf.char_to_line(5), 0);  // '\n' is still line 0
         assert_eq!(buf.char_to_line(6), 1);  // 'w' is on line 1
@@ -372,7 +390,7 @@ mod tests {
 
     #[test]
     fn insert_at_start() {
-        let buf = Buffer::from_str("world");
+        let buf = Buffer::from("world");
         let new = buf.insert(0, "hello ");
         assert_eq!(new.to_string(), "hello world\n");
         // Original is unchanged — structural sharing.
@@ -382,21 +400,21 @@ mod tests {
     #[test]
     fn insert_at_end() {
         // Insert before the trailing \n (position 5 in "hello\n").
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let new = buf.insert(5, " world");
         assert_eq!(new.to_string(), "hello world\n");
     }
 
     #[test]
     fn insert_in_middle() {
-        let buf = Buffer::from_str("helo");
+        let buf = Buffer::from("helo");
         let new = buf.insert(3, "l"); // "hel" + "l" + "o\n"
         assert_eq!(new.to_string(), "hello\n");
     }
 
     #[test]
     fn remove_whole() {
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let new = buf.remove(0, 5); // removes "hello", leaving "\n"
         assert_eq!(new.to_string(), "\n");
         assert!(new.is_empty());
@@ -405,14 +423,14 @@ mod tests {
 
     #[test]
     fn remove_range() {
-        let buf = Buffer::from_str("hello world");
+        let buf = Buffer::from("hello world");
         let new = buf.remove(5, 11); // remove " world"
         assert_eq!(new.to_string(), "hello\n");
     }
 
     #[test]
     fn insert_then_remove_is_identity() {
-        let original = Buffer::from_str("hello world");
+        let original = Buffer::from("hello world");
         let after_insert = original.insert(5, " beautiful");
         let restored = after_insert.remove(5, 15);
         assert_eq!(restored, original);
@@ -420,16 +438,16 @@ mod tests {
 
     #[test]
     fn slice() {
-        let buf = Buffer::from_str("hello world");
+        let buf = Buffer::from("hello world");
         let s: String = buf.slice(6..11).to_string();
         assert_eq!(s, "world");
     }
 
     #[test]
     fn equality() {
-        let a = Buffer::from_str("hello");
-        let b = Buffer::from_str("hello");
-        let c = Buffer::from_str("world");
+        let a = Buffer::from("hello");
+        let b = Buffer::from("hello");
+        let c = Buffer::from("world");
         assert_eq!(a, b);
         assert_ne!(a, c);
     }

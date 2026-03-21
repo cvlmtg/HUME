@@ -662,7 +662,7 @@ mod tests {
     fn collapse_two_selections_same_head_merges() {
         // Two selections with different anchors but the same head collapse to
         // one cursor — map_and_merge must reduce the count.
-        let buf = crate::buffer::Buffer::from_str("hello\n");
+        let buf = crate::buffer::Buffer::from("hello\n");
         let sels = crate::selection::SelectionSet::from_vec(
             vec![
                 crate::selection::Selection::new(0, 3), // head at 3

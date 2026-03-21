@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn transaction_apply() {
         // "hello\n" = 6 chars; insert "!" at start → "!hello\n".
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let mut b = ChangeSetBuilder::new(6);
         b.insert("!");
         b.retain_rest();
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn transaction_apply_rejects_out_of_bounds_selection() {
         // "hi\n" = 3 chars; a no-op changeset; but selection points to index 99.
-        let buf = Buffer::from_str("hi");
+        let buf = Buffer::from("hi");
         let mut b = ChangeSetBuilder::new(3);
         b.retain_rest();
         let cs = b.finish();
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn transaction_apply_rejects_length_mismatch() {
         // Changeset built for 10 chars, but buffer is 3 chars.
-        let buf = Buffer::from_str("hi");
+        let buf = Buffer::from("hi");
         let mut b = ChangeSetBuilder::new(10);
         b.retain_rest();
         let cs = b.finish();
