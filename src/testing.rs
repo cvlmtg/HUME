@@ -188,7 +188,7 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
         input
     );
 
-    let buf = Buffer::from_str(&text);
+    let buf = Buffer::from(text.as_str());
     let sel_set = SelectionSet::from_vec(selections, 0);
     (buf, sel_set)
 }
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn serialize_cursor_at_start() {
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let sels = SelectionSet::single(Selection::cursor(0));
         assert_eq!(serialize_state(&buf, &sels), "-[h]>ello\n");
     }
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn serialize_cursor_at_end() {
         // cursor at 5 = on the structural trailing \n.
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let sels = SelectionSet::single(Selection::cursor(5));
         assert_eq!(serialize_state(&buf, &sels), "hello-[\n]>");
     }
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn serialize_forward_selection() {
         // anchor=0, head=3 — selects "hell" (positions 0..=3).
-        let buf = Buffer::from_str("hello world");
+        let buf = Buffer::from("hello world");
         let sels = SelectionSet::single(Selection::new(0, 3));
         assert_eq!(serialize_state(&buf, &sels), "-[hell]>o world\n");
     }
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn serialize_backward_selection() {
         // anchor=3, head=0 — selects "hell" (positions 0..=3), cursor on 'h'.
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let sels = SelectionSet::single(Selection::new(3, 0));
         assert_eq!(serialize_state(&buf, &sels), "<[hell]-o\n");
     }
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn serialize_forward_selection_head_at_eof() {
         // head=5 is the trailing \n in "hello\n". Selects "hello\n".
-        let buf = Buffer::from_str("hello");
+        let buf = Buffer::from("hello");
         let sels = SelectionSet::single(Selection::new(0, 5));
         assert_eq!(serialize_state(&buf, &sels), "-[hello\n]>");
     }
