@@ -1,6 +1,6 @@
 use crate::buffer::Buffer;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
+use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::selection::{Selection, SelectionSet};
 
 // ── Motion mode ───────────────────────────────────────────────────────────────
@@ -88,29 +88,9 @@ fn goto_line_start(buf: &Buffer, head: usize) -> usize {
 /// On an empty line (containing only `\n`), the cursor stays on the newline —
 /// there is no other character to land on.
 fn goto_line_end(buf: &Buffer, head: usize) -> usize {
-    let line = buf.char_to_line(head);
-    let line_start = buf.line_to_char(line);
-    let end_excl = line_end_exclusive(buf, line);
-
-    if end_excl == line_start {
-        // Empty buffer.
-        return line_start;
-    }
-
-    // Check for a trailing newline.
-    let last = end_excl - 1;
-    if buf.char_at(last) == Some('\n') {
-        if last == line_start {
-            // Empty line — only a newline. Cursor stays on it.
-            line_start
-        } else {
-            // Step back past the newline to the last content grapheme cluster.
-            prev_grapheme_boundary(buf, last)
-        }
-    } else {
-        // Last line with no trailing newline.
-        prev_grapheme_boundary(buf, end_excl)
-    }
+    // The core logic lives in helpers::line_content_end, which is also used by
+    // selection_cmd.rs — one implementation, two callers.
+    line_content_end(buf, buf.char_to_line(head))
 }
 
 /// Jump to the first non-blank character on the current line.

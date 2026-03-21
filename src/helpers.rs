@@ -1,5 +1,5 @@
 use crate::buffer::Buffer;
-use crate::grapheme::next_grapheme_boundary;
+use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 
 // ── Line helpers ───────────────────────────────────────────────────────────────
 
@@ -26,6 +26,32 @@ pub(crate) fn snap_to_grapheme_boundary(buf: &Buffer, line_start: usize, target:
             return pos;
         }
         pos = next;
+    }
+}
+
+/// The last char offset a cursor can land on for `line`.
+///
+/// Returns the last non-`\n` char on the line, or the `\n` itself when the
+/// line is empty (no other character to sit on). This is the single
+/// authoritative implementation — shared by `goto_line_end` in `motion.rs`
+/// and the multi-line expand/shrink commands in `selection_cmd.rs`.
+pub(crate) fn line_content_end(buf: &Buffer, line: usize) -> usize {
+    let line_start = buf.line_to_char(line);
+    let end_excl = line_end_exclusive(buf, line);
+
+    if end_excl == line_start {
+        return line_start; // empty buffer (no content at all)
+    }
+
+    let last = end_excl - 1;
+    if buf.char_at(last) == Some('\n') {
+        if last == line_start {
+            line_start // empty line — cursor on the `\n`
+        } else {
+            prev_grapheme_boundary(buf, last) // step back past the `\n`
+        }
+    } else {
+        prev_grapheme_boundary(buf, end_excl) // last line with no trailing newline
     }
 }
 

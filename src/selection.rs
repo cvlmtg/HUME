@@ -42,6 +42,26 @@ impl Selection {
         Self { anchor, head }
     }
 
+    /// Create a selection spanning `[start, end]` with an explicit direction.
+    ///
+    /// `forward` controls which end becomes the anchor and which becomes the
+    /// head (the cursor):
+    /// - `true`  → `anchor = start`, `head = end`  (forward / rightward)
+    /// - `false` → `anchor = end`,   `head = start` (backward / leftward)
+    ///
+    /// This is the preferred constructor when a selection is built from
+    /// content-aware bounds (e.g. trimmed whitespace edges, line extents) and
+    /// the original direction must be preserved. It avoids leaking
+    /// `anchor`/`head` field knowledge into every call site.
+    pub(crate) fn directed(start: usize, end: usize, forward: bool) -> Self {
+        if forward {
+            Self::new(start, end)
+        } else {
+            // Backward: anchor at end, head at start — cursor sits at `start`.
+            Self::new(end, start)
+        }
+    }
+
     /// Is this a single-character selection (anchor == head)?
     pub(crate) fn is_cursor(&self) -> bool {
         self.anchor == self.head
