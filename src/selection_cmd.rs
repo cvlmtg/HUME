@@ -1,6 +1,6 @@
 use crate::buffer::Buffer;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::helpers::{line_end_exclusive, snap_to_grapheme_boundary};
+use crate::helpers::{classify_char, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::selection::{Selection, SelectionSet};
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
@@ -103,18 +103,18 @@ pub(crate) fn cmd_split_selection_on_newlines(
         } else {
             // First line piece: from selection start to end of line content.
             let first_end = line_content_end(&buf, start_line);
-            new_sels.push(make_sel(start, first_end, forward));
+            new_sels.push(Selection::directed(start, first_end, forward));
 
             // Middle lines: full lines.
             for line in (start_line + 1)..end_line {
                 let ls = buf.line_to_char(line);
                 let le = line_content_end(&buf, line);
-                new_sels.push(make_sel(ls, le, forward));
+                new_sels.push(Selection::directed(ls, le, forward));
             }
 
             // Last line piece: from line start to selection end.
             let last_ls = buf.line_to_char(end_line);
-            new_sels.push(make_sel(last_ls, end, forward));
+            new_sels.push(Selection::directed(last_ls, end, forward));
         }
 
         piece_start.push(first_piece_idx);
@@ -145,7 +145,11 @@ pub(crate) fn cmd_trim_selection_whitespace(
         let forward = sel.anchor <= sel.head;
 
         // Walk forward from start, skipping whitespace (grapheme boundary steps).
-        while start <= end && is_whitespace(&buf, start) {
+        // `classify_char` is the authoritative whitespace definition for this
+        // codebase — Space covers ' '/'\t', Eol covers '\n'.
+        while start <= end
+            && matches!(buf.char_at(start).map(classify_char), Some(CharClass::Space | CharClass::Eol))
+        {
             start = next_grapheme_boundary(&buf, start);
         }
 
@@ -156,11 +160,13 @@ pub(crate) fn cmd_trim_selection_whitespace(
 
         // Walk backward from end, skipping whitespace (grapheme boundary steps).
         let mut new_end = end;
-        while new_end > start && is_whitespace(&buf, new_end) {
+        while new_end > start
+            && matches!(buf.char_at(new_end).map(classify_char), Some(CharClass::Space | CharClass::Eol))
+        {
             new_end = prev_grapheme_boundary(&buf, new_end);
         }
 
-        make_sel(start, new_end, forward)
+        Selection::directed(start, new_end, forward)
     });
     new_sels.debug_assert_valid(buf.len_chars());
     (buf, new_sels)
@@ -275,44 +281,6 @@ fn place_column(buf: &Buffer, line: usize, col: usize) -> usize {
     } else {
         snap_to_grapheme_boundary(buf, line_start, target)
     }
-}
-
-/// Last non-`\n` char on `line`, or the `\n` itself if the line is empty.
-///
-/// Mirrors the `goto_line_end` logic from `motion.rs` but operates on a line
-/// index rather than a head position.
-fn line_content_end(buf: &Buffer, line: usize) -> usize {
-    let line_start = buf.line_to_char(line);
-    let end_excl = line_end_exclusive(buf, line);
-
-    if end_excl == line_start {
-        return line_start; // empty buffer (no content at all)
-    }
-
-    let last = end_excl - 1;
-    if buf.char_at(last) == Some('\n') {
-        if last == line_start {
-            line_start // empty line — cursor on the `\n`
-        } else {
-            prev_grapheme_boundary(buf, last) // step back past the `\n`
-        }
-    } else {
-        prev_grapheme_boundary(buf, end_excl) // last line with no trailing newline
-    }
-}
-
-/// Build a `Selection` with the given `start`/`end` and `forward` direction.
-fn make_sel(start: usize, end: usize, forward: bool) -> Selection {
-    if forward {
-        Selection::new(start, end)
-    } else {
-        Selection::new(end, start)
-    }
-}
-
-/// Is the character at `pos` a whitespace character (space, tab, or newline)?
-fn is_whitespace(buf: &Buffer, pos: usize) -> bool {
-    matches!(buf.char_at(pos), Some(' ') | Some('\t') | Some('\n'))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
