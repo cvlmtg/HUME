@@ -111,13 +111,15 @@ fn delete_one_grapheme(
     if p + 1 >= buf.len_chars() {
         // Cursor is on the structural trailing '\n' — cannot delete it.
         b.retain(p - b.old_pos());
-        new_sels.push(Selection::cursor(b.new_pos()));
+        let sel = Selection::cursor(b.new_pos());
+        new_sels.push(sel);
         return;
     }
     let end = next_grapheme_boundary(buf, p);
     b.retain(p - b.old_pos());
     b.delete(end - p);
-    new_sels.push(Selection::cursor(b.new_pos()));
+    let sel = Selection::cursor(b.new_pos());
+    new_sels.push(sel);
 }
 
 /// Delete the entire region covered by `sel` and push a cursor at `start()`.
@@ -133,7 +135,8 @@ fn delete_sel_region(
     let start = sel.start();
     b.retain(start - b.old_pos());
     b.delete(sel.end() + 1 - start); // end() inclusive → +1 for exclusive bound
-    new_sels.push(Selection::cursor(b.new_pos()));
+    let sel = Selection::cursor(b.new_pos());
+    new_sels.push(sel);
 }
 
 /// Private implementation shared by [`paste_after`] and [`paste_before`].
@@ -180,7 +183,8 @@ where
             b.insert(text);
             // new_pos() is one past the inserted text; -1 lands on the last
             // inserted character (the cursor sits on it — inclusive model).
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            let pos = b.new_pos() - 1;
+            new_sels.push(Selection::cursor(pos));
         } else {
             // Multi-char selection: replace the selected region.
             // Capture the old content before the builder advances past it.
@@ -190,7 +194,8 @@ where
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
             b.insert(text);
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            let pos = b.new_pos() - 1;
+            new_sels.push(Selection::cursor(pos));
         }
     })
 }
@@ -224,7 +229,8 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
         // character that was originally at `start` (now shifted right by 1).
-        new_sels.push(Selection::cursor(b.new_pos()));
+        let sel = Selection::cursor(b.new_pos());
+        new_sels.push(sel);
     })
 }
 
@@ -266,14 +272,16 @@ pub(crate) fn delete_char_backward(
             let p = sel.head;
             if p == 0 {
                 // At start of buffer — nothing to delete to the left.
-                new_sels.push(Selection::cursor(b.new_pos()));
+                let sel = Selection::cursor(b.new_pos());
+                new_sels.push(sel);
                 return;
             }
             // Delete the grapheme cluster ending just before `p`.
             let prev = prev_grapheme_boundary(buf, p);
             b.retain(prev - b.old_pos());
             b.delete(p - prev);
-            new_sels.push(Selection::cursor(b.new_pos()));
+            let sel = Selection::cursor(b.new_pos());
+            new_sels.push(sel);
         } else {
             delete_sel_region(b, sel, new_sels);
         }
