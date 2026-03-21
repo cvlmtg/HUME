@@ -39,18 +39,6 @@ fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
     (Cow::Owned(out), ending)
 }
 
-/// Ensure `rope` ends with a `\n`, appending one if it doesn't.
-///
-/// Every `Buffer` must end with a structural trailing newline so that the
-/// cursor always has a character to sit on. This helper is the single
-/// enforcement point — all constructors funnel through it.
-fn ensure_trailing_newline(mut rope: Rope) -> Rope {
-    if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' {
-        rope.insert_char(rope.len_chars(), '\n');
-    }
-    rope
-}
-
 /// The core text storage type.
 ///
 /// `Buffer` wraps a [`ropey::Rope`], which is a balanced B-tree of Unicode
@@ -211,16 +199,20 @@ impl Buffer {
         Self { rope, line_ending: self.line_ending }
     }
 
-    /// Returns a new buffer with the char range `[from, to)` removed.
+    /// Returns a new buffer with `range` of chars removed.
     ///
-    /// All char offsets at or after `to` in the old buffer are shifted back by
-    /// `to - from`. Selection offsets must be updated by the caller.
+    /// All char offsets at or after `range.end` in the old buffer are shifted
+    /// back by `range.len()`. Selection offsets must be updated by the caller.
+    ///
+    /// Using `Range<usize>` (rather than two separate `from`/`to` parameters)
+    /// matches ropey's own convention and makes call sites read naturally:
+    /// `buf.remove(5..11)` mirrors `buf.slice(5..11)`.
     ///
     /// # Panics
-    /// Panics if `from > to` or `to > self.len_chars()`.
-    pub(crate) fn remove(&self, from: usize, to: usize) -> Self {
+    /// Panics if `range.start > range.end` or `range.end > self.len_chars()`.
+    pub(crate) fn remove(&self, range: Range<usize>) -> Self {
         let mut rope = self.rope.clone();
-        rope.remove(from..to);
+        rope.remove(range);
         Self { rope, line_ending: self.line_ending }
     }
 
@@ -415,7 +407,7 @@ mod tests {
     #[test]
     fn remove_whole() {
         let buf = Buffer::from("hello");
-        let new = buf.remove(0, 5); // removes "hello", leaving "\n"
+        let new = buf.remove(0..5); // removes "hello", leaving "\n"
         assert_eq!(new.to_string(), "\n");
         assert!(new.is_empty());
         assert_eq!(buf.to_string(), "hello\n"); // original unchanged
@@ -424,7 +416,7 @@ mod tests {
     #[test]
     fn remove_range() {
         let buf = Buffer::from("hello world");
-        let new = buf.remove(5, 11); // remove " world"
+        let new = buf.remove(5..11); // remove " world"
         assert_eq!(new.to_string(), "hello\n");
     }
 
@@ -432,7 +424,7 @@ mod tests {
     fn insert_then_remove_is_identity() {
         let original = Buffer::from("hello world");
         let after_insert = original.insert(5, " beautiful");
-        let restored = after_insert.remove(5, 15);
+        let restored = after_insert.remove(5..15);
         assert_eq!(restored, original);
     }
 
