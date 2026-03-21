@@ -96,9 +96,8 @@ where
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
 ///
 /// No-op when `p` is the last position in the buffer (the structural trailing
-/// `\n`) — deleting it would violate the buffer invariant. Used by both
-/// `delete_char_forward` and `delete_selection`, whose cursor branches would
-/// otherwise be character-for-character identical.
+/// `\n`) — deleting it would violate the buffer invariant. Used by
+/// `delete_char_forward` (cursor branch).
 ///
 /// All offsets fed to `b` are in original-buffer coordinate space — the builder
 /// translates them to result-buffer positions internally.

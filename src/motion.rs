@@ -74,8 +74,6 @@ fn move_left(buf: &Buffer, head: usize) -> usize {
     prev_grapheme_boundary(buf, head)
 }
 
-// ── Line motion helpers ───────────────────────────────────────────────────────
-
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
