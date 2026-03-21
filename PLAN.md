@@ -59,7 +59,6 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
 - [x] Registers: named yank/paste buffers (`'0'`–`'9'`) + default (`'"'`) + black hole (`'b'`) + reserved slots for clipboard (`'c'`), search (`'s'`), macro (`'q'`); `yank_selections` (`src/register.rs`), `paste_after`/`paste_before` (`src/edit.rs`). System clipboard deferred to M3.
 - [x] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
-- [ ] Repeat last command (`.` equivalent) — deferred to M3 (needs command dispatch layer)
 - [x] Undo/redo: tree-structured undo with changesets (`History` arena in `src/history.rs`, `Document` orchestrator in `src/document.rs`)
 - [ ] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
 - [ ] Thorough unit tests for every operation and edge case
@@ -76,6 +75,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Insert mode with text input
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
+- [ ] Repeat last command (`.` equivalent)
 - [ ] Extend mode: `x` toggles extend mode (all terminals); `Ctrl+motion` as extend shortcut when kitty keyboard protocol is active. In extend mode all motions extend the current selection instead of replacing it. Ctrl rejected as universal modifier due to fatal legacy-terminal collisions.
 - [ ] Line selection: needs a key binding (not `x` — taken by extend mode; not yet decided)
 - [ ] Paragraph navigation: bind `{` / `}` (prev/next paragraph). Free in both Helix and Kakoune. Preferred over Helix's `[p` / `]p`.
