@@ -4,11 +4,13 @@
 #![allow(dead_code)]
 
 pub(crate) mod buffer;
+pub(crate) mod document;
 pub(crate) mod changeset;
 pub(crate) mod edit;
 pub(crate) mod error;
 pub(crate) mod grapheme;
 pub(crate) mod helpers;
+pub(crate) mod history;
 pub(crate) mod motion;
 pub(crate) mod register;
 pub(crate) mod selection;

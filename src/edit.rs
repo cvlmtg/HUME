@@ -1,5 +1,5 @@
 use crate::buffer::Buffer;
-use crate::changeset::ChangeSetBuilder;
+use crate::changeset::{ChangeSet, ChangeSetBuilder};
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::selection::{Selection, SelectionSet};
 
@@ -18,22 +18,21 @@ use crate::selection::{Selection, SelectionSet};
 // closure is the "policy".
 //
 // Two variants exist because paste operations return extra captured data:
-//   • apply_edit              → (Buffer, SelectionSet)
-//   • apply_edit_with_capture → (Buffer, SelectionSet, Vec<String>)
+//   • apply_edit              → (Buffer, SelectionSet, ChangeSet)
+//   • apply_edit_with_capture → (Buffer, SelectionSet, ChangeSet, Vec<String>)
+//
+// The ChangeSet is returned so the undo system can call `cs.invert(&old_buf)`
+// to produce the inverse transaction. The caller (Document) holds the pre-edit
+// buffer and handles the invert timing constraint.
 
 /// Apply a `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` command `count` times.
 ///
-/// This is the count mechanism for operations that are not motions — edits
-/// (`5x` = delete 5 chars), selection commands (`3C` = copy cursor to 3
-/// lines below). Each iteration receives the output of the previous one,
-/// so intermediate states are always fully valid.
+/// This is the count mechanism for selection commands and other operations that
+/// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
+/// is needed for undo/redo bookkeeping via [`crate::document::Document`].
 ///
-/// For motions, count is handled differently: it is folded *inside*
-/// `apply_motion`, per-selection, before anchor/merge logic runs. That
-/// prevents premature merging of multi-cursor selections between steps.
-/// For edits, iterating at the command level is correct — `5x` is
-/// genuinely "delete 1 char, 5 times", and the intermediate states are
-/// valid buffers.
+/// For motions, count is handled inside `apply_motion` per-selection instead
+/// (prevents premature merging of multi-cursor selections between steps).
 pub(crate) fn repeat(
     count: usize,
     buf: Buffer,
@@ -41,6 +40,45 @@ pub(crate) fn repeat(
     cmd: impl Fn(Buffer, SelectionSet) -> (Buffer, SelectionSet),
 ) -> (Buffer, SelectionSet) {
     (0..count).fold((buf, sels), |(b, s), _| cmd(b, s))
+}
+
+/// Apply an edit command `count` times, composing all changesets into one.
+///
+/// Like [`repeat`], but the command must return `(Buffer, SelectionSet,
+/// ChangeSet)`. The N changesets are folded with [`ChangeSet::compose`] so the
+/// whole repetition becomes a single undo step when passed to
+/// [`crate::document::Document::apply_edit`].
+///
+/// If `count == 0`, returns the original state with an identity ChangeSet.
+pub(crate) fn repeat_edit(
+    count: usize,
+    buf: Buffer,
+    sels: SelectionSet,
+    cmd: impl Fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
+) -> (Buffer, SelectionSet, ChangeSet) {
+    let mut current_buf = buf;
+    let mut current_sels = sels;
+    let mut composed: Option<ChangeSet> = None;
+
+    for _ in 0..count {
+        let (new_buf, new_sels, cs) = cmd(current_buf, current_sels);
+        // ChangeSet::compose(A, B) produces A→C from A→B and B→C, combining
+        // N individual edits into one for purposes of undo/redo granularity.
+        composed = Some(match composed {
+            None => cs,
+            Some(prev) => prev.compose(cs),
+        });
+        current_buf = new_buf;
+        current_sels = new_sels;
+    }
+
+    let cs = composed.unwrap_or_else(|| {
+        // count == 0: produce an identity changeset (all Retain).
+        let mut b = ChangeSetBuilder::new(current_buf.len_chars());
+        b.retain_rest();
+        b.finish()
+    });
+    (current_buf, current_sels, cs)
 }
 
 /// Core loop for editing operations that produce `(Buffer, SelectionSet)`.
@@ -60,7 +98,7 @@ pub(crate) fn repeat(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet)
+fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
 where
     F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>),
 {
@@ -73,13 +111,17 @@ where
     }
 
     b.retain_rest();
-    let new_buf = b
-        .finish()
+    // Split finish() from apply() so the ChangeSet can be returned to the
+    // caller for undo/redo bookkeeping. invert() must be called against the
+    // pre-edit buffer — the caller (Document) holds that buffer and handles
+    // the timing constraint.
+    let cs = b.finish();
+    let new_buf = cs
         .apply(&buf)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
     new_sel_set.debug_assert_valid(new_buf.len_chars());
-    (new_buf, new_sel_set)
+    (new_buf, new_sel_set, cs)
 }
 
 /// Core loop for editing operations that also capture per-selection output.
@@ -92,7 +134,7 @@ fn apply_edit_with_capture<F>(
     buf: Buffer,
     sels: SelectionSet,
     mut f: F,
-) -> (Buffer, SelectionSet, Vec<String>)
+) -> (Buffer, SelectionSet, ChangeSet, Vec<String>)
 where
     F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>, &mut Vec<String>),
 {
@@ -106,13 +148,13 @@ where
     }
 
     b.retain_rest();
-    let new_buf = b
-        .finish()
+    let cs = b.finish();
+    let new_buf = cs
         .apply(&buf)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
     new_sel_set.debug_assert_valid(new_buf.len_chars());
-    (new_buf, new_sel_set, captured)
+    (new_buf, new_sel_set, cs, captured)
 }
 
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
@@ -178,12 +220,15 @@ fn paste_impl<P>(
     sels: SelectionSet,
     values: &[String],
     cursor_insert_pos: P,
-) -> (Buffer, SelectionSet, Vec<String>)
+) -> (Buffer, SelectionSet, ChangeSet, Vec<String>)
 where
     P: Fn(&Buffer, &Selection) -> usize,
 {
     if values.is_empty() {
-        return (buf, sels, Vec::new());
+        // Nothing to paste — return an identity ChangeSet (all Retain).
+        let mut b = ChangeSetBuilder::new(buf.len_chars());
+        b.retain_rest();
+        return (buf, sels, b.finish(), Vec::new());
     }
 
     let n_sels = sels.len();
@@ -238,7 +283,7 @@ where
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet) {
+pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, _buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -266,7 +311,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
 pub(crate) fn delete_char_forward(
     buf: Buffer,
     sels: SelectionSet,
-) -> (Buffer, SelectionSet) {
+) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_cursor() {
             delete_one_grapheme(b, buf, new_sels, sel.head);
@@ -287,7 +332,7 @@ pub(crate) fn delete_char_forward(
 pub(crate) fn delete_char_backward(
     buf: Buffer,
     sels: SelectionSet,
-) -> (Buffer, SelectionSet) {
+) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_cursor() {
             let p = sel.head;
@@ -327,7 +372,7 @@ pub(crate) fn delete_char_backward(
 /// let (new_buf, new_sels) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);
 /// ```
-pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and
     // pressing `d` on a selection deletes the selected region — exactly what
     // delete_char_forward does. There is no functional difference between the
@@ -359,7 +404,7 @@ pub(crate) fn paste_after(
     buf: Buffer,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet, Vec<String>) {
+) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
     // `last_char` = index of the structural \n. Must be read before `buf` is
     // consumed by `paste_impl`, so we capture it here and move it into the closure.
     let last_char = buf.len_chars() - 1;
@@ -384,7 +429,7 @@ pub(crate) fn paste_before(
     buf: Buffer,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet, Vec<String>) {
+) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
     paste_impl(buf, sels, values, |_buf, sel| sel.start())
 }
 
@@ -701,15 +746,15 @@ mod tests {
 
     // ── paste_after ───────────────────────────────────────────────────────────
 
-    // Helper: call paste_after and discard the `replaced` vec for assert_state!.
+    // Helper: call paste_after and discard changeset + replaced vec for assert_state!.
     fn pa(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
-        let (b, s, _) = paste_after(buf, sels, values);
+        let (b, s, _, _) = paste_after(buf, sels, values);
         (b, s)
     }
 
-    // Helper: call paste_before and discard the `replaced` vec for assert_state!.
+    // Helper: call paste_before and discard changeset + replaced vec for assert_state!.
     fn pb(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
-        let (b, s, _) = paste_before(buf, sels, values);
+        let (b, s, _, _) = paste_before(buf, sels, values);
         (b, s)
     }
 
@@ -784,7 +829,7 @@ mod tests {
             "X-[Y]>lo\n"
         );
         let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
-        let (_, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
+        let (_, _, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
         assert_eq!(replaced, vec!["hel"]);
     }
 
@@ -797,7 +842,7 @@ mod tests {
             "X-[Y]>lo\n"
         );
         let (buf, sels) = crate::testing::parse_state("<[hel]-lo\n");
-        let (_, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
+        let (_, _, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
         assert_eq!(replaced, vec!["hel"]);
     }
 
@@ -805,7 +850,7 @@ mod tests {
     fn paste_after_replace_swap_roundtrip() {
         // Yank "foo", paste onto selection "bar" → buffer has "foo", replaced = ["bar"].
         let (buf, sels) = crate::testing::parse_state("-[bar]>\n");
-        let (new_buf, _, replaced) = paste_after(buf, sels, &["foo".to_string()]);
+        let (new_buf, _, _, replaced) = paste_after(buf, sels, &["foo".to_string()]);
         assert_eq!(new_buf.to_string(), "foo\n");
         assert_eq!(replaced, vec!["bar"]);
     }
@@ -822,7 +867,7 @@ mod tests {
             "A-[B]>lC-[D]>\n"
         );
         let (buf, sels) = crate::testing::parse_state("-[he]>l-[lo]>\n");
-        let (_, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
+        let (_, _, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
         assert_eq!(replaced, vec!["he", "lo"]);
     }
 
@@ -838,7 +883,7 @@ mod tests {
             "hA-[B]>elC-[D]>\n"
         );
         let (buf, sels) = crate::testing::parse_state("-[h]>el-[lo]>\n");
-        let (_, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
+        let (_, _, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
         // Cursor replaced nothing; selection replaced "lo".
         assert_eq!(replaced, vec!["", "lo"]);
     }
@@ -895,7 +940,7 @@ mod tests {
             "X-[Y]>lo\n"
         );
         let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
-        let (_, _, replaced) = paste_before(buf, sels, &["XY".to_string()]);
+        let (_, _, _, replaced) = paste_before(buf, sels, &["XY".to_string()]);
         assert_eq!(replaced, vec!["hel"]);
     }
 
@@ -906,7 +951,7 @@ mod tests {
         // 3x: delete 'h', then 'e', then 'l' — cursor lands on the second 'l'.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| repeat(3, buf, sels, delete_char_forward),
+            |(buf, sels)| repeat_edit(3, buf, sels, delete_char_forward),
             "-[l]>o\n"
         );
     }
@@ -917,7 +962,7 @@ mod tests {
         // 98 no-ops on the structural '\n' (cannot be deleted).
         assert_state!(
             "-[h]>i\n",
-            |(buf, sels)| repeat(100, buf, sels, delete_char_forward),
+            |(buf, sels)| repeat_edit(100, buf, sels, delete_char_forward),
             "-[\n]>"
         );
     }
@@ -929,7 +974,7 @@ mod tests {
         // after second delete it sits on 'l' which is now at offset 2.
         assert_state!(
             "hel-[l]>o\n",
-            |(buf, sels)| repeat(2, buf, sels, delete_char_backward),
+            |(buf, sels)| repeat_edit(2, buf, sels, delete_char_backward),
             "h-[l]>o\n"
         );
     }
