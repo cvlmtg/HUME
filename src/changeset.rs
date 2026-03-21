@@ -414,45 +414,54 @@ impl ChangeSet {
         let mut a_cur: Option<Operation> = a_ops.next();
         let mut b_cur: Option<Operation> = b_ops.next();
 
+        // Each iteration moves `a_cur` and `b_cur` into a single match,
+        // destructures them directly, and writes the results back. This
+        // eliminates the previous `if matches! { take().expect() }` idiom —
+        // ownership flows through the match arms instead of being plucked out
+        // after a separate borrow-only check.
         loop {
-            // A's Delete goes straight through — it removes chars from the
-            // original doc that B never saw. Checked first so it takes
-            // priority over the B's Insert case below.
-            if matches!(&a_cur, Some(Operation::Delete(_))) {
-                push_merge(&mut result, a_cur.take().expect("guarded by matches!"));
-                a_cur = a_ops.next();
-                continue;
-            }
-
-            // B's Insert goes straight through — it adds text that didn't
-            // exist in A's output. Pulling via `take()` moves the op directly
-            // into `push_merge` with no extra allocation.
-            if matches!(&b_cur, Some(Operation::Insert(_))) {
-                push_merge(&mut result, b_cur.take().expect("guarded by matches!"));
-                b_cur = b_ops.next();
-                continue;
-            }
-
-            match (&a_cur, &b_cur) {
+            match (a_cur, b_cur) {
+                // ── Done ─────────────────────────────────────────────────────
                 (None, None) => break,
 
-                // Both exhausted is handled above. One exhausted means the
-                // changesets are inconsistent.
-                (None, _) | (_, None) => {
-                    panic!(
-                        "compose: op sequences exhausted unevenly \
-                         (a_cur={a_cur:?}, b_cur={b_cur:?})"
-                    );
+                // ── A's Delete: emit and advance A only ──────────────────────
+                //
+                // A removed chars from the original doc. B never saw those
+                // chars, so the delete goes straight to output regardless of
+                // what B is currently doing. The catch-all `b` rebinds b_cur
+                // unconsumed — this correctly handles `(Delete, None)` too
+                // (trailing A-deletes after B is exhausted are valid).
+                (Some(Operation::Delete(n)), b) => {
+                    push_merge(&mut result, Operation::Delete(n));
+                    a_cur = a_ops.next();
+                    b_cur = b; // put back — B wasn't involved
                 }
 
-                // Both sides have a consuming operation. Take the minimum
-                // length and handle partial consumption.
+                // ── B's Insert: emit and advance B only ──────────────────────
+                //
+                // B added new text that didn't exist in A's output. It goes
+                // straight to output regardless of what A is doing. The Delete
+                // arm above has higher priority (it comes first in the match),
+                // so this arm only fires when A is not a Delete — correctly
+                // matching the previous `if matches!` priority order.
+                // The catch-all `a` handles `(None, Insert)` correctly too.
+                (a, Some(Operation::Insert(s))) => {
+                    push_merge(&mut result, Operation::Insert(s));
+                    b_cur = b_ops.next();
+                    a_cur = a; // put back — A wasn't involved
+                }
+
+                // ── Lockstep: both sides consume the intermediate doc ────────
+                //
+                // At this point we know: A is not Delete (caught above),
+                // B is not Insert (caught above). Both are Some.
+                // Consume `min` chars from each side, then advance both.
                 (Some(a), Some(b)) => {
-                    let a_len = op_consuming_len(a);
-                    let b_len = op_consuming_len(b);
+                    let a_len = op_consuming_len(&a);
+                    let b_len = op_consuming_len(&b);
                     let min = a_len.min(b_len);
 
-                    match (a, b) {
+                    match (&a, &b) {
                         // Retain + Retain → Retain
                         (Operation::Retain(_), Operation::Retain(_)) => {
                             push_merge(&mut result, Operation::Retain(min));
@@ -474,21 +483,32 @@ impl ChangeSet {
                         (Operation::Insert(_), Operation::Delete(_)) => {
                             // No output — they cancel out.
                         }
+                        // The outer arms above guarantee A ∈ {Retain, Insert}
+                        // and B ∈ {Retain, Delete}. All four combinations are
+                        // handled; this arm is unreachable in correct usage.
                         _ => unreachable!(
                             "compose: unexpected op pair ({a:?}, {b:?})"
                         ),
                     }
 
-                    // Advance both sides by `min`, keeping any remainder.
-                    a_cur = advance_op(
-                        a_cur.take().expect("guaranteed Some by match arm"),
-                        min,
-                        &mut a_ops,
-                    );
-                    b_cur = advance_op(
-                        b_cur.take().expect("guaranteed Some by match arm"),
-                        min,
-                        &mut b_ops,
+                    // Borrows from the inner match end here. Now advance both
+                    // cursors by consuming the owned `a` and `b` values.
+                    // `advance_op` returns the remainder of the op (if any),
+                    // or pulls the next op from the iterator.
+                    a_cur = advance_op(a, min, &mut a_ops);
+                    b_cur = advance_op(b, min, &mut b_ops);
+                }
+
+                // ── Invariant violation ──────────────────────────────────────
+                //
+                // One side still has consuming ops (Retain or Delete for B,
+                // Retain or Insert for A) while the other is exhausted.
+                // This means self.len_after != other.len_before, which the
+                // assert at the top of compose should have caught.
+                (a, b) => {
+                    panic!(
+                        "compose: op sequences exhausted unevenly \
+                         (a_cur={a:?}, b_cur={b:?})"
                     );
                 }
             }
