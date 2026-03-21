@@ -37,7 +37,43 @@
 /// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
 /// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
 use crate::buffer::Buffer;
+use crate::changeset::ChangeSet;
 use crate::selection::{Selection, SelectionSet};
+
+// ── IntoEditPair ──────────────────────────────────────────────────────────────
+
+/// Convert an edit-operation result into `(Buffer, SelectionSet)`.
+///
+/// Edit functions have varying return types depending on whether they also
+/// return a [`ChangeSet`] (for undo/redo) or captured text (paste). This
+/// trait lets `assert_state!` accept any of these shapes without change:
+///
+/// - `(Buffer, SelectionSet)` — the historic return type, still accepted.
+/// - `(Buffer, SelectionSet, ChangeSet)` — standard edits post-refactor.
+/// - `(Buffer, SelectionSet, Vec<String>)` — paste (legacy, without ChangeSet).
+/// - `(Buffer, SelectionSet, ChangeSet, Vec<String>)` — paste post-refactor.
+///
+/// This is the standard "newtype adapter" pattern: implement a trait on a
+/// tuple rather than changing the signature everywhere.
+pub(crate) trait IntoEditPair {
+    fn into_edit_pair(self) -> (Buffer, SelectionSet);
+}
+
+impl IntoEditPair for (Buffer, SelectionSet) {
+    fn into_edit_pair(self) -> (Buffer, SelectionSet) { self }
+}
+
+impl IntoEditPair for (Buffer, SelectionSet, ChangeSet) {
+    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+}
+
+impl IntoEditPair for (Buffer, SelectionSet, Vec<String>) {
+    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+}
+
+impl IntoEditPair for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -269,7 +305,7 @@ macro_rules! assert_state {
         use pretty_assertions::assert_eq;
 
         let (buf, sels) = parse_state($initial);
-        let (result_buf, result_sels) = $op((buf, sels));
+        let (result_buf, result_sels) = $crate::testing::IntoEditPair::into_edit_pair($op((buf, sels)));
         let (expected_buf, expected_sels) = parse_state($expected);
 
         assert_eq!(
