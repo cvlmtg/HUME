@@ -103,18 +103,21 @@ pub(crate) fn cmd_split_selection_on_newlines(
         } else {
             // First line piece: from selection start to end of line content.
             let first_end = line_content_end(&buf, start_line);
-            new_sels.push(Selection::directed(start, first_end, forward));
+            let sel = Selection::directed(start, first_end, forward);
+            new_sels.push(sel);
 
             // Middle lines: full lines.
             for line in (start_line + 1)..end_line {
                 let ls = buf.line_to_char(line);
                 let le = line_content_end(&buf, line);
-                new_sels.push(Selection::directed(ls, le, forward));
+                let sel = Selection::directed(ls, le, forward);
+                new_sels.push(sel);
             }
 
             // Last line piece: from line start to selection end.
             let last_ls = buf.line_to_char(end_line);
-            new_sels.push(Selection::directed(last_ls, end, forward));
+            let sel = Selection::directed(last_ls, end, forward);
+            new_sels.push(sel);
         }
 
         piece_start.push(first_piece_idx);
