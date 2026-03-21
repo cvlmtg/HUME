@@ -332,6 +332,7 @@ impl ChangeSet {
     ///
     /// # Panics
     /// Panics if `buf.len_chars() != self.len_before`.
+    #[must_use]
     pub(crate) fn invert(&self, buf: &Buffer) -> ChangeSet {
         assert_eq!(
             buf.len_chars(),
@@ -391,6 +392,7 @@ impl ChangeSet {
     ///
     /// # Panics
     /// Panics if `self.len_after != other.len_before`.
+    #[must_use]
     pub(crate) fn compose(self, other: ChangeSet) -> ChangeSet {
         assert_eq!(
             self.len_after, other.len_before,

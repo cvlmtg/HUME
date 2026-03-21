@@ -82,6 +82,7 @@ impl Selection {
 
     /// Swap anchor and head. A forward selection becomes backward and vice
     /// versa. Useful for `flip selection` commands.
+    #[must_use]
     pub(crate) fn flip(self) -> Self {
         Self { anchor: self.head, head: self.anchor }
     }
@@ -89,20 +90,22 @@ impl Selection {
     /// Move both anchor and head by `delta` chars (positive = forward).
     ///
     /// Used when an edit *before* this selection shifts all offsets.
+    ///
+    /// # Panics
+    /// Panics if the shift would move either end below zero (underflow).
+    /// This is always a bug in the caller — an edit cannot shift a selection
+    /// to a negative position.
+    #[must_use]
     pub(crate) fn shift(self, delta: isize) -> Self {
-        let anchor = (self.anchor as isize + delta) as usize;
-        let head = (self.head as isize + delta) as usize;
-        // Catch underflow early in tests. A wrapped value will be enormous.
-        debug_assert!(
-            anchor <= isize::MAX as usize,
-            "shift underflow on anchor: {} + {delta} wrapped",
-            self.anchor
-        );
-        debug_assert!(
-            head <= isize::MAX as usize,
-            "shift underflow on head: {} + {delta} wrapped",
-            self.head
-        );
+        // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
+        // a usize and returns None on overflow *or* underflow. Compared to the
+        // previous `(x as isize + delta) as usize` cast pair, this fails loudly
+        // in *both* debug and release builds — the cast silently wraps in
+        // release, producing a huge position that corrupts the buffer.
+        let anchor = self.anchor.checked_add_signed(delta)
+            .expect("shift underflow: anchor cannot go below zero");
+        let head = self.head.checked_add_signed(delta)
+            .expect("shift underflow: head cannot go below zero");
         Self { anchor, head }
     }
 }
@@ -156,11 +159,15 @@ impl SelectionSet {
         self.selections.len()
     }
 
-    /// Iterate over all selections, primary first, then others in order.
+    /// Iterate over all selections, primary first, then others in sorted order.
     ///
     /// Yielding the primary first means callers that care about "the main one"
     /// can `take(1)` without extra logic.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Selection> {
+    ///
+    /// The non-obvious ordering is why this is named `iter_primary_first` rather
+    /// than plain `iter` — a method called `iter` should iterate in the natural
+    /// (sorted) order. Use [`iter_sorted`](Self::iter_sorted) for that.
+    pub(crate) fn iter_primary_first(&self) -> impl Iterator<Item = &Selection> {
         // Yield primary first by chaining: [primary] ++ [all others in order].
         // This is an O(n) iterator with no allocation.
         let primary = &self.selections[self.primary];
@@ -182,6 +189,7 @@ impl SelectionSet {
     /// Use this when you can guarantee that `f` is order-preserving and cannot
     /// produce overlapping selections (e.g. `|s| s.shift(delta)`). If you are
     /// not sure, use [`map_and_merge`](Self::map_and_merge) instead.
+    #[must_use]
     pub(crate) fn map<F>(self, mut f: F) -> Self
     where
         F: FnMut(Selection) -> Selection,
@@ -224,6 +232,7 @@ impl SelectionSet {
     ///
     /// The primary index is updated to point at the merged selection that
     /// contained the original primary.
+    #[must_use]
     pub(crate) fn merge_overlapping(mut self) -> Self {
         if self.selections.len() <= 1 {
             return self;
