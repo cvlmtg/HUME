@@ -58,7 +58,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Text objects: inside/around word, quotes, brackets, line
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
 - [x] Registers: named yank/paste buffers (`'0'`–`'9'`) + default (`'"'`) + black hole (`'b'`) + reserved slots for clipboard (`'c'`), search (`'s'`), macro (`'q'`); `yank_selections` (`src/register.rs`), `paste_after`/`paste_before` (`src/edit.rs`). System clipboard deferred to M3.
-- [ ] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
+- [x] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
 - [ ] Repeat last command (`.` equivalent)
 - [ ] Undo/redo: tree-structured undo with changesets
 - [ ] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections

@@ -780,4 +780,19 @@ mod tests {
         assert!(heads.contains(&5)); // copy of col 1 on line 1
         assert!(heads.contains(&6)); // copy of col 2 on line 1
     }
+
+    // ── repeat (count prefix for selection commands) ───────────────────────
+
+    #[test]
+    fn copy_next_line_count_3() {
+        // repeat(3, ...) copies the cursor to 3 consecutive lines below.
+        // Buffer: "a\nb\nc\nd\ne\n". Cursor on 'a'(0).
+        // After 3 copies: cursors on 'a'(0), 'b'(2), 'c'(4), 'd'(6).
+        use crate::edit::repeat;
+        assert_state!(
+            "-[a]>\nb\nc\nd\ne\n",
+            |(buf, sels)| repeat(3, buf, sels, cmd_copy_selection_on_next_line),
+            "-[a]>\n-[b]>\n-[c]>\n-[d]>\ne\n"
+        );
+    }
 }

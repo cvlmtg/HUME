@@ -21,6 +21,28 @@ use crate::selection::{Selection, SelectionSet};
 //   • apply_edit              → (Buffer, SelectionSet)
 //   • apply_edit_with_capture → (Buffer, SelectionSet, Vec<String>)
 
+/// Apply a `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` command `count` times.
+///
+/// This is the count mechanism for operations that are not motions — edits
+/// (`5x` = delete 5 chars), selection commands (`3C` = copy cursor to 3
+/// lines below). Each iteration receives the output of the previous one,
+/// so intermediate states are always fully valid.
+///
+/// For motions, count is handled differently: it is folded *inside*
+/// `apply_motion`, per-selection, before anchor/merge logic runs. That
+/// prevents premature merging of multi-cursor selections between steps.
+/// For edits, iterating at the command level is correct — `5x` is
+/// genuinely "delete 1 char, 5 times", and the intermediate states are
+/// valid buffers.
+pub(crate) fn repeat(
+    count: usize,
+    buf: Buffer,
+    sels: SelectionSet,
+    cmd: impl Fn(Buffer, SelectionSet) -> (Buffer, SelectionSet),
+) -> (Buffer, SelectionSet) {
+    (0..count).fold((buf, sels), |(b, s), _| cmd(b, s))
+}
+
 /// Core loop for editing operations that produce `(Buffer, SelectionSet)`.
 ///
 /// The closure `f` receives:
@@ -875,5 +897,40 @@ mod tests {
         let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
         let (_, _, replaced) = paste_before(buf, sels, &["XY".to_string()]);
         assert_eq!(replaced, vec!["hel"]);
+    }
+
+    // ── repeat (count prefix for edits) ───────────────────────────────────────
+
+    #[test]
+    fn repeat_delete_forward_count_3() {
+        // 3x: delete 'h', then 'e', then 'l' — cursor lands on the second 'l'.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| repeat(3, buf, sels, delete_char_forward),
+            "-[l]>o\n"
+        );
+    }
+
+    #[test]
+    fn repeat_delete_forward_count_exceeds_buffer() {
+        // count=100 on a 3-char buffer ("hi\n"). Deletes 'h' and 'i', then
+        // 98 no-ops on the structural '\n' (cannot be deleted).
+        assert_state!(
+            "-[h]>i\n",
+            |(buf, sels)| repeat(100, buf, sels, delete_char_forward),
+            "-[\n]>"
+        );
+    }
+
+    #[test]
+    fn repeat_delete_backward_count_2() {
+        // 2<BS>: delete 'l' (offset 3), then 'e' (offset 2) from "hello\n".
+        // Cursor was on 'l'(3); after first delete it sits on 'l'(2→now 'l'),
+        // after second delete it sits on 'l' which is now at offset 2.
+        assert_state!(
+            "hel-[l]>o\n",
+            |(buf, sels)| repeat(2, buf, sels, delete_char_backward),
+            "h-[l]>o\n"
+        );
     }
 }
