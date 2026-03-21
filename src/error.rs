@@ -54,9 +54,23 @@ impl fmt::Display for TransactionError {
     }
 }
 
+impl std::error::Error for ApplyError {}
+
 impl From<ApplyError> for TransactionError {
     fn from(e: ApplyError) -> Self {
         TransactionError::Apply(e)
+    }
+}
+
+// `TransactionError` wraps one of two inner errors; `source()` exposes the
+// underlying cause so callers using `?` or `Box<dyn Error>` chains can
+// inspect the root error rather than only the wrapper's Display message.
+impl std::error::Error for TransactionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TransactionError::Apply(e) => Some(e),
+            TransactionError::Validation(e) => Some(e),
+        }
     }
 }
 
@@ -93,6 +107,8 @@ pub(crate) enum ValidationError {
     /// at least one char: the structural `\n`).
     EmptyBuffer,
 }
+
+impl std::error::Error for ValidationError {}
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
