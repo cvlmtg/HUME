@@ -69,11 +69,6 @@ impl Register {
     pub(crate) fn values(&self) -> &[String] {
         &self.values
     }
-
-    /// Consume the register and return the strings.
-    pub(crate) fn into_values(self) -> Vec<String> {
-        self.values
-    }
 }
 
 /// The full collection of named registers.

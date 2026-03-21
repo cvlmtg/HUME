@@ -38,6 +38,8 @@ pub(crate) fn next_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
     let byte_offset = slice.char_to_byte(char_offset);
 
     // Start with the chunk that contains `byte_offset`.
+    // chunk_at_byte returns (chunk, byte_start, char_start, line_start); we only
+    // need the chunk text and its byte offset — the char/line starts are unused.
     let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(byte_offset);
 
     let mut gc = GraphemeCursor::new(byte_offset, len_bytes, true);

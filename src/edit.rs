@@ -365,6 +365,7 @@ pub(crate) fn paste_before(
 mod tests {
     use super::*;
     use crate::assert_state;
+    use pretty_assertions::assert_eq;
 
     // ── insert_char ───────────────────────────────────────────────────────────
 
