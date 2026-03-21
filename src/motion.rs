@@ -393,198 +393,126 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 // and, eventually, the command dispatch table.
 //
 // Pure motions do not modify the buffer, so `buf` passes through unchanged.
+//
+// Every named command is structurally identical: call `apply_motion` with a
+// mode and a motion function, return `(buf, new_sels)`. The `motion_cmd!`
+// macro captures that skeleton so the table below is just data — name, mode,
+// motion — with no repeated scaffolding.
 
-/// Move all cursors one grapheme to the right (collapsed, no selection).
-pub(crate) fn cmd_move_right(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, move_right);
-    (buf, new_sels)
+/// Generate a named motion command.
+///
+/// Two arms handle the two motion shapes that exist in this codebase:
+///
+/// **Direct** — the motion function takes only `(&Buffer, head)`:
+/// ```ignore
+/// motion_cmd!(/// doc, cmd_move_right, Move, move_right);
+/// ```
+///
+/// **Curried** — the motion function needs an extra argument (a boundary
+/// predicate or a target-column hint). The macro generates the closure
+/// `|b, h| inner(b, h, arg)`:
+/// ```ignore
+/// motion_cmd!(/// doc, cmd_next_word_start, Select, next_word_start(is_word_boundary));
+/// motion_cmd!(/// doc, cmd_move_down,       Move,   move_down_inner(None));
+/// ```
+///
+/// The curried arm is listed first so that `ident(expr)` syntax is tried
+/// before the bare-`expr` arm — without this ordering, `inner(arg)` would
+/// match the direct arm as an expression and generate a call-site type error.
+///
+/// `$(#[$attr:meta])*` forwards doc comments (and any other attributes) from
+/// the invocation into the generated function. In Rust, `/// text` is
+/// syntactic sugar for `#[doc = "text"]`, so it is captured by `:meta`.
+///
+/// `#[allow(non_snake_case)]` is emitted unconditionally. It is a no-op for
+/// snake_case names and suppresses the expected warning for WORD variants
+/// (`cmd_next_WORD_start` etc.) without needing a separate macro arm.
+macro_rules! motion_cmd {
+    // Curried arm: motion needs an extra argument — generates a closure.
+    ($(#[$attr:meta])* $name:ident, $mode:ident, $inner:ident($arg:expr)) => {
+        $(#[$attr])*
+        #[allow(non_snake_case)]
+        pub(crate) fn $name(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+            let new_sels = apply_motion(&buf, sels, MotionMode::$mode, |b, h| $inner(b, h, $arg));
+            (buf, new_sels)
+        }
+    };
+    // Direct arm: motion function takes only (&Buffer, head).
+    ($(#[$attr:meta])* $name:ident, $mode:ident, $motion:expr) => {
+        $(#[$attr])*
+        #[allow(non_snake_case)]
+        pub(crate) fn $name(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
+            let new_sels = apply_motion(&buf, sels, MotionMode::$mode, $motion);
+            (buf, new_sels)
+        }
+    };
 }
 
-/// Move all cursors one grapheme to the left (collapsed, no selection).
-pub(crate) fn cmd_move_left(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, move_left);
-    (buf, new_sels)
-}
+// ── Command table ─────────────────────────────────────────────────────────────
 
-/// Extend all selections one grapheme to the right (anchor stays, head moves).
-pub(crate) fn cmd_extend_right(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, move_right);
-    (buf, new_sels)
-}
+motion_cmd!(/// Move all cursors one grapheme to the right (collapsed, no selection).
+    cmd_move_right, Move, move_right);
+motion_cmd!(/// Move all cursors one grapheme to the left (collapsed, no selection).
+    cmd_move_left, Move, move_left);
+motion_cmd!(/// Extend all selections one grapheme to the right (anchor stays, head moves).
+    cmd_extend_right, Extend, move_right);
+motion_cmd!(/// Extend all selections one grapheme to the left (anchor stays, head moves).
+    cmd_extend_left, Extend, move_left);
 
-/// Extend all selections one grapheme to the left (anchor stays, head moves).
-pub(crate) fn cmd_extend_left(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, move_left);
-    (buf, new_sels)
-}
+motion_cmd!(/// Move all cursors to the start of their current line.
+    cmd_goto_line_start, Move, goto_line_start);
+motion_cmd!(/// Move all cursors to the last non-newline character on their current line.
+    cmd_goto_line_end, Move, goto_line_end);
+motion_cmd!(/// Move all cursors to the first non-blank character on their current line.
+    cmd_goto_first_nonblank, Move, goto_first_nonblank);
 
-/// Move all cursors to the start of their current line.
-pub(crate) fn cmd_goto_line_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, goto_line_start);
-    (buf, new_sels)
-}
+// Vertical motion passes `None` as the target-column hint (no sticky column yet).
+motion_cmd!(/// Move all cursors down one line, preserving the char-offset column.
+    cmd_move_down, Move, move_down_inner(None));
+motion_cmd!(/// Move all cursors up one line, preserving the char-offset column.
+    cmd_move_up, Move, move_up_inner(None));
+motion_cmd!(/// Extend all selections down one line (anchor stays, head moves).
+    cmd_extend_down, Extend, move_down_inner(None));
+motion_cmd!(/// Extend all selections up one line (anchor stays, head moves).
+    cmd_extend_up, Extend, move_up_inner(None));
 
-/// Move all cursors to the last non-newline character on their current line.
-pub(crate) fn cmd_goto_line_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, goto_line_end);
-    (buf, new_sels)
-}
+// Word motions — Select mode (anchor = old head, head = new position).
+motion_cmd!(/// Select to the start of the next word (w).
+    cmd_next_word_start, Select, next_word_start(is_word_boundary));
+motion_cmd!(/// Select to the start of the next WORD (W — treats word+punct as one class).
+    cmd_next_WORD_start, Select, next_word_start(is_WORD_boundary));
+motion_cmd!(/// Select to the start of the previous word (b).
+    cmd_prev_word_start, Select, prev_word_start(is_word_boundary));
+motion_cmd!(/// Select to the start of the previous WORD (B).
+    cmd_prev_WORD_start, Select, prev_word_start(is_WORD_boundary));
+motion_cmd!(/// Select to the end of the next word (e).
+    cmd_next_word_end, Select, next_word_end(is_word_boundary));
+motion_cmd!(/// Select to the end of the next WORD (E).
+    cmd_next_WORD_end, Select, next_word_end(is_WORD_boundary));
 
-/// Move all cursors to the first non-blank character on their current line.
-pub(crate) fn cmd_goto_first_nonblank(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, goto_first_nonblank);
-    (buf, new_sels)
-}
+// Word motions — Extend mode (anchor stays, head = new position).
+motion_cmd!(/// Extend selection to the start of the next word (shift-w variant).
+    cmd_extend_next_word_start, Extend, next_word_start(is_word_boundary));
+motion_cmd!(/// Extend selection to the start of the previous word (shift-b variant).
+    cmd_extend_prev_word_start, Extend, prev_word_start(is_word_boundary));
+motion_cmd!(/// Extend selection to the end of the next word (shift-e variant).
+    cmd_extend_next_word_end, Extend, next_word_end(is_word_boundary));
+motion_cmd!(/// Extend selection to the start of the next WORD.
+    cmd_extend_next_WORD_start, Extend, next_word_start(is_WORD_boundary));
+motion_cmd!(/// Extend selection to the start of the previous WORD.
+    cmd_extend_prev_WORD_start, Extend, prev_word_start(is_WORD_boundary));
+motion_cmd!(/// Extend selection to the end of the next WORD.
+    cmd_extend_next_WORD_end, Extend, next_word_end(is_WORD_boundary));
 
-/// Move all cursors down one line, preserving the char-offset column.
-pub(crate) fn cmd_move_down(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, |b, h| move_down_inner(b, h, None));
-    (buf, new_sels)
-}
-
-/// Move all cursors up one line, preserving the char-offset column.
-pub(crate) fn cmd_move_up(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, |b, h| move_up_inner(b, h, None));
-    (buf, new_sels)
-}
-
-/// Extend all selections down one line (anchor stays, head moves).
-pub(crate) fn cmd_extend_down(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| move_down_inner(b, h, None));
-    (buf, new_sels)
-}
-
-/// Extend all selections up one line (anchor stays, head moves).
-pub(crate) fn cmd_extend_up(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| move_up_inner(b, h, None));
-    (buf, new_sels)
-}
-
-/// Select to the start of the next word (w).
-pub(crate) fn cmd_next_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_start(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Select to the start of the next WORD (W — treats word+punct as one class).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_next_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_start(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Select to the start of the previous word (b).
-pub(crate) fn cmd_prev_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        prev_word_start(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Select to the start of the previous WORD (B).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_prev_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        prev_word_start(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Select to the end of the next word (e).
-pub(crate) fn cmd_next_word_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_end(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Select to the end of the next WORD (E).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_next_WORD_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Select, |b, h| {
-        next_word_end(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the start of the next WORD.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_next_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        next_word_start(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the start of the previous WORD.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_prev_WORD_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        prev_word_start(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the end of the next WORD.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_next_WORD_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        next_word_end(b, h, is_WORD_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the start of the next word (shift-w variant).
-pub(crate) fn cmd_extend_next_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        next_word_start(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the start of the previous word (shift-b variant).
-pub(crate) fn cmd_extend_prev_word_start(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        prev_word_start(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Extend selection to the end of the next word (shift-e variant).
-pub(crate) fn cmd_extend_next_word_end(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, |b, h| {
-        next_word_end(b, h, is_word_boundary)
-    });
-    (buf, new_sels)
-}
-
-/// Move all cursors to the start of the next paragraph (`]p`).
-pub(crate) fn cmd_next_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, next_paragraph);
-    (buf, new_sels)
-}
-
-/// Move all cursors to the first empty line above the current paragraph (`[p`).
-pub(crate) fn cmd_prev_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Move, prev_paragraph);
-    (buf, new_sels)
-}
-
-/// Extend selection to the start of the next paragraph.
-pub(crate) fn cmd_extend_next_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, next_paragraph);
-    (buf, new_sels)
-}
-
-/// Extend selection to the first empty line above the current paragraph.
-pub(crate) fn cmd_extend_prev_paragraph(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet) {
-    let new_sels = apply_motion(&buf, sels, MotionMode::Extend, prev_paragraph);
-    (buf, new_sels)
-}
+// Paragraph motions.
+motion_cmd!(/// Move all cursors to the start of the next paragraph (`]p`).
+    cmd_next_paragraph, Move, next_paragraph);
+motion_cmd!(/// Move all cursors to the first empty line above the current paragraph (`[p`).
+    cmd_prev_paragraph, Move, prev_paragraph);
+motion_cmd!(/// Extend selection to the start of the next paragraph.
+    cmd_extend_next_paragraph, Extend, next_paragraph);
+motion_cmd!(/// Extend selection to the first empty line above the current paragraph.
+    cmd_extend_prev_paragraph, Extend, prev_paragraph);
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
