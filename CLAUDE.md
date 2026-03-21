@@ -14,7 +14,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - **Named commands** (`src/edit.rs`, `src/motion.rs`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions in the core layer. They have no knowledge of keys.
 - **Keymaps** (wiring key events to named commands) are an Editor-layer concern — not yet implemented. They belong to M3.
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()` — no EOF exception.
-- 362 tests passing (`cargo test`).
+- 363 tests passing (`cargo test`).
 
 ## Rules
 - **Update GOALS.md** when a decision is made (add to the decisions table, remove from open questions)

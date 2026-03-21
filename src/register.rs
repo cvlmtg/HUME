@@ -3,11 +3,44 @@ use std::collections::HashMap;
 use crate::buffer::Buffer;
 use crate::selection::SelectionSet;
 
-/// The default register — receives yanks and deletes when no register is named.
+// ── Register name constants ────────────────────────────────────────────────────
+//
+// HUME uses mnemonic single-char register names rather than the cryptic Vim/
+// Helix convention (`"`, `+`, `_`). The key insight: 10 named registers (0-9)
+// are enough for real workflows, freeing letters for intuitive special names.
+//
+// User-facing register names:
+//   '0'–'9'  Named storage — text or macros (last write wins).
+//   'q'      Default macro register. `qq` records, `Q` replays.
+//            `q3` records into register '3', `Q3` replays from it.
+//   'c'      System clipboard. (Deferred to M3 — needs OS integration.)
+//   'b'      Black hole — writes discarded, reads return None.
+//   's'      Search register — last search pattern.
+//
+// DEFAULT_REGISTER is an internal sentinel used when the user does not name a
+// register explicitly. It is never typed — the editor layer writes to it
+// automatically on every yank/delete.
+
+/// The default register — receives all yanks and deletes when the user does not
+/// name an explicit register. This is an internal sentinel; users never type it.
 pub(crate) const DEFAULT_REGISTER: char = '"';
 
-/// The black-hole register — writes are silently discarded, reads always return `None`.
-pub(crate) const BLACK_HOLE_REGISTER: char = '_';
+/// The black-hole register (`b`) — writes are silently discarded, reads return `None`.
+/// Use `"by` to yank without touching the default register.
+pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
+
+/// The system clipboard register (`c`). Deferred to M3 (requires OS integration).
+/// Reserved here so the editor layer can reference it by name.
+pub(crate) const CLIPBOARD_REGISTER: char = 'c';
+
+/// The search register (`s`) — holds the last search pattern.
+/// Written by the search command; readable for paste into the command line.
+pub(crate) const SEARCH_REGISTER: char = 's';
+
+/// The default macro register (`q`).
+/// `qq` starts/stops recording into this register; `Q` replays from it.
+/// Can also hold yanked text if the user explicitly writes to it.
+pub(crate) const MACRO_REGISTER: char = 'q';
 
 /// One named register.
 ///
@@ -17,6 +50,10 @@ pub(crate) const BLACK_HOLE_REGISTER: char = '_';
 /// The linewise-vs-charwise distinction is not tracked explicitly. At paste
 /// time, content that ends with `\n` is treated as linewise. This heuristic
 /// covers the common cases and can be promoted to an explicit flag later.
+///
+/// In the future, a `RegisterContent` enum will distinguish `Text(Vec<String>)`
+/// from `Keystrokes(Vec<KeyEvent>)` so that macro registers and text registers
+/// can share the same storage cleanly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Register {
     values: Vec<String>,
@@ -43,15 +80,17 @@ impl Register {
 ///
 /// Each register holds a `Vec<String>` — one entry per selection at yank time.
 ///
-/// Special registers:
-/// - `'"'` (`DEFAULT_REGISTER`): unnamed/default register; all yanks and deletes
-///   go here unless an explicit register is named.
-/// - `'_'` (`BLACK_HOLE_REGISTER`): writes are discarded silently; reads always
-///   return `None`.
+/// Special registers (enforced here):
+/// - `DEFAULT_REGISTER` (`'"'`): internal default; all yanks/deletes go here
+///   when no register is explicitly named.
+/// - `BLACK_HOLE_REGISTER` (`'b'`): writes discarded silently; reads return `None`.
 ///
-/// Registers `'a'`–`'z'` are user-named storage. `'+'` (clipboard) is reserved
-/// but not yet wired to the OS clipboard — for now it behaves like a regular
-/// named register.
+/// Named registers `'0'`–`'9'` are user storage. Special registers `'c'`
+/// (clipboard), `'s'` (search), and `'q'` (macro) are reserved by constants
+/// above; their behaviour is wired in the editor layer (M3).
+///
+/// A register picker UI (like Helix's) will be added in M3 so users can
+/// discover register names and contents without memorising them.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RegisterSet {
     registers: HashMap<char, Register>,
@@ -75,7 +114,7 @@ impl RegisterSet {
 
     /// Write to a register, replacing its previous contents.
     ///
-    /// Writes to the black-hole register (`'_'`) are silently discarded.
+    /// Writes to the black-hole register (`'b'`) are silently discarded.
     pub(crate) fn write(&mut self, name: char, values: Vec<String>) {
         if name == BLACK_HOLE_REGISTER {
             return;
@@ -118,44 +157,53 @@ mod tests {
     #[test]
     fn write_and_read() {
         let mut regs = RegisterSet::new();
-        regs.write('"', vec!["hello".to_string()]);
-        assert_eq!(regs.read('"').unwrap().values(), &["hello"]);
+        regs.write(DEFAULT_REGISTER, vec!["hello".to_string()]);
+        assert_eq!(regs.read(DEFAULT_REGISTER).unwrap().values(), &["hello"]);
     }
 
     #[test]
     fn overwrite_replaces_previous() {
         let mut regs = RegisterSet::new();
-        regs.write('a', vec!["first".to_string()]);
-        regs.write('a', vec!["second".to_string()]);
-        assert_eq!(regs.read('a').unwrap().values(), &["second"]);
+        regs.write('0', vec!["first".to_string()]);
+        regs.write('0', vec!["second".to_string()]);
+        assert_eq!(regs.read('0').unwrap().values(), &["second"]);
     }
 
     #[test]
     fn read_empty_register_returns_none() {
         let regs = RegisterSet::new();
-        assert!(regs.read('a').is_none());
+        assert!(regs.read('0').is_none());
     }
 
     #[test]
     fn black_hole_write_is_discarded() {
         let mut regs = RegisterSet::new();
-        regs.write('_', vec!["ignored".to_string()]);
-        assert!(regs.read('_').is_none());
+        regs.write(BLACK_HOLE_REGISTER, vec!["ignored".to_string()]);
+        assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
     }
 
     #[test]
     fn black_hole_read_always_none() {
         let regs = RegisterSet::new();
-        assert!(regs.read('_').is_none());
+        assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
     }
 
     #[test]
     fn named_registers_are_independent() {
         let mut regs = RegisterSet::new();
-        regs.write('a', vec!["alpha".to_string()]);
-        regs.write('b', vec!["beta".to_string()]);
-        assert_eq!(regs.read('a').unwrap().values(), &["alpha"]);
-        assert_eq!(regs.read('b').unwrap().values(), &["beta"]);
+        regs.write('1', vec!["one".to_string()]);
+        regs.write('2', vec!["two".to_string()]);
+        assert_eq!(regs.read('1').unwrap().values(), &["one"]);
+        assert_eq!(regs.read('2').unwrap().values(), &["two"]);
+    }
+
+    #[test]
+    fn constants_have_expected_values() {
+        // Document the register name choices so a future reader sees them tested.
+        assert_eq!(BLACK_HOLE_REGISTER, 'b');
+        assert_eq!(CLIPBOARD_REGISTER, 'c');
+        assert_eq!(SEARCH_REGISTER,    's');
+        assert_eq!(MACRO_REGISTER,     'q');
     }
 
     // ── yank_selections ───────────────────────────────────────────────────────
