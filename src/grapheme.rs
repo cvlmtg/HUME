@@ -262,4 +262,118 @@ mod tests {
         let buf = Buffer::empty();
         assert_eq!(prev_grapheme_boundary(&buf, 0), 0);
     }
+
+    // ── Invariant enforcement ─────────────────────────────────────────────────
+
+    /// Scan motion-related source files for raw char-level stepping.
+    ///
+    /// The grapheme cluster invariant (CLAUDE.md) requires that all position
+    /// advances in motion and selection code go through `next_grapheme_boundary`
+    /// or `prev_grapheme_boundary` — never raw `pos += 1` / `pos -= 1`.
+    ///
+    /// The bug that prompted this test: word motions used `pos += 1`, causing
+    /// combining codepoints (e.g. U+0301, which classify_char sees as Punctuation)
+    /// to be treated as false word boundaries inside a grapheme cluster.
+    ///
+    /// This test reads the source files at compile time, skips test blocks and
+    /// comment lines, and fails if any active code contains a forbidden stepping
+    /// pattern on a char-position variable.
+    #[test]
+    fn no_raw_char_stepping_in_motion_code() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+
+        let files = [
+            "src/motion.rs",
+            "src/text_object.rs",
+            "src/selection_cmd.rs",
+        ];
+
+        // Variable names used to track char positions in motion/text-object code.
+        // Stepping any of these by exactly 1 is the forbidden pattern — it skips
+        // over combining codepoints rather than over full grapheme clusters.
+        let forbidden = [
+            "pos += 1",
+            "pos -= 1",
+            "start += 1",
+            "start -= 1",
+            "end += 1",
+            "end -= 1",
+            "head += 1",
+            "head -= 1",
+        ];
+
+        let mut violations: Vec<String> = Vec::new();
+
+        for file in &files {
+            let path = format!("{manifest}/{file}");
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("cannot read {file}: {e}"));
+
+            // Track whether we are inside a `#[cfg(test)] mod tests { … }` block
+            // so we don't flag historical references in test comments.
+            let mut in_test_block = false;
+            let mut brace_depth: i64 = 0;
+            let mut test_entry_depth: i64 = 0;
+            let mut saw_cfg_test = false;
+
+            for (lineno, line) in src.lines().enumerate() {
+                let trimmed = line.trim();
+
+                // Detect `#[cfg(test)]` on its own line.
+                if trimmed == "#[cfg(test)]" {
+                    saw_cfg_test = true;
+                }
+                // The very next `mod tests` after that attribute opens the block.
+                if saw_cfg_test && trimmed.starts_with("mod tests") {
+                    in_test_block = true;
+                    test_entry_depth = brace_depth;
+                    saw_cfg_test = false;
+                }
+
+                // Track brace depth so we know when the test block closes.
+                let opens = line.chars().filter(|&c| c == '{').count() as i64;
+                let closes = line.chars().filter(|&c| c == '}').count() as i64;
+                brace_depth += opens - closes;
+                if in_test_block && brace_depth <= test_entry_depth {
+                    in_test_block = false;
+                }
+
+                // Skip everything inside the test module.
+                if in_test_block {
+                    continue;
+                }
+
+                // Skip pure comment lines.
+                if trimmed.starts_with("//") {
+                    continue;
+                }
+
+                // Strip any trailing inline comment before checking.
+                // This avoids false positives from explanatory comments like
+                // `// old approach was pos += 1`.
+                let code = match line.find("//") {
+                    Some(idx) => &line[..idx],
+                    None => line,
+                };
+
+                for pattern in &forbidden {
+                    if code.contains(pattern) {
+                        violations.push(format!(
+                            "  {file}:{} — `{pattern}` in: {trimmed}",
+                            lineno + 1,
+                        ));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "\nRaw char-level stepping detected in motion/selection code.\n\
+             Use next_grapheme_boundary(buf, pos) or prev_grapheme_boundary(buf, pos) instead.\n\
+             Violations:\n{}\n",
+            violations.join("\n")
+        );
+    }
 }
