@@ -201,41 +201,45 @@ pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, Sele
     (new_buf, new_sel_set)
 }
 
-/// Paste `values` after each selection (normal-mode `p`).
+/// Paste `values` after/onto each selection (normal-mode `p`).
 ///
-/// The insertion point is just after `sel.end()` — i.e., the character
-/// immediately to the right of the last selected character. The cursor lands
-/// on the **last character** of the pasted text.
+/// **Cursor selections (`is_cursor()`):** insert `text` just after the cursor
+/// character. The cursor lands on the last inserted character.
+///
+/// **Multi-char selections (`!is_cursor()`):** replace the selected region with
+/// `text`. The displaced text is returned in the third tuple element so the
+/// caller can write it back to the register — a swap. This eliminates the need
+/// for a separate `R` keybind or Vim-style `"0` yank register.
 ///
 /// **Multi-cursor semantics:**
 /// - If `values.len() == sels.len()`: each selection gets its own slot (N-to-N).
-/// - Otherwise: all `values` are joined (no separator) into a single string,
-///   and that full string is pasted at every cursor (Helix fallback).
+/// - Otherwise: all `values` are joined (no separator) and used at every
+///   selection (Helix fallback).
 ///
-/// **Edge case — structural `\n`:** if the insertion point would fall after the
-/// trailing `\n`, text is inserted before it so the buffer invariant is
-/// maintained. In practice this only happens when pasting after a selection
-/// that covers the structural `\n`.
+/// **Return value:** `(new_buf, new_sels, replaced)` where `replaced[i]` is the
+/// text displaced by selection `i` — empty string for cursor selections.
 ///
-/// An empty `values` slice is a no-op.
+/// An empty `values` slice is a no-op (returns the original state and an empty
+/// `replaced` vec).
 pub(crate) fn paste_after(
     buf: Buffer,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet) {
+) -> (Buffer, SelectionSet, Vec<String>) {
     if values.is_empty() {
-        return (buf, sels);
+        return (buf, sels, Vec::new());
     }
 
     let n_sels = sels.len();
     let n_vals = values.len();
 
-    // When counts mismatch, every cursor gets the full joined content.
+    // When counts mismatch, every selection gets the full joined content.
     // Compute once up front so the loop can borrow it as a plain &str.
     let joined: String = if n_sels != n_vals { values.join("") } else { String::new() };
 
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels: Vec<Selection> = Vec::with_capacity(n_sels);
+    let mut replaced: Vec<String> = Vec::with_capacity(n_sels);
     let primary_idx = sels.primary_index();
 
     let last_char = buf.len_chars() - 1; // index of structural \n
@@ -243,21 +247,28 @@ pub(crate) fn paste_after(
     for (i, sel) in sels.iter_sorted().enumerate() {
         // N-to-N if counts match; full joined string otherwise.
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
-        if text.is_empty() {
-            // Nothing to insert — keep cursor at current head.
-            b.retain(sel.head - b.old_pos());
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
-            continue;
-        }
 
-        // Insert point: one past the end of the selection, clamped to stay
-        // before the structural \n.
-        let insert_at = (sel.end() + 1).min(last_char);
-        b.retain(insert_at - b.old_pos());
-        b.insert(text);
-        // Cursor lands on the last char of the inserted text.
-        // new_pos() is now just past the insertion; subtract 1 for last char.
-        new_sels.push(Selection::cursor(b.new_pos() - 1));
+        if sel.is_cursor() {
+            // Cursor: insert after this character. Nothing is replaced.
+            replaced.push(String::new());
+            // Clamped so we never push past the structural \n.
+            let insert_at = (sel.end() + 1).min(last_char);
+            b.retain(insert_at - b.old_pos());
+            b.insert(text);
+            // new_pos() is now just past the inserted text; -1 lands on last inserted char.
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+        } else {
+            // Multi-char selection: replace the selected region.
+            // Capture the old content so the caller can swap it into the register.
+            let start = sel.start();
+            let end_excl = sel.end() + 1;
+            replaced.push(buf.slice(start..end_excl).to_string());
+            b.retain(start - b.old_pos());
+            b.delete(end_excl - start);
+            b.insert(text);
+            // Cursor lands on the last inserted character.
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+        }
     }
 
     b.retain_rest();
@@ -267,24 +278,30 @@ pub(crate) fn paste_after(
         .expect("paste_after: internal changeset is always valid");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
     new_sel_set.debug_assert_valid(new_buf.len_chars());
-    (new_buf, new_sel_set)
+    (new_buf, new_sel_set, replaced)
 }
 
-/// Paste `values` before each selection (normal-mode `P`).
+/// Paste `values` before/onto each selection (normal-mode `P`).
 ///
-/// The insertion point is `sel.start()` — just before the first selected
-/// character. The cursor lands on the **last character** of the pasted text.
+/// **Cursor selections (`is_cursor()`):** insert `text` just before the cursor
+/// character. The cursor lands on the last inserted character.
+///
+/// **Multi-char selections (`!is_cursor()`):** same replace-and-swap semantics
+/// as [`paste_after`] — the after/before distinction only applies to cursors.
+/// When replacing, the selection is deleted and `text` is inserted in its place.
 ///
 /// **Multi-cursor semantics:** identical to [`paste_after`].
+///
+/// **Return value:** `(new_buf, new_sels, replaced)` — same as [`paste_after`].
 ///
 /// An empty `values` slice is a no-op.
 pub(crate) fn paste_before(
     buf: Buffer,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet) {
+) -> (Buffer, SelectionSet, Vec<String>) {
     if values.is_empty() {
-        return (buf, sels);
+        return (buf, sels, Vec::new());
     }
 
     let n_sels = sels.len();
@@ -294,21 +311,29 @@ pub(crate) fn paste_before(
 
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels: Vec<Selection> = Vec::with_capacity(n_sels);
+    let mut replaced: Vec<String> = Vec::with_capacity(n_sels);
     let primary_idx = sels.primary_index();
 
     for (i, sel) in sels.iter_sorted().enumerate() {
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
-        if text.is_empty() {
-            b.retain(sel.head - b.old_pos());
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
-            continue;
-        }
 
-        let insert_at = sel.start();
-        b.retain(insert_at - b.old_pos());
-        b.insert(text);
-        // Cursor on the last inserted char.
-        new_sels.push(Selection::cursor(b.new_pos() - 1));
+        if sel.is_cursor() {
+            // Cursor: insert before this character. Nothing is replaced.
+            replaced.push(String::new());
+            let insert_at = sel.start();
+            b.retain(insert_at - b.old_pos());
+            b.insert(text);
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+        } else {
+            // Multi-char selection: replace (same behaviour as paste_after).
+            let start = sel.start();
+            let end_excl = sel.end() + 1;
+            replaced.push(buf.slice(start..end_excl).to_string());
+            b.retain(start - b.old_pos());
+            b.delete(end_excl - start);
+            b.insert(text);
+            new_sels.push(Selection::cursor(b.new_pos() - 1));
+        }
     }
 
     b.retain_rest();
@@ -318,7 +343,7 @@ pub(crate) fn paste_before(
         .expect("paste_before: internal changeset is always valid");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
     new_sel_set.debug_assert_valid(new_buf.len_chars());
-    (new_buf, new_sel_set)
+    (new_buf, new_sel_set, replaced)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -633,12 +658,24 @@ mod tests {
 
     // ── paste_after ───────────────────────────────────────────────────────────
 
+    // Helper: call paste_after and discard the `replaced` vec for assert_state!.
+    fn pa(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
+        let (b, s, _) = paste_after(buf, sels, values);
+        (b, s)
+    }
+
+    // Helper: call paste_before and discard the `replaced` vec for assert_state!.
+    fn pb(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
+        let (b, s, _) = paste_before(buf, sels, values);
+        (b, s)
+    }
+
     #[test]
     fn paste_after_single_cursor() {
-        // Cursor on 'h' — insert "XY" after 'h'; cursor lands on last inserted char 'Y'.
+        // Cursor on 'h' — insert "XY" after 'h'; cursor lands on 'Y'.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
             "hX-[Y]>ello\n"
         );
     }
@@ -648,7 +685,7 @@ mod tests {
         // Cursor on 'e' (pos 1) — insert "XY" after 'e'.
         assert_state!(
             "h-[e]>llo\n",
-            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
             "heX-[Y]>llo\n"
         );
     }
@@ -659,7 +696,7 @@ mod tests {
         // "hello\n" → "helloXY\n"; cursor lands on 'Y' (pos 6).
         assert_state!(
             "hello-[\n]>",
-            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
             "helloX-[Y]>\n"
         );
     }
@@ -667,10 +704,9 @@ mod tests {
     #[test]
     fn paste_after_two_cursors_n_to_n() {
         // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
-        // Buffer: h(0)e(1)l(2)l(3)o(4)\n(5) → hABelloCD\n
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
             "hA-[B]>elloC-[D]>\n"
         );
     }
@@ -680,18 +716,8 @@ mod tests {
         // 2 cursors, 1 value → both cursors get the full "XY".
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
             "hX-[Y]>elloX-[Y]>\n"
-        );
-    }
-
-    #[test]
-    fn paste_after_multi_char_selection() {
-        // Forward selection covering "hel" — paste after 'l' (pos 2).
-        assert_state!(
-            "-[hel]>lo\n",
-            |(buf, sels)| paste_after(buf, sels, &["XY".to_string()]),
-            "helX-[Y]>lo\n"
         );
     }
 
@@ -700,9 +726,78 @@ mod tests {
         // Paste a string with a combining character. Cursor lands on last char.
         assert_state!(
             "-[h]>i\n",
-            |(buf, sels)| paste_after(buf, sels, &["e\u{0301}".to_string()]),
+            |(buf, sels)| pa(buf, sels, &["e\u{0301}".to_string()]),
             "he-[\u{0301}]>i\n"
         );
+    }
+
+    #[test]
+    fn paste_after_replaces_forward_selection() {
+        // Multi-char selection "hel" is replaced by "XY". Cursor on 'Y'.
+        // Replaced text "hel" is returned.
+        assert_state!(
+            "-[hel]>lo\n",
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
+            "X-[Y]>lo\n"
+        );
+        let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
+        let (_, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
+        assert_eq!(replaced, vec!["hel"]);
+    }
+
+    #[test]
+    fn paste_after_replaces_backward_selection() {
+        // Direction doesn't matter for replace — same result as forward.
+        assert_state!(
+            "<[hel]-lo\n",
+            |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
+            "X-[Y]>lo\n"
+        );
+        let (buf, sels) = crate::testing::parse_state("<[hel]-lo\n");
+        let (_, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
+        assert_eq!(replaced, vec!["hel"]);
+    }
+
+    #[test]
+    fn paste_after_replace_swap_roundtrip() {
+        // Yank "foo", paste onto selection "bar" → buffer has "foo", replaced = ["bar"].
+        let (buf, sels) = crate::testing::parse_state("-[bar]>\n");
+        let (new_buf, _, replaced) = paste_after(buf, sels, &["foo".to_string()]);
+        assert_eq!(new_buf.to_string(), "foo\n");
+        assert_eq!(replaced, vec!["bar"]);
+    }
+
+    #[test]
+    fn paste_after_replace_multi_cursor_n_to_n() {
+        // Two non-cursor selections; two values — each replaced independently.
+        // "-[he]>l-[lo]>\n": "he" replaced by "AB", "lo" replaced by "CD".
+        // Buffer: h(0)e(1)l(2)l(3)o(4)\n(5)
+        // After: AB + l + CD + \n = "ABlCD\n"
+        assert_state!(
+            "-[he]>l-[lo]>\n",
+            |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            "A-[B]>lC-[D]>\n"
+        );
+        let (buf, sels) = crate::testing::parse_state("-[he]>l-[lo]>\n");
+        let (_, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
+        assert_eq!(replaced, vec!["he", "lo"]);
+    }
+
+    #[test]
+    fn paste_after_mixed_cursor_and_selection() {
+        // One cursor (inserts) + one multi-char selection (replaces).
+        // "-[h]>el-[lo]>\n": cursor at 'h' inserts "AB" after it; "lo" is replaced by "CD".
+        // Buffer: h + AB + el + CD + \n = "hABelCD\n"
+        // Cursors land on 'B' (pos 2) and 'D' (pos 6).
+        assert_state!(
+            "-[h]>el-[lo]>\n",
+            |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            "hA-[B]>elC-[D]>\n"
+        );
+        let (buf, sels) = crate::testing::parse_state("-[h]>el-[lo]>\n");
+        let (_, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
+        // Cursor replaced nothing; selection replaced "lo".
+        assert_eq!(replaced, vec!["", "lo"]);
     }
 
     // ── paste_before ──────────────────────────────────────────────────────────
@@ -712,7 +807,7 @@ mod tests {
         // Cursor on 'h' — insert "XY" before 'h'; cursor lands on 'Y'.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
             "X-[Y]>hello\n"
         );
     }
@@ -722,18 +817,18 @@ mod tests {
         // Cursor on 'e' (pos 1) — insert "XY" before 'e'.
         assert_state!(
             "h-[e]>llo\n",
-            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
             "hX-[Y]>ello\n"
         );
     }
 
     #[test]
     fn paste_before_two_cursors_n_to_n() {
-        // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
+        // Two cursors; two values — each cursor gets its own slot.
         // Buffer after: AB + hell + CD + o + \n
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| paste_before(buf, sels, &["AB".to_string(), "CD".to_string()]),
+            |(buf, sels)| pb(buf, sels, &["AB".to_string(), "CD".to_string()]),
             "A-[B]>hellC-[D]>o\n"
         );
     }
@@ -743,18 +838,21 @@ mod tests {
         // 2 cursors, 1 value → both cursors get the full "XY".
         assert_state!(
             "-[h]>ell-[o]>\n",
-            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
+            |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
             "X-[Y]>hellX-[Y]>o\n"
         );
     }
 
     #[test]
-    fn paste_before_multi_char_selection() {
-        // Forward selection covering "hel" — paste before 'h' (pos 0).
+    fn paste_before_replaces_selection() {
+        // Multi-char selection — paste_before also replaces (same as paste_after for selections).
         assert_state!(
             "-[hel]>lo\n",
-            |(buf, sels)| paste_before(buf, sels, &["XY".to_string()]),
-            "X-[Y]>hello\n"
+            |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
+            "X-[Y]>lo\n"
         );
+        let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
+        let (_, _, replaced) = paste_before(buf, sels, &["XY".to_string()]);
+        assert_eq!(replaced, vec!["hel"]);
     }
 }
