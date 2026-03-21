@@ -944,7 +944,7 @@ mod tests {
         assert_eq!(replaced, vec!["hel"]);
     }
 
-    // ── repeat (count prefix for edits) ───────────────────────────────────────
+    // ── repeat_edit (count prefix for edits) ──────────────────────────────────
 
     #[test]
     fn repeat_delete_forward_count_3() {
