@@ -126,7 +126,9 @@ fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
     let mut pos = line_start;
     while pos < end_excl {
         match buf.char_at(pos) {
-            Some(' ') | Some('\t') => pos += 1,
+            // Step by grapheme boundary to respect the project invariant even
+            // for space/tab (both are always single-codepoint, but be consistent).
+            Some(' ') | Some('\t') => pos = next_grapheme_boundary(buf, pos),
             Some('\n') | None => break, // end of line content without finding non-blank
             Some(_) => return pos,      // found a non-blank char
         }
@@ -212,9 +214,12 @@ fn next_word_start(
     }
 
     let mut pos = head;
-    // Unwrap is safe: pos < len is guaranteed by loop condition and entry guard.
     let mut prev_class = classify_char(buf.char_at(pos).expect("pos < len"));
-    pos += 1;
+    // Advance by a full grapheme cluster so we never land mid-cluster.
+    // This matters for combining sequences like e + U+0301 (combining acute):
+    // stepping by 1 would land on the combining codepoint, which classify_char
+    // sees as Punctuation — creating a false word boundary inside the grapheme.
+    pos = next_grapheme_boundary(buf, pos);
 
     while pos < len {
         let cur_class = classify_char(buf.char_at(pos).expect("pos < len"));
@@ -224,7 +229,7 @@ fn next_word_start(
             return pos;
         }
         prev_class = cur_class;
-        pos += 1;
+        pos = next_grapheme_boundary(buf, pos);
     }
     // Clamp to last valid position (the trailing \n). len - 1 is safe because
     // the buffer always has at least one character.
@@ -244,7 +249,11 @@ fn prev_word_start(
         return 0;
     }
 
-    let mut pos = head - 1;
+    // Step back by a full grapheme cluster so we never start mid-cluster.
+    // For a combining sequence like "café" (e + U+0301), stepping by 1 from
+    // the position after the cluster would land on the combining codepoint —
+    // which classify_char treats as Punctuation, creating a false boundary.
+    let mut pos = prev_grapheme_boundary(buf, head);
 
     // Phase 1: skip Space and Eol backward.
     loop {
@@ -255,17 +264,21 @@ fn prev_word_start(
         if pos == 0 {
             return 0; // nothing but whitespace before — land at buffer start
         }
-        pos -= 1;
+        pos = prev_grapheme_boundary(buf, pos);
     }
 
     // Phase 2: skip backward while in the same category.
     let cat = classify_char(buf.char_at(pos).expect("pos < len"));
     while pos > 0 {
-        let prev_cat = classify_char(buf.char_at(pos - 1).expect("pos-1 < len"));
+        // Use prev_grapheme_boundary rather than pos - 1 so we always examine
+        // the first codepoint of each grapheme cluster (the base character),
+        // not a combining codepoint that may report a different class.
+        let prev_pos = prev_grapheme_boundary(buf, pos);
+        let prev_cat = classify_char(buf.char_at(prev_pos).expect("prev_pos < len"));
         if is_boundary(prev_cat, cat) {
             break;
         }
-        pos -= 1;
+        pos = prev_pos;
     }
 
     pos
@@ -281,11 +294,15 @@ fn next_word_end(
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
     let len = buf.len_chars();
-    if head + 1 >= len {
+    // Step forward by a full grapheme cluster to get our starting position.
+    // Using next_grapheme_boundary instead of head + 1 ensures we skip over
+    // any combining codepoints that trail the current grapheme.
+    let first = next_grapheme_boundary(buf, head);
+    if first >= len {
         return head; // at or past last char — no-op
     }
 
-    let mut pos = head + 1;
+    let mut pos = first;
 
     // Phase 1: skip Space and Eol forward.
     while pos < len {
@@ -293,7 +310,7 @@ fn next_word_end(
         if cat != CharClass::Space && cat != CharClass::Eol {
             break;
         }
-        pos += 1;
+        pos = next_grapheme_boundary(buf, pos);
     }
     if pos >= len {
         return len - 1; // only whitespace to EOF — clamp to last char
@@ -301,12 +318,18 @@ fn next_word_end(
 
     // Phase 2: skip forward while in the same category.
     let cat = classify_char(buf.char_at(pos).expect("pos < len"));
-    while pos + 1 < len {
-        let next_cat = classify_char(buf.char_at(pos + 1).expect("pos+1 < len"));
+    loop {
+        // Peek at the next grapheme cluster's class. If the category changes,
+        // we've reached the end of this word — stop at the current grapheme.
+        let next_pos = next_grapheme_boundary(buf, pos);
+        if next_pos >= len {
+            break;
+        }
+        let next_cat = classify_char(buf.char_at(next_pos).expect("next_pos < len"));
         if is_boundary(cat, next_cat) {
             break;
         }
-        pos += 1;
+        pos = next_pos;
     }
 
     pos
@@ -1065,6 +1088,60 @@ mod tests {
     fn extend_next_WORD_end_grows_existing_selection() {
         // Existing forward selection — extend head to end of next WORD.
         assert_state!("-[hell]>o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(buf, sels), "-[hello.world]> foo\n");
+    }
+
+    // ── grapheme cluster correctness ──────────────────────────────────────────
+
+    #[test]
+    fn next_word_start_skips_combining_grapheme() {
+        // Buffer: "cafe\u{0301} world\n"
+        // char offsets: c(0) a(1) f(2) e(3) ◌́(4) ' '(5) w(6) ...
+        // Grapheme clusters: {c}{a}{f}{e◌́}{ }{w}{o}{r}{l}{d}{\n}
+        //
+        // Old code (pos += 1) would stop at offset 4 (the combining codepoint
+        // U+0301, classified as Punctuation), producing a false word boundary
+        // and leaving the cursor mid-grapheme. New code steps by grapheme
+        // boundary and correctly lands on 'w' at offset 6.
+        assert_state!(
+            "-[c]>afe\u{0301} world\n",
+            |(buf, sels)| cmd_next_word_start(buf, sels),
+            "-[cafe\u{0301} w]>orld\n"
+        );
+    }
+
+    #[test]
+    fn prev_word_start_skips_combining_grapheme() {
+        // Buffer: "cafe\u{0301} world\n", cursor on 'w'.
+        // Old code steps back by 1: lands on the combining codepoint (offset 4),
+        // sees it as Punctuation ≠ the following Space — false boundary — and
+        // returns offset 4 (mid-grapheme). New code steps by grapheme boundary,
+        // skips the cluster {e◌́} as a unit (classified Word via 'e'), and
+        // correctly backtracks all the way to 'c' at offset 0.
+        assert_state!(
+            "cafe\u{0301} -[w]>orld\n",
+            |(buf, sels)| cmd_prev_word_start(buf, sels),
+            "<[cafe\u{0301} w]-orld\n"
+        );
+    }
+
+    #[test]
+    fn next_word_end_skips_combining_grapheme() {
+        // Buffer: "a\u{0301}b\n" — graphemes: {a◌́}{b}{\n}
+        // Old code (pos + 1): the initial step lands at offset 1 (the combining
+        // codepoint U+0301, Punctuation). Phase 2 then sees Punct→Word at 1→2
+        // and stops, returning offset 1 — a mid-grapheme position.
+        // New code: next_grapheme_boundary(0) = 2 ('b'), skipping the whole
+        // {a◌́} cluster. 'b' is Word; next boundary is '\n' (Eol) — stop at 2.
+        //
+        // cmd_next_word_end uses MotionMode::Select (anchor = old head = 0),
+        // so the result is a selection, not a cursor.
+        // Old result: "-[a\u{0301}]>b\n"  (head=1, mid-grapheme)
+        // New result: "-[a\u{0301}b]>\n"  (head=2, 'b')
+        assert_state!(
+            "-[a]>\u{0301}b\n",
+            |(buf, sels)| cmd_next_word_end(buf, sels),
+            "-[a\u{0301}b]>\n"
+        );
     }
 
     // ── next_paragraph (]p) ───────────────────────────────────────────────────

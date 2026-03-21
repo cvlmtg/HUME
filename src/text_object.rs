@@ -1,4 +1,5 @@
 use crate::buffer::Buffer;
+use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_end_exclusive, CharClass};
 use crate::selection::{Selection, SelectionSet};
 
@@ -94,25 +95,43 @@ fn inner_word_impl(
 ) -> Option<(usize, usize)> {
     let class = classify_char(buf.char_at(pos)?);
 
-    // Scan left: walk back while the preceding char is the same class.
+    // Scan left: walk back by grapheme cluster boundaries while the preceding
+    // grapheme belongs to the same class. Using prev_grapheme_boundary ensures
+    // we always inspect the *base* codepoint of each grapheme (not a combining
+    // codepoint like U+0301 that would be misclassified as Punctuation).
     let mut start = pos;
     while start > 0 {
-        let prev = classify_char(buf.char_at(start - 1)?);
+        let prev_pos = prev_grapheme_boundary(buf, start);
+        let prev = classify_char(buf.char_at(prev_pos)?);
         if is_boundary(prev, class) {
             break;
         }
-        start -= 1;
+        start = prev_pos;
     }
 
-    // Scan right: walk forward while the next char is the same class.
-    let mut end = pos;
-    while end + 1 < buf.len_chars() {
-        let next = classify_char(buf.char_at(end + 1)?);
+    // Scan right: walk forward by grapheme cluster boundaries while the next
+    // grapheme belongs to the same class. We track the grapheme-*start* position
+    // and convert to an inclusive char-level end at the very end, so that the
+    // returned range covers the full grapheme (including combining codepoints).
+    let mut end_grapheme_start = pos;
+    loop {
+        let next_pos = next_grapheme_boundary(buf, end_grapheme_start);
+        if next_pos >= buf.len_chars() {
+            break;
+        }
+        let next = classify_char(buf.char_at(next_pos)?);
         if is_boundary(class, next) {
             break;
         }
-        end += 1;
+        end_grapheme_start = next_pos;
     }
+    // Convert grapheme start → inclusive char-level end. For a 1-codepoint
+    // grapheme this equals end_grapheme_start. For e + U+0301 (2 codepoints),
+    // next_grapheme_boundary returns start+2, so end = start+1 (the combining
+    // codepoint), ensuring the selection includes the full grapheme cluster.
+    // Subtracting 1 is safe: the buffer always has a trailing '\n', so
+    // next_grapheme_boundary is always > 0.
+    let end = next_grapheme_boundary(buf, end_grapheme_start) - 1;
 
     Some((start, end))
 }
@@ -133,11 +152,22 @@ fn around_word_impl(
     let (mut start, mut end) = inner_word_impl(buf, pos, is_boundary)?;
     let class = classify_char(buf.char_at(pos)?);
 
+    // `next_pos` is the start of the grapheme cluster immediately after the
+    // inner word. Since `end` is the last *char* of the last grapheme (as
+    // returned by inner_word_impl), next_grapheme_boundary(end) gives the
+    // first char of the following grapheme — equivalent to end + 1 for ASCII
+    // but correct for multi-codepoint graphemes (e.g. e + combining accent).
+    //
+    // Similarly, `prev_start` is the start of the grapheme cluster immediately
+    // before the inner word. Since `start` is always a grapheme-start position,
+    // prev_grapheme_boundary(start) gives the start of the preceding grapheme —
+    // equivalent to start - 1 for ASCII but safe for combining sequences.
+
     if class == CharClass::Space || class == CharClass::Eol {
         // The cursor is on whitespace. Extend to include the following word.
         // If there's no following word (e.g., at line end), include the
         // preceding word instead.
-        let next_pos = end + 1;
+        let next_pos = next_grapheme_boundary(buf, end);
         if next_pos < buf.len_chars() {
             let next_class = classify_char(buf.char_at(next_pos)?);
             if next_class != CharClass::Space && next_class != CharClass::Eol {
@@ -146,22 +176,24 @@ fn around_word_impl(
                 end = word_end;
             } else if start > 0 {
                 // Try preceding word.
-                let prev_class = classify_char(buf.char_at(start - 1)?);
+                let prev_start = prev_grapheme_boundary(buf, start);
+                let prev_class = classify_char(buf.char_at(prev_start)?);
                 if prev_class != CharClass::Space && prev_class != CharClass::Eol {
-                    let (word_start, _) = inner_word_impl(buf, start - 1, is_boundary)?;
+                    let (word_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
                     start = word_start;
                 }
             }
         } else if start > 0 {
-            let prev_class = classify_char(buf.char_at(start - 1)?);
+            let prev_start = prev_grapheme_boundary(buf, start);
+            let prev_class = classify_char(buf.char_at(prev_start)?);
             if prev_class != CharClass::Space && prev_class != CharClass::Eol {
-                let (word_start, _) = inner_word_impl(buf, start - 1, is_boundary)?;
+                let (word_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
                 start = word_start;
             }
         }
     } else {
         // Real word. Try to include trailing whitespace first.
-        let next_pos = end + 1;
+        let next_pos = next_grapheme_boundary(buf, end);
         if next_pos < buf.len_chars() {
             let next_class = classify_char(buf.char_at(next_pos)?);
             if next_class == CharClass::Space {
@@ -172,17 +204,19 @@ fn around_word_impl(
                 // No trailing space (next is Eol or another word) —
                 // include leading whitespace instead.
                 if start > 0 {
-                    let prev_class = classify_char(buf.char_at(start - 1)?);
+                    let prev_start = prev_grapheme_boundary(buf, start);
+                    let prev_class = classify_char(buf.char_at(prev_start)?);
                     if prev_class == CharClass::Space {
-                        let (space_start, _) = inner_word_impl(buf, start - 1, is_word_boundary)?;
+                        let (space_start, _) = inner_word_impl(buf, prev_start, is_word_boundary)?;
                         start = space_start;
                     }
                 }
             }
         } else if start > 0 {
-            let prev_class = classify_char(buf.char_at(start - 1)?);
+            let prev_start = prev_grapheme_boundary(buf, start);
+            let prev_class = classify_char(buf.char_at(prev_start)?);
             if prev_class == CharClass::Space {
-                let (space_start, _) = inner_word_impl(buf, start - 1, is_word_boundary)?;
+                let (space_start, _) = inner_word_impl(buf, prev_start, is_word_boundary)?;
                 start = space_start;
             }
         }
@@ -512,6 +546,25 @@ mod tests {
             "hello -[w]>orld\n",
             |(buf, sels)| cmd_around_word(buf, sels),
             "hello-[ world]>\n"
+        );
+    }
+
+    #[test]
+    fn inner_word_includes_combining_grapheme() {
+        // Buffer: "cafe\u{0301} world\n"
+        // char offsets: c(0) a(1) f(2) e(3) ◌́(4) ' '(5) w(6) ...
+        // Grapheme clusters: {c}{a}{f}{e◌́}{ }{w}...
+        //
+        // Old code (end += 1) stops at offset 3 because the combining codepoint
+        // at offset 4 is classified as Punctuation — a false word/punct boundary
+        // inside the grapheme. New code steps by grapheme boundary: the next
+        // cluster after offset 3 starts at offset 5 (space), so the word ends
+        // at offset 4 (last codepoint of the {e◌́} grapheme) — the full cluster
+        // is included.
+        assert_state!(
+            "-[c]>afe\u{0301} world\n",
+            |(buf, sels)| cmd_inner_word(buf, sels),
+            "-[cafe\u{0301}]> world\n"
         );
     }
 
