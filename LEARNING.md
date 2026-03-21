@@ -140,11 +140,35 @@ to every selection in the set simultaneously. The *primary* is just the
    only) and `cmd_remove_primary_selection` (remove primary) operate on
    exactly one selection. The primary determines which one.
 
-4. **Registers** (not yet implemented): when you yank with N cursors, the
+4. **Registers** (`src/register.rs`): when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
    order. Pasting with N cursors maps each slot back to the corresponding
    cursor. If the cursor count doesn't match at paste time, the full register
    content is pasted at every cursor as a fallback.
+
+   HUME uses mnemonic register names rather than the traditional Vim/Helix
+   convention (`"`, `+`, `_`). Since 10 named registers (`0`–`9`) cover all
+   real workflows, letters are freed for intuitive special names:
+
+   | Key | Register | Notes |
+   |-----|----------|-------|
+   | `0`–`9` | Named storage | Text or macros; last write wins |
+   | `q` | Default macro | `qq` records, `Q` replays |
+   | `c` | System clipboard | Deferred to M3 |
+   | `b` | Black hole | Discards writes |
+   | `s` | Search | Holds last search pattern |
+
+   The default register (receives all yanks/deletes when no register is
+   named) is an internal sentinel (`'"'`) — users never type it.
+
+   **Why not `a`–`z`?** Traditional named registers borrow letters for text
+   storage, forcing special registers into punctuation (`+`, `_`). HUME flips
+   this: numbers for user storage, letters for special registers.
+
+   **Macro model (M3):** macros are stored in registers (Vim model, not
+   Helix's single-slot model). `qq` records into register `q` (the default
+   macro register). `q3` records into register `3`. `Q` replays from `q`,
+   `Q3` replays from `3`.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world,
 `cmd_cycle_primary_forward` and `cmd_cycle_primary_backward` are how you
