@@ -3,13 +3,40 @@ use crate::changeset::ChangeSet;
 use crate::history::History;
 use crate::selection::SelectionSet;
 
+// ── IntoApplyResult ───────────────────────────────────────────────────────────
+
+/// Converts a closure's return value into the canonical `(Buffer, SelectionSet,
+/// ChangeSet, Vec<String>)` quad that `Document::apply_edit` needs.
+///
+/// Implemented for both the 3-tuple `(Buffer, SelectionSet, ChangeSet)` that
+/// plain edit functions return, and the 4-tuple
+/// `(Buffer, SelectionSet, ChangeSet, Vec<String>)` that paste functions return.
+/// This lets `apply_edit` accept either without wrapping at the call site.
+pub(crate) trait IntoApplyResult {
+    fn into_apply_result(self) -> (Buffer, SelectionSet, ChangeSet, Vec<String>);
+}
+
+impl IntoApplyResult for (Buffer, SelectionSet, ChangeSet) {
+    fn into_apply_result(self) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+        (self.0, self.1, self.2, vec![])
+    }
+}
+
+impl IntoApplyResult for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+    fn into_apply_result(self) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+        self
+    }
+}
+
+// ── Document ──────────────────────────────────────────────────────────────────
+
 /// A document: the current buffer, cursor state, and undo history — together.
 ///
 /// `Document` is the core "open file" abstraction. All text edits go through
-/// [`apply_edit`] or [`apply_paste`], which handle undo bookkeeping
-/// automatically: before applying the edit, the inverse ChangeSet is computed
-/// against the pre-edit buffer, and both the forward and inverse Transactions
-/// are recorded in the undo tree.
+/// [`apply_edit`], which handles undo bookkeeping automatically: before
+/// applying the edit, the inverse ChangeSet is computed against the pre-edit
+/// buffer, and both the forward and inverse Transactions are recorded in the
+/// undo tree.
 ///
 /// ## Undo timing
 ///
@@ -41,9 +68,13 @@ impl Document {
 
     /// Apply an edit command and record it in the undo history.
     ///
-    /// The closure receives `(Buffer, SelectionSet)` and must return
-    /// `(Buffer, SelectionSet, ChangeSet)`. This is the return type of all
-    /// public edit functions in [`crate::edit`] (after the ChangeSet refactor).
+    /// The closure receives `(Buffer, SelectionSet)` and may return either a
+    /// 3-tuple `(Buffer, SelectionSet, ChangeSet)` (plain edits) or a 4-tuple
+    /// `(Buffer, SelectionSet, ChangeSet, Vec<String>)` (paste, which also
+    /// captures displaced text). Both are accepted via [`IntoApplyResult`].
+    ///
+    /// Returns the displaced text — empty for non-paste edits, populated for
+    /// paste so the caller can write it to a register.
     ///
     /// ## Undo bookkeeping
     ///
@@ -58,13 +89,14 @@ impl Document {
     /// uses [`crate::edit::repeat_edit`] inside the closure, all N iterations
     /// are composed into one ChangeSet, so the whole repetition undoes in one
     /// step.
-    pub(crate) fn apply_edit(
+    pub(crate) fn apply_edit<R: IntoApplyResult>(
         &mut self,
-        cmd: impl FnOnce(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
-    ) {
+        cmd: impl FnOnce(Buffer, SelectionSet) -> R,
+    ) -> Vec<String> {
         let old_sels = self.sels.clone();
         // Clone the buffer for the edit. O(log n) — Ropey structural sharing.
-        let (new_buf, new_sels, cs) = cmd(self.buf.clone(), self.sels.clone());
+        let (new_buf, new_sels, cs, captured) =
+            cmd(self.buf.clone(), self.sels.clone()).into_apply_result();
 
         // self.buf is still the pre-edit buffer here — safe to call invert.
         // invert() needs the original content to reconstruct deleted text.
@@ -73,27 +105,7 @@ impl Document {
         self.history.record(cs, inverse_cs, old_sels, new_sels.clone());
         self.buf = new_buf;
         self.sels = new_sels;
-    }
-
-    /// Apply a paste command (which returns captured displaced text) and record
-    /// it in the undo history.
-    ///
-    /// Returns the displaced text (`replaced[i]` = text that was overwritten by
-    /// selection `i`; empty for cursor selections). The caller can write this
-    /// back to a register.
-    ///
-    /// Identical undo semantics as [`apply_edit`].
-    pub(crate) fn apply_paste(
-        &mut self,
-        cmd: impl FnOnce(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet, Vec<String>),
-    ) -> Vec<String> {
-        let old_sels = self.sels.clone();
-        let (new_buf, new_sels, cs, replaced) = cmd(self.buf.clone(), self.sels.clone());
-        let inverse_cs = cs.invert(&self.buf);
-        self.history.record(cs, inverse_cs, old_sels, new_sels.clone());
-        self.buf = new_buf;
-        self.sels = new_sels;
-        replaced
+        captured
     }
 
     /// Undo the last edit. No-op at the root (nothing to undo).
@@ -232,7 +244,7 @@ mod tests {
     #[test]
     fn undo_paste_after() {
         let mut d = doc("-[h]>ello\n");
-        d.apply_paste(|b, s| paste_after(b, s, &["XY".to_string()]));
+        d.apply_edit(|b, s| paste_after(b, s, &["XY".to_string()]));
         assert_eq!(state(&d), "hX-[Y]>ello\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>ello\n");
@@ -243,7 +255,7 @@ mod tests {
     #[test]
     fn undo_paste_before() {
         let mut d = doc("-[h]>ello\n");
-        d.apply_paste(|b, s| paste_before(b, s, &["XY".to_string()]));
+        d.apply_edit(|b, s| paste_before(b, s, &["XY".to_string()]));
         assert_eq!(state(&d), "X-[Y]>hello\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>ello\n");
@@ -354,12 +366,12 @@ mod tests {
         assert_eq!(state(&d), "b-[h]>ello\n");
     }
 
-    // ── apply_paste returns displaced text ───────────────────────────────────
+    // ── apply_edit returns displaced text for paste ───────────────────────────
 
     #[test]
-    fn apply_paste_returns_replaced_text() {
+    fn apply_edit_paste_returns_replaced_text() {
         let mut d = doc("-[hell]>o\n");
-        let replaced = d.apply_paste(|b, s| paste_after(b, s, &["XY".to_string()]));
+        let replaced = d.apply_edit(|b, s| paste_after(b, s, &["XY".to_string()]));
         // Multi-char selection was replaced; displaced text = "hell".
         assert_eq!(replaced, vec!["hell"]);
     }
@@ -370,7 +382,7 @@ mod tests {
     fn yank_paste_undo() {
         let mut d = doc("-[hell]>o\n");
         let yanked = yank_selections(d.buf(), d.sels());
-        d.apply_paste(|b, s| paste_after(b, s, &yanked));
+        d.apply_edit(|b, s| paste_after(b, s, &yanked));
         // "hell" pasted after the selection: "hell" + "hell" + "o".
         d.undo();
         assert_eq!(state(&d), "-[hell]>o\n");
