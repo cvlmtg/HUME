@@ -525,6 +525,7 @@ motion_cmd!(/// Extend selection to the first empty line above the current parag
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(non_snake_case)] // WORD (uppercase) is an intentional Vim concept, distinct from word (lowercase)
 mod tests {
     use super::*;
     use crate::assert_state;

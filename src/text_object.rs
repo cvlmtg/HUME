@@ -420,6 +420,7 @@ quote_cmds!(cmd_inner_backtick, cmd_around_backtick, '`');
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(non_snake_case)] // WORD (uppercase) is an intentional Vim concept, distinct from word (lowercase)
 mod tests {
     use super::*;
     use crate::assert_state;
