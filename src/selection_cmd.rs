@@ -795,4 +795,30 @@ mod tests {
             "-[a]>\n-[b]>\n-[c]>\n-[d]>\ne\n"
         );
     }
+
+    // ── range selection copy ──────────────────────────────────────────────────
+
+    #[test]
+    fn copy_next_line_range_selection() {
+        // Forward range selection covering "hello" (0..4). Copy to next line:
+        // anchor=6 ('w'), head=10 ('d') — selecting "world". Both selections exist.
+        assert_state!(
+            "-[hello]>\nworld\n",
+            |(buf, sels)| cmd_copy_selection_on_next_line(buf, sels),
+            "-[hello]>\n-[world]>\n"
+        );
+    }
+
+    // ── split_on_newlines on empty buffer ─────────────────────────────────────
+
+    #[test]
+    fn split_selection_on_newlines_empty_buffer_is_noop() {
+        // Empty buffer: cursor on the single structural '\n'. The cursor's
+        // start_line == end_line → single-line branch → kept as-is.
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| cmd_split_selection_on_newlines(buf, sels),
+            "-[\n]>"
+        );
+    }
 }

@@ -996,4 +996,71 @@ mod tests {
             "h-[l]>o\n"
         );
     }
+
+    // ── insert_char edge cases ────────────────────────────────────────────────
+
+    #[test]
+    fn insert_char_newline() {
+        // Inserting '\n' is mechanically identical to any other char: it goes
+        // before the cursor character, cursor stays on the original char (now shifted).
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| insert_char(buf, sels, '\n'),
+            "\n-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn insert_char_combining_codepoint() {
+        // Inserting a bare combining accent (U+0301) before 'h'. Mechanically
+        // fine — the accent is stored as its own codepoint at position 0, and
+        // the cursor lands on 'h' (now at position 1).
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| insert_char(buf, sels, '\u{0301}'),
+            "\u{0301}-[h]>ello\n"
+        );
+    }
+
+    // ── paste with multiline text ─────────────────────────────────────────────
+
+    #[test]
+    fn paste_after_multiline_text() {
+        // Paste "foo\nbar" after 'h'. Buffer: "h" + "foo\nbar" + "ello\n".
+        // Cursor lands on the last pasted char 'r'(7).
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| {
+                let (b, s, cs, _) = paste_after(buf, sels, &["foo\nbar".to_string()]);
+                (b, s, cs)
+            },
+            "hfoo\nba-[r]>ello\n"
+        );
+    }
+
+    #[test]
+    fn paste_before_multiline_text() {
+        // Paste "foo\nbar" before 'h'. Buffer: "foo\nbar" + "hello\n".
+        // Cursor lands on the last pasted char 'r'(6).
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| {
+                let (b, s, cs, _) = paste_before(buf, sels, &["foo\nbar".to_string()]);
+                (b, s, cs)
+            },
+            "foo\nba-[r]>hello\n"
+        );
+    }
+
+    // ── repeat_edit count=0 ───────────────────────────────────────────────────
+
+    #[test]
+    fn repeat_edit_count_zero_is_noop() {
+        // count=0 produces an identity ChangeSet and leaves buf+sels unchanged.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| repeat_edit(0, buf, sels, delete_char_forward),
+            "-[h]>ello\n"
+        );
+    }
 }

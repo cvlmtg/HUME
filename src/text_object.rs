@@ -782,4 +782,204 @@ mod tests {
             "hel-[l]>o\n"
         );
     }
+
+    // ── Multi-cursor ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn inner_word_multi_cursor_different_words() {
+        assert_state!(
+            "-[h]>ello -[w]>orld\n",
+            |(buf, sels)| cmd_inner_word(buf, sels),
+            "-[hello]> -[world]>\n"
+        );
+    }
+
+    #[test]
+    fn inner_word_multi_cursor_same_word_merges() {
+        // Two cursors in the same word — both select "hello", merge to one selection.
+        assert_state!(
+            "-[h]>el-[l]>o world\n",
+            |(buf, sels)| cmd_inner_word(buf, sels),
+            "-[hello]> world\n"
+        );
+    }
+
+    #[test]
+    fn around_word_multi_cursor() {
+        // "hello world foo\n": cursor 0 on 'h'(0) → "hello "(0..5); cursor 1 on 'f'(12) → " foo"(11..14).
+        assert_state!(
+            "-[h]>ello world-[ ]>foo\n",
+            |(buf, sels)| cmd_around_word(buf, sels),
+            "-[hello ]>world-[ foo]>\n"
+        );
+    }
+
+    #[test]
+    fn inner_line_multi_cursor_same_line_merges() {
+        // Two cursors on the same line both select that line's content, then merge.
+        assert_state!(
+            "-[h]>el-[l]>o\n",
+            |(buf, sels)| cmd_inner_line(buf, sels),
+            "-[hello]>\n"
+        );
+    }
+
+    #[test]
+    fn inner_line_multi_cursor_different_lines() {
+        assert_state!(
+            "-[h]>ello\n-[w]>orld\n",
+            |(buf, sels)| cmd_inner_line(buf, sels),
+            "-[hello]>\n-[world]>\n"
+        );
+    }
+
+    #[test]
+    fn around_line_multi_cursor_different_lines() {
+        assert_state!(
+            "-[h]>ello\n-[w]>orld\n",
+            |(buf, sels)| cmd_around_line(buf, sels),
+            "-[hello\n]>-[world\n]>"
+        );
+    }
+
+    #[test]
+    fn inner_WORD_multi_cursor() {
+        assert_state!(
+            "-[h]>ello.world -[f]>oo\n",
+            |(buf, sels)| cmd_inner_WORD(buf, sels),
+            "-[hello.world]> -[foo]>\n"
+        );
+    }
+
+    #[test]
+    fn inner_paren_two_cursors_same_pair_merge() {
+        // Both cursors inside the same parens — both map to the same range → merge.
+        assert_state!(
+            "(-[h]>el-[l]>o)\n",
+            |(buf, sels)| cmd_inner_paren(buf, sels),
+            "(-[hello]>)\n"
+        );
+    }
+
+    // ── around_WORD ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn around_WORD_includes_trailing_space() {
+        assert_state!(
+            "-[h]>ello.world foo\n",
+            |(buf, sels)| cmd_around_WORD(buf, sels),
+            "-[hello.world ]>foo\n"
+        );
+    }
+
+    #[test]
+    fn around_WORD_no_trailing_space_uses_leading() {
+        // Last WORD has no trailing space — grabs leading space instead.
+        assert_state!(
+            "hello.world -[f]>oo\n",
+            |(buf, sels)| cmd_around_WORD(buf, sels),
+            "hello.world-[ foo]>\n"
+        );
+    }
+
+    #[test]
+    fn around_WORD_cursor_on_whitespace_extends_to_next_WORD() {
+        assert_state!(
+            "foo-[ ]>bar\n",
+            |(buf, sels)| cmd_around_WORD(buf, sels),
+            "foo-[ bar]>\n"
+        );
+    }
+
+    #[test]
+    fn around_WORD_multi_cursor() {
+        // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
+        assert_state!(
+            "-[h]>ello world-[ ]>foo\n",
+            |(buf, sels)| cmd_around_WORD(buf, sels),
+            "-[hello ]>world-[ foo]>\n"
+        );
+    }
+
+    // ── around_bracket variants ───────────────────────────────────────────────
+
+    #[test]
+    fn around_brace_basic() {
+        assert_state!(
+            "{-[h]>ello}\n",
+            |(buf, sels)| cmd_around_brace(buf, sels),
+            "-[{hello}]>\n"
+        );
+    }
+
+    #[test]
+    fn around_bracket_basic() {
+        assert_state!(
+            "[-[h]>ello]\n",
+            |(buf, sels)| cmd_around_bracket(buf, sels),
+            "-[[hello]]>\n"
+        );
+    }
+
+    #[test]
+    fn around_angle_basic() {
+        assert_state!(
+            "<-[h]>ello>\n",
+            |(buf, sels)| cmd_around_angle(buf, sels),
+            "-[<hello>]>\n"
+        );
+    }
+
+    // ── around_quote variants ─────────────────────────────────────────────────
+
+    #[test]
+    fn around_single_quote_basic() {
+        assert_state!(
+            "'hel-[l]>o'\n",
+            |(buf, sels)| cmd_around_single_quote(buf, sels),
+            "-['hello']>\n"
+        );
+    }
+
+    #[test]
+    fn around_backtick_basic() {
+        assert_state!(
+            "`hel-[l]>o`\n",
+            |(buf, sels)| cmd_around_backtick(buf, sels),
+            "-[`hello`]>\n"
+        );
+    }
+
+    // ── multi-line bracket for non-paren types ────────────────────────────────
+
+    #[test]
+    fn inner_brace_multiline() {
+        assert_state!(
+            "{\n-[h]>ello\n}\n",
+            |(buf, sels)| cmd_inner_brace(buf, sels),
+            "{-[\nhello\n]>}\n"
+        );
+    }
+
+    // ── edge cases ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn inner_word_on_structural_newline() {
+        // Empty buffer: cursor on structural '\n'. inner_word selects the '\n'
+        // (Eol class), which equals the original cursor — no visible change.
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| cmd_inner_word(buf, sels),
+            "-[\n]>"
+        );
+    }
+
+    #[test]
+    fn inner_WORD_on_structural_newline() {
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| cmd_inner_WORD(buf, sels),
+            "-[\n]>"
+        );
+    }
 }

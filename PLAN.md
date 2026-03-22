@@ -62,7 +62,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Undo/redo: tree-structured undo with changesets (`History` arena in `src/history.rs`, `Document` orchestrator in `src/document.rs`)
 - [x] `goto_revision`: jump to any node in the undo tree directly (`History::goto_revision` + `Document::goto_revision`); uses LCA-based path-finding, applies inverse/forward transactions sequentially
 - [x] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
-- [ ] Thorough unit tests for every operation and edge case
+- [x] Thorough unit tests for every operation and edge case
 
 ### M2 — First render
 - [ ] Display-line abstraction (buffer line or virtual line)

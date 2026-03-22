@@ -443,4 +443,69 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
     }
+
+    // ── char_at boundary cases ────────────────────────────────────────────────
+
+    #[test]
+    fn char_at_first_position() {
+        let buf = Buffer::from("hello");
+        assert_eq!(buf.char_at(0), Some('h'));
+    }
+
+    #[test]
+    fn char_at_last_position() {
+        // "hello" + structural '\n' → last char is '\n' at len_chars()-1.
+        let buf = Buffer::from("hello");
+        assert_eq!(buf.char_at(buf.len_chars() - 1), Some('\n'));
+    }
+
+    #[test]
+    fn char_at_out_of_bounds() {
+        let buf = Buffer::from("hello");
+        assert_eq!(buf.char_at(buf.len_chars()), None);
+    }
+
+    // ── single-char buffer ────────────────────────────────────────────────────
+
+    #[test]
+    fn single_char_buffer_has_two_chars() {
+        // "x" gets the structural '\n' appended → len_chars() == 2.
+        let buf = Buffer::from("x");
+        assert_eq!(buf.len_chars(), 2);
+        assert!(!buf.is_empty());
+        assert_eq!(buf.char_at(0), Some('x'));
+        assert_eq!(buf.char_at(1), Some('\n'));
+    }
+
+    // ── remove with empty range ───────────────────────────────────────────────
+
+    #[test]
+    fn remove_empty_range_is_identity() {
+        let buf = Buffer::from("hello");
+        let same = buf.remove(3..3);
+        assert_eq!(same.to_string(), "hello\n");
+    }
+
+    // ── insert/remove with multi-byte content ─────────────────────────────────
+
+    #[test]
+    fn insert_grapheme_cluster() {
+        // Insert a two-char grapheme (e + combining acute) at position 0.
+        let buf = Buffer::from("hello");
+        let new = buf.insert(0, "e\u{0301}");
+        // 'e' + U+0301 + "hello" + '\n' = 8 chars.
+        assert_eq!(new.len_chars(), 8);
+        assert_eq!(new.char_at(0), Some('e'));
+        assert_eq!(new.char_at(1), Some('\u{0301}'));
+        assert_eq!(new.char_at(2), Some('h'));
+    }
+
+    #[test]
+    fn remove_grapheme_cluster_range() {
+        // Remove a two-char grapheme cluster.
+        let buf = Buffer::from("e\u{0301}hello");
+        // buf: 'e'(0) U+0301(1) 'h'(2) 'e'(3) ... '\n'(7) = 8 chars.
+        let new = buf.remove(0..2); // remove the 'e' + combining accent
+        assert_eq!(new.to_string(), "hello\n");
+    }
 }
