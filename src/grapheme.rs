@@ -265,6 +265,28 @@ mod tests {
         assert_eq!(prev_grapheme_boundary(&buf, 0), 0);
     }
 
+    // ── Complex Unicode grapheme clusters ─────────────────────────────────────
+
+    #[test]
+    fn regional_indicator_flag_emoji() {
+        // 🇺🇸 is U+1F1FA (regional indicator U) + U+1F1F8 (regional indicator S).
+        // Both codepoints form a single grapheme cluster. next from 0 must skip
+        // both to land at 2.
+        let buf = Buffer::from("\u{1F1FA}\u{1F1F8}");
+        // buf: U+1F1FA(0) U+1F1F8(1) '\n'(2) = 3 chars
+        assert_eq!(next_grapheme_boundary(&buf, 0), 2);
+        assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
+    }
+
+    #[test]
+    fn devanagari_vowel_sign() {
+        // "क" (U+0915) + "ा" (U+093E vowel sign aa) form one grapheme cluster.
+        let buf = Buffer::from("\u{0915}\u{093E}");
+        // buf: U+0915(0) U+093E(1) '\n'(2) = 3 chars
+        assert_eq!(next_grapheme_boundary(&buf, 0), 2);
+        assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
+    }
+
     // ── Invariant enforcement ─────────────────────────────────────────────────
 
     /// Scan motion-related source files for raw char-level stepping.

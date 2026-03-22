@@ -1279,4 +1279,131 @@ mod tests {
             |(buf, sels)| cmd_move_right(buf, sels, 3),
             "hel-[l]>o-[\n]>"
         );
+    }
+
+    // ── multi-cursor word motions ──────────────────────────────────────────────
+
+    #[test]
+    fn next_word_end_multi_cursor() {
+        // Two cursors in different words. Select mode: anchor stays at old head, head moves.
+        // Cursor 1 at 'h'(0): next_word_end → 'o'(4). Selection (0,4).
+        // Cursor 2 at 'f'(6): next_word_end → 'o'(8). Selection (6,8).
+        assert_state!(
+            "-[h]>ello -[f]>oo\n",
+            |(buf, sels)| cmd_next_word_end(buf, sels, 1),
+            "-[hello]> -[foo]>\n"
+        );
+    }
+
+    #[test]
+    fn next_word_start_multi_cursor() {
+        // Two cursors that jump to non-overlapping positions.
+        // "hello foo bar\n": cursor 1 at 'h'(0) → 'f'(6); cursor 2 at 'b'(10) → '\n'(13).
+        assert_state!(
+            "-[h]>ello foo -[b]>ar\n",
+            |(buf, sels)| cmd_next_word_start(buf, sels, 1),
+            "-[hello f]>oo -[bar\n]>"
+        );
+    }
+
+    #[test]
+    fn prev_word_start_multi_cursor() {
+        // "hello world\n": cursors at 'o'(4) and 'd'(10). Each jumps to start of its word.
+        // Cursor 1: anchor=4, head=0 (backward, 'o' IS the anchor so it's included).
+        // Cursor 2: anchor=10, head=6 (backward, 'd' IS the anchor so it's included).
+        assert_state!(
+            "hell-[o]> worl-[d]>\n",
+            |(buf, sels)| cmd_prev_word_start(buf, sels, 1),
+            "<[hello]- <[world]-\n"
+        );
+    }
+
+    // ── multi-cursor paragraph motions ────────────────────────────────────────
+
+    #[test]
+    fn next_paragraph_multi_cursor() {
+        // Two cursors in different paragraphs, each jumps to the start of the next one.
+        // "hello\n\nworld\n\nfoo\n": cursor at 'w'(7) → 'f'(14); cursor at 'f'(14) → '\n'(17).
+        assert_state!(
+            "hello\n\n-[w]>orld\n\n-[f]>oo\n",
+            |(buf, sels)| cmd_next_paragraph(buf, sels, 1),
+            "hello\n\nworld\n\n-[f]>oo-[\n]>"
+        );
+    }
+
+    #[test]
+    fn prev_paragraph_multi_cursor() {
+        // Same buffer; each cursor jumps backward to the gap above its paragraph.
+        // Cursor at 'w'(7) → '\n'(6) (gap). Cursor at 'f'(14) → '\n'(13) (gap).
+        assert_state!(
+            "hello\n\n-[w]>orld\n\n-[f]>oo\n",
+            |(buf, sels)| cmd_prev_paragraph(buf, sels, 1),
+            "hello\n-[\n]>world\n-[\n]>foo\n"
+        );
+    }
+
+    // ── multi-cursor goto_line motions ────────────────────────────────────────
+
+    #[test]
+    fn goto_line_start_multi_cursor() {
+        assert_state!(
+            "hel-[l]>o\nwor-[l]>d\n",
+            |(buf, sels)| cmd_goto_line_start(buf, sels, 1),
+            "-[h]>ello\n-[w]>orld\n"
+        );
+    }
+
+    #[test]
+    fn goto_line_end_multi_cursor() {
+        assert_state!(
+            "-[h]>ello\n-[w]>orld\n",
+            |(buf, sels)| cmd_goto_line_end(buf, sels, 1),
+            "hell-[o]>\nworl-[d]>\n"
+        );
+    }
+
+    #[test]
+    fn goto_first_nonblank_multi_cursor() {
+        // Both cursors are mid-line; each jumps to the first non-blank of its line.
+        assert_state!(
+            "  hel-[l]>o\n  wor-[l]>d\n",
+            |(buf, sels)| cmd_goto_first_nonblank(buf, sels, 1),
+            "  -[h]>ello\n  -[w]>orld\n"
+        );
+    }
+
+    // ── multi-cursor merge on move_up ─────────────────────────────────────────
+
+    #[test]
+    fn move_up_multi_cursor_merge() {
+        // Line 0 is "a\n" (1 content char). Two cursors on line 1 at cols 0 and 2.
+        // Both move up: col 0 → 'a'(0); col 2 → clamps to 'a'(0). They merge.
+        // Buffer content "a\norld\n" is unchanged; only one cursor remains.
+        assert_state!(
+            "a\n-[o]>r-[l]>d\n",
+            |(buf, sels)| cmd_move_up(buf, sels, 1),
+            "-[a]>\norld\n"
+        );
+    }
+
+    // ── empty buffer edge cases ───────────────────────────────────────────────
+
+    #[test]
+    fn goto_first_nonblank_empty_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_goto_first_nonblank(buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn prev_word_start_empty_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_prev_word_start(buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn next_word_end_empty_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_next_word_end(buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn prev_paragraph_empty_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_prev_paragraph(buf, sels, 1), "-[\n]>");
     }}

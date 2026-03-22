@@ -253,4 +253,11 @@ mod tests {
         let (buf, sels) = parse_state("hello-[\n]>");
         assert_eq!(yank_selections(&buf, &sels), vec!["\n"]);
     }
+
+    #[test]
+    fn yank_empty_buffer() {
+        // Empty buffer is just "\n"; cursor on it — yank captures the newline.
+        let (buf, sels) = parse_state("-[\n]>");
+        assert_eq!(yank_selections(&buf, &sels), vec!["\n"]);
+    }
 }

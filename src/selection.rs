@@ -824,4 +824,81 @@ mod tests {
         assert_eq!(merged.primary().start(), 2);
         assert_eq!(merged.primary().end(), 5);
     }
+
+    // ── Selection::directed ───────────────────────────────────────────────────
+
+    #[test]
+    fn directed_forward_places_anchor_at_start() {
+        let sel = Selection::directed(3, 7, true);
+        assert_eq!(sel.anchor, 3);
+        assert_eq!(sel.head, 7);
+        assert!(!sel.is_cursor());
+    }
+
+    #[test]
+    fn directed_backward_places_anchor_at_end() {
+        let sel = Selection::directed(3, 7, false);
+        assert_eq!(sel.anchor, 7);
+        assert_eq!(sel.head, 3);
+        assert!(!sel.is_cursor());
+    }
+
+    #[test]
+    fn directed_cursor_is_same_regardless_of_direction() {
+        let fwd = Selection::directed(5, 5, true);
+        let bwd = Selection::directed(5, 5, false);
+        assert!(fwd.is_cursor());
+        assert!(bwd.is_cursor());
+        assert_eq!(fwd, bwd);
+    }
+
+    // ── Selection::shift panic ────────────────────────────────────────────────
+
+    #[test]
+    #[should_panic(expected = "shift underflow")]
+    fn shift_underflow_panics() {
+        let sel = Selection::cursor(2);
+        let _ = sel.shift(-3); // 2 + (-3) underflows
+    }
+
+    // ── SelectionSet::from_vec panics ─────────────────────────────────────────
+
+    #[test]
+    #[should_panic(expected = "SelectionSet must not be empty")]
+    fn from_vec_empty_panics() {
+        let _ = SelectionSet::from_vec(vec![], 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "primary index out of bounds")]
+    fn from_vec_primary_out_of_bounds_panics() {
+        let _ = SelectionSet::from_vec(vec![Selection::cursor(0)], 1);
+    }
+
+    // ── iter_primary_first ────────────────────────────────────────────────────
+
+    #[test]
+    fn iter_primary_first_yields_primary_first() {
+        // primary = index 1 (the second selection). primary_first should yield it first.
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            1,
+        );
+        let heads: Vec<usize> = set.iter_primary_first().map(|s| s.head).collect();
+        assert_eq!(heads[0], 5, "primary (index 1) must be yielded first");
+        assert_eq!(heads[1], 0);
+        assert_eq!(heads[2], 10);
+    }
+
+    // ── iter_sorted ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn iter_sorted_yields_ascending_order() {
+        let set = SelectionSet::from_vec(
+            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            2, // primary is last
+        );
+        let starts: Vec<usize> = set.iter_sorted().map(|s| s.start()).collect();
+        assert_eq!(starts, vec![0, 5, 10]);
+    }
 }
