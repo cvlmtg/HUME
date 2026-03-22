@@ -188,16 +188,24 @@ fn delete_one_grapheme(
 /// Delete the entire region covered by `sel` and push a cursor at `start()`.
 ///
 /// `sel.end()` is inclusive, so the exclusive bound is `sel.end() + 1`.
+/// The deletion is capped at the last content character (`buf.len_chars() - 2`)
+/// so that the structural trailing `\n` is never removed — matching the
+/// protection in `delete_one_grapheme`.
+///
 /// Shared by `delete_char_forward` and `delete_char_backward`, which have
 /// identical selection branches.
 fn delete_sel_region(
     b: &mut ChangeSetBuilder,
+    buf: &Buffer,
     sel: &Selection,
     new_sels: &mut Vec<Selection>,
 ) {
     let start = sel.start();
+    // Cap at the last content char. A multi-char selection requires buf.len_chars() >= 2,
+    // so saturating_sub(2) == buf.len_chars() - 2 (no underflow in practice).
+    let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
     b.retain(start - b.old_pos());
-    b.delete(sel.end() + 1 - start); // end() inclusive → +1 for exclusive bound
+    b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
     let sel = Selection::cursor(b.new_pos());
     new_sels.push(sel);
 }
@@ -253,9 +261,11 @@ where
             new_sels.push(Selection::cursor(pos));
         } else {
             // Multi-char selection: replace the selected region.
-            // Capture the old content before the builder advances past it.
+            // Cap end at the last content char so the structural trailing '\n'
+            // is never deleted.
             let start = sel.start();
-            let end_excl = sel.end() + 1;
+            let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
+            let end_excl = end_incl + 1;
             replaced.push(buf.slice(start..end_excl).to_string());
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
@@ -284,13 +294,14 @@ where
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
 pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, _buf, _i, sel, new_sels| {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_cursor() {
-            // Delete the selected region. end() is inclusive, so +1 for the
-            // exclusive bound that the builder expects.
-            b.delete(sel.end() + 1 - start);
+            // Delete the selected region, capped at the last content char so
+            // the structural trailing '\n' is never removed.
+            let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
+            b.delete(end_incl + 1 - start);
         }
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
@@ -316,7 +327,7 @@ pub(crate) fn delete_char_forward(
         if sel.is_cursor() {
             delete_one_grapheme(b, buf, new_sels, sel.head);
         } else {
-            delete_sel_region(b, sel, new_sels);
+            delete_sel_region(b, buf, sel, new_sels);
         }
     })
 }
@@ -344,12 +355,19 @@ pub(crate) fn delete_char_backward(
             }
             // Delete the grapheme cluster ending just before `p`.
             let prev = prev_grapheme_boundary(buf, p);
+            if prev < b.old_pos() {
+                // A previous selection already consumed `prev` — the character
+                // we'd delete is gone. Treat as a no-op; the cursor stays put.
+                let sel = Selection::cursor(b.new_pos());
+                new_sels.push(sel);
+                return;
+            }
             b.retain(prev - b.old_pos());
             b.delete(p - prev);
             let sel = Selection::cursor(b.new_pos());
             new_sels.push(sel);
         } else {
-            delete_sel_region(b, sel, new_sels);
+            delete_sel_region(b, buf, sel, new_sels);
         }
     })
 }
