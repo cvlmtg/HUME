@@ -409,7 +409,7 @@ mod tests {
         let mut d = doc("-[L]>orem ipsum dolor sit amet\n");
 
         // B1: delete "ipsum "
-        d.apply_edit(|b, s| {
+        d.apply_edit(|b, _s| {
             use crate::changeset::ChangeSetBuilder;
             // "Lorem ipsum dolor sit amet\n" is 27 chars.
             // Delete chars 6..12 ("ipsum ") → "Lorem dolor sit amet\n"
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(d.buf().to_string(), "Lorem dolor sit amet\n");
 
         // B2: change "dolor" → "foo"
-        d.apply_edit(|b, s| {
+        d.apply_edit(|b, _s| {
             use crate::changeset::ChangeSetBuilder;
             // "Lorem dolor sit amet\n" is 21 chars. "dolor" at 6..11.
             let mut csb = ChangeSetBuilder::new(21);
@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(d.buf().to_string(), "Lorem foo sit amet\n");
 
         // B3: change "sit" → "bar"
-        d.apply_edit(|b, s| {
+        d.apply_edit(|b, _s| {
             use crate::changeset::ChangeSetBuilder;
             // "Lorem foo sit amet\n" is 19 chars. "sit" at 10..13.
             let mut csb = ChangeSetBuilder::new(19);
@@ -469,7 +469,7 @@ mod tests {
         assert_eq!(d.buf().to_string(), "Lorem dolor sit amet\n");
 
         // C2: delete "dolor " → "Lorem sit amet\n"
-        d.apply_edit(|b, s| {
+        d.apply_edit(|b, _s| {
             use crate::changeset::ChangeSetBuilder;
             // "Lorem dolor sit amet\n" is 21 chars. "dolor " at 6..12.
             let mut csb = ChangeSetBuilder::new(21);
