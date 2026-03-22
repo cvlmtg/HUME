@@ -962,6 +962,28 @@ mod tests {
         assert_eq!(replaced, vec!["hel"]);
     }
 
+    // ── paste empty-values (no-op path) ──────────────────────────────────────
+
+    #[test]
+    fn paste_after_empty_values_is_noop() {
+        let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
+        let buf_str = buf.to_string();
+        let (new_buf, new_sels, _, replaced) = paste_after(buf, sels.clone(), &[]);
+        assert_eq!(new_buf.to_string(), buf_str);
+        assert_eq!(new_sels, sels);
+        assert!(replaced.is_empty());
+    }
+
+    #[test]
+    fn paste_before_empty_values_is_noop() {
+        let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
+        let buf_str = buf.to_string();
+        let (new_buf, new_sels, _, replaced) = paste_before(buf, sels.clone(), &[]);
+        assert_eq!(new_buf.to_string(), buf_str);
+        assert_eq!(new_sels, sels);
+        assert!(replaced.is_empty());
+    }
+
     // ── repeat_edit (count prefix for edits) ──────────────────────────────────
 
     #[test]
@@ -1061,6 +1083,53 @@ mod tests {
             "-[h]>ello\n",
             |(buf, sels)| repeat_edit(0, buf, sels, delete_char_forward),
             "-[h]>ello\n"
+        );
+    }
+
+    // ── yank → paste round-trip ───────────────────────────────────────────────
+
+    #[test]
+    fn yank_then_paste_after_round_trip() {
+        use crate::register::yank_selections;
+        // Yank "ello" from selection, then paste it after the cursor.
+        // Initial: cursor on 'h', selection covers "ello".
+        // After yank: yanked = ["ello"]
+        // After paste_after: "h" + "ello" + "\n" — cursor on last pasted 'o'.
+        let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
+        let yanked = yank_selections(&buf, &sels);
+        assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
+
+        // Now paste the yanked text after the cursor (which is on 'h').
+        // paste_after inserts "h" after 'h': "hh|ello\n"
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| {
+                let values = yank_selections(&buf, &sels);
+                let (b, s, cs, _) = paste_after(buf, sels, &values);
+                (b, s, cs)
+            },
+            "h-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn yank_multi_cursor_then_paste_after_n_to_n() {
+        use crate::register::yank_selections;
+        // Two cursors: one on 'h', one on 'o'. Yank both, paste after each.
+        // Expected yanked: ["h", "o"]
+        // After paste: "hh" at pos 0-1, "oo" at pos 4-5 (with shift).
+        let (buf, sels) = crate::testing::parse_state("-[h]>ell-[o]>\n");
+        let yanked = yank_selections(&buf, &sels);
+        assert_eq!(yanked, vec!["h", "o"]);
+
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| {
+                let values = yank_selections(&buf, &sels);
+                let (b, s, cs, _) = paste_after(buf, sels, &values);
+                (b, s, cs)
+            },
+            "h-[h]>ello-[o]>\n"
         );
     }
 }

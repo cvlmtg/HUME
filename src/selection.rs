@@ -901,4 +901,48 @@ mod tests {
         let starts: Vec<usize> = set.iter_sorted().map(|s| s.start()).collect();
         assert_eq!(starts, vec![0, 5, 10]);
     }
+
+    // ── SelectionSet::validate ────────────────────────────────────────────────
+
+    #[test]
+    fn validate_ok_for_valid_set() {
+        let set = SelectionSet::from_vec(vec![Selection::cursor(0), Selection::cursor(3)], 0);
+        assert!(set.validate(10).is_ok());
+    }
+
+    #[test]
+    fn validate_err_when_buffer_is_empty() {
+        let set = SelectionSet::single(Selection::cursor(0));
+        assert!(matches!(
+            set.validate(0),
+            Err(crate::error::ValidationError::EmptyBuffer)
+        ));
+    }
+
+    #[test]
+    fn validate_err_when_head_out_of_bounds() {
+        // buf_len = 3, head = 5 → out of bounds
+        let set = SelectionSet::single(Selection::cursor(5));
+        assert!(matches!(
+            set.validate(3),
+            Err(crate::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
+        ));
+    }
+
+    #[test]
+    fn validate_err_when_anchor_out_of_bounds() {
+        // anchor = 10, head = 1; buf_len = 5 → anchor out of bounds
+        let set = SelectionSet::single(Selection::new(10, 1));
+        assert!(matches!(
+            set.validate(5),
+            Err(crate::error::ValidationError::SelectionOutOfBounds { field: "anchor", .. })
+        ));
+    }
+
+    #[test]
+    fn validate_passes_when_head_is_last_valid_char() {
+        // head = buf_len - 1 is the largest valid position
+        let set = SelectionSet::single(Selection::cursor(4));
+        assert!(set.validate(5).is_ok());
+    }
 }
