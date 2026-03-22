@@ -17,7 +17,7 @@ use crate::selection::SelectionSet;
 ///
 /// ```text
 /// let inv_cs = cs.invert(&old_buf);          // must happen BEFORE apply
-/// let new_buf = cs.apply(old_buf);           // consumes old_buf
+/// let new_buf = cs.apply(&old_buf);          // borrows old_buf; original intact
 ///
 /// let forward = Transaction::new(cs,     post_edit_sels);  // for redo
 /// let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
@@ -29,8 +29,8 @@ use crate::selection::SelectionSet;
 /// and cursor state in one step.
 ///
 /// **Timing constraint:** `invert(&old_buf)` must be called *before*
-/// `apply(old_buf)` — `apply` consumes the buffer and `invert` needs the
-/// original content to reconstruct deleted text.
+/// discarding `old_buf` — `invert` reads the original rope to reconstruct
+/// deleted text, and that content is gone once you move on to the new buffer.
 ///
 /// ## Separation of concerns
 ///

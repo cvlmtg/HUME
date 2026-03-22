@@ -1,5 +1,5 @@
 // The library is currently only exercised through tests — main.rs does not
-// use it yet. Suppress the wave of dead-code warnings until M3 wires up the
+// use it yet. Suppress the wave of dead-code warnings until M2 wires up the
 // editor layer.
 #![allow(dead_code)]
 

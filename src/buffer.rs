@@ -69,23 +69,22 @@ impl Buffer {
     /// Wrap a raw `Rope` into a `Buffer`. Inverse of `into_rope`.
     ///
     /// Used by `ChangeSet::apply` to construct the result buffer after
-    /// mutating the rope directly. This is the *raw* constructor — it does
-    /// **not** enforce the trailing `\n` invariant so that the changeset
-    /// algebra (invert/compose) remains self-consistent. The invariant is
-    /// upheld at the editing-operation level: `delete_char_forward` refuses
-    /// to delete the structural `\n`, so no user-facing changeset can remove it.
-    pub(crate) fn from_rope(rope: Rope) -> Self {
+    /// mutating the rope directly. The trailing-`\n` invariant is enforced
+    /// by `ChangeSet::apply` returning `Err(TrailingNewlineMissing)` before
+    /// this constructor is called. The `debug_assert` here is retained as
+    /// defense-in-depth for internal bugs in non-production builds.
+    ///
+    /// `line_ending` must be propagated from the source buffer so that CRLF
+    /// metadata is preserved across edits and correctly written back on save.
+    pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
-        // The trailing-\n invariant is now enforced by ChangeSet::apply returning
-        // Result before this constructor is called. This debug_assert is retained
-        // as defense-in-depth for internal bugs in non-production builds.
         debug_assert!(
             rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
             "Buffer invariant violated: rope must end with '\\n' (len={})",
             rope.len_chars(),
         );
-        Self { rope, line_ending: LineEnding::Lf }
+        Self { rope, line_ending }
     }
 
     /// Consume the buffer and return the inner `Rope`.
@@ -294,7 +293,7 @@ mod tests {
         // by the editing-operation guards (e.g. delete_char_forward is a no-op
         // on the structural \n).
         let rope = Rope::from_str("hello\n");
-        let buf = Buffer::from_rope(rope);
+        let buf = Buffer::from_rope(rope, LineEnding::Lf);
         assert_eq!(buf.to_string(), "hello\n");
     }
 

@@ -198,7 +198,7 @@ fn around_word_impl(
             let next_class = classify_char(buf.char_at(next_pos)?);
             if next_class == CharClass::Space {
                 // Walk right while whitespace.
-                let (_, space_end) = inner_word_impl(buf, next_pos, is_word_boundary)?;
+                let (_, space_end) = inner_word_impl(buf, next_pos, is_boundary)?;
                 end = space_end;
             } else {
                 // No trailing space (next is Eol or another word) —
@@ -207,7 +207,7 @@ fn around_word_impl(
                     let prev_start = prev_grapheme_boundary(buf, start);
                     let prev_class = classify_char(buf.char_at(prev_start)?);
                     if prev_class == CharClass::Space {
-                        let (space_start, _) = inner_word_impl(buf, prev_start, is_word_boundary)?;
+                        let (space_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
                         start = space_start;
                     }
                 }
@@ -899,6 +899,31 @@ mod tests {
             "-[h]>ello world-[ ]>foo\n",
             |(buf, sels)| cmd_around_WORD(buf, sels),
             "-[hello ]>world-[ foo]>\n"
+        );
+    }
+
+    #[test]
+    fn around_WORD_treats_punctuation_as_part_of_word() {
+        // WORD includes adjacent punctuation; `around_word` (lower-case) would stop at '.'.
+        // "foo.bar baz\n" — cursor on 'f': around_WORD selects "foo.bar " (whole WORD + space).
+        // around_word would only select "foo " (stopping at '.').
+        assert_state!(
+            "-[f]>oo.bar baz\n",
+            |(buf, sels)| cmd_around_WORD(buf, sels),
+            "-[foo.bar ]>baz\n"
+        );
+    }
+
+    #[test]
+    fn around_word_stops_at_punctuation() {
+        // Contrast: around_word (lower-case) on "foo.bar baz\n", cursor on 'f'.
+        // Inner word = "foo" (0..2). Next char = '.' (Punctuation, not Space) →
+        // no trailing space. No leading space (cursor at col 0) → no expansion.
+        // Result: just "foo".
+        assert_state!(
+            "-[f]>oo.bar baz\n",
+            |(buf, sels)| cmd_around_word(buf, sels),
+            "-[foo]>.bar baz\n"
         );
     }
 

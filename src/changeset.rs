@@ -191,7 +191,7 @@ impl ChangeSet {
 
     /// Apply this changeset to `buf`, producing a new buffer.
     ///
-    /// Consumes the buffer and mutates its rope directly via `Rope::remove`
+    /// Clones the buffer's rope and mutates the clone via `Rope::remove`
     /// and `Rope::insert` — each O(log n). Retain operations are free (the
     /// chars are already in the rope). Total cost: O(k log n) for k
     /// non-retain operations, compared to the O(n) cost of flattening the
@@ -233,13 +233,18 @@ impl ChangeSet {
                     old_pos += n;
                 }
                 Operation::Delete(n) => {
-                    let start = (old_pos as isize + delta) as usize;
+                    // `checked_add_signed` fails loudly in both debug and release
+                    // if delta somehow drives old_pos below zero — matching the
+                    // pattern used in `Selection::shift`.
+                    let start = old_pos.checked_add_signed(delta)
+                        .expect("changeset apply: rope position underflow");
                     rope.remove(start..start + n);
                     old_pos += n;
                     delta -= *n as isize;
                 }
                 Operation::Insert(s) => {
-                    let pos = (old_pos as isize + delta) as usize;
+                    let pos = old_pos.checked_add_signed(delta)
+                        .expect("changeset apply: rope position underflow");
                     rope.insert(pos, s);
                     delta += s.chars().count() as isize;
                 }
@@ -249,7 +254,7 @@ impl ChangeSet {
         if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' {
             return Err(ApplyError::TrailingNewlineMissing);
         }
-        Ok(Buffer::from_rope(rope))
+        Ok(Buffer::from_rope(rope, buf.line_ending()))
     }
 
     // ── map_pos ──────────────────────────────────────────────────────────────
