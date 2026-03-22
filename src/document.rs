@@ -119,6 +119,23 @@ impl Document {
         }
     }
 
+    /// Jump to an arbitrary revision in the undo tree.
+    ///
+    /// Applies the necessary inverse/forward transactions sequentially to
+    /// transform the buffer from the current state to the target state.
+    /// No-op if `target` is the current revision or out of bounds.
+    pub(crate) fn goto_revision(&mut self, target: crate::history::RevisionId) {
+        if let Some(transactions) = self.history.goto_revision(target) {
+            for txn in transactions {
+                let (new_buf, new_sels) = txn
+                    .apply(&self.buf)
+                    .expect("goto_revision transaction failed — history is corrupt");
+                self.buf = new_buf;
+                self.sels = new_sels;
+            }
+        }
+    }
+
     /// Redo the most recent undone edit. No-op if at the latest revision.
     pub(crate) fn redo(&mut self) {
         if let Some(txn) = self.history.redo() {
@@ -364,6 +381,150 @@ mod tests {
         // Redo goes to the most recent branch (B).
         d.redo();
         assert_eq!(state(&d), "b-[h]>ello\n");
+    }
+
+    // ── goto_revision ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn goto_revision_same_is_noop() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        let buf_before = state(&d);
+        d.goto_revision(d.history.current_id());
+        assert_eq!(state(&d), buf_before);
+    }
+
+    #[test]
+    fn goto_revision_across_branches_restores_buffer() {
+        // Reproduce the __undo__.txt scenario and jump C2 → B3.
+        //
+        // B0: "Lorem ipsum dolor sit amet\n"
+        // B1: delete "ipsum " → "Lorem dolor sit amet\n"
+        // B2: change "dolor" → "foo" → "Lorem foo sit amet\n"
+        // B3: change "sit" → "bar" → "Lorem foo bar amet\n"
+        // Undo to B1, then:
+        // C2: delete "dolor " → "Lorem sit amet\n"
+        //
+        // From C2, goto B3 → buffer should be "Lorem foo bar amet\n".
+        let mut d = doc("-[L]>orem ipsum dolor sit amet\n");
+
+        // B1: delete "ipsum "
+        d.apply_edit(|b, s| {
+            use crate::changeset::ChangeSetBuilder;
+            // "Lorem ipsum dolor sit amet\n" is 27 chars.
+            // Delete chars 6..12 ("ipsum ") → "Lorem dolor sit amet\n"
+            let mut csb = ChangeSetBuilder::new(27);
+            csb.retain(6);
+            csb.delete(6); // "ipsum "
+            csb.retain_rest();
+            let cs = csb.finish();
+            let new_buf = cs.apply(&b).unwrap();
+            // Cursor at pos 6 (on 'd').
+            use crate::selection::{Selection, SelectionSet};
+            let new_sels = SelectionSet::single(Selection::cursor(6));
+            (new_buf, new_sels, cs)
+        });
+        let b1_id = d.history.current_id();
+        assert_eq!(d.buf().to_string(), "Lorem dolor sit amet\n");
+
+        // B2: change "dolor" → "foo"
+        d.apply_edit(|b, s| {
+            use crate::changeset::ChangeSetBuilder;
+            // "Lorem dolor sit amet\n" is 21 chars. "dolor" at 6..11.
+            let mut csb = ChangeSetBuilder::new(21);
+            csb.retain(6);
+            csb.delete(5); // "dolor"
+            csb.insert("foo");
+            csb.retain_rest();
+            let cs = csb.finish();
+            let new_buf = cs.apply(&b).unwrap();
+            use crate::selection::{Selection, SelectionSet};
+            let new_sels = SelectionSet::single(Selection::cursor(6));
+            (new_buf, new_sels, cs)
+        });
+        assert_eq!(d.buf().to_string(), "Lorem foo sit amet\n");
+
+        // B3: change "sit" → "bar"
+        d.apply_edit(|b, s| {
+            use crate::changeset::ChangeSetBuilder;
+            // "Lorem foo sit amet\n" is 19 chars. "sit" at 10..13.
+            let mut csb = ChangeSetBuilder::new(19);
+            csb.retain(10);
+            csb.delete(3); // "sit"
+            csb.insert("bar");
+            csb.retain_rest();
+            let cs = csb.finish();
+            let new_buf = cs.apply(&b).unwrap();
+            use crate::selection::{Selection, SelectionSet};
+            let new_sels = SelectionSet::single(Selection::cursor(10));
+            (new_buf, new_sels, cs)
+        });
+        let b3_id = d.history.current_id();
+        assert_eq!(d.buf().to_string(), "Lorem foo bar amet\n");
+
+        // Undo twice to B1.
+        d.undo();
+        d.undo();
+        assert_eq!(d.history.current_id(), b1_id);
+        assert_eq!(d.buf().to_string(), "Lorem dolor sit amet\n");
+
+        // C2: delete "dolor " → "Lorem sit amet\n"
+        d.apply_edit(|b, s| {
+            use crate::changeset::ChangeSetBuilder;
+            // "Lorem dolor sit amet\n" is 21 chars. "dolor " at 6..12.
+            let mut csb = ChangeSetBuilder::new(21);
+            csb.retain(6);
+            csb.delete(6); // "dolor "
+            csb.retain_rest();
+            let cs = csb.finish();
+            let new_buf = cs.apply(&b).unwrap();
+            use crate::selection::{Selection, SelectionSet};
+            let new_sels = SelectionSet::single(Selection::cursor(6));
+            (new_buf, new_sels, cs)
+        });
+        assert_eq!(d.buf().to_string(), "Lorem sit amet\n");
+
+        // Jump from C2 to B3.
+        d.goto_revision(b3_id);
+        assert_eq!(d.buf().to_string(), "Lorem foo bar amet\n");
+        assert_eq!(d.history.current_id(), b3_id);
+    }
+
+    #[test]
+    fn goto_revision_then_edit_creates_new_branch() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'a')); // rev1
+        d.apply_edit(|b, s| insert_char(b, s, 'b')); // rev2
+        let rev2 = d.history.current_id();
+
+        d.undo();
+        d.undo(); // back to root
+
+        d.apply_edit(|b, s| insert_char(b, s, 'x')); // rev3 (branch from root)
+
+        // Jump to rev2.
+        d.goto_revision(rev2);
+        assert!(d.buf().to_string().starts_with("ab"));
+
+        // Make a new edit from rev2 — should create a new branch.
+        let before_new_edit = d.history.current_id();
+        d.apply_edit(|b, s| insert_char(b, s, 'z'));
+        let new_rev = d.history.current_id();
+        assert_ne!(new_rev, before_new_edit);
+        // Parent of new_rev should be rev2.
+        assert_eq!(d.history.parent(new_rev), Some(rev2));
+    }
+
+    #[test]
+    fn goto_root_from_deep_branch() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit(|b, s| insert_char(b, s, 'b'));
+        d.apply_edit(|b, s| insert_char(b, s, 'c'));
+        let initial = "-[h]>ello\n";
+
+        d.goto_revision(crate::history::RevisionId(0));
+        assert_eq!(state(&d), initial);
     }
 
     // ── apply_edit returns displaced text for paste ───────────────────────────

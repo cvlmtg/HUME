@@ -13,7 +13,7 @@ use crate::transaction::Transaction;
 /// friction that comes with self-referential structs, while still allowing
 /// O(1) parent/child traversal via a `Vec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RevisionId(usize);
+pub(crate) struct RevisionId(pub(crate) usize);
 
 // ── Revision ──────────────────────────────────────────────────────────────────
 
@@ -209,6 +209,107 @@ impl History {
     pub(crate) fn len(&self) -> usize {
         self.revisions.len()
     }
+
+    /// The currently active revision.
+    pub(crate) fn current_id(&self) -> RevisionId {
+        self.current
+    }
+
+    /// Parent of a revision. `None` for the root.
+    pub(crate) fn parent(&self, id: RevisionId) -> Option<RevisionId> {
+        self.revisions[id.0].parent
+    }
+
+    /// Children of a revision (branches created from this state).
+    pub(crate) fn children(&self, id: RevisionId) -> &[RevisionId] {
+        &self.revisions[id.0].children
+    }
+
+    /// Ancestor chain from `id` up to and including the root.
+    ///
+    /// Returns `[id, parent, grandparent, ..., root]`.
+    fn ancestors(&self, mut id: RevisionId) -> Vec<RevisionId> {
+        let mut chain = vec![id];
+        while let Some(parent) = self.revisions[id.0].parent {
+            chain.push(parent);
+            id = parent;
+        }
+        chain
+    }
+
+    /// Jump to an arbitrary revision in the undo tree.
+    ///
+    /// Returns the sequence of [`Transaction`]s that must be applied
+    /// **in order** to transform the current buffer into the target state.
+    /// The caller is responsible for applying each transaction sequentially —
+    /// do **not** try to compose them, since each was computed against the
+    /// buffer state at its specific point in history.
+    ///
+    /// Returns `None` if `target` equals the current revision (no-op) or is
+    /// out of bounds.
+    ///
+    /// ## How it works
+    ///
+    /// The path from `current` to `target` passes through their Lowest Common
+    /// Ancestor (LCA):
+    ///
+    /// - **Up leg** (`current` → LCA): for each node stepped out of, use its
+    ///   `inverse` transaction (same as [`undo`]).
+    /// - **Down leg** (LCA → `target`): for each node stepped into, use its
+    ///   `forward` transaction (same as [`redo`]).
+    pub(crate) fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
+        if target == self.current {
+            return None;
+        }
+        if target.0 >= self.revisions.len() {
+            return None;
+        }
+
+        let ancestors_from = self.ancestors(self.current);
+        let ancestors_to = self.ancestors(target);
+
+        // Put the "from" ancestor set in a HashSet for O(1) lookup.
+        // We need to find the first node in ancestors_to that also appears
+        // in ancestors_from — that is the LCA.
+        let from_set: std::collections::HashSet<RevisionId> =
+            ancestors_from.iter().copied().collect();
+
+        // Find the LCA: walk ancestors_to until we hit a node in from_set.
+        let lca = *ancestors_to
+            .iter()
+            .find(|id| from_set.contains(id))
+            .expect("all revisions share at least the root ancestor");
+
+        // Up leg: nodes from `current` up to (not including) LCA.
+        // ancestors_from = [current, ..., lca, ...]
+        let up_path: Vec<RevisionId> = ancestors_from
+            .iter()
+            .copied()
+            .take_while(|&id| id != lca)
+            .collect();
+
+        // Down leg: nodes from LCA's child down to `target`.
+        // ancestors_to = [target, ..., lca_child, lca, ...]
+        // Take everything before lca, then reverse so it goes lca_child → target.
+        let mut down_path: Vec<RevisionId> = ancestors_to
+            .iter()
+            .copied()
+            .take_while(|&id| id != lca)
+            .collect();
+        down_path.reverse();
+
+        // Build the transaction list.
+        let mut txns = Vec::with_capacity(up_path.len() + down_path.len());
+        for id in &up_path {
+            txns.push(self.revisions[id.0].inverse.clone());
+        }
+        for id in &down_path {
+            txns.push(self.revisions[id.0].forward.clone());
+        }
+
+        self.current = target;
+        Some(txns)
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -353,6 +454,117 @@ mod tests {
         h.undo();
         // Root still has children — can redo.
         assert!(h.can_redo());
+    }
+
+    // ── goto_revision ─────────────────────────────────────────────────────────
+
+    /// Build a branching tree for goto tests:
+    ///
+    /// ```text
+    ///      * rev3
+    ///      |
+    /// *r4  * rev2
+    /// |    |
+    /// `----* rev1
+    ///      |
+    ///      * root (rev0)
+    /// ```
+    ///
+    /// rev1 = first edit, rev2 = second edit, rev3 = third edit.
+    /// Undo to rev1, then record rev4 = branch C.
+    fn branching_history() -> History {
+        let mut h = History::new(cursor(0), 6);
+        h.record(insert_cs(6, "a"), delete_cs(7, 1), cursor(0), cursor(1)); // rev1
+        h.record(insert_cs(7, "b"), delete_cs(8, 1), cursor(1), cursor(2)); // rev2
+        h.record(insert_cs(8, "c"), delete_cs(9, 1), cursor(2), cursor(3)); // rev3
+        h.undo(); // back to rev2
+        h.undo(); // back to rev1
+        h.record(insert_cs(7, "d"), delete_cs(8, 1), cursor(1), cursor(9)); // rev4 (branch)
+        h
+    }
+
+    #[test]
+    fn goto_same_revision_is_none() {
+        let mut h = History::new(cursor(0), 6);
+        h.record(insert_cs(6, "a"), delete_cs(7, 1), cursor(0), cursor(1));
+        assert!(h.goto_revision(h.current).is_none());
+    }
+
+    #[test]
+    fn goto_out_of_bounds_returns_none() {
+        let mut h = History::new(cursor(0), 6);
+        assert!(h.goto_revision(RevisionId(999)).is_none());
+    }
+
+    #[test]
+    fn goto_parent_is_one_inverse() {
+        let mut h = History::new(cursor(0), 6);
+        let inv = delete_cs(7, 1);
+        h.record(insert_cs(6, "a"), inv.clone(), cursor(0), cursor(1));
+        let rev0 = RevisionId(0);
+        let txns = h.goto_revision(rev0).expect("should move to parent");
+        // Should be one transaction: the inverse of rev1.
+        assert_eq!(txns.len(), 1);
+        // After goto, current is root.
+        assert_eq!(h.current, RevisionId(0));
+    }
+
+    #[test]
+    fn goto_child_is_one_forward() {
+        let mut h = History::new(cursor(0), 6);
+        h.record(insert_cs(6, "a"), delete_cs(7, 1), cursor(0), cursor(1));
+        h.undo(); // back to root
+        let rev1 = RevisionId(1);
+        let txns = h.goto_revision(rev1).expect("should move to child");
+        assert_eq!(txns.len(), 1);
+        assert_eq!(h.current, RevisionId(1));
+    }
+
+    #[test]
+    fn goto_across_branches_via_lca() {
+        // Tree: root → rev1 → rev2 → rev3
+        //                  ↘ rev4 (current)
+        // Jump from rev4 to rev3: up to rev1 (LCA), down to rev2, down to rev3.
+        // Expected: 1 inverse (rev4) + 2 forwards (rev2, rev3) = 3 transactions.
+        let mut h = branching_history();
+        assert_eq!(h.current, RevisionId(4));
+
+        let txns = h
+            .goto_revision(RevisionId(3))
+            .expect("should navigate across branches");
+        assert_eq!(txns.len(), 3);
+        assert_eq!(h.current, RevisionId(3));
+    }
+
+    #[test]
+    fn goto_distant_ancestor() {
+        let mut h = History::new(cursor(0), 6);
+        for i in 0..5 {
+            h.record(insert_cs(6 + i, "x"), delete_cs(7 + i, 1), cursor(i), cursor(i + 1));
+        }
+        // Jump from rev5 to root in one call: 5 inverses.
+        let txns = h.goto_revision(RevisionId(0)).expect("should navigate to root");
+        assert_eq!(txns.len(), 5);
+        assert_eq!(h.current, RevisionId(0));
+    }
+
+    #[test]
+    fn goto_distant_descendant() {
+        let mut h = History::new(cursor(0), 6);
+        for i in 0..5 {
+            h.record(insert_cs(6 + i, "x"), delete_cs(7 + i, 1), cursor(i), cursor(i + 1));
+        }
+        h.undo();
+        h.undo();
+        h.undo();
+        h.undo();
+        h.undo(); // back to root
+        assert_eq!(h.current, RevisionId(0));
+
+        // Jump from root to rev5 in one call: 5 forwards.
+        let txns = h.goto_revision(RevisionId(5)).expect("should navigate to leaf");
+        assert_eq!(txns.len(), 5);
+        assert_eq!(h.current, RevisionId(5));
     }
 
     #[test]
