@@ -9,12 +9,10 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `PLAN.md` — Tech stack, architecture, and milestones
 - `LEARNING.md` — Concepts and Rust patterns explained as they arise
 
-## Current state (as of 2026-03-23)
-- M1 core engine complete. Includes: Buffer, Selection, ChangeSet, Transaction, edit operations, motions, text objects, undo/redo (tree-structured), registers, count prefix, selection manipulation commands, `goto_revision`, property-based tests.
-- **Named commands** (`src/edit.rs`, `src/motion.rs`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions in the core layer. They have no knowledge of keys.
-- **Keymaps** (wiring key events to named commands) are an Editor-layer concern — not yet implemented. They belong to M3.
-- **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()` — no EOF exception.
-- 510 tests passing (`cargo test`).
+## Architectural invariants (quick orientation)
+- **Named commands** (`src/edit.rs`, `src/motion.rs`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions. They have no knowledge of keys.
+- **Keymaps** live in the Editor layer — not yet implemented.
+- **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
 ## Rules
 - **Update GOALS.md** when a decision is made (add to the decisions table, remove from open questions)
