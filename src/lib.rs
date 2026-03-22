@@ -23,3 +23,5 @@ pub(crate) mod transaction;
 // `#[cfg(test)]` blocks without any runtime cost in release builds.
 #[cfg(test)]
 pub(crate) mod testing;
+#[cfg(test)]
+mod proptest_doc;
