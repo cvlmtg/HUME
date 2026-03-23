@@ -59,15 +59,14 @@ pub(crate) struct ViewState {
 
 /// Compute the line-number gutter width for a buffer with `total_lines` lines.
 ///
-/// Format: one space padding on each side of the right-aligned number, e.g.
-/// ` 1 ` (width 3) for single-digit files, ` 99 ` (width 4) for two-digit,
-/// `  99 ` (width 5) for… wait, let's be precise:
+/// The gutter renders line numbers as `"{number:>w$} "` where `w = gutter_width - 1`.
+/// That is: the number right-aligned in all-but-one columns, followed by one
+/// trailing space separator. Left padding fills the remaining space automatically.
 ///
-/// - digits  = number of decimal digits in `total_lines` (minimum 1)
-/// - width   = 1 (left pad) + digits + 1 (right pad), minimum 4
+/// - digits  = decimal digits in `total_lines` (minimum 1)
+/// - width   = digits + 2 (one trailing space + at least one leading space), minimum 4
 ///
-/// Minimum 4 keeps the gutter from becoming uselessly narrow on tiny files
-/// and looks better at typical terminal font sizes.
+/// Minimum 4 keeps the gutter from becoming uselessly narrow on tiny files.
 pub(crate) fn compute_gutter_width(total_lines: usize) -> usize {
     // ilog10(0) is undefined; treat 0-line buffers the same as 1-line.
     let digits = if total_lines <= 1 {
