@@ -510,17 +510,20 @@ The difference is in how the anchor of that selection is determined:
 | Text object | absolute `(start, end)` range | always `start` — independent of previous selection |
 
 A motion inner function only answers "where does the head go?". With
-`MotionMode::Select` (which `w` uses), the anchor is set to the *old* head,
-so pressing `w` selects the span from the current cursor to the next word
-start — it is not a bare cursor jump. With `MotionMode::Move` (`h`, `l`), the
-anchor collapses to the new head, producing a single-character selection.
+`MotionMode::Move` (`h`, `l`, `j`, `k`), the anchor collapses to the new head,
+producing a single-character selection. With `MotionMode::Extend`, the anchor
+stays fixed and only the head moves — growing the selection.
 
 A text object bypasses `MotionMode` entirely. It returns a complete range and
 the framework always creates `Selection::new(start, end)` — the previous
 anchor is discarded.
 
-This distinction drives two separate framework functions: `apply_motion` and
-`apply_text_object`.
+Word motions (`w`/`b`/`W`/`B`) sit in between: navigational like motions but
+returning a full word range. They use a third framework, `apply_word_select`,
+described in the next section.
+
+This leads to three framework functions: `apply_motion`, `apply_text_object`,
+and `apply_word_select`.
 
 ### The inner function pattern
 
@@ -558,107 +561,224 @@ overlapping selections — you want one.
 
 Buffer: `"hello world\n"`, cursor on `'h'` (position 0).
 
-Before `w` is pressed, the `SelectionSet` contains one selection:
+Before `l` is pressed, the `SelectionSet` contains one selection:
 
 ```
 Selection { anchor: 0, head: 0 }   ← single-char selection on 'h'
 ```
 
-Pressing `w` calls `apply_motion(buf, sels, MotionMode::Select, next_word_start)`.
+Pressing `l` calls `apply_motion(buf, sels, MotionMode::Move, 1, move_right)`.
 
-**Step 1 — inner motion function.** `next_word_start(buf, head=0)` scans forward:
+**Step 1 — inner motion function.** `move_right(buf, head=0)` returns
+`next_grapheme_boundary(buf, 0)` = 1. It knows nothing about the old selection
+or anchors — just a coordinate calculation.
 
-```
-pos 0: 'h' → Word
-pos 1: 'e' → Word  (no boundary)
-pos 2: 'l' → Word  (no boundary)
-pos 3: 'l' → Word  (no boundary)
-pos 4: 'o' → Word  (no boundary)
-pos 5: ' ' → Space (boundary! but Space is Space → skip, don't stop here)
-pos 6: 'w' → Word  (boundary! and not Space → STOP, return 6)
-```
-
-The inner function returns `6`. It knows nothing about the old selection.
-
-**Step 2 — apply `MotionMode::Select`.** `apply_motion` builds the new selection:
+**Step 2 — apply `MotionMode::Move`.** `apply_motion` builds the new selection:
 
 ```
-Select → anchor = old_head (0), head = new_head (6)
-Result: Selection { anchor: 0, head: 6 }
+Move → anchor = new_head (1), head = new_head (1)
+Result: Selection { anchor: 1, head: 1 }
 ```
 
-This covers positions 0–6 inclusive: `h e l l o   w` — seven characters.
-The selection runs from where the cursor *was* to where it *landed*.
+The cursor is on `'e'`, a single-character selection.
 
-**This is the traversed span, not the destination word.** The character at
-position 6 is `'w'` — the first character of `"world"`, where the cursor
-landed. To select all of `"world"`, you would use the `iw` text object instead.
-`w` selects what it crosses on the way there.
+Now suppose the cursor is at `{ anchor: 2, head: 2 }` on `'l'` and the user
+triggers an extend-mode variant:
 
-### The three modes side by side
+**Step 2 — apply `MotionMode::Extend`.**
 
-Starting from `{ anchor: 0, head: 0 }` on `'h'`, with `next_word_start`
-returning `6`:
-
-| Mode | Rule | Result | What the user sees |
-|------|------|--------|-------------------|
-| `Move`   | `anchor = new_head` | `{ anchor: 6, head: 6 }` | cursor jumps to `'w'`, no selection grows — `h`/`l` work this way |
-| `Select` | `anchor = old_head` | `{ anchor: 0, head: 6 }` | `"hello w"` selected — `w` works this way (Kakoune model) |
-| `Extend` | `anchor = old_anchor` | `{ anchor: 0, head: 6 }` | same here because old_anchor was also 0 |
-
-`Extend` differs from `Select` when a live selection already exists. Suppose
-the user earlier extended a selection so that `anchor=0, head=3`. Pressing an
-`Extend` variant keeps `anchor=0` and only moves the head to 6. Pressing a
-`Select` variant resets the anchor to the current head (3) and extends from
-there to 6 — discarding the earlier anchor.
-
-**Kakoune vs Helix**: in Kakoune, `w` uses `Select` — anchor at old cursor,
-head at next word start, selecting the traversed span. In Helix's normal mode,
-`w` uses `Move` — the cursor just jumps, producing a single-char selection at
-the destination. HUME follows Kakoune's model for word motions.
-
-The practical consequence becomes clear when you want to **change the second
-word** on a line, starting from column 0 in `"hello world"`:
-
-*Kakoune* (`w` = Select): chain motions — each one reanchors at the previous
-head and extends from there.
 ```
-w   → anchor=0 ('h'), head=6 ('w') — traversed "hello w", not useful yet
-e   → anchor=6 ('w'), head=10 ('d') — 'e' reanchors at current head, extends to word end
-c   → change "world"
+Extend → anchor = old_anchor (2), head = new_head (3)
+Result: Selection { anchor: 2, head: 3 }
 ```
-The selection is built up incrementally across two chained motions: `wec`.
 
-*Helix* (`w` = Move): motions are pure navigation; grab a region with a text
-object after landing.
-```
-w    → cursor jumps to 'w' (pos 6), single-char selection — no span accumulated
-iw   → text object selects "world" from current cursor
-c    → change "world"
-```
-Helix style: navigate first, then name the region: `w` then `iw` then `c`.
+The selection grew from `'l'` to cover both `'l'` characters (`"ll"`) — the
+anchor stayed put.
 
-Kakoune's chaining model is more composable — motions double as selection
-builders. Helix's model is more predictable — `w` always means "go there",
-never "select up to there".
+### The two modes
+
+| Mode | Anchor | Head | Typical use |
+|------|--------|------|-------------|
+| `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
+| `Extend` | `old_anchor` | `new_head` | Grow selection — extend-mode variants |
+
+`Move` always produces a collapsed single-character selection (anchor == head).
+`Extend` keeps the existing anchor, only moving the head.
+
+> **Historical note:** `MotionMode` originally had a third value — `Select`,
+> which set the anchor to the old *head*. This was the Kakoune model for word
+> motions: `w` accumulated the traversed span from cursor to next word start.
+> `Select` was removed when `w`/`b`/`W`/`B` were redesigned to select the
+> whole destination word via `apply_word_select` — see the next section.
 
 ### Why separate the inner function from the mode
 
-The inner function `fn(&Buffer, usize) -> usize` only computes a position —
-it is a pure coordinate calculation. The mode is a concern of the keymap layer
-(which knows what the user intended), not of the motion itself. This means:
+The inner function `fn(&Buffer, usize) -> usize` is a pure coordinate
+calculation — it knows nothing about anchors or multi-cursor. `MotionMode` is
+a concern of the keymap layer, not of the motion itself. This means:
 
-- Adding a new motion (e.g. "next paragraph") requires writing one position
-  function; it automatically gains all three mode variants for free.
+- Adding a new motion (e.g. "next paragraph") requires one position function;
+  Move and Extend variants come for free.
 - Testing the motion is simple: just assert on the returned position.
+- The same `move_right` inner function powers both `l` (Move) and its
+  extend-mode variant (Extend).
 
 ```rust
 match mode {
     MotionMode::Move   => Selection::cursor(new_head),
-    MotionMode::Select => Selection::new(sel.head, new_head),
     MotionMode::Extend => Selection::new(sel.anchor, new_head),
 }
 ```
+
+---
+
+## Word Motions: Selecting the Whole Word
+
+### A third framework
+
+Three distinct patterns exist for creating selections from cursor movement:
+
+| Framework | Inner fn signature | Anchor | Typical use |
+|---|---|---|---|
+| `apply_motion` | `fn(&Buffer, usize) -> usize` | Via `MotionMode` | `h/j/k/l`, paragraph, goto-line |
+| `apply_text_object` | `fn(&Buffer, usize) -> Option<(usize, usize)>` | Always `start` | `iw`, `i(`, `i"` |
+| `apply_word_select` | `fn(&Buffer, usize) -> Option<(usize, usize)>` | Always `word_start` | `w/b/W/B` |
+
+`apply_word_select` occupies a middle ground: its inner function returns a full
+range like a text object, but it is navigational like a motion — counting,
+crossing line boundaries, and stopping at buffer edges.
+
+```rust
+fn apply_word_select(
+    buf: &Buffer,
+    sels: SelectionSet,
+    count: usize,
+    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet
+```
+
+When the inner function returns `None` (no word in that direction), the
+iteration stops early and the current selection is preserved — a true no-op.
+Compare `apply_motion`, where the inner function always returns a position.
+
+### Kakoune, Helix, and HUME
+
+Word motions reflect three distinct design philosophies, best illustrated by
+"change the second word" starting from column 0 in `"hello world"`:
+
+**Kakoune** (`w` selects the traversed span, anchor at old head):
+```
+w   → "hello w" selected (traversed span)
+e   → reanchors at 'w', extends to end of "world"
+c   → change "world"       (3 keystrokes)
+```
+Motions double as selection builders. Composable, but indirect — you select
+what you cross on the way, not the word itself.
+
+**Helix** (`w` = Move, pure navigation):
+```
+w    → cursor jumps to 'w', single-char selection
+iw   → text object selects "world"
+c    → change "world"       (3 keystrokes)
+```
+Predictable — `w` always means "go there". But acting on a word always needs
+a second gesture (`iw`).
+
+**HUME** (`w` selects the whole destination word):
+```
+w    → "world" selected directly
+c    → change "world"       (2 keystrokes)
+```
+The common case — act on a word — requires no second gesture. This also
+eliminates `e`/`E`: in Helix/Vim, `e` reaches the end of the current word
+(complementing `w` which lands on the start of the next). In HUME, `w`
+already selects through the end, making `e` redundant.
+
+### Line crossing: the double-step in `select_next_word`
+
+`Eol` is its own `CharClass` (see the next section), so `next_word_start`
+always stops at a `\n`. A single call from the end of a line lands on the
+newline itself, not the first word of the next line. `select_next_word` adds
+a second step when this happens:
+
+```rust
+let mut word_start = next_word_start(buf, pos, is_boundary);
+
+// If we landed on a non-trailing '\n', cross the line.
+if word_start < len.saturating_sub(1) {
+    if classify_char(buf.char_at(word_start)) == CharClass::Eol {
+        word_start = next_word_start(buf, word_start, is_boundary);
+    }
+}
+```
+
+The second call treats the `\n` as whitespace and advances to the first word
+of the next line — making `w` cross line boundaries as users expect.
+
+### Mid-word detection: the double-step in `select_prev_word`
+
+`prev_word_start` finds the start of the word *at or containing* a position.
+When the cursor is mid-word, it returns the current word's start — not the
+previous word. `select_prev_word` detects this and takes an extra backward step:
+
+```rust
+let word_start = prev_word_start(buf, pos, is_boundary);
+let word_end   = find_word_end_from(buf, word_start, is_boundary);
+
+// pos is inside the current word — one more step back to reach the previous word.
+if pos >= word_start && pos <= word_end {
+    if word_start == 0 { return None; }  // already at the first word
+    let prev_start = prev_word_start(buf, word_start, is_boundary);
+    let prev_end   = find_word_end_from(buf, prev_start, is_boundary);
+    return Some((prev_start, prev_end));
+}
+```
+
+This means `b` always selects a *different* word — the one before the cursor —
+whether the cursor is between words or inside one.
+
+### `find_word_end_from` and multi-codepoint graphemes
+
+`find_word_end_from` returns the position of the **last codepoint** of the
+final grapheme cluster in the word. For single-codepoint graphemes (the common
+case) this is the grapheme's only position. For a combining sequence like
+`café` where `é` = `U+0065 + U+0301`:
+
+```
+c  a  f  e  ◌́
+0  1  2  3  4
+              ↑  find_word_end_from returns 4, not 3
+```
+
+Returning 3 (the base `e`) would leave `U+0301` outside the selection — an
+orphaned combining mark. Returning 4 ensures `Selection::new(word_start, 4)`
+covers the complete grapheme.
+
+This interacts with `Selection::end_inclusive(buf)` in edit operations. Edit
+code calls `end_inclusive` (which computes `next_grapheme_boundary(buf, end) - 1`)
+instead of `end()` when building deletion ranges. For a selection built with
+`find_word_end_from` (which already stored the last codepoint as `head`), this
+is a no-op. For other selections (e.g. a text object that stopped at a
+grapheme-start), `end_inclusive` extends to the full grapheme. Both paths
+handle combining marks correctly.
+
+### Two sets of word commands
+
+Word motions appear in two flavours with different semantics:
+
+| Command | Framework | Semantics |
+|---------|-----------|-----------|
+| `cmd_select_next_word` | `apply_word_select` | Fresh selection of the whole word |
+| `cmd_extend_next_word_start` | `apply_motion` + `Extend` | Grow existing selection to next word start |
+
+The select variants are hand-written — they call `apply_word_select` and
+cannot be generated by the `motion_cmd!` macro, which generates wrappers
+around `apply_motion`.
+
+The extend variants are generated by `motion_cmd!` using `next_word_start` (a
+position function) with `Extend` mode. They grow the current selection toward
+the next word start — useful when building a larger selection across multiple
+motions.
 
 ---
 
