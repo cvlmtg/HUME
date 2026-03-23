@@ -151,8 +151,8 @@ impl Editor {
             KeyCode::Char('B') => self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1)),
 
             // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Home  => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
-            KeyCode::End   => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
+            KeyCode::Char('0') | KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
+            KeyCode::Char('$') | KeyCode::End => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
             KeyCode::Char('^') => self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1)),
 
             // ── Paragraph motion ──────────────────────────────────────────────
