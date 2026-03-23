@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 pub(crate) mod display_line;
+pub(crate) mod view;
 pub(crate) mod buffer;
 pub(crate) mod document;
 pub(crate) mod changeset;
