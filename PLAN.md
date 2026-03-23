@@ -64,12 +64,12 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
 - [x] Thorough unit tests for every operation and edge case
 
-### M2 — First render
-- [ ] Display-line abstraction (buffer line or virtual line)
-- [ ] Open and display a file with scrolling
-- [ ] Line numbers
-- [ ] Status bar with filename and position
-- [ ] Quit command
+### M2 — First render ✓
+- [x] Display-line abstraction (buffer line or virtual line)
+- [x] Open and display a file with scrolling
+- [x] Line numbers (absolute / relative / hybrid)
+- [x] Status bar with filename and position
+- [x] Quit command
 
 ### M3 — Modal editing
 - [ ] Normal mode with cursor movement (drives core motions)

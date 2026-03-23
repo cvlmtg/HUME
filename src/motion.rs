@@ -130,7 +130,7 @@ fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
 /// Pass `None` to use the current column. A `Some` value supports sticky-column
 /// behaviour once the editor layer tracks it.
 ///
-/// **Column model (M1 simplification):** column is a char offset from line
+/// **Column model (current simplification):** column is a char offset from line
 /// start, not a display column. This is correct for ASCII. When the renderer
 /// adds tab/wide-char support, vertical motions will switch to display columns.
 fn move_down_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> usize {

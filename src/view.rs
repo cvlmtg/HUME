@@ -27,8 +27,8 @@ pub(crate) enum LineNumberStyle {
 /// The viewport state for a single editor pane.
 ///
 /// Tracks which portion of the buffer is visible and how much space is
-/// available for content. In M2 there is exactly one `ViewState`; future
-/// milestones will give each split pane its own.
+/// available for content. There is currently one `ViewState`; future split
+/// panes will each own their own.
 ///
 /// `height` and `width` are updated from the terminal size at the start of
 /// every event-loop iteration, so they always reflect the current terminal
@@ -82,7 +82,7 @@ impl ViewState {
     /// Produce the display lines that are currently visible in the viewport.
     ///
     /// Iterates buffer lines in `[scroll_offset, scroll_offset + height)`
-    /// and wraps each in a [`DisplayLine`]. In M2 every display line maps
+    /// and wraps each in a [`DisplayLine`]. Currently every display line maps
     /// 1:1 to a buffer line (no soft-wrap, no virtual lines).
     ///
     /// The returned `Vec` borrows content from `buf` — it cannot outlive the
