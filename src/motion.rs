@@ -323,6 +323,167 @@ fn next_word_end(
     pos
 }
 
+// ── Word-select helpers ───────────────────────────────────────────────────────
+
+/// Scan forward from the first char of a known word group, returning the
+/// position of its last char.
+///
+/// Starts at `start` (which must be the first char of a word or punct group),
+/// advances forward while `classify_char` stays in the same class, and stops
+/// when the class changes or the buffer ends.
+///
+/// This is Phase 2 of `next_word_end` run from a known starting position,
+/// without the initial skip-whitespace step.
+fn find_word_end_from(
+    buf: &Buffer,
+    start: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool,
+) -> usize {
+    let len = buf.len_chars();
+    if start >= len {
+        return start.saturating_sub(1);
+    }
+
+    let cat = classify_char(buf.char_at(start).expect("start < len"));
+    let mut pos = start;
+
+    loop {
+        let next_pos = next_grapheme_boundary(buf, pos);
+        // `next_pos - 1` is the last codepoint of the grapheme cluster that
+        // starts at `pos`. For a single-codepoint cluster (the common case)
+        // this equals `pos`; for a multi-codepoint cluster such as "e\u{0301}"
+        // (é = base letter + combining accent) it includes the trailing
+        // combining marks that logically belong to the same grapheme.
+        if next_pos >= len {
+            return next_pos - 1; // end of buffer — last char of current grapheme
+        }
+        let next_cat = classify_char(buf.char_at(next_pos).expect("next_pos < len"));
+        if is_boundary(cat, next_cat) {
+            return next_pos - 1; // class changes — last char of current grapheme
+        }
+        pos = next_pos;
+    }
+}
+
+/// Find the next word (or WORD) from `pos` and return `(word_start, word_end)`.
+///
+/// Returns `None` when there is no next word — at the last word in the buffer
+/// (no-op) or on an empty buffer.
+///
+/// Unlike `next_word_start`, this function crosses line boundaries: if the
+/// scan lands on a newline between lines, it calls `next_word_start` a second
+/// time from the newline to reach the first word on the next line.
+fn select_next_word(
+    buf: &Buffer,
+    pos: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+) -> Option<(usize, usize)> {
+    let len = buf.len_chars();
+
+    // Find the start of the next word.
+    let mut word_start = next_word_start(buf, pos, is_boundary);
+
+    // If we landed on a newline that is NOT the trailing '\n', cross the line:
+    // call next_word_start again from that newline to get to the next line's word.
+    if word_start < len.saturating_sub(1) {
+        let cat = classify_char(buf.char_at(word_start).expect("word_start < len"));
+        if cat == CharClass::Eol {
+            word_start = next_word_start(buf, word_start, is_boundary);
+        }
+    }
+
+    // If we've hit the trailing '\n' (last char in the buffer), there is no
+    // next word — treat this as a no-op.
+    if word_start >= len.saturating_sub(1) {
+        return None;
+    }
+
+    // Guard: if we somehow landed on whitespace, also a no-op.
+    let cat = classify_char(buf.char_at(word_start).expect("word_start < len"));
+    if cat == CharClass::Space || cat == CharClass::Eol {
+        return None;
+    }
+
+    let word_end = find_word_end_from(buf, word_start, is_boundary);
+    Some((word_start, word_end))
+}
+
+/// Find the previous word (or WORD) from `pos` and return `(word_start, word_end)`.
+///
+/// Returns `None` when there is no previous word — already at or before the
+/// first word in the buffer (no-op).
+///
+/// If `pos` is inside a word, we jump to the word BEFORE the current one (not
+/// the start of the current word). If `pos` is in whitespace or at the start
+/// of a word, we jump to the preceding word.
+fn select_prev_word(
+    buf: &Buffer,
+    pos: usize,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+) -> Option<(usize, usize)> {
+    if pos == 0 {
+        return None;
+    }
+
+    // Find the start of the word `prev_word_start` would land on.
+    let word_start = prev_word_start(buf, pos, is_boundary);
+
+    // If that position is whitespace (e.g. buffer starts with spaces), there
+    // is no actual word to jump to.
+    let cat = classify_char(buf.char_at(word_start).expect("word_start < len"));
+    if cat == CharClass::Space || cat == CharClass::Eol {
+        return None;
+    }
+
+    let word_end = find_word_end_from(buf, word_start, is_boundary);
+
+    // If pos is within [word_start, word_end], prev_word_start landed on the
+    // CURRENT word, not the previous one. We need one more step backward.
+    if pos >= word_start && pos <= word_end {
+        if word_start == 0 {
+            return None; // already at the first word — no-op
+        }
+        let prev_start = prev_word_start(buf, word_start, is_boundary);
+        let prev_cat = classify_char(buf.char_at(prev_start).expect("prev_start < len"));
+        if prev_cat == CharClass::Space || prev_cat == CharClass::Eol {
+            return None; // no word before this one
+        }
+        let prev_end = find_word_end_from(buf, prev_start, is_boundary);
+        return Some((prev_start, prev_end));
+    }
+
+    Some((word_start, word_end))
+}
+
+/// Apply a word-select motion to every selection in the set, repeated `count` times.
+///
+/// Unlike `apply_motion`, `motion` returns `(word_start, word_end)` — both
+/// endpoints of the selected word — rather than a single new head position.
+/// The result is always a fresh forward selection `[word_start, word_end]`
+/// that replaces the old selection (no anchor accumulation).
+///
+/// If `motion` returns `None` (no next/previous word), the iteration stops
+/// early for that selection and the last selection is kept unchanged.
+fn apply_word_select(
+    buf: &Buffer,
+    sels: SelectionSet,
+    count: usize,
+    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let mut current = sel;
+        for _ in 0..count {
+            match motion(buf, current.head) {
+                Some((anchor, head)) => current = Selection::new(anchor, head),
+                None => break, // no more words — stop early, keep last selection
+            }
+        }
+        current
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
+}
+
 // ── Paragraph motion helpers ─────────────────────────────────────────────────
 
 /// Returns `true` if `line` is an empty line — either zero chars or exactly
@@ -482,19 +643,44 @@ motion_cmd!(/// Extend all selections down one line (anchor stays, head moves).
 motion_cmd!(/// Extend all selections up one line (anchor stays, head moves).
     cmd_extend_up, Extend, move_up_inner(None));
 
-// Word motions — Select mode (anchor = old head, head = new position).
-motion_cmd!(/// Select to the start of the next word (w).
-    cmd_next_word_start, Select, next_word_start(is_word_boundary));
-motion_cmd!(/// Select to the start of the next WORD (W — treats word+punct as one class).
-    cmd_next_WORD_start, Select, next_word_start(is_WORD_boundary));
-motion_cmd!(/// Select to the start of the previous word (b).
-    cmd_prev_word_start, Select, prev_word_start(is_word_boundary));
-motion_cmd!(/// Select to the start of the previous WORD (B).
-    cmd_prev_WORD_start, Select, prev_word_start(is_WORD_boundary));
-motion_cmd!(/// Select to the end of the next word (e).
-    cmd_next_word_end, Select, next_word_end(is_word_boundary));
-motion_cmd!(/// Select to the end of the next WORD (E).
-    cmd_next_WORD_end, Select, next_word_end(is_WORD_boundary));
+// Word motions — select the entire next/previous word (HUME model).
+//
+// `w` / `W` jump to the next word/WORD and select it as a fresh forward
+// selection (anchor = word start, head = word end). `b` / `B` do the same
+// for the previous word. This replaces Helix's "extend from current position"
+// semantics: every motion re-anchors rather than growing a drag selection.
+//
+// `e` / `E` are removed — they were only needed to compensate for `w` landing
+// on the first char of the next word. With the new model, `w` already selects
+// the whole word so `e` is redundant.
+
+/// Select the next word entirely (`w`): jump to the next word and select it
+/// from its first to its last character. Re-anchors on each press; crosses
+/// line boundaries. No-op at the last word in the buffer.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_next_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary))
+}
+
+/// Select the next WORD entirely (`W`): like `w` but treats word+punct as one class.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary))
+}
+
+/// Select the previous word entirely (`b`): jump to the previous word and
+/// select it from its first to its last character. Re-anchors on each press;
+/// crosses line boundaries. No-op at the first word in the buffer.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary))
+}
+
+/// Select the previous WORD entirely (`B`): like `b` but treats word+punct as one class.
+#[allow(non_snake_case)]
+pub(crate) fn cmd_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
+}
 
 // Word motions — Extend mode (anchor stays, head = new position).
 motion_cmd!(/// Extend selection to the start of the next word (shift-w variant).
@@ -820,138 +1006,152 @@ mod tests {
         assert_state!("hello\n-[w]>orld\n", |(buf, sels)| cmd_extend_up(&buf, sels, 1), "<[hello\nw]-orld\n");
     }
 
-    // ── next_word_start (w) ───────────────────────────────────────────────────
+    // ── cmd_select_next_word (w) ──────────────────────────────────────────────
 
     #[test]
-    fn next_word_start_basic() {
-        // Skip "hello" + space, land on 'w'. Selection: anchor=0, head=6.
-        assert_state!("-[h]>ello world\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[hello w]>orld\n");
+    fn select_next_word_basic() {
+        // From 'h', selects "world" (the next word). Fresh anchor at word start.
+        assert_state!("-[h]>ello world\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello -[world]>\n");
     }
 
     #[test]
-    fn next_word_start_word_to_punct() {
-        // word→punct is a boundary; land on '.'.
-        assert_state!("-[h]>ello.world\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[hello.]>world\n");
+    fn select_next_word_from_mid_word() {
+        // Cursor in the middle of "hello" — still jumps to next word "world".
+        assert_state!("hel-[l]>o world\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello -[world]>\n");
     }
 
     #[test]
-    fn next_word_start_punct_to_word() {
-        assert_state!("-[.]>hello\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[.h]>ello\n");
+    fn select_next_word_from_whitespace() {
+        // From the space between words, selects the next word "world".
+        assert_state!("hello-[ ]>world\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello -[world]>\n");
     }
 
     #[test]
-    fn next_word_start_from_mid_word() {
-        // Cursor in the middle of "hello" — skips the rest of it.
-        assert_state!("hel-[l]>o world\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "hel-[lo w]>orld\n");
+    fn select_next_word_crosses_newline() {
+        // w crosses the newline and selects the first word on the next line.
+        assert_state!("-[h]>ello\nworld\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello\n-[world]>\n");
     }
 
     #[test]
-    fn next_word_start_from_whitespace() {
-        // From whitespace, skip to next non-whitespace.
-        assert_state!("-[ ]> hello\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[  h]>ello\n");
+    fn select_next_word_crosses_multiple_blank_lines() {
+        // Multiple blank lines between words — w still reaches the next word.
+        assert_state!("-[h]>ello\n\n\nworld\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello\n\n\n-[world]>\n");
     }
 
     #[test]
-    fn next_word_start_stops_at_newline() {
-        // w stops at the newline, not at the next line's first word.
-        assert_state!("-[h]>ello\nworld\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[hello\n]>world\n");
+    fn select_next_word_at_last_word_is_noop() {
+        // Cursor on the last word in the buffer — no-op.
+        assert_state!("hello -[world]>\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello -[world]>\n");
     }
 
     #[test]
-    fn next_word_start_from_newline() {
-        // From a newline, next w skips it and lands on the next word.
-        assert_state!("hello-[\n]>world\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "hello-[\nw]>orld\n");
+    fn select_next_word_at_eof_is_noop() {
+        // Cursor on trailing '\n' — no-op.
+        assert_state!("hello-[\n]>", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello-[\n]>");
     }
 
     #[test]
-    fn next_word_start_at_eof() {
-        assert_state!("hello-[\n]>", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "hello-[\n]>");
+    fn select_next_word_empty_buffer_is_noop() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "-[\n]>");
     }
 
     #[test]
-    fn next_word_start_empty_buffer() {
-        assert_state!("-[\n]>", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[\n]>");
-    }
-
-    // ── prev_word_start (b) ───────────────────────────────────────────────────
-
-    #[test]
-    fn prev_word_start_basic() {
-        // Cursor mid-word, jump back to start of current word.
-        assert_state!("hello wor-[l]>d\n", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "hello <[worl]-d\n");
+    fn select_next_word_word_to_punct() {
+        // "hello" and "." are different word classes — w selects ".".
+        assert_state!("-[h]>ello.world\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello-[.]>world\n");
     }
 
     #[test]
-    fn prev_word_start_from_word_to_punct() {
-        assert_state!("hello.wor-[l]>d\n", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "hello.<[worl]-d\n");
+    fn select_next_word_punct_to_word() {
+        // From ".", the next word class token is "hello".
+        assert_state!("-[.]>hello\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), ".-[hello]>\n");
     }
 
     #[test]
-    fn prev_word_start_skips_space() {
-        // From a word, skip space backward, land on start of previous word.
-        assert_state!("hello -[w]>orld\n", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "<[hello w]-orld\n");
+    fn select_next_word_count_2() {
+        // count=2: skips "world", selects "foo".
+        assert_state!("-[h]>ello world foo\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 2), "hello world -[foo]>\n");
     }
 
     #[test]
-    fn prev_word_start_at_start() {
-        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "-[h]>ello\n");
+    fn select_next_word_count_stops_at_last_word() {
+        // count=3 but only 2 words remain after cursor — stops at "foo".
+        assert_state!("-[h]>ello world foo\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 3), "hello world -[foo]>\n");
+    }
+
+    // ── cmd_select_prev_word (b) ──────────────────────────────────────────────
+
+    #[test]
+    fn select_prev_word_basic() {
+        // From "world", selects the previous word "hello".
+        assert_state!("hello -[world]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]> world\n");
     }
 
     #[test]
-    fn prev_word_start_across_newline() {
-        // Skip newline backward, land on word start on the previous line.
-        assert_state!("hello\n-[w]>orld\n", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "<[hello\nw]-orld\n");
-    }
-
-    // ── next_word_end (e) ─────────────────────────────────────────────────────
-
-    #[test]
-    fn next_word_end_basic() {
-        // From start of word, land on last char.
-        assert_state!("-[h]>ello world\n", |(buf, sels)| cmd_next_word_end(&buf, sels, 1), "-[hello]> world\n");
+    fn select_prev_word_from_mid_word() {
+        // Cursor in the middle of "world" — jumps to previous word "hello".
+        assert_state!("hello wor-[l]>d\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]> world\n");
     }
 
     #[test]
-    fn next_word_end_from_word_end_skips_to_next() {
-        // Already at end of word — skip space, land on end of next word.
-        assert_state!("hell-[o]> world\n", |(buf, sels)| cmd_next_word_end(&buf, sels, 1), "hell-[o world]>\n");
+    fn select_prev_word_from_whitespace() {
+        // From the space between words, selects the previous word "hello".
+        assert_state!("hello-[ ]>world\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]> world\n");
     }
 
     #[test]
-    fn next_word_end_word_to_punct() {
-        // word→punct boundary: land on last punct char.
-        assert_state!("-[h]>ello.world\n", |(buf, sels)| cmd_next_word_end(&buf, sels, 1), "-[hello]>.world\n");
+    fn select_prev_word_crosses_newline() {
+        // b crosses the newline and selects the last word on the previous line.
+        assert_state!("hello\n-[world]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]>\nworld\n");
     }
 
     #[test]
-    fn next_word_end_at_eof() {
-        assert_state!("hello-[\n]>", |(buf, sels)| cmd_next_word_end(&buf, sels, 1), "hello-[\n]>");
-    }
-
-    // ── WORD variants (W / B / E) ─────────────────────────────────────────────
-
-    #[test]
-    fn next_WORD_start_skips_punct() {
-        // W treats word+punct as one class — "hello.world" is a single WORD.
-        assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_next_WORD_start(&buf, sels, 1), "-[hello.world b]>ar\n");
+    fn select_prev_word_at_first_word_is_noop() {
+        // Cursor on first word — no-op.
+        assert_state!("-[hello]> world\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]> world\n");
     }
 
     #[test]
-    fn next_word_start_stops_at_punct() {
-        // w (lowercase) stops at punct — "hello" and ".world" are separate words.
-        assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_next_word_start(&buf, sels, 1), "-[hello.]>world bar\n");
+    fn select_prev_word_in_first_word_mid_is_noop() {
+        // Cursor in the middle of the first word — no previous word, no-op.
+        assert_state!("hel-[l]>o world\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "hel-[l]>o world\n");
     }
 
     #[test]
-    fn prev_WORD_start_skips_punct() {
-        // B: "hello.world" is one WORD, jump to its start.
-        assert_state!("hello.wor-[l]>d bar\n", |(buf, sels)| cmd_prev_WORD_start(&buf, sels, 1), "<[hello.worl]-d bar\n");
+    fn select_prev_word_at_buffer_start_is_noop() {
+        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[h]>ello\n");
     }
 
     #[test]
-    fn next_WORD_end_skips_punct() {
-        // E: land on last char of the WORD (including adjacent punct).
-        assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_next_WORD_end(&buf, sels, 1), "-[hello.world]> bar\n");
+    fn select_prev_word_empty_buffer_is_noop() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn select_prev_word_count_2() {
+        // count=2: from "foo", skips "world", selects "hello".
+        assert_state!("hello world -[foo]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 2), "-[hello]> world foo\n");
+    }
+
+    // ── WORD variants (W / B) ─────────────────────────────────────────────────
+
+    #[test]
+    fn select_next_WORD_skips_punct() {
+        // W: "hello.world" is a single WORD — w selects it entirely.
+        assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_select_next_WORD(&buf, sels, 1), "hello.world -[bar]>\n");
+    }
+
+    #[test]
+    fn select_next_word_stops_at_punct() {
+        // w (lowercase): "hello" and "." are separate word-class tokens.
+        assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_select_next_word(&buf, sels, 1), "hello-[.]>world bar\n");
+    }
+
+    #[test]
+    fn select_prev_WORD_skips_punct() {
+        // B: from "bar", jumps back over "hello.world" as ONE WORD (the dot is not
+        // a WORD boundary), selecting the whole token.
+        assert_state!("hello.world -[bar]>\n", |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1), "-[hello.world]> bar\n");
     }
 
     // ── extend variants ───────────────────────────────────────────────────────
@@ -1008,54 +1208,26 @@ mod tests {
     // ── grapheme cluster correctness ──────────────────────────────────────────
 
     #[test]
-    fn next_word_start_skips_combining_grapheme() {
-        // Buffer: "cafe\u{0301} world\n"
-        // char offsets: c(0) a(1) f(2) e(3) ◌́(4) ' '(5) w(6) ...
-        // Grapheme clusters: {c}{a}{f}{e◌́}{ }{w}{o}{r}{l}{d}{\n}
-        //
-        // Old code (pos += 1) would stop at offset 4 (the combining codepoint
-        // U+0301, classified as Punctuation), producing a false word boundary
-        // and leaving the cursor mid-grapheme. New code steps by grapheme
-        // boundary and correctly lands on 'w' at offset 6.
+    fn select_next_word_skips_combining_grapheme() {
+        // Buffer: "cafe\u{0301} world\n" — graphemes: {c}{a}{f}{e◌́}{ }{w}{o}{r}{l}{d}{\n}
+        // The combining codepoint U+0301 (offset 4) must not create a false word
+        // boundary inside the grapheme cluster {e◌́}. w selects "world".
         assert_state!(
             "-[c]>afe\u{0301} world\n",
-            |(buf, sels)| cmd_next_word_start(&buf, sels, 1),
-            "-[cafe\u{0301} w]>orld\n"
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 1),
+            "cafe\u{0301} -[world]>\n"
         );
     }
 
     #[test]
-    fn prev_word_start_skips_combining_grapheme() {
+    fn select_prev_word_skips_combining_grapheme() {
         // Buffer: "cafe\u{0301} world\n", cursor on 'w'.
-        // Old code steps back by 1: lands on the combining codepoint (offset 4),
-        // sees it as Punctuation ≠ the following Space — false boundary — and
-        // returns offset 4 (mid-grapheme). New code steps by grapheme boundary,
-        // skips the cluster {e◌́} as a unit (classified Word via 'e'), and
-        // correctly backtracks all the way to 'c' at offset 0.
+        // b must step over the combining grapheme {e◌́} as a unit (Word class)
+        // and select all of "cafe\u{0301}" as one word.
         assert_state!(
             "cafe\u{0301} -[w]>orld\n",
-            |(buf, sels)| cmd_prev_word_start(&buf, sels, 1),
-            "<[cafe\u{0301} w]-orld\n"
-        );
-    }
-
-    #[test]
-    fn next_word_end_skips_combining_grapheme() {
-        // Buffer: "a\u{0301}b\n" — graphemes: {a◌́}{b}{\n}
-        // Old code (pos + 1): the initial step lands at offset 1 (the combining
-        // codepoint U+0301, Punctuation). Phase 2 then sees Punct→Word at 1→2
-        // and stops, returning offset 1 — a mid-grapheme position.
-        // New code: next_grapheme_boundary(0) = 2 ('b'), skipping the whole
-        // {a◌́} cluster. 'b' is Word; next boundary is '\n' (Eol) — stop at 2.
-        //
-        // cmd_next_word_end uses MotionMode::Select (anchor = old head = 0),
-        // so the result is a selection, not a cursor.
-        // Old result: "-[a\u{0301}]>b\n"  (head=1, mid-grapheme)
-        // New result: "-[a\u{0301}b]>\n"  (head=2, 'b')
-        assert_state!(
-            "-[a]>\u{0301}b\n",
-            |(buf, sels)| cmd_next_word_end(&buf, sels, 1),
-            "-[a\u{0301}b]>\n"
+            |(buf, sels)| cmd_select_prev_word(&buf, sels, 1),
+            "-[cafe\u{0301}]> world\n"
         );
     }
 
@@ -1246,14 +1418,13 @@ mod tests {
     }
 
     #[test]
-    fn next_word_start_count_2() {
-        // cmd_next_word_start uses Select mode (anchor = old head = 0).
-        // Step 1: 0 → 6 ('w'). Step 2: 6 → 12 ('f').
-        // Final selection: anchor=0, head=12.
+    fn select_next_word_count_2_inline() {
+        // count=2 from 'h': step1 selects "world", step2 selects "foo".
+        // Final selection is just "foo" (fresh anchor each step).
         assert_state!(
             "-[h]>ello world foo\n",
-            |(buf, sels)| cmd_next_word_start(&buf, sels, 2),
-            "-[hello world f]>oo\n"
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 2),
+            "hello world -[foo]>\n"
         );
     }
 
@@ -1283,37 +1454,27 @@ mod tests {
     // ── multi-cursor word motions ──────────────────────────────────────────────
 
     #[test]
-    fn next_word_end_multi_cursor() {
-        // Two cursors in different words. Select mode: anchor stays at old head, head moves.
-        // Cursor 1 at 'h'(0): next_word_end → 'o'(4). Selection (0,4).
-        // Cursor 2 at 'f'(6): next_word_end → 'o'(8). Selection (6,8).
+    fn select_next_word_multi_cursor() {
+        // Two cursors: each independently selects the next word from its position.
+        // Cursor 1 at 'h'(0): next word is "foo"(6..8).
+        // Cursor 2 at 'f'(6): next word is "bar"(10..12).
         assert_state!(
-            "-[h]>ello -[f]>oo\n",
-            |(buf, sels)| cmd_next_word_end(&buf, sels, 1),
-            "-[hello]> -[foo]>\n"
+            "-[h]>ello -[f]>oo bar\n",
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 1),
+            "hello -[foo]> -[bar]>\n"
         );
     }
 
     #[test]
-    fn next_word_start_multi_cursor() {
-        // Two cursors that jump to non-overlapping positions.
-        // "hello foo bar\n": cursor 1 at 'h'(0) → 'f'(6); cursor 2 at 'b'(10) → '\n'(13).
+    fn select_prev_word_multi_cursor() {
+        // Two cursors each jump to the previous word independently.
+        // Cursor 1 on "hello" (head=8) → prev word "foo" → [0,2].
+        // Cursor 2 on "world" (head=14) → prev word "hello" → [4,8].
+        // No merging because [0,2] and [4,8] are disjoint.
         assert_state!(
-            "-[h]>ello foo -[b]>ar\n",
-            |(buf, sels)| cmd_next_word_start(&buf, sels, 1),
-            "-[hello f]>oo -[bar\n]>"
-        );
-    }
-
-    #[test]
-    fn prev_word_start_multi_cursor() {
-        // "hello world\n": cursors at 'o'(4) and 'd'(10). Each jumps to start of its word.
-        // Cursor 1: anchor=4, head=0 (backward, 'o' IS the anchor so it's included).
-        // Cursor 2: anchor=10, head=6 (backward, 'd' IS the anchor so it's included).
-        assert_state!(
-            "hell-[o]> worl-[d]>\n",
-            |(buf, sels)| cmd_prev_word_start(&buf, sels, 1),
-            "<[hello]- <[world]-\n"
+            "foo -[hello]> -[world]> bar\n",
+            |(buf, sels)| cmd_select_prev_word(&buf, sels, 1),
+            "-[foo]> -[hello]> world bar\n"
         );
     }
 
@@ -1393,13 +1554,8 @@ mod tests {
     }
 
     #[test]
-    fn prev_word_start_empty_buffer() {
-        assert_state!("-[\n]>", |(buf, sels)| cmd_prev_word_start(&buf, sels, 1), "-[\n]>");
-    }
-
-    #[test]
-    fn next_word_end_empty_buffer() {
-        assert_state!("-[\n]>", |(buf, sels)| cmd_next_word_end(&buf, sels, 1), "-[\n]>");
+    fn select_prev_word_empty_buffer_2() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[\n]>");
     }
 
     #[test]

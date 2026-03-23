@@ -8,8 +8,8 @@ use crate::document::Document;
 use crate::edit::{delete_char_backward, delete_char_forward, delete_selection, insert_char};
 use crate::motion::{
     cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-    cmd_move_up, cmd_next_WORD_end, cmd_next_WORD_start, cmd_next_word_end, cmd_next_word_start,
-    cmd_prev_WORD_start, cmd_prev_word_start,
+    cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
+    cmd_select_prev_word,
 };
 use crate::renderer::render;
 use crate::selection::{Selection, SelectionSet};
@@ -142,12 +142,10 @@ impl Editor {
             KeyCode::Char('k') | KeyCode::Up    => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
 
             // ── Word motion ───────────────────────────────────────────────────
-            KeyCode::Char('w') => self.apply_motion(|b, s| cmd_next_word_start(b, s, 1)),
-            KeyCode::Char('W') => self.apply_motion(|b, s| cmd_next_WORD_start(b, s, 1)),
-            KeyCode::Char('b') => self.apply_motion(|b, s| cmd_prev_word_start(b, s, 1)),
-            KeyCode::Char('B') => self.apply_motion(|b, s| cmd_prev_WORD_start(b, s, 1)),
-            KeyCode::Char('e') => self.apply_motion(|b, s| cmd_next_word_end(b, s, 1)),
-            KeyCode::Char('E') => self.apply_motion(|b, s| cmd_next_WORD_end(b, s, 1)),
+            KeyCode::Char('w') => self.apply_motion(|b, s| cmd_select_next_word(b, s, 1)),
+            KeyCode::Char('W') => self.apply_motion(|b, s| cmd_select_next_WORD(b, s, 1)),
+            KeyCode::Char('b') => self.apply_motion(|b, s| cmd_select_prev_word(b, s, 1)),
+            KeyCode::Char('B') => self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1)),
 
             // ── Line start / end ──────────────────────────────────────────────
             KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
