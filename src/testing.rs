@@ -40,39 +40,46 @@ use crate::buffer::Buffer;
 use crate::changeset::ChangeSet;
 use crate::selection::{Selection, SelectionSet};
 
-// ── IntoEditPair ──────────────────────────────────────────────────────────────
+// ── IntoTestResult ────────────────────────────────────────────────────────────
 
-/// Convert an edit-operation result into `(Buffer, SelectionSet)`.
+/// Convert a command's return value into `(Buffer, SelectionSet)` for
+/// assertion purposes.
 ///
-/// Edit functions have varying return types depending on whether they also
-/// return a [`ChangeSet`] (for undo/redo) or captured text (paste). This
-/// trait lets `assert_state!` accept any of these shapes without change:
+/// Commands have two distinct signature families:
 ///
-/// - `(Buffer, SelectionSet)` — the historic return type, still accepted.
-/// - `(Buffer, SelectionSet, ChangeSet)` — standard edits post-refactor.
-/// - `(Buffer, SelectionSet, Vec<String>)` — paste (legacy, without ChangeSet).
-/// - `(Buffer, SelectionSet, ChangeSet, Vec<String>)` — paste post-refactor.
+/// - **Non-mutating** (motions, text objects, selection commands): take
+///   `&Buffer`, return `SelectionSet`. The buffer is unchanged — the macro
+///   provides its clone via `original_buf`.
+/// - **Mutating** (edits): take `Buffer` by value, return
+///   `(Buffer, SelectionSet, ChangeSet[, Vec<String>])`. The returned buffer
+///   is the edited one — `original_buf` is ignored.
 ///
-/// This is the standard "newtype adapter" pattern: implement a trait on a
-/// tuple rather than changing the signature everywhere.
-pub(crate) trait IntoEditPair {
-    fn into_edit_pair(self) -> (Buffer, SelectionSet);
+/// This trait lets `assert_state!` accept both families without change.
+pub(crate) trait IntoTestResult {
+    fn into_test_result(self, original_buf: Buffer) -> (Buffer, SelectionSet);
 }
 
-impl IntoEditPair for (Buffer, SelectionSet) {
-    fn into_edit_pair(self) -> (Buffer, SelectionSet) { self }
+/// Non-mutating commands return only the new `SelectionSet`.
+/// The buffer didn't change, so we pair it with the caller's clone.
+impl IntoTestResult for SelectionSet {
+    fn into_test_result(self, original_buf: Buffer) -> (Buffer, SelectionSet) {
+        (original_buf, self)
+    }
 }
 
-impl IntoEditPair for (Buffer, SelectionSet, ChangeSet) {
-    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+/// Legacy `(Buffer, SelectionSet)` — still emitted by internal helpers.
+impl IntoTestResult for (Buffer, SelectionSet) {
+    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { self }
 }
 
-impl IntoEditPair for (Buffer, SelectionSet, Vec<String>) {
-    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+/// Standard edit commands.
+impl IntoTestResult for (Buffer, SelectionSet, ChangeSet) {
+    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { (self.0, self.1) }
 }
 
-impl IntoEditPair for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
-    fn into_edit_pair(self) -> (Buffer, SelectionSet) { (self.0, self.1) }
+/// Paste commands (return displaced text alongside the edited buffer).
+impl IntoTestResult for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { (self.0, self.1) }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -305,7 +312,12 @@ macro_rules! assert_state {
         use pretty_assertions::assert_eq;
 
         let (buf, sels) = parse_state($initial);
-        let (result_buf, result_sels) = $crate::testing::IntoEditPair::into_edit_pair($op((buf, sels)));
+        // Clone before the op: non-mutating commands return only `SelectionSet`,
+        // so `IntoTestResult` re-pairs it with this clone. Mutating commands
+        // return a new buffer and ignore the clone. Rope clones are O(log n).
+        let buf_copy = buf.clone();
+        let (result_buf, result_sels) =
+            $crate::testing::IntoTestResult::into_test_result($op((buf, sels)), buf_copy);
         let (expected_buf, expected_sels) = parse_state($expected);
 
         assert_eq!(
