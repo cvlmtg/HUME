@@ -1,4 +1,6 @@
+use crate::buffer::Buffer;
 use crate::error::ValidationError;
+use crate::grapheme::next_grapheme_boundary;
 
 /// A single selection range within a buffer.
 ///
@@ -74,10 +76,31 @@ impl Selection {
 
     /// The larger of the two offsets — the far end of the selected range.
     ///
+    /// Returns the **start** of the grapheme cluster at that position. For
+    /// single-codepoint graphemes (the common case) this equals the last char
+    /// in the selection. For multi-codepoint clusters (e.g. `e + \u{0301}`)
+    /// the combining codepoints that follow are NOT included — use
+    /// [`end_inclusive`] when computing deletion or slice bounds.
+    ///
     /// In the inclusive cursor model this char IS part of the selection (the
     /// cursor or anchor sits on it). This is NOT an exclusive bound.
     pub(crate) fn end(&self) -> usize {
         self.anchor.max(self.head)
+    }
+
+    /// The last char position covered by this selection, inclusive of any
+    /// combining codepoints that extend the grapheme at [`end`].
+    ///
+    /// For single-codepoint graphemes this equals `end()`. For multi-codepoint
+    /// clusters (e.g. `e + \u{0301}` = é) this extends to the last codepoint
+    /// so that delete and slice operations never orphan a combining mark.
+    ///
+    /// Use this (not `end()`) when computing char ranges for deletion or
+    /// buffer slices — all edit operations should use `end_inclusive`.
+    pub(crate) fn end_inclusive(&self, buf: &Buffer) -> usize {
+        // next_grapheme_boundary returns one past the cluster; subtract 1 to
+        // get the last codepoint index (inclusive upper bound for the range).
+        next_grapheme_boundary(buf, self.end()).saturating_sub(1)
     }
 
     /// Swap anchor and head. A forward selection becomes backward and vice

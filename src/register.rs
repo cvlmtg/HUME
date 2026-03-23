@@ -134,8 +134,10 @@ impl RegisterSet {
 pub(crate) fn yank_selections(buf: &Buffer, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
         .map(|sel| {
-            // end() is inclusive — add 1 for the exclusive upper bound.
-            buf.slice(sel.start()..sel.end() + 1).to_string()
+            // end_inclusive() gives the last codepoint of the final grapheme
+            // (handles multi-codepoint clusters like e + \u{0301}); +1 converts
+            // to an exclusive upper bound for the slice.
+            buf.slice(sel.start()..sel.end_inclusive(buf) + 1).to_string()
         })
         .collect()
 }
@@ -242,9 +244,10 @@ mod tests {
     #[test]
     fn yank_grapheme_cluster() {
         // "e\u{0301}" is two chars (e + combining acute) but one grapheme cluster.
-        // A cursor on 'e' (pos 0) is a 1-char selection — yanks only 'e'.
+        // A cursor on 'e' (pos 0) covers that grapheme — yank must include the
+        // combining mark so the yanked text is the complete grapheme "é".
         let (buf, sels) = parse_state("-[e]>\u{0301}x\n");
-        assert_eq!(yank_selections(&buf, &sels), vec!["e"]);
+        assert_eq!(yank_selections(&buf, &sels), vec!["e\u{0301}"]);
     }
 
     #[test]

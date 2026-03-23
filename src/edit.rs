@@ -187,10 +187,11 @@ fn delete_one_grapheme(
 
 /// Delete the entire region covered by `sel` and push a cursor at `start()`.
 ///
-/// `sel.end()` is inclusive, so the exclusive bound is `sel.end() + 1`.
-/// The deletion is capped at the last content character (`buf.len_chars() - 2`)
-/// so that the structural trailing `\n` is never removed — matching the
-/// protection in `delete_one_grapheme`.
+/// Uses `sel.end_inclusive()` so that multi-codepoint grapheme clusters
+/// (e.g. `e + \u{0301}`) are deleted atomically. The deletion is capped at
+/// the last content character (`buf.len_chars() - 2`) so that the structural
+/// trailing `\n` is never removed — matching the protection in
+/// `delete_one_grapheme`.
 ///
 /// Shared by `delete_char_forward` and `delete_char_backward`, which have
 /// identical selection branches.
@@ -201,13 +202,8 @@ fn delete_sel_region(
     new_sels: &mut Vec<Selection>,
 ) {
     let start = sel.start();
-    // Extend sel.end() to the last codepoint of its grapheme cluster so that
-    // combining marks (e.g. e + \u{0301} = é) are never orphaned when the
-    // selection ends on the base character of a multi-codepoint grapheme.
-    // For single-codepoint graphemes (the common case) this is a no-op.
-    let grapheme_end = next_grapheme_boundary(buf, sel.end()).saturating_sub(1);
     // Cap at the last content char so the structural trailing '\n' is never removed.
-    let end_incl = grapheme_end.min(buf.len_chars().saturating_sub(2));
+    let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
     b.retain(start - b.old_pos());
     b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
     let sel = Selection::cursor(b.new_pos());
@@ -268,7 +264,7 @@ where
             // Cap end at the last content char so the structural trailing '\n'
             // is never deleted.
             let start = sel.start();
-            let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
+            let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
             let end_excl = end_incl + 1;
             replaced.push(buf.slice(start..end_excl).to_string());
             b.retain(start - b.old_pos());
@@ -302,11 +298,9 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_cursor() {
-            // Delete the selected region. Extend sel.end() to the last codepoint
-            // of its grapheme cluster (same reasoning as delete_sel_region) and
-            // cap at the last content char to protect the structural trailing '\n'.
-            let grapheme_end = next_grapheme_boundary(buf, sel.end()).saturating_sub(1);
-            let end_incl = grapheme_end.min(buf.len_chars().saturating_sub(2));
+            // Delete the selected region. Cap at the last content char to protect
+            // the structural trailing '\n'.
+            let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
             b.delete(end_incl + 1 - start);
         }
         b.insert_char(ch);
@@ -432,7 +426,7 @@ pub(crate) fn paste_after(
     // `last_char` = index of the structural \n. Must be read before `buf` is
     // consumed by `paste_impl`, so we capture it here and move it into the closure.
     let last_char = buf.len_chars() - 1;
-    paste_impl(buf, sels, values, move |_buf, sel| (sel.end() + 1).min(last_char))
+    paste_impl(buf, sels, values, move |buf, sel| (sel.end_inclusive(buf) + 1).min(last_char))
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`).
