@@ -201,9 +201,13 @@ fn delete_sel_region(
     new_sels: &mut Vec<Selection>,
 ) {
     let start = sel.start();
-    // Cap at the last content char. A multi-char selection requires buf.len_chars() >= 2,
-    // so saturating_sub(2) == buf.len_chars() - 2 (no underflow in practice).
-    let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
+    // Extend sel.end() to the last codepoint of its grapheme cluster so that
+    // combining marks (e.g. e + \u{0301} = é) are never orphaned when the
+    // selection ends on the base character of a multi-codepoint grapheme.
+    // For single-codepoint graphemes (the common case) this is a no-op.
+    let grapheme_end = next_grapheme_boundary(buf, sel.end()).saturating_sub(1);
+    // Cap at the last content char so the structural trailing '\n' is never removed.
+    let end_incl = grapheme_end.min(buf.len_chars().saturating_sub(2));
     b.retain(start - b.old_pos());
     b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
     let sel = Selection::cursor(b.new_pos());
@@ -298,9 +302,11 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_cursor() {
-            // Delete the selected region, capped at the last content char so
-            // the structural trailing '\n' is never removed.
-            let end_incl = sel.end().min(buf.len_chars().saturating_sub(2));
+            // Delete the selected region. Extend sel.end() to the last codepoint
+            // of its grapheme cluster (same reasoning as delete_sel_region) and
+            // cap at the last content char to protect the structural trailing '\n'.
+            let grapheme_end = next_grapheme_boundary(buf, sel.end()).saturating_sub(1);
+            let end_incl = grapheme_end.min(buf.len_chars().saturating_sub(2));
             b.delete(end_incl + 1 - start);
         }
         b.insert_char(ch);
@@ -492,6 +498,20 @@ mod tests {
             "-[hell]>o\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
             "x-[o]>\n"
+        );
+    }
+
+    #[test]
+    fn insert_char_replaces_selection_grapheme_base() {
+        // Selection head lands on the base codepoint 'e' of {e\u{0301}} = é.
+        // The fix extends the delete to include the combining mark, so typing
+        // 'Z' fully replaces "café" rather than leaving an orphaned accent.
+        // Buffer: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
+        // Result: chars 0-4 deleted, 'Z' inserted → "Z x\n", cursor at 1 (' ').
+        assert_state!(
+            "-[cafe]>\u{0301} x\n",
+            |(buf, sels)| insert_char(buf, sels, 'Z'),
+            "Z-[ ]>x\n"
         );
     }
 
@@ -759,6 +779,21 @@ mod tests {
             "-[e]>\u{0301}x\n",
             |(buf, sels)| delete_selection(buf, sels),
             "-[x]>\n"
+        );
+    }
+
+    #[test]
+    fn delete_selection_multi_char_ends_at_grapheme_base() {
+        // Multi-char selection whose head (sel.end()) lands on the base codepoint
+        // 'e' of the grapheme {e\u{0301}} = é. The fix extends the delete to
+        // include the combining mark at position 4, so no orphaned accent remains.
+        // Buffer: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
+        // Without the fix: only chars 0-3 deleted → "\u{0301} x\n" (broken).
+        // With the fix: chars 0-4 deleted → " x\n" (correct).
+        assert_state!(
+            "-[cafe]>\u{0301} x\n",
+            |(buf, sels)| delete_selection(buf, sels),
+            "-[ ]>x\n"
         );
     }
 
