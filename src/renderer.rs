@@ -127,9 +127,10 @@ fn render_gutter(
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns.
 ///
-/// All cursor heads (every selection in `sels`) are rendered as
-/// `Modifier::REVERSED`. If any cursor sits past the last grapheme
-/// (end-of-line position), a reversed space is drawn there.
+/// Every character that falls within any selection range `[start, end]` is
+/// rendered as `Modifier::REVERSED`, covering the full selected region. If a
+/// cursor (head) sits past the last grapheme (end-of-line / empty line), a
+/// reversed space is drawn there.
 fn render_content(
     screen_buf: &mut ScreenBuf,
     dl: &DisplayLine<'_>,
@@ -137,25 +138,25 @@ fn render_content(
     y: u16,
     width: u16,
     sels: &SelectionSet,
-    buf: &Buffer,
+    _buf: &Buffer,
 ) {
     let char_offset = dl.char_offset.unwrap_or(0);
 
-    // Collect the char offsets of every cursor head that falls on this display
-    // line. We need the line's char range to filter: [char_offset, line_end].
-    // line_end = char_offset + content_chars + 1 (the stripped '\n').
+    // line_end_incl = position of the stripped '\n' (one past last content char).
     let content_chars = dl.content.len_chars();
-    let line_end_incl = char_offset + content_chars; // position of the stripped '\n'
+    let line_end_incl = char_offset + content_chars;
 
-    // A head is "on this line" if it falls anywhere in [char_offset, line_end_incl].
-    let heads_on_line: Vec<usize> = sels
+    // Collect selections whose range overlaps this line: [char_offset, line_end_incl].
+    // A selection [s.start(), s.end()] overlaps if s.end() >= char_offset && s.start() <= line_end_incl.
+    use crate::selection::Selection;
+    let sels_on_line: Vec<Selection> = sels
         .iter_sorted()
-        .map(|s| s.head)
-        .filter(|&h| h >= char_offset && h <= line_end_incl)
+        .copied()
+        .filter(|s| s.end() >= char_offset && s.start() <= line_end_incl)
         .collect();
 
-    if heads_on_line.is_empty() && dl.char_offset.is_none() {
-        return; // virtual line with no cursors — nothing to render
+    if sels_on_line.is_empty() && dl.char_offset.is_none() {
+        return; // virtual line with no selection overlap — nothing to render
     }
 
     let content_str = dl.content.to_string();
@@ -172,7 +173,9 @@ fn render_content(
             break; // clip at right edge
         }
 
-        let style = if heads_on_line.contains(&char_pos) {
+        // Highlight if this char falls within any selection's inclusive range.
+        let selected = sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end());
+        let style = if selected {
             Style::new().add_modifier(Modifier::REVERSED)
         } else {
             Style::new()
@@ -183,8 +186,11 @@ fn render_content(
         char_pos += grapheme.chars().count();
     }
 
-    // Any cursor past the last grapheme (end-of-line / empty line).
-    if heads_on_line.contains(&char_pos) && col < width {
+    // After the loop, char_pos == line_end_incl (the '\n' position).
+    // If any selection reaches this position (cursor on the newline / empty line),
+    // draw a reversed space so the cursor is visible.
+    let selected_at_eol = sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end());
+    if selected_at_eol && col < width {
         screen_buf.set_string(x + col, y, " ", Style::new().add_modifier(Modifier::REVERSED));
     }
 }
@@ -476,6 +482,40 @@ mod tests {
         // Non-cursor 'c' at row 2 must NOT be reversed.
         let non_cursor = screen[(gw as u16, 2)].modifier;
         assert!(!non_cursor.contains(Modifier::REVERSED), "'c' cell should not be REVERSED");
+    }
+
+    #[test]
+    fn render_selection_range_highlighted() {
+        use ratatui::layout::Rect;
+        // "hello\n": selection anchor=1 ('e'), head=3 ('l') → chars 1,2,3 highlighted.
+        let buf = Buffer::from("hello\n");
+        let sels = SelectionSet::single(Selection::new(1, 3));
+        let doc = Document::new(buf, sels);
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState {
+            scroll_offset: 0,
+            height: 2,
+            width: 20,
+            gutter_width: gw,
+            line_number_style: LineNumberStyle::Absolute,
+        };
+        let area = Rect::new(0, 0, 20, 3);
+        let mut screen = ScreenBuf::empty(area);
+        render(&doc, &v, Mode::Normal, None, area, &mut screen);
+
+        // 'h' at col gw+0 — outside selection, not reversed.
+        let h_cell = screen[(gw as u16, 0)].modifier;
+        assert!(!h_cell.contains(Modifier::REVERSED), "'h' should not be highlighted");
+
+        // 'e','l','l' at cols gw+1, gw+2, gw+3 — inside [1,3], all reversed.
+        for (label, col) in [("'e'", gw + 1), ("'l'", gw + 2), ("'l'", gw + 3)] {
+            let cell = screen[(col as u16, 0)].modifier;
+            assert!(cell.contains(Modifier::REVERSED), "{label} should be highlighted");
+        }
+
+        // 'o' at col gw+4 — outside selection, not reversed.
+        let o_cell = screen[(gw as u16 + 4, 0)].modifier;
+        assert!(!o_cell.contains(Modifier::REVERSED), "'o' should not be highlighted");
     }
 
     #[test]
