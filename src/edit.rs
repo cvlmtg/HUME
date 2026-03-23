@@ -387,7 +387,7 @@ pub(crate) fn delete_char_backward(
 ///
 /// ```text
 /// let yanked = yank_selections(&buf, &sels);
-/// let (new_buf, new_sels) = delete_selection(buf, sels);
+/// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);
 /// ```
 pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet, ChangeSet) {
