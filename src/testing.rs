@@ -291,15 +291,28 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
 ///
 /// Both `$initial` and `$expected` are marker-annotated strings (see module
 /// docs for the format). `$op` is a closure that takes `(Buffer, SelectionSet)`
-/// and returns `(Buffer, SelectionSet)`.
+/// and returns either:
+/// - `(Buffer, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
+///   that modify the buffer, or
+/// - `SelectionSet` — for motion/selection commands that only move cursors.
+///
+/// Both return types are handled automatically via [`IntoTestResult`].
 ///
 /// # Example
 ///
 /// ```
+/// // Edit command (returns buffer + sels + changeset):
 /// assert_state!(
-///     "-[h]>ello\n",                                // initial state
-///     |(buf, sels)| delete_char_forward(buf, sels), // operation
-///     "-[e]>llo\n",                                 // expected state
+///     "-[h]>ello\n",
+///     |(buf, sels)| delete_char_forward(buf, sels),
+///     "-[e]>llo\n",
+/// );
+///
+/// // Motion command (returns SelectionSet only):
+/// assert_state!(
+///     "-[h]>ello\n",
+///     |(buf, sels)| cmd_move_right(&buf, sels, 1),
+///     "h-[e]>llo\n",
 /// );
 /// ```
 ///

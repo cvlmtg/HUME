@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::buffer::Buffer;
 use crate::display_line::DisplayLine;
 use crate::document::Document;
+use crate::selection::SelectionSet;
 use crate::view::{LineNumberStyle, ViewState};
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -32,8 +33,8 @@ pub(crate) fn render(
 ) {
     let buf = doc.buf();
     let sels = doc.sels();
-    let cursor_head = sels.primary().head;
-    let cursor_line = buf.char_to_line(cursor_head);
+    let primary_head = sels.primary().head;
+    let cursor_line = buf.char_to_line(primary_head);
 
     let display_lines = view.display_lines(buf);
 
@@ -53,8 +54,8 @@ pub(crate) fn render(
                 area.x + view.gutter_width as u16,
                 y,
                 area.width.saturating_sub(view.gutter_width as u16),
-                cursor_head,
-                cursor_line,
+                sels,
+                buf,
             );
         } else {
             // Past end of buffer — draw `~` in the gutter column.
@@ -66,7 +67,7 @@ pub(crate) fn render(
 
     let status_y = area.y + view.height as u16;
     if status_y < area.bottom() {
-        render_status_bar(screen_buf, file_path, cursor_line, cursor_head, buf, area, status_y);
+        render_status_bar(screen_buf, file_path, cursor_line, primary_head, buf, area, status_y);
     }
 }
 
@@ -86,8 +87,9 @@ fn render_gutter(
     x: u16,
     y: u16,
 ) {
-    let line_number = dl.line_number.unwrap_or(0); // virtual lines have None — shouldn't reach here
-    let line_idx = line_number.saturating_sub(1);  // 0-based
+    // Virtual lines have no line number — nothing to render in the gutter.
+    let Some(line_number) = dl.line_number else { return };
+    let line_idx = line_number.saturating_sub(1); // 0-based
 
     let label = match view.line_number_style {
         LineNumberStyle::Absolute => format!("{line_number}"),
@@ -123,8 +125,8 @@ fn render_gutter(
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns.
 ///
-/// The primary cursor is rendered as `Modifier::REVERSED` on whichever cell
-/// corresponds to `cursor_head`. If the cursor sits past the last grapheme
+/// All cursor heads (every selection in `sels`) are rendered as
+/// `Modifier::REVERSED`. If any cursor sits past the last grapheme
 /// (end-of-line position), a reversed space is drawn there.
 fn render_content(
     screen_buf: &mut ScreenBuf,
@@ -132,13 +134,29 @@ fn render_content(
     x: u16,
     y: u16,
     width: u16,
-    cursor_head: usize,
-    cursor_line: usize,
+    sels: &SelectionSet,
+    buf: &Buffer,
 ) {
-    let is_cursor_line = dl.line_number.map(|n| n.saturating_sub(1)) == Some(cursor_line);
-    let content_str = dl.content.to_string();
     let char_offset = dl.char_offset.unwrap_or(0);
 
+    // Collect the char offsets of every cursor head that falls on this display
+    // line. We need the line's char range to filter: [char_offset, line_end].
+    // line_end = char_offset + content_chars + 1 (the stripped '\n').
+    let content_chars = dl.content.len_chars();
+    let line_end_incl = char_offset + content_chars; // position of the stripped '\n'
+
+    // A head is "on this line" if it falls anywhere in [char_offset, line_end_incl].
+    let heads_on_line: Vec<usize> = sels
+        .iter_sorted()
+        .map(|s| s.head)
+        .filter(|&h| h >= char_offset && h <= line_end_incl)
+        .collect();
+
+    if heads_on_line.is_empty() && dl.char_offset.is_none() {
+        return; // virtual line with no cursors — nothing to render
+    }
+
+    let content_str = dl.content.to_string();
     let mut col: u16 = 0;
     let mut char_pos = char_offset;
 
@@ -152,8 +170,7 @@ fn render_content(
             break; // clip at right edge
         }
 
-        let is_cursor = is_cursor_line && char_pos == cursor_head;
-        let style = if is_cursor {
+        let style = if heads_on_line.contains(&char_pos) {
             Style::new().add_modifier(Modifier::REVERSED)
         } else {
             Style::new()
@@ -164,8 +181,8 @@ fn render_content(
         char_pos += grapheme.chars().count();
     }
 
-    // Cursor past the last grapheme (e.g. end-of-line / empty line).
-    if is_cursor_line && char_pos == cursor_head && col < width {
+    // Any cursor past the last grapheme (end-of-line / empty line).
+    if heads_on_line.contains(&char_pos) && col < width {
         screen_buf.set_string(x + col, y, " ", Style::new().add_modifier(Modifier::REVERSED));
     }
 }
@@ -209,8 +226,11 @@ fn render_status_bar(
 
 /// Count grapheme clusters from the start of `line_idx` to `char_pos`.
 ///
-/// This gives the 0-based display column for the cursor, which matches what
-/// the user sees when moving left/right within a line.
+/// Returns the 0-based grapheme offset of the cursor within its line — the
+/// same unit used by left/right cursor movement. This is intentionally a
+/// logical position (grapheme index), not a display column: if the line
+/// contains wide characters, the visual column may differ, but the reported
+/// number matches how many times the user pressed → to get there.
 fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
     let line_start = buf.line_to_char(line_idx);
     // char_pos should be >= line_start, but saturating_sub guards against
@@ -404,5 +424,43 @@ mod tests {
           1 café
         ~
          [scratch]      1:5");
+    }
+
+    #[test]
+    fn render_multi_cursor() {
+        use ratatui::layout::Rect;
+        // Two cursors: one on 'a' (char 0), one on 'b' (char 2).
+        let buf = Buffer::from("a\nb\nc\n");
+        let sels = SelectionSet::from_vec(
+            vec![
+                Selection::cursor(0), // line 0, 'a'
+                Selection::cursor(2), // line 1, 'b'
+            ],
+            0, // primary = first
+        );
+        let doc = Document::new(buf, sels);
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState {
+            scroll_offset: 0,
+            height: 4,
+            width: 15,
+            gutter_width: gw,
+            line_number_style: LineNumberStyle::Absolute,
+        };
+        let area = Rect::new(0, 0, 15, 5);
+        let mut screen = ScreenBuf::empty(area);
+        render(&doc, &v, None, area, &mut screen);
+
+        // Both cursor cells must have the REVERSED modifier.
+        // 'a' is at column gw (after the gutter), row 0.
+        // 'b' is at column gw, row 1.
+        let cursor_a = screen[(gw as u16, 0)].modifier;
+        let cursor_b = screen[(gw as u16, 1)].modifier;
+        assert!(cursor_a.contains(Modifier::REVERSED), "'a' cell should be REVERSED");
+        assert!(cursor_b.contains(Modifier::REVERSED), "'b' cell should be REVERSED");
+
+        // Non-cursor 'c' at row 2 must NOT be reversed.
+        let non_cursor = screen[(gw as u16, 2)].modifier;
+        assert!(!non_cursor.contains(Modifier::REVERSED), "'c' cell should not be REVERSED");
     }
 }
