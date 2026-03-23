@@ -58,6 +58,7 @@ pub(crate) fn render(
                 area.width.saturating_sub(view.gutter_width as u16),
                 sels,
                 buf,
+                mode,
             );
         } else {
             // Past end of buffer — draw `~` in the gutter column.
@@ -139,6 +140,7 @@ fn render_content(
     width: u16,
     sels: &SelectionSet,
     _buf: &Buffer,
+    mode: Mode,
 ) {
     let char_offset = dl.char_offset.unwrap_or(0);
 
@@ -163,6 +165,9 @@ fn render_content(
     let mut col: u16 = 0;
     let mut char_pos = char_offset;
 
+    // In Insert mode, cursor positions (anchor == head) are shown via the real
+    // terminal bar cursor rather than a reversed cell.
+
     for grapheme in content_str.graphemes(true) {
         let gw = UnicodeWidthStr::width(grapheme) as u16;
         // Combining marks have display width 0 — advance at least 1 col so
@@ -174,7 +179,12 @@ fn render_content(
         }
 
         // Highlight if this char falls within any selection's inclusive range.
-        let selected = sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end());
+        let selected = sels_on_line.iter().any(|s| {
+            let show_cursor_highlight = mode != Mode::Insert || !s.is_cursor();
+            show_cursor_highlight
+                && char_pos >= s.start()
+                && char_pos <= s.end()
+        });
         let style = if selected {
             Style::new().add_modifier(Modifier::REVERSED)
         } else {
@@ -189,7 +199,12 @@ fn render_content(
     // After the loop, char_pos == line_end_incl (the '\n' position).
     // If any selection reaches this position (cursor on the newline / empty line),
     // draw a reversed space so the cursor is visible.
-    let selected_at_eol = sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end());
+    let selected_at_eol = sels_on_line.iter().any(|s| {
+        let show_cursor_highlight = mode != Mode::Insert || !s.is_cursor();
+        show_cursor_highlight
+            && char_pos >= s.start()
+            && char_pos <= s.end()
+    });
     if selected_at_eol && col < width {
         screen_buf.set_string(x + col, y, " ", Style::new().add_modifier(Modifier::REVERSED));
     }
@@ -255,6 +270,25 @@ fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize
     // any edge cases in empty buffers.
     let slice = buf.slice(line_start..char_pos.max(line_start));
     slice.to_string().graphemes(true).count()
+}
+
+// ── Cursor position ───────────────────────────────────────────────────────────
+
+/// Compute the screen (col, row) of the primary cursor, or `None` if it is
+/// scrolled out of the viewport.
+///
+/// Used by the editor to call `frame.set_cursor_position()` so ratatui shows
+/// the real terminal cursor — which is what `SetCursorStyle` actually controls.
+/// Without this, ratatui hides the real cursor (because no frame cursor is set)
+/// and `SetCursorStyle` has nothing visible to act on.
+pub(crate) fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> Option<(u16, u16)> {
+    let cursor_line = buf.char_to_line(head);
+    let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
+    if screen_row >= view.height {
+        return None;
+    }
+    let col = grapheme_col_in_line(buf, cursor_line, head);
+    Some(((view.gutter_width + col) as u16, screen_row as u16))
 }
 
 // ── Test helper ───────────────────────────────────────────────────────────────

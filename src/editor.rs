@@ -1,7 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::execute;
 
 use crate::buffer::Buffer;
 use crate::document::Document;
@@ -15,7 +17,7 @@ use crate::motion::{
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
 use crate::register::{yank_selections, RegisterSet, DEFAULT_REGISTER};
-use crate::renderer::render;
+use crate::renderer::{cursor_screen_pos, render};
 use crate::selection::{Selection, SelectionSet};
 use crate::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
@@ -146,7 +148,25 @@ impl Editor {
             let mode = self.mode;
             term.draw(|frame| {
                 render(doc, view, mode, file_path, frame.area(), frame.buffer_mut());
+                // In Insert mode, show the real terminal cursor (bar) so
+                // SetCursorStyle is visible. Normal mode uses the reversed-cell
+                // rendering only — no real cursor, so the letter stays visible.
+                if mode == Mode::Insert {
+                    if let Some(pos) = cursor_screen_pos(doc.buf(), view, doc.sels().primary().head) {
+                        frame.set_cursor_position(pos);
+                    }
+                }
             })?;
+
+            // ── 4b. Cursor shape ──────────────────────────────────────────────
+            // Emitted *after* draw so it's the last escape sequence the terminal
+            // sees before we block — ratatui's ShowCursor flush can otherwise
+            // reset the shape on some terminals.
+            let cursor_style = match self.mode {
+                Mode::Normal => SetCursorStyle::SteadyBlock,
+                Mode::Insert => SetCursorStyle::SteadyBar,
+            };
+            let _ = execute!(std::io::stdout(), cursor_style);
 
             // ── 5 & 6. Event ──────────────────────────────────────────────────
             match event::read()? {
@@ -159,6 +179,8 @@ impl Editor {
                 break;
             }
         }
+        // Restore the user's default cursor shape before returning to the shell.
+        execute!(std::io::stdout(), SetCursorStyle::DefaultUserShape)?;
         Ok(())
     }
 
@@ -268,7 +290,7 @@ impl Editor {
                 let yanked = yank_selections(self.doc.buf(), self.doc.sels());
                 self.doc.apply_edit(|b, s| delete_selection(b, s));
                 self.registers.write(DEFAULT_REGISTER, yanked);
-                self.mode = Mode::Insert;
+                self.set_mode(Mode::Insert);
             }
             // `y` — yank selection into default register (no buffer change).
             KeyCode::Char('y') => {
@@ -309,14 +331,14 @@ impl Editor {
 
             // ── Mode transitions ──────────────────────────────────────────────
             // `i` — enter Insert at current position
-            KeyCode::Char('i') => self.mode = Mode::Insert,
+            KeyCode::Char('i') => self.set_mode(Mode::Insert),
 
             // `a` — enter Insert after the cursor (one grapheme right).
             // If the cursor is on the structural '\n' (end of buffer), don't
             // advance further — there is nowhere to go.
             KeyCode::Char('a') => {
                 self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.mode = Mode::Insert;
+                self.set_mode(Mode::Insert);
             }
 
             // Esc resets any pending key sequence (already in Normal mode).
@@ -331,7 +353,7 @@ impl Editor {
     fn handle_insert(&mut self, key: KeyEvent) {
         match key.code {
             // ── Return to Normal mode ─────────────────────────────────────────
-            KeyCode::Esc => self.mode = Mode::Normal,
+            KeyCode::Esc => self.set_mode(Mode::Normal),
 
             // ── Character input ───────────────────────────────────────────────
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -364,6 +386,12 @@ impl Editor {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// Set the editing mode. The cursor shape reflecting the new mode will be
+    /// emitted after the current frame's draw call.
+    fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+    }
 
     /// Apply a motion command and store the resulting selection.
     ///
