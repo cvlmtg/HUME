@@ -5,14 +5,30 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::buffer::Buffer;
 use crate::document::Document;
+use crate::edit::{delete_char_backward, delete_char_forward, delete_selection, insert_char};
 use crate::motion::{
     cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-    cmd_move_up,
+    cmd_move_up, cmd_next_WORD_end, cmd_next_WORD_start, cmd_next_word_end, cmd_next_word_start,
+    cmd_prev_WORD_start, cmd_prev_word_start,
 };
 use crate::renderer::render;
 use crate::selection::{Selection, SelectionSet};
+use crate::selection_cmd::{cmd_collapse_selection, cmd_keep_primary_selection};
 use crate::terminal::Term;
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
+
+// ── Mode ──────────────────────────────────────────────────────────────────────
+
+/// The current editing mode.
+///
+/// Starts as `Normal`. `Insert` is entered via `i`/`a` and exited via `Escape`.
+/// The keymap is completely different in each mode — `handle_key` dispatches
+/// to `handle_normal` or `handle_insert` accordingly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mode {
+    Normal,
+    Insert,
+}
 
 // ── Editor ────────────────────────────────────────────────────────────────────
 
@@ -20,14 +36,15 @@ pub(crate) struct Editor {
     doc: Document,
     view: ViewState,
     file_path: Option<PathBuf>,
+    mode: Mode,
     should_quit: bool,
 }
 
 impl Editor {
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
-    /// The cursor starts at position 0. Terminal dimensions are placeholder
-    /// values that are replaced on the first iteration of [`run`]'s event loop.
+    /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
+    /// placeholder values replaced on the first event-loop iteration.
     pub(crate) fn open(file_path: Option<PathBuf>) -> io::Result<Self> {
         let buf = match &file_path {
             Some(path) => {
@@ -50,7 +67,7 @@ impl Editor {
             line_number_style: LineNumberStyle::Hybrid,
         };
 
-        Ok(Self { doc, view, file_path, should_quit: false })
+        Ok(Self { doc, view, file_path, mode: Mode::Normal, should_quit: false })
     }
 
     /// Run the editor event loop until the user quits.
@@ -80,8 +97,9 @@ impl Editor {
             let doc = &self.doc;
             let view = &self.view;
             let file_path = self.file_path.as_deref();
+            let mode = self.mode;
             term.draw(|frame| {
-                render(doc, view, file_path, frame.area(), frame.buffer_mut());
+                render(doc, view, mode, file_path, frame.area(), frame.buffer_mut());
             })?;
 
             // ── 5 & 6. Event ──────────────────────────────────────────────────
@@ -98,27 +116,44 @@ impl Editor {
         Ok(())
     }
 
-    // ── Key handling ──────────────────────────────────────────────────────────
+    // ── Key dispatch ──────────────────────────────────────────────────────────
 
     fn handle_key(&mut self, key: KeyEvent) {
+        match self.mode {
+            Mode::Normal => self.handle_normal(key),
+            Mode::Insert => self.handle_insert(key),
+        }
+    }
+
+    // ── Normal mode ───────────────────────────────────────────────────────────
+
+    fn handle_normal(&mut self, key: KeyEvent) {
         match key.code {
-            // ── Quit ──────────────────────────────────────────────────────────
+            // ── Quit (temporary until :q is implemented) ──────────────────────
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
             }
 
-            // ── Horizontal motion ─────────────────────────────────────────────
-            KeyCode::Right => self.apply_motion(|b, s| cmd_move_right(b, s, 1)),
-            KeyCode::Left => self.apply_motion(|b, s| cmd_move_left(b, s, 1)),
+            // ── Basic motion ──────────────────────────────────────────────────
+            KeyCode::Char('h') | KeyCode::Left  => self.apply_motion(|b, s| cmd_move_left(b, s, 1)),
+            KeyCode::Char('l') | KeyCode::Right => self.apply_motion(|b, s| cmd_move_right(b, s, 1)),
+            KeyCode::Char('j') | KeyCode::Down  => self.apply_motion(|b, s| cmd_move_down(b, s, 1)),
+            KeyCode::Char('k') | KeyCode::Up    => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
 
-            // ── Vertical motion ───────────────────────────────────────────────
-            KeyCode::Down => self.apply_motion(|b, s| cmd_move_down(b, s, 1)),
-            KeyCode::Up => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
+            // ── Word motion ───────────────────────────────────────────────────
+            KeyCode::Char('w') => self.apply_motion(|b, s| cmd_next_word_start(b, s, 1)),
+            KeyCode::Char('W') => self.apply_motion(|b, s| cmd_next_WORD_start(b, s, 1)),
+            KeyCode::Char('b') => self.apply_motion(|b, s| cmd_prev_word_start(b, s, 1)),
+            KeyCode::Char('B') => self.apply_motion(|b, s| cmd_prev_WORD_start(b, s, 1)),
+            KeyCode::Char('e') => self.apply_motion(|b, s| cmd_next_word_end(b, s, 1)),
+            KeyCode::Char('E') => self.apply_motion(|b, s| cmd_next_WORD_end(b, s, 1)),
+
+            // ── Line start / end ──────────────────────────────────────────────
+            KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
+            KeyCode::End  => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
 
             // ── Page scroll ───────────────────────────────────────────────────
-            // Move the cursor by a full viewport height; ensure_cursor_visible
-            // then scrolls the viewport to follow.
             KeyCode::PageDown => {
                 let count = self.view.height.max(1);
                 self.apply_motion(|b, s| cmd_move_down(b, s, count));
@@ -128,13 +163,76 @@ impl Editor {
                 self.apply_motion(|b, s| cmd_move_up(b, s, count));
             }
 
-            // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
-            KeyCode::End => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
+            // ── Selection ─────────────────────────────────────────────────────
+            KeyCode::Char(';') => self.apply_motion(|b, s| cmd_collapse_selection(b, s)),
+            KeyCode::Char(',') => self.apply_motion(|b, s| cmd_keep_primary_selection(b, s)),
+
+            // ── Edit ──────────────────────────────────────────────────────────
+            KeyCode::Char('d') => {
+                self.doc.apply_edit(|b, s| delete_selection(b, s));
+            }
+            KeyCode::Char('u') => self.doc.undo(),
+            KeyCode::Char('U') => self.doc.redo(),
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.doc.redo();
+            }
+
+            // ── Mode transitions ──────────────────────────────────────────────
+            // `i` — enter Insert at current position
+            KeyCode::Char('i') => self.mode = Mode::Insert,
+
+            // `a` — enter Insert after the cursor (one grapheme right).
+            // If the cursor is on the structural '\n' (end of buffer), don't
+            // advance further — there is nowhere to go.
+            KeyCode::Char('a') => {
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.mode = Mode::Insert;
+            }
+
+            KeyCode::Esc => {} // already in Normal mode
 
             _ => {}
         }
     }
+
+    // ── Insert mode ───────────────────────────────────────────────────────────
+
+    fn handle_insert(&mut self, key: KeyEvent) {
+        match key.code {
+            // ── Return to Normal mode ─────────────────────────────────────────
+            KeyCode::Esc => self.mode = Mode::Normal,
+
+            // ── Character input ───────────────────────────────────────────────
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.doc.apply_edit(|b, s| insert_char(b, s, ch));
+            }
+
+            // ── Newline ───────────────────────────────────────────────────────
+            KeyCode::Enter => {
+                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+            }
+
+            // ── Delete ────────────────────────────────────────────────────────
+            KeyCode::Backspace => {
+                self.doc.apply_edit(|b, s| delete_char_backward(b, s));
+            }
+            KeyCode::Delete => {
+                self.doc.apply_edit(|b, s| delete_char_forward(b, s));
+            }
+
+            // ── Navigation (same as Normal) ───────────────────────────────────
+            KeyCode::Left  => self.apply_motion(|b, s| cmd_move_left(b, s, 1)),
+            KeyCode::Right => self.apply_motion(|b, s| cmd_move_right(b, s, 1)),
+            KeyCode::Down  => self.apply_motion(|b, s| cmd_move_down(b, s, 1)),
+            KeyCode::Up    => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
+            KeyCode::Home  => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
+            KeyCode::End   => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
+
+            _ => {}
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// Apply a motion command and store the resulting selection.
     ///
