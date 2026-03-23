@@ -542,7 +542,7 @@ impl ChangeSet {
 ///
 /// # Usage pattern
 ///
-/// ```ignore
+/// ```text
 /// let mut b = ChangeSetBuilder::new(buf.len_chars());
 /// b.retain(5);        // skip first 5 chars
 /// b.delete(3);        // delete next 3

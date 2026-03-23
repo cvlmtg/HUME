@@ -385,7 +385,7 @@ pub(crate) fn delete_char_backward(
 /// This is the normal-mode `d` operation. It does NOT capture the deleted text
 /// into a register — the caller is responsible for that:
 ///
-/// ```ignore
+/// ```text
 /// let yanked = yank_selections(&buf, &sels);
 /// let (new_buf, new_sels) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);
