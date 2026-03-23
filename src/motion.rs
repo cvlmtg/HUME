@@ -301,23 +301,11 @@ fn next_word_end(
         return len - 1; // only whitespace to EOF — clamp to last char
     }
 
-    // Phase 2: skip forward while in the same category.
-    let cat = classify_char(buf.char_at(pos).expect("pos < len"));
-    loop {
-        // Peek at the next grapheme cluster's class. If the category changes,
-        // we've reached the end of this word — stop at the current grapheme.
-        let next_pos = next_grapheme_boundary(buf, pos);
-        if next_pos >= len {
-            break;
-        }
-        let next_cat = classify_char(buf.char_at(next_pos).expect("next_pos < len"));
-        if is_boundary(cat, next_cat) {
-            break;
-        }
-        pos = next_pos;
-    }
-
-    pos
+    // Phase 2: scan to the end of the word group that starts at `pos`.
+    // Delegates to `find_word_end_from`, which returns the last codepoint of
+    // the final grapheme cluster — correctly including combining marks (e.g.
+    // "e\u{0301}" = é returns position 4, not just the base 'e' at position 3).
+    find_word_end_from(buf, pos, is_boundary)
 }
 
 // ── Word-select helpers ───────────────────────────────────────────────────────
@@ -1230,6 +1218,18 @@ mod tests {
     fn extend_next_WORD_end_grows_existing_selection() {
         // Existing forward selection — extend head to end of next WORD.
         assert_state!("-[hell]>o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(&buf, sels, 1), "-[hello.world]> foo\n");
+    }
+
+    #[test]
+    fn extend_next_word_end_combining_grapheme() {
+        // "cafe\u{0301}" ends with the grapheme {é} = e(3) + \u{0301}(4).
+        // Extending to word-end must include the combining mark (head = 4),
+        // not stop at the base 'e' (head = 3) and orphan the accent.
+        assert_state!(
+            "-[c]>afe\u{0301} world\n",
+            |(buf, sels)| cmd_extend_next_word_end(&buf, sels, 1),
+            "-[cafe\u{0301}]> world\n"
+        );
     }
 
     // ── grapheme cluster correctness ──────────────────────────────────────────
