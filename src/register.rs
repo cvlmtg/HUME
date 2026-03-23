@@ -123,7 +123,7 @@ impl RegisterSet {
 /// Returns one `String` per selection. This is the content that gets stored in
 /// a register on yank or captured before a delete:
 ///
-/// ```ignore
+/// ```text
 /// let yanked = yank_selections(&buf, &sels);
 /// let (new_buf, new_sels) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);

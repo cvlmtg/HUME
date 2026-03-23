@@ -558,14 +558,14 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 /// Two arms handle the two motion shapes that exist in this codebase:
 ///
 /// **Direct** — the motion function takes only `(&Buffer, head)`:
-/// ```ignore
+/// ```text
 /// motion_cmd!(/// doc, cmd_move_right, Move, move_right);
 /// ```
 ///
 /// **Curried** — the motion function needs an extra argument (a boundary
 /// predicate or a target-column hint). The macro generates the closure
 /// `|b, h| inner(b, h, arg)`:
-/// ```ignore
+/// ```text
 /// motion_cmd!(/// doc, cmd_extend_next_word_start, Extend, next_word_start(is_word_boundary));
 /// motion_cmd!(/// doc, cmd_move_down,               Move,   move_down_inner(None));
 /// ```
