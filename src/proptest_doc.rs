@@ -267,8 +267,8 @@ mod tests {
         ]
     }
 
-    /// Apply a `PureOp`, returning the new `(Buffer, SelectionSet)`.
-    fn apply_pure_op(buf: Buffer, sels: SelectionSet, op: &PureOp) -> (Buffer, SelectionSet) {
+    /// Apply a `PureOp`, returning the new `SelectionSet` (buffer unchanged).
+    fn apply_pure_op(buf: &Buffer, sels: SelectionSet, op: &PureOp) -> SelectionSet {
         match op {
             PureOp::MoveRight => cmd_move_right(buf, sels, 1),
             PureOp::MoveLeft => cmd_move_left(buf, sels, 1),
@@ -318,15 +318,15 @@ mod tests {
             (buf, sels) in arb_initial_state(30),
             ops in proptest::collection::vec(arb_pure_op(), 1..=25),
         ) {
-            let mut cur_buf = buf;
+            let cur_buf = buf;
             let mut cur_sels = sels;
             assert_invariants(&cur_buf, &cur_sels);
 
             for op in &ops {
-                let (b, s) = apply_pure_op(cur_buf, cur_sels, op);
-                assert_invariants(&b, &s);
-                cur_buf = b;
-                cur_sels = s;
+                let new_sels = apply_pure_op(&cur_buf, cur_sels, op);
+                assert_invariants(&cur_buf, &new_sels);
+                // cur_buf is unchanged — pure ops never modify the buffer
+                cur_sels = new_sels;
             }
         }
 

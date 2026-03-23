@@ -25,7 +25,7 @@ use crate::selection::{Selection, SelectionSet};
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
 // buffer and handles the invert timing constraint.
 
-/// Apply a `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` command `count` times.
+/// Apply a `(&Buffer, SelectionSet) -> SelectionSet` command `count` times.
 ///
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
@@ -35,11 +35,11 @@ use crate::selection::{Selection, SelectionSet};
 /// (prevents premature merging of multi-cursor selections between steps).
 pub(crate) fn repeat(
     count: usize,
-    buf: Buffer,
+    buf: &Buffer,
     sels: SelectionSet,
-    cmd: impl Fn(Buffer, SelectionSet) -> (Buffer, SelectionSet),
-) -> (Buffer, SelectionSet) {
-    (0..count).fold((buf, sels), |(b, s), _| cmd(b, s))
+    cmd: impl Fn(&Buffer, SelectionSet) -> SelectionSet,
+) -> SelectionSet {
+    (0..count).fold(sels, |s, _| cmd(buf, s))
 }
 
 /// Apply an edit command `count` times, composing all changesets into one.
