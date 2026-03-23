@@ -7,22 +7,20 @@ use crate::selection::{Selection, SelectionSet};
 
 /// Controls how a motion updates the selection's anchor and head.
 ///
-/// In Helix's select-then-act model, the same underlying position calculation
-/// can produce three distinct selection behaviours depending on context:
-///
 /// | Mode | Anchor | Head | Typical keys |
 /// |------|--------|------|-------------|
-/// | `Move`   | `new_head` | `new_head` | `h`, `l` — plain cursor move |
-/// | `Select` | `old_head` | `new_head` | `w`, `b` — select from here to target |
-/// | `Extend` | `old_anchor` | `new_head` | shift-variants — grow selection |
+/// | `Move`   | `new_head` | `new_head` | `h`, `j`, `k`, `l` — plain cursor move |
+/// | `Extend` | `old_anchor` | `new_head` | extend-mode variants — grow selection |
 ///
-/// `Move` always produces a single-character selection (anchor == head).
-/// `Select` creates a fresh selection whose anchor is the *current* cursor position.
+/// `Move` always produces a collapsed single-character selection (anchor == head).
 /// `Extend` keeps the existing anchor, only moving the head.
+///
+/// Word motions (`w`/`b`/`W`/`B`) use [`apply_word_select`] instead of this
+/// enum — they return `(word_start, word_end)` pairs that become fresh
+/// forward selections without any accumulated anchor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MotionMode {
     Move,
-    Select,
     Extend,
 }
 
@@ -57,7 +55,6 @@ pub(crate) fn apply_motion(
         let new_head = (0..count).fold(sel.head, |h, _| motion(buf, h));
         match mode {
             MotionMode::Move => Selection::cursor(new_head),
-            MotionMode::Select => Selection::new(sel.head, new_head),
             MotionMode::Extend => Selection::new(sel.anchor, new_head),
         }
     });
@@ -581,8 +578,8 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 /// predicate or a target-column hint). The macro generates the closure
 /// `|b, h| inner(b, h, arg)`:
 /// ```ignore
-/// motion_cmd!(/// doc, cmd_next_word_start, Select, next_word_start(is_word_boundary));
-/// motion_cmd!(/// doc, cmd_move_down,       Move,   move_down_inner(None));
+/// motion_cmd!(/// doc, cmd_extend_next_word_start, Extend, next_word_start(is_word_boundary));
+/// motion_cmd!(/// doc, cmd_move_down,               Move,   move_down_inner(None));
 /// ```
 ///
 /// The curried arm is listed first so that `ident(expr)` syntax is tried
@@ -1100,6 +1097,18 @@ mod tests {
     }
 
     #[test]
+    fn select_prev_word_from_punct() {
+        // Cursor on the '.' punctuation — selects the preceding word "hello".
+        assert_state!("hello-[.]>world\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]>.world\n");
+    }
+
+    #[test]
+    fn select_prev_word_from_trailing_newline() {
+        // Cursor on the trailing '\n' — selects the last word on the line.
+        assert_state!("hello world-[\n]>", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "hello -[world]>\n");
+    }
+
+    #[test]
     fn select_prev_word_crosses_newline() {
         // b crosses the newline and selects the last word on the previous line.
         assert_state!("hello\n-[world]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[hello]>\nworld\n");
@@ -1133,12 +1142,24 @@ mod tests {
         assert_state!("hello world -[foo]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 2), "-[hello]> world foo\n");
     }
 
+    #[test]
+    fn select_prev_word_count_overshoots() {
+        // count=5 but only 2 words precede "foo" — stops at "hello" rather than erroring.
+        assert_state!("hello world -[foo]>\n", |(buf, sels)| cmd_select_prev_word(&buf, sels, 5), "-[hello]> world foo\n");
+    }
+
     // ── WORD variants (W / B) ─────────────────────────────────────────────────
 
     #[test]
     fn select_next_WORD_skips_punct() {
-        // W: "hello.world" is a single WORD — w selects it entirely.
+        // W: "hello.world" is a single WORD — W selects it entirely.
         assert_state!("-[h]>ello.world bar\n", |(buf, sels)| cmd_select_next_WORD(&buf, sels, 1), "hello.world -[bar]>\n");
+    }
+
+    #[test]
+    fn select_next_WORD_crosses_newline() {
+        // W at end of a line crosses the newline and selects the first WORD on the next line.
+        assert_state!("-[h]>ello.world\nbar\n", |(buf, sels)| cmd_select_next_WORD(&buf, sels, 1), "hello.world\n-[bar]>\n");
     }
 
     #[test]
@@ -1152,6 +1173,12 @@ mod tests {
         // B: from "bar", jumps back over "hello.world" as ONE WORD (the dot is not
         // a WORD boundary), selecting the whole token.
         assert_state!("hello.world -[bar]>\n", |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1), "-[hello.world]> bar\n");
+    }
+
+    #[test]
+    fn select_prev_WORD_crosses_newline() {
+        // B at the start of a line crosses the newline and selects the last WORD on the previous line.
+        assert_state!("hello.world\n-[bar]>\n", |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1), "-[hello.world]>\nbar\n");
     }
 
     // ── extend variants ───────────────────────────────────────────────────────
@@ -1418,17 +1445,6 @@ mod tests {
     }
 
     #[test]
-    fn select_next_word_count_2_inline() {
-        // count=2 from 'h': step1 selects "world", step2 selects "foo".
-        // Final selection is just "foo" (fresh anchor each step).
-        assert_state!(
-            "-[h]>ello world foo\n",
-            |(buf, sels)| cmd_select_next_word(&buf, sels, 2),
-            "hello world -[foo]>\n"
-        );
-    }
-
-    #[test]
     fn move_right_count_grapheme_cluster() {
         // Buffer: "e◌́x\n". Grapheme clusters: {e◌́}(0..2), {x}(2), {\n}(3).
         // count=2 from offset 0: step1 → 2 (x), step2 → 3 (\n). Clamped to len-1=3.
@@ -1551,11 +1567,6 @@ mod tests {
     #[test]
     fn goto_first_nonblank_empty_buffer() {
         assert_state!("-[\n]>", |(buf, sels)| cmd_goto_first_nonblank(&buf, sels, 1), "-[\n]>");
-    }
-
-    #[test]
-    fn select_prev_word_empty_buffer_2() {
-        assert_state!("-[\n]>", |(buf, sels)| cmd_select_prev_word(&buf, sels, 1), "-[\n]>");
     }
 
     #[test]
