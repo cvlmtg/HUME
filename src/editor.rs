@@ -5,12 +5,16 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::buffer::Buffer;
 use crate::document::Document;
-use crate::edit::{delete_char_backward, delete_char_forward, delete_selection, insert_char};
+use crate::edit::{
+    delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
+    paste_before,
+};
 use crate::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_down,
     cmd_move_left, cmd_move_right, cmd_move_up, cmd_next_paragraph, cmd_prev_paragraph,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
+use crate::register::{yank_selections, RegisterSet, DEFAULT_REGISTER};
 use crate::renderer::render;
 use crate::selection::{Selection, SelectionSet};
 use crate::selection_cmd::{
@@ -18,7 +22,36 @@ use crate::selection_cmd::{
     cmd_cycle_primary_forward, cmd_keep_primary_selection,
 };
 use crate::terminal::Term;
+use crate::text_object::{
+    cmd_around_WORD, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
+    cmd_around_double_quote, cmd_around_paren, cmd_around_single_quote, cmd_around_word,
+    cmd_inner_WORD, cmd_inner_angle, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
+    cmd_inner_double_quote, cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
+    cmd_around_angle,
+};
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
+
+// ── PendingKey ────────────────────────────────────────────────────────────────
+
+/// Tracks multi-key sequences that require waiting for additional key presses.
+///
+/// Text objects use a 3-key sequence: `m` → `i`/`a` → object char.
+/// For example, `mi(` selects the inner content of the nearest paren pair.
+///
+/// On any unrecognized key at any stage the pending state resets to `None` and
+/// the key is re-dispatched normally (so `mq` quits rather than silently eating
+/// the `q`). Esc always resets to `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PendingKey {
+    #[default]
+    None,
+    /// After `m` — waiting for `i` (inner) or `a` (around).
+    Match,
+    /// After `mi` — waiting for the object char.
+    MatchInner,
+    /// After `ma` — waiting for the object char.
+    MatchAround,
+}
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 
@@ -40,6 +73,8 @@ pub(crate) struct Editor {
     view: ViewState,
     file_path: Option<PathBuf>,
     mode: Mode,
+    pending: PendingKey,
+    registers: RegisterSet,
     should_quit: bool,
 }
 
@@ -70,7 +105,15 @@ impl Editor {
             line_number_style: LineNumberStyle::Hybrid,
         };
 
-        Ok(Self { doc, view, file_path, mode: Mode::Normal, should_quit: false })
+        Ok(Self {
+            doc,
+            view,
+            file_path,
+            mode: Mode::Normal,
+            pending: PendingKey::None,
+            registers: RegisterSet::new(),
+            should_quit: false,
+        })
     }
 
     /// Run the editor event loop until the user quits.
@@ -131,6 +174,41 @@ impl Editor {
     // ── Normal mode ───────────────────────────────────────────────────────────
 
     fn handle_normal(&mut self, key: KeyEvent) {
+        // ── Pending key sequences ──────────────────────────────────────────────
+        //
+        // Text objects are entered as `m` → `i`/`a` → object char.
+        // Each stage either advances the sequence or resets and re-dispatches.
+        if self.pending != PendingKey::None {
+            if let KeyCode::Char(ch) = key.code {
+                match self.pending {
+                    PendingKey::Match => {
+                        match ch {
+                            'i' => { self.pending = PendingKey::MatchInner; return; }
+                            'a' => { self.pending = PendingKey::MatchAround; return; }
+                            _ => {} // fall through to normal dispatch below
+                        }
+                    }
+                    PendingKey::MatchInner => {
+                        self.pending = PendingKey::None;
+                        if self.dispatch_text_object(ch, true) {
+                            return;
+                        }
+                        // Unrecognized object char — fall through.
+                    }
+                    PendingKey::MatchAround => {
+                        self.pending = PendingKey::None;
+                        if self.dispatch_text_object(ch, false) {
+                            return;
+                        }
+                        // Unrecognized object char — fall through.
+                    }
+                    PendingKey::None => unreachable!(),
+                }
+            }
+            // Non-char key (e.g. Esc) or unrecognized char: reset and fall through.
+            self.pending = PendingKey::None;
+        }
+
         match key.code {
             // ── Quit (temporary until :q is implemented) ──────────────────────
             KeyCode::Char('q') => self.should_quit = true,
@@ -179,20 +257,55 @@ impl Editor {
             KeyCode::Char('C') => self.apply_motion(|b, s| cmd_copy_selection_on_next_line(b, s)),
 
             // ── Edit ──────────────────────────────────────────────────────────
+            // `d` — delete selection and yank into default register.
             KeyCode::Char('d') => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
                 self.doc.apply_edit(|b, s| delete_selection(b, s));
+                self.registers.write(DEFAULT_REGISTER, yanked);
             }
-            // `c` — change: delete selection then enter Insert mode.
-            // Equivalent to `d` followed by `i`.
+            // `c` — change: yank, delete selection, then enter Insert mode.
             KeyCode::Char('c') => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
                 self.doc.apply_edit(|b, s| delete_selection(b, s));
+                self.registers.write(DEFAULT_REGISTER, yanked);
                 self.mode = Mode::Insert;
+            }
+            // `y` — yank selection into default register (no buffer change).
+            KeyCode::Char('y') => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
+                self.registers.write(DEFAULT_REGISTER, yanked);
+            }
+            // `p` — paste after; if the selection is non-cursor, the displaced
+            // text is swapped back into the default register.
+            KeyCode::Char('p') => {
+                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
+                    let values = reg.values().to_vec();
+                    let displaced = self.doc.apply_edit(|b, s| paste_after(b, s, &values));
+                    if displaced.iter().any(|s| !s.is_empty()) {
+                        self.registers.write(DEFAULT_REGISTER, displaced);
+                    }
+                }
+            }
+            // `P` — paste before; same swap semantics as `p`.
+            KeyCode::Char('P') => {
+                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
+                    let values = reg.values().to_vec();
+                    let displaced = self.doc.apply_edit(|b, s| paste_before(b, s, &values));
+                    if displaced.iter().any(|s| !s.is_empty()) {
+                        self.registers.write(DEFAULT_REGISTER, displaced);
+                    }
+                }
             }
             KeyCode::Char('u') => self.doc.undo(),
             KeyCode::Char('U') => self.doc.redo(),
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.doc.redo();
             }
+
+            // ── Text objects ──────────────────────────────────────────────────
+            // `m` — enter match mode; next key selects inner (`i`) or around (`a`),
+            // then the object char completes the sequence.
+            KeyCode::Char('m') => self.pending = PendingKey::Match,
 
             // ── Mode transitions ──────────────────────────────────────────────
             // `i` — enter Insert at current position
@@ -206,7 +319,8 @@ impl Editor {
                 self.mode = Mode::Insert;
             }
 
-            KeyCode::Esc => {} // already in Normal mode
+            // Esc resets any pending key sequence (already in Normal mode).
+            KeyCode::Esc => self.pending = PendingKey::None,
 
             _ => {}
         }
@@ -263,5 +377,42 @@ impl Editor {
             f(buf, sels)
         };
         self.doc.set_selections(new_sels);
+    }
+
+    /// Dispatch a text-object command by object char.
+    ///
+    /// Called by the pending-key handler after `mi`/`ma` + object char.
+    /// Returns `true` if `ch` matched a known object, `false` if unrecognized
+    /// (caller falls through to normal dispatch).
+    ///
+    /// `inner == true` → select the interior (e.g. contents inside parens).
+    /// `inner == false` → select around (e.g. parens themselves included).
+    #[allow(non_snake_case)] // WORD (uppercase) is an intentional Vim/Helix concept
+    fn dispatch_text_object(&mut self, ch: char, inner: bool) -> bool {
+        match (ch, inner) {
+            // ── Word / WORD ───────────────────────────────────────────────
+            ('w', true)  => self.apply_motion(cmd_inner_word),
+            ('w', false) => self.apply_motion(cmd_around_word),
+            ('W', true)  => self.apply_motion(cmd_inner_WORD),
+            ('W', false) => self.apply_motion(cmd_around_WORD),
+            // ── Brackets ─────────────────────────────────────────────────
+            ('(' | ')', true)  => self.apply_motion(cmd_inner_paren),
+            ('(' | ')', false) => self.apply_motion(cmd_around_paren),
+            ('[' | ']', true)  => self.apply_motion(cmd_inner_bracket),
+            ('[' | ']', false) => self.apply_motion(cmd_around_bracket),
+            ('{' | '}', true)  => self.apply_motion(cmd_inner_brace),
+            ('{' | '}', false) => self.apply_motion(cmd_around_brace),
+            ('<' | '>', true)  => self.apply_motion(cmd_inner_angle),
+            ('<' | '>', false) => self.apply_motion(cmd_around_angle),
+            // ── Quotes ───────────────────────────────────────────────────
+            ('"', true)  => self.apply_motion(cmd_inner_double_quote),
+            ('"', false) => self.apply_motion(cmd_around_double_quote),
+            ('\'', true)  => self.apply_motion(cmd_inner_single_quote),
+            ('\'', false) => self.apply_motion(cmd_around_single_quote),
+            ('`', true)  => self.apply_motion(cmd_inner_backtick),
+            ('`', false) => self.apply_motion(cmd_around_backtick),
+            _ => return false,
+        }
+        true
     }
 }

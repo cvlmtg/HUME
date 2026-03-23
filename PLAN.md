@@ -72,14 +72,15 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Quit command
 
 ### M3 — Modal editing (in progress)
-- [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End/0/$`, `^` (first non-blank), `{`/`}` (paragraph), `PageUp/PageDown`, `;` (collapse), `,` (keep primary), `(`/`)` (cycle primary), `C` (copy to next line), `d` (delete), `c` (change), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
+- [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End/0/$`, `^` (first non-blank), `{`/`}` (paragraph), `PageUp/PageDown`, `;` (collapse), `,` (keep primary), `(`/`)` (cycle primary), `C` (copy to next line), `d` (delete + yank), `c` (change + yank), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
+- [x] Yank/paste: `y` (yank), `p` (paste after), `P` (paste before); `d`/`c` yank before deleting; paste on non-cursor selection swaps displaced text back into default register
+- [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
 - [ ] Repeat last command (`.` equivalent)
 - [ ] Extend mode: `x` toggles extend mode (all terminals); `Ctrl+motion` as extend shortcut when kitty keyboard protocol is active. In extend mode all motions extend the current selection instead of replacing it. Ctrl rejected as universal modifier due to fatal legacy-terminal collisions.
 - [ ] Line selection: needs a key binding (not `x` — taken by extend mode; not yet decided)
-- [ ] Paragraph navigation: bind `{` / `}` (prev/next paragraph). Free in both Helix and Kakoune. Preferred over Helix's `[p` / `]p`.
 - [ ] Auto-pairs: auto-close brackets, quotes (configurable)
 - [ ] Matching bracket highlight
 - [ ] Cursor line highlight
