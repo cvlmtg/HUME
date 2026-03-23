@@ -20,7 +20,8 @@ mod tests {
     };
     use crate::motion::{
         cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-        cmd_move_up, cmd_select_next_word, cmd_select_prev_word,
+        cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
+        cmd_select_prev_word,
     };
     use crate::selection::{Selection, SelectionSet};
     use crate::selection_cmd::{
@@ -234,6 +235,8 @@ mod tests {
         GotoLineEnd,
         SelectNextWord,
         SelectPrevWord,
+        SelectNextWORD,
+        SelectPrevWORD,
         InnerWord,
         AroundWord,
         InnerLine,
@@ -254,6 +257,8 @@ mod tests {
             Just(PureOp::GotoLineEnd),
             Just(PureOp::SelectNextWord),
             Just(PureOp::SelectPrevWord),
+            Just(PureOp::SelectNextWORD),
+            Just(PureOp::SelectPrevWORD),
             Just(PureOp::InnerWord),
             Just(PureOp::AroundWord),
             Just(PureOp::InnerLine),
@@ -276,6 +281,8 @@ mod tests {
             PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1),
             PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1),
             PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1),
+            PureOp::SelectNextWORD => cmd_select_next_WORD(buf, sels, 1),
+            PureOp::SelectPrevWORD => cmd_select_prev_WORD(buf, sels, 1),
             PureOp::InnerWord => cmd_inner_word(buf, sels),
             PureOp::AroundWord => cmd_around_word(buf, sels),
             PureOp::InnerLine => cmd_inner_line(buf, sels),
