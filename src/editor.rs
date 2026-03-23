@@ -169,6 +169,12 @@ impl Editor {
             KeyCode::Char('d') => {
                 self.doc.apply_edit(|b, s| delete_selection(b, s));
             }
+            // `c` — change: delete selection then enter Insert mode.
+            // Equivalent to `d` followed by `i`.
+            KeyCode::Char('c') => {
+                self.doc.apply_edit(|b, s| delete_selection(b, s));
+                self.mode = Mode::Insert;
+            }
             KeyCode::Char('u') => self.doc.undo(),
             KeyCode::Char('U') => self.doc.redo(),
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
