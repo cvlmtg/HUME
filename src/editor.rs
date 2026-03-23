@@ -7,13 +7,16 @@ use crate::buffer::Buffer;
 use crate::document::Document;
 use crate::edit::{delete_char_backward, delete_char_forward, delete_selection, insert_char};
 use crate::motion::{
-    cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-    cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
-    cmd_select_prev_word,
+    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_down,
+    cmd_move_left, cmd_move_right, cmd_move_up, cmd_next_paragraph, cmd_prev_paragraph,
+    cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
 use crate::renderer::render;
 use crate::selection::{Selection, SelectionSet};
-use crate::selection_cmd::{cmd_collapse_selection, cmd_keep_primary_selection};
+use crate::selection_cmd::{
+    cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
+    cmd_cycle_primary_forward, cmd_keep_primary_selection,
+};
 use crate::terminal::Term;
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -148,8 +151,13 @@ impl Editor {
             KeyCode::Char('B') => self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1)),
 
             // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
-            KeyCode::End  => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
+            KeyCode::Home  => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
+            KeyCode::End   => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
+            KeyCode::Char('^') => self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1)),
+
+            // ── Paragraph motion ──────────────────────────────────────────────
+            KeyCode::Char('{') => self.apply_motion(|b, s| cmd_prev_paragraph(b, s, 1)),
+            KeyCode::Char('}') => self.apply_motion(|b, s| cmd_next_paragraph(b, s, 1)),
 
             // ── Page scroll ───────────────────────────────────────────────────
             KeyCode::PageDown => {
@@ -164,6 +172,11 @@ impl Editor {
             // ── Selection ─────────────────────────────────────────────────────
             KeyCode::Char(';') => self.apply_motion(|b, s| cmd_collapse_selection(b, s)),
             KeyCode::Char(',') => self.apply_motion(|b, s| cmd_keep_primary_selection(b, s)),
+            // `(`/`)` — cycle the primary selection backward/forward.
+            KeyCode::Char('(') => self.apply_motion(|b, s| cmd_cycle_primary_backward(b, s)),
+            KeyCode::Char(')') => self.apply_motion(|b, s| cmd_cycle_primary_forward(b, s)),
+            // `C` — duplicate the selection onto the next line (multicursor).
+            KeyCode::Char('C') => self.apply_motion(|b, s| cmd_copy_selection_on_next_line(b, s)),
 
             // ── Edit ──────────────────────────────────────────────────────────
             KeyCode::Char('d') => {

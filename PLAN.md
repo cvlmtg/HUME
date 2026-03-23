@@ -72,7 +72,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Quit command
 
 ### M3 — Modal editing (in progress)
-- [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End`, `PageUp/PageDown`, `;` (collapse selection), `,` (keep primary), `d` (delete), `c` (change: delete + enter Insert), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
+- [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End`, `^` (first non-blank), `{`/`}` (paragraph), `PageUp/PageDown`, `;` (collapse), `,` (keep primary), `(`/`)` (cycle primary), `C` (copy to next line), `d` (delete), `c` (change), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
