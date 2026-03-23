@@ -2,10 +2,10 @@ use ropey::RopeSlice;
 
 /// Where a display line's content comes from.
 ///
-/// Every line the renderer draws must have a source. In M2 the only source
-/// is a real buffer line, but the enum exists from day one so that virtual
-/// lines (diagnostics, ghost text, soft-wrap continuations) can be added
-/// later without changing the renderer's iteration contract.
+/// Every line the renderer draws must have a source. Currently the only source
+/// is a real buffer line, but the enum exists so that virtual lines
+/// (diagnostics, ghost text, soft-wrap continuations) can be added later
+/// without changing the renderer's iteration contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DisplayLineSource {
     /// A real line from the buffer. `line_idx` is the 0-based line index.
@@ -17,9 +17,9 @@ pub(crate) enum DisplayLineSource {
 
 /// A single line as presented on screen.
 ///
-/// This is the unit the renderer iterates over. In M2 every `DisplayLine`
-/// maps 1:1 to a buffer line. The abstraction exists so future virtual
-/// lines can be inserted without changing the renderer's core loop.
+/// This is the unit the renderer iterates over. Currently every `DisplayLine`
+/// maps 1:1 to a buffer line. The abstraction exists so future virtual lines
+/// can be inserted without changing the renderer's core loop.
 ///
 /// ## Lifetime
 ///

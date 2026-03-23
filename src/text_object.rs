@@ -346,7 +346,7 @@ bracket_cmds!(cmd_inner_angle, cmd_around_angle, '<', '>');
 
 /// Find the quote pair on the current line that encloses or is nearest to `pos`.
 ///
-/// Quotes don't span lines (M1 limitation). Strategy: scan the current line
+/// Quotes don't span lines (current limitation). Strategy: scan the current line
 /// tracking parity — odd occurrences are opening quotes, even occurrences are
 /// closing quotes. Returns the pair that contains `pos`.
 ///

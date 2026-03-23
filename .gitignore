@@ -16,7 +16,6 @@ Thumbs.db
 *.iml
 
 # Planning docs (local only, never committed)
-M2.md
 
 # insta pending-snapshot files (created when a snapshot mismatches during review)
 **/.*.pending-snap
