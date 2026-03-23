@@ -8,6 +8,22 @@ use crate::selection::SelectionSet;
 /// being overly aggressive.
 const SCROLL_MARGIN: usize = 3;
 
+/// How line numbers are displayed in the gutter.
+///
+/// - `Absolute` — every line shows its 1-based buffer line number.
+/// - `Relative` — every line shows its distance from the cursor line; the
+///   cursor line shows `0`.
+/// - `Hybrid` *(default)* — the cursor line shows its absolute number; all
+///   other lines show their relative distance. This gives the best of both
+///   worlds: you can navigate by exact line number and jump by relative offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum LineNumberStyle {
+    Absolute,
+    Relative,
+    #[default]
+    Hybrid,
+}
+
 /// The viewport state for a single editor pane.
 ///
 /// Tracks which portion of the buffer is visible and how much space is
@@ -36,6 +52,9 @@ pub(crate) struct ViewState {
     /// Computed by [`compute_gutter_width`] and cached here so the renderer
     /// and the viewport both use the same value without recomputing.
     pub gutter_width: usize,
+
+    /// How line numbers are rendered in the gutter.
+    pub line_number_style: LineNumberStyle,
 }
 
 /// Compute the line-number gutter width for a buffer with `total_lines` lines.
@@ -139,6 +158,7 @@ mod tests {
             height,
             width: 80,
             gutter_width: compute_gutter_width(buf.len_lines()),
+            line_number_style: LineNumberStyle::Absolute,
         }
     }
 
