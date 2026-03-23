@@ -157,6 +157,15 @@ impl Document {
         &self.sels
     }
 
+    /// Replace the current selection state without recording an undo entry.
+    ///
+    /// Use this for motion commands: they move the cursor but do not modify
+    /// the buffer, so there is nothing to record in the undo history.
+    /// Edits that also change the buffer must go through [`apply_edit`].
+    pub(crate) fn set_selections(&mut self, sels: SelectionSet) {
+        self.sels = sels;
+    }
+
     /// True if there is at least one edit to undo.
     pub(crate) fn can_undo(&self) -> bool {
         self.history.can_undo()
