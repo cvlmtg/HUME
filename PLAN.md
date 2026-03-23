@@ -71,9 +71,9 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Status bar with filename and position
 - [x] Quit command
 
-### M3 — Modal editing
-- [ ] Normal mode with cursor movement (drives core motions)
-- [ ] Insert mode with text input
+### M3 — Modal editing (in progress)
+- [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End`, `PageUp/PageDown`, `;` (collapse selection), `,` (keep primary), `d` (delete), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
+- [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
 - [ ] Command mode (`:` commands)
 - [ ] Keymap: command-based dispatch from Steel config
 - [ ] Repeat last command (`.` equivalent)
@@ -85,8 +85,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Cursor line highlight
 
 ### Future milestones
-- **Motion selection model**: decide between Helix (jump/collapse) and Kakoune (select-through) for paragraph and goto-line motions. Currently Helix. One-word change per command (`MotionMode::Move` → `Select`). Decide after trying both in the running UI.
-- **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Registers are implemented — explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after the UI is wired up in M2.
+- **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Registers are implemented — explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
 - Search and replace with incremental search and live match highlighting
 - File picker / fuzzy finder (Helix-style picker with fuzzy matching)
 - Jump list (navigate back/forward through cursor position history)
