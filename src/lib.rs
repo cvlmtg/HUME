@@ -5,6 +5,7 @@
 
 pub(crate) mod display_line;
 pub(crate) mod view;
+pub(crate) mod renderer;
 pub(crate) mod buffer;
 pub(crate) mod document;
 pub(crate) mod changeset;
