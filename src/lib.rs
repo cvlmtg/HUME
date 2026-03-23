@@ -1,8 +1,3 @@
-// The library is currently only exercised through tests — main.rs does not
-// use it yet. Suppress the wave of dead-code warnings until M2 wires up the
-// editor layer.
-#![allow(dead_code)]
-
 pub(crate) mod display_line;
 pub(crate) mod view;
 pub(crate) mod renderer;
@@ -30,3 +25,21 @@ pub(crate) mod transaction;
 pub(crate) mod testing;
 #[cfg(test)]
 mod proptest_doc;
+
+/// Start the editor.
+///
+/// Installs the panic hook, initialises the terminal, runs the event loop,
+/// and restores the terminal on exit (clean or panicking).
+pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    terminal::install_panic_hook();
+
+    let mut editor = editor::Editor::open(file_path)?;
+    let mut term = terminal::init()?;
+
+    let result = editor.run(&mut term);
+
+    // Always restore the terminal, even if the event loop returned an error.
+    terminal::restore()?;
+
+    Ok(result?)
+}
