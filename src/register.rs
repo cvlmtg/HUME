@@ -125,7 +125,7 @@ impl RegisterSet {
 ///
 /// ```text
 /// let yanked = yank_selections(&buf, &sels);
-/// let (new_buf, new_sels) = delete_selection(buf, sels);
+/// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);
 /// ```
 ///
