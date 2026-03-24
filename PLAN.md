@@ -76,7 +76,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Yank/paste: `y` (yank), `p` (paste after), `P` (paste before); `d`/`c` yank before deleting; paste on non-cursor selection swaps displaced text back into default register
 - [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
-- [ ] Extend mode: `x` toggles extend mode; all motions extend the selection instead of replacing it. All `cmd_extend_*` commands already exist in `motion.rs` — only editor wiring needed. `Ctrl+motion` as shortcut deferred (kitty-only).
+- [ ] Extend mode: `x` toggles extend mode; all motions extend the selection instead of replacing it. All `cmd_extend_*` commands already exist in `motion.rs` — only editor wiring needed. `Ctrl+motion` shortcuts deferred to M4 (requires kitty keyboard protocol).
 - [ ] Cursor line highlight: subtle background on the cursor row in `render_content`; `cursor_line` already computed in `render()`.
 - [ ] Line selection: `cmd_inner_line`/`cmd_around_line` exist in `text_object.rs`; just needs a key binding decision.
 - [ ] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.
@@ -87,8 +87,9 @@ Build the core with no UI dependency. Drive entirely from tests.
 
 Theme: replace hardcoded key dispatch with a proper command registry and keymap layer, then add the highest-value editing features that depend on it.
 
+- [ ] **Kitty keyboard protocol** (`src/input.rs`): on startup, probe the terminal with `CSI ? u` and enable enhanced key reporting if supported; parse kitty-format sequences alongside legacy crossterm events; emit a unified `KeyEvent` type that carries modifier flags legacy encoding cannot express. Graceful fallback to legacy encoding when the terminal doesn't support the protocol. Unlocks `Ctrl+motion` shortcuts in the default keymap.
 - [ ] **Command registry** (`src/command.rs`): typed command descriptors behind string names — `Motion`, `Selection`, and `Edit` variants; `register_defaults()` registers every `cmd_*` function. The `cmd_*` signatures are already the right shape.
-- [ ] **Keymap layer** (`src/keymap.rs`): trie-based `KeyEvent` sequence → command name mapping; per-mode keymaps (Normal, Insert, Select); replaces the `PendingKey` enum and all `handle_normal` match arms. Default keymap in Rust (Steel config is M5).
+- [ ] **Keymap layer** (`src/keymap.rs`): trie-based `KeyEvent` sequence → command name mapping; per-mode keymaps (Normal, Insert, Select); replaces the `PendingKey` enum and all `handle_normal` match arms. Default keymap includes `Ctrl+motion` variants (e.g. `Ctrl+w`/`Ctrl+b` for word jumps) enabled by kitty protocol. Default keymap in Rust (Steel config is M5).
 - [ ] **Goto commands** (`g` prefix): `gg` (first line), `ge` (last line), `gh` (line start), `gl` (line end), `gs` (first non-blank) — validates the multi-key trie.
 - [ ] **Repeat last command (`.`)**: registry records last command name + count; `InsertTransaction` captures insert-mode keystroke sequences so `c` + text + `Esc` replays as a single unit.
 - [ ] **File save robustness**: `:w <path>` save-as, "no file name" error, dirty-buffer tracking in status bar (builds on M3 command mode).
