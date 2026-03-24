@@ -290,6 +290,35 @@ fn capital_i_enters_insert_at_first_nonblank() {
     assert_eq!(state(&ed), "  -[h]>ello\n");
 }
 
+// ── `o` in extend mode flips the selection ────────────────────────────────────
+
+/// In extend mode `o` must swap anchor and head (Vim visual-mode `o`), letting
+/// the user extend the selection in the opposite direction. In normal mode `o`
+/// must still open a line below — the extend branch must not shadow it.
+#[test]
+fn o_in_extend_mode_flips_selection() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.extend = true;
+
+    ed.handle_key(key('o'));
+
+    // anchor and head are swapped — selection is now backward.
+    assert_eq!(state(&ed), "<[hell]-o\n");
+    // extend mode is still active (flip doesn't exit it).
+    assert!(ed.extend);
+}
+
+#[test]
+fn o_in_normal_mode_still_opens_line_below() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // extend is off (default).
+
+    ed.handle_key(key('o'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.doc.buf().to_string(), "hello\n\n");
+}
+
 // ── 9. `;` collapses selection AND clears extend mode ─────────────────────────
 
 /// `;` must (a) collapse every selection to its head and (b) clear the

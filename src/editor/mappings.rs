@@ -16,7 +16,8 @@ use crate::motion::{
 use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
-    cmd_cycle_primary_forward, cmd_keep_primary_selection, cmd_trim_selection_whitespace,
+    cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
+    cmd_trim_selection_whitespace,
 };
 use crate::text_object::{
     cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
@@ -295,15 +296,17 @@ impl Editor {
                 self.set_mode(Mode::Insert);
             }
 
-            // `o` — open a new line below the current line and enter Insert.
-            // Moves to the line's '\n', inserts a new '\n' before it (splitting
-            // the line), and lands the cursor on the new empty line.
-            KeyCode::Char('o') => {
+            // `o` — dual-purpose:
+            //   extend mode: flip the anchor/head of every selection (Vim visual `o`).
+            //   normal mode: open a new line below the current line and enter Insert.
+            KeyCode::Char('o') => if self.extend {
+                self.apply_motion(|b, s| cmd_flip_selections(b, s));
+            } else {
                 self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
                 self.apply_motion(|b, s| cmd_move_right(b, s, 1));
                 self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
                 self.set_mode(Mode::Insert);
-            }
+            },
 
             // `O` — open a new line above the current line and enter Insert.
             // Moves to the line start, inserts a '\n' (pushing current content
