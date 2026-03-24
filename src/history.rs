@@ -209,29 +209,22 @@ impl History {
         !self.revisions[self.current.0].children.is_empty()
     }
 
-    #[allow(dead_code)]
     /// Total number of revisions in the tree (including the root).
-    #[must_use]
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.revisions.len()
     }
 
-    #[allow(dead_code)]
     /// The currently active revision.
+    #[cfg(test)]
     pub(crate) fn current_id(&self) -> RevisionId {
         self.current
     }
 
-    #[allow(dead_code)]
     /// Parent of a revision. `None` for the root.
+    #[cfg(test)]
     pub(crate) fn parent(&self, id: RevisionId) -> Option<RevisionId> {
         self.revisions[id.0].parent
-    }
-
-    #[allow(dead_code)]
-    /// Children of a revision (branches created from this state).
-    pub(crate) fn children(&self, id: RevisionId) -> &[RevisionId] {
-        &self.revisions[id.0].children
     }
 
     /// Ancestor chain from `id` up to and including the root.

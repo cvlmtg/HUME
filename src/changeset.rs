@@ -171,29 +171,9 @@ fn advance_op(
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
-    // Inspection accessors not yet called from editor code; kept for tests and
-    // future diagnostics / serialisation.
-    #[allow(dead_code)]
-    /// The old-document length this changeset was built for.
-    pub(crate) fn len_before(&self) -> usize {
-        self.len_before
-    }
-
-    #[allow(dead_code)]
-    /// The new-document length after applying this changeset.
-    pub(crate) fn len_after(&self) -> usize {
-        self.len_after
-    }
-
-    #[allow(dead_code)]
-    /// The raw operations (for inspection in tests).
-    pub(crate) fn ops(&self) -> &[Operation] {
-        &self.ops
-    }
-
-    #[allow(dead_code)]
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
     }
