@@ -1,4 +1,5 @@
 pub(crate) mod display_line;
+pub(crate) mod theme;
 pub(crate) mod view;
 pub(crate) mod renderer;
 pub(crate) mod terminal;

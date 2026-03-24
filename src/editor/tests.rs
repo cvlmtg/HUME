@@ -27,6 +27,7 @@ fn editor_from(input: &str) -> Editor {
         extend: false,
         pending: PendingKey::None,
         registers: crate::register::RegisterSet::new(),
+        colors: crate::theme::EditorColors::default(),
         should_quit: false,
     }
 }

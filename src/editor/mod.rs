@@ -11,6 +11,7 @@ use crate::register::RegisterSet;
 use crate::renderer::{cursor_screen_pos, render};
 use crate::selection::{Selection, SelectionSet};
 use crate::terminal::Term;
+use crate::theme::EditorColors;
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
 mod mappings;
@@ -64,6 +65,7 @@ pub(crate) struct Editor {
     pub(super) extend: bool,
     pub(super) pending: PendingKey,
     pub(super) registers: RegisterSet,
+    pub(super) colors: EditorColors,
     pub(super) should_quit: bool,
 }
 
@@ -102,6 +104,7 @@ impl Editor {
             extend: false,
             pending: PendingKey::None,
             registers: RegisterSet::new(),
+            colors: EditorColors::default(),
             should_quit: false,
         })
     }
@@ -135,8 +138,9 @@ impl Editor {
             let file_path = self.file_path.as_deref();
             let mode = self.mode;
             let extend = self.extend;
+            let colors = &self.colors;
             term.draw(|frame| {
-                render(doc, view, mode, extend, file_path, frame.area(), frame.buffer_mut());
+                render(doc, view, mode, extend, file_path, colors, frame.area(), frame.buffer_mut());
                 // In Insert mode, show the real terminal cursor (bar) so
                 // SetCursorStyle is visible. Normal mode uses the reversed-cell
                 // rendering only — no real cursor, so the letter stays visible.
