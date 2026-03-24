@@ -1,6 +1,6 @@
 use crate::buffer::Buffer;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_end_exclusive, CharClass};
+use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, CharClass};
 use crate::selection::{Selection, SelectionSet};
 
 // ── Text object framework ──────────────────────────────────────────────────────
@@ -83,29 +83,19 @@ pub(crate) fn apply_text_object_extend(
 /// Returns `None` for lines that contain only a newline (no content to select).
 fn inner_line(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
-    let start = buf.line_to_char(line);
-    let end_excl = line_end_exclusive(buf, line);
-    // end_excl points one past the last char on this line.
-    // We want the inclusive end, which is one before end_excl.
-    // Then we want to exclude the trailing '\n', so one more step back.
-    // If the line is "\n" only, start == end_excl - 1, so there's no
-    // content before the newline — return None.
-    if end_excl == start {
-        // Shouldn't happen given the buffer invariant, but be safe.
-        return None;
+    let line_start = buf.line_to_char(line);
+    // line_content_end returns the grapheme cluster *start* of the last
+    // non-newline grapheme (uses prev_grapheme_boundary internally, so
+    // combining clusters are handled correctly). For empty lines it returns
+    // line_start (the '\n' itself).
+    let content_start = line_content_end(buf, line);
+    if content_start == line_start && buf.char_at(line_start) == Some('\n') {
+        return None; // empty line — no selectable content
     }
-    let last = end_excl - 1; // inclusive end of the raw line (the '\n' itself)
-    if buf.char_at(last) == Some('\n') {
-        if last == start {
-            // Only char on this line is '\n' — no content.
-            return None;
-        }
-        Some((start, last - 1))
-    } else {
-        // Last line without a trailing '\n' (shouldn't happen due to buffer
-        // invariant, but handle gracefully).
-        Some((start, last))
-    }
+    // Convert grapheme start → last codepoint of that cluster, so the
+    // selection includes all combining marks (same convention as inner_word).
+    let end_inclusive = next_grapheme_boundary(buf, content_start).saturating_sub(1);
+    Some((line_start, end_inclusive))
 }
 
 /// Around line: the full line including the trailing newline.
@@ -270,7 +260,7 @@ fn around_word_impl(
             let prev_start = prev_grapheme_boundary(buf, start);
             let prev_class = classify_char(buf.char_at(prev_start)?);
             if prev_class == CharClass::Space {
-                let (space_start, _) = inner_word_impl(buf, prev_start, is_word_boundary)?;
+                let (space_start, _) = inner_word_impl(buf, prev_start, is_boundary)?;
                 start = space_start;
             }
         }
@@ -725,6 +715,20 @@ mod tests {
     }
 
     #[test]
+    fn inner_line_combining_grapheme_before_newline() {
+        // "cafe\u{0301}" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5).
+        // inner_line must include the full last grapheme cluster, so the
+        // selection end must be 4 (the combining mark) not 3 (the 'e' alone).
+        // The old `last - 1` arithmetic would have produced a broken
+        // mid-cluster end position.
+        assert_state!(
+            "-[c]>afe\u{0301}\n",
+            |(buf, sels)| cmd_inner_line(&buf, sels),
+            "-[cafe\u{0301}]>\n"
+        );
+    }
+
+    #[test]
     fn around_line_includes_newline() {
         // Selection covers `world\n`; head is the newline char.
         assert_state!(
@@ -1138,6 +1142,22 @@ mod tests {
             "hello.world -[f]>oo\n",
             |(buf, sels)| cmd_around_WORD(&buf, sels),
             "hello.world-[ foo]>\n"
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn around_WORD_end_of_buffer_with_leading_space_uses_WORD_boundary() {
+        // B1 regression: the fallback path for "WORD at end of buffer with no
+        // trailing space" was calling inner_word_impl with the wrong predicate
+        // (is_word_boundary instead of is_WORD_boundary). This test catches
+        // that by using a WORD that contains punctuation — `is_word_boundary`
+        // would split "foo.bar" into two words while `is_WORD_boundary` keeps
+        // it as one WORD, so the leading-space extent would differ.
+        assert_state!(
+            "  -[f]>oo.bar\n",
+            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            "-[  foo.bar]>\n"
         );
     }
 

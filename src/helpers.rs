@@ -134,6 +134,15 @@ mod tests {
         assert_eq!(line_content_end(&buf, 0), 0);
     }
 
+    #[test]
+    fn line_content_end_combining_grapheme_before_newline() {
+        // "cafe\u{0301}\n" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5)
+        // The grapheme "e\u{0301}" starts at char 3. line_content_end must
+        // return 3 (the grapheme cluster start), not 4 (mid-cluster).
+        let (buf, _) = parse_state("-[c]>afe\u{0301}\n");
+        assert_eq!(line_content_end(&buf, 0), 3);
+    }
+
     // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
 
     #[test]
