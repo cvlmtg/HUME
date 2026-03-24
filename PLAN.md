@@ -76,16 +76,16 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Yank/paste: `y` (yank), `p` (paste after), `P` (paste before); `d`/`c` yank before deleting; paste on non-cursor selection swaps displaced text back into default register
 - [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
-- [ ] Command mode (`:` commands)
-- [ ] Keymap: command-based dispatch from Steel config
-- [ ] Repeat last command (`.` equivalent)
-- [ ] Extend mode: `x` toggles extend mode (all terminals); `Ctrl+motion` as extend shortcut when kitty keyboard protocol is active. In extend mode all motions extend the current selection instead of replacing it. Ctrl rejected as universal modifier due to fatal legacy-terminal collisions.
-- [ ] Line selection: needs a key binding (not `x` — taken by extend mode; not yet decided)
-- [ ] Auto-pairs: auto-close brackets, quotes (configurable)
-- [ ] Matching bracket highlight
-- [ ] Cursor line highlight
+- [ ] Extend mode: `x` toggles extend mode; all motions extend the selection instead of replacing it. All `cmd_extend_*` commands already exist in `motion.rs` — only editor wiring needed. `Ctrl+motion` as shortcut deferred (kitty-only).
+- [ ] Cursor line highlight: subtle background on the cursor row in `render_content`; `cursor_line` already computed in `render()`.
+- [ ] Line selection: `cmd_inner_line`/`cmd_around_line` exist in `text_object.rs`; just needs a key binding decision.
+- [ ] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.
+- [ ] Matching bracket highlight: `find_bracket_pair` exists in `text_object.rs`; needs a secondary highlight concept in the renderer (reusable for search, diagnostics).
+- [ ] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
 
 ### Future milestones
+- **Keymap + Steel config**: command registry (string → command), Steel engine integration, configurable key bindings. Every hardcoded match arm in `handle_normal` is debt here — but the `cmd_*` function signatures are already the right shape. Best done as the first M4 task once M3 features are stable.
+- **Repeat last command (`.`)**: depends on the command registry (need to store command name + args). Build after keymap.
 - **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Registers are implemented — explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
 - Search and replace with incremental search and live match highlighting
 - File picker / fuzzy finder (Helix-style picker with fuzzy matching)
