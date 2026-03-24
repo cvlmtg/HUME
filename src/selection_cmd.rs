@@ -706,6 +706,23 @@ mod tests {
     }
 
     #[test]
+    fn split_backward_multi_line_with_empty_line_preserves_direction() {
+        // "foo\n\nbar\n" — backward selection spanning 3 lines including an
+        // empty one. All 3 pieces must be backward, and the empty-line piece
+        // must be a cursor on the '\n'.
+        let (buf, sels) = parse_state("<[foo\n\nbar]-\n");
+        let sels_out = cmd_split_selection_on_newlines(&buf, sels);
+        assert_eq!(sels_out.len(), 3);
+        let s: Vec<_> = sels_out.iter_sorted().copied().collect();
+        // All pieces must be backward (anchor >= head; cursor is anchor == head).
+        assert!(s[0].anchor >= s[0].head, "line 0 should be backward");
+        assert!(s[1].anchor >= s[1].head, "empty line should be cursor/backward");
+        assert!(s[2].anchor >= s[2].head, "line 2 should be backward");
+        // Empty line: cursor on the lone '\n' at offset 4.
+        assert_eq!(s[1].head, 4);
+    }
+
+    #[test]
     fn split_backward_multi_line_preserves_direction() {
         // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
         // Each piece should be backward (anchor > head).

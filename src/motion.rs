@@ -272,45 +272,6 @@ fn prev_word_start(
     pos
 }
 
-/// Move to the end of the next word.
-///
-/// Two-phase forward scan: skip Space/Eol forward, then skip forward while
-/// in the same category, landing on the last char of that group.
-fn next_word_end(
-    buf: &Buffer,
-    head: usize,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool,
-) -> usize {
-    let len = buf.len_chars();
-    // Step forward by a full grapheme cluster to get our starting position.
-    // Using next_grapheme_boundary instead of head + 1 ensures we skip over
-    // any combining codepoints that trail the current grapheme.
-    let first = next_grapheme_boundary(buf, head);
-    if first >= len {
-        return head; // at or past last char — no-op
-    }
-
-    let mut pos = first;
-
-    // Phase 1: skip Space and Eol forward.
-    while pos < len {
-        let cat = classify_char(buf.char_at(pos).expect("pos < len"));
-        if cat != CharClass::Space && cat != CharClass::Eol {
-            break;
-        }
-        pos = next_grapheme_boundary(buf, pos);
-    }
-    if pos >= len {
-        return len - 1; // only whitespace to EOF — clamp to last char
-    }
-
-    // Phase 2: scan to the end of the word group that starts at `pos`.
-    // Delegates to `find_word_end_from`, which returns the last codepoint of
-    // the final grapheme cluster — correctly including combining marks (e.g.
-    // "e\u{0301}" = é returns position 4, not just the base 'e' at position 3).
-    find_word_end_from(buf, pos, is_boundary)
-}
-
 // ── Word-select helpers ───────────────────────────────────────────────────────
 
 /// Scan forward from the first char of a known word group, returning the
