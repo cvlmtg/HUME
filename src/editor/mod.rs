@@ -178,9 +178,17 @@ impl Editor {
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     pub(super) fn set_mode(&mut self, mode: Mode) {
-        // Entering Insert mode exits extend mode — extend only makes sense in Normal.
-        if mode == Mode::Insert {
-            self.extend = false;
+        match (self.mode, mode) {
+            (Mode::Normal, Mode::Insert) => {
+                // Entering Insert: start accumulating edits for a single undo step.
+                self.extend = false;
+                self.doc.begin_edit_group();
+            }
+            (Mode::Insert, Mode::Normal) => {
+                // Leaving Insert: commit all accumulated edits as one undo step.
+                self.doc.commit_edit_group();
+            }
+            _ => {}
         }
         self.mode = mode;
     }
