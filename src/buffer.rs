@@ -97,9 +97,9 @@ impl Buffer {
 
     /// Borrow the inner `Rope`.
     ///
-    /// Ropey's `Rope::clone` is O(1) (Arc-based tree), so calling
-    /// `.rope().clone()` is cheap and is the preferred way to get a mutable
-    /// copy for operations that take `&Buffer` instead of consuming it.
+    /// Ropey's `Rope::clone` is O(log n) (reference-counted tree nodes), so
+    /// calling `.rope().clone()` is cheap and is the preferred way to get a
+    /// mutable copy for operations that take `&Buffer` instead of consuming it.
     pub(crate) fn rope(&self) -> &Rope {
         &self.rope
     }
@@ -287,8 +287,9 @@ mod tests {
 
     #[test]
     fn from_rope_is_raw() {
-        // from_rope is the changeset algebra path — it does NOT enforce the
-        // trailing \n so that invert/compose remain self-consistent.
+        // from_rope is the changeset algebra path — it has a debug_assert for
+        // the trailing \n but does not add one if missing. The caller
+        // (ChangeSet::apply) is responsible for ensuring the invariant holds.
         // The invariant is upheld by From<&str> / empty (user entry points) and
         // by the editing-operation guards (e.g. delete_char_forward is a no-op
         // on the structural \n).

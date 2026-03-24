@@ -635,8 +635,8 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 /// predicate or a target-column hint). The macro generates the closure
 /// `|b, h| inner(b, h, arg)`:
 /// ```text
-/// motion_cmd!(/// doc, cmd_extend_next_word_start, Extend, next_word_start(is_word_boundary));
-/// motion_cmd!(/// doc, cmd_move_down,               Move,   move_down_inner(None));
+/// motion_cmd!(/// doc, cmd_extend_down, Extend, move_down_inner(None));
+/// motion_cmd!(/// doc, cmd_move_down,   Move,   move_down_inner(None));
 /// ```
 ///
 /// The curried arm is listed first so that `ident(expr)` syntax is tried
