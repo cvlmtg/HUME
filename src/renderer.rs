@@ -13,6 +13,23 @@ use crate::selection::SelectionSet;
 use crate::theme::EditorColors;
 use crate::view::{LineNumberStyle, ViewState};
 
+// ── Render context ────────────────────────────────────────────────────────────
+
+/// All logical inputs to the renderer, bundled together.
+///
+/// Separates "what to render" (this struct) from "where to render it"
+/// (`area` and `screen_buf`, passed directly to [`render`]). Adding a new
+/// render-time flag (e.g. `show_diagnostics`) means touching this struct
+/// and its one construction site, not every function signature in the pipeline.
+pub(crate) struct RenderCtx<'a> {
+    pub doc: &'a Document,
+    pub view: &'a ViewState,
+    pub mode: Mode,
+    pub extend: bool,
+    pub file_path: Option<&'a Path>,
+    pub colors: &'a EditorColors,
+}
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Render the current editor state into a ratatui screen buffer.
@@ -25,16 +42,9 @@ use crate::view::{LineNumberStyle, ViewState};
 /// This function is pure: it only writes to `screen_buf` and reads from its
 /// arguments. All terminal I/O is handled by the caller (the editor event
 /// loop).
-pub(crate) fn render(
-    doc: &Document,
-    view: &ViewState,
-    mode: Mode,
-    extend: bool,
-    file_path: Option<&Path>,
-    colors: &EditorColors,
-    area: Rect,
-    screen_buf: &mut ScreenBuf,
-) {
+pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf) {
+    let doc = ctx.doc;
+    let view = ctx.view;
     let buf = doc.buf();
     let sels = doc.sels();
     let primary_head = sels.primary().head;
@@ -51,22 +61,21 @@ pub(crate) fn render(
         }
 
         if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, view, dl, cursor_line, colors, area.x, y);
+            render_gutter(screen_buf, ctx, dl, cursor_line, area.x, y);
             render_content(
                 screen_buf,
+                ctx,
                 dl,
                 area.x + view.gutter_width as u16,
                 y,
                 area.width.saturating_sub(view.gutter_width as u16),
                 sels,
                 buf,
-                mode,
                 cursor_line,
-                colors,
             );
         } else {
             // Past end of buffer — draw `~` in the gutter column.
-            screen_buf.set_string(area.x, y, "~", colors.tilde);
+            screen_buf.set_string(area.x, y, "~", ctx.colors.tilde);
         }
     }
 
@@ -74,7 +83,7 @@ pub(crate) fn render(
 
     let status_y = area.y + view.height as u16;
     if status_y < area.bottom() {
-        render_status_bar(screen_buf, mode, extend, file_path, cursor_line, primary_head, buf, colors, area, status_y);
+        render_status_bar(screen_buf, ctx, cursor_line, primary_head, buf, area, status_y);
     }
 }
 
@@ -88,10 +97,9 @@ pub(crate) fn render(
 /// so it stands out.
 fn render_gutter(
     screen_buf: &mut ScreenBuf,
-    view: &ViewState,
+    ctx: &RenderCtx<'_>,
     dl: &DisplayLine<'_>,
     cursor_line: usize,
-    colors: &EditorColors,
     x: u16,
     y: u16,
 ) {
@@ -99,7 +107,7 @@ fn render_gutter(
     let Some(line_number) = dl.line_number else { return };
     let line_idx = line_number.saturating_sub(1); // 0-based
 
-    let label = match view.line_number_style {
+    let label = match ctx.view.line_number_style {
         LineNumberStyle::Absolute => format!("{line_number}"),
         LineNumberStyle::Relative => format!("{}", line_idx.abs_diff(cursor_line)),
         LineNumberStyle::Hybrid => {
@@ -112,13 +120,13 @@ fn render_gutter(
     };
 
     // Right-align the label in `gutter_width - 1` columns, then one space.
-    let gutter_str = format!("{:>width$} ", label, width = view.gutter_width.saturating_sub(1));
+    let gutter_str = format!("{:>width$} ", label, width = ctx.view.gutter_width.saturating_sub(1));
 
     let is_cursor_line = line_idx == cursor_line;
     let style = if is_cursor_line {
-        colors.gutter_cursor_line
+        ctx.colors.gutter_cursor_line
     } else {
-        colors.gutter
+        ctx.colors.gutter
     };
 
     screen_buf.set_string(x, y, &gutter_str, style);
@@ -139,16 +147,17 @@ fn render_gutter(
 /// reversed space is drawn there.
 fn render_content(
     screen_buf: &mut ScreenBuf,
+    ctx: &RenderCtx<'_>,
     dl: &DisplayLine<'_>,
     x: u16,
     y: u16,
     width: u16,
     sels: &SelectionSet,
     _buf: &Buffer,
-    mode: Mode,
     cursor_line: usize,
-    colors: &EditorColors,
 ) {
+    let mode = ctx.mode;
+    let colors = ctx.colors;
     let char_offset = dl.char_offset.unwrap_or(0);
 
     // line_end_incl = position of the stripped '\n' (one past last content char).
@@ -258,22 +267,21 @@ fn render_content(
 /// `INS` is rendered in cyan, `EXT` in yellow, to make mode transitions visually obvious.
 fn render_status_bar(
     screen_buf: &mut ScreenBuf,
-    mode: Mode,
-    extend: bool,
-    file_path: Option<&Path>,
+    ctx: &RenderCtx<'_>,
     cursor_line: usize,
     cursor_head: usize,
     buf: &Buffer,
-    colors: &EditorColors,
     area: Rect,
     y: u16,
 ) {
+    let colors = ctx.colors;
+
     // Fill the entire row with inverted spaces first.
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
     // Mode label: "NOR" (default), "INS" (cyan), or "EXT" (yellow) — 3 chars, at column 1.
-    let (mode_label, mode_style) = match (mode, extend) {
+    let (mode_label, mode_style) = match (ctx.mode, ctx.extend) {
         (Mode::Normal, true)  => ("EXT", colors.status_extend),
         (Mode::Normal, false) => ("NOR", colors.status_normal),
         (Mode::Insert, _)     => ("INS", colors.status_insert),
@@ -281,7 +289,7 @@ fn render_status_bar(
     screen_buf.set_string(area.x + 1, y, mode_label, mode_style);
 
     // Filename at column 5 (space + 3-char label + space).
-    let filename = file_path
+    let filename = ctx.file_path
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .unwrap_or("[scratch]");
@@ -340,18 +348,13 @@ pub(crate) fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> 
 /// `height` must be `view.height + 1` (content rows + status bar).
 #[cfg(test)]
 pub(crate) fn render_to_string(
-    doc: &Document,
-    view: &ViewState,
-    mode: Mode,
-    extend: bool,
-    file_path: Option<&Path>,
-    colors: &EditorColors,
+    ctx: &RenderCtx<'_>,
     width: u16,
     height: u16,
 ) -> String {
     let area = Rect::new(0, 0, width, height);
     let mut screen_buf = ScreenBuf::empty(area);
-    render(doc, view, mode, extend, file_path, colors, area, &mut screen_buf);
+    render(ctx, area, &mut screen_buf);
 
     (0..height)
         .map(|y| {
@@ -376,8 +379,6 @@ mod tests {
     use crate::theme::EditorColors;
     use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
-    fn colors() -> EditorColors { EditorColors::default() }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// Build a Document with the cursor at a specific char offset.
@@ -399,6 +400,11 @@ mod tests {
         }
     }
 
+    /// Build a default-colors RenderCtx for a test.
+    fn ctx<'a>(doc: &'a Document, view: &'a ViewState, colors: &'a EditorColors) -> RenderCtx<'a> {
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors }
+    }
+
     // ── Snapshot tests ────────────────────────────────────────────────────────
 
     #[test]
@@ -406,7 +412,8 @@ mod tests {
         let doc = doc_at("hello\nworld\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         // height = 3 content rows + 1 status = 4 total
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 4);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -418,7 +425,8 @@ mod tests {
     fn render_empty_buffer() {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 4);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
         // Empty buffer has one visible line (the structural \n) with no content.
         insta::assert_snapshot!(out, @r"
           1
@@ -432,7 +440,8 @@ mod tests {
         // Cursor on 'w' at the start of "world\n" — char offset 6.
         let doc = doc_at("hello\nworld\n", 6);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 4);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -444,8 +453,12 @@ mod tests {
     fn render_status_bar_with_file_path() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let c = EditorColors::default();
         let path = std::path::Path::new("/home/user/notes.txt");
-        let out = render_to_string(&doc, &v, Mode::Normal, false, Some(path), &colors(), 20, 3);
+        let out = render_to_string(
+            &RenderCtx { file_path: Some(path), ..ctx(&doc, &v, &c) },
+            20, 3,
+        );
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -456,7 +469,8 @@ mod tests {
     fn render_line_numbers_absolute() {
         let doc = doc_at("a\nb\nc\n", 0);
         let v = view(&doc, 20, 4, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 5);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -470,7 +484,8 @@ mod tests {
         // Cursor on line 1 (0-based). Line 0 is 1 away, line 2 is 1 away.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Relative);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 5);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           0 b
@@ -484,7 +499,8 @@ mod tests {
         // Cursor on line 1 (0-based). Cursor line shows absolute; others relative.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Hybrid);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 5);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -498,7 +514,8 @@ mod tests {
         // 1-line file with a 5-row viewport: 1 content row + 4 tildes.
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 5, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 6);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 6);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -515,7 +532,8 @@ mod tests {
         // Cursor at end of "café" = char offset 4.
         let doc = doc_at("café\n", 4);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, false, None, &colors(), 20, 3);
+        let c = EditorColors::default();
+        let out = render_to_string(&ctx(&doc, &v, &c), 20, 3);
         // Position should show 1:5 (4 graphemes before cursor, so col 5).
         insta::assert_snapshot!(out, @r"
           1 café
@@ -537,7 +555,7 @@ mod tests {
             0, // primary = first
         );
         let doc = Document::new(buf, sels);
-        let c = colors();
+        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState {
             scroll_offset: 0,
@@ -548,7 +566,7 @@ mod tests {
         };
         let area = Rect::new(0, 0, 15, 5);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, false, None, &c, area, &mut screen);
+        render(&ctx(&doc, &v, &c), area, &mut screen);
 
         // Both cursor cells must have the cursor_head background (white).
         // 'a' is at column gw (after the gutter), row 0.
@@ -570,7 +588,7 @@ mod tests {
         let buf = Buffer::from("hello\n");
         let sels = SelectionSet::single(Selection::new(1, 3));
         let doc = Document::new(buf, sels);
-        let c = colors();
+        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState {
             scroll_offset: 0,
@@ -581,7 +599,7 @@ mod tests {
         };
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, false, None, &c, area, &mut screen);
+        render(&ctx(&doc, &v, &c), area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -611,12 +629,12 @@ mod tests {
         // anchor=0 ('a'), head=2 ('c'). Chars 0,1 are selection body; char 2 is cursor head.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let c = colors();
+        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, false, None, &c, area, &mut screen);
+        render(&ctx(&doc, &v, &c), area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -634,12 +652,12 @@ mod tests {
         // Cursor on 'a' (char 0). Line 0 is the cursor line.
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = colors();
+        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, false, None, &c, area, &mut screen);
+        render(&ctx(&doc, &v, &c), area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let cursor_head_bg = Color::Rgb(255, 255, 255);
@@ -661,12 +679,12 @@ mod tests {
         // Selection from anchor=0 ('a') to head=2 ('c'). Cursor line = line 0.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let c = colors();
+        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, false, None, &c, area, &mut screen);
+        render(&ctx(&doc, &v, &c), area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -685,7 +703,8 @@ mod tests {
     fn render_insert_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Insert, false, None, &colors(), 20, 3);
+        let c = EditorColors::default();
+        let out = render_to_string(&RenderCtx { mode: Mode::Insert, ..ctx(&doc, &v, &c) }, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -696,7 +715,8 @@ mod tests {
     fn render_extend_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, true, None, &colors(), 20, 3);
+        let c = EditorColors::default();
+        let out = render_to_string(&RenderCtx { extend: true, ..ctx(&doc, &v, &c) }, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~

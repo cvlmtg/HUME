@@ -8,7 +8,7 @@ use crossterm::execute;
 use crate::buffer::Buffer;
 use crate::document::Document;
 use crate::register::RegisterSet;
-use crate::renderer::{cursor_screen_pos, render};
+use crate::renderer::{cursor_screen_pos, render, RenderCtx};
 use crate::selection::{Selection, SelectionSet};
 use crate::terminal::Term;
 use crate::theme::EditorColors;
@@ -133,19 +133,21 @@ impl Editor {
             // ── 4. Render ─────────────────────────────────────────────────────
             // Capture references before the draw closure so the borrow checker
             // sees them as separate borrows of distinct fields, not of `self`.
-            let doc = &self.doc;
-            let view = &self.view;
-            let file_path = self.file_path.as_deref();
-            let mode = self.mode;
-            let extend = self.extend;
-            let colors = &self.colors;
+            let ctx = RenderCtx {
+                doc: &self.doc,
+                view: &self.view,
+                file_path: self.file_path.as_deref(),
+                mode: self.mode,
+                extend: self.extend,
+                colors: &self.colors,
+            };
             term.draw(|frame| {
-                render(doc, view, mode, extend, file_path, colors, frame.area(), frame.buffer_mut());
+                render(&ctx, frame.area(), frame.buffer_mut());
                 // In Insert mode, show the real terminal cursor (bar) so
                 // SetCursorStyle is visible. Normal mode uses the reversed-cell
                 // rendering only — no real cursor, so the letter stays visible.
-                if mode == Mode::Insert {
-                    if let Some(pos) = cursor_screen_pos(doc.buf(), view, doc.sels().primary().head) {
+                if ctx.mode == Mode::Insert {
+                    if let Some(pos) = cursor_screen_pos(ctx.doc.buf(), ctx.view, ctx.doc.sels().primary().head) {
                         frame.set_cursor_position(pos);
                     }
                 }
