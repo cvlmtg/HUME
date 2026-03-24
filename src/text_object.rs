@@ -177,7 +177,7 @@ fn inner_word_impl(
     // codepoint), ensuring the selection includes the full grapheme cluster.
     // Subtracting 1 is safe: the buffer always has a trailing '\n', so
     // next_grapheme_boundary is always > 0.
-    let end = next_grapheme_boundary(buf, end_grapheme_start) - 1;
+    let end = next_grapheme_boundary(buf, end_grapheme_start) - 1; // grapheme-safe: result of next_grapheme_boundary is a cluster boundary; -1 is the last codepoint of the current cluster
 
     Some((start, end))
 }
@@ -641,7 +641,7 @@ fn around_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
         }
         // `end` is now the first content char of the next segment.
         // Our range is raw_start ..= (end - 1), eating "aaa, ".
-        Some((raw_start, end - 1))
+        Some((raw_start, end - 1)) // grapheme-safe: end was advanced by next_grapheme_boundary; -1 is the last codepoint of the preceding (whitespace) cluster
     } else {
         // Non-first arg: eat the preceding comma (it sits at prev_raw_end + 1).
         // The raw segment already includes any leading space after the comma,

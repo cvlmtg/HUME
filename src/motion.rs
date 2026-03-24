@@ -343,11 +343,11 @@ fn find_word_end_from(
         // (é = base letter + combining accent) it includes the trailing
         // combining marks that logically belong to the same grapheme.
         if next_pos >= len {
-            return next_pos - 1; // end of buffer — last char of current grapheme
+            return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
         }
         let next_cat = classify_char(buf.char_at(next_pos).expect("next_pos < len"));
         if is_boundary(cat, next_cat) {
-            return next_pos - 1; // class changes — last char of current grapheme
+            return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
         }
         pos = next_pos;
     }
