@@ -13,7 +13,7 @@ use crate::selection::{Selection, SelectionSet};
 /// position and need to be merged.
 pub(crate) fn cmd_collapse_selection(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     let new_sels = sels.map_and_merge(|s| Selection::cursor(s.head));
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
@@ -25,7 +25,7 @@ pub(crate) fn cmd_collapse_selection(buf: &Buffer, sels: SelectionSet) -> Select
 pub(crate) fn cmd_flip_selections(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     // `flip` only swaps anchor/head — no range change → no new overlaps.
     let new_sels = sels.map(|s| s.flip());
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
@@ -35,7 +35,7 @@ pub(crate) fn cmd_flip_selections(buf: &Buffer, sels: SelectionSet) -> Selection
 /// any non-primary cursors or ranges are lost.
 pub(crate) fn cmd_keep_primary_selection(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     let new_sels = sels.keep_primary();
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
@@ -47,21 +47,21 @@ pub(crate) fn cmd_keep_primary_selection(buf: &Buffer, sels: SelectionSet) -> Se
 pub(crate) fn cmd_remove_primary_selection(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     let idx = sels.primary_index();
     let new_sels = sels.remove(idx); // no-op when len == 1
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
 pub(crate) fn cmd_cycle_primary_forward(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     let new_sels = sels.cycle_primary(1);
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
 /// Move the primary selection to the previous one in document order, wrapping.
 pub(crate) fn cmd_cycle_primary_backward(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     let new_sels = sels.cycle_primary(-1);
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
@@ -128,7 +128,7 @@ pub(crate) fn cmd_split_selection_on_newlines(
     // Split selections cover disjoint line ranges and can't overlap, so no
     // merge is needed. `from_vec` preserves the sorted order we built.
     let new_set = SelectionSet::from_vec(new_sels, new_primary);
-    new_set.debug_assert_valid(buf.len_chars());
+    new_set.debug_assert_valid(buf);
     new_set
 }
 
@@ -171,7 +171,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
 
         Selection::directed(start, new_end, forward)
     });
-    new_sels.debug_assert_valid(buf.len_chars());
+    new_sels.debug_assert_valid(buf);
     new_sels
 }
 
@@ -253,7 +253,7 @@ fn copy_selection_vertically(buf: &Buffer, sels: SelectionSet, direction: isize)
 
     let desired_primary = primary_copy_idx.unwrap_or(primary_idx);
     let new_set = SelectionSet::from_vec(all_sels, desired_primary).merge_overlapping();
-    new_set.debug_assert_valid(buf.len_chars());
+    new_set.debug_assert_valid(buf);
     new_set
 }
 

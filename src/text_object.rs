@@ -27,7 +27,7 @@ pub(crate) fn apply_text_object(
         Some((start, end)) => Selection::new(start, end),
         None => sel,
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 
@@ -73,7 +73,7 @@ pub(crate) fn apply_text_object_extend(
 
         sel
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 
