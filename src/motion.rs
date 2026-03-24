@@ -61,7 +61,7 @@ pub(crate) fn apply_motion(
             MotionMode::Extend => Selection::new(sel.anchor, new_head),
         }
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 
@@ -468,7 +468,7 @@ fn apply_word_select(
         }
         current
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 
@@ -501,7 +501,7 @@ fn apply_word_select_extend_forward(
         }
         current
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 
@@ -534,7 +534,7 @@ fn apply_word_select_extend_backward(
         }
         current
     });
-    result.debug_assert_valid(buf.len_chars());
+    result.debug_assert_valid(buf);
     result
 }
 

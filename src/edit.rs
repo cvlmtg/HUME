@@ -120,7 +120,7 @@ where
         .apply(&buf)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
-    new_sel_set.debug_assert_valid(new_buf.len_chars());
+    new_sel_set.debug_assert_valid(&new_buf);
     (new_buf, new_sel_set, cs)
 }
 
@@ -153,7 +153,7 @@ where
         .apply(&buf)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
-    new_sel_set.debug_assert_valid(new_buf.len_chars());
+    new_sel_set.debug_assert_valid(&new_buf);
     (new_buf, new_sel_set, cs, captured)
 }
 

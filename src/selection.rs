@@ -410,8 +410,14 @@ impl SelectionSet {
     /// Call this at every chokepoint where a `(Buffer, SelectionSet)` pair is
     /// produced: edit operations, motions, and `Transaction::apply`.
     #[inline]
-    pub(crate) fn debug_assert_valid(&self, buf_len: usize) {
+    pub(crate) fn debug_assert_valid(&self, buf: &Buffer) {
+        let buf_len = buf.len_chars();
         debug_assert!(buf_len > 0, "Buffer must have at least 1 char (the structural \\n)");
+        debug_assert!(
+            buf.char_at(buf_len - 1) == Some('\n'),
+            "Buffer must end with structural '\\n', but last char is {:?}",
+            buf.char_at(buf_len - 1),
+        );
         for (i, sel) in self.selections.iter().enumerate() {
             debug_assert!(
                 sel.head < buf_len,
