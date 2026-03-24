@@ -160,6 +160,15 @@ impl Document {
     ) -> Vec<String> {
         let group = self.group.as_mut().expect("apply_edit_grouped called without an open group");
 
+        // Edit functions take Buffer by value — they consume it and return a
+        // new one. We can't move `self.buf` into the closure directly, because
+        // then `self` would be partially moved and `self.buf = new_buf` below
+        // couldn't write the result back. The clone gives the closure its own
+        // copy to work with while `self` stays intact.
+        //
+        // Unlike `apply_edit`, there is no `invert` call here: the pre-group
+        // snapshot in `group.buf_snapshot` is what `commit_edit_group` uses
+        // to invert the whole composed changeset at once.
         let (new_buf, new_sels, cs, captured) =
             cmd(self.buf.clone(), self.sels.clone()).into_apply_result();
 

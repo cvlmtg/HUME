@@ -486,7 +486,11 @@ pub(crate) fn replace_selections(
         // in result-buffer coordinates for later selection reconstruction.
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
-        let mut new_sel_end = new_sel_start; // updated after every grapheme
+        // The loop always executes at least once (pos starts at sel_start ≤ sel_end),
+        // so new_sel_end is always overwritten before use. Rust cannot prove
+        // the loop runs, so we initialise to new_sel_start as a safe sentinel.
+        #[allow(unused_assignments)]
+        let mut new_sel_end = new_sel_start;
 
         let mut pos = sel_start;
         loop {
@@ -1379,6 +1383,18 @@ mod tests {
             "-[hello\nworld]>\n",
             |(buf, sels)| replace_selections(buf, sels, 'x'),
             "-[xxxxx\nxxxxx]>\n"
+        );
+    }
+
+    #[test]
+    fn replace_selection_including_structural_trailing_newline_preserves_newline() {
+        // When the selection reaches the structural trailing '\n', that newline
+        // must be preserved — replace_selections skips '\n' graphemes entirely.
+        // Before the fix this path existed but had no explicit test.
+        assert_state!(
+            "-[hello\n]>",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[xxxxx\n]>"
         );
     }
 }
