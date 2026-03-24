@@ -274,9 +274,9 @@ fn render_content(
 
 /// Render the command-line mini-buffer on the bottom row.
 ///
-/// Shows the prompt character (`:`) followed by the typed input in default
-/// (non-inverted) style. The terminal cursor is positioned after the input
-/// by the caller (the editor event loop).
+/// Uses the same inverted status bar style as the normal status bar — the
+/// "CMD" mode label at column 1, then the prompt character and typed input.
+/// The terminal cursor is positioned after the input by the caller.
 fn render_command_line(
     screen_buf: &mut ScreenBuf,
     ctx: &RenderCtx<'_>,
@@ -285,13 +285,18 @@ fn render_command_line(
     prompt: char,
     input: &str,
 ) {
-    // Clear the row with default style so it reads as a plain input line.
-    let blank: String = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, ctx.colors.default);
+    let colors = ctx.colors;
 
-    // Prompt character at column 0, then the typed text.
-    screen_buf.set_string(area.x, y, &prompt.to_string(), ctx.colors.default);
-    screen_buf.set_string(area.x + 1, y, input, ctx.colors.default);
+    // Fill with inverted style, same as the normal status bar.
+    let blank: String = " ".repeat(area.width as usize);
+    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+
+    // "CMD" mode label at column 1 (mirrors "NOR"/"INS"/"EXT").
+    screen_buf.set_string(area.x + 1, y, "CMD", colors.status_command);
+
+    // Prompt char and typed input starting at column 5 (space + 3-char label + space).
+    let cmd_str = format!("{prompt}{input}");
+    screen_buf.set_string(area.x + 5, y, &cmd_str, colors.status_bar);
 }
 
 /// Render a transient status message on the bottom row.
