@@ -423,6 +423,19 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
 
 // ── 10. Plain insert session groups all chars into one undo step ──────────────
 
+/// `i` with a non-collapsed selection must collapse to the start of the
+/// selection and enter Insert — it must NOT replace the selected text.
+#[test]
+fn i_collapses_selection_to_start() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('i'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    // Cursor collapsed to 'h' — nothing deleted.
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert_eq!(ed.doc.buf().to_string(), "hello\n");
+}
+
 /// `i` + typing + `Esc` must commit as one undo step, just like `c`. A single
 /// `u` should restore the original buffer — not leave partial edits behind.
 #[test]
