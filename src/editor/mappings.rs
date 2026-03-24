@@ -330,20 +330,20 @@ impl Editor {
 
             // ── Character input ───────────────────────────────────────────────
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.doc.apply_edit(|b, s| insert_char(b, s, ch));
+                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
             }
 
             // ── Newline ───────────────────────────────────────────────────────
             KeyCode::Enter => {
-                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
             }
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                self.doc.apply_edit(|b, s| delete_char_backward(b, s));
+                self.doc.apply_edit_grouped(|b, s| delete_char_backward(b, s));
             }
             KeyCode::Delete => {
-                self.doc.apply_edit(|b, s| delete_char_forward(b, s));
+                self.doc.apply_edit_grouped(|b, s| delete_char_forward(b, s));
             }
 
             // ── Navigation (same as Normal) ───────────────────────────────────

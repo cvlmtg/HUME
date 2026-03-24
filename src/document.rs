@@ -52,10 +52,33 @@ impl IntoApplyResult for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
 /// cloning a Rope shares the underlying data. This makes the Document approach
 /// cheap: we don't snapshot the buffer for undo (we use changeset inversion),
 /// but cloning for the edit call is affordable.
+///
+/// ## Edit groups
+///
+/// `begin_edit_group` / `commit_edit_group` bracket a series of edits that
+/// should undo as a single step. During an open group, `apply_edit_grouped`
+/// updates `self.buf` and `self.sels` normally (so the user sees their edits)
+/// but composes changesets into an accumulator instead of recording individual
+/// history entries. `commit_edit_group` inverts the composed changeset against
+/// the pre-group buffer snapshot and records exactly one revision. Used by
+/// insert mode so that an entire insert session undoes as one step.
 pub(crate) struct Document {
     buf: Buffer,
     sels: SelectionSet,
     history: History,
+    /// Non-`None` while an edit group is open (i.e. while in insert mode).
+    group: Option<EditGroup>,
+}
+
+/// Accumulated state for an open edit group.
+struct EditGroup {
+    /// Buffer snapshot taken at `begin_edit_group` — used by `invert` in `commit_edit_group`.
+    buf_snapshot: Buffer,
+    /// Selection snapshot taken at `begin_edit_group` — restored by undo.
+    sels_snapshot: SelectionSet,
+    /// Running composition of all forward changesets applied since the group opened.
+    /// `None` means no edits have been applied yet (empty group).
+    cs: Option<ChangeSet>,
 }
 
 impl Document {
@@ -63,7 +86,7 @@ impl Document {
     pub(crate) fn new(buf: Buffer, sels: SelectionSet) -> Self {
         let buf_len = buf.len_chars();
         let history = History::new(sels.clone(), buf_len);
-        Self { buf, sels, history }
+        Self { buf, sels, history, group: None }
     }
 
     /// Apply an edit command and record it in the undo history.
@@ -106,6 +129,66 @@ impl Document {
         self.buf = new_buf;
         self.sels = new_sels;
         captured
+    }
+
+    /// Open an edit group. All subsequent `apply_edit_grouped` calls will be
+    /// accumulated and recorded as a single undo step when `commit_edit_group`
+    /// is called. Snapshots the current buffer and selections.
+    ///
+    /// Calling `begin_edit_group` while a group is already open is a logic
+    /// error; it asserts in debug builds and replaces the snapshot in release.
+    pub(crate) fn begin_edit_group(&mut self) {
+        debug_assert!(self.group.is_none(), "begin_edit_group called with group already open");
+        self.group = Some(EditGroup {
+            buf_snapshot: self.buf.clone(),
+            sels_snapshot: self.sels.clone(),
+            cs: None,
+        });
+    }
+
+    /// Apply an edit within the current open group.
+    ///
+    /// Identical to `apply_edit` except the changeset is composed into the
+    /// group accumulator rather than recorded directly in the undo history.
+    /// `self.buf` and `self.sels` are updated so the user sees the edit.
+    ///
+    /// Panics if called without an open group (i.e. `begin_edit_group` was not
+    /// called first).
+    pub(crate) fn apply_edit_grouped<R: IntoApplyResult>(
+        &mut self,
+        cmd: impl FnOnce(Buffer, SelectionSet) -> R,
+    ) -> Vec<String> {
+        let group = self.group.as_mut().expect("apply_edit_grouped called without an open group");
+
+        let (new_buf, new_sels, cs, captured) =
+            cmd(self.buf.clone(), self.sels.clone()).into_apply_result();
+
+        // Compose this changeset into the accumulator.
+        group.cs = Some(match group.cs.take() {
+            None => cs,
+            Some(acc) => acc.compose(cs),
+        });
+
+        self.buf = new_buf;
+        self.sels = new_sels;
+        captured
+    }
+
+    /// Close the current edit group and record it as a single undo step.
+    ///
+    /// If no edits were applied since `begin_edit_group` (empty group), no
+    /// revision is recorded. Clears the group state regardless.
+    ///
+    /// Panics if called without an open group.
+    pub(crate) fn commit_edit_group(&mut self) {
+        let group = self.group.take().expect("commit_edit_group called without an open group");
+
+        // Only record a revision if something was actually edited.
+        if let Some(cs) = group.cs {
+            // invert() needs the pre-group buffer — that's exactly the snapshot.
+            let inverse_cs = cs.invert(&group.buf_snapshot);
+            self.history.record(cs, inverse_cs, group.sels_snapshot, self.sels.clone());
+        }
     }
 
     /// Undo the last edit. No-op at the root (nothing to undo).
@@ -534,6 +617,97 @@ mod tests {
 
         d.goto_revision(crate::history::RevisionId(0));
         assert_eq!(state(&d), initial);
+    }
+
+    // ── edit groups ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn grouped_edits_single_undo_step() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'c'));
+        d.commit_edit_group();
+
+        assert_eq!(state(&d), "abc-[h]>ello\n");
+
+        d.undo();
+        assert_eq!(state(&d), "-[h]>ello\n");
+
+        // Only one undo step was recorded.
+        assert!(!d.can_undo());
+    }
+
+    #[test]
+    fn empty_group_is_noop() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        d.commit_edit_group();
+
+        // No revision was recorded.
+        assert!(!d.can_undo());
+        assert_eq!(state(&d), "-[h]>ello\n");
+    }
+
+    #[test]
+    fn grouped_edits_with_backspace() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'x'));
+        d.apply_edit_grouped(|b, s| delete_char_backward(b, s)); // fix typo
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'c'));
+        d.commit_edit_group();
+
+        assert_eq!(state(&d), "abc-[h]>ello\n");
+
+        // Single undo restores all the way back.
+        d.undo();
+        assert_eq!(state(&d), "-[h]>ello\n");
+        assert!(!d.can_undo());
+    }
+
+    #[test]
+    fn grouped_then_normal_edit_two_steps() {
+        let mut d = doc("-[h]>ello\n");
+
+        // Insert mode session (grouped): types "ab", cursor ends at position 2.
+        d.begin_edit_group();
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+        d.commit_edit_group();
+        assert_eq!(state(&d), "ab-[h]>ello\n");
+
+        // Normal mode edit (ungrouped): inserts at cursor position 2.
+        d.apply_edit(|b, s| insert_char(b, s, 'z'));
+        assert_eq!(state(&d), "abz-[h]>ello\n");
+
+        // First undo removes only the normal-mode 'z'.
+        d.undo();
+        assert_eq!(state(&d), "ab-[h]>ello\n");
+
+        // Second undo removes the entire insert session.
+        d.undo();
+        assert_eq!(state(&d), "-[h]>ello\n");
+
+        assert!(!d.can_undo());
+    }
+
+    #[test]
+    fn grouped_edits_redo() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+        d.commit_edit_group();
+
+        d.undo();
+        assert_eq!(state(&d), "-[h]>ello\n");
+
+        d.redo();
+        assert_eq!(state(&d), "ab-[h]>ello\n");
     }
 
     // ── apply_edit returns displaced text for paste ───────────────────────────
