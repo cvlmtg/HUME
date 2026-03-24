@@ -91,7 +91,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc.can_undo());
 }
 
-// ── 1. `d` yanks into the default register ────────────────────────────────────
+// ── `d` yanks into the default register ────────────────────────────────────
 
 /// Deleting a selection must populate the default register with the deleted
 /// text. A bug in the mapping that removed the `yank_selections` call before
@@ -107,7 +107,7 @@ fn d_yanks_selection_into_register_before_deleting() {
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register after delete");
 }
 
-// ── 2. `y` yanks without modifying the buffer ─────────────────────────────────
+// ── `y` yanks without modifying the buffer ─────────────────────────────────
 
 /// `y` must populate the register without changing the buffer or the selection.
 /// This is the only way to test that `y` actually writes to the register —
@@ -123,7 +123,7 @@ fn y_populates_register_without_changing_buffer() {
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register populated");
 }
 
-// ── 3. `p` swaps displaced selection text back into the register ──────────────
+// ── `p` swaps displaced selection text back into the register ──────────────
 
 /// When `p` pastes over a non-cursor (multi-char) selection, the displaced
 /// text must be written back to the default register (exchange semantics).
@@ -142,7 +142,7 @@ fn p_over_selection_swaps_displaced_text_into_register() {
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "displaced text in register");
 }
 
-// ── 4. `r<char>` pending-key replace sequence ─────────────────────────────────
+// ── `r<char>` pending-key replace sequence ─────────────────────────────────
 
 /// `r` alone must set `PendingKey::Replace`; the following character must
 /// replace every grapheme in every selection; and `Esc` after a bare `r`
@@ -169,7 +169,7 @@ fn r_then_esc_cancels_without_side_effects() {
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged after cancelled replace");
 }
 
-// ── 5. `m i w` three-key text-object sequence ─────────────────────────────────
+// ── `m i w` three-key text-object sequence ─────────────────────────────────
 
 /// The pending-key state machine must advance through `Match` → `MatchInner`
 /// → `None` and dispatch the correct text-object command on the third key.
@@ -206,29 +206,65 @@ fn m_a_unknown_char_falls_through_cleanly() {
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
-// ── 6. `x` extend-mode toggle ─────────────────────────────────────────────────
+// ── `e` extend-mode toggle ─────────────────────────────────────────────────
 
-/// `x` must toggle `extend` on and off. While extend is active, motions must
+/// `e` must toggle `extend` on and off. While extend is active, motions must
 /// grow the selection rather than collapse it to a cursor.
 #[test]
-fn x_toggles_extend_mode_and_motions_extend_selection() {
+fn e_toggles_extend_mode_and_motions_extend_selection() {
     let mut ed = editor_from("-[h]>ello\n");
     assert!(!ed.extend, "extend off initially");
 
     // Toggle extend on.
-    ed.handle_key(key('x'));
-    assert!(ed.extend, "extend on after 'x'");
+    ed.handle_key(key('e'));
+    assert!(ed.extend, "extend on after 'e'");
 
     // A motion in extend mode should grow the selection, not move a cursor.
     ed.handle_key(key('l'));
     assert_eq!(state(&ed), "-[he]>llo\n", "selection extended right by one");
 
     // Toggle extend off.
-    ed.handle_key(key('x'));
-    assert!(!ed.extend, "extend off after second 'x'");
+    ed.handle_key(key('e'));
+    assert!(!ed.extend, "extend off after second 'e'");
 }
 
-// ── 7. `o` / `O` open-line variants ──────────────────────────────────────────
+// ── `x` select-line ────────────────────────────────────────────────────────
+
+/// `x` selects the full current line including the trailing `\n`.
+#[test]
+fn x_selects_full_line_from_cursor() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\n");
+}
+
+/// `x` on a line that is already fully selected re-selects the same line
+/// (no extension in normal mode).
+#[test]
+fn x_on_full_line_selection_stays_put() {
+    let mut ed = editor_from("-[hello world\n]>foo\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\n");
+}
+
+/// In extend mode, `x` extends the selection to include the next line.
+#[test]
+fn x_in_extend_mode_accumulates_lines() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\nbar\n");
+    // First `x` in normal mode: select current line.
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\nbar\n", "line 1 selected");
+    // Toggle extend mode.
+    ed.handle_key(key('e'));
+    // `x` in extend mode: extend to include next line.
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\nfoo\n]>bar\n", "lines 1-2 selected");
+    // Another `x`: extend to line 3.
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\nfoo\nbar\n]>", "lines 1-3 selected");
+}
+
+// ── `o` / `O` open-line variants ──────────────────────────────────────────
 
 /// `o` must insert a blank line *below* the current line, position the cursor
 /// on it, and enter Insert mode — all as a single composed operation.
@@ -256,7 +292,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
 
-// ── 8. Insert-entry variants position the cursor correctly ────────────────────
+// ── Insert-entry variants position the cursor correctly ────────────────────
 
 /// `a` must move the cursor one grapheme right of the current position, then
 /// enter Insert mode — "append after cursor".
@@ -357,7 +393,7 @@ fn o_in_normal_mode_still_opens_line_below() {
     assert_eq!(ed.doc.buf().to_string(), "hello\n\n");
 }
 
-// ── 9. `;` collapses selection AND clears extend mode ─────────────────────────
+// ── `;` collapses selection AND clears extend mode ─────────────────────────
 
 /// `;` must (a) collapse every selection to its head and (b) clear the
 /// `extend` flag. The extend side-effect only exists in the mapping — a pure
@@ -421,7 +457,7 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
     assert!(!ed.doc.can_undo());
 }
 
-// ── 10. Plain insert session groups all chars into one undo step ──────────────
+// ── Plain insert session groups all chars into one undo step ──────────────
 
 /// `i` with a non-collapsed selection must collapse to the start of the
 /// selection and enter Insert — it must NOT replace the selected text.
