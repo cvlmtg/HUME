@@ -451,6 +451,69 @@ pub(crate) fn paste_before(
     paste_impl(buf, sels, values, |_buf, sel| sel.start())
 }
 
+/// Replace every grapheme in every selection with `ch` (normal-mode `r`).
+///
+/// - **Cursor selection**: the single character under the cursor is replaced.
+///   The cursor remains on the replacement character. No-op if the cursor sits
+///   on the structural trailing `\n` (deleting it would violate the buffer
+///   invariant).
+/// - **Multi-character selection**: every grapheme in the selected region is
+///   replaced with `ch`, preserving the selection direction. Multi-codepoint
+///   grapheme clusters (e.g. `é` = U+0065 + U+0301) are replaced atomically —
+///   the replacement shrinks the cluster down to one char without orphaning
+///   combining marks.
+/// - **Structural `\n` protection**: the trailing `\n` is never replaced, even
+///   when it falls inside a multi-char selection.
+pub(crate) fn replace_selections(
+    buf: Buffer,
+    sels: SelectionSet,
+    ch: char,
+) -> (Buffer, SelectionSet, ChangeSet) {
+    // Cache before buf is moved into apply_edit.
+    let trailing_nl = buf.len_chars() - 1;
+
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let sel_start = sel.start();
+        let sel_end   = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
+
+        // Retain everything up to this selection (handles the gap from the
+        // previous selection or the buffer start). Record the start position
+        // in result-buffer coordinates for later selection reconstruction.
+        b.retain(sel_start - b.old_pos());
+        let new_sel_start = b.new_pos();
+        let mut new_sel_end = new_sel_start; // updated after every replaced grapheme
+
+        let mut pos = sel_start;
+        loop {
+            if pos == trailing_nl {
+                // Structural trailing '\n' — never replace it. The preceding
+                // graphemes (if any) have already been processed.
+                break;
+            }
+
+            let next = next_grapheme_boundary(buf, pos);
+            // After the initial `retain` above, b.old_pos() == sel_start == pos.
+            // Each subsequent delete advances b.old_pos() by the cluster size,
+            // landing exactly at the next grapheme start — so no intra-loop
+            // retain calls are needed.
+            b.delete(next - pos);
+            b.insert_char(ch);
+            // b.new_pos() is one past the inserted char; the replacement char
+            // itself lives at b.new_pos() - 1.
+            new_sel_end = b.new_pos() - 1;
+
+            if pos >= sel_end { break; }
+            pos = next;
+        }
+
+        // Reconstruct the selection with its original direction.
+        // `Selection::directed` is the canonical constructor for this pattern:
+        // it takes content-aware (start, end) bounds and a direction flag.
+        let forward = sel.anchor <= sel.head;
+        new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1159,6 +1222,109 @@ mod tests {
                 (b, s, cs)
             },
             "h-[h]>ello-[o]>\n"
+        );
+    }
+
+    // ── replace_selections ────────────────────────────────────────────────────
+
+    #[test]
+    fn replace_cursor_single_char() {
+        // Cursor on 'h'; replace with 'x' → cursor stays on 'x'.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[x]>ello\n"
+        );
+    }
+
+    #[test]
+    fn replace_cursor_middle() {
+        // Cursor on 'l' at offset 2; replace with 'x'.
+        assert_state!(
+            "he-[l]>lo\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "he-[x]>lo\n"
+        );
+    }
+
+    #[test]
+    fn replace_cursor_on_structural_newline_is_noop() {
+        // Structural trailing '\n' — cannot be replaced.
+        assert_state!(
+            "hello-[\n]>",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "hello-[\n]>"
+        );
+    }
+
+    #[test]
+    fn replace_empty_buffer_is_noop() {
+        // Buffer is just the structural '\n'.
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[\n]>"
+        );
+    }
+
+    #[test]
+    fn replace_forward_selection() {
+        // Forward selection covers "hell" (offsets 0-3); replace each with 'x'.
+        assert_state!(
+            "-[hell]>o\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[xxxx]>o\n"
+        );
+    }
+
+    #[test]
+    fn replace_backward_selection() {
+        // Backward selection anchor=3, head=0 covers "hell"; direction preserved.
+        assert_state!(
+            "<[hell]-o\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "<[xxxx]-o\n"
+        );
+    }
+
+    #[test]
+    fn replace_whole_line() {
+        // Forward selection covers all content chars (not the structural '\n').
+        assert_state!(
+            "-[hello]>\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[xxxxx]>\n"
+        );
+    }
+
+    #[test]
+    fn replace_two_cursors() {
+        // Two cursors; each independently replaced.
+        assert_state!(
+            "-[h]>ell-[o]>\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[x]>ell-[x]>\n"
+        );
+    }
+
+    #[test]
+    fn replace_two_selections() {
+        // Two non-overlapping selections each get all their chars replaced.
+        assert_state!(
+            "-[he]>l-[lo]>\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[xx]>l-[xx]>\n"
+        );
+    }
+
+    #[test]
+    fn replace_grapheme_cluster_cursor() {
+        // Cursor on 'é' (e + U+0301, 2 codepoints). Replaced with 'x' (1 codepoint).
+        // Buffer shrinks by 1 char; cursor lands on 'x'.
+        assert_state!(
+            "caf-[e]>\u{0301}z\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "caf-[x]>z\n"
         );
     }
 }

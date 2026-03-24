@@ -9,7 +9,7 @@ use crate::buffer::Buffer;
 use crate::document::Document;
 use crate::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
-    paste_before,
+    paste_before, replace_selections,
 };
 use crate::motion::{
     cmd_extend_first_nonblank, cmd_extend_line_end, cmd_extend_line_start,
@@ -64,6 +64,8 @@ enum PendingKey {
     MatchInner,
     /// After `ma` — waiting for the object char.
     MatchAround,
+    /// After `r` — waiting for the replacement character.
+    Replace,
 }
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
@@ -240,6 +242,11 @@ impl Editor {
                         }
                         // Unrecognized object char — fall through.
                     }
+                    PendingKey::Replace => {
+                        self.pending = PendingKey::None;
+                        self.doc.apply_edit(|b, s| replace_selections(b, s, ch));
+                        return;
+                    }
                     PendingKey::None => unreachable!(),
                 }
             }
@@ -405,6 +412,9 @@ impl Editor {
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.doc.redo();
             }
+            // `r` — replace: wait for the next character, then replace every
+            // character in every selection with it (handled in pending dispatch above).
+            KeyCode::Char('r') => self.pending = PendingKey::Replace,
 
             // ── Text objects ──────────────────────────────────────────────────
             // `m` — enter match mode; next key selects inner (`i`) or around (`a`),
