@@ -544,7 +544,11 @@ impl Editor {
         }
     }
 
-    /// Write the buffer to `self.file_path`.
+    /// Write the buffer to `self.file_path` atomically.
+    ///
+    /// Writes to a temporary file in the same directory, then renames it over
+    /// the target. The rename(2) syscall is atomic on POSIX — if anything fails
+    /// before it, the original file is untouched.
     ///
     /// Sets `self.status_msg` on both success ("Written N lines") and failure.
     /// Returns `true` on success, `false` on any error.
@@ -567,7 +571,17 @@ impl Editor {
         // string after the final newline as an extra line).
         let line_count = buf.len_lines().saturating_sub(1);
 
-        match std::fs::write(&path, &content) {
+        // The temp file must live in the same directory as the target so the
+        // rename stays on the same filesystem (cross-device rename would fail).
+        let dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let result = (|| -> std::io::Result<()> {
+            let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+            std::io::Write::write_all(&mut tmp, content.as_bytes())?;
+            tmp.persist(&path).map_err(|e| e.error)?;
+            Ok(())
+        })();
+
+        match result {
             Ok(()) => {
                 self.status_msg = Some(format!("Written {line_count} lines"));
                 true
