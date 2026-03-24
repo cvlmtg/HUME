@@ -17,7 +17,7 @@ use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
     cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
-    cmd_remove_primary_selection, cmd_trim_selection_whitespace,
+    cmd_remove_primary_selection, cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
 };
 use crate::text_object::{
     cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
@@ -203,6 +203,9 @@ impl Editor {
             } else {
                 self.apply_motion(|b, s| cmd_keep_primary_selection(b, s));
             },
+            // `S` — split each selection on newlines, producing one cursor per line.
+            // `R` — reserved for split-on-regex (needs minibuffer input, not yet implemented).
+            KeyCode::Char('S') => self.apply_motion(|b, s| cmd_split_selection_on_newlines(b, s)),
             // `(`/`)` — cycle the primary selection backward/forward.
             KeyCode::Char('(') => self.apply_motion(|b, s| cmd_cycle_primary_backward(b, s)),
             KeyCode::Char(')') => self.apply_motion(|b, s| cmd_cycle_primary_forward(b, s)),

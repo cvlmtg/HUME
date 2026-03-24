@@ -290,6 +290,19 @@ fn capital_i_enters_insert_at_first_nonblank() {
     assert_eq!(state(&ed), "  -[h]>ello\n");
 }
 
+// ── `S` splits selection on newlines ──────────────────────────────────────────
+
+/// `S` must split a multi-line selection into one cursor per line, which is
+/// the primary way to turn a block selection into a multi-cursor.
+#[test]
+fn capital_s_splits_selection_on_newlines() {
+    let mut ed = editor_from("-[foo\nbar\nbaz]>\n");
+
+    ed.handle_key(key('S'));
+
+    assert_eq!(state(&ed), "-[foo]>\n-[bar]>\n-[baz]>\n");
+}
+
 // ── `ctrl+,` removes the primary selection ────────────────────────────────────
 
 /// `ctrl+,` must drop the primary selection and promote one of the secondaries,
