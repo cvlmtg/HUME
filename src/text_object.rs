@@ -29,24 +29,47 @@ pub(crate) fn apply_text_object(
     })
 }
 
-/// Apply a text object in extend mode: union the matched range with the current selection.
+///// Apply a text object in extend mode: union the matched range with the current selection.
 ///
 /// On match, the result spans `min(sel.start(), start)` to `max(sel.end(), end)`,
 /// preserving the direction of the original selection. On no-match, the selection
-/// is unchanged (same as the non-extend variant).
+/// is unchanged.
+///
+/// Two-pass strategy for outward growth:
+/// 1. Try `text_object(buf, sel.head)`. If the result is *larger* than the current
+///    selection, use it — this handles the initial extend-from-cursor case.
+/// 2. If the result is a subset (union doesn't grow), retry from the position just
+///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
+///    and causes the search to find the next enclosing pair instead.
 pub(crate) fn apply_text_object_extend(
     buf: &Buffer,
     sels: SelectionSet,
     text_object: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    sels.map_and_merge(|sel| match text_object(buf, sel.head) {
-        Some((start, end)) => {
+    sels.map_and_merge(|sel| {
+        let forward = sel.anchor <= sel.head;
+
+        // First try from head (correct for initial extend from a cursor).
+        if let Some((start, end)) = text_object(buf, sel.head) {
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
-            // Preserve the direction of the original selection.
-            Selection::directed(new_start, new_end, sel.anchor <= sel.head)
+            if new_start != sel.start() || new_end != sel.end() {
+                return Selection::directed(new_start, new_end, forward);
+            }
         }
-        None => sel,
+
+        // Result was a subset (no growth). Retry from one past the selection end so
+        // bracket/quote searches find the enclosing pair rather than the current one.
+        let past_end = next_grapheme_boundary(buf, sel.end());
+        if past_end < buf.len_chars() {
+            if let Some((start, end)) = text_object(buf, past_end) {
+                let new_start = sel.start().min(start);
+                let new_end = sel.end().max(end);
+                return Selection::directed(new_start, new_end, forward);
+            }
+        }
+
+        sel
     })
 }
 
@@ -1109,6 +1132,56 @@ mod tests {
             "<[he]-llo world\n",
             |(buf, sels)| cmd_extend_inner_word(&buf, sels),
             "<[hello]- world\n"
+        );
+    }
+
+    // ── apply_text_object_extend: outward growth from already-matched pair ─────
+
+    #[test]
+    fn extend_around_paren_from_matched_pair_grows_outward() {
+        // Regression: selection is already "(b)" via a prior `ma(`; pressing
+        // extend-`ma(` again should grow to the enclosing "(a (b) a)".
+        //
+        // "(a (b) a)\n": (=0,a=1,' '=2,(=3,b=4,)=5,' '=6,a=7,)=8,\n=9
+        // Selection: anchor=3, head=5 (covers "(b)").
+        //
+        // First try: around_bracket(head=5) finds ')' at 5 → same pair (3,5).
+        // Union is a no-op. Retry from next_grapheme_boundary(end()=5)=6 (' ').
+        // around_bracket(6): scan_left finds '(' at 0 (skipping the inner pair),
+        // scan_right finds ')' at 8 → (0,8). Union: (0,8). Grows.
+        assert_state!(
+            "(a -[(b)]> a)\n",
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            "-[(a (b) a)]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_inner_paren_from_matched_pair_grows_outward() {
+        // Same setup: selection "(b)" in "(a (b) a)\n".
+        // First try: inner_bracket(head=5) → (4,4) = "b". Union no-op (subset).
+        // Retry from pos 6: inner_bracket(6) → inner of outer pair = (1,7) = "a (b) a".
+        // Union: (1,7). anchor=1, head=7 → "(-[a (b) a]>)\n".
+        assert_state!(
+            "(a -[(b)]> a)\n",
+            |(buf, sels)| cmd_extend_inner_paren(&buf, sels),
+            "(-[a (b) a]>)\n"
+        );
+    }
+
+    #[test]
+    fn extend_around_paren_no_outer_pair_is_noop() {
+        // When the selection already covers the outermost pair, there is no
+        // enclosing pair to grow into — the command is a no-op.
+        //
+        // "(a b)\n": (=0,a=1,' '=2,b=3,)=4,\n=5. Selection anchor=0, head=4.
+        // First try: around_bracket(head=4=')') → (0,4). Union no-op.
+        // Retry from pos 5 ('\n'): scan_left hits ')' at 4 (depth=1), then
+        // '(' at 0 (depth=0→continues), exits at i=0 → None. No-op.
+        assert_state!(
+            "-[(a b)]>\n",
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            "-[(a b)]>\n"
         );
     }
 }
