@@ -17,7 +17,10 @@ use crate::selection::{Selection, SelectionSet};
 ///
 /// Word motions (`w`/`b`/`W`/`B`) use [`apply_word_select`] instead of this
 /// enum — they return `(word_start, word_end)` pairs that become fresh
-/// forward selections without any accumulated anchor.
+/// forward selections without any accumulated anchor. In extend mode, word
+/// motions use [`apply_word_select_extend_forward`] /
+/// [`apply_word_select_extend_backward`] instead, which union the new word
+/// range with the existing selection rather than replacing it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MotionMode {
     Move,
@@ -761,20 +764,6 @@ pub(crate) fn cmd_extend_select_prev_WORD(buf: &Buffer, sels: SelectionSet, coun
     apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
 }
 
-// Word motions — Extend mode (anchor stays, head = new position).
-motion_cmd!(/// Extend selection to the start of the next word (shift-w variant).
-    cmd_extend_next_word_start, Extend, next_word_start(is_word_boundary));
-motion_cmd!(/// Extend selection to the start of the previous word (shift-b variant).
-    cmd_extend_prev_word_start, Extend, prev_word_start(is_word_boundary));
-motion_cmd!(/// Extend selection to the end of the next word (shift-e variant).
-    cmd_extend_next_word_end, Extend, next_word_end(is_word_boundary));
-motion_cmd!(/// Extend selection to the start of the next WORD.
-    cmd_extend_next_WORD_start, Extend, next_word_start(is_WORD_boundary));
-motion_cmd!(/// Extend selection to the start of the previous WORD.
-    cmd_extend_prev_WORD_start, Extend, prev_word_start(is_WORD_boundary));
-motion_cmd!(/// Extend selection to the end of the next WORD.
-    cmd_extend_next_WORD_end, Extend, next_word_end(is_WORD_boundary));
-
 // Paragraph motions.
 motion_cmd!(/// Move all cursors to the start of the next paragraph (`]p`).
     cmd_next_paragraph, Move, next_paragraph);
@@ -921,6 +910,51 @@ mod tests {
     #[test]
     fn extend_left_clamp_at_start() {
         assert_state!("-[h]>ello\n", |(buf, sels)| cmd_extend_left(&buf, sels, 1), "-[h]>ello\n");
+    }
+
+    #[test]
+    fn extend_left_reverses_direction() {
+        // Forward selection anchor=3,head=3. Extend left 3 times: head→0.
+        // anchor=3 > head=0 → becomes a backward selection spanning "hell".
+        assert_state!("hel-[l]>o\n", |(buf, sels)| cmd_extend_left(&buf, sels, 3), "<[hell]-o\n");
+    }
+
+    #[test]
+    fn extend_right_crosses_newline() {
+        // Cursor on '\n' at end of first line. Extend right: head crosses newline
+        // onto the first char of the next line.
+        // "hello\nworld\n": '\n'=5, 'w'=6. anchor=5, head→6.
+        assert_state!(
+            "hello-[\n]>world\n",
+            |(buf, sels)| cmd_extend_right(&buf, sels, 1),
+            "hello-[\nw]>orld\n"
+        );
+    }
+
+    #[test]
+    fn extend_left_crosses_newline() {
+        // Cursor on first char of second line. Extend left: head crosses newline
+        // onto the '\n' of the previous line. "hello\nworld\n": '\n'=5, 'w'=6.
+        // anchor=6 stays on 'w'; head→5 ('\n'). Backward selection covers "\nw".
+        assert_state!(
+            "hello\n-[w]>orld\n",
+            |(buf, sels)| cmd_extend_left(&buf, sels, 1),
+            "hello<[\nw]-orld\n"
+        );
+    }
+
+    #[test]
+    fn extend_right_multi_cursor() {
+        // Two independent cursors both extend right by 2. They grow their own
+        // selections without merging (ranges remain disjoint).
+        // "foo bar\n": f=0,o=1,o=2,' '=3,b=4,a=5,r=6,'\n'=7.
+        // cursor1 anchor=0,head=0 → head=2 → "-[foo]>"
+        // cursor2 anchor=4,head=4 → head=6 → "-[bar]>"
+        assert_state!(
+            "-[f]>oo -[b]>ar\n",
+            |(buf, sels)| cmd_extend_right(&buf, sels, 2),
+            "-[foo]> -[bar]>\n"
+        );
     }
 
     // ── goto_line_start ───────────────────────────────────────────────────────
@@ -1261,69 +1295,6 @@ mod tests {
     fn select_prev_WORD_crosses_newline() {
         // B at the start of a line crosses the newline and selects the last WORD on the previous line.
         assert_state!("hello.world\n-[bar]>\n", |(buf, sels)| cmd_select_prev_WORD(&buf, sels, 1), "-[hello.world]>\nbar\n");
-    }
-
-    // ── extend variants ───────────────────────────────────────────────────────
-
-    #[test]
-    fn extend_next_word_start_grows_selection() {
-        // Existing forward selection — extend its head to next word start.
-        assert_state!("-[hell]>o world\n", |(buf, sels)| cmd_extend_next_word_start(&buf, sels, 1), "-[hello w]>orld\n");
-    }
-
-    #[test]
-    fn extend_prev_word_start_backward() {
-        assert_state!("hello -[w]>orld\n", |(buf, sels)| cmd_extend_prev_word_start(&buf, sels, 1), "<[hello w]-orld\n");
-    }
-
-    // ── extend WORD variants ──────────────────────────────────────────────────
-
-    #[test]
-    fn extend_next_WORD_start_skips_punct() {
-        // Cursor inside "hello.world" — extend to next WORD start, skipping punct as part of WORD.
-        assert_state!("-[h]>ello.world foo\n", |(buf, sels)| cmd_extend_next_WORD_start(&buf, sels, 1), "-[hello.world f]>oo\n");
-    }
-
-    #[test]
-    fn extend_next_WORD_start_grows_existing_selection() {
-        // Existing forward selection — extend head to the next WORD start.
-        assert_state!("-[hell]>o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_start(&buf, sels, 1), "-[hello.world f]>oo\n");
-    }
-
-    #[test]
-    fn extend_prev_WORD_start_backward() {
-        // Cursor after a WORD that includes punctuation — extend back to its start.
-        assert_state!("hello.world -[f]>oo\n", |(buf, sels)| cmd_extend_prev_WORD_start(&buf, sels, 1), "<[hello.world f]-oo\n");
-    }
-
-    #[test]
-    fn extend_prev_WORD_start_from_inside_WORD() {
-        // Cursor in middle of "hello.world" — extend back to the start of that WORD.
-        assert_state!("hello.wor-[l]>d foo\n", |(buf, sels)| cmd_extend_prev_WORD_start(&buf, sels, 1), "<[hello.worl]-d foo\n");
-    }
-
-    #[test]
-    fn extend_next_WORD_end_skips_punct() {
-        // Cursor at start of "hello.world" — extend to its end (last char of the WORD).
-        assert_state!("-[h]>ello.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(&buf, sels, 1), "-[hello.world]> foo\n");
-    }
-
-    #[test]
-    fn extend_next_WORD_end_grows_existing_selection() {
-        // Existing forward selection — extend head to end of next WORD.
-        assert_state!("-[hell]>o.world foo\n", |(buf, sels)| cmd_extend_next_WORD_end(&buf, sels, 1), "-[hello.world]> foo\n");
-    }
-
-    #[test]
-    fn extend_next_word_end_combining_grapheme() {
-        // "cafe\u{0301}" ends with the grapheme {é} = e(3) + \u{0301}(4).
-        // Extending to word-end must include the combining mark (head = 4),
-        // not stop at the base 'e' (head = 3) and orphan the accent.
-        assert_state!(
-            "-[c]>afe\u{0301} world\n",
-            |(buf, sels)| cmd_extend_next_word_end(&buf, sels, 1),
-            "-[cafe\u{0301}]> world\n"
-        );
     }
 
     // ── grapheme cluster correctness ──────────────────────────────────────────
@@ -1794,5 +1765,43 @@ mod tests {
             "foo -[bar baz]>\n",
             |(buf, sels)| cmd_extend_select_prev_word(&buf, sels, 1),
             "-[foo bar baz]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_next_word_at_buffer_end_is_noop() {
+        // From a selection covering the only word in the buffer, extend-w finds
+        // no next word (only '\n' remains) and leaves the selection unchanged.
+        assert_state!(
+            "-[hello]>\n",
+            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1),
+            "-[hello]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_prev_word_at_buffer_start_is_noop() {
+        // The selection starts at pos 0; there is no previous word. Noop.
+        assert_state!(
+            "-[hello]> world\n",
+            |(buf, sels)| cmd_extend_select_prev_word(&buf, sels, 1),
+            "-[hello]> world\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_next_word_multi_cursor() {
+        // Two cursors each independently union with the next word. Because
+        // select_next_word skips the word under the cursor and returns the
+        // *following* word, each cursor unites with the word after its current one.
+        //
+        // "foo bar baz qux\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=11,q=12..14
+        // cursor1 at 'f'(0): end()=0, select_next_word → "bar"(4,6). union(0,0,4,6)=(0,6)="foo bar".
+        // cursor2 at 'b'(8): end()=8, select_next_word → "qux"(12,14). union(8,8,12,14)=(8,14)="baz qux".
+        // Results (0,6) and (8,14) are disjoint — no merge.
+        assert_state!(
+            "-[f]>oo bar -[b]>az qux\n",
+            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1),
+            "-[foo bar]> -[baz qux]>\n"
         );
     }}
