@@ -454,24 +454,21 @@ pub(crate) fn paste_before(
 /// Replace every grapheme in every selection with `ch` (normal-mode `r`).
 ///
 /// - **Cursor selection**: the single character under the cursor is replaced.
-///   The cursor remains on the replacement character. No-op if the cursor sits
-///   on the structural trailing `\n` (deleting it would violate the buffer
-///   invariant).
+///   The cursor remains on the replacement character.
 /// - **Multi-character selection**: every grapheme in the selected region is
 ///   replaced with `ch`, preserving the selection direction. Multi-codepoint
 ///   grapheme clusters (e.g. `é` = U+0065 + U+0301) are replaced atomically —
 ///   the replacement shrinks the cluster down to one char without orphaning
 ///   combining marks.
-/// - **Structural `\n` protection**: the trailing `\n` is never replaced, even
-///   when it falls inside a multi-char selection.
+/// - **Newline skipping**: `\n` graphemes are never replaced — they are
+///   retained as-is. This preserves line structure when the selection spans
+///   multiple lines. The structural trailing `\n` is protected by the same
+///   rule.
 pub(crate) fn replace_selections(
     buf: Buffer,
     sels: SelectionSet,
     ch: char,
 ) -> (Buffer, SelectionSet, ChangeSet) {
-    // Cache before buf is moved into apply_edit.
-    let trailing_nl = buf.len_chars() - 1;
-
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let sel_start = sel.start();
         let sel_end   = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
@@ -481,25 +478,25 @@ pub(crate) fn replace_selections(
         // in result-buffer coordinates for later selection reconstruction.
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
-        let mut new_sel_end = new_sel_start; // updated after every replaced grapheme
+        let mut new_sel_end = new_sel_start; // updated after every grapheme
 
         let mut pos = sel_start;
         loop {
-            if pos == trailing_nl {
-                // Structural trailing '\n' — never replace it. The preceding
-                // graphemes (if any) have already been processed.
-                break;
-            }
-
             let next = next_grapheme_boundary(buf, pos);
-            // After the initial `retain` above, b.old_pos() == sel_start == pos.
-            // Each subsequent delete advances b.old_pos() by the cluster size,
-            // landing exactly at the next grapheme start — so no intra-loop
-            // retain calls are needed.
-            b.delete(next - pos);
-            b.insert_char(ch);
-            // b.new_pos() is one past the inserted char; the replacement char
-            // itself lives at b.new_pos() - 1.
+            // `\n` graphemes are skipped (retained) to preserve line structure.
+            // This also naturally protects the structural trailing '\n'.
+            if buf.char_at(pos) == Some('\n') {
+                b.retain(next - pos);
+            } else {
+                // After the initial `retain` above, b.old_pos() == sel_start == pos.
+                // Each subsequent delete advances b.old_pos() by the cluster size,
+                // landing exactly at the next grapheme start — so the builder stays
+                // in sync without additional retain calls between graphemes.
+                b.delete(next - pos);
+                b.insert_char(ch);
+            }
+            // Track the last position processed (whether replaced or retained)
+            // so the reconstructed selection covers the full original range.
             new_sel_end = b.new_pos() - 1;
 
             if pos >= sel_end { break; }
@@ -1249,11 +1246,21 @@ mod tests {
 
     #[test]
     fn replace_cursor_on_structural_newline_is_noop() {
-        // Structural trailing '\n' — cannot be replaced.
+        // Structural trailing '\n' is skipped like any other '\n'.
         assert_state!(
             "hello-[\n]>",
             |(buf, sels)| replace_selections(buf, sels, 'x'),
             "hello-[\n]>"
+        );
+    }
+
+    #[test]
+    fn replace_cursor_on_mid_buffer_newline_is_noop() {
+        // Cursor on the '\n' between two lines — preserved, not replaced.
+        assert_state!(
+            "hello-[\n]>world\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "hello-[\n]>world\n"
         );
     }
 
@@ -1325,6 +1332,17 @@ mod tests {
             "caf-[e]>\u{0301}z\n",
             |(buf, sels)| replace_selections(buf, sels, 'x'),
             "caf-[x]>z\n"
+        );
+    }
+
+    #[test]
+    fn replace_multiline_selection_skips_newline() {
+        // Selection spans two lines. The '\n' between them is retained;
+        // only the visible characters are replaced. Lines stay separate.
+        assert_state!(
+            "-[hello\nworld]>\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[xxxxx\nxxxxx]>\n"
         );
     }
 }

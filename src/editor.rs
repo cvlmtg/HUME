@@ -409,12 +409,16 @@ impl Editor {
             }
             KeyCode::Char('u') => self.doc.undo(),
             KeyCode::Char('U') => self.doc.redo(),
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.doc.redo();
-            }
             // `r` — replace: wait for the next character, then replace every
             // character in every selection with it (handled in pending dispatch above).
-            KeyCode::Char('r') => self.pending = PendingKey::Replace,
+            // `Ctrl+r` — redo (same key, modifier distinguishes).
+            KeyCode::Char('r') => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.doc.redo();
+                } else {
+                    self.pending = PendingKey::Replace;
+                }
+            }
 
             // ── Text objects ──────────────────────────────────────────────────
             // `m` — enter match mode; next key selects inner (`i`) or around (`a`),
