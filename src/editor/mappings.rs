@@ -212,9 +212,13 @@ impl Editor {
                 self.registers.write(DEFAULT_REGISTER, yanked);
             }
             // `c` — change: yank, delete selection, then enter Insert mode.
+            // The delete and everything typed before Esc form one undo step (Vim model):
+            // we open the group here so the delete is folded in, then set_mode(Insert)
+            // sees the group already open and skips begin_edit_group.
             KeyCode::Char('c') => {
                 let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.apply_edit(|b, s| delete_selection(b, s));
+                self.doc.begin_edit_group();
+                self.doc.apply_edit_grouped(|b, s| delete_selection(b, s));
                 self.registers.write(DEFAULT_REGISTER, yanked);
                 self.set_mode(Mode::Insert);
             }

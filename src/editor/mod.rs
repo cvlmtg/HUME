@@ -180,9 +180,12 @@ impl Editor {
     pub(super) fn set_mode(&mut self, mode: Mode) {
         match (self.mode, mode) {
             (Mode::Normal, Mode::Insert) => {
-                // Entering Insert: start accumulating edits for a single undo step.
                 self.extend = false;
-                self.doc.begin_edit_group();
+                // Only open a new group if one isn't already open. `c` opens
+                // the group itself (folding the delete in) before calling set_mode.
+                if !self.doc.is_group_open() {
+                    self.doc.begin_edit_group();
+                }
             }
             (Mode::Insert, Mode::Normal) => {
                 // Leaving Insert: commit all accumulated edits as one undo step.
@@ -207,3 +210,6 @@ impl Editor {
         self.doc.set_selections(new_sels);
     }
 }
+
+#[cfg(test)]
+mod tests;

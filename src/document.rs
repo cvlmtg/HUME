@@ -249,6 +249,11 @@ impl Document {
         self.sels = sels;
     }
 
+    /// True if an edit group is currently open.
+    pub(crate) fn is_group_open(&self) -> bool {
+        self.group.is_some()
+    }
+
     /// True if there is at least one edit to undo.
     pub(crate) fn can_undo(&self) -> bool {
         self.history.can_undo()
