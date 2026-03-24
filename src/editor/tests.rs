@@ -373,6 +373,53 @@ fn semicolon_collapses_selection_and_resets_extend() {
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
+// ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
+
+/// `o` must group the structural newline insertion and the subsequent insert
+/// session into one undo step. Without the fix, the newline would be a
+/// separate `apply_edit` revision, so `u` would only undo the typed text and
+/// leave behind an empty line.
+#[test]
+fn o_groups_newline_and_insert_session_into_one_undo_step() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('o'));
+    assert_eq!(ed.mode, Mode::Insert);
+
+    ed.handle_key(key('w'));
+    ed.handle_key(key('o'));
+    ed.handle_key(key('r'));
+    ed.handle_key(key('l'));
+    ed.handle_key(key('d'));
+
+    ed.handle_key(key_esc());
+    assert_eq!(ed.doc.buf().to_string(), "hello\nworld\n");
+
+    ed.handle_key(key('u'));
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(!ed.doc.can_undo());
+}
+
+/// Same undo-grouping invariant for `O` (open line above).
+#[test]
+fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
+    let mut ed = editor_from("foo\n-[b]>ar\n");
+
+    ed.handle_key(key('O'));
+    assert_eq!(ed.mode, Mode::Insert);
+
+    ed.handle_key(key('n'));
+    ed.handle_key(key('e'));
+    ed.handle_key(key('w'));
+
+    ed.handle_key(key_esc());
+    assert_eq!(ed.doc.buf().to_string(), "foo\nnew\nbar\n");
+
+    ed.handle_key(key('u'));
+    assert_eq!(state(&ed), "foo\n-[b]>ar\n");
+    assert!(!ed.doc.can_undo());
+}
+
 // ── 10. Plain insert session groups all chars into one undo step ──────────────
 
 /// `i` + typing + `Esc` must commit as one undo step, just like `c`. A single
