@@ -544,16 +544,14 @@ impl Editor {
         }
     }
 
-    /// Write the buffer to `self.file_path` atomically.
+    /// Serialize the buffer and write it to disk atomically, preserving the
+    /// original file's permissions, ownership, and symlink structure.
     ///
-    /// Writes to a temporary file in the same directory, then renames it over
-    /// the target. The rename(2) syscall is atomic on POSIX — if anything fails
-    /// before it, the original file is untouched.
-    ///
-    /// Sets `self.status_msg` on both success ("Written N lines") and failure.
+    /// Delegates the I/O to `crate::io::write_file_atomic`. Sets
+    /// `self.status_msg` on both success and failure.
     /// Returns `true` on success, `false` on any error.
     fn write_file(&mut self) -> bool {
-        let Some(path) = self.file_path.clone() else {
+        let Some(meta) = self.file_meta.as_ref() else {
             self.status_msg = Some("Error: no file name".into());
             return false;
         };
@@ -571,17 +569,7 @@ impl Editor {
         // string after the final newline as an extra line).
         let line_count = buf.len_lines().saturating_sub(1);
 
-        // The temp file must live in the same directory as the target so the
-        // rename stays on the same filesystem (cross-device rename would fail).
-        let dir = path.parent().unwrap_or(std::path::Path::new("."));
-        let result = (|| -> std::io::Result<()> {
-            let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-            std::io::Write::write_all(&mut tmp, content.as_bytes())?;
-            tmp.persist(&path).map_err(|e| e.error)?;
-            Ok(())
-        })();
-
-        match result {
+        match crate::io::write_file_atomic(&content, meta) {
             Ok(()) => {
                 self.status_msg = Some(format!("Written {line_count} lines"));
                 true

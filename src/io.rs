@@ -1,0 +1,105 @@
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+// ── FileMeta ──────────────────────────────────────────────────────────────────
+
+/// Metadata captured from a file on open, restored when saving atomically.
+///
+/// Keeping this separate from the `Editor` struct means the I/O layer owns
+/// everything it needs to do a faithful round-trip: the real write target
+/// (symlink-resolved), permissions, and ownership.
+pub(crate) struct FileMeta {
+    /// The canonical path after following all symlinks.
+    ///
+    /// Writes always target this path so the symlink itself is preserved —
+    /// `rename(2)` replaces inodes, not symlink targets.
+    pub resolved_path: PathBuf,
+
+    /// Original permission bits. Restored on the temp file before the rename
+    /// so the file is never transiently exposed with wrong permissions.
+    pub permissions: fs::Permissions,
+
+    /// Original owner UID. Restored with `fchown` (best-effort, Unix only).
+    #[cfg(unix)]
+    pub uid: u32,
+
+    /// Original group GID. Restored with `fchown` (best-effort, Unix only).
+    #[cfg(unix)]
+    pub gid: u32,
+}
+
+// ── read_file ─────────────────────────────────────────────────────────────────
+
+/// Read a file from disk, resolving symlinks and capturing metadata.
+///
+/// Returns `(content, meta)` where:
+/// - `content` is the raw file text (CRLF normalization happens in `Buffer::from`)
+/// - `meta` carries the resolved path, permissions, and ownership for write-back
+pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
+    // canonicalize follows every symlink in the path and returns the real path.
+    // This is what we write to later — so the symlink is preserved.
+    let resolved = fs::canonicalize(path)?;
+
+    let metadata = fs::metadata(&resolved)?;
+
+    #[cfg(unix)]
+    let meta = {
+        use std::os::unix::fs::MetadataExt;
+        FileMeta {
+            resolved_path: resolved.clone(),
+            permissions: metadata.permissions(),
+            uid: metadata.uid(),
+            gid: metadata.gid(),
+        }
+    };
+
+    #[cfg(not(unix))]
+    let meta = FileMeta {
+        resolved_path: resolved.clone(),
+        permissions: metadata.permissions(),
+    };
+
+    let content = fs::read_to_string(&resolved)?;
+    Ok((content, meta))
+}
+
+// ── write_file_atomic ─────────────────────────────────────────────────────────
+
+/// Write `content` atomically to the path recorded in `meta`.
+///
+/// Strategy:
+/// 1. Create a temp file **in the same directory** as the target — required for
+///    `rename(2)` to stay on the same filesystem.
+/// 2. Write content.
+/// 3. Restore permissions **before** the rename — the file must never be
+///    transiently visible with wrong mode bits.
+/// 4. Restore ownership via `fchown` (Unix only, best-effort — only succeeds
+///    when running as root or as the file's owner).
+/// 5. Atomic rename onto the target.
+pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()> {
+    let target = &meta.resolved_path;
+    let dir = target.parent().unwrap_or(Path::new("."));
+
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    io::Write::write_all(&mut tmp, content.as_bytes())?;
+
+    // Set permissions before rename — the window with wrong perms is zero.
+    tmp.as_file().set_permissions(meta.permissions.clone())?;
+
+    // Restore ownership. fchown requires root or matching uid to succeed;
+    // we silently ignore errors so a non-privileged user can still save their
+    // own files even if the group-change portion is rejected.
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: fchown is a safe POSIX syscall. We pass the fd of our own
+        // temp file and ignore the return value intentionally (best-effort).
+        unsafe {
+            libc::fchown(tmp.as_file().as_raw_fd(), meta.uid, meta.gid);
+        }
+    }
+
+    tmp.persist(target).map_err(|e| e.error)?;
+    Ok(())
+}
