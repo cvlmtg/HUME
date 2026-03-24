@@ -735,6 +735,53 @@ motion_cmd!(/// Extend selection to the start of the next paragraph.
 motion_cmd!(/// Extend selection to the first empty line above the current paragraph.
     cmd_extend_prev_paragraph, Extend, prev_paragraph);
 
+// ── Line selection motions ────────────────────────────────────────────────────
+
+/// Returns `(line_start, line_end_inclusive)` for the line containing `pos`.
+/// The inclusive end is the `\n` character. Returns `None` only on an empty buffer.
+fn select_line_at(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
+    let line = buf.char_to_line(pos);
+    let start = buf.line_to_char(line);
+    let end_excl = line_end_exclusive(buf, line);
+    if end_excl == start {
+        return None; // empty buffer guard
+    }
+    Some((start, end_excl - 1))
+}
+
+/// Select the full line the cursor is on (`x`): from line start to the trailing
+/// `\n` (inclusive). Always produces a fresh selection — no anchor accumulation.
+pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_word_select(buf, sels, 1, select_line_at)
+}
+
+/// Extend-mode `x`: grow the selection to cover the current line.
+/// If the selection already ends on a line's `\n`, advance to the next line
+/// so that repeated `x` presses accumulate lines downward.
+pub(crate) fn cmd_extend_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_word_select_extend_forward(buf, sels, 1, |buf, pos| {
+        let line = buf.char_to_line(pos);
+        let end_excl = line_end_exclusive(buf, line);
+        // `pos + 1 >= end_excl` ⟺ pos is on the trailing `\n` of this line.
+        // In that case, extend to the next line so repeated presses accumulate lines.
+        let (start, end_excl) = if pos + 1 >= end_excl {
+            let next_start = end_excl; // first char of next line
+            if next_start >= buf.len_chars() {
+                // Last line — nowhere further to extend.
+                (buf.line_to_char(line), end_excl)
+            } else {
+                (next_start, line_end_exclusive(buf, line + 1))
+            }
+        } else {
+            (buf.line_to_char(line), end_excl)
+        };
+        if end_excl == start {
+            return None;
+        }
+        Some((start, end_excl - 1))
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
