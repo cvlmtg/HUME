@@ -63,6 +63,11 @@ pub(crate) struct EditorColors {
 
     /// Mode label in Extend mode (`EXT`). Yellow distinguishes it from Normal.
     pub status_extend: Style,
+
+    /// Mode label in Command mode (`CMD`). Green signals "input expected".
+    /// Shown only as a fallback — command mode normally renders a command line
+    /// instead of a status bar.
+    pub status_command: Style,
 }
 
 impl EditorColors {
@@ -84,6 +89,7 @@ impl EditorColors {
             status_normal: reversed,
             status_insert: reversed.fg(Color::Cyan),
             status_extend: reversed.fg(Color::Yellow),
+            status_command: reversed.fg(Color::Green),
         }
     }
 }

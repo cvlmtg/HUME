@@ -257,6 +257,7 @@ dependencies = [
  "proptest",
  "ratatui",
  "ropey",
+ "tempfile",
  "unicode-segmentation",
  "unicode-width 0.2.0",
 ]

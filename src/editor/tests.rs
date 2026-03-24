@@ -29,6 +29,8 @@ fn editor_from(input: &str) -> Editor {
         registers: crate::register::RegisterSet::new(),
         colors: crate::theme::EditorColors::default(),
         should_quit: false,
+        minibuf: None,
+        status_msg: None,
     }
 }
 
@@ -48,6 +50,14 @@ fn key_esc() -> KeyEvent {
 
 fn key_ctrl(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
+}
+
+fn key_enter() -> KeyEvent {
+    KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+}
+
+fn key_backspace() -> KeyEvent {
+    KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {
@@ -524,4 +534,133 @@ fn mil_on_empty_line_is_noop() {
     ed.handle_key(key('i'));
     ed.handle_key(key('l'));
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}
+
+// ── Command mode ──────────────────────────────────────────────────────────────
+
+#[test]
+fn colon_enters_command_mode() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    assert_eq!(ed.mode, Mode::Command);
+    assert!(ed.minibuf.is_some());
+    assert_eq!(ed.minibuf.as_ref().unwrap().prompt, ':');
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+}
+
+#[test]
+fn esc_cancels_command_mode() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('q'));
+    ed.handle_key(key_esc());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+    assert!(!ed.should_quit);
+}
+
+#[test]
+fn backspace_on_empty_input_cancels() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+}
+
+#[test]
+fn backspace_removes_last_char() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('q'));
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "w");
+}
+
+#[test]
+fn colon_q_enter_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('q'));
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+}
+
+#[test]
+fn colon_quit_enter_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":quit".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+}
+
+#[test]
+fn colon_w_no_path_sets_error() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // No file_path set — write should fail with an error message.
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_enter());
+    assert!(!ed.should_quit);
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.status_msg.as_deref(), Some("Error: no file name"));
+}
+
+#[test]
+fn colon_w_writes_file() {
+    use std::io::Read as _;
+    let mut ed = editor_from("-[h]>ello\n");
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ed.file_path = Some(tmp.path().to_path_buf());
+
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    // Success message starts with "Written"
+    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    // File content must match buffer content.
+    let mut written = String::new();
+    tmp.reopen().unwrap().read_to_string(&mut written).unwrap();
+    assert_eq!(written, "hello\n");
+}
+
+#[test]
+fn colon_wq_writes_and_quits() {
+    use std::io::Read as _;
+    let mut ed = editor_from("-[h]>ello\n");
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ed.file_path = Some(tmp.path().to_path_buf());
+
+    for ch in ":wq".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.should_quit);
+    let mut written = String::new();
+    tmp.reopen().unwrap().read_to_string(&mut written).unwrap();
+    assert_eq!(written, "hello\n");
+}
+
+#[test]
+fn colon_unknown_sets_error() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":nonsense".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert_eq!(ed.status_msg.as_deref(), Some("Unknown command: nonsense"));
+    assert!(!ed.should_quit);
+}
+
+#[test]
+fn status_msg_cleared_on_next_keypress() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":nonsense".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.status_msg.is_some());
+    // Any keypress clears it.
+    ed.handle_key(key('l'));
+    assert!(ed.status_msg.is_none());
 }

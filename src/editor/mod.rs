@@ -45,12 +45,27 @@ pub(super) enum PendingKey {
 /// The current editing mode.
 ///
 /// Starts as `Normal`. `Insert` is entered via `i`/`a` and exited via `Escape`.
+/// `Command` is entered via `:` and exited via `Enter` (execute) or `Esc` (cancel).
 /// The keymap is completely different in each mode — `handle_key` dispatches
-/// to `handle_normal` or `handle_insert` accordingly.
+/// to the appropriate handler accordingly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mode {
     Normal,
     Insert,
+    Command,
+}
+
+// ── MiniBuffer ────────────────────────────────────────────────────────────────
+
+/// The command-line mini-buffer, active while the user is typing a command.
+///
+/// Designed to be reused for search (`/`) in M4 — `prompt` distinguishes
+/// the context without needing separate mode variants for each prompt type.
+pub(super) struct MiniBuffer {
+    /// The character shown before the input, e.g. `:` for commands, `/` for search.
+    pub prompt: char,
+    /// The text typed so far.
+    pub input: String,
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -67,6 +82,12 @@ pub(crate) struct Editor {
     pub(super) registers: RegisterSet,
     pub(super) colors: EditorColors,
     pub(super) should_quit: bool,
+    /// Active when the user is typing a command (`:`) or, later, a search (`/`).
+    /// `None` when the mini-buffer is not visible.
+    pub(super) minibuf: Option<MiniBuffer>,
+    /// Transient one-line message shown in the status bar after an action
+    /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
+    pub(super) status_msg: Option<String>,
 }
 
 impl Editor {
@@ -106,6 +127,8 @@ impl Editor {
             registers: RegisterSet::new(),
             colors: EditorColors::default(),
             should_quit: false,
+            minibuf: None,
+            status_msg: None,
         })
     }
 
@@ -140,16 +163,28 @@ impl Editor {
                 mode: self.mode,
                 extend: self.extend,
                 colors: &self.colors,
+                minibuf: self.minibuf.as_ref().map(|m| (m.prompt, m.input.as_str())),
+                status_msg: self.status_msg.as_deref(),
             };
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());
-                // In Insert mode, show the real terminal cursor (bar) so
-                // SetCursorStyle is visible. Normal mode uses the white-block
-                // cursor_head cell style — no real cursor needed.
-                if ctx.mode == Mode::Insert {
-                    if let Some(pos) = cursor_screen_pos(ctx.doc.buf(), ctx.view, ctx.doc.sels().primary().head) {
-                        frame.set_cursor_position(pos);
+                // In Insert and Command mode, show the real terminal cursor (bar).
+                // Normal mode uses the white-block cursor_head cell style — no real cursor needed.
+                match ctx.mode {
+                    Mode::Insert => {
+                        if let Some(pos) = cursor_screen_pos(ctx.doc.buf(), ctx.view, ctx.doc.sels().primary().head) {
+                            frame.set_cursor_position(pos);
+                        }
                     }
+                    Mode::Command => {
+                        if let Some((_, input)) = ctx.minibuf {
+                            // Position after the prompt char and typed text, on the status bar row.
+                            let col = 1 + input.len() as u16;
+                            let row = ctx.view.height as u16;
+                            frame.set_cursor_position((col, row));
+                        }
+                    }
+                    Mode::Normal => {}
                 }
             })?;
 
@@ -159,7 +194,7 @@ impl Editor {
             // reset the shape on some terminals.
             let cursor_style = match self.mode {
                 Mode::Normal => SetCursorStyle::SteadyBlock,
-                Mode::Insert => SetCursorStyle::SteadyBar,
+                Mode::Insert | Mode::Command => SetCursorStyle::SteadyBar,
             };
             let _ = execute!(std::io::stdout(), cursor_style);
 
@@ -197,6 +232,7 @@ impl Editor {
                 // Leaving Insert: commit all accumulated edits as one undo step.
                 self.doc.commit_edit_group();
             }
+            // Command mode transitions do not affect undo groups.
             _ => {}
         }
         self.mode = mode;
