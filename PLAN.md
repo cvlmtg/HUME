@@ -83,27 +83,37 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [ ] Matching bracket highlight: `find_bracket_pair` exists in `text_object.rs`; needs a secondary highlight concept in the renderer (reusable for search, diagnostics).
 - [ ] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
 
+### M4 — Command architecture + search
+
+Theme: replace hardcoded key dispatch with a proper command registry and keymap layer, then add the highest-value editing features that depend on it.
+
+- [ ] **Command registry** (`src/command.rs`): typed command descriptors behind string names — `Motion`, `Selection`, and `Edit` variants; `register_defaults()` registers every `cmd_*` function. The `cmd_*` signatures are already the right shape.
+- [ ] **Keymap layer** (`src/keymap.rs`): trie-based `KeyEvent` sequence → command name mapping; per-mode keymaps (Normal, Insert, Select); replaces the `PendingKey` enum and all `handle_normal` match arms. Default keymap in Rust (Steel config is M5).
+- [ ] **Goto commands** (`g` prefix): `gg` (first line), `ge` (last line), `gh` (line start), `gl` (line end), `gs` (first non-blank) — validates the multi-key trie.
+- [ ] **Repeat last command (`.`)**: registry records last command name + count; `InsertTransaction` captures insert-mode keystroke sequences so `c` + text + `Esc` replays as a single unit.
+- [ ] **File save robustness**: `:w <path>` save-as, "no file name" error, dirty-buffer tracking in status bar (builds on M3 command mode).
+- [ ] **Incremental search** (`/` and `?`): `Mode::Search { direction }`, reuses command-mode mini-buffer; live match highlighting via `HighlightSet` (vec of char ranges + style — same pattern for bracket matching, diagnostics); `n`/`N` repeat; `Esc` restores position; pattern stored in `'s'` register.
+- [ ] **Search-based selection** (`*` and `s`): `*` uses current selection as search pattern; `s` splits selection on regex matches (powerful multi-cursor feature).
+- [ ] **Jump list**: ring buffer of cursor positions; record on search jumps, goto, and motions > N lines; `Ctrl-o` / `Ctrl-i` navigate.
+- [ ] **Surround operations** (`ms`/`md`/`mr`): add/delete/replace surrounding brackets or quotes; builds on `find_bracket_pair` in `text_object.rs`; uses `m` prefix in the keymap trie.
+
 ### Future milestones
-- **Keymap + Steel config**: command registry (string → command), Steel engine integration, configurable key bindings. Every hardcoded match arm in `handle_normal` is debt here — but the `cmd_*` function signatures are already the right shape. Best done as the first M4 task once M3 features are stable.
-- **Repeat last command (`.`)**: depends on the command registry (need to store command name + args). Build after keymap.
-- **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Registers are implemented — explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
-- Search and replace with incremental search and live match highlighting
-- File picker / fuzzy finder (Helix-style picker with fuzzy matching)
-- Jump list (navigate back/forward through cursor position history)
-- Surround operations (add/change/delete surrounding characters)
-- Multiple buffers / splits
-- Syntax highlighting via tree-sitter
-- Tree-sitter structural features: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable)
+- **Macros**: depends on command registry (M4) + `InsertTransaction` recording (M4). Straightforward once M4 is done.
+- **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
+- **Steel scripting engine + plugin API**: needs command registry (M4) to expose commands to Steel. Includes `History` read-only accessors + `goto_revision` for undotree plugins.
+- **Configuration via Steel**: depends on Steel engine
+- **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer. Own milestone: "Syntax awareness."
+- **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable). Depends on tree-sitter.
+- **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
+- **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
+- **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
+- **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - Soft wrap (option to wrap long lines vs horizontal scroll)
 - Code folding (tree-sitter powered collapse/expand)
 - Mouse support (click to position cursor, scroll, basic selection)
 - Git gutter signs (added/modified/deleted line indicators)
 - Whitespace rendering (show tabs, trailing spaces, etc.)
 - File watcher (detect external file changes, prompt to reload)
-- Steel scripting engine + plugin API (includes exposing `History` read-only accessors + `goto_revision` to Steel for undotree plugins)
-- Configuration via Steel
-- LSP support (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename` (falls back to tree-sitter local rename when LSP unavailable)
-- Virtual lines / decoration layer (inline diagnostics, ghost text, code lenses, inlay hints)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
 - Package manager: Declarative sync model, git-based, `:plugin-sync` / `:plugin-update` / `:plugin-status`
