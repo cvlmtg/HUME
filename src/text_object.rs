@@ -481,6 +481,192 @@ quote_cmds!(cmd_inner_double_quote, cmd_around_double_quote, cmd_extend_inner_do
 quote_cmds!(cmd_inner_single_quote, cmd_around_single_quote, cmd_extend_inner_single_quote, cmd_extend_around_single_quote, '\'');
 quote_cmds!(cmd_inner_backtick, cmd_around_backtick, cmd_extend_inner_backtick, cmd_extend_around_backtick, '`');
 
+// ── Arguments (comma-separated items) ──────────────────────────────────────────
+
+/// Find the tightest bracket pair among `()`, `[]`, `{}` that encloses `pos`.
+///
+/// Tries all three bracket types and returns the pair with the smallest span.
+/// Tightest means innermost — for nested structures, we want the closest pair.
+fn find_tightest_bracket_pair(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
+    const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+    PAIRS.iter()
+        .filter_map(|&(open, close)| find_bracket_pair(buf, pos, open, close))
+        .min_by_key(|&(o, c)| c - o)
+}
+
+/// Collect all comma-separated segments at depth 0 between `open_pos` and `close_pos`.
+///
+/// Returns a vec of `(start, end)` inclusive char-index pairs, one per segment,
+/// including leading/trailing whitespace. Commas inside nested `()`, `[]`, or `{}`
+/// are skipped. Returns an empty vec for adjacent brackets (`()`).
+fn find_comma_segments(buf: &Buffer, open_pos: usize, close_pos: usize) -> Vec<(usize, usize)> {
+    // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
+    if close_pos <= open_pos + 1 {
+        return Vec::new();
+    }
+    let content_start = open_pos + 1;
+    let content_end   = close_pos - 1; // inclusive
+
+    let mut segments  = Vec::new();
+    let mut seg_start = content_start;
+    let mut depth     = 0usize;
+    let mut i         = content_start;
+
+    while i <= content_end {
+        match buf.char_at(i) {
+            Some('(' | '[' | '{') => depth += 1,
+            Some(')' | ']' | '}') => depth = depth.saturating_sub(1),
+            Some(',') if depth == 0 => {
+                // i - 1 >= seg_start - 1; safe since seg_start >= content_start >= 1.
+                segments.push((seg_start, i - 1));
+                seg_start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1; // ASCII bracket/comma scanning — allowed per CLAUDE.md
+    }
+
+    // Final segment: everything after the last comma, or the whole content if no commas.
+    segments.push((seg_start, content_end));
+    segments
+}
+
+/// Find which segment in `segments` contains `pos`.
+///
+/// If `pos` falls in a gap (e.g., on a comma between two segments), associate
+/// it with the following segment — matching Helix/Kakoune behaviour.
+fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
+    // Direct containment.
+    for (idx, &(start, end)) in segments.iter().enumerate() {
+        if pos >= start && pos <= end {
+            return Some(idx);
+        }
+    }
+    // pos is in a gap (on a comma). Return the next segment.
+    for idx in 0..segments.len().saturating_sub(1) {
+        let (_, prev_end)    = segments[idx];
+        let (next_start, _) = segments[idx + 1];
+        if pos > prev_end && pos < next_start {
+            return Some(idx + 1);
+        }
+    }
+    None
+}
+
+/// Inner argument: the text of the comma-separated item at `pos`, with leading
+/// and trailing whitespace trimmed.
+///
+/// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
+/// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
+fn inner_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
+    let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
+
+    // Nudge: if the cursor is on a bracket itself, step into the content zone.
+    let pos = if pos == open_pos {
+        open_pos + 1
+    } else if pos == close_pos {
+        close_pos.saturating_sub(1)
+    } else {
+        pos
+    };
+
+    let segments = find_comma_segments(buf, open_pos, close_pos);
+    if segments.is_empty() {
+        return None;
+    }
+
+    let idx             = which_segment(&segments, pos)?;
+    let (raw_start, raw_end) = segments[idx];
+
+    // Trim leading whitespace. next_grapheme_boundary is required here because
+    // `start` is a text position — raw `+= 1` would mis-step on multi-byte clusters.
+    let mut start = raw_start;
+    while start <= raw_end && matches!(buf.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
+        start = next_grapheme_boundary(buf, start);
+    }
+    // Trim trailing whitespace.
+    let mut end = raw_end;
+    while end > start && matches!(buf.char_at(end), Some(' ' | '\t' | '\n' | '\r')) {
+        end = prev_grapheme_boundary(buf, end);
+    }
+    // Segment is entirely whitespace — nothing to select.
+    if start > raw_end {
+        return None;
+    }
+
+    Some((start, end))
+}
+
+/// Around argument: the item plus its separator comma, following the Helix convention
+/// that deleting around leaves a clean, properly-spaced list.
+///
+/// - **Only arg**: same as inner (no separator to consume).
+/// - **First arg**: extend end through the trailing comma and any whitespace
+///   leading into the next argument, so `delete(around aaa)` in `foo(aaa, bbb)`
+///   yields `foo(bbb)` with no leading space.
+/// - **Non-first arg**: extend start back to include the preceding comma,
+///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
+fn around_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
+    let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
+
+    // Nudge cursor off the bracket itself.
+    let pos = if pos == open_pos {
+        open_pos + 1
+    } else if pos == close_pos {
+        close_pos.saturating_sub(1)
+    } else {
+        pos
+    };
+
+    let segments = find_comma_segments(buf, open_pos, close_pos);
+    if segments.is_empty() {
+        return None;
+    }
+
+    let idx = which_segment(&segments, pos)?;
+    let (raw_start, raw_end) = segments[idx];
+
+    if segments.len() == 1 {
+        // Only argument — no separator to eat; same as inner.
+        return inner_argument(buf, pos);
+    }
+
+    if idx == 0 {
+        // First arg: eat the trailing comma and skip whitespace to the start
+        // of the next argument's content, so no orphan space is left behind.
+        let (next_raw_start, next_raw_end) = segments[1];
+        let mut end = next_raw_start;
+        while end <= next_raw_end && matches!(buf.char_at(end), Some(' ' | '\t')) {
+            end = next_grapheme_boundary(buf, end);
+        }
+        // `end` is now the first content char of the next segment.
+        // Our range is raw_start ..= (end - 1), eating "aaa, ".
+        Some((raw_start, end - 1))
+    } else {
+        // Non-first arg: eat the preceding comma (it sits at prev_raw_end + 1).
+        // The raw segment already includes any leading space after the comma,
+        // so this range covers ", bbb" naturally.
+        let prev_raw_end = segments[idx - 1].1;
+        Some((prev_raw_end + 1, raw_end))
+    }
+}
+
+pub(crate) fn cmd_inner_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object(buf, sels, inner_argument)
+}
+
+pub(crate) fn cmd_around_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object(buf, sels, around_argument)
+}
+
+pub(crate) fn cmd_extend_inner_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, inner_argument)
+}
+
+pub(crate) fn cmd_extend_around_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, around_argument)
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1178,6 +1364,233 @@ mod tests {
             "-[(a b)]>\n",
             |(buf, sels)| cmd_extend_around_paren(&buf, sels),
             "-[(a b)]>\n"
+        );
+    }
+
+    // ── Arguments ─────────────────────────────────────────────────────────────
+
+    // ── inner_argument ────────────────────────────────────────────────────────
+
+    #[test]
+    fn inner_argument_first() {
+        assert_state!(
+            "foo(-[a]>aa, bbb, ccc)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[aaa]>, bbb, ccc)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_middle() {
+        assert_state!(
+            "foo(aaa, -[b]>bb, ccc)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(aaa, -[bbb]>, ccc)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_last() {
+        assert_state!(
+            "foo(aaa, bbb, -[c]>cc)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(aaa, bbb, -[ccc]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_single() {
+        assert_state!(
+            "foo(-[a]>aa)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[aaa]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_trims_whitespace() {
+        // Leading/trailing spaces inside the segment are excluded.
+        assert_state!(
+            "foo(  -[a]>aa  , bbb)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(  -[aaa]>  , bbb)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_nested_parens_skips_inner_comma() {
+        // The comma inside bar(x, y) is at depth 1 — not a segment boundary.
+        assert_state!(
+            "foo(-[b]>ar(x, y), z)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[bar(x, y)]>, z)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_nested_brackets_skips_inner_comma() {
+        assert_state!(
+            "foo(-[b]>ar[x, y], z)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[bar[x, y]]>, z)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_nested_braces_skips_inner_comma() {
+        // The comma inside {a: 1, b: 2} is at depth 1 — not a segment boundary.
+        // Cursor in the second argument selects "ccc", not something split by the inner comma.
+        assert_state!(
+            "foo({a: 1, b: 2}, cc-[c]>)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo({a: 1, b: 2}, -[ccc]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_picks_tightest_bracket_pair() {
+        // The cursor is inside (aaa, bbb) which is itself inside [...].
+        // The tightest enclosing pair is (), not [].
+        assert_state!(
+            "[(aaa, -[b]>bb), ccc]\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "[(aaa, -[bbb]>), ccc]\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_cursor_on_comma_associates_with_next() {
+        // Cursor on the comma — treated as belonging to the following segment.
+        assert_state!(
+            "foo(aaa-[,]> bbb)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(aaa, -[bbb]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_cursor_on_open_bracket() {
+        assert_state!(
+            "foo-[(]>aaa, bbb)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[aaa]>, bbb)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_cursor_on_close_bracket() {
+        assert_state!(
+            "foo(aaa, bbb-[)]>\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(aaa, -[bbb]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_empty_brackets_is_noop() {
+        assert_state!(
+            "foo-[(]>)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo-[(]>)\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_no_enclosing_bracket_is_noop() {
+        assert_state!(
+            "foo-[,]>bar\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo-[,]>bar\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_array_items() {
+        assert_state!(
+            "[-[1]>11, 222, 333]\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "[-[111]>, 222, 333]\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_object_fields() {
+        assert_state!(
+            "{-[f]>oo, a: b}\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "{-[foo]>, a: b}\n"
+        );
+    }
+
+    #[test]
+    fn inner_argument_multi_cursor() {
+        assert_state!(
+            "foo(-[a]>aa, bbb, -[c]>cc)\n",
+            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            "foo(-[aaa]>, bbb, -[ccc]>)\n"
+        );
+    }
+
+    // ── around_argument ───────────────────────────────────────────────────────
+
+    #[test]
+    fn around_argument_first() {
+        // Deletes "aaa, " — no orphan space before bbb.
+        assert_state!(
+            "foo(-[a]>aa, bbb, ccc)\n",
+            |(buf, sels)| cmd_around_argument(&buf, sels),
+            "foo(-[aaa, ]>bbb, ccc)\n"
+        );
+    }
+
+    #[test]
+    fn around_argument_middle() {
+        // Deletes ", bbb" — eats the preceding comma.
+        assert_state!(
+            "foo(aaa, -[b]>bb, ccc)\n",
+            |(buf, sels)| cmd_around_argument(&buf, sels),
+            "foo(aaa-[, bbb]>, ccc)\n"
+        );
+    }
+
+    #[test]
+    fn around_argument_last() {
+        // Deletes ", ccc" — eats the preceding comma.
+        assert_state!(
+            "foo(aaa, bbb, -[c]>cc)\n",
+            |(buf, sels)| cmd_around_argument(&buf, sels),
+            "foo(aaa, bbb-[, ccc]>)\n"
+        );
+    }
+
+    #[test]
+    fn around_argument_single_equals_inner() {
+        // No comma to eat — same as inner.
+        assert_state!(
+            "foo(-[a]>aa)\n",
+            |(buf, sels)| cmd_around_argument(&buf, sels),
+            "foo(-[aaa]>)\n"
+        );
+    }
+
+    #[test]
+    fn around_argument_nested() {
+        // First arg is a nested call — around eats trailing ", ".
+        assert_state!(
+            "foo(-[b]>ar(x, y), z)\n",
+            |(buf, sels)| cmd_around_argument(&buf, sels),
+            "foo(-[bar(x, y), ]>z)\n"
+        );
+    }
+
+    // ── extend mode ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn extend_inner_argument_basic() {
+        assert_state!(
+            "foo(aaa, -[b]>bb, ccc)\n",
+            |(buf, sels)| cmd_extend_inner_argument(&buf, sels),
+            "foo(aaa, -[bbb]>, ccc)\n"
         );
     }
 }

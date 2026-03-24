@@ -29,16 +29,18 @@ use crate::selection_cmd::{
 };
 use crate::terminal::Term;
 use crate::text_object::{
-    cmd_around_WORD, cmd_around_angle, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
-    cmd_around_double_quote, cmd_around_paren, cmd_around_single_quote, cmd_around_word,
-    cmd_extend_around_WORD, cmd_extend_around_angle, cmd_extend_around_backtick,
-    cmd_extend_around_brace, cmd_extend_around_bracket, cmd_extend_around_double_quote,
-    cmd_extend_around_paren, cmd_extend_around_single_quote, cmd_extend_around_word,
-    cmd_extend_inner_WORD, cmd_extend_inner_angle, cmd_extend_inner_backtick,
+    cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
+    cmd_around_bracket, cmd_around_double_quote, cmd_around_paren, cmd_around_single_quote,
+    cmd_around_word, cmd_extend_around_WORD, cmd_extend_around_angle,
+    cmd_extend_around_argument, cmd_extend_around_backtick, cmd_extend_around_brace,
+    cmd_extend_around_bracket, cmd_extend_around_double_quote, cmd_extend_around_paren,
+    cmd_extend_around_single_quote, cmd_extend_around_word, cmd_extend_inner_WORD,
+    cmd_extend_inner_angle, cmd_extend_inner_argument, cmd_extend_inner_backtick,
     cmd_extend_inner_brace, cmd_extend_inner_bracket, cmd_extend_inner_double_quote,
     cmd_extend_inner_paren, cmd_extend_inner_single_quote, cmd_extend_inner_word,
-    cmd_inner_WORD, cmd_inner_angle, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
-    cmd_inner_double_quote, cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
+    cmd_inner_WORD, cmd_inner_angle, cmd_inner_argument, cmd_inner_backtick, cmd_inner_brace,
+    cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_paren, cmd_inner_single_quote,
+    cmd_inner_word,
 };
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -564,6 +566,9 @@ impl Editor {
                 ('\'', false) => self.apply_motion(cmd_extend_around_single_quote),
                 ('`', true)  => self.apply_motion(cmd_extend_inner_backtick),
                 ('`', false) => self.apply_motion(cmd_extend_around_backtick),
+                // ── Arguments ────────────────────────────────────────────────
+                ('a', true)  => self.apply_motion(cmd_extend_inner_argument),
+                ('a', false) => self.apply_motion(cmd_extend_around_argument),
                 _ => return false,
             }
         } else {
@@ -589,6 +594,9 @@ impl Editor {
                 ('\'', false) => self.apply_motion(cmd_around_single_quote),
                 ('`', true)  => self.apply_motion(cmd_inner_backtick),
                 ('`', false) => self.apply_motion(cmd_around_backtick),
+                // ── Arguments ────────────────────────────────────────────────
+                ('a', true)  => self.apply_motion(cmd_inner_argument),
+                ('a', false) => self.apply_motion(cmd_around_argument),
                 _ => return false,
             }
         }
