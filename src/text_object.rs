@@ -127,6 +127,14 @@ pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet 
     apply_text_object(buf, sels, around_line)
 }
 
+pub(crate) fn cmd_extend_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, inner_line)
+}
+
+pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, around_line)
+}
+
 // ── Word / WORD ────────────────────────────────────────────────────────────────
 
 /// Inner word parameterised by boundary predicate.
