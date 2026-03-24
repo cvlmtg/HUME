@@ -14,6 +14,7 @@ use crate::motion::{
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
 use crate::register::{yank_selections, DEFAULT_REGISTER};
+use crate::selection::Selection;
 use crate::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
     cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
@@ -281,8 +282,11 @@ impl Editor {
             KeyCode::Char('x') => self.extend = !self.extend,
 
             // ── Mode transitions ──────────────────────────────────────────────
-            // `i` — enter Insert at current position
-            KeyCode::Char('i') => self.set_mode(Mode::Insert),
+            // `i` — enter Insert before the selection (collapse to start).
+            KeyCode::Char('i') => {
+                self.apply_motion(|_b, sels| sels.map(|s| Selection::cursor(s.start())));
+                self.set_mode(Mode::Insert);
+            }
 
             // `I` — enter Insert at the first non-blank character of the line.
             KeyCode::Char('I') => {

@@ -209,15 +209,14 @@ fn render_content(
         //   3. cursor_line — subtle bg tint on the primary cursor's line
         //   4. default     — no decoration
         //
-        // In Insert mode the guard `mode != Insert || !s.is_cursor()` suppresses
-        // all selection/cursor highlights for cursor-only selections so the real
+        // In Insert mode suppress all selection/cursor highlights — the real
         // terminal bar cursor (set via frame.set_cursor_position) is visible
         // instead. In Normal mode the guard always passes.
         let is_head = sels_on_line.iter().any(|s| {
-            (mode != Mode::Insert || !s.is_cursor()) && char_pos == s.head
+            mode != Mode::Insert && char_pos == s.head
         });
         let is_selected = !is_head && sels_on_line.iter().any(|s| {
-            (mode != Mode::Insert || !s.is_cursor())
+            mode != Mode::Insert
                 && char_pos >= s.start()
                 && char_pos <= s.end()
         });
@@ -242,10 +241,10 @@ fn render_content(
     // newline / empty line), draw a space with the appropriate style so the
     // cursor is visible past the last glyph.
     let eol_is_head = sels_on_line.iter().any(|s| {
-        (mode != Mode::Insert || !s.is_cursor()) && char_pos == s.head
+        mode != Mode::Insert && char_pos == s.head
     });
     let eol_is_selected = !eol_is_head && sels_on_line.iter().any(|s| {
-        (mode != Mode::Insert || !s.is_cursor())
+        mode != Mode::Insert
             && char_pos >= s.start()
             && char_pos <= s.end()
     });
