@@ -307,24 +307,32 @@ mod tests {
         let manifest = std::env::var("CARGO_MANIFEST_DIR")
             .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
 
+        // All files whose position-manipulation code must use grapheme boundaries.
         let files = [
             "src/motion.rs",
             "src/text_object.rs",
             "src/selection_cmd.rs",
+            "src/edit.rs",
         ];
 
-        // Variable names used to track char positions in motion/text-object code.
-        // Stepping any of these by exactly 1 is the forbidden pattern — it skips
-        // over combining codepoints rather than over full grapheme clusters.
+        // Forbidden patterns — raw +1/-1 steps on char-position variables.
+        // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)
+        // instead of advancing by a full grapheme cluster.
+        //
+        // Assignment forms: caught directly.
+        // char_at() forms: explicitly forbidden by CLAUDE.md — char_at(pos + 1) and
+        //   char_at(pos - 1) were the original motivating footguns.
         let forbidden = [
-            "pos += 1",
-            "pos -= 1",
-            "start += 1",
-            "start -= 1",
-            "end += 1",
-            "end -= 1",
-            "head += 1",
-            "head -= 1",
+            // ── Assignment forms ───────────────────────────────────────────────
+            "pos += 1",   "pos -= 1",
+            "start += 1", "start -= 1",
+            "end += 1",   "end -= 1",
+            "head += 1",  "head -= 1",
+            "anchor += 1","anchor -= 1",
+            // ── char_at() expression forms ─────────────────────────────────────
+            "char_at(pos + 1)",    "char_at(pos - 1)",
+            "char_at(head + 1)",   "char_at(head - 1)",
+            "char_at(anchor + 1)", "char_at(anchor - 1)",
         ];
 
         let mut violations: Vec<String> = Vec::new();
@@ -373,9 +381,17 @@ mod tests {
                     continue;
                 }
 
-                // Strip any trailing inline comment before checking.
-                // This avoids false positives from explanatory comments like
-                // `// old approach was pos += 1`.
+                // `// grapheme-safe: <reason>` opt-out: lines where raw +1/-1 is
+                // intentional and safe (e.g. ASCII-only delimiter arithmetic, or
+                // converting a grapheme-boundary-aligned exclusive end to inclusive).
+                // The reason after the colon must explain *why* it is safe.
+                if line.contains("// grapheme-safe:") {
+                    continue;
+                }
+
+                // Strip any remaining inline comment before pattern-matching.
+                // This prevents explanatory comments like `// was: pos += 1` from
+                // triggering false positives.
                 let code = match line.find("//") {
                     Some(idx) => &line[..idx],
                     None => line,
