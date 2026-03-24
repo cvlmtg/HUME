@@ -53,6 +53,11 @@ pub(crate) enum Operation {
 /// `ChangeSetBuilder::new_pos()`, so they never consult `map_pos`. Undo/redo
 /// uses a store-and-restore strategy (the inverse `Transaction` carries the
 /// original `SelectionSet`), also without `map_pos`.
+// `Assoc` and `map_pos` are not yet called — HUME uses direct cursor tracking
+// rather than position mapping. They are kept because position mapping is a
+// standard part of the OT interface and will be needed for collaborative
+// editing or LSP offset translation.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
@@ -166,21 +171,27 @@ fn advance_op(
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
+    // Inspection accessors not yet called from editor code; kept for tests and
+    // future diagnostics / serialisation.
+    #[allow(dead_code)]
     /// The old-document length this changeset was built for.
     pub(crate) fn len_before(&self) -> usize {
         self.len_before
     }
 
+    #[allow(dead_code)]
     /// The new-document length after applying this changeset.
     pub(crate) fn len_after(&self) -> usize {
         self.len_after
     }
 
+    #[allow(dead_code)]
     /// The raw operations (for inspection in tests).
     pub(crate) fn ops(&self) -> &[Operation] {
         &self.ops
     }
 
+    #[allow(dead_code)]
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
     pub(crate) fn is_empty(&self) -> bool {
@@ -270,6 +281,7 @@ impl ChangeSet {
     ///
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
+    #[allow(dead_code)]
     pub(crate) fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
         debug_assert!(
             pos <= self.len_before,

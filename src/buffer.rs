@@ -87,14 +87,6 @@ impl Buffer {
         Self { rope, line_ending }
     }
 
-    /// Consume the buffer and return the inner `Rope`.
-    ///
-    /// This transfers ownership without cloning — the caller gets the rope
-    /// and this `Buffer` ceases to exist.
-    pub(crate) fn into_rope(self) -> Rope {
-        self.rope
-    }
-
     /// Borrow the inner `Rope`.
     ///
     /// Ropey's `Rope::clone` is O(log n) (reference-counted tree nodes), so
@@ -127,6 +119,8 @@ impl Buffer {
 
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
+    // Not yet called by the editor layer; will be used for rendering empty-buffer hints.
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         debug_assert!(
             self.rope.len_chars() > 0,
@@ -183,6 +177,8 @@ impl Buffer {
         Some(self.rope.char(char_idx))
     }
 
+    // Not yet called externally; retained as a building block for future direct-buffer ops.
+    #[allow(dead_code)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///
     /// All char offsets at or after `at` in the old buffer are shifted forward
@@ -198,6 +194,7 @@ impl Buffer {
         Self { rope, line_ending: self.line_ending }
     }
 
+    #[allow(dead_code)]
     /// Returns a new buffer with `range` of chars removed.
     ///
     /// All char offsets at or after `range.end` in the old buffer are shifted

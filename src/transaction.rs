@@ -75,11 +75,15 @@ impl Transaction {
         Ok((new_buf, self.selection.clone()))
     }
 
+    // Accessor methods below are not yet called from the editor layer;
+    // they will be used when the undo-tree UI needs to inspect transactions.
+    #[allow(dead_code)]
     /// The text-change portion of this transaction.
     pub(crate) fn changes(&self) -> &ChangeSet {
         &self.changes
     }
 
+    #[allow(dead_code)]
     /// The selection state after this transaction.
     pub(crate) fn selection(&self) -> &SelectionSet {
         &self.selection
