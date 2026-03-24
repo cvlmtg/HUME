@@ -469,13 +469,13 @@ fn apply_word_select(
     result
 }
 
-/// Apply a word-select motion in extend mode: union the returned word range
+/// Apply a forward word-select motion in extend mode: union the returned word range
 /// with the existing selection rather than replacing it.
 ///
-/// On each iteration, the new selection spans from `min(current.start(), word_start)`
-/// to `max(current.end(), word_end)`, preserving the direction of the original selection.
+/// The motion origin is `sel.end()` so that pressing `w`/`W` always searches
+/// *ahead* of the current selection, regardless of how far it already extends.
 /// If `motion` returns `None`, iteration stops early and the last selection is kept.
-fn apply_word_select_extend(
+fn apply_word_select_extend_forward(
     buf: &Buffer,
     sels: SelectionSet,
     count: usize,
@@ -483,16 +483,50 @@ fn apply_word_select_extend(
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
-        // Track direction from the *original* selection so the union doesn't flip it.
+        // Preserve direction of the original selection through all union steps.
         let forward = current.anchor <= current.head;
         for _ in 0..count {
-            match motion(buf, current.head) {
+            // Start from the far end so the search goes past the selection.
+            match motion(buf, current.end()) {
                 Some((word_start, word_end)) => {
                     let new_start = current.start().min(word_start);
                     let new_end = current.end().max(word_end);
                     current = Selection::directed(new_start, new_end, forward);
                 }
-                None => break, // no more words — stop early, keep last selection
+                None => break,
+            }
+        }
+        current
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
+}
+
+/// Apply a backward word-select motion in extend mode: union the returned word range
+/// with the existing selection rather than replacing it.
+///
+/// The motion origin is `sel.start()` so that pressing `b`/`B` always searches
+/// *behind* the current selection, regardless of how far it already extends.
+/// Without this, `select_prev_word(sel.head)` finds a word already inside the
+/// selection, making union a no-op.
+fn apply_word_select_extend_backward(
+    buf: &Buffer,
+    sels: SelectionSet,
+    count: usize,
+    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let mut current = sel;
+        let forward = current.anchor <= current.head;
+        for _ in 0..count {
+            // Start from the near end so the search goes past the selection.
+            match motion(buf, current.start()) {
+                Some((word_start, word_end)) => {
+                    let new_start = current.start().min(word_start);
+                    let new_end = current.end().max(word_end);
+                    current = Selection::directed(new_start, new_end, forward);
+                }
+                None => break,
             }
         }
         current
@@ -705,26 +739,26 @@ pub(crate) fn cmd_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usiz
     apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
 }
 
-// Word motions — Extend mode, union semantics: current selection ∪ next/prev word.
+/// Word motions — Extend mode, union semantics: current selection ∪ next/prev word.
 /// Extend selection to encompass both the current selection and the next word (`w` in extend mode).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_extend_select_next_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
-    apply_word_select_extend(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary))
+    apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary))
 }
 /// Extend selection to encompass both the current selection and the next WORD (`W` in extend mode).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_extend_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
-    apply_word_select_extend(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary))
+    apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary))
 }
 /// Extend selection to encompass both the current selection and the previous word (`b` in extend mode).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_extend_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
-    apply_word_select_extend(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary))
+    apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary))
 }
 /// Extend selection to encompass both the current selection and the previous WORD (`B` in extend mode).
 #[allow(non_snake_case)]
 pub(crate) fn cmd_extend_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
-    apply_word_select_extend(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
+    apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
 }
 
 // Word motions — Extend mode (anchor stays, head = new position).
@@ -1730,7 +1764,7 @@ mod tests {
     #[test]
     fn extend_select_prev_word_extends_backward() {
         // Start with "world" selected via `w`; extend-b unions with "hello".
-        // s1 = "world" (6,10); motion from pos 10 → "hello" (0,4).
+        // s1 = "world" (6,10); backward motion from start()=6 → "hello" (0,4).
         // Union: min(6,0)=0, max(10,4)=10 → "hello world".
         assert_state!(
             "-[h]>ello world\n",
@@ -1739,5 +1773,26 @@ mod tests {
                 cmd_extend_select_prev_word(&buf, s1, 1)       // union with "hello" (0,4)
             },
             "-[hello world]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_prev_word_from_multi_word_selection() {
+        // Regression: from a multi-word selection "-[bar baz]>", pressing extend-b
+        // should grow backward to include "foo", not be a no-op.
+        //
+        // Bug: old code used sel.head (=end of "baz") as motion origin.
+        // select_prev_word from inside the selection found "baz" itself → union was
+        // a no-op. Fix: backward variant uses sel.start() as origin, which is at
+        // the start of "bar", so select_prev_word finds "foo".
+        //
+        // "foo bar baz\n": f=0,o=1,o=2,' '=3,b=4,a=5,r=6,' '=7,b=8,a=9,z=10,'\n'=11
+        // "-[bar baz]>" = anchor=4, head=10; start()=4, end()=10.
+        // select_prev_word(buf, start()=4) → "foo" at (0,2).
+        // Union: min(4,0)=0, max(10,2)=10 → (0,10) = "foo bar baz".
+        assert_state!(
+            "foo -[bar baz]>\n",
+            |(buf, sels)| cmd_extend_select_prev_word(&buf, sels, 1),
+            "-[foo bar baz]>\n"
         );
     }}
