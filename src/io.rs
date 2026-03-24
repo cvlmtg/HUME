@@ -76,7 +76,14 @@ pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 ///    transiently visible with wrong mode bits.
 /// 4. Restore ownership via `fchown` (Unix only, best-effort — only succeeds
 ///    when running as root or as the file's owner).
-/// 5. Atomic rename onto the target.
+/// 5. Rename onto the target.
+///
+/// **Atomicity:** on POSIX (macOS, Linux) `rename(2)` is a single syscall —
+/// the target either has the old content or the new content, never a partial
+/// write. On Windows, `tempfile::persist` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
+/// which is not crash-atomic for file replacement (no equivalent of POSIX
+/// `rename` exists on Windows without the deprecated transactional NTFS).
+/// This is the best available option on Windows.
 pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));
