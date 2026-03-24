@@ -417,11 +417,44 @@ impl Editor {
             // `i` — enter Insert at current position
             KeyCode::Char('i') => self.set_mode(Mode::Insert),
 
+            // `I` — enter Insert at the first non-blank character of the line.
+            KeyCode::Char('I') => {
+                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
             // `a` — enter Insert after the cursor (one grapheme right).
             // If the cursor is on the structural '\n' (end of buffer), don't
             // advance further — there is nowhere to go.
             KeyCode::Char('a') => {
                 self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `A` — enter Insert after the last character of the line.
+            KeyCode::Char('A') => {
+                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `o` — open a new line below the current line and enter Insert.
+            // Moves to the line's '\n', inserts a new '\n' before it (splitting
+            // the line), and lands the cursor on the new empty line.
+            KeyCode::Char('o') => {
+                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `O` — open a new line above the current line and enter Insert.
+            // Moves to the line start, inserts a '\n' (pushing current content
+            // down), then steps left onto the new empty line.
+            KeyCode::Char('O') => {
+                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
+                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+                self.apply_motion(|b, s| cmd_move_left(b, s, 1));
                 self.set_mode(Mode::Insert);
             }
 
