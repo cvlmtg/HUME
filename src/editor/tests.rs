@@ -31,6 +31,7 @@ fn editor_from(input: &str) -> Editor {
         should_quit: false,
         minibuf: None,
         status_msg: None,
+        file_meta: None,
     }
 }
 
@@ -609,12 +610,20 @@ fn colon_w_no_path_sets_error() {
     assert_eq!(ed.status_msg.as_deref(), Some("Error: no file name"));
 }
 
+/// Helper: create a temp file with initial content and wire it into an editor.
+fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::NamedTempFile) {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), file_content).unwrap();
+    let (_, meta) = crate::io::read_file(tmp.path()).unwrap();
+    let mut ed = editor_from(initial_state);
+    ed.file_path = Some(tmp.path().to_path_buf());
+    ed.file_meta = Some(meta);
+    (ed, tmp)
+}
+
 #[test]
 fn colon_w_writes_file() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    ed.file_path = Some(path.clone());
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
 
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
@@ -622,22 +631,18 @@ fn colon_w_writes_file() {
 
     assert_eq!(ed.mode, Mode::Normal);
     assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
-    // persist() renamed the internal temp onto `path`, so read it directly.
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "hello\n");
 }
 
 #[test]
 fn colon_wq_writes_and_quits() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    ed.file_path = Some(path.clone());
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
 
     for ch in ":wq".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
     assert!(ed.should_quit);
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "hello\n");
 }
 
 #[test]
@@ -658,4 +663,58 @@ fn status_msg_cleared_on_next_keypress() {
     // Any keypress clears it.
     ed.handle_key(key('l'));
     assert!(ed.status_msg.is_none());
+}
+
+// ── File metadata preservation ────────────────────────────────────────────────
+
+#[cfg(unix)]
+#[test]
+fn write_preserves_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+
+    // Set a non-default permission that differs from the tempfile default (0600).
+    std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
+    // Re-read metadata so file_meta captures the new permissions.
+    let (_, meta) = crate::io::read_file(tmp.path()).unwrap();
+    ed.file_meta = Some(meta);
+
+    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    let mode = std::fs::metadata(tmp.path()).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o644, "permissions must be preserved across atomic write");
+}
+
+#[cfg(unix)]
+#[test]
+fn write_follows_symlink() {
+    use std::os::unix::fs::symlink;
+
+    // Create the real file and a symlink pointing to it.
+    let real = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(real.path(), "hello\n").unwrap();
+
+    let link_dir = tempfile::tempdir().unwrap();
+    let link_path = link_dir.path().join("link.txt");
+    symlink(real.path(), &link_path).unwrap();
+
+    // Open via the symlink — io::read_file should resolve it.
+    let (_, meta) = crate::io::read_file(&link_path).unwrap();
+    assert_eq!(meta.resolved_path, std::fs::canonicalize(real.path()).unwrap());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.file_path = Some(link_path.clone());
+    ed.file_meta = Some(meta);
+
+    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    // The symlink must still exist and still be a symlink.
+    assert!(link_path.symlink_metadata().unwrap().file_type().is_symlink());
+    // Content was written to the real file.
+    assert_eq!(std::fs::read_to_string(real.path()).unwrap(), "hello\n");
 }

@@ -7,6 +7,7 @@ use crossterm::execute;
 
 use crate::buffer::Buffer;
 use crate::document::Document;
+use crate::io::FileMeta;
 use crate::register::RegisterSet;
 use crate::renderer::{cursor_screen_pos, render, RenderCtx};
 use crate::selection::{Selection, SelectionSet};
@@ -88,6 +89,10 @@ pub(crate) struct Editor {
     /// Transient one-line message shown in the status bar after an action
     /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
     pub(super) status_msg: Option<String>,
+    /// Metadata captured from the file at open time (permissions, ownership,
+    /// resolved path). `None` for scratch buffers. Used by the write path to
+    /// preserve the original file's attributes across atomic saves.
+    pub(super) file_meta: Option<FileMeta>,
 }
 
 impl Editor {
@@ -96,12 +101,12 @@ impl Editor {
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
     /// placeholder values replaced on the first event-loop iteration.
     pub(crate) fn open(file_path: Option<PathBuf>) -> io::Result<Self> {
-        let buf = match &file_path {
+        let (buf, file_meta) = match &file_path {
             Some(path) => {
-                let content = std::fs::read_to_string(path)?;
-                Buffer::from(content.as_str())
+                let (content, meta) = crate::io::read_file(path)?;
+                (Buffer::from(content.as_str()), Some(meta))
             }
-            None => Buffer::empty(),
+            None => (Buffer::empty(), None),
         };
 
         let sels = SelectionSet::single(Selection::cursor(0));
@@ -129,6 +134,7 @@ impl Editor {
             should_quit: false,
             minibuf: None,
             status_msg: None,
+            file_meta,
         })
     }
 
