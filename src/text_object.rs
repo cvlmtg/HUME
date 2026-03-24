@@ -23,13 +23,15 @@ pub(crate) fn apply_text_object(
     sels: SelectionSet,
     text_object: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    sels.map_and_merge(|sel| match text_object(buf, sel.head) {
+    let result = sels.map_and_merge(|sel| match text_object(buf, sel.head) {
         Some((start, end)) => Selection::new(start, end),
         None => sel,
-    })
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
 }
 
-///// Apply a text object in extend mode: union the matched range with the current selection.
+/// Apply a text object in extend mode: union the matched range with the current selection.
 ///
 /// On match, the result spans `min(sel.start(), start)` to `max(sel.end(), end)`,
 /// preserving the direction of the original selection. On no-match, the selection
@@ -46,7 +48,7 @@ pub(crate) fn apply_text_object_extend(
     sels: SelectionSet,
     text_object: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    sels.map_and_merge(|sel| {
+    let result = sels.map_and_merge(|sel| {
         let forward = sel.anchor <= sel.head;
 
         // First try from head (correct for initial extend from a cursor).
@@ -70,7 +72,9 @@ pub(crate) fn apply_text_object_extend(
         }
 
         sel
-    })
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
 }
 
 // ── Line ───────────────────────────────────────────────────────────────────────
@@ -121,14 +125,6 @@ pub(crate) fn cmd_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
 
 pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     apply_text_object(buf, sels, around_line)
-}
-
-pub(crate) fn cmd_extend_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, inner_line)
-}
-
-pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, around_line)
 }
 
 // ── Word / WORD ────────────────────────────────────────────────────────────────
