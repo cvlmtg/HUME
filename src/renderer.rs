@@ -28,6 +28,12 @@ pub(crate) struct RenderCtx<'a> {
     pub extend: bool,
     pub file_path: Option<&'a Path>,
     pub colors: &'a EditorColors,
+    /// `Some((prompt, input))` when the command mini-buffer is active.
+    /// The bottom row renders the prompt + typed text instead of the status bar.
+    pub minibuf: Option<(char, &'a str)>,
+    /// Transient message to show in the status bar row (e.g. "Written 42 lines").
+    /// Displayed only when `minibuf` is `None`.
+    pub status_msg: Option<&'a str>,
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -79,11 +85,19 @@ pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf
         }
     }
 
-    // ── Status bar ────────────────────────────────────────────────────────────
+    // ── Bottom row (status bar / command line / status message) ───────────────
+    //
+    // Priority: command mini-buffer > transient status message > normal status bar.
 
     let status_y = area.y + view.height as u16;
     if status_y < area.bottom() {
-        render_status_bar(screen_buf, ctx, cursor_line, primary_head, buf, area, status_y);
+        if let Some((prompt, input)) = ctx.minibuf {
+            render_command_line(screen_buf, ctx, area, status_y, prompt, input);
+        } else if let Some(msg) = ctx.status_msg {
+            render_status_message(screen_buf, ctx, area, status_y, msg);
+        } else {
+            render_status_bar(screen_buf, ctx, cursor_line, primary_head, buf, area, status_y);
+        }
     }
 }
 
@@ -258,6 +272,44 @@ fn render_content(
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 
+/// Render the command-line mini-buffer on the bottom row.
+///
+/// Shows the prompt character (`:`) followed by the typed input in default
+/// (non-inverted) style. The terminal cursor is positioned after the input
+/// by the caller (the editor event loop).
+fn render_command_line(
+    screen_buf: &mut ScreenBuf,
+    ctx: &RenderCtx<'_>,
+    area: Rect,
+    y: u16,
+    prompt: char,
+    input: &str,
+) {
+    // Clear the row with default style so it reads as a plain input line.
+    let blank: String = " ".repeat(area.width as usize);
+    screen_buf.set_string(area.x, y, &blank, ctx.colors.default);
+
+    // Prompt character at column 0, then the typed text.
+    screen_buf.set_string(area.x, y, &prompt.to_string(), ctx.colors.default);
+    screen_buf.set_string(area.x + 1, y, input, ctx.colors.default);
+}
+
+/// Render a transient status message on the bottom row.
+///
+/// Uses the inverted status bar style so the message stands out. The message
+/// is cleared on the next keypress.
+fn render_status_message(
+    screen_buf: &mut ScreenBuf,
+    ctx: &RenderCtx<'_>,
+    area: Rect,
+    y: u16,
+    msg: &str,
+) {
+    let blank: String = " ".repeat(area.width as usize);
+    screen_buf.set_string(area.x, y, &blank, ctx.colors.status_bar);
+    screen_buf.set_string(area.x + 1, y, msg, ctx.colors.status_bar);
+}
+
 /// Render the one-row status bar at the bottom of the area.
 ///
 /// Layout (all with inverted style):
@@ -280,11 +332,14 @@ fn render_status_bar(
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
-    // Mode label: "NOR" (default), "INS" (cyan), or "EXT" (yellow) — 3 chars, at column 1.
+    // Mode label — 3 chars, at column 1.
     let (mode_label, mode_style) = match (ctx.mode, ctx.extend) {
         (Mode::Normal, true)  => ("EXT", colors.status_extend),
         (Mode::Normal, false) => ("NOR", colors.status_normal),
         (Mode::Insert, _)     => ("INS", colors.status_insert),
+        // Command mode replaces the status bar with a command line, so this
+        // arm is a fallback that should not normally be reached.
+        (Mode::Command, _)    => ("CMD", colors.status_command),
     };
     screen_buf.set_string(area.x + 1, y, mode_label, mode_style);
 
@@ -402,7 +457,7 @@ mod tests {
 
     /// Build a default-colors RenderCtx for a test.
     fn ctx<'a>(doc: &'a Document, view: &'a ViewState, colors: &'a EditorColors) -> RenderCtx<'a> {
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors }
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────

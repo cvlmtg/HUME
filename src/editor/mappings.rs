@@ -37,15 +37,18 @@ use crate::text_object::{
     cmd_inner_word,
 };
 
-use super::{Editor, Mode, PendingKey};
+use super::{Editor, MiniBuffer, Mode, PendingKey};
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        // Any keypress dismisses the previous transient status message.
+        self.status_msg = None;
         match self.mode {
             Mode::Normal => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
+            Mode::Command => self.handle_command(key),
         }
     }
 
@@ -93,8 +96,12 @@ impl Editor {
         }
 
         match key.code {
-            // ── Quit (temporary until :q is implemented) ──────────────────────
-            KeyCode::Char('q') => self.should_quit = true,
+            // ── Command mode ──────────────────────────────────────────────────
+            KeyCode::Char(':') => {
+                self.mode = Mode::Command;
+                self.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
+            }
+
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
             }
@@ -472,5 +479,103 @@ impl Editor {
             }
         }
         true
+    }
+
+    // ── Command mode ──────────────────────────────────────────────────────────
+
+    fn handle_command(&mut self, key: KeyEvent) {
+        match key.code {
+            // ── Cancel ────────────────────────────────────────────────────────
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+                self.minibuf = None;
+            }
+
+            // ── Execute ───────────────────────────────────────────────────────
+            KeyCode::Enter => {
+                self.execute_command();
+                self.mode = Mode::Normal;
+                self.minibuf = None;
+            }
+
+            // ── Edit input ────────────────────────────────────────────────────
+            KeyCode::Backspace => {
+                if let Some(mb) = &mut self.minibuf {
+                    if mb.input.is_empty() {
+                        // Backspace on empty input cancels (Kakoune behaviour).
+                        self.mode = Mode::Normal;
+                        self.minibuf = None;
+                    } else {
+                        mb.input.pop();
+                    }
+                }
+            }
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.input.push(ch);
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Execute the command currently in the mini-buffer.
+    ///
+    /// Called just before the mini-buffer is cleared and mode returns to Normal.
+    fn execute_command(&mut self) {
+        let input = self
+            .minibuf
+            .as_ref()
+            .map(|m| m.input.trim().to_owned())
+            .unwrap_or_default();
+
+        match input.as_str() {
+            "q" | "quit" => self.should_quit = true,
+            "w" | "write" => { self.write_file(); }
+            "wq" => {
+                if self.write_file() {
+                    self.should_quit = true;
+                }
+            }
+            other => {
+                self.status_msg = Some(format!("Unknown command: {other}"));
+            }
+        }
+    }
+
+    /// Write the buffer to `self.file_path`.
+    ///
+    /// Sets `self.status_msg` on both success ("Written N lines") and failure.
+    /// Returns `true` on success, `false` on any error.
+    fn write_file(&mut self) -> bool {
+        let Some(path) = self.file_path.clone() else {
+            self.status_msg = Some("Error: no file name".into());
+            return false;
+        };
+
+        let buf = self.doc.buf();
+        // The rope is always stored LF-normalized; restore CRLF for files that
+        // originally used it so we don't silently change line endings on save.
+        let content = if buf.line_ending() == crate::buffer::LineEnding::CrLf {
+            buf.to_string().replace('\n', "\r\n")
+        } else {
+            buf.to_string()
+        };
+        // The buffer always ends with a structural '\n', so len_lines() returns
+        // one more than the number of visible lines (ropey counts the empty
+        // string after the final newline as an extra line).
+        let line_count = buf.len_lines().saturating_sub(1);
+
+        match std::fs::write(&path, &content) {
+            Ok(()) => {
+                self.status_msg = Some(format!("Written {line_count} lines"));
+                true
+            }
+            Err(e) => {
+                self.status_msg = Some(format!("Error: {e}"));
+                false
+            }
+        }
     }
 }
