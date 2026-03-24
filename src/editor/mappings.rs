@@ -17,7 +17,7 @@ use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
     cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
-    cmd_trim_selection_whitespace,
+    cmd_remove_primary_selection, cmd_trim_selection_whitespace,
 };
 use crate::text_object::{
     cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
@@ -196,7 +196,13 @@ impl Editor {
                 self.extend = false;
                 self.apply_motion(|b, s| cmd_collapse_selection(b, s));
             }
-            KeyCode::Char(',') => self.apply_motion(|b, s| cmd_keep_primary_selection(b, s)),
+            // `,` — keep primary selection; `ctrl+,` — remove it (keep secondaries).
+            // Note: ctrl+, is only transmitted by kitty keyboard protocol; silently ignored in legacy mode.
+            KeyCode::Char(',') => if key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.apply_motion(|b, s| cmd_remove_primary_selection(b, s));
+            } else {
+                self.apply_motion(|b, s| cmd_keep_primary_selection(b, s));
+            },
             // `(`/`)` — cycle the primary selection backward/forward.
             KeyCode::Char('(') => self.apply_motion(|b, s| cmd_cycle_primary_backward(b, s)),
             KeyCode::Char(')') => self.apply_motion(|b, s| cmd_cycle_primary_forward(b, s)),

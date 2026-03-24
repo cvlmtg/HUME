@@ -290,6 +290,30 @@ fn capital_i_enters_insert_at_first_nonblank() {
     assert_eq!(state(&ed), "  -[h]>ello\n");
 }
 
+// ── `ctrl+,` removes the primary selection ────────────────────────────────────
+
+/// `ctrl+,` must drop the primary selection and promote one of the secondaries,
+/// leaving all other cursors intact. Plain `,` must still keep only the primary.
+#[test]
+fn ctrl_comma_removes_primary_selection() {
+    let mut ed = editor_from("-[h]>ello -[w]>orld\n");
+
+    ed.handle_key(key_ctrl(','));
+
+    // Primary ('h') is dropped; 'w' becomes the new (only) primary.
+    assert_eq!(state(&ed), "hello -[w]>orld\n");
+}
+
+#[test]
+fn plain_comma_still_keeps_primary_selection() {
+    let mut ed = editor_from("-[h]>ello -[w]>orld\n");
+
+    ed.handle_key(key(','));
+
+    // Only the primary ('h') survives.
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+}
+
 // ── `o` in extend mode flips the selection ────────────────────────────────────
 
 /// In extend mode `o` must swap anchor and head (Vim visual-mode `o`), letting
