@@ -254,11 +254,15 @@ where
             replaced.push(String::new()); // cursors displace nothing
             let insert_at = cursor_insert_pos(buf, sel);
             b.retain(insert_at - b.old_pos());
-            b.insert(text);
-            // new_pos() is one past the inserted text; -1 lands on the last
-            // inserted character (the cursor sits on it — inclusive model).
-            let pos = b.new_pos() - 1;
-            new_sels.push(Selection::cursor(pos));
+            if text.is_empty() {
+                // Nothing to insert — cursor stays where it is.
+                new_sels.push(Selection::cursor(sel.head));
+            } else {
+                b.insert(text);
+                // new_pos() is one past the inserted text; -1 lands on the last
+                // inserted character (the cursor sits on it — inclusive model).
+                new_sels.push(Selection::cursor(b.new_pos() - 1));
+            }
         } else {
             // Multi-char selection: replace the selected region.
             // Cap end at the last content char so the structural trailing '\n'
@@ -270,7 +274,10 @@ where
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
             b.insert(text);
-            let pos = b.new_pos() - 1;
+            // When text is empty the delete leaves new_pos() at the start of
+            // the deleted region; -1 would underflow. Use saturating_sub so
+            // the cursor lands at start (the first char after the deletion).
+            let pos = if text.is_empty() { b.new_pos() } else { b.new_pos() - 1 };
             new_sels.push(Selection::cursor(pos));
         }
     })
@@ -993,6 +1000,34 @@ mod tests {
         let (_, _, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
         // Cursor replaced nothing; selection replaced "lo".
         assert_eq!(replaced, vec!["", "lo"]);
+    }
+
+    #[test]
+    fn paste_after_empty_string_cursor_is_noop() {
+        // B4 regression: b.new_pos() - 1 underflows when text is "".
+        // For a cursor selection with empty text, buffer and cursor must be unchanged.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| {
+                let (b, s, _, _) = paste_after(buf, sels, &["".to_string()]);
+                (b, s)
+            },
+            "-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn paste_after_empty_string_over_selection_deletes_and_lands_at_start() {
+        // Empty text with a multi-char selection: the selection is deleted,
+        // cursor lands at the start of the deleted region (not new_pos() - 1).
+        assert_state!(
+            "-[hel]>lo\n",
+            |(buf, sels)| {
+                let (b, s, _, _) = paste_after(buf, sels, &["".to_string()]);
+                (b, s)
+            },
+            "-[l]>o\n"
+        );
     }
 
     // ── paste_before ──────────────────────────────────────────────────────────
