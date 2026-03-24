@@ -12,7 +12,7 @@ use crate::selection::{Selection, SelectionSet};
 //   4. Apply the changeset to produce the new buffer.
 //   5. Assemble and merge the new SelectionSet.
 //
-// Rather than repeat this 7-line frame across every function, `apply_edit`
+// Rather than repeat this 5-step frame across every function, `apply_edit`
 // extracts it and delegates the per-selection work to a closure. This is the
 // standard higher-order-function pattern: the frame is the "algorithm", the
 // closure is the "policy".
@@ -420,8 +420,9 @@ pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, Sele
 /// - Otherwise: all `values` are joined (no separator) and used at every
 ///   selection (Helix fallback).
 ///
-/// **Return value:** `(new_buf, new_sels, replaced)` where `replaced[i]` is the
-/// text displaced by selection `i` — empty string for cursor selections.
+/// **Return value:** `(new_buf, new_sels, changeset, replaced)` where
+/// `replaced[i]` is the text displaced by selection `i` — empty string for
+/// cursor selections.
 ///
 /// An empty `values` slice is a no-op (returns the original state and an empty
 /// `replaced` vec).
@@ -447,7 +448,7 @@ pub(crate) fn paste_after(
 ///
 /// **Multi-cursor semantics:** identical to [`paste_after`].
 ///
-/// **Return value:** `(new_buf, new_sels, replaced)` — same as [`paste_after`].
+/// **Return value:** `(new_buf, new_sels, changeset, replaced)` — same as [`paste_after`].
 ///
 /// An empty `values` slice is a no-op.
 pub(crate) fn paste_before(
