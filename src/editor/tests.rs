@@ -611,38 +611,33 @@ fn colon_w_no_path_sets_error() {
 
 #[test]
 fn colon_w_writes_file() {
-    use std::io::Read as _;
     let mut ed = editor_from("-[h]>ello\n");
     let tmp = tempfile::NamedTempFile::new().unwrap();
-    ed.file_path = Some(tmp.path().to_path_buf());
+    let path = tmp.path().to_path_buf();
+    ed.file_path = Some(path.clone());
 
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
 
     assert_eq!(ed.mode, Mode::Normal);
-    // Success message starts with "Written"
     assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
-    // File content must match buffer content.
-    let mut written = String::new();
-    tmp.reopen().unwrap().read_to_string(&mut written).unwrap();
-    assert_eq!(written, "hello\n");
+    // persist() renamed the internal temp onto `path`, so read it directly.
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
 }
 
 #[test]
 fn colon_wq_writes_and_quits() {
-    use std::io::Read as _;
     let mut ed = editor_from("-[h]>ello\n");
     let tmp = tempfile::NamedTempFile::new().unwrap();
-    ed.file_path = Some(tmp.path().to_path_buf());
+    let path = tmp.path().to_path_buf();
+    ed.file_path = Some(path.clone());
 
     for ch in ":wq".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
     assert!(ed.should_quit);
-    let mut written = String::new();
-    tmp.reopen().unwrap().read_to_string(&mut written).unwrap();
-    assert_eq!(written, "hello\n");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
 }
 
 #[test]

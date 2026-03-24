@@ -9,9 +9,9 @@ unicode-segmentation = "1.12.0"
 crossterm = "0.28"
 ratatui = "0.29"
 unicode-width = "0.2"
+tempfile = "3"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 proptest = "1.10.0"
 insta = "1.41"
-tempfile = "3"
