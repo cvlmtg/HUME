@@ -12,6 +12,10 @@ use crate::edit::{
     paste_before,
 };
 use crate::motion::{
+    cmd_extend_first_nonblank, cmd_extend_line_end, cmd_extend_line_start,
+    cmd_extend_down, cmd_extend_left, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
+    cmd_extend_right, cmd_extend_select_next_WORD, cmd_extend_select_next_word,
+    cmd_extend_select_prev_WORD, cmd_extend_select_prev_word, cmd_extend_up,
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_down,
     cmd_move_left, cmd_move_right, cmd_move_up, cmd_next_paragraph, cmd_prev_paragraph,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
@@ -25,11 +29,16 @@ use crate::selection_cmd::{
 };
 use crate::terminal::Term;
 use crate::text_object::{
-    cmd_around_WORD, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
+    cmd_around_WORD, cmd_around_angle, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
     cmd_around_double_quote, cmd_around_paren, cmd_around_single_quote, cmd_around_word,
+    cmd_extend_around_WORD, cmd_extend_around_angle, cmd_extend_around_backtick,
+    cmd_extend_around_brace, cmd_extend_around_bracket, cmd_extend_around_double_quote,
+    cmd_extend_around_paren, cmd_extend_around_single_quote, cmd_extend_around_word,
+    cmd_extend_inner_WORD, cmd_extend_inner_angle, cmd_extend_inner_backtick,
+    cmd_extend_inner_brace, cmd_extend_inner_bracket, cmd_extend_inner_double_quote,
+    cmd_extend_inner_paren, cmd_extend_inner_single_quote, cmd_extend_inner_word,
     cmd_inner_WORD, cmd_inner_angle, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
     cmd_inner_double_quote, cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
-    cmd_around_angle,
 };
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -75,6 +84,9 @@ pub(crate) struct Editor {
     view: ViewState,
     file_path: Option<PathBuf>,
     mode: Mode,
+    /// When `true`, all motions extend the current selection rather than moving it.
+    /// Toggled by `x` in Normal mode; cleared on entering Insert mode or pressing Esc.
+    extend: bool,
     pending: PendingKey,
     registers: RegisterSet,
     should_quit: bool,
@@ -112,6 +124,7 @@ impl Editor {
             view,
             file_path,
             mode: Mode::Normal,
+            extend: false,
             pending: PendingKey::None,
             registers: RegisterSet::new(),
             should_quit: false,
@@ -146,8 +159,9 @@ impl Editor {
             let view = &self.view;
             let file_path = self.file_path.as_deref();
             let mode = self.mode;
+            let extend = self.extend;
             term.draw(|frame| {
-                render(doc, view, mode, file_path, frame.area(), frame.buffer_mut());
+                render(doc, view, mode, extend, file_path, frame.area(), frame.buffer_mut());
                 // In Insert mode, show the real terminal cursor (bar) so
                 // SetCursorStyle is visible. Normal mode uses the reversed-cell
                 // rendering only — no real cursor, so the letter stays visible.
@@ -239,38 +253,104 @@ impl Editor {
             }
 
             // ── Basic motion ──────────────────────────────────────────────────
-            KeyCode::Char('h') | KeyCode::Left  => self.apply_motion(|b, s| cmd_move_left(b, s, 1)),
-            KeyCode::Char('l') | KeyCode::Right => self.apply_motion(|b, s| cmd_move_right(b, s, 1)),
-            KeyCode::Char('j') | KeyCode::Down  => self.apply_motion(|b, s| cmd_move_down(b, s, 1)),
-            KeyCode::Char('k') | KeyCode::Up    => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
+            // In extend mode (self.extend), motions grow the selection instead of moving it.
+            KeyCode::Char('h') | KeyCode::Left  => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_left(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_move_left(b, s, 1))
+            },
+            KeyCode::Char('l') | KeyCode::Right => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_right(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1))
+            },
+            KeyCode::Char('j') | KeyCode::Down  => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_down(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_move_down(b, s, 1))
+            },
+            KeyCode::Char('k') | KeyCode::Up    => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_up(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_move_up(b, s, 1))
+            },
 
             // ── Word motion ───────────────────────────────────────────────────
-            KeyCode::Char('w') => self.apply_motion(|b, s| cmd_select_next_word(b, s, 1)),
-            KeyCode::Char('W') => self.apply_motion(|b, s| cmd_select_next_WORD(b, s, 1)),
-            KeyCode::Char('b') => self.apply_motion(|b, s| cmd_select_prev_word(b, s, 1)),
-            KeyCode::Char('B') => self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1)),
+            // In extend mode: union the current selection with the next/prev word range.
+            KeyCode::Char('w') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_select_next_word(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_select_next_word(b, s, 1))
+            },
+            KeyCode::Char('W') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_select_next_WORD(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_select_next_WORD(b, s, 1))
+            },
+            KeyCode::Char('b') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_select_prev_word(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_select_prev_word(b, s, 1))
+            },
+            KeyCode::Char('B') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_select_prev_WORD(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1))
+            },
 
             // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Char('0') | KeyCode::Home => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
-            KeyCode::Char('$') | KeyCode::End => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
-            KeyCode::Char('^') => self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1)),
+            KeyCode::Char('0') | KeyCode::Home => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_line_start(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1))
+            },
+            KeyCode::Char('$') | KeyCode::End => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_line_end(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1))
+            },
+            KeyCode::Char('^') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_first_nonblank(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1))
+            },
 
             // ── Paragraph motion ──────────────────────────────────────────────
-            KeyCode::Char('{') => self.apply_motion(|b, s| cmd_prev_paragraph(b, s, 1)),
-            KeyCode::Char('}') => self.apply_motion(|b, s| cmd_next_paragraph(b, s, 1)),
+            KeyCode::Char('{') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_prev_paragraph(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_prev_paragraph(b, s, 1))
+            },
+            KeyCode::Char('}') => if self.extend {
+                self.apply_motion(|b, s| cmd_extend_next_paragraph(b, s, 1))
+            } else {
+                self.apply_motion(|b, s| cmd_next_paragraph(b, s, 1))
+            },
 
             // ── Page scroll ───────────────────────────────────────────────────
             KeyCode::PageDown => {
                 let count = self.view.height.max(1);
-                self.apply_motion(|b, s| cmd_move_down(b, s, count));
+                if self.extend {
+                    self.apply_motion(|b, s| cmd_extend_down(b, s, count));
+                } else {
+                    self.apply_motion(|b, s| cmd_move_down(b, s, count));
+                }
             }
             KeyCode::PageUp => {
                 let count = self.view.height.max(1);
-                self.apply_motion(|b, s| cmd_move_up(b, s, count));
+                if self.extend {
+                    self.apply_motion(|b, s| cmd_extend_up(b, s, count));
+                } else {
+                    self.apply_motion(|b, s| cmd_move_up(b, s, count));
+                }
             }
 
             // ── Selection ─────────────────────────────────────────────────────
-            KeyCode::Char(';') => self.apply_motion(|b, s| cmd_collapse_selection(b, s)),
+            // `;` collapses and also exits extend mode — collapsing is a natural "done" signal.
+            KeyCode::Char(';') => {
+                self.extend = false;
+                self.apply_motion(|b, s| cmd_collapse_selection(b, s));
+            }
             KeyCode::Char(',') => self.apply_motion(|b, s| cmd_keep_primary_selection(b, s)),
             // `(`/`)` — cycle the primary selection backward/forward.
             KeyCode::Char('(') => self.apply_motion(|b, s| cmd_cycle_primary_backward(b, s)),
@@ -329,6 +409,10 @@ impl Editor {
             // then the object char completes the sequence.
             KeyCode::Char('m') => self.pending = PendingKey::Match,
 
+            // ── Extend mode toggle ────────────────────────────────────────────
+            // `x` toggles sticky extend mode: motions extend the selection instead of moving.
+            KeyCode::Char('x') => self.extend = !self.extend,
+
             // ── Mode transitions ──────────────────────────────────────────────
             // `i` — enter Insert at current position
             KeyCode::Char('i') => self.set_mode(Mode::Insert),
@@ -341,8 +425,11 @@ impl Editor {
                 self.set_mode(Mode::Insert);
             }
 
-            // Esc resets any pending key sequence (already in Normal mode).
-            KeyCode::Esc => self.pending = PendingKey::None,
+            // Esc resets pending key sequence and extend mode.
+            KeyCode::Esc => {
+                self.pending = PendingKey::None;
+                self.extend = false;
+            }
 
             _ => {}
         }
@@ -390,6 +477,10 @@ impl Editor {
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     fn set_mode(&mut self, mode: Mode) {
+        // Entering Insert mode exits extend mode — extend only makes sense in Normal.
+        if mode == Mode::Insert {
+            self.extend = false;
+        }
         self.mode = mode;
     }
 
@@ -417,29 +508,56 @@ impl Editor {
     /// `inner == false` → select around (e.g. parens themselves included).
     #[allow(non_snake_case)] // WORD (uppercase) is an intentional Vim/Helix concept
     fn dispatch_text_object(&mut self, ch: char, inner: bool) -> bool {
-        match (ch, inner) {
-            // ── Word / WORD ───────────────────────────────────────────────
-            ('w', true)  => self.apply_motion(cmd_inner_word),
-            ('w', false) => self.apply_motion(cmd_around_word),
-            ('W', true)  => self.apply_motion(cmd_inner_WORD),
-            ('W', false) => self.apply_motion(cmd_around_WORD),
-            // ── Brackets ─────────────────────────────────────────────────
-            ('(' | ')', true)  => self.apply_motion(cmd_inner_paren),
-            ('(' | ')', false) => self.apply_motion(cmd_around_paren),
-            ('[' | ']', true)  => self.apply_motion(cmd_inner_bracket),
-            ('[' | ']', false) => self.apply_motion(cmd_around_bracket),
-            ('{' | '}', true)  => self.apply_motion(cmd_inner_brace),
-            ('{' | '}', false) => self.apply_motion(cmd_around_brace),
-            ('<' | '>', true)  => self.apply_motion(cmd_inner_angle),
-            ('<' | '>', false) => self.apply_motion(cmd_around_angle),
-            // ── Quotes ───────────────────────────────────────────────────
-            ('"', true)  => self.apply_motion(cmd_inner_double_quote),
-            ('"', false) => self.apply_motion(cmd_around_double_quote),
-            ('\'', true)  => self.apply_motion(cmd_inner_single_quote),
-            ('\'', false) => self.apply_motion(cmd_around_single_quote),
-            ('`', true)  => self.apply_motion(cmd_inner_backtick),
-            ('`', false) => self.apply_motion(cmd_around_backtick),
-            _ => return false,
+        if self.extend {
+            match (ch, inner) {
+                // ── Word / WORD ───────────────────────────────────────────────
+                ('w', true)  => self.apply_motion(cmd_extend_inner_word),
+                ('w', false) => self.apply_motion(cmd_extend_around_word),
+                ('W', true)  => self.apply_motion(cmd_extend_inner_WORD),
+                ('W', false) => self.apply_motion(cmd_extend_around_WORD),
+                // ── Brackets ─────────────────────────────────────────────────
+                ('(' | ')', true)  => self.apply_motion(cmd_extend_inner_paren),
+                ('(' | ')', false) => self.apply_motion(cmd_extend_around_paren),
+                ('[' | ']', true)  => self.apply_motion(cmd_extend_inner_bracket),
+                ('[' | ']', false) => self.apply_motion(cmd_extend_around_bracket),
+                ('{' | '}', true)  => self.apply_motion(cmd_extend_inner_brace),
+                ('{' | '}', false) => self.apply_motion(cmd_extend_around_brace),
+                ('<' | '>', true)  => self.apply_motion(cmd_extend_inner_angle),
+                ('<' | '>', false) => self.apply_motion(cmd_extend_around_angle),
+                // ── Quotes ───────────────────────────────────────────────────
+                ('"', true)  => self.apply_motion(cmd_extend_inner_double_quote),
+                ('"', false) => self.apply_motion(cmd_extend_around_double_quote),
+                ('\'', true)  => self.apply_motion(cmd_extend_inner_single_quote),
+                ('\'', false) => self.apply_motion(cmd_extend_around_single_quote),
+                ('`', true)  => self.apply_motion(cmd_extend_inner_backtick),
+                ('`', false) => self.apply_motion(cmd_extend_around_backtick),
+                _ => return false,
+            }
+        } else {
+            match (ch, inner) {
+                // ── Word / WORD ───────────────────────────────────────────────
+                ('w', true)  => self.apply_motion(cmd_inner_word),
+                ('w', false) => self.apply_motion(cmd_around_word),
+                ('W', true)  => self.apply_motion(cmd_inner_WORD),
+                ('W', false) => self.apply_motion(cmd_around_WORD),
+                // ── Brackets ─────────────────────────────────────────────────
+                ('(' | ')', true)  => self.apply_motion(cmd_inner_paren),
+                ('(' | ')', false) => self.apply_motion(cmd_around_paren),
+                ('[' | ']', true)  => self.apply_motion(cmd_inner_bracket),
+                ('[' | ']', false) => self.apply_motion(cmd_around_bracket),
+                ('{' | '}', true)  => self.apply_motion(cmd_inner_brace),
+                ('{' | '}', false) => self.apply_motion(cmd_around_brace),
+                ('<' | '>', true)  => self.apply_motion(cmd_inner_angle),
+                ('<' | '>', false) => self.apply_motion(cmd_around_angle),
+                // ── Quotes ───────────────────────────────────────────────────
+                ('"', true)  => self.apply_motion(cmd_inner_double_quote),
+                ('"', false) => self.apply_motion(cmd_around_double_quote),
+                ('\'', true)  => self.apply_motion(cmd_inner_single_quote),
+                ('\'', false) => self.apply_motion(cmd_around_single_quote),
+                ('`', true)  => self.apply_motion(cmd_inner_backtick),
+                ('`', false) => self.apply_motion(cmd_around_backtick),
+                _ => return false,
+            }
         }
         true
     }

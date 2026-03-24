@@ -29,6 +29,7 @@ pub(crate) fn render(
     doc: &Document,
     view: &ViewState,
     mode: Mode,
+    extend: bool,
     file_path: Option<&Path>,
     area: Rect,
     screen_buf: &mut ScreenBuf,
@@ -70,7 +71,7 @@ pub(crate) fn render(
 
     let status_y = area.y + view.height as u16;
     if status_y < area.bottom() {
-        render_status_bar(screen_buf, mode, file_path, cursor_line, primary_head, buf, area, status_y);
+        render_status_bar(screen_buf, mode, extend, file_path, cursor_line, primary_head, buf, area, status_y);
     }
 }
 
@@ -215,13 +216,14 @@ fn render_content(
 /// Render the one-row status bar at the bottom of the area.
 ///
 /// Layout (all with inverted style):
-/// - Left  : one space + mode label (`NOR`/`INS`) + one space + filename
+/// - Left  : one space + mode label (`NOR`/`INS`/`EXT`) + one space + filename
 /// - Right : `line:col` (both 1-based) + one space
 ///
-/// `INS` is rendered in cyan to make the mode transition visually obvious.
+/// `INS` is rendered in cyan, `EXT` in yellow, to make mode transitions visually obvious.
 fn render_status_bar(
     screen_buf: &mut ScreenBuf,
     mode: Mode,
+    extend: bool,
     file_path: Option<&Path>,
     cursor_line: usize,
     cursor_head: usize,
@@ -235,10 +237,11 @@ fn render_status_bar(
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, style);
 
-    // Mode label: "NOR" (default) or "INS" (cyan) — 3 chars, at column 1.
-    let (mode_label, mode_style) = match mode {
-        Mode::Normal => ("NOR", style),
-        Mode::Insert => ("INS", style.fg(Color::Cyan)),
+    // Mode label: "NOR" (default), "INS" (cyan), or "EXT" (yellow) — 3 chars, at column 1.
+    let (mode_label, mode_style) = match (mode, extend) {
+        (Mode::Normal, true)  => ("EXT", style.fg(Color::Yellow)),
+        (Mode::Normal, false) => ("NOR", style),
+        (Mode::Insert, _)     => ("INS", style.fg(Color::Cyan)),
     };
     screen_buf.set_string(area.x + 1, y, mode_label, mode_style);
 
@@ -305,13 +308,14 @@ pub(crate) fn render_to_string(
     doc: &Document,
     view: &ViewState,
     mode: Mode,
+    extend: bool,
     file_path: Option<&Path>,
     width: u16,
     height: u16,
 ) -> String {
     let area = Rect::new(0, 0, width, height);
     let mut screen_buf = ScreenBuf::empty(area);
-    render(doc, view, mode, file_path, area, &mut screen_buf);
+    render(doc, view, mode, extend, file_path, area, &mut screen_buf);
 
     (0..height)
         .map(|y| {
@@ -363,7 +367,7 @@ mod tests {
         let doc = doc_at("hello\nworld\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         // height = 3 content rows + 1 status = 4 total
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 4);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -375,7 +379,7 @@ mod tests {
     fn render_empty_buffer() {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 4);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 4);
         // Empty buffer has one visible line (the structural \n) with no content.
         insta::assert_snapshot!(out, @r"
           1
@@ -389,7 +393,7 @@ mod tests {
         // Cursor on 'w' at the start of "world\n" — char offset 6.
         let doc = doc_at("hello\nworld\n", 6);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 4);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -402,7 +406,7 @@ mod tests {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let path = std::path::Path::new("/home/user/notes.txt");
-        let out = render_to_string(&doc, &v, Mode::Normal, Some(path), 20, 3);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, Some(path), 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -413,7 +417,7 @@ mod tests {
     fn render_line_numbers_absolute() {
         let doc = doc_at("a\nb\nc\n", 0);
         let v = view(&doc, 20, 4, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 5);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -427,7 +431,7 @@ mod tests {
         // Cursor on line 1 (0-based). Line 0 is 1 away, line 2 is 1 away.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Relative);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 5);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           0 b
@@ -441,7 +445,7 @@ mod tests {
         // Cursor on line 1 (0-based). Cursor line shows absolute; others relative.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Hybrid);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 5);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -455,7 +459,7 @@ mod tests {
         // 1-line file with a 5-row viewport: 1 content row + 4 tildes.
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 5, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 6);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 6);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -472,7 +476,7 @@ mod tests {
         // Cursor at end of "café" = char offset 4.
         let doc = doc_at("café\n", 4);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Normal, None, 20, 3);
+        let out = render_to_string(&doc, &v, Mode::Normal, false, None, 20, 3);
         // Position should show 1:5 (4 graphemes before cursor, so col 5).
         insta::assert_snapshot!(out, @r"
           1 café
@@ -503,7 +507,7 @@ mod tests {
         };
         let area = Rect::new(0, 0, 15, 5);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, None, area, &mut screen);
+        render(&doc, &v, Mode::Normal, false, None, area, &mut screen);
 
         // Both cursor cells must have the REVERSED modifier.
         // 'a' is at column gw (after the gutter), row 0.
@@ -535,7 +539,7 @@ mod tests {
         };
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&doc, &v, Mode::Normal, None, area, &mut screen);
+        render(&doc, &v, Mode::Normal, false, None, area, &mut screen);
 
         // 'h' at col gw+0 — outside selection, not reversed.
         let h_cell = screen[(gw as u16, 0)].modifier;
@@ -556,10 +560,21 @@ mod tests {
     fn render_insert_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&doc, &v, Mode::Insert, None, 20, 3);
+        let out = render_to_string(&doc, &v, Mode::Insert, false, None, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
          INS [scratch]  1:1");
+    }
+
+    #[test]
+    fn render_extend_mode_label() {
+        let doc = doc_at("hi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let out = render_to_string(&doc, &v, Mode::Normal, true, None, 20, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hi
+        ~
+         EXT [scratch]  1:1");
     }
 }
