@@ -459,3 +459,33 @@ fn i_groups_insert_session_into_one_undo_step() {
     // Only one revision was recorded.
     assert!(!ed.doc.can_undo());
 }
+
+// ── Line text objects (mil / mal) ─────────────────────────────────────────────
+
+#[test]
+fn mil_selects_line_content_excluding_newline() {
+    let mut ed = editor_from("hell-[o]> world\nsecond\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key('l'));
+    assert_eq!(state(&ed), "-[hello world]>\nsecond\n");
+}
+
+#[test]
+fn mal_selects_line_including_newline() {
+    let mut ed = editor_from("hell-[o]> world\nsecond\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('l'));
+    assert_eq!(state(&ed), "-[hello world\n]>second\n");
+}
+
+#[test]
+fn mil_on_empty_line_is_noop() {
+    // An empty line has no content — selection should not change.
+    let mut ed = editor_from("foo\n-[\n]>bar\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key('l'));
+    assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}

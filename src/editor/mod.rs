@@ -144,8 +144,8 @@ impl Editor {
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());
                 // In Insert mode, show the real terminal cursor (bar) so
-                // SetCursorStyle is visible. Normal mode uses the reversed-cell
-                // rendering only — no real cursor, so the letter stays visible.
+                // SetCursorStyle is visible. Normal mode uses the white-block
+                // cursor_head cell style — no real cursor needed.
                 if ctx.mode == Mode::Insert {
                     if let Some(pos) = cursor_screen_pos(ctx.doc.buf(), ctx.view, ctx.doc.sels().primary().head) {
                         frame.set_cursor_position(pos);
