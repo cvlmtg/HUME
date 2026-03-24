@@ -178,8 +178,8 @@ impl Editor {
                     }
                     Mode::Command => {
                         if let Some((_, input)) = ctx.minibuf {
-                            // Position after the prompt char and typed text, on the status bar row.
-                            let col = 1 + input.len() as u16;
+                            // Layout: 1 space + "CMD" + 1 space + prompt char = col 6, then input.
+                            let col = 6 + input.len() as u16;
                             let row = ctx.view.height as u16;
                             frame.set_cursor_position((col, row));
                         }
