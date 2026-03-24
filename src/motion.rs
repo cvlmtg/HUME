@@ -469,6 +469,38 @@ fn apply_word_select(
     result
 }
 
+/// Apply a word-select motion in extend mode: union the returned word range
+/// with the existing selection rather than replacing it.
+///
+/// On each iteration, the new selection spans from `min(current.start(), word_start)`
+/// to `max(current.end(), word_end)`, preserving the direction of the original selection.
+/// If `motion` returns `None`, iteration stops early and the last selection is kept.
+fn apply_word_select_extend(
+    buf: &Buffer,
+    sels: SelectionSet,
+    count: usize,
+    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let mut current = sel;
+        // Track direction from the *original* selection so the union doesn't flip it.
+        let forward = current.anchor <= current.head;
+        for _ in 0..count {
+            match motion(buf, current.head) {
+                Some((word_start, word_end)) => {
+                    let new_start = current.start().min(word_start);
+                    let new_end = current.end().max(word_end);
+                    current = Selection::directed(new_start, new_end, forward);
+                }
+                None => break, // no more words — stop early, keep last selection
+            }
+        }
+        current
+    });
+    result.debug_assert_valid(buf.len_chars());
+    result
+}
+
 // ── Paragraph motion helpers ─────────────────────────────────────────────────
 
 /// Returns `true` if `line` is an empty line — either zero chars or exactly
@@ -617,6 +649,12 @@ motion_cmd!(/// Move all cursors to the last non-newline character on their curr
     cmd_goto_line_end, Move, goto_line_end);
 motion_cmd!(/// Move all cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, Move, goto_first_nonblank);
+motion_cmd!(/// Extend all selections to the start of their current line (anchor stays, head moves).
+    cmd_extend_line_start, Extend, goto_line_start);
+motion_cmd!(/// Extend all selections to the last non-newline character on their current line.
+    cmd_extend_line_end, Extend, goto_line_end);
+motion_cmd!(/// Extend all selections to the first non-blank character on their current line.
+    cmd_extend_first_nonblank, Extend, goto_first_nonblank);
 
 // Vertical motion passes `None` as the target-column hint (no sticky column yet).
 motion_cmd!(/// Move all cursors down one line, preserving the char-offset column.
@@ -665,6 +703,28 @@ pub(crate) fn cmd_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usiz
 #[allow(non_snake_case)]
 pub(crate) fn cmd_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
     apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
+}
+
+// Word motions — Extend mode, union semantics: current selection ∪ next/prev word.
+/// Extend selection to encompass both the current selection and the next word (`w` in extend mode).
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_select_next_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select_extend(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary))
+}
+/// Extend selection to encompass both the current selection and the next WORD (`W` in extend mode).
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select_extend(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary))
+}
+/// Extend selection to encompass both the current selection and the previous word (`b` in extend mode).
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select_extend(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary))
+}
+/// Extend selection to encompass both the current selection and the previous WORD (`B` in extend mode).
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize) -> SelectionSet {
+    apply_word_select_extend(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary))
 }
 
 // Word motions — Extend mode (anchor stays, head = new position).
@@ -1572,4 +1632,112 @@ mod tests {
     #[test]
     fn prev_paragraph_empty_buffer() {
         assert_state!("-[\n]>", |(buf, sels)| cmd_prev_paragraph(&buf, sels, 1), "-[\n]>");
+    }
+
+    // ── extend line-start / line-end / first-nonblank ─────────────────────────
+
+    #[test]
+    fn extend_line_start_from_mid_line() {
+        // Cursor on 'l' in "hello"; extend to line start: anchor stays at 'l', head at 'h'.
+        assert_state!(
+            "hel-[l]>o\n",
+            |(buf, sels)| cmd_extend_line_start(&buf, sels, 1),
+            "<[hell]-o\n"
+        );
+    }
+
+    #[test]
+    fn extend_line_start_already_at_start() {
+        // Already at line start — no-op.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| cmd_extend_line_start(&buf, sels, 1),
+            "-[h]>ello\n"
+        );
+    }
+
+    #[test]
+    fn extend_line_end_from_start() {
+        // Cursor on 'h'; extend to end: anchor stays at 'h', head at 'o'.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| cmd_extend_line_end(&buf, sels, 1),
+            "-[hello]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_line_end_already_at_end() {
+        // Already at line end — no-op.
+        assert_state!(
+            "hell-[o]>\n",
+            |(buf, sels)| cmd_extend_line_end(&buf, sels, 1),
+            "hell-[o]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_first_nonblank_from_mid_line() {
+        // Cursor on 'l'; extend to first nonblank 'h': backward extension.
+        assert_state!(
+            "hel-[l]>o\n",
+            |(buf, sels)| cmd_extend_first_nonblank(&buf, sels, 1),
+            "<[hell]-o\n"
+        );
+    }
+
+    #[test]
+    fn extend_first_nonblank_from_indent() {
+        // Buffer "  hello\n" (2 spaces), cursor at ' '(0); extend to 'h'(2).
+        // anchor stays at 0, head = 2 → selection covers "  h".
+        // Serialized with ]> after head: "-[  h]>ello\n".
+        assert_state!(
+            "-[ ]> hello\n",
+            |(buf, sels)| cmd_extend_first_nonblank(&buf, sels, 1),
+            "-[  h]>ello\n"
+        );
+    }
+
+    // ── extend_select word motions (union semantics) ──────────────────────────
+
+    #[test]
+    fn extend_select_next_word_from_cursor() {
+        // From a collapsed cursor at 'h', extend-w unions cursor pos with next word.
+        // select_next_word from pos 0 jumps to "world" (6,10).
+        // Union: min(0,6)=0, max(0,10)=10 → selection (0,10) = "hello world".
+        assert_state!(
+            "-[h]>ello world foo\n",
+            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1),
+            "-[hello world]> foo\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_next_word_grows_selection() {
+        // Start with "world" selected via `w`; extend-w unions with "foo".
+        // s1 = "world" (6,10); motion from pos 10 → "foo" (12,14).
+        // Union: min(6,12)=6, max(10,14)=14 → "world foo".
+        assert_state!(
+            "-[h]>ello world foo\n",
+            |(buf, sels)| {
+                let s1 = cmd_select_next_word(&buf, sels, 1); // selects "world" (6,10)
+                cmd_extend_select_next_word(&buf, s1, 1)       // union with "foo" (12,14)
+            },
+            "hello -[world foo]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_prev_word_extends_backward() {
+        // Start with "world" selected via `w`; extend-b unions with "hello".
+        // s1 = "world" (6,10); motion from pos 10 → "hello" (0,4).
+        // Union: min(6,0)=0, max(10,4)=10 → "hello world".
+        assert_state!(
+            "-[h]>ello world\n",
+            |(buf, sels)| {
+                let s1 = cmd_select_next_word(&buf, sels, 1); // selects "world" (6,10)
+                cmd_extend_select_prev_word(&buf, s1, 1)       // union with "hello" (0,4)
+            },
+            "-[hello world]>\n"
+        );
     }}

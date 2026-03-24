@@ -76,7 +76,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Yank/paste: `y` (yank), `p` (paste after), `P` (paste before); `d`/`c` yank before deleting; paste on non-cursor selection swaps displaced text back into default register
 - [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
-- [ ] Extend mode: `x` toggles extend mode; all motions extend the selection instead of replacing it. All `cmd_extend_*` commands already exist in `motion.rs` — only editor wiring needed. `Ctrl+motion` shortcuts deferred to M4 (requires kitty keyboard protocol).
+- [x] Extend mode: `x` toggles extend mode (`EXT` status bar label); all motions and text objects extend/union the selection instead of replacing it. Word motions use union semantics (selection grows to encompass the next/prev word). `Ctrl+motion` shortcuts deferred to M4 (requires kitty keyboard protocol).
 - [ ] Cursor line highlight: subtle background on the cursor row in `render_content`; `cursor_line` already computed in `render()`.
 - [ ] Line selection: `cmd_inner_line`/`cmd_around_line` exist in `text_object.rs`; just needs a key binding decision.
 - [ ] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.

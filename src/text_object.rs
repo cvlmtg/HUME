@@ -29,6 +29,27 @@ pub(crate) fn apply_text_object(
     })
 }
 
+/// Apply a text object in extend mode: union the matched range with the current selection.
+///
+/// On match, the result spans `min(sel.start(), start)` to `max(sel.end(), end)`,
+/// preserving the direction of the original selection. On no-match, the selection
+/// is unchanged (same as the non-extend variant).
+pub(crate) fn apply_text_object_extend(
+    buf: &Buffer,
+    sels: SelectionSet,
+    text_object: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet {
+    sels.map_and_merge(|sel| match text_object(buf, sel.head) {
+        Some((start, end)) => {
+            let new_start = sel.start().min(start);
+            let new_end = sel.end().max(end);
+            // Preserve the direction of the original selection.
+            Selection::directed(new_start, new_end, sel.anchor <= sel.head)
+        }
+        None => sel,
+    })
+}
+
 // ── Line ───────────────────────────────────────────────────────────────────────
 
 /// Inner line: the line content excluding the trailing newline.
@@ -77,6 +98,14 @@ pub(crate) fn cmd_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
 
 pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     apply_text_object(buf, sels, around_line)
+}
+
+pub(crate) fn cmd_extend_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, inner_line)
+}
+
+pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, around_line)
 }
 
 // ── Word / WORD ────────────────────────────────────────────────────────────────
@@ -231,6 +260,14 @@ pub(crate) fn cmd_around_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet 
     apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary))
 }
 
+pub(crate) fn cmd_extend_inner_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary))
+}
+
+pub(crate) fn cmd_extend_around_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary))
+}
+
 #[allow(non_snake_case)]
 pub(crate) fn cmd_inner_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
@@ -239,6 +276,16 @@ pub(crate) fn cmd_inner_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
 #[allow(non_snake_case)]
 pub(crate) fn cmd_around_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
     apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
+}
+
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_inner_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
+}
+
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_around_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
 }
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
@@ -327,20 +374,26 @@ fn around_bracket(buf: &Buffer, pos: usize, open: char, close: char) -> Option<(
 }
 
 macro_rules! bracket_cmds {
-    ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
+    ($inner_name:ident, $around_name:ident, $ext_inner_name:ident, $ext_around_name:ident, $open:literal, $close:literal) => {
         pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
             apply_text_object(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close))
         }
         pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
             apply_text_object(buf, sels, |b, pos| around_bracket(b, pos, $open, $close))
         }
+        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+            apply_text_object_extend(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close))
+        }
+        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+            apply_text_object_extend(buf, sels, |b, pos| around_bracket(b, pos, $open, $close))
+        }
     };
 }
 
-bracket_cmds!(cmd_inner_paren, cmd_around_paren, '(', ')');
-bracket_cmds!(cmd_inner_bracket, cmd_around_bracket, '[', ']');
-bracket_cmds!(cmd_inner_brace, cmd_around_brace, '{', '}');
-bracket_cmds!(cmd_inner_angle, cmd_around_angle, '<', '>');
+bracket_cmds!(cmd_inner_paren, cmd_around_paren, cmd_extend_inner_paren, cmd_extend_around_paren, '(', ')');
+bracket_cmds!(cmd_inner_bracket, cmd_around_bracket, cmd_extend_inner_bracket, cmd_extend_around_bracket, '[', ']');
+bracket_cmds!(cmd_inner_brace, cmd_around_brace, cmd_extend_inner_brace, cmd_extend_around_brace, '{', '}');
+bracket_cmds!(cmd_inner_angle, cmd_around_angle, cmd_extend_inner_angle, cmd_extend_around_angle, '<', '>');
 
 // ── Quotes ─────────────────────────────────────────────────────────────────────
 
@@ -389,19 +442,25 @@ fn around_quote(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)>
 }
 
 macro_rules! quote_cmds {
-    ($inner_name:ident, $around_name:ident, $quote:literal) => {
+    ($inner_name:ident, $around_name:ident, $ext_inner_name:ident, $ext_around_name:ident, $quote:literal) => {
         pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
             apply_text_object(buf, sels, |b, pos| inner_quote(b, pos, $quote))
         }
         pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
             apply_text_object(buf, sels, |b, pos| around_quote(b, pos, $quote))
         }
+        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+            apply_text_object_extend(buf, sels, |b, pos| inner_quote(b, pos, $quote))
+        }
+        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+            apply_text_object_extend(buf, sels, |b, pos| around_quote(b, pos, $quote))
+        }
     };
 }
 
-quote_cmds!(cmd_inner_double_quote, cmd_around_double_quote, '"');
-quote_cmds!(cmd_inner_single_quote, cmd_around_single_quote, '\'');
-quote_cmds!(cmd_inner_backtick, cmd_around_backtick, '`');
+quote_cmds!(cmd_inner_double_quote, cmd_around_double_quote, cmd_extend_inner_double_quote, cmd_extend_around_double_quote, '"');
+quote_cmds!(cmd_inner_single_quote, cmd_around_single_quote, cmd_extend_inner_single_quote, cmd_extend_around_single_quote, '\'');
+quote_cmds!(cmd_inner_backtick, cmd_around_backtick, cmd_extend_inner_backtick, cmd_extend_around_backtick, '`');
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
@@ -992,6 +1051,64 @@ mod tests {
             "-[\n]>",
             |(buf, sels)| cmd_inner_WORD(&buf, sels),
             "-[\n]>"
+        );
+    }
+
+    // ── apply_text_object_extend (union semantics) ────────────────────────────
+
+    #[test]
+    fn extend_inner_paren_grows_selection() {
+        // "hello (world) foo\n": '('=6, ')'=12. Forward sel from 'h'(0) to 'w'(7).
+        // extend_inner_paren at head=7 ('w' inside parens):
+        //   inner_bracket(7) → inner = (7, 11) = "world".
+        //   Union: min(0,7)=0, max(7,11)=11. head=11 ('d').
+        // Serialized: ]> at position 12 (before ')') → "-[hello (world]>) foo\n".
+        assert_state!(
+            "-[hello (w]>orld) foo\n",
+            |(buf, sels)| cmd_extend_inner_paren(&buf, sels),
+            "-[hello (world]>) foo\n"
+        );
+    }
+
+    #[test]
+    fn extend_text_object_noop_on_no_match() {
+        // When extend text-object has no match, selection is unchanged.
+        // inner_paren on "hello\n" finds no parens → returns None → sel unchanged.
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| {
+                let s1 = cmd_inner_word(&buf, sels);  // selects "hello" (0,4)
+                cmd_extend_inner_paren(&buf, s1)      // no parens → no-op → "hello" unchanged
+            },
+            "-[hello]>\n"
+        );
+    }
+
+    #[test]
+    fn extend_around_paren_grows_selection() {
+        // "hello (world) foo\n": forward selection from 'h'(0) to 'w'(7).
+        // extend_around_paren at head=7 ('w' inside parens):
+        //   around_bracket(7) finds "(world)" (6,13).
+        //   Union: min(0,6)=0, max(7,13)=13 → (0,13) = "hello (world)".
+        assert_state!(
+            "-[hello (w]>orld) foo\n",
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            "-[hello (world)]> foo\n"
+        );
+    }
+
+    #[test]
+    fn extend_text_object_preserves_backward_direction() {
+        // Backward selection "<[he]-llo world\n": head=0 ('h'), anchor=1 ('e').
+        // extend_inner_word at head=0 → inner_word "hello" (0,4).
+        // Union: sel.start()=0, sel.end()=1, word=(0,4).
+        //   new_start=min(0,0)=0, new_end=max(1,4)=4, forward=false.
+        // Result: Selection::directed(0,4,false) = {anchor=4, head=0}.
+        // Serialized: `]-` placed at (anchor+1)=5 → "<[hello]- world\n".
+        assert_state!(
+            "<[he]-llo world\n",
+            |(buf, sels)| cmd_extend_inner_word(&buf, sels),
+            "<[hello]- world\n"
         );
     }
 }
