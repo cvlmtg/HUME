@@ -311,18 +311,25 @@ impl Editor {
             KeyCode::Char('o') => if self.extend {
                 self.apply_motion(|b, s| cmd_flip_selections(b, s));
             } else {
+                // Open the edit group *before* the newline insertion so that
+                // the structural '\n' and everything typed before Esc form one
+                // undo step (same pattern as `c`). set_mode(Insert) sees the
+                // group is already open and skips begin_edit_group.
+                self.doc.begin_edit_group();
                 self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
                 self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
                 self.set_mode(Mode::Insert);
             },
 
             // `O` — open a new line above the current line and enter Insert.
             // Moves to the line start, inserts a '\n' (pushing current content
             // down), then steps left onto the new empty line.
+            // Same undo-group strategy as `o`.
             KeyCode::Char('O') => {
+                self.doc.begin_edit_group();
                 self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
-                self.doc.apply_edit(|b, s| insert_char(b, s, '\n'));
+                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
                 self.apply_motion(|b, s| cmd_move_left(b, s, 1));
                 self.set_mode(Mode::Insert);
             }
