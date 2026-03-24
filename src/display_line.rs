@@ -28,6 +28,9 @@ pub(crate) enum DisplayLineSource {
 #[derive(Debug)]
 pub(crate) struct DisplayLine<'buf> {
     /// Where this line comes from (buffer line, virtual line, etc.).
+    // Not yet consumed by the renderer; will be used when virtual lines (diagnostics, ghost text)
+    // are introduced and need to be distinguished from real buffer lines.
+    #[allow(dead_code)]
     pub source: DisplayLineSource,
 
     /// The displayable text of this line.

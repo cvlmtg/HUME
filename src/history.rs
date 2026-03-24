@@ -194,32 +194,41 @@ impl History {
         Some(self.revisions[child_id.0].forward.clone())
     }
 
+    // The methods below are used in tests and will be needed by the undo-tree
+    // UI and status bar. The compiler warns because they're only called from
+    // `#[cfg(test)]` blocks or forwarded through `Document`.
+    #[allow(dead_code)]
     /// True if there is at least one revision above the current position.
     pub(crate) fn can_undo(&self) -> bool {
         self.revisions[self.current.0].parent.is_some()
     }
 
+    #[allow(dead_code)]
     /// True if the current revision has at least one child.
     pub(crate) fn can_redo(&self) -> bool {
         !self.revisions[self.current.0].children.is_empty()
     }
 
+    #[allow(dead_code)]
     /// Total number of revisions in the tree (including the root).
     #[must_use]
     pub(crate) fn len(&self) -> usize {
         self.revisions.len()
     }
 
+    #[allow(dead_code)]
     /// The currently active revision.
     pub(crate) fn current_id(&self) -> RevisionId {
         self.current
     }
 
+    #[allow(dead_code)]
     /// Parent of a revision. `None` for the root.
     pub(crate) fn parent(&self, id: RevisionId) -> Option<RevisionId> {
         self.revisions[id.0].parent
     }
 
+    #[allow(dead_code)]
     /// Children of a revision (branches created from this state).
     pub(crate) fn children(&self, id: RevisionId) -> &[RevisionId] {
         &self.revisions[id.0].children
@@ -237,6 +246,7 @@ impl History {
         chain
     }
 
+    #[allow(dead_code)]
     /// Jump to an arbitrary revision in the undo tree.
     ///
     /// Returns the sequence of [`Transaction`]s that must be applied

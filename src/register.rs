@@ -31,15 +31,18 @@ pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
 
 /// The system clipboard register (`c`). Deferred to M3 (requires OS integration).
 /// Reserved here so the editor layer can reference it by name.
+#[allow(dead_code)]
 pub(crate) const CLIPBOARD_REGISTER: char = 'c';
 
 /// The search register (`s`) — holds the last search pattern.
 /// Written by the search command; readable for paste into the command line.
+#[allow(dead_code)]
 pub(crate) const SEARCH_REGISTER: char = 's';
 
 /// The default macro register (`q`).
 /// `qq` starts/stops recording into this register; `Q` replays from it.
 /// Can also hold yanked text if the user explicitly writes to it.
+#[allow(dead_code)]
 pub(crate) const MACRO_REGISTER: char = 'q';
 
 /// One named register.

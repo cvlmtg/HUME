@@ -27,6 +27,9 @@ use crate::selection::{Selection, SelectionSet};
 
 /// Apply a `(&Buffer, SelectionSet) -> SelectionSet` command `count` times.
 ///
+// Not yet called from the editor layer; kept as the intended count mechanism
+// for when `<count>d` / `<count>c` style repetition is wired up.
+#[allow(dead_code)]
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
 /// is needed for undo/redo bookkeeping via [`crate::document::Document`].
@@ -42,6 +45,7 @@ pub(crate) fn repeat(
     (0..count).fold(sels, |s, _| cmd(buf, s))
 }
 
+#[allow(dead_code)]
 /// Apply an edit command `count` times, composing all changesets into one.
 ///
 /// Like [`repeat`], but the command must return `(Buffer, SelectionSet,

@@ -118,6 +118,9 @@ impl Selection {
     /// Panics if the shift would move either end below zero (underflow).
     /// This is always a bug in the caller — an edit cannot shift a selection
     /// to a negative position.
+    // Not yet called from edit/motion code; kept for multi-cursor move operations
+    // that offset entire selections by a known delta (e.g. after insertion above).
+    #[allow(dead_code)]
     #[must_use]
     pub(crate) fn shift(self, delta: isize) -> Self {
         // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
@@ -190,6 +193,9 @@ impl SelectionSet {
     /// The non-obvious ordering is why this is named `iter_primary_first` rather
     /// than plain `iter` — a method called `iter` should iterate in the natural
     /// (sorted) order. Use [`iter_sorted`](Self::iter_sorted) for that.
+    // Not yet used; retained for commands that need to handle the primary
+    // selection differently from the others (e.g. visual-mode hints).
+    #[allow(dead_code)]
     pub(crate) fn iter_primary_first(&self) -> impl Iterator<Item = &Selection> {
         // Yield primary first by chaining: [primary] ++ [all others in order].
         // This is an O(n) iterator with no allocation.
@@ -239,6 +245,8 @@ impl SelectionSet {
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
     /// set. Panics if `idx >= len()`.
+    // Not yet called; kept as the companion to `map` for targeted single-selection updates.
+    #[allow(dead_code)]
     pub(crate) fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
         self.selections[idx] = new_sel;
         self

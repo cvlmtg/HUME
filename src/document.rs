@@ -211,6 +211,8 @@ impl Document {
         }
     }
 
+    // Not yet called from the editor; will be needed for the undo-tree UI (M4).
+    #[allow(dead_code)]
     /// Jump to an arbitrary revision in the undo tree.
     ///
     /// Applies the necessary inverse/forward transactions sequentially to
@@ -263,11 +265,14 @@ impl Document {
         self.group.is_some()
     }
 
+    // Used in tests and will be used by the status-bar renderer (M3).
+    #[allow(dead_code)]
     /// True if there is at least one edit to undo.
     pub(crate) fn can_undo(&self) -> bool {
         self.history.can_undo()
     }
 
+    #[allow(dead_code)]
     /// True if there is at least one undone edit to redo.
     pub(crate) fn can_redo(&self) -> bool {
         self.history.can_redo()
