@@ -77,8 +77,8 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
 - [x] Insert mode with text input: `Esc` to return to Normal; character input, `Enter`, `Backspace`, `Delete`; arrow keys and `Home/End` for navigation
 - [x] Extend mode: `x` toggles extend mode (`EXT` status bar label); all motions and text objects extend/union the selection instead of replacing it. Word motions use union semantics (selection grows to encompass the next/prev word). `Ctrl+motion` shortcuts deferred to M4 (requires kitty keyboard protocol).
-- [ ] Cursor line highlight: subtle background on the cursor row in `render_content`; `cursor_line` already computed in `render()`.
-- [ ] Line selection: `cmd_inner_line`/`cmd_around_line` exist in `text_object.rs`; just needs a key binding decision.
+- [x] Cursor line highlight: subtle background on the cursor row in `render_content`; `cursor_line` already computed in `render()`.
+- [x] Line selection: `mil` (inner line, excludes `\n`) / `mal` (around line, includes `\n`) — bound via `dispatch_text_object` in `mappings.rs`.
 - [ ] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.
 - [ ] Matching bracket highlight: `find_bracket_pair` exists in `text_object.rs`; needs a secondary highlight concept in the renderer (reusable for search, diagnostics).
 - [ ] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.

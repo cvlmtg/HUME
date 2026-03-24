@@ -141,10 +141,11 @@ fn render_gutter(
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns.
 ///
-/// Every character that falls within any selection range `[start, end]` is
-/// rendered as `Modifier::REVERSED`, covering the full selected region. If a
-/// cursor (head) sits past the last grapheme (end-of-line / empty line), a
-/// reversed space is drawn there.
+/// Selection styling uses `EditorColors`: cursor head gets `cursor_head` (white
+/// block), selected body gets `selection` (blue-purple background), and the
+/// cursor row gets `cursor_line` (subtle dark tint). Priority order:
+/// cursor_head > selection > cursor_line > default. If a cursor head sits past
+/// the last grapheme (end-of-line / empty line), a styled space is drawn there.
 fn render_content(
     screen_buf: &mut ScreenBuf,
     ctx: &RenderCtx<'_>,
