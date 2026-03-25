@@ -249,13 +249,12 @@ fn x_selects_full_line_from_cursor() {
     assert_eq!(state(&ed), "-[hello world\n]>foo\n");
 }
 
-/// `x` on a line that is already fully selected re-selects the same line
-/// (no extension in normal mode).
+/// `x` on a line that is already fully selected jumps to the next line.
 #[test]
-fn x_on_full_line_selection_stays_put() {
+fn x_on_full_line_jumps_to_next() {
     let mut ed = editor_from("-[hello world\n]>foo\n");
     ed.handle_key(key('x'));
-    assert_eq!(state(&ed), "-[hello world\n]>foo\n");
+    assert_eq!(state(&ed), "hello world\n-[foo\n]>");
 }
 
 /// In extend mode, `x` extends the selection to include the next line.
@@ -273,6 +272,78 @@ fn x_in_extend_mode_accumulates_lines() {
     // Another `x`: extend to line 3.
     ed.handle_key(key('x'));
     assert_eq!(state(&ed), "-[hello world\nfoo\nbar\n]>", "lines 1-3 selected");
+}
+
+/// `x` repeated in normal mode walks downward: each press moves to the next line.
+#[test]
+fn x_repeated_walks_lines_down() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\nbar\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\nbar\n", "line 1");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "hello world\n-[foo\n]>bar\n", "line 2");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "hello world\nfoo\n-[bar\n]>", "line 3");
+}
+
+/// `x` at the last line stays put (no panic).
+#[test]
+fn x_clamps_at_last_line() {
+    let mut ed = editor_from("hello\n-[world\n]>");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "hello\n-[world\n]>");
+}
+
+/// `X` selects the current line with a backward selection (anchor=`\n`, head=start).
+#[test]
+fn shift_x_selects_line_backward() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "<[hello world\n]-foo\n");
+}
+
+/// `X` repeated in normal mode walks upward: each press moves to the previous line.
+#[test]
+fn shift_x_repeated_walks_lines_up() {
+    let mut ed = editor_from("aaa\nbbb\nhello -[w]>orld\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "aaa\nbbb\n<[hello world\n]-", "line 3");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "aaa\n<[bbb\n]-hello world\n", "line 2");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "<[aaa\n]-bbb\nhello world\n", "line 1");
+}
+
+/// `X` at the first line stays put (no panic).
+#[test]
+fn shift_x_clamps_at_first_line() {
+    let mut ed = editor_from("<[hello world\n]-foo\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "<[hello world\n]-foo\n");
+}
+
+/// Ctrl+x accumulates lines downward (extend behavior).
+#[test]
+fn ctrl_x_extends_selection_down() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\nbar\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\nbar\n", "line 1 selected");
+    ed.handle_key(key_ctrl('x'));
+    assert_eq!(state(&ed), "-[hello world\nfoo\n]>bar\n", "lines 1-2");
+    ed.handle_key(key_ctrl('x'));
+    assert_eq!(state(&ed), "-[hello world\nfoo\nbar\n]>", "lines 1-3");
+}
+
+/// Ctrl+X accumulates lines upward (extend behavior).
+#[test]
+fn ctrl_shift_x_extends_selection_up() {
+    let mut ed = editor_from("aaa\nbbb\nhello -[w]>orld\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "aaa\nbbb\n<[hello world\n]-", "line 3 selected");
+    ed.handle_key(key_ctrl('X'));
+    assert_eq!(state(&ed), "aaa\n<[bbb\nhello world\n]-", "lines 2-3");
+    ed.handle_key(key_ctrl('X'));
+    assert_eq!(state(&ed), "<[aaa\nbbb\nhello world\n]-", "lines 1-3");
 }
 
 // ── `o` / `O` open-line variants ──────────────────────────────────────────
