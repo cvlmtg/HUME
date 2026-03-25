@@ -1,11 +1,11 @@
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::buffer::Buffer;
 use crate::editor::Mode;
+use crate::grapheme::grapheme_count;
 use crate::renderer::RenderCtx;
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -120,6 +120,8 @@ fn render_command_line(
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
+    // +1: 1-column left margin, matching the leading space of the mode pill
+    // in the normal status bar so the text is visually aligned.
     let cmd_str = format!("{prompt}{input}");
     screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
 }
@@ -137,7 +139,7 @@ fn render_status_message(
 ) {
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, ctx.colors.status_bar);
-    screen_buf.set_string(area.x + 1, y, msg, ctx.colors.status_bar);
+    screen_buf.set_string(area.x + 1, y, msg, ctx.colors.status_bar); // +1: left margin, see render_command_line
 }
 
 /// Render the one-row status bar at the bottom of the area.
@@ -289,9 +291,14 @@ fn render_slot(
                 spans.push((" ".to_string(), ctx.colors.status_bar));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
-                // Both boundaries are spaces — trim the duplicate from the
-                // incoming segment so there is exactly one space between them.
-                spans.push((text.trim_start_matches(' ').to_string(), style));
+                // Both boundaries are spaces — trim exactly one leading space
+                // from the incoming segment so there is exactly one space
+                // between them, not two. We use strip_prefix (not
+                // trim_start_matches) to remove at most one space so that
+                // segments intentionally padded with multiple leading spaces
+                // keep their extra indent.
+                let trimmed = text.strip_prefix(' ').unwrap_or(&text);
+                spans.push((trimmed.to_string(), style));
             } else {
                 // Exactly one boundary is a space — concatenate directly.
                 spans.push((text, style));
@@ -321,17 +328,11 @@ fn draw_slot(screen_buf: &mut ScreenBuf, spans: &[(String, Style)], mut x: u16, 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Count grapheme clusters from the start of `line_idx` to `char_pos`.
+/// 0-based grapheme column of `char_pos` within line `line_idx`.
 ///
-/// Returns the 0-based grapheme offset of the cursor within its line — the
-/// same unit used by left/right cursor movement. This is intentionally a
-/// logical position (grapheme index), not a display column: if the line
-/// contains wide characters, the visual column may differ, but the reported
-/// number matches how many times the user pressed → to get there.
+/// This is a logical position (grapheme index), not a display column: wide
+/// characters count as one, not two. The value matches how many times the
+/// user pressed → to reach the cursor from the start of the line.
 pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
-    let line_start = buf.line_to_char(line_idx);
-    // char_pos should be >= line_start, but saturating_sub guards against
-    // any edge cases in empty buffers.
-    let slice = buf.slice(line_start..char_pos.max(line_start));
-    slice.to_string().graphemes(true).count()
+    grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }

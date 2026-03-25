@@ -121,6 +121,71 @@ pub(crate) fn prev_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
     }
 }
 
+/// Count grapheme clusters between two char offsets in the buffer.
+///
+/// Returns the number of grapheme clusters in `[from_char, to_char)` —
+/// equivalently, the 0-based grapheme column of `to_char` relative to
+/// `from_char`. Passing `buf.line_to_char(line)` as `from_char` and the
+/// cursor's char offset as `to_char` gives the cursor's grapheme column within
+/// that line.
+///
+/// # Why chunk-based?
+///
+/// The naïve alternative is `buf.slice(from..to).to_string().graphemes(true).count()`,
+/// which allocates a heap String proportional to line length. Long lines
+/// (minified JSON, generated files, log files with no newlines) can be
+/// arbitrarily wide. This implementation uses the same chunk-at-a-time
+/// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
+/// cluster with no heap allocation.
+///
+/// # Panics
+///
+/// Panics if `from_char` or `to_char` is out of bounds for `buf`.
+pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> usize {
+    let to_char = to_char.max(from_char);
+    if from_char == to_char {
+        return 0;
+    }
+
+    let slice = buf.full_slice();
+    let len_bytes = slice.len_bytes();
+    let from_byte = slice.char_to_byte(from_char);
+    let to_byte = slice.char_to_byte(to_char);
+
+    let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(from_byte);
+    let mut gc = GraphemeCursor::new(from_byte, len_bytes, true);
+    let mut count = 0;
+
+    loop {
+        match gc.next_boundary(chunk, chunk_byte_start) {
+            Ok(None) => return count,
+            Ok(Some(b)) => {
+                if b > to_byte {
+                    return count;
+                }
+                count += 1;
+                if b == to_byte {
+                    return count;
+                }
+            }
+            Err(GraphemeIncomplete::NextChunk) => {
+                let next_byte = chunk_byte_start + chunk.len();
+                if next_byte >= len_bytes {
+                    return count;
+                }
+                let (c, s, _, _) = slice.chunk_at_byte(next_byte);
+                chunk = c;
+                chunk_byte_start = s;
+            }
+            Err(GraphemeIncomplete::PreContext(n)) => {
+                let (ctx_chunk, ctx_start, _, _) = slice.chunk_at_byte(n - 1);
+                gc.provide_context(ctx_chunk, ctx_start);
+            }
+            Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -285,6 +350,52 @@ mod tests {
         // buf: U+0915(0) U+093E(1) '\n'(2) = 3 chars
         assert_eq!(next_grapheme_boundary(&buf, 0), 2);
         assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
+    }
+
+    // ── grapheme_count ────────────────────────────────────────────────────────
+
+    #[test]
+    fn grapheme_count_ascii() {
+        let buf = Buffer::from("hello\n");
+        // "hello" = 5 graphemes; line starts at 0
+        assert_eq!(grapheme_count(&buf, 0, 5), 5);
+    }
+
+    #[test]
+    fn grapheme_count_zero_range() {
+        let buf = Buffer::from("hello\n");
+        assert_eq!(grapheme_count(&buf, 2, 2), 0);
+    }
+
+    #[test]
+    fn grapheme_count_combining_char() {
+        // "e\u{0301}x" = 3 chars but 2 grapheme clusters ("é", "x") + structural \n
+        let buf = Buffer::from("e\u{0301}x\n");
+        // from char 0 to char 2 (past the combining cluster): 1 grapheme
+        assert_eq!(grapheme_count(&buf, 0, 2), 1);
+        // from char 0 to char 3 (past "x"): 2 graphemes
+        assert_eq!(grapheme_count(&buf, 0, 3), 2);
+    }
+
+    #[test]
+    fn grapheme_count_zwj_emoji() {
+        // 👨‍👩‍👧 = 5 codepoints, 1 grapheme cluster.
+        // Buffer::from("👨‍👩‍👧\n"): the string already ends with \n so no extra is
+        // added — total 6 chars (5 emoji codepoints + \n).
+        let buf = Buffer::from("👨‍👩‍👧\n");
+        assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
+        // from 0 to 5 (past the whole emoji): 1 grapheme
+        assert_eq!(grapheme_count(&buf, 0, 5), 1);
+    }
+
+    #[test]
+    fn grapheme_count_multiline_offset() {
+        // "ab\ncd\n" — "cd" starts at char 3
+        let buf = Buffer::from("ab\ncd\n");
+        // from line 1 start (char 3) to char 5 (past "cd"): 2 graphemes
+        assert_eq!(grapheme_count(&buf, 3, 5), 2);
+        // from 3 to 3: 0
+        assert_eq!(grapheme_count(&buf, 3, 3), 0);
     }
 
     // ── Invariant enforcement ─────────────────────────────────────────────────
