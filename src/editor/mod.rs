@@ -78,7 +78,7 @@ pub(crate) struct Editor {
     pub(super) file_path: Option<PathBuf>,
     pub(super) mode: Mode,
     /// When `true`, all motions extend the current selection rather than moving it.
-    /// Toggled by `x` in Normal mode; cleared on entering Insert mode or pressing Esc.
+    /// Toggled by `e` in Normal mode; cleared on entering Insert mode or pressing Esc.
     pub(super) extend: bool,
     pub(super) pending: PendingKey,
     pub(super) registers: RegisterSet,
