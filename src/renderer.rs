@@ -291,12 +291,13 @@ fn render_command_line(
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
-    // "CMD" mode label at column 1 (mirrors "NOR"/"INS"/"EXT").
-    screen_buf.set_string(area.x + 1, y, "CMD", colors.status_command);
+    // " CMD " mode pill flush-left (mirrors render_status_bar layout).
+    screen_buf.set_string(area.x, y, " CMD ", colors.status_command);
+    screen_buf.set_string(area.x + 5, y, "│", colors.status_bar);
 
-    // Prompt char and typed input starting at column 5 (space + 3-char label + space).
+    // Prompt char and typed input at column 7 (after " CMD |" + one fill space).
     let cmd_str = format!("{prompt}{input}");
-    screen_buf.set_string(area.x + 5, y, &cmd_str, colors.status_bar);
+    screen_buf.set_string(area.x + 7, y, &cmd_str, colors.status_bar);
 }
 
 /// Render a transient status message on the bottom row.
@@ -318,7 +319,7 @@ fn render_status_message(
 /// Render the one-row status bar at the bottom of the area.
 ///
 /// Layout (all with inverted style):
-/// - Left  : one space + mode label (`NOR`/`INS`/`EXT`) + one space + filename
+/// - Left  : ` NOR ` (mode label padded with spaces, mode color) + `|` + one space + filename
 /// - Right : `line:col` (both 1-based) + one space
 ///
 /// `INS` is rendered in cyan, `EXT` in yellow, to make mode transitions visually obvious.
@@ -337,23 +338,27 @@ fn render_status_bar(
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
-    // Mode label — 3 chars, at column 1.
+    // Mode label — " NOR " (5 chars: leading space + 3-char label + trailing space),
+    // rendered with the mode color flush against the left edge (column 0).
     let (mode_label, mode_style) = match (ctx.mode, ctx.extend) {
-        (Mode::Normal, true)  => ("EXT", colors.status_extend),
-        (Mode::Normal, false) => ("NOR", colors.status_normal),
-        (Mode::Insert, _)     => ("INS", colors.status_insert),
+        (Mode::Normal, true)  => (" EXT ", colors.status_extend),
+        (Mode::Normal, false) => (" NOR ", colors.status_normal),
+        (Mode::Insert, _)     => (" INS ", colors.status_insert),
         // Command mode replaces the status bar with a command line, so this
         // arm is a fallback that should not normally be reached.
-        (Mode::Command, _)    => ("CMD", colors.status_command),
+        (Mode::Command, _)    => (" CMD ", colors.status_command),
     };
-    screen_buf.set_string(area.x + 1, y, mode_label, mode_style);
+    screen_buf.set_string(area.x, y, mode_label, mode_style);
 
-    // Filename at column 5 (space + 3-char label + space).
+    // Separator "│" immediately after the mode pill (column 5), then one space
+    // of padding from the background fill, then filename at column 7.
+    screen_buf.set_string(area.x + 5, y, "│", colors.status_bar);
+
     let filename = ctx.file_path
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .unwrap_or("[scratch]");
-    screen_buf.set_string(area.x + 5, y, filename, colors.status_bar);
+    screen_buf.set_string(area.x + 7, y, filename, colors.status_bar);
 
     // Right: "line:col" (1-based column = grapheme count from line start + 1).
     let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
@@ -478,7 +483,7 @@ mod tests {
           1 hello
           2 world
         ~
-         NOR [scratch]  1:1");
+         NOR │ [scratch]1:1");
     }
 
     #[test]
@@ -492,7 +497,7 @@ mod tests {
           1
         ~
         ~
-         NOR [scratch]  1:1");
+         NOR │ [scratch]1:1");
     }
 
     #[test]
@@ -506,7 +511,7 @@ mod tests {
           1 hello
           2 world
         ~
-         NOR [scratch]  2:1");
+         NOR │ [scratch]2:1");
     }
 
     #[test]
@@ -522,7 +527,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
-         NOR notes.txt  1:1");
+         NOR │ notes.txt1:1");
     }
 
     #[test]
@@ -536,7 +541,7 @@ mod tests {
           2 b
           3 c
         ~
-         NOR [scratch]  1:1");
+         NOR │ [scratch]1:1");
     }
 
     #[test]
@@ -551,7 +556,7 @@ mod tests {
           0 b
           1 c
         ~
-         NOR [scratch]  2:1");
+         NOR │ [scratch]2:1");
     }
 
     #[test]
@@ -566,7 +571,7 @@ mod tests {
           2 b
           1 c
         ~
-         NOR [scratch]  2:1");
+         NOR │ [scratch]2:1");
     }
 
     #[test]
@@ -582,7 +587,7 @@ mod tests {
         ~
         ~
         ~
-         NOR [scratch]  1:1");
+         NOR │ [scratch]1:1");
     }
 
     #[test]
@@ -598,7 +603,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 café
         ~
-         NOR [scratch]  1:5");
+         NOR │ [scratch]1:5");
     }
 
     #[test]
@@ -768,7 +773,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
-         INS [scratch]  1:1");
+         INS │ [scratch]1:1");
     }
 
     #[test]
@@ -780,6 +785,6 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
-         EXT [scratch]  1:1");
+         EXT │ [scratch]1:1");
     }
 }
