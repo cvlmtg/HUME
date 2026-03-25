@@ -7,12 +7,12 @@ use crate::edit::{
 use crate::motion::{
     cmd_extend_first_nonblank, cmd_extend_line_end, cmd_extend_line_start,
     cmd_extend_down, cmd_extend_left, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
-    cmd_extend_right, cmd_extend_select_line, cmd_extend_select_next_WORD,
-    cmd_extend_select_next_word, cmd_extend_select_prev_WORD, cmd_extend_select_prev_word,
-    cmd_extend_up, cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start,
-    cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up, cmd_next_paragraph,
-    cmd_prev_paragraph, cmd_select_line, cmd_select_next_WORD, cmd_select_next_word,
-    cmd_select_prev_WORD, cmd_select_prev_word,
+    cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
+    cmd_extend_select_next_WORD, cmd_extend_select_next_word, cmd_extend_select_prev_WORD,
+    cmd_extend_select_prev_word, cmd_extend_up, cmd_goto_first_nonblank, cmd_goto_line_end,
+    cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
+    cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
+    cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
 use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection::Selection;
@@ -286,13 +286,18 @@ impl Editor {
             KeyCode::Char('m') => self.pending = PendingKey::Match,
 
             // ── Line selection ────────────────────────────────────────────────
-            // `x` selects the full line the cursor is on (like Helix/Kakoune).
-            // In extend mode: grows the selection to include the current line;
-            // repeated presses accumulate lines downward.
-            KeyCode::Char('x') => if self.extend {
+            // `x`: select the current line. If already on a full-line selection,
+            // jump to the next line. Ctrl+x / extend mode accumulates lines.
+            // `X`: same but walks backward; Ctrl+X accumulates backward.
+            KeyCode::Char('x') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
                 self.apply_motion(|b, s| cmd_extend_select_line(b, s))
             } else {
                 self.apply_motion(|b, s| cmd_select_line(b, s))
+            },
+            KeyCode::Char('X') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
+                self.apply_motion(|b, s| cmd_extend_select_line_backward(b, s))
+            } else {
+                self.apply_motion(|b, s| cmd_select_line_backward(b, s))
             },
 
             // ── Extend mode toggle ────────────────────────────────────────────

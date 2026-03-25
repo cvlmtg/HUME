@@ -737,49 +737,100 @@ motion_cmd!(/// Extend selection to the first empty line above the current parag
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
-/// Returns `(line_start, line_end_inclusive)` for the line containing `pos`.
-/// The inclusive end is the `\n` character. Returns `None` only on an empty buffer.
-fn select_line_at(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
-    let line = buf.char_to_line(pos);
-    let start = buf.line_to_char(line);
-    let end_excl = line_end_exclusive(buf, line);
-    if end_excl == start {
-        return None; // empty buffer guard
-    }
-    Some((start, end_excl - 1))
-}
-
-/// Select the full line the cursor is on (`x`): from line start to the trailing
-/// `\n` (inclusive). Always produces a fresh selection — no anchor accumulation.
+/// Select the full line (`x`): from line start to the trailing `\n` (inclusive).
+/// If the selection already ends on a `\n`, jumps to the next line (replaces
+/// the selection — does not extend). Always produces a forward selection.
 pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_word_select(buf, sels, 1, select_line_at)
+    let result = sels.map_and_merge(|sel| {
+        let bottom_line = buf.char_to_line(sel.end());
+        let end_excl = line_end_exclusive(buf, bottom_line);
+        // If selection already ends on the trailing `\n`, jump to the next line.
+        let target_line = if sel.end() + 1 >= end_excl && end_excl < buf.len_chars() {
+            bottom_line + 1
+        } else {
+            buf.char_to_line(sel.start())
+        };
+        let start = buf.line_to_char(target_line);
+        let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
+        Selection::new(start, end)
+    });
+    result.debug_assert_valid(buf);
+    result
 }
 
-/// Extend-mode `x`: grow the selection to cover the current line.
-/// If the selection already ends on a line's `\n`, advance to the next line
-/// so that repeated `x` presses accumulate lines downward.
+/// Extend-mode / Ctrl+`x`: grow the selection to cover the current line.
+/// If the selection already ends on a `\n`, accumulates the next line instead.
+/// Always produces a forward selection (anchor=start, head=`\n`).
 pub(crate) fn cmd_extend_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_word_select_extend_forward(buf, sels, 1, |buf, pos| {
-        let line = buf.char_to_line(pos);
-        let end_excl = line_end_exclusive(buf, line);
-        // `pos + 1 >= end_excl` ⟺ pos is on the trailing `\n` of this line.
-        // In that case, extend to the next line so repeated presses accumulate lines.
-        let (start, end_excl) = if pos + 1 >= end_excl {
-            let next_start = end_excl; // first char of next line
-            if next_start >= buf.len_chars() {
-                // Last line — nowhere further to extend.
-                (buf.line_to_char(line), end_excl)
-            } else {
-                (next_start, line_end_exclusive(buf, line + 1))
-            }
-        } else {
-            (buf.line_to_char(line), end_excl)
-        };
-        if end_excl == start {
-            return None;
+    let result = sels.map_and_merge(|sel| {
+        let bottom_line = buf.char_to_line(sel.end());
+        let end_excl = line_end_exclusive(buf, bottom_line);
+        if sel.end() + 1 >= end_excl && end_excl >= buf.len_chars() {
+            return sel; // already at last line — clamp
         }
-        Some((start, end_excl - 1))
-    })
+        let (tgt_start, tgt_end) = if sel.end() + 1 >= end_excl {
+            // Already ends on `\n` — target next line.
+            let next_line = bottom_line + 1;
+            (buf.line_to_char(next_line), line_end_exclusive(buf, next_line) - 1)
+        } else {
+            // Expand to cover full lines.
+            let top_line = buf.char_to_line(sel.start());
+            (buf.line_to_char(top_line), end_excl - 1)
+        };
+        let new_start = sel.start().min(tgt_start);
+        let new_end = sel.end().max(tgt_end);
+        Selection::new(new_start, new_end) // always forward
+    });
+    result.debug_assert_valid(buf);
+    result
+}
+
+/// Select the full line backward (`X`): anchor on the trailing `\n`, head on
+/// line start. If the selection already starts at a line boundary, jumps to the
+/// previous line (replaces the selection — does not extend).
+pub(crate) fn cmd_select_line_backward(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let top_line = buf.char_to_line(sel.start());
+        let top_line_start = buf.line_to_char(top_line);
+        // If selection already starts at line start, jump to previous line.
+        let target_line = if sel.start() == top_line_start && top_line > 0 {
+            top_line - 1
+        } else {
+            top_line
+        };
+        let start = buf.line_to_char(target_line);
+        let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
+        Selection::new(end, start) // backward: anchor=`\n`, head=line_start
+    });
+    result.debug_assert_valid(buf);
+    result
+}
+
+/// Extend-mode / Ctrl+`X`: grow the selection to cover the current line.
+/// If the selection already starts at a line boundary, accumulates the previous
+/// line. Always produces a backward selection (anchor=bottom `\n`, head=top start).
+pub(crate) fn cmd_extend_select_line_backward(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let top_line = buf.char_to_line(sel.start());
+        let top_line_start = buf.line_to_char(top_line);
+        if sel.start() == top_line_start && top_line == 0 {
+            return sel; // already at first line — clamp
+        }
+        let (tgt_start, tgt_end) = if sel.start() == top_line_start {
+            // Already starts at line boundary — target previous line.
+            let prev_line = top_line - 1;
+            (buf.line_to_char(prev_line), line_end_exclusive(buf, prev_line) - 1)
+        } else {
+            // Expand to cover full lines.
+            let bottom_line = buf.char_to_line(sel.end());
+            (top_line_start, line_end_exclusive(buf, bottom_line) - 1)
+        };
+        let new_start = sel.start().min(tgt_start);
+        let new_end = sel.end().max(tgt_end);
+        Selection::new(new_end, new_start) // backward: anchor=bottom, head=top
+    });
+    result.debug_assert_valid(buf);
+    result
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1811,5 +1862,109 @@ mod tests {
             "-[f]>oo bar -[b]>az qux\n",
             |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1),
             "-[foo bar]> -[baz qux]>\n"
+        );
+    }
+
+    // ── cmd_select_line / cmd_select_line_backward ────────────────────────────
+
+    #[test]
+    fn select_line_from_mid_line() {
+        // Cursor mid-line → select full line forward.
+        assert_state!(
+            "hello -[w]>orld\nfoo\n",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "-[hello world\n]>foo\n"
+        );
+    }
+
+    #[test]
+    fn select_line_already_full_line_jumps_to_next() {
+        // Selection already covers full line → jump to next line.
+        assert_state!(
+            "-[hello world\n]>foo\n",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "hello world\n-[foo\n]>"
+        );
+    }
+
+    #[test]
+    fn select_line_clamps_at_last_line() {
+        // Already on last line → no change.
+        assert_state!(
+            "hello\n-[foo\n]>",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "hello\n-[foo\n]>"
+        );
+    }
+
+    #[test]
+    fn select_line_backward_from_mid_line() {
+        // Cursor mid-line → select full line backward (anchor=`\n`, head=start).
+        assert_state!(
+            "hello -[w]>orld\nfoo\n",
+            |(buf, sels)| cmd_select_line_backward(&buf, sels),
+            "<[hello world\n]-foo\n"
+        );
+    }
+
+    #[test]
+    fn select_line_backward_already_at_start_jumps_to_prev() {
+        // Selection already starts at line boundary → jump to previous line.
+        assert_state!(
+            "aaa\n<[bbb\n]-ccc\n",
+            |(buf, sels)| cmd_select_line_backward(&buf, sels),
+            "<[aaa\n]-bbb\nccc\n"
+        );
+    }
+
+    #[test]
+    fn select_line_backward_clamps_at_first_line() {
+        // Already on first line → no change.
+        assert_state!(
+            "<[hello\n]-world\n",
+            |(buf, sels)| cmd_select_line_backward(&buf, sels),
+            "<[hello\n]-world\n"
+        );
+    }
+
+    // ── cmd_extend_select_line / cmd_extend_select_line_backward ─────────────
+
+    #[test]
+    fn extend_select_line_accumulates_downward() {
+        // Each press accumulates one more line.
+        assert_state!(
+            "-[hello\n]>foo\nbar\n",
+            |(buf, sels)| cmd_extend_select_line(&buf, sels),
+            "-[hello\nfoo\n]>bar\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_line_clamps_at_last_line() {
+        // Already at last line → no change.
+        assert_state!(
+            "hello\n-[foo\n]>",
+            |(buf, sels)| cmd_extend_select_line(&buf, sels),
+            "hello\n-[foo\n]>"
+        );
+    }
+
+    #[test]
+    fn extend_select_line_backward_accumulates_upward() {
+        // Each press accumulates one more line upward.
+        assert_state!(
+            "aaa\n<[bbb\n]-ccc\n",
+            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels),
+            "<[aaa\nbbb\n]-ccc\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_line_backward_clamps_at_first_line() {
+        // Already at first line → no change.
+        assert_state!(
+            "<[hello\n]-world\n",
+            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels),
+            "<[hello\n]-world\n"
         );
     }}
