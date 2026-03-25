@@ -11,6 +11,7 @@ use crate::io::FileMeta;
 use crate::register::RegisterSet;
 use crate::renderer::{cursor_screen_pos, render, RenderCtx};
 use crate::selection::{Selection, SelectionSet};
+use crate::statusline::StatusLineConfig;
 use crate::terminal::Term;
 use crate::theme::EditorColors;
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
@@ -93,6 +94,12 @@ pub(crate) struct Editor {
     /// resolved path). `None` for scratch buffers. Used by the write path to
     /// preserve the original file's attributes across atomic saves.
     pub(super) file_meta: Option<FileMeta>,
+    /// Status bar layout configuration.
+    ///
+    /// Initialized with [`StatusLineConfig::default`] (mode pill + separator +
+    /// filename on the left, position on the right). The Steel scripting layer
+    /// will replace this with the user's configured value when it is ready.
+    pub(super) statusline_config: StatusLineConfig,
 }
 
 impl Editor {
@@ -135,6 +142,7 @@ impl Editor {
             minibuf: None,
             status_msg: None,
             file_meta,
+            statusline_config: StatusLineConfig::default(),
         })
     }
 
@@ -171,6 +179,7 @@ impl Editor {
                 colors: &self.colors,
                 minibuf: self.minibuf.as_ref().map(|m| (m.prompt, m.input.as_str())),
                 status_msg: self.status_msg.as_deref(),
+                statusline_config: &self.statusline_config,
             };
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());
