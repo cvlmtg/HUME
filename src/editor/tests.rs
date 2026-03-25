@@ -346,6 +346,52 @@ fn ctrl_shift_x_extends_selection_up() {
     assert_eq!(state(&ed), "<[aaa\nbbb\nhello world\n]-", "lines 1-3");
 }
 
+/// `x` (forward line) then `X` (backward line): flips direction, stays on same line
+/// when already at the first line (no line to jump back to).
+#[test]
+fn x_then_shift_x_flips_direction() {
+    let mut ed = editor_from("hello -[w]>orld\nfoo\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "-[hello world\n]>foo\n");
+    // sel.start() == line_start AND top_line == 0 → can't jump, just flips to backward.
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "<[hello world\n]-foo\n");
+}
+
+/// `X` (backward line) then `x` (forward line): jumps to next line (flips direction).
+#[test]
+fn shift_x_then_x_flips_direction() {
+    let mut ed = editor_from("aaa\nhello -[w]>orld\nfoo\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "aaa\n<[hello world\n]-foo\n");
+    // sel.end() is at `\n` of line 1 → x jumps to next line (forward selection).
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "aaa\nhello world\n-[foo\n]>");
+}
+
+/// Ctrl+x after `X` (backward selection): extends forward, flipping direction.
+#[test]
+fn ctrl_x_after_shift_x() {
+    // Cursor mid-line so `X` selects the current line (doesn't jump back).
+    let mut ed = editor_from("aaa\nfoo -[b]>ar\nbaz\n");
+    ed.handle_key(key('X'));
+    assert_eq!(state(&ed), "aaa\n<[foo bar\n]-baz\n");
+    // Ctrl+x extends forward (adds next line, switches to forward selection).
+    ed.handle_key(key_ctrl('x'));
+    assert_eq!(state(&ed), "aaa\n-[foo bar\nbaz\n]>");
+}
+
+/// Ctrl+X after `x` (forward selection): extends backward, flipping direction.
+#[test]
+fn ctrl_shift_x_after_x() {
+    let mut ed = editor_from("aaa\nbbb\n-[f]>oo\n");
+    ed.handle_key(key('x'));
+    assert_eq!(state(&ed), "aaa\nbbb\n-[foo\n]>");
+    // Ctrl+X extends backward (adds previous line, switches to backward selection).
+    ed.handle_key(key_ctrl('X'));
+    assert_eq!(state(&ed), "aaa\n<[bbb\nfoo\n]-");
+}
+
 // ── `o` / `O` open-line variants ──────────────────────────────────────────
 
 /// `o` must insert a blank line *below* the current line, position the cursor
