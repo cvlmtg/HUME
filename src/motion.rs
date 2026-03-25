@@ -1967,4 +1967,82 @@ mod tests {
             |(buf, sels)| cmd_extend_select_line_backward(&buf, sels),
             "<[hello\n]-world\n"
         );
+    }
+
+    #[test]
+    fn extend_select_line_from_mid_line() {
+        // Starting from a partial selection, the first extend covers the full line.
+        assert_state!(
+            "hello -[w]>orld\nfoo\n",
+            |(buf, sels)| cmd_extend_select_line(&buf, sels),
+            "-[hello world\n]>foo\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_line_backward_from_mid_line() {
+        // Starting from a partial selection, the first backward extend covers the full line.
+        assert_state!(
+            "hello -[w]>orld\nfoo\n",
+            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels),
+            "<[hello world\n]-foo\n"
+        );
+    }
+
+    #[test]
+    fn select_line_empty_line() {
+        // A bare `\n` line: the cursor is already on the only character (the `\n`),
+        // so `x` immediately jumps to the next line.
+        assert_state!(
+            "hello\n-[\n]>world\n",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "hello\n\n-[world\n]>"
+        );
+    }
+
+    #[test]
+    fn select_line_backward_empty_line() {
+        // A bare `\n` line: cursor is at line start → `X` jumps to the previous line.
+        assert_state!(
+            "hello\n-[\n]>world\n",
+            |(buf, sels)| cmd_select_line_backward(&buf, sels),
+            "<[hello\n]-\nworld\n"
+        );
+    }
+
+    #[test]
+    fn select_line_multi_cursor() {
+        // Two cursors on different lines each independently select their full line.
+        // The resulting line selections are non-overlapping and stay separate.
+        assert_state!(
+            "hello -[w]>orld\nfoo -[b]>ar\nbaz\n",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "-[hello world\n]>-[foo bar\n]>baz\n"
+        );
+    }
+
+    #[test]
+    fn select_line_multi_cursor_same_line_merges() {
+        // Two cursors on the same line both produce identical line selections,
+        // which map_and_merge collapses to a single selection.
+        assert_state!(
+            "hell-[o]> -[w]>orld\nfoo\n",
+            |(buf, sels)| cmd_select_line(&buf, sels),
+            "-[hello world\n]>foo\n"
+        );
+    }
+
+    #[test]
+    fn extend_select_line_multi_cursor_merges() {
+        // Two adjacent full-line selections each extend to the next line; because the
+        // resulting ranges overlap, map_and_merge unifies them into one selection.
+        //
+        // sel1 (-[hello world\n]>) end=11 → extends to line 1 → (0,15)
+        // sel2 (-[foo\n]>)         end=15 → extends to line 2 → (12,19)
+        // (0,15) and (12,19) overlap → merged to (0,19)
+        assert_state!(
+            "-[hello world\n]>-[foo\n]>bar\n",
+            |(buf, sels)| cmd_extend_select_line(&buf, sels),
+            "-[hello world\nfoo\nbar\n]>"
+        );
     }}
