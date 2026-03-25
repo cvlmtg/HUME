@@ -274,9 +274,9 @@ fn render_content(
 
 /// Render the command-line mini-buffer on the bottom row.
 ///
-/// Uses the same inverted status bar style as the normal status bar — the
-/// "CMD" mode label at column 1, then the prompt character and typed input.
-/// The terminal cursor is positioned after the input by the caller.
+/// Fully replaces the status bar — no mode pill, no segments. The prompt
+/// character (e.g. `:`) makes the mode self-evident. The terminal cursor
+/// is positioned after the input by the caller.
 fn render_command_line(
     screen_buf: &mut ScreenBuf,
     ctx: &RenderCtx<'_>,
@@ -287,17 +287,13 @@ fn render_command_line(
 ) {
     let colors = ctx.colors;
 
-    // Fill with inverted style, same as the normal status bar.
+    // The command line fully replaces the status bar row — no segment layout,
+    // no mode pill. The prompt character makes the mode self-evident.
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
-    // " CMD " mode pill flush-left (mirrors render_status_bar layout).
-    screen_buf.set_string(area.x, y, " CMD ", colors.status_command);
-    screen_buf.set_string(area.x + 5, y, "│", colors.status_bar);
-
-    // Prompt char and typed input at column 7 (after " CMD |" + one fill space).
     let cmd_str = format!("{prompt}{input}");
-    screen_buf.set_string(area.x + 7, y, &cmd_str, colors.status_bar);
+    screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
 }
 
 /// Render a transient status message on the bottom row.
@@ -344,9 +340,8 @@ fn render_status_bar(
         (Mode::Normal, true)  => (" EXT ", colors.status_extend),
         (Mode::Normal, false) => (" NOR ", colors.status_normal),
         (Mode::Insert, _)     => (" INS ", colors.status_insert),
-        // Command mode replaces the status bar with a command line, so this
-        // arm is a fallback that should not normally be reached.
-        (Mode::Command, _)    => (" CMD ", colors.status_command),
+        // Command mode is handled by render_command_line before this is reached.
+        (Mode::Command, _)    => (" NOR ", colors.status_normal),
     };
     screen_buf.set_string(area.x, y, mode_label, mode_style);
 
