@@ -21,7 +21,7 @@ To be designed. Key components will include:
 - **Terminal**: Input handling, rendering, screen management. **Important**: The renderer must iterate over "display lines" (not buffer lines) from day one. A display line is either a real buffer line or a virtual line. Initially every display line maps 1:1 to a buffer line, but this abstraction is required for virtual lines later and is expensive to retrofit.
 - **Layout**: Custom layout system — divides screen `Rect` into sub-regions (tab bar, editor panes, status line, command line). Splits are nested `Rect` divisions.
 - **Overlays**: Completion menus, popups, hover info — rendered last on top of main content. Ratatui diffs handle cleanup on dismiss.
-- **UI**: Tab bar, status line, command line, split panes
+- **UI**: Tab bar, status line, command line, split panes. The status line follows a **segment model**: a fixed set of named built-in segments (`mode`, `file-name`, `position`, `diagnostics`, `selections`, `version-control`, …) arranged into left / center / right slots via Steel config. Segments can also be arbitrary Steel functions `(fn [ctx] -> string)`, giving Kakoune-level flexibility without shelling out. The current hardcoded `render_status_bar` already maps 1:1 onto segments; the Steel config layer is the only missing piece.
 - **Decorations**: Annotation layer for virtual lines/text (diagnostics, ghost text, code lenses, inlay hints, git blame). Buffer-position-anchored, auto-updated on edits, queryable by line. Multiple sources (LSP, plugins, git).
 - **Scripting**: Steel (Scheme) engine for plugins and configuration
 - **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
@@ -103,6 +103,7 @@ Theme: replace hardcoded key dispatch with a proper command registry and keymap 
 - **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
 - **Steel scripting engine + plugin API**: needs command registry (M4) to expose commands to Steel. Includes `History` read-only accessors + `goto_revision` for undotree plugins.
 - **Configuration via Steel**: depends on Steel engine
+- **Configurable status line**: expose the segment model to Steel config — left/center/right slot lists accept segment names (keywords) or arbitrary Steel functions `(fn [ctx] string)`. Built-in segments: `mode`, `file-name`, `file-path`, `position`, `position-percentage`, `file-encoding`, `file-line-ending`, `file-type`, `file-modification-indicator`, `selections`, `primary-selection-length`, `diagnostics`, `workspace-diagnostics`, `version-control`, `register`, `separator`, `spacer`. Depends on Steel scripting engine.
 - **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer. Own milestone: "Syntax awareness."
 - **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable). Depends on tree-sitter.
 - **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
