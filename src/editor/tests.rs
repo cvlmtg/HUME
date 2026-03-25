@@ -32,6 +32,7 @@ fn editor_from(input: &str) -> Editor {
         minibuf: None,
         status_msg: None,
         file_meta: None,
+        statusline_config: crate::statusline::StatusLineConfig::default(),
     }
 }
 

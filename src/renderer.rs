@@ -10,7 +10,7 @@ use crate::display_line::DisplayLine;
 use crate::document::Document;
 use crate::editor::Mode;
 use crate::selection::SelectionSet;
-use crate::statusline::{grapheme_col_in_line, render_bottom_row};
+use crate::statusline::{grapheme_col_in_line, render_bottom_row, StatusLineConfig};
 use crate::theme::EditorColors;
 use crate::view::{LineNumberStyle, ViewState};
 
@@ -35,6 +35,10 @@ pub(crate) struct RenderCtx<'a> {
     /// Transient message to show in the status bar row (e.g. "Written 42 lines").
     /// Displayed only when `minibuf` is `None`.
     pub status_msg: Option<&'a str>,
+    /// Status bar layout configuration: which segments appear in which slots.
+    /// Defaults to the built-in three-slot layout (mode pill + filename left,
+    /// position right). The Steel scripting layer will provide this at runtime.
+    pub statusline_config: &'a StatusLineConfig,
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -347,7 +351,11 @@ mod tests {
 
     /// Build a default-colors RenderCtx for a test.
     fn ctx<'a>(doc: &'a Document, view: &'a ViewState, colors: &'a EditorColors) -> RenderCtx<'a> {
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None }
+        // OnceLock gives us a 'static reference to the default config so we
+        // don't need to thread a config lifetime through every test helper call.
+        static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
+        let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────
