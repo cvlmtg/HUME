@@ -121,13 +121,15 @@ pub(crate) fn prev_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
     }
 }
 
-/// Count grapheme clusters between two char offsets in the buffer.
+/// Count grapheme clusters in the char range `[from_char, to_char)`.
 ///
-/// Returns the number of grapheme clusters in `[from_char, to_char)` —
-/// equivalently, the 0-based grapheme column of `to_char` relative to
-/// `from_char`. Passing `buf.line_to_char(line)` as `from_char` and the
-/// cursor's char offset as `to_char` gives the cursor's grapheme column within
-/// that line.
+/// `to_char` is an **exclusive** upper bound — the character at `to_char` is
+/// not itself counted. For example, if the cursor sits at char offset `c`,
+/// `grapheme_count(buf, line_start, c)` returns the number of grapheme
+/// clusters that precede the cursor on that line — its 0-based grapheme
+/// column.
+///
+/// If `to_char < from_char` the range is treated as empty and 0 is returned.
 ///
 /// # Why chunk-based?
 ///
@@ -137,10 +139,6 @@ pub(crate) fn prev_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
-///
-/// # Panics
-///
-/// Panics if `from_char` or `to_char` is out of bounds for `buf`.
 pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {
@@ -396,6 +394,22 @@ mod tests {
         assert_eq!(grapheme_count(&buf, 3, 5), 2);
         // from 3 to 3: 0
         assert_eq!(grapheme_count(&buf, 3, 3), 0);
+    }
+
+    #[test]
+    fn grapheme_count_reversed_range_returns_zero() {
+        // to_char < from_char is clamped to an empty range.
+        let buf = Buffer::from("hello\n");
+        assert_eq!(grapheme_count(&buf, 3, 1), 0);
+    }
+
+    #[test]
+    fn grapheme_count_to_buffer_end() {
+        // to_char == len_chars (the structural \n is the last char).
+        // "hi\n" has len_chars = 3; counting from 0 to 3 covers h, i, \n = 3 graphemes.
+        let buf = Buffer::from("hi\n");
+        assert_eq!(buf.len_chars(), 3);
+        assert_eq!(grapheme_count(&buf, 0, 3), 3);
     }
 
     // ── Invariant enforcement ─────────────────────────────────────────────────
