@@ -98,7 +98,7 @@ impl Editor {
         match key.code {
             // ── Command mode ──────────────────────────────────────────────────
             KeyCode::Char(':') => {
-                self.mode = Mode::Command;
+                self.set_mode(Mode::Command);
                 self.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
             }
 
@@ -492,14 +492,14 @@ impl Editor {
         match key.code {
             // ── Cancel ────────────────────────────────────────────────────────
             KeyCode::Esc => {
-                self.mode = Mode::Normal;
+                self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
 
             // ── Execute ───────────────────────────────────────────────────────
             KeyCode::Enter => {
                 self.execute_command();
-                self.mode = Mode::Normal;
+                self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
 
@@ -508,7 +508,7 @@ impl Editor {
                 if let Some(mb) = &mut self.minibuf {
                     if mb.input.is_empty() {
                         // Backspace on empty input cancels (Kakoune behaviour).
-                        self.mode = Mode::Normal;
+                        self.set_mode(Mode::Normal);
                         self.minibuf = None;
                     } else {
                         mb.input.pop();
