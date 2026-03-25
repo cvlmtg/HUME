@@ -325,6 +325,7 @@ mod tests {
     use crate::document::Document;
     use crate::editor::Mode;
     use crate::selection::{Selection, SelectionSet};
+    use crate::statusline::StatusSegment;
     use crate::theme::EditorColors;
     use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -674,5 +675,72 @@ mod tests {
           1 hi
         ~
          EXT │ [scratch]1:1");
+    }
+
+    // ── Smart-join tests ──────────────────────────────────────────────────────
+    //
+    // Three boundary cases for the segment spacing rule:
+    //   (a) neither boundary is a space → a gap span is inserted
+    //   (b) exactly one boundary is a space → segments join directly
+    //   (c) both boundaries are spaces → leading space of the incoming
+    //       segment is trimmed so there is exactly one space between them
+
+    #[test]
+    fn statusline_join_neither_space_inserts_gap() {
+        // Separator ends with '│' (non-space), FileName starts with '[' (non-space).
+        // Rule (a): a space must be inserted between them.
+        let doc = doc_at("\n", 0);
+        let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
+        let c = EditorColors::default();
+        let config = StatusLineConfig {
+            left: vec![StatusSegment::Separator, StatusSegment::FileName],
+            center: vec![],
+            right: vec![],
+        };
+        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        // The gap span produces exactly one space between │ and [scratch].
+        insta::assert_snapshot!(out, @r"
+          1
+        │ [scratch]");
+    }
+
+    #[test]
+    fn statusline_join_one_space_boundary_joins_directly() {
+        // ModePill ends with ' ' (space), FileName starts with '[' (non-space).
+        // Rule (b): exactly one boundary has a space, so segments join directly —
+        // no extra space is inserted and no space is trimmed.
+        let doc = doc_at("\n", 0);
+        let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
+        let c = EditorColors::default();
+        let config = StatusLineConfig {
+            left: vec![StatusSegment::ModePill, StatusSegment::FileName],
+            center: vec![],
+            right: vec![],
+        };
+        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        // ModePill's trailing space serves as the single separator — no double space.
+        insta::assert_snapshot!(out, @r"
+          1
+         NOR [scratch]");
+    }
+
+    #[test]
+    fn statusline_join_both_space_trims_duplicate() {
+        // Two ModePills: first ends ' ', second starts ' '.
+        // Rule (c): leading space of the second pill is trimmed so there is
+        // exactly one space between them, not two.
+        let doc = doc_at("\n", 0);
+        let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
+        let c = EditorColors::default();
+        let config = StatusLineConfig {
+            left: vec![StatusSegment::ModePill, StatusSegment::ModePill],
+            center: vec![],
+            right: vec![],
+        };
+        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        // " NOR " + trim(" NOR ") = " NOR NOR " — one space between, not two.
+        insta::assert_snapshot!(out, @r"
+          1
+         NOR NOR");
     }
 }
