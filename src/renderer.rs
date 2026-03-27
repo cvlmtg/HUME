@@ -179,13 +179,16 @@ fn render_content(
     let content_chars = dl.content.len_chars();
     let line_end_incl = char_offset + content_chars;
 
-    // Inline predicate: does selection `s` overlap this display line?
-    // A selection [s.start(), s.end()] overlaps [char_offset, line_end_incl].
-    let on_line = |s: &crate::selection::Selection| {
-        s.end() >= char_offset && s.start() <= line_end_incl
-    };
+    // Collect selections that overlap this display line once so the per-grapheme
+    // style checks can iterate a tiny local slice rather than re-filtering the
+    // full set each time. Selection is Copy (two usizes), and the count per line
+    // is typically 1, so this Vec rarely exceeds a single inline allocation.
+    let sels_on_line: Vec<_> = sels
+        .iter_sorted()
+        .filter(|s| s.end() >= char_offset && s.start() <= line_end_incl)
+        .collect();
 
-    if !sels.iter_sorted().any(on_line) && dl.char_offset.is_none() {
+    if sels_on_line.is_empty() && dl.char_offset.is_none() {
         return; // virtual line with no selection overlap — nothing to render
     }
 
@@ -230,8 +233,8 @@ fn render_content(
         // In Insert mode suppress all selection/cursor highlights — the real
         // terminal bar cursor (set via frame.set_cursor_position) is visible
         // instead. In Normal mode the guard always passes.
-        let is_head = show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| char_pos == s.head);
-        let is_selected = !is_head && show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| {
+        let is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
+        let is_selected = !is_head && show_sels && sels_on_line.iter().any(|s| {
             char_pos >= s.start() && char_pos <= s.end()
         });
 
@@ -256,8 +259,8 @@ fn render_content(
     // If any selection's head or range reaches this position (cursor on the
     // newline / empty line), draw a space with the appropriate style so the
     // cursor is visible past the last glyph.
-    let eol_is_head = show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| char_pos == s.head);
-    let eol_is_selected = !eol_is_head && show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| {
+    let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
+    let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
         char_pos >= s.start() && char_pos <= s.end()
     });
 
