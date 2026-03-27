@@ -9,6 +9,7 @@ use crate::buffer::Buffer;
 use crate::display_line::DisplayLine;
 use crate::document::Document;
 use crate::editor::Mode;
+use crate::highlight::HighlightSet;
 use crate::selection::SelectionSet;
 use crate::statusline::{grapheme_col_in_line, render_bottom_row, StatusLineConfig};
 use crate::theme::EditorColors;
@@ -39,6 +40,9 @@ pub(crate) struct RenderCtx<'a> {
     /// Defaults to the built-in three-slot layout (mode pill + filename left,
     /// position right). The Steel scripting layer will provide this at runtime.
     pub statusline_config: &'a StatusLineConfig,
+    /// Ephemeral highlights to overlay (bracket match, search hits, diagnostics).
+    /// Must be built (sorted) before passing to `render`.
+    pub highlights: &'a HighlightSet,
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -216,10 +220,11 @@ fn render_content(
         }
 
         // Style priority (highest first):
-        //   1. cursor_head — the selection's head position (the actual cursor)
-        //   2. selection   — other chars within any selection's inclusive range
-        //   3. cursor_line — subtle bg tint on the primary cursor's line
-        //   4. default     — no decoration
+        //   1. cursor_head   — the selection's head position (the actual cursor)
+        //   2. selection     — other chars within any selection's inclusive range
+        //   3. highlights    — bracket match, search hits, diagnostics
+        //   4. cursor_line   — subtle bg tint on the primary cursor's line
+        //   5. default       — no decoration
         //
         // In Insert mode suppress all selection/cursor highlights — the real
         // terminal bar cursor (set via frame.set_cursor_position) is visible
@@ -237,6 +242,8 @@ fn render_content(
             colors.cursor_head
         } else if is_selected {
             colors.selection
+        } else if let Some(hl) = ctx.highlights.style_at(char_pos) {
+            hl
         } else if is_cursor_line_row {
             colors.cursor_line
         } else {
@@ -355,8 +362,10 @@ mod tests {
         // OnceLock gives us a 'static reference to the default config so we
         // don't need to thread a config lifetime through every test helper call.
         static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
+        static DEFAULT_HIGHLIGHTS: std::sync::OnceLock<HighlightSet> = std::sync::OnceLock::new();
         let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config }
+        let highlights = DEFAULT_HIGHLIGHTS.get_or_init(|| HighlightSet::new().build());
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────
@@ -651,6 +660,81 @@ mod tests {
         assert_eq!(screen[(gw as u16 + 2, 0)].bg, cursor_head_bg, "'c' cursor_head wins");
         // 'd' is on cursor line but outside selection → cursor_line bg.
         assert_eq!(screen[(gw as u16 + 3, 0)].bg, cursor_line_bg, "'d' gets cursor_line bg");
+    }
+
+    // ── Bracket match highlight tests ─────────────────────────────────────────
+
+    /// Build a RenderCtx with a specific HighlightSet for bracket-match testing.
+    fn ctx_with_highlights<'a>(
+        doc: &'a Document,
+        view: &'a ViewState,
+        colors: &'a EditorColors,
+        highlights: &'a HighlightSet,
+    ) -> RenderCtx<'a> {
+        RenderCtx { highlights, ..ctx(doc, view, colors) }
+    }
+
+    #[test]
+    fn bracket_match_highlight_renders() {
+        // Cursor on '(' at pos 0; matching ')' at pos 6. The ')' cell should
+        // carry bracket_match bg; '(' gets cursor_head (it's the cursor position).
+        use ratatui::layout::Rect;
+        use ratatui::style::Color;
+        let buf = Buffer::from("(hello)\n");
+        let sels = SelectionSet::single(Selection::cursor(0));
+        let doc = Document::new(buf, sels);
+        let c = EditorColors::default();
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let area = Rect::new(0, 0, 15, 3);
+        let mut screen = ScreenBuf::empty(area);
+
+        let bracket_bg = Color::Rgb(60, 55, 20);
+        let cursor_head_bg = Color::Rgb(255, 255, 255);
+
+        // Build a highlight for ')' at char pos 6.
+        let hl = HighlightSet::new().build(); // empty — first check without highlight
+        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+        assert_eq!(screen[(gw as u16, 0)].bg, cursor_head_bg, "'(' is cursor_head");
+        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "no highlight yet");
+
+        // Now with the bracket match entry for ')' at char pos 6.
+        let mut hl2 = HighlightSet::new();
+        hl2.push(6, 6, c.bracket_match);
+        let hl2 = hl2.build();
+        let mut screen2 = ScreenBuf::empty(area);
+        render(&ctx_with_highlights(&doc, &v, &c, &hl2), area, &mut screen2);
+        assert_eq!(screen2[(gw as u16, 0)].bg, cursor_head_bg, "'(' still cursor_head");
+        assert_eq!(screen2[(gw as u16 + 6, 0)].bg, bracket_bg, "')' gets bracket_match bg");
+    }
+
+    #[test]
+    fn bracket_match_does_not_override_selection() {
+        // ')' is within the selection — selection style must win over bracket_match.
+        use ratatui::layout::Rect;
+        use ratatui::style::Color;
+        let buf = Buffer::from("(hello)\n");
+        // anchor=6 (')')  head=1 ('h') — ')' is selected but NOT the head.
+        let sels = SelectionSet::single(Selection::new(6, 1));
+        let doc = Document::new(buf, sels);
+        let c = EditorColors::default();
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let area = Rect::new(0, 0, 15, 3);
+        let mut screen = ScreenBuf::empty(area);
+
+        let selection_bg   = Color::Rgb(68, 68, 120);
+        let bracket_bg     = Color::Rgb(60, 55, 20);
+
+        // Highlight ')' at pos 6 with bracket_match.
+        let mut hl = HighlightSet::new();
+        hl.push(6, 6, c.bracket_match);
+        let hl = hl.build();
+        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+
+        // ')' is at char 6 = gw + 6 on screen. It's selected, so selection wins.
+        assert_eq!(screen[(gw as u16 + 6, 0)].bg, selection_bg, "selection beats bracket_match");
+        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "bracket_match must not show");
     }
 
     #[test]
