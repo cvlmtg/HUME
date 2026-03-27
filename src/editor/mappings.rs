@@ -14,6 +14,7 @@ use crate::motion::{
     cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
     cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
+    find_char_backward, find_char_forward,
 };
 use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection::Selection;
@@ -38,7 +39,8 @@ use crate::text_object::{
     cmd_inner_word,
 };
 
-use super::{Editor, MiniBuffer, Mode, PendingKey};
+use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, PendingKey};
+use crate::motion::MotionMode;
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -87,6 +89,38 @@ impl Editor {
                     PendingKey::Replace => {
                         self.pending = PendingKey::None;
                         self.doc.apply_edit(|b, s| replace_selections(b, s, ch));
+                        return;
+                    }
+                    PendingKey::FindForward => {
+                        self.pending = PendingKey::None;
+                        let kind = FindKind::Inclusive;
+                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                        self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
+                        self.last_find = Some(FindChar { ch, kind });
+                        return;
+                    }
+                    PendingKey::FindBackward => {
+                        self.pending = PendingKey::None;
+                        let kind = FindKind::Inclusive;
+                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                        self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
+                        self.last_find = Some(FindChar { ch, kind });
+                        return;
+                    }
+                    PendingKey::TillForward => {
+                        self.pending = PendingKey::None;
+                        let kind = FindKind::Exclusive;
+                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                        self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
+                        self.last_find = Some(FindChar { ch, kind });
+                        return;
+                    }
+                    PendingKey::TillBackward => {
+                        self.pending = PendingKey::None;
+                        let kind = FindKind::Exclusive;
+                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                        self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
+                        self.last_find = Some(FindChar { ch, kind });
                         return;
                     }
                     PendingKey::None => unreachable!(),
@@ -278,6 +312,32 @@ impl Editor {
                     self.doc.redo();
                 } else {
                     self.pending = PendingKey::Replace;
+                }
+            }
+
+            // ── Find/till character ───────────────────────────────────────────
+            // `f`/`F` — jump to next/previous occurrence of a character (inclusive).
+            // `t`/`T` — jump to just before/after the character (exclusive).
+            // The next keystroke supplies the target character (pending dispatch above).
+            KeyCode::Char('f') => self.pending = PendingKey::FindForward,
+            KeyCode::Char('F') => self.pending = PendingKey::FindBackward,
+            KeyCode::Char('t') => self.pending = PendingKey::TillForward,
+            KeyCode::Char('T') => self.pending = PendingKey::TillBackward,
+
+            // ── Repeat last find ──────────────────────────────────────────────
+            // `=` — repeat forward (absolute direction, always goes right).
+            // `-` — repeat backward (absolute direction, always goes left).
+            // Both are no-ops when no prior f/t/F/T has been executed.
+            KeyCode::Char('=') => {
+                if let Some(FindChar { ch, kind }) = self.last_find {
+                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                    self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
+                }
+            }
+            KeyCode::Char('-') => {
+                if let Some(FindChar { ch, kind }) = self.last_find {
+                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                    self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
                 }
             }
 
