@@ -44,6 +44,36 @@ pub(super) enum PendingKey {
     MatchAround,
     /// After `r` — waiting for the replacement character.
     Replace,
+    /// After `f` — waiting for the character to find forward (inclusive).
+    FindForward,
+    /// After `F` — waiting for the character to find backward (inclusive).
+    FindBackward,
+    /// After `t` — waiting for the character to find forward (exclusive: stop before).
+    TillForward,
+    /// After `T` — waiting for the character to find backward (exclusive: stop after).
+    TillBackward,
+}
+
+// ── Find/till state ───────────────────────────────────────────────────────────
+
+/// Whether an f/t motion places the cursor on the found character or adjacent to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FindKind {
+    /// `f`/`F`: cursor lands ON the found character.
+    Inclusive,
+    /// `t`/`T`: cursor lands one grapheme before (forward) or after (backward) it.
+    Exclusive,
+}
+
+/// The character and kind stored by the last f/t/F/T motion.
+///
+/// Direction is NOT stored — the repeat keys `=` (forward) and `-` (backward)
+/// use absolute direction, so re-searching always means "next on the right" or
+/// "previous on the left" regardless of whether the original motion was f or F.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FindChar {
+    pub ch: char,
+    pub kind: FindKind,
 }
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
@@ -115,6 +145,11 @@ pub(crate) struct Editor {
     /// Initialized with sensible defaults. The Steel scripting layer will allow
     /// users to override this globally or per language once scripting is ready.
     pub(super) auto_pairs: AutoPairsConfig,
+    /// The character and kind (inclusive/exclusive) from the last f/t/F/T motion.
+    ///
+    /// Used by the repeat keys: `=` repeats the search forward, `-` backward.
+    /// `None` until the user performs a find/till motion.
+    pub(super) last_find: Option<FindChar>,
 }
 
 impl Editor {
@@ -160,6 +195,7 @@ impl Editor {
             statusline_config: StatusLineConfig::default(),
             registry: CommandRegistry::with_defaults(),
             auto_pairs: AutoPairsConfig::default(),
+            last_find: None,
         })
     }
 

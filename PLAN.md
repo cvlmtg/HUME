@@ -82,6 +82,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.
 - [x] Matching bracket highlight: `find_bracket_pair` in `text_object.rs`; `HighlightSet` in `src/highlight.rs` (sorted vec + binary search, `&'static EMPTY` for zero-allocation Insert mode path); bracket pair computed each frame in `editor/mod.rs`, passed into `RenderCtx`.
 - [x] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
+- [x] f/t/F/T character find motions: `f`/`F` (inclusive), `t`/`T` (exclusive); `=`/`-` repeat with absolute direction (always forward/backward, regardless of original f/F/t/T).
 
 ### M4 — Command architecture + search
 
