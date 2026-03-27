@@ -731,14 +731,24 @@ fn colon_w_no_path_sets_error() {
 }
 
 /// Helper: create a temp file with initial content and wire it into an editor.
-fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::NamedTempFile) {
+///
+/// `into_temp_path()` drops the `File` handle (closing it) while keeping a
+/// `TempPath` that still deletes the file on drop. The explicit close matters
+/// on Windows: `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` — used by the atomic
+/// write path — fails with ACCESS_DENIED when the destination file has an open
+/// write handle. Separating the handle lifetime from the path lifetime is the
+/// idiomatic way to express "I'm done writing, but the path must outlive me".
+fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), file_content).unwrap();
-    let (_, meta) = crate::io::read_file(tmp.path()).unwrap();
+    let path = tmp.path().to_path_buf();
+    // Close the file handle, keep the path alive.
+    let tmp_path = tmp.into_temp_path();
+    let (_, meta) = crate::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.file_path = Some(tmp.path().to_path_buf());
+    ed.file_path = Some(path);
     ed.file_meta = Some(meta);
-    (ed, tmp)
+    (ed, tmp_path)
 }
 
 #[test]
@@ -751,7 +761,7 @@ fn colon_w_writes_file() {
 
     assert_eq!(ed.mode, Mode::Normal);
     assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
-    assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
 }
 
 #[test]
@@ -762,7 +772,7 @@ fn colon_wq_writes_and_quits() {
     ed.handle_key(key_enter());
 
     assert!(ed.should_quit);
-    assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
 }
 
 #[test]
@@ -795,16 +805,16 @@ fn write_preserves_permissions() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
 
     // Set a non-default permission that differs from the tempfile default (0600).
-    std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so file_meta captures the new permissions.
-    let (_, meta) = crate::io::read_file(tmp.path()).unwrap();
+    let (_, meta) = crate::io::read_file(&tmp).unwrap();
     ed.file_meta = Some(meta);
 
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
     assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
-    let mode = std::fs::metadata(tmp.path()).unwrap().permissions().mode() & 0o777;
+    let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o644, "permissions must be preserved across atomic write");
 }
 
