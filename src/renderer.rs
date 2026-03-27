@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::Path;
 
 use ratatui::buffer::Buffer as ScreenBuf;
@@ -85,7 +86,6 @@ pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf
                 y,
                 area.width.saturating_sub(view.gutter_width as u16),
                 sels,
-                buf,
                 cursor_line,
             );
         } else {
@@ -169,7 +169,6 @@ fn render_content(
     y: u16,
     width: u16,
     sels: &SelectionSet,
-    _buf: &Buffer,
     cursor_line: usize,
 ) {
     let mode = ctx.mode;
@@ -180,16 +179,13 @@ fn render_content(
     let content_chars = dl.content.len_chars();
     let line_end_incl = char_offset + content_chars;
 
-    // Collect selections whose range overlaps this line: [char_offset, line_end_incl].
-    // A selection [s.start(), s.end()] overlaps if s.end() >= char_offset && s.start() <= line_end_incl.
-    use crate::selection::Selection;
-    let sels_on_line: Vec<Selection> = sels
-        .iter_sorted()
-        .copied()
-        .filter(|s| s.end() >= char_offset && s.start() <= line_end_incl)
-        .collect();
+    // Inline predicate: does selection `s` overlap this display line?
+    // A selection [s.start(), s.end()] overlaps [char_offset, line_end_incl].
+    let on_line = |s: &crate::selection::Selection| {
+        s.end() >= char_offset && s.start() <= line_end_incl
+    };
 
-    if sels_on_line.is_empty() && dl.char_offset.is_none() {
+    if !sels.iter_sorted().any(on_line) && dl.char_offset.is_none() {
         return; // virtual line with no selection overlap — nothing to render
     }
 
@@ -201,15 +197,20 @@ fn render_content(
     // end of the line also gets the tint. Individual cells are overwritten below
     // with higher-priority styles (selection, cursor head).
     if is_cursor_line_row {
-        let blank = " ".repeat(width as usize);
-        screen_buf.set_string(x, y, &blank, colors.cursor_line);
+        // set_style paints the style onto existing cells without allocating.
+        screen_buf.set_style(Rect::new(x, y, width, 1), colors.cursor_line);
     }
 
-    let content_str = dl.content.to_string();
+    // Borrow the line content as &str when the rope slice is contiguous (the
+    // common case for typical line lengths), falling back to an owned String
+    // only when the line spans multiple rope chunks.
+    let content_cow: Cow<str> = dl.content.into();
     let mut col: u16 = 0;
     let mut char_pos = char_offset;
 
-    for grapheme in content_str.graphemes(true) {
+    let show_sels = mode != Mode::Insert;
+
+    for grapheme in content_cow.graphemes(true) {
         let gw = UnicodeWidthStr::width(grapheme) as u16;
         // Combining marks have display width 0 — advance at least 1 col so
         // they don't stack on the gutter edge.
@@ -229,13 +230,9 @@ fn render_content(
         // In Insert mode suppress all selection/cursor highlights — the real
         // terminal bar cursor (set via frame.set_cursor_position) is visible
         // instead. In Normal mode the guard always passes.
-        let is_head = sels_on_line.iter().any(|s| {
-            mode != Mode::Insert && char_pos == s.head
-        });
-        let is_selected = !is_head && sels_on_line.iter().any(|s| {
-            mode != Mode::Insert
-                && char_pos >= s.start()
-                && char_pos <= s.end()
+        let is_head = show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| char_pos == s.head);
+        let is_selected = !is_head && show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| {
+            char_pos >= s.start() && char_pos <= s.end()
         });
 
         let style = if is_head {
@@ -259,13 +256,9 @@ fn render_content(
     // If any selection's head or range reaches this position (cursor on the
     // newline / empty line), draw a space with the appropriate style so the
     // cursor is visible past the last glyph.
-    let eol_is_head = sels_on_line.iter().any(|s| {
-        mode != Mode::Insert && char_pos == s.head
-    });
-    let eol_is_selected = !eol_is_head && sels_on_line.iter().any(|s| {
-        mode != Mode::Insert
-            && char_pos >= s.start()
-            && char_pos <= s.end()
+    let eol_is_head = show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| char_pos == s.head);
+    let eol_is_selected = !eol_is_head && show_sels && sels.iter_sorted().filter(|s| on_line(s)).any(|s| {
+        char_pos >= s.start() && char_pos <= s.end()
     });
 
     if (eol_is_head || eol_is_selected) && col < width {
