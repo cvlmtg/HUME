@@ -69,23 +69,18 @@ impl Transaction {
     ///   (length mismatch or deleted the structural trailing `\n`).
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
+    /// The selection state after this transaction.
+    #[cfg(test)]
+    pub(crate) fn selection(&self) -> &SelectionSet {
+        &self.selection
+    }
+
     pub(crate) fn apply(&self, buf: &Buffer) -> Result<(Buffer, SelectionSet), TransactionError> {
         let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
         Ok((new_buf, self.selection.clone()))
     }
 
-    /// The text-change portion of this transaction.
-    #[cfg(test)]
-    pub(crate) fn changes(&self) -> &ChangeSet {
-        &self.changes
-    }
-
-    /// The selection state after this transaction.
-    #[cfg(test)]
-    pub(crate) fn selection(&self) -> &SelectionSet {
-        &self.selection
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
