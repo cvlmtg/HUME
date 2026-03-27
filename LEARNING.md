@@ -931,3 +931,97 @@ When no grammar is loaded (plain text, unsupported language), the line-bounded
 parity scan remains the fallback. It is fast and correct for the common case
 of same-line pairs; the limitation is documented and visible rather than
 silently wrong.
+
+---
+
+## Lifetimes: Borrowing Across Struct Boundaries
+
+### The problem lifetimes solve
+
+Rust's borrow checker guarantees that a reference never outlives the value it
+points to. This is easy to enforce inside a single function — the compiler can
+see both the value and the reference, and check that the reference is dropped
+first.
+
+The problem arises when you put a reference **inside a struct**:
+
+```rust
+struct RenderCtx {
+    doc: &Document,   // ← which Document? how long does this live?
+}
+```
+
+The compiler has no way to know when `doc` will be used, so it cannot verify
+safety. The lifetime annotation `&'a` is the solution: it gives the compiler
+a name to reason about.
+
+### What `'a` means
+
+`'a` is a **lifetime parameter** — a label that says "these references all
+point into the same scope and will not outlive it." The `'a` is not a duration
+or a timer; it is a constraint.
+
+```rust
+pub(crate) struct RenderCtx<'a> {
+    pub doc:   &'a Document,
+    pub view:  &'a ViewState,
+    pub colors: &'a EditorColors,
+    // ...
+}
+```
+
+This declaration says: "`RenderCtx` borrows from some scope. All references
+tagged `'a` must remain valid for at least as long as this `RenderCtx` exists."
+When the `RenderCtx` is dropped, those borrows are released — and the compiler
+verifies this statically.
+
+The `'a` on the struct and the `'a` on each field are the **same label**. The
+compiler unifies them: every `&'a T` field must be borrowed from a scope that
+outlives the struct instance.
+
+### How it looks at the call site
+
+In `editor/mod.rs`, `RenderCtx` is constructed each frame inside an event-loop
+iteration:
+
+```rust
+let ctx = RenderCtx {
+    doc:    &self.doc,
+    view:   &self.view,
+    colors: &self.colors,
+    // ...
+};
+term.draw(|frame| render(&ctx, frame.area(), frame.buffer_mut()));
+// ctx is dropped here — all borrows released
+```
+
+`self.doc`, `self.view`, and `self.colors` all live on `self`, which outlives
+the `ctx`. The compiler can see this, so it accepts the code. If you tried to
+store `ctx` in a field of `self` (making it outlive `self`), the compiler
+would reject it — the borrow would outlive its source.
+
+### Lifetime elision: when you don't see `'a`
+
+Rust can infer lifetimes in simple cases and lets you omit them. Function
+signatures are the main beneficiary:
+
+```rust
+// Written explicitly:
+fn render<'a>(ctx: &'a RenderCtx<'a>, ...) { ... }
+
+// What you actually write (elision rules fill in the 'a):
+fn render(ctx: &RenderCtx<'_>, ...) { ... }
+```
+
+The `'_` is an anonymous lifetime — "some lifetime, inferred by the compiler."
+It signals that a lifetime exists without naming it. You will see `'_` often
+in HUME where the lifetime does not need to be shared across multiple
+parameters.
+
+### The rule of thumb
+
+- **Named `'a`**: two or more places in the same signature need to share the
+  same lifetime (e.g., a struct that holds multiple borrows from the same
+  source).
+- **`'_`**: one reference, one place, the compiler can figure it out.
+- **No annotation**: a function that takes no references, or only owned values.
