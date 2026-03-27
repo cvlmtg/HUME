@@ -14,7 +14,7 @@ use crate::motion::{
     cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
     cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
-    find_char_backward, find_char_forward,
+    find_char_backward, find_char_forward, MotionMode,
 };
 use crate::register::{yank_selections, DEFAULT_REGISTER};
 use crate::selection::Selection;
@@ -40,7 +40,6 @@ use crate::text_object::{
 };
 
 use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, PendingKey};
-use crate::motion::MotionMode;
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────

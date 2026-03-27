@@ -1027,3 +1027,20 @@ fn find_forward_no_match_is_noop() {
     ed.handle_key(key('z'));
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
+
+/// `=` after `ta` (exclusive) repeats with the same exclusive kind — stops
+/// one grapheme before the next occurrence, not on it.
+#[test]
+fn find_repeat_exclusive_kind_preserved() {
+    let mut ed = editor_from("-[h]>ello a world a end\n");
+    ed.handle_key(key('t'));
+    ed.handle_key(key('a'));
+    // cursor on the space before first 'a'
+    assert_eq!(state(&ed), "hello-[ ]>a world a end\n");
+    // move past the first 'a' so `=` can find the second
+    ed.handle_key(key('l'));
+    ed.handle_key(key('l'));
+    ed.handle_key(key('='));
+    // should land on the space before second 'a', not on 'a' itself
+    assert_eq!(state(&ed), "hello a world-[ ]>a end\n");
+}
