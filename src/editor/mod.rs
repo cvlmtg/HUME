@@ -181,7 +181,10 @@ impl Editor {
             // When the primary cursor sits on a bracket, highlight the matching
             // partner. Suppressed in Insert mode — the bar cursor doesn't "sit
             // on" a character the same way.
-            let highlights = if self.mode != Mode::Insert {
+            // `owned_hl` holds the built set when highlights are computed; in
+            // Insert mode we skip computation and borrow the static EMPTY instead.
+            let owned_hl;
+            let highlights: &HighlightSet = if self.mode != Mode::Insert {
                 let head = self.doc.sels().primary().head;
                 let mut hl = HighlightSet::new();
                 if let Some(ch) = self.doc.buf().char_at(head) {
@@ -200,9 +203,10 @@ impl Editor {
                         }
                     }
                 }
-                hl.build()
+                owned_hl = hl.build();
+                &owned_hl
             } else {
-                HighlightSet::new()
+                &crate::highlight::EMPTY  // static — zero allocation
             };
 
             // ── 4. Render ─────────────────────────────────────────────────────

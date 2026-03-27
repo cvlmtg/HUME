@@ -159,7 +159,7 @@ fn render_gutter(
 /// Selection styling uses `EditorColors`: cursor head gets `cursor_head` (white
 /// block), selected body gets `selection` (blue-purple background), and the
 /// cursor row gets `cursor_line` (subtle dark tint). Priority order:
-/// cursor_head > selection > cursor_line > default. If a cursor head sits past
+/// cursor_head > selection > highlights > cursor_line > default. If a cursor head sits past
 /// the last grapheme (end-of-line / empty line), a styled space is drawn there.
 fn render_content(
     screen_buf: &mut ScreenBuf,
@@ -362,10 +362,8 @@ mod tests {
         // OnceLock gives us a 'static reference to the default config so we
         // don't need to thread a config lifetime through every test helper call.
         static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
-        static DEFAULT_HIGHLIGHTS: std::sync::OnceLock<HighlightSet> = std::sync::OnceLock::new();
         let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
-        let highlights = DEFAULT_HIGHLIGHTS.get_or_init(|| HighlightSet::new().build());
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights }
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::highlight::EMPTY }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────
@@ -735,6 +733,34 @@ mod tests {
         // ')' is at char 6 = gw + 6 on screen. It's selected, so selection wins.
         assert_eq!(screen[(gw as u16 + 6, 0)].bg, selection_bg, "selection beats bracket_match");
         assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "bracket_match must not show");
+    }
+
+    #[test]
+    fn bracket_match_overrides_cursor_line() {
+        // '(' at pos 0 is the cursor; ')' at pos 1 is the bracket match.
+        // Both are on the cursor line — bracket_match must beat cursor_line.
+        use ratatui::layout::Rect;
+        use ratatui::style::Color;
+        let buf = Buffer::from("()\n");
+        let sels = SelectionSet::single(Selection::cursor(0));
+        let doc = Document::new(buf, sels);
+        let c = EditorColors::default();
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let area = Rect::new(0, 0, 10, 3);
+
+        let bracket_bg   = Color::Rgb(60, 55, 20);
+        let cursor_line_bg = Color::Rgb(35, 35, 45);
+
+        // ')' is at char 1 = screen col gw+1.
+        let mut hl = HighlightSet::new();
+        hl.push(1, 1, c.bracket_match);
+        let hl = hl.build();
+        let mut screen = ScreenBuf::empty(area);
+        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+
+        assert_eq!(screen[(gw as u16 + 1, 0)].bg, bracket_bg,     "bracket_match beats cursor_line");
+        assert_ne!(screen[(gw as u16 + 1, 0)].bg, cursor_line_bg, "cursor_line must not win");
     }
 
     #[test]
