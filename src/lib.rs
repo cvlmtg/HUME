@@ -11,6 +11,7 @@ pub(crate) mod editor;
 pub(crate) mod buffer;
 pub(crate) mod document;
 pub(crate) mod changeset;
+pub(crate) mod auto_pairs;
 pub(crate) mod edit;
 pub(crate) mod error;
 pub(crate) mod grapheme;

@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, replace_selections,
@@ -380,7 +381,27 @@ impl Editor {
 
             // ── Character input ───────────────────────────────────────────────
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                if self.auto_pairs.enabled {
+                    if let Some(pair) = self.auto_pairs.pair_for_open(ch) {
+                        let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
+                        if symmetric && self.should_skip_close(ch) {
+                            // e.g. typing `"` when cursor already sits on `"`.
+                            self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                        } else {
+                            // Auto-close or wrap-selection.
+                            self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
+                        }
+                    } else if self.auto_pairs.pair_for_close(ch).is_some()
+                        && self.should_skip_close(ch)
+                    {
+                        // Asymmetric close (e.g. `)`) when cursor is already on it.
+                        self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                    } else {
+                        self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                    }
+                } else {
+                    self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                }
             }
 
             // ── Newline ───────────────────────────────────────────────────────
@@ -390,7 +411,11 @@ impl Editor {
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                self.doc.apply_edit_grouped(|b, s| delete_char_backward(b, s));
+                if self.auto_pairs.enabled && self.is_between_pair() {
+                    self.doc.apply_edit_grouped(delete_pair);
+                } else {
+                    self.doc.apply_edit_grouped(|b, s| delete_char_backward(b, s));
+                }
             }
             KeyCode::Delete => {
                 self.doc.apply_edit_grouped(|b, s| delete_char_forward(b, s));
@@ -406,6 +431,42 @@ impl Editor {
 
             _ => {}
         }
+    }
+
+    // ── Auto-pair helpers ─────────────────────────────────────────────────────
+
+    /// Returns `true` if every selection is a cursor AND the character at each
+    /// cursor's `head` equals `ch`.
+    ///
+    /// All-or-nothing: if even one cursor doesn't match, the whole operation
+    /// falls back to normal insert, keeping multi-cursor behavior consistent.
+    fn should_skip_close(&self, ch: char) -> bool {
+        self.doc.sels().iter_sorted().all(|sel| {
+            sel.is_cursor() && self.doc.buf().char_at(sel.head) == Some(ch)
+        })
+    }
+
+    /// Returns `true` if every selection is a cursor AND the pair
+    /// `(char_before_cursor, char_at_cursor)` matches a configured pair.
+    ///
+    /// Used by Backspace to decide whether to delete both brackets or just one.
+    fn is_between_pair(&self) -> bool {
+        let buf = self.doc.buf();
+        let pairs = &self.auto_pairs.pairs;
+        self.doc.sels().iter_sorted().all(|sel| {
+            if !sel.is_cursor() || sel.head == 0 {
+                return false;
+            }
+            // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
+            // chars are always single codepoints, but using it keeps the logic uniform.
+            let prev = crate::grapheme::prev_grapheme_boundary(buf, sel.head);
+            match (buf.char_at(prev), buf.char_at(sel.head)) {
+                (Some(before), Some(at)) => {
+                    pairs.iter().any(|p| p.open == before && p.close == at)
+                }
+                _ => false,
+            }
+        })
     }
 
     // ── Text object dispatch ──────────────────────────────────────────────────

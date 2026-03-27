@@ -34,6 +34,7 @@ fn editor_from(input: &str) -> Editor {
         file_meta: None,
         statusline_config: crate::statusline::StatusLineConfig::default(),
         registry: crate::command::CommandRegistry::with_defaults(),
+        auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
     }
 }
 
@@ -837,3 +838,80 @@ fn write_follows_symlink() {
     // Content was written to the real file.
     assert_eq!(std::fs::read_to_string(real.path()).unwrap(), "hello\n");
 }
+
+// ── Auto-pairs integration tests ──────────────────────────────────────────────
+
+/// Typing `(` inserts `()` with the cursor between them (on `)`) so subsequent
+/// characters appear inside the pair.
+#[test]
+fn auto_pairs_auto_close() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));        // enter insert at 'h'
+    ed.handle_key(key('('));
+    assert_eq!(state(&ed), "(-[)]>hello\n");
+}
+
+/// Typing `)` when the cursor is already sitting on `)` moves the cursor
+/// past it rather than inserting a second `)`.
+#[test]
+fn auto_pairs_skip_close() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('('));        // inserts `()`, cursor on `)`
+    ed.handle_key(key(')'));        // skip-close: moves cursor past `)`
+    assert_eq!(state(&ed), "()-[h]>ello\n");
+}
+
+/// Backspace between an empty pair `()` deletes both brackets.
+#[test]
+fn auto_pairs_auto_delete() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('('));        // buffer: `(|)hello` — cursor on `)`
+    ed.handle_key(key_backspace()); // should delete both `(` and `)`
+    assert_eq!(state(&ed), "-[h]>ello\n");
+}
+
+/// Typing `"` inserts `""` with cursor between (symmetric pair auto-close).
+#[test]
+fn auto_pairs_symmetric_auto_close() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('"'));
+    assert_eq!(state(&ed), "\"-[\"]>x\n");
+}
+
+/// Typing `"` again when the cursor is already on a `"` skips over it.
+#[test]
+fn auto_pairs_symmetric_skip_close() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('"'));        // inserts `""`, cursor on second `"`
+    ed.handle_key(key('"'));        // skip-close: cursor moves past `"`
+    assert_eq!(state(&ed), "\"\"-[x]>\n");
+}
+
+/// Typing `)` when the next character is NOT `)` inserts a literal `)`.
+#[test]
+fn auto_pairs_no_false_skip() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key(')'));        // `)` is not already there — insert normally
+    assert_eq!(state(&ed), ")-[h]>ello\n");
+}
+
+/// When auto-pairs is disabled, typing `(` inserts only `(`.
+#[test]
+fn auto_pairs_disabled() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.auto_pairs.enabled = false;
+    ed.handle_key(key('i'));
+    ed.handle_key(key('('));
+    assert_eq!(state(&ed), "(-[h]>ello\n");
+}
+
+// Note: wrap-selection (insert_pair_close with a non-cursor selection) is tested
+// at the unit level in auto_pairs::tests. It is not reachable via the normal
+// editor insert-mode entry points because all of them (i, a, c, o, …) collapse
+// to a cursor before entering Insert. Wrap will become reachable once a dedicated
+// surround command is added.

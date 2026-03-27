@@ -5,6 +5,7 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event};
 use crossterm::execute;
 
+use crate::auto_pairs::AutoPairsConfig;
 use crate::buffer::Buffer;
 use crate::command::CommandRegistry;
 use crate::document::Document;
@@ -109,6 +110,11 @@ pub(crate) struct Editor {
     /// function pointers, replacing the hardcoded `match` arms in `handle_normal`.
     #[allow(dead_code)] // consumed by keymap trie (M4)
     pub(super) registry: CommandRegistry,
+    /// Auto-pair configuration (bracket/quote completion, skip-close, auto-delete).
+    ///
+    /// Initialized with sensible defaults. The Steel scripting layer will allow
+    /// users to override this globally or per language once scripting is ready.
+    pub(super) auto_pairs: AutoPairsConfig,
 }
 
 impl Editor {
@@ -153,6 +159,7 @@ impl Editor {
             file_meta,
             statusline_config: StatusLineConfig::default(),
             registry: CommandRegistry::with_defaults(),
+            auto_pairs: AutoPairsConfig::default(),
         })
     }
 

@@ -102,7 +102,7 @@ pub(crate) fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
+pub(crate) fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
 where
     F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>),
 {
