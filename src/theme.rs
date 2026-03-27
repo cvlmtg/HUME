@@ -34,6 +34,11 @@ pub(crate) struct EditorColors {
     /// the selection highlight.
     pub cursor_line: Style,
 
+    /// Matching bracket highlight. Shown on the bracket that pairs with the
+    /// one under the primary cursor. Lower priority than `selection` and
+    /// `cursor_head`; higher than `cursor_line`.
+    pub bracket_match: Style,
+
     // ── Gutter ────────────────────────────────────────────────────────────────
 
     /// Line number gutter on the cursor line.
@@ -76,6 +81,10 @@ impl EditorColors {
                 .fg(Color::Rgb(0, 0, 0)),
             selection: Style::new().bg(Color::Rgb(68, 68, 120)),
             cursor_line: Style::new().bg(Color::Rgb(35, 35, 45)),
+            bracket_match: Style::new()
+                .bg(Color::Rgb(60, 55, 20))
+                .fg(Color::Rgb(220, 180, 50))
+                .add_modifier(Modifier::BOLD),
             gutter_cursor_line: Style::new()
                 .fg(Color::Rgb(180, 180, 180))
                 .bg(Color::Rgb(35, 35, 45)),

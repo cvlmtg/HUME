@@ -356,7 +356,7 @@ fn scan_right_for_close(buf: &Buffer, pos: usize, open: char, close: char) -> Op
 /// If the cursor is ON an open bracket, that bracket itself is the start.
 /// If ON a close bracket, that bracket is the end.
 /// Otherwise, scans both directions for the enclosing pair.
-fn find_bracket_pair(buf: &Buffer, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
+pub(crate) fn find_bracket_pair(buf: &Buffer, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
     match buf.char_at(pos)? {
         ch if ch == open => {
             // Cursor is on an open bracket — scan right for the matching close.

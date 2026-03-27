@@ -8,12 +8,14 @@ use crossterm::execute;
 use crate::buffer::Buffer;
 use crate::command::CommandRegistry;
 use crate::document::Document;
+use crate::highlight::HighlightSet;
 use crate::io::FileMeta;
 use crate::register::RegisterSet;
 use crate::renderer::{cursor_screen_pos, render, RenderCtx};
 use crate::selection::{Selection, SelectionSet};
 use crate::statusline::StatusLineConfig;
 use crate::terminal::Term;
+use crate::text_object::find_bracket_pair;
 use crate::theme::EditorColors;
 use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -175,6 +177,34 @@ impl Editor {
             // ── 3. Scroll ─────────────────────────────────────────────────────
             self.view.ensure_cursor_visible(self.doc.buf(), self.doc.sels());
 
+            // ── 3b. Bracket match highlight ───────────────────────────────────
+            // When the primary cursor sits on a bracket, highlight the matching
+            // partner. Suppressed in Insert mode — the bar cursor doesn't "sit
+            // on" a character the same way.
+            let highlights = {
+                let mut hl = HighlightSet::new();
+                if self.mode != Mode::Insert {
+                    let head = self.doc.sels().primary().head;
+                    if let Some(ch) = self.doc.buf().char_at(head) {
+                        let pair = match ch {
+                            '(' | ')' => Some(('(', ')')),
+                            '[' | ']' => Some(('[', ']')),
+                            '{' | '}' => Some(('{', '}')),
+                            '<' | '>' => Some(('<', '>')),
+                            _ => None,
+                        };
+                        if let Some((open, close)) = pair {
+                            if let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close) {
+                                // Highlight the OTHER bracket — the cursor already marks the one it's on.
+                                let match_pos = if head == op { cp } else { op };
+                                hl.push(match_pos, match_pos, self.colors.bracket_match);
+                            }
+                        }
+                    }
+                }
+                hl.build()
+            };
+
             // ── 4. Render ─────────────────────────────────────────────────────
             // Capture references before the draw closure so the borrow checker
             // sees them as separate borrows of distinct fields, not of `self`.
@@ -188,6 +218,7 @@ impl Editor {
                 minibuf: self.minibuf.as_ref().map(|m| (m.prompt, m.input.as_str())),
                 status_msg: self.status_msg.as_deref(),
                 statusline_config: &self.statusline_config,
+                highlights: &highlights,
             };
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());
