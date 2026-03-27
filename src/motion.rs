@@ -1,4 +1,5 @@
 use crate::buffer::Buffer;
+use crate::editor::FindKind;
 use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::selection::{Selection, SelectionSet};
@@ -835,8 +836,6 @@ pub(crate) fn cmd_extend_select_line_backward(buf: &Buffer, sels: SelectionSet) 
 
 // ── Find/till character motions ───────────────────────────────────────────────
 
-use crate::editor::FindKind;
-
 /// Scan forward on `head`'s line for `ch`, starting one grapheme after `head`.
 ///
 /// Returns the char offset of the first match, or `None` if not found before
@@ -844,7 +843,7 @@ use crate::editor::FindKind;
 /// structural boundary, not content.
 fn find_char_on_line_forward(buf: &Buffer, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
-    let end = line_end_exclusive(buf, line); // exclusive: points at the '\n'
+    let end = line_end_exclusive(buf, line); // one past the '\n' (start of next line)
     let mut pos = next_grapheme_boundary(buf, head);
     while pos < end {
         if buf.char_at(pos) == Some(ch) {
@@ -2284,6 +2283,18 @@ mod tests {
             "hello a worl-[d]>\n",
             |(buf, sels)| bwd(buf, sels, 'a', FindKind::Exclusive),
             "hello a-[ ]>world\n"
+        );
+    }
+
+    #[test]
+    fn find_backward_exclusive_adjacent_is_noop() {
+        // Cursor is immediately right of 'a'; exclusive adjustment steps forward
+        // from the found position back to head — so the motion is a no-op,
+        // symmetric to the forward exclusive adjacent case.
+        assert_state!(
+            "hello a-[x]>\n",
+            |(buf, sels)| bwd(buf, sels, 'a', FindKind::Exclusive),
+            "hello a-[x]>\n"
         );
     }
 
