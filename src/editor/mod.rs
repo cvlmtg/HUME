@@ -181,28 +181,28 @@ impl Editor {
             // When the primary cursor sits on a bracket, highlight the matching
             // partner. Suppressed in Insert mode — the bar cursor doesn't "sit
             // on" a character the same way.
-            let highlights = {
+            let highlights = if self.mode != Mode::Insert {
+                let head = self.doc.sels().primary().head;
                 let mut hl = HighlightSet::new();
-                if self.mode != Mode::Insert {
-                    let head = self.doc.sels().primary().head;
-                    if let Some(ch) = self.doc.buf().char_at(head) {
-                        let pair = match ch {
-                            '(' | ')' => Some(('(', ')')),
-                            '[' | ']' => Some(('[', ']')),
-                            '{' | '}' => Some(('{', '}')),
-                            '<' | '>' => Some(('<', '>')),
-                            _ => None,
-                        };
-                        if let Some((open, close)) = pair {
-                            if let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close) {
-                                // Highlight the OTHER bracket — the cursor already marks the one it's on.
-                                let match_pos = if head == op { cp } else { op };
-                                hl.push(match_pos, match_pos, self.colors.bracket_match);
-                            }
+                if let Some(ch) = self.doc.buf().char_at(head) {
+                    let pair = match ch {
+                        '(' | ')' => Some(('(', ')')),
+                        '[' | ']' => Some(('[', ']')),
+                        '{' | '}' => Some(('{', '}')),
+                        '<' | '>' => Some(('<', '>')),
+                        _ => None,
+                    };
+                    if let Some((open, close)) = pair {
+                        if let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close) {
+                            // Highlight the OTHER bracket — the cursor already marks the one it's on.
+                            let match_pos = if head == op { cp } else { op };
+                            hl.push(match_pos, match_pos, self.colors.bracket_match);
                         }
                     }
                 }
                 hl.build()
+            } else {
+                HighlightSet::new()
             };
 
             // ── 4. Render ─────────────────────────────────────────────────────
