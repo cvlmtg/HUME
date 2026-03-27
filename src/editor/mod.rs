@@ -6,6 +6,7 @@ use crossterm::event::{self, Event};
 use crossterm::execute;
 
 use crate::buffer::Buffer;
+use crate::command::CommandRegistry;
 use crate::document::Document;
 use crate::io::FileMeta;
 use crate::register::RegisterSet;
@@ -100,6 +101,12 @@ pub(crate) struct Editor {
     /// filename on the left, position on the right). The Steel scripting layer
     /// will replace this with the user's configured value when it is ready.
     pub(super) statusline_config: StatusLineConfig,
+    /// Registry of all mappable commands (motions, selections, edits).
+    ///
+    /// The keymap trie (M4) will use this to translate command names to
+    /// function pointers, replacing the hardcoded `match` arms in `handle_normal`.
+    #[allow(dead_code)] // consumed by keymap trie (M4)
+    pub(super) registry: CommandRegistry,
 }
 
 impl Editor {
@@ -143,6 +150,7 @@ impl Editor {
             status_msg: None,
             file_meta,
             statusline_config: StatusLineConfig::default(),
+            registry: CommandRegistry::with_defaults(),
         })
     }
 
