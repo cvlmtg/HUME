@@ -81,7 +81,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Line selection: `x` selects the full current line (including `\n`); repeated `x` walks to the next line. `X` selects the current line backward; repeated `X` walks upward. `Ctrl+x` / `Ctrl+X` (kitty-only) accumulate lines downward/upward without replacing the selection. Extend mode (`e`) activates the same accumulation semantics. `mil`/`mal` text objects still available for inner/around line via `dispatch_text_object`.
 - [x] Command mode (`:` commands): `Mode::Command`, mini-buffer input, command-line row in renderer, parser for `:q`/`:w`/`:wq`, file write. Replaces temporary `q`-to-quit.
 - [x] Matching bracket highlight: `find_bracket_pair` in `text_object.rs`; `HighlightSet` in `src/highlight.rs` (sorted vec + binary search, `&'static EMPTY` for zero-allocation Insert mode path); bracket pair computed each frame in `editor/mod.rs`, passed into `RenderCtx`.
-- [ ] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
+- [x] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
 
 ### M4 — Command architecture + search
 
