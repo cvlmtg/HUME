@@ -175,9 +175,9 @@ fn render_content(
     let colors = ctx.colors;
     let char_offset = dl.char_offset.unwrap_or(0);
 
-    // line_end_incl = position of the stripped '\n' (one past last content char).
+    // line_end_excl = position of the stripped '\n' (one past the last content char).
     let content_chars = dl.content.len_chars();
-    let line_end_incl = char_offset + content_chars;
+    let line_end_excl = char_offset + content_chars;
 
     // Collect selections that overlap this display line once so the per-grapheme
     // style checks can iterate a tiny local slice rather than re-filtering the
@@ -185,7 +185,7 @@ fn render_content(
     // is typically 1, so this Vec rarely exceeds a single inline allocation.
     let sels_on_line: Vec<_> = sels
         .iter_sorted()
-        .filter(|s| s.end() >= char_offset && s.start() <= line_end_incl)
+        .filter(|s| s.end() >= char_offset && s.start() <= line_end_excl)
         .collect();
 
     if sels_on_line.is_empty() && dl.char_offset.is_none() {
@@ -255,7 +255,7 @@ fn render_content(
         char_pos += grapheme.chars().count();
     }
 
-    // After the loop, char_pos == line_end_incl (the '\n' position).
+    // After the loop, char_pos == line_end_excl (the '\n' position).
     // If any selection's head or range reaches this position (cursor on the
     // newline / empty line), draw a space with the appropriate style so the
     // cursor is visible past the last glyph.

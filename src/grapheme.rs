@@ -438,6 +438,8 @@ mod tests {
             "src/text_object.rs",
             "src/selection_cmd.rs",
             "src/edit.rs",
+            "src/auto_pairs.rs",
+            "src/helpers.rs",
         ];
 
         // Forbidden patterns — raw +1/-1 steps on char-position variables.

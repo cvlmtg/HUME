@@ -195,8 +195,7 @@ pub(crate) fn cmd_copy_selection_on_next_line(
 /// Duplicate each selection one line up and add it to the selection set.
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
-// Not yet bound to a key; included for symmetry with the down variant.
-#[allow(dead_code)]
+// Registered in the command registry but not yet bound to a key.
 pub(crate) fn cmd_copy_selection_on_prev_line(
     buf: &Buffer,
     sels: SelectionSet,

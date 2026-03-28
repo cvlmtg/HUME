@@ -237,31 +237,31 @@ impl Editor {
             // `;` collapses and also exits extend mode — collapsing is a natural "done" signal.
             KeyCode::Char(';') => {
                 self.extend = false;
-                self.apply_motion(|b, s| cmd_collapse_selection(b, s));
+                self.apply_motion(cmd_collapse_selection);
             }
             // `,` — keep primary selection; `ctrl+,` — remove it (keep secondaries).
             // Note: ctrl+, is only transmitted by kitty keyboard protocol; silently ignored in legacy mode.
             KeyCode::Char(',') => if key.modifiers.contains(KeyModifiers::CONTROL) {
-                self.apply_motion(|b, s| cmd_remove_primary_selection(b, s));
+                self.apply_motion(cmd_remove_primary_selection);
             } else {
-                self.apply_motion(|b, s| cmd_keep_primary_selection(b, s));
+                self.apply_motion(cmd_keep_primary_selection);
             },
             // `S` — split each selection on newlines, producing one cursor per line.
             // `R` — reserved for split-on-regex (needs minibuffer input, not yet implemented).
-            KeyCode::Char('S') => self.apply_motion(|b, s| cmd_split_selection_on_newlines(b, s)),
+            KeyCode::Char('S') => self.apply_motion(cmd_split_selection_on_newlines),
             // `(`/`)` — cycle the primary selection backward/forward.
-            KeyCode::Char('(') => self.apply_motion(|b, s| cmd_cycle_primary_backward(b, s)),
-            KeyCode::Char(')') => self.apply_motion(|b, s| cmd_cycle_primary_forward(b, s)),
+            KeyCode::Char('(') => self.apply_motion(cmd_cycle_primary_backward),
+            KeyCode::Char(')') => self.apply_motion(cmd_cycle_primary_forward),
             // `C` — duplicate the selection onto the next line (multicursor).
-            KeyCode::Char('C') => self.apply_motion(|b, s| cmd_copy_selection_on_next_line(b, s)),
+            KeyCode::Char('C') => self.apply_motion(cmd_copy_selection_on_next_line),
             // `_` — trim leading/trailing whitespace from each selection.
-            KeyCode::Char('_') => self.apply_motion(|b, s| cmd_trim_selection_whitespace(b, s)),
+            KeyCode::Char('_') => self.apply_motion(cmd_trim_selection_whitespace),
 
             // ── Edit ──────────────────────────────────────────────────────────
             // `d` — delete selection and yank into default register.
             KeyCode::Char('d') => {
                 let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.apply_edit(|b, s| delete_selection(b, s));
+                self.doc.apply_edit(delete_selection);
                 self.registers.write(DEFAULT_REGISTER, yanked);
             }
             // `c` — change: yank, delete selection, then enter Insert mode.
@@ -271,7 +271,7 @@ impl Editor {
             KeyCode::Char('c') => {
                 let yanked = yank_selections(self.doc.buf(), self.doc.sels());
                 self.doc.begin_edit_group();
-                self.doc.apply_edit_grouped(|b, s| delete_selection(b, s));
+                self.doc.apply_edit_grouped(delete_selection);
                 self.registers.write(DEFAULT_REGISTER, yanked);
                 self.set_mode(Mode::Insert);
             }
@@ -350,14 +350,14 @@ impl Editor {
             // jump to the next line. Ctrl+x / extend mode accumulates lines.
             // `X`: same but walks backward; Ctrl+X accumulates backward.
             KeyCode::Char('x') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
-                self.apply_motion(|b, s| cmd_extend_select_line(b, s))
+                self.apply_motion(cmd_extend_select_line)
             } else {
-                self.apply_motion(|b, s| cmd_select_line(b, s))
+                self.apply_motion(cmd_select_line)
             },
             KeyCode::Char('X') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
-                self.apply_motion(|b, s| cmd_extend_select_line_backward(b, s))
+                self.apply_motion(cmd_extend_select_line_backward)
             } else {
-                self.apply_motion(|b, s| cmd_select_line_backward(b, s))
+                self.apply_motion(cmd_select_line_backward)
             },
 
             // ── Extend mode toggle ────────────────────────────────────────────
@@ -396,7 +396,7 @@ impl Editor {
             //   extend mode: flip the anchor/head of every selection (Vim visual `o`).
             //   normal mode: open a new line below the current line and enter Insert.
             KeyCode::Char('o') => if self.extend {
-                self.apply_motion(|b, s| cmd_flip_selections(b, s));
+                self.apply_motion(cmd_flip_selections);
             } else {
                 // Open the edit group *before* the newline insertion so that
                 // the structural '\n' and everything typed before Esc form one
@@ -437,6 +437,10 @@ impl Editor {
         match key.code {
             // ── Return to Normal mode ─────────────────────────────────────────
             KeyCode::Esc => self.set_mode(Mode::Normal),
+            // Ctrl+C acts as Esc in all modes (Vim convention).
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.set_mode(Mode::Normal);
+            }
 
             // ── Character input ───────────────────────────────────────────────
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -473,11 +477,11 @@ impl Editor {
                 if self.auto_pairs.enabled && self.is_between_pair() {
                     self.doc.apply_edit_grouped(delete_pair);
                 } else {
-                    self.doc.apply_edit_grouped(|b, s| delete_char_backward(b, s));
+                    self.doc.apply_edit_grouped(delete_char_backward);
                 }
             }
             KeyCode::Delete => {
-                self.doc.apply_edit_grouped(|b, s| delete_char_forward(b, s));
+                self.doc.apply_edit_grouped(delete_char_forward);
             }
 
             // ── Navigation (same as Normal) ───────────────────────────────────
@@ -612,6 +616,11 @@ impl Editor {
         match key.code {
             // ── Cancel ────────────────────────────────────────────────────────
             KeyCode::Esc => {
+                self.set_mode(Mode::Normal);
+                self.minibuf = None;
+            }
+            // Ctrl+C acts as Esc in all modes (Vim convention).
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }

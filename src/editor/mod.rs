@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event};
 use crossterm::execute;
+use unicode_width::UnicodeWidthStr;
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::buffer::Buffer;
@@ -238,12 +239,12 @@ impl Editor {
                         '<' | '>' => Some(('<', '>')),
                         _ => None,
                     };
-                    if let Some((open, close)) = pair {
-                        if let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close) {
-                            // Highlight the OTHER bracket — the cursor already marks the one it's on.
-                            let match_pos = if head == op { cp } else { op };
-                            hl.push(match_pos, match_pos, self.colors.bracket_match);
-                        }
+                    if let Some((open, close)) = pair
+                        && let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close)
+                    {
+                        // Highlight the OTHER bracket — the cursor already marks the one it's on.
+                        let match_pos = if head == op { cp } else { op };
+                        hl.push(match_pos, match_pos, self.colors.bracket_match);
                     }
                 }
                 owned_hl = hl.build();
@@ -265,7 +266,7 @@ impl Editor {
                 minibuf: self.minibuf.as_ref().map(|m| (m.prompt, m.input.as_str())),
                 status_msg: self.status_msg.as_deref(),
                 statusline_config: &self.statusline_config,
-                highlights: &highlights,
+                highlights,
             };
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());
@@ -279,8 +280,8 @@ impl Editor {
                     }
                     Mode::Command => {
                         if let Some((_, input)) = ctx.minibuf {
-                            // Layout: 1 space + "CMD" + 1 space + prompt char = col 6, then input.
-                            let col = 6 + input.len() as u16;
+                            // Layout: 1-col margin + prompt char = col 2, then display-width of input.
+                            let col = 2 + UnicodeWidthStr::width(input) as u16;
                             let row = ctx.view.height as u16;
                             frame.set_cursor_position((col, row));
                         }

@@ -38,6 +38,10 @@ impl HighlightSet {
     /// Requires `build()` to have been called. O(log n) via binary search on
     /// the sorted entry list: find the last range whose start ≤ pos, then
     /// check if pos ≤ end.
+    ///
+    /// NOTE(M4): currently only bracket-match highlights exist so at most one
+    /// range overlaps any position. When search/diagnostic highlights are added,
+    /// this must be extended to scan all overlapping entries and compose styles.
     pub(crate) fn style_at(&self, pos: usize) -> Option<Style> {
         // partition_point returns the first index where the predicate is false,
         // i.e. the first entry with start > pos.

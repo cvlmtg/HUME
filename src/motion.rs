@@ -843,9 +843,11 @@ pub(crate) fn cmd_extend_select_line_backward(buf: &Buffer, sels: SelectionSet) 
 /// structural boundary, not content.
 fn find_char_on_line_forward(buf: &Buffer, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
-    let end = line_end_exclusive(buf, line); // one past the '\n' (start of next line)
+    // Exclude the '\n': stop iteration once pos reaches the newline position.
+    // The buffer always ends with '\n', so line_end_exclusive >= 1.
+    let newline = line_end_exclusive(buf, line) - 1;
     let mut pos = next_grapheme_boundary(buf, head);
-    while pos < end {
+    while pos < newline {
         if buf.char_at(pos) == Some(ch) {
             return Some(pos);
         }
