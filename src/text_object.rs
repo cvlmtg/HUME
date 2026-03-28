@@ -63,12 +63,12 @@ pub(crate) fn apply_text_object_extend(
         // Result was a subset (no growth). Retry from one past the selection end so
         // bracket/quote searches find the enclosing pair rather than the current one.
         let past_end = next_grapheme_boundary(buf, sel.end());
-        if past_end < buf.len_chars() {
-            if let Some((start, end)) = text_object(buf, past_end) {
-                let new_start = sel.start().min(start);
-                let new_end = sel.end().max(end);
-                return Selection::directed(new_start, new_end, forward);
-            }
+        if past_end < buf.len_chars()
+            && let Some((start, end)) = text_object(buf, past_end)
+        {
+            let new_start = sel.start().min(start);
+            let new_end = sel.end().max(end);
+            return Selection::directed(new_start, new_end, forward);
         }
 
         sel
@@ -645,7 +645,7 @@ fn around_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
         // The raw segment already includes any leading space after the comma,
         // so this range covers ", bbb" naturally.
         let prev_raw_end = segments[idx - 1].1;
-        Some((prev_raw_end + 1, raw_end))
+        Some((prev_raw_end + 1, raw_end)) // grapheme-safe: comma is single-codepoint ASCII
     }
 }
 

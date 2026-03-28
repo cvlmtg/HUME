@@ -233,7 +233,7 @@ fn render_segment(
                 (Mode::Normal, false) => (" NOR ", colors.status_normal),
                 (Mode::Insert, _)     => (" INS ", colors.status_insert),
                 // Command mode is handled by render_command_line before this is reached.
-                (Mode::Command, _)    => (" NOR ", colors.status_normal),
+                (Mode::Command, _)    => unreachable!("render_command_line handles Command mode"),
             };
             (label.to_string(), style)
         }
