@@ -129,6 +129,13 @@ impl Editor {
             self.pending = PendingKey::None;
         }
 
+        // One-shot extend: Ctrl+motion (kitty keyboard protocol) extends without
+        // entering sticky extend mode. The kitty_enabled gate prevents Ctrl+w/b
+        // from accidentally triggering extend in legacy terminals where they might
+        // arrive as Char+CONTROL. Ctrl+h/j are safe (Backspace/Enter in legacy).
+        let kitty_ctrl = self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL);
+        let extend = self.extend || kitty_ctrl;
+
         match key.code {
             // ── Command mode ──────────────────────────────────────────────────
             KeyCode::Char(':') => {
@@ -140,54 +147,25 @@ impl Editor {
                 self.should_quit = true;
             }
 
-            // ── One-shot extend (kitty keyboard protocol only) ────────────────
-            // Ctrl+motion extends the selection without entering extend mode.
-            // These arms MUST appear before the bare h/l/j/k/w/b arms — Rust
-            // evaluates match arms top-to-bottom and those arms match Char('h')
-            // regardless of modifiers.
-            //
-            // Why the kitty_enabled gate when legacy encoding can't send these?
-            // - Ctrl+h/j arrive as KeyCode::Backspace/Enter in legacy terminals
-            //   (different keycodes), so those arms genuinely can't fire here.
-            // - Ctrl+w/b might arrive as Char('w'/'b')+CONTROL in some terminals.
-            // - Gating on self.kitty_enabled is self-documenting and defensive.
-            KeyCode::Char('h') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_left(b, s, 1));
-            }
-            KeyCode::Char('l') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_right(b, s, 1));
-            }
-            KeyCode::Char('j') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_down(b, s, 1));
-            }
-            KeyCode::Char('k') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_up(b, s, 1));
-            }
-            KeyCode::Char('w') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_select_next_word(b, s, 1));
-            }
-            KeyCode::Char('b') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.apply_motion(|b, s| cmd_extend_select_prev_word(b, s, 1));
-            }
-
             // ── Basic motion ──────────────────────────────────────────────────
-            // In extend mode (self.extend), motions grow the selection instead of moving it.
-            KeyCode::Char('h') | KeyCode::Left  => if self.extend {
+            // In extend mode, motions grow the selection instead of moving it.
+            // Ctrl+motion (kitty only) is a one-shot extend — see `extend` above.
+            KeyCode::Char('h') | KeyCode::Left  => if extend {
                 self.apply_motion(|b, s| cmd_extend_left(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_move_left(b, s, 1))
             },
-            KeyCode::Char('l') | KeyCode::Right => if self.extend {
+            KeyCode::Char('l') | KeyCode::Right => if extend {
                 self.apply_motion(|b, s| cmd_extend_right(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_move_right(b, s, 1))
             },
-            KeyCode::Char('j') | KeyCode::Down  => if self.extend {
+            KeyCode::Char('j') | KeyCode::Down  => if extend {
                 self.apply_motion(|b, s| cmd_extend_down(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_move_down(b, s, 1))
             },
-            KeyCode::Char('k') | KeyCode::Up    => if self.extend {
+            KeyCode::Char('k') | KeyCode::Up    => if extend {
                 self.apply_motion(|b, s| cmd_extend_up(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_move_up(b, s, 1))
@@ -195,51 +173,51 @@ impl Editor {
 
             // ── Word motion ───────────────────────────────────────────────────
             // In extend mode: union the current selection with the next/prev word range.
-            KeyCode::Char('w') => if self.extend {
+            KeyCode::Char('w') => if extend {
                 self.apply_motion(|b, s| cmd_extend_select_next_word(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_select_next_word(b, s, 1))
             },
-            KeyCode::Char('W') => if self.extend {
+            KeyCode::Char('W') => if extend {
                 self.apply_motion(|b, s| cmd_extend_select_next_WORD(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_select_next_WORD(b, s, 1))
             },
-            KeyCode::Char('b') => if self.extend {
+            KeyCode::Char('b') => if extend {
                 self.apply_motion(|b, s| cmd_extend_select_prev_word(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_select_prev_word(b, s, 1))
             },
-            KeyCode::Char('B') => if self.extend {
+            KeyCode::Char('B') => if extend {
                 self.apply_motion(|b, s| cmd_extend_select_prev_WORD(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1))
             },
 
             // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Char('0') | KeyCode::Home => if self.extend {
+            KeyCode::Char('0') | KeyCode::Home => if extend {
                 self.apply_motion(|b, s| cmd_extend_line_start(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1))
             },
-            KeyCode::Char('$') | KeyCode::End => if self.extend {
+            KeyCode::Char('$') | KeyCode::End => if extend {
                 self.apply_motion(|b, s| cmd_extend_line_end(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1))
             },
-            KeyCode::Char('^') => if self.extend {
+            KeyCode::Char('^') => if extend {
                 self.apply_motion(|b, s| cmd_extend_first_nonblank(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1))
             },
 
             // ── Paragraph motion ──────────────────────────────────────────────
-            KeyCode::Char('{') => if self.extend {
+            KeyCode::Char('{') => if extend {
                 self.apply_motion(|b, s| cmd_extend_prev_paragraph(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_prev_paragraph(b, s, 1))
             },
-            KeyCode::Char('}') => if self.extend {
+            KeyCode::Char('}') => if extend {
                 self.apply_motion(|b, s| cmd_extend_next_paragraph(b, s, 1))
             } else {
                 self.apply_motion(|b, s| cmd_next_paragraph(b, s, 1))
@@ -248,7 +226,7 @@ impl Editor {
             // ── Page scroll ───────────────────────────────────────────────────
             KeyCode::PageDown => {
                 let count = self.view.height.max(1);
-                if self.extend {
+                if extend {
                     self.apply_motion(|b, s| cmd_extend_down(b, s, count));
                 } else {
                     self.apply_motion(|b, s| cmd_move_down(b, s, count));
@@ -256,7 +234,7 @@ impl Editor {
             }
             KeyCode::PageUp => {
                 let count = self.view.height.max(1);
-                if self.extend {
+                if extend {
                     self.apply_motion(|b, s| cmd_extend_up(b, s, count));
                 } else {
                     self.apply_motion(|b, s| cmd_move_up(b, s, count));
