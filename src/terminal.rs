@@ -28,9 +28,11 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
     let mut out = stdout();
 
     // Probe and activate kitty keyboard protocol while stdin is in raw mode
-    // (required for the response to be readable). Errors treated as "not supported"
-    // so misconfigured terminals fall back gracefully.
-    let kitty_enabled = supports_keyboard_enhancement().unwrap_or(false);
+    // (required for the response to be readable). Errors treated as "not supported".
+    // The CSI probe sometimes times out even on supporting terminals (e.g. WezTerm),
+    // so we also check well-known environment variables as a fallback.
+    let kitty_enabled = supports_keyboard_enhancement().unwrap_or(false)
+        || is_known_kitty_terminal();
     if kitty_enabled {
         execute!(
             out,
@@ -61,6 +63,28 @@ pub(crate) fn restore() -> io::Result<()> {
     disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
     Ok(())
+}
+
+/// Detect kitty keyboard protocol support via environment variables.
+///
+/// Used as a fallback when the CSI `\x1B[?u` probe times out. Each terminal
+/// sets a documented env var that reliably identifies it:
+///
+/// | Terminal | Variable |
+/// |----------|----------|
+/// | WezTerm  | `WEZTERM_EXECUTABLE` or `TERM_PROGRAM=WezTerm` |
+/// | kitty    | `KITTY_WINDOW_ID` or `TERM=xterm-kitty` |
+/// | ghostty  | `GHOSTTY_RESOURCES_DIR` or `TERM_PROGRAM=ghostty` |
+/// | foot     | `FOOT_SERVER_SOCKET` or `TERM=foot` |
+fn is_known_kitty_terminal() -> bool {
+    let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
+    let term = std::env::var("TERM").unwrap_or_default();
+    std::env::var("WEZTERM_EXECUTABLE").is_ok()
+        || std::env::var("KITTY_WINDOW_ID").is_ok()
+        || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok()
+        || std::env::var("FOOT_SERVER_SOCKET").is_ok()
+        || matches!(term_program.as_str(), "WezTerm" | "ghostty")
+        || matches!(term.as_str(), "xterm-kitty" | "foot" | "xterm-ghostty")
 }
 
 /// Install a panic hook that restores the terminal before printing the panic

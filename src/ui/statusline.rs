@@ -39,6 +39,10 @@ pub(crate) enum StatusSegment {
     /// selection is active (so it occupies no space in single-cursor mode).
     #[allow(dead_code)]
     Selections,
+    /// Kitty keyboard protocol indicator: `"🐱"` when active, empty otherwise.
+    ///
+    /// Useful for diagnosing whether the protocol was successfully negotiated.
+    KittyProtocol,
 }
 
 /// Describes the content layout of the status bar's three horizontal slots.
@@ -69,7 +73,7 @@ impl Default for StatusLineConfig {
         Self {
             left: vec![StatusSegment::ModePill, StatusSegment::Separator, StatusSegment::FileName],
             center: vec![],
-            right: vec![StatusSegment::Position],
+            right: vec![StatusSegment::KittyProtocol, StatusSegment::Position],
         }
     }
 }
@@ -248,6 +252,13 @@ fn render_segment(
         StatusSegment::Position => {
             let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
             (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.status_bar)
+        }
+        StatusSegment::KittyProtocol => {
+            if ctx.kitty_enabled {
+                ("🐱".to_string(), colors.status_bar)
+            } else {
+                (String::new(), colors.status_bar)
+            }
         }
         StatusSegment::Selections => {
             let n = ctx.doc.sels().len();
