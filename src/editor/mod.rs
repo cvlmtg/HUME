@@ -274,6 +274,7 @@ impl Editor {
                 status_msg: self.status_msg.as_deref(),
                 statusline_config: &self.statusline_config,
                 highlights,
+                kitty_enabled: self.kitty_enabled,
             };
             term.draw(|frame| {
                 render(&ctx, frame.area(), frame.buffer_mut());

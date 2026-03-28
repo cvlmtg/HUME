@@ -44,6 +44,9 @@ pub(crate) struct RenderCtx<'a> {
     /// Ephemeral highlights to overlay (bracket match, search hits, diagnostics).
     /// Must be built (sorted) before passing to `render`.
     pub highlights: &'a HighlightSet,
+    /// Whether the kitty keyboard protocol is active this session.
+    /// Shown as `🐱` in the status bar next to the position indicator.
+    pub kitty_enabled: bool,
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -359,7 +362,7 @@ mod tests {
         // don't need to thread a config lifetime through every test helper call.
         static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
         let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::ui::highlight::EMPTY }
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::ui::highlight::EMPTY, kitty_enabled: false }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────
