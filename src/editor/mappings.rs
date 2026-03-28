@@ -140,6 +140,36 @@ impl Editor {
                 self.should_quit = true;
             }
 
+            // ── One-shot extend (kitty keyboard protocol only) ────────────────
+            // Ctrl+motion extends the selection without entering extend mode.
+            // These arms MUST appear before the bare h/l/j/k/w/b arms — Rust
+            // evaluates match arms top-to-bottom and those arms match Char('h')
+            // regardless of modifiers.
+            //
+            // Why the kitty_enabled gate when legacy encoding can't send these?
+            // - Ctrl+h/j arrive as KeyCode::Backspace/Enter in legacy terminals
+            //   (different keycodes), so those arms genuinely can't fire here.
+            // - Ctrl+w/b might arrive as Char('w'/'b')+CONTROL in some terminals.
+            // - Gating on self.kitty_enabled is self-documenting and defensive.
+            KeyCode::Char('h') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_left(b, s, 1));
+            }
+            KeyCode::Char('l') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_right(b, s, 1));
+            }
+            KeyCode::Char('j') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_down(b, s, 1));
+            }
+            KeyCode::Char('k') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_up(b, s, 1));
+            }
+            KeyCode::Char('w') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_select_next_word(b, s, 1));
+            }
+            KeyCode::Char('b') if self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_motion(|b, s| cmd_extend_select_prev_word(b, s, 1));
+            }
+
             // ── Basic motion ──────────────────────────────────────────────────
             // In extend mode (self.extend), motions grow the selection instead of moving it.
             KeyCode::Char('h') | KeyCode::Left  => if self.extend {

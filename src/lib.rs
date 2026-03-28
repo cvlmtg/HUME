@@ -40,7 +40,8 @@ pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::err
     terminal::install_panic_hook();
 
     let mut editor = editor::Editor::open(file_path)?;
-    let mut term = terminal::init()?;
+    let (mut term, kitty_enabled) = terminal::init()?;
+    editor.kitty_enabled = kitty_enabled;
 
     let result = editor.run(&mut term);
 
