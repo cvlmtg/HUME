@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crossterm::cursor::SetCursorStyle;
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::execute;
 use unicode_width::UnicodeWidthStr;
 
@@ -151,6 +151,12 @@ pub(crate) struct Editor {
     /// Used by the repeat keys: `=` repeats the search forward, `-` backward.
     /// `None` until the user performs a find/till motion.
     pub(super) last_find: Option<FindChar>,
+    /// Whether the kitty keyboard protocol was successfully activated at startup.
+    ///
+    /// When `true`, the terminal sends CSI-u sequences that disambiguate
+    /// Ctrl+h from Backspace, Ctrl+j from Enter, etc. — unlocking Ctrl+motion
+    /// one-shot extend shortcuts. Set by the caller after [`Editor::open`].
+    pub(crate) kitty_enabled: bool,
 }
 
 impl Editor {
@@ -197,6 +203,7 @@ impl Editor {
             registry: CommandRegistry::with_defaults(),
             auto_pairs: AutoPairsConfig::default(),
             last_find: None,
+            kitty_enabled: false,
         })
     }
 
@@ -302,7 +309,11 @@ impl Editor {
 
             // ── 5 & 6. Event ──────────────────────────────────────────────────
             match event::read()? {
-                Event::Key(key) => self.handle_key(key),
+                // Release events arrive only with kitty keyboard protocol
+                // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
+                // Repeat (held key). Without kitty all events are Press anyway.
+                Event::Key(key) if key.kind != KeyEventKind::Release => self.handle_key(key),
+                Event::Key(_) => {}
                 Event::Resize(_, _) => {} // dimensions re-read at loop top
                 _ => {}
             }

@@ -36,7 +36,15 @@ fn editor_from(input: &str) -> Editor {
         registry: crate::command::CommandRegistry::with_defaults(),
         auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
         last_find: None,
+        kitty_enabled: false,
     }
+}
+
+/// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
+fn editor_from_kitty(input: &str) -> Editor {
+    let mut ed = editor_from(input);
+    ed.kitty_enabled = true;
+    ed
 }
 
 /// Serialize the editor's current buffer + selection state.
@@ -1044,3 +1052,82 @@ fn find_repeat_exclusive_kind_preserved() {
     // should land on the space before second 'a', not on 'a' itself
     assert_eq!(state(&ed), "hello a world-[ ]>a end\n");
 }
+
+// ── Kitty keyboard protocol — Ctrl+motion one-shot extend ──────────────────
+
+/// Ctrl+h extends the selection left (kitty mode only).
+#[test]
+fn kitty_ctrl_h_extends_left() {
+    let mut ed = editor_from_kitty("hell-[o]>\n");
+    ed.handle_key(key_ctrl('h'));
+    // anchor=4 stays, head moves left to 3 → backward selection
+    assert_eq!(state(&ed), "hel<[lo]-\n");
+}
+
+/// Ctrl+l extends the selection right (kitty mode only).
+#[test]
+fn kitty_ctrl_l_extends_right() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    ed.handle_key(key_ctrl('l'));
+    assert_eq!(state(&ed), "-[he]>llo\n");
+}
+
+/// Ctrl+j extends the selection down one line (kitty mode only).
+#[test]
+fn kitty_ctrl_j_extends_down() {
+    let mut ed = editor_from_kitty("-[h]>ello\nworld\n");
+    ed.handle_key(key_ctrl('j'));
+    assert_eq!(state(&ed), "-[hello\nw]>orld\n");
+}
+
+/// Ctrl+k extends the selection up one line (kitty mode only).
+#[test]
+fn kitty_ctrl_k_extends_up() {
+    let mut ed = editor_from_kitty("hello\n-[w]>orld\n");
+    ed.handle_key(key_ctrl('k'));
+    // anchor=6 stays, head moves up to col 0 of line 0 → backward
+    assert_eq!(state(&ed), "<[hello\nw]-orld\n");
+}
+
+/// Ctrl+w extends to the next word via union semantics (kitty mode only).
+/// Starting from a cursor at 'h', select_next_word finds "world" (6,10).
+/// Union with current pos (0,0): min(0,6)=0, max(0,10)=10 → "hello world".
+#[test]
+fn kitty_ctrl_w_extends_next_word() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(state(&ed), "-[hello world]>\n");
+}
+
+/// Ctrl+b extends to the previous word via union semantics (kitty mode only).
+/// From cursor at 'w' (pos 6), select_prev_word finds "hello" (0,4).
+/// Union: min(6,0)=0, max(6,4)=6 → "hello w" forward.
+#[test]
+fn kitty_ctrl_b_extends_prev_word() {
+    let mut ed = editor_from_kitty("hello -[w]>orld\n");
+    ed.handle_key(key_ctrl('b'));
+    assert_eq!(state(&ed), "-[hello w]>orld\n");
+}
+
+/// Without kitty, Ctrl+h (Char('h')+CONTROL) falls through to the bare 'h'
+/// arm and MOVES the cursor rather than extending the selection.
+/// In real legacy terminals Ctrl+h arrives as KeyCode::Backspace (a different
+/// keycode), so this test covers the kitty_enabled guard specifically.
+#[test]
+fn legacy_ctrl_h_moves_not_extends() {
+    let mut ed = editor_from("-[hello]>world\n");
+    ed.handle_key(key_ctrl('h'));
+    // bare 'h' arm: move_left from head=4 → cursor at 3 ('l')
+    assert_eq!(state(&ed), "hel-[l]>oworld\n");
+}
+
+/// Without kitty, Ctrl+w (Char('w')+CONTROL) falls through to the bare 'w'
+/// arm and SELECTS the next word rather than extending the current selection.
+#[test]
+fn legacy_ctrl_w_selects_not_extends() {
+    let mut ed = editor_from("-[hello]> world foo\n");
+    ed.handle_key(key_ctrl('w'));
+    // bare 'w' arm: select_next_word from head=4 → selects "world" (6,10)
+    assert_eq!(state(&ed), "hello -[world]> foo\n");
+}
+
