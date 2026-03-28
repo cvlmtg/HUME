@@ -27,12 +27,12 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
     enable_raw_mode()?;
     let mut out = stdout();
 
-    // Probe and activate kitty keyboard protocol while stdin is in raw mode
-    // (required for the response to be readable). Errors treated as "not supported".
-    // The CSI probe sometimes times out even on supporting terminals (e.g. WezTerm),
-    // so we also check well-known environment variables as a fallback.
-    let kitty_enabled = supports_keyboard_enhancement().unwrap_or(false)
-        || is_known_kitty_terminal();
+    // Check well-known env vars first: zero-cost and avoids the CSI probe's
+    // read timeout on terminals that are known to support kitty keyboard protocol
+    // (e.g. WezTerm sometimes times out on the probe even though it supports it).
+    // Fall back to the CSI probe only for unrecognised terminals.
+    let kitty_enabled = is_known_kitty_terminal()
+        || supports_keyboard_enhancement().unwrap_or(false);
     if kitty_enabled {
         execute!(
             out,
@@ -67,8 +67,8 @@ pub(crate) fn restore() -> io::Result<()> {
 
 /// Detect kitty keyboard protocol support via environment variables.
 ///
-/// Used as a fallback when the CSI `\x1B[?u` probe times out. Each terminal
-/// sets a documented env var that reliably identifies it:
+/// Checked before the CSI `\x1B[?u` probe to avoid its read timeout on
+/// terminals that are known supporters. Each terminal sets a documented env var:
 ///
 /// | Terminal | Variable |
 /// |----------|----------|
