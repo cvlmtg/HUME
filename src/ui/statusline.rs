@@ -3,10 +3,10 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
-use crate::buffer::Buffer;
+use crate::core::buffer::Buffer;
 use crate::editor::Mode;
-use crate::grapheme::grapheme_count;
-use crate::renderer::RenderCtx;
+use crate::core::grapheme::grapheme_count;
+use crate::ui::renderer::RenderCtx;
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 

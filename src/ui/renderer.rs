@@ -6,15 +6,15 @@ use ratatui::layout::Rect;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::buffer::Buffer;
-use crate::display_line::DisplayLine;
-use crate::document::Document;
+use crate::core::buffer::Buffer;
+use crate::ui::display_line::DisplayLine;
+use crate::core::document::Document;
 use crate::editor::Mode;
-use crate::highlight::HighlightSet;
-use crate::selection::SelectionSet;
-use crate::statusline::{grapheme_col_in_line, render_bottom_row, StatusLineConfig};
-use crate::theme::EditorColors;
-use crate::view::{LineNumberStyle, ViewState};
+use crate::ui::highlight::HighlightSet;
+use crate::core::selection::SelectionSet;
+use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row, StatusLineConfig};
+use crate::ui::theme::EditorColors;
+use crate::ui::view::{LineNumberStyle, ViewState};
 
 // ── Render context ────────────────────────────────────────────────────────────
 
@@ -324,13 +324,13 @@ pub(crate) fn render_to_string(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::Buffer;
-    use crate::document::Document;
+    use crate::core::buffer::Buffer;
+    use crate::core::document::Document;
     use crate::editor::Mode;
-    use crate::selection::{Selection, SelectionSet};
-    use crate::statusline::StatusSegment;
-    use crate::theme::EditorColors;
-    use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
+    use crate::core::selection::{Selection, SelectionSet};
+    use crate::ui::statusline::StatusSegment;
+    use crate::ui::theme::EditorColors;
+    use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -359,7 +359,7 @@ mod tests {
         // don't need to thread a config lifetime through every test helper call.
         static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
         let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::highlight::EMPTY }
+        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::ui::highlight::EMPTY }
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────

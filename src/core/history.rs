@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use crate::changeset::{ChangeSet, ChangeSetBuilder};
-use crate::selection::SelectionSet;
-use crate::transaction::Transaction;
+use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
+use crate::core::selection::SelectionSet;
+use crate::core::transaction::Transaction;
 
 // ── Arena index ───────────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ struct Revision {
 ///
 /// ## What History does NOT own
 ///
-/// Buffers. The caller ([`crate::document::Document`]) holds the current
+/// Buffers. The caller ([`crate::core::document::Document`]) holds the current
 /// buffer. History stores only Transactions (changeset + selections). This
 /// keeps History a pure data structure with no Buffer dependency.
 pub(crate) struct History {
@@ -320,7 +320,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::selection::{Selection, SelectionSet};
+    use crate::core::selection::{Selection, SelectionSet};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -1,8 +1,8 @@
-use crate::buffer::Buffer;
+use crate::core::buffer::Buffer;
 use crate::editor::FindKind;
-use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
-use crate::selection::{Selection, SelectionSet};
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── Motion mode ───────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
-use crate::buffer::Buffer;
-use crate::changeset::{ChangeSet, ChangeSetBuilder};
-use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::selection::{Selection, SelectionSet};
+use crate::core::buffer::Buffer;
+use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -32,7 +32,7 @@ use crate::selection::{Selection, SelectionSet};
 #[allow(dead_code)]
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
-/// is needed for undo/redo bookkeeping via [`crate::document::Document`].
+/// is needed for undo/redo bookkeeping via [`crate::core::document::Document`].
 ///
 /// For motions, count is handled inside `apply_motion` per-selection instead
 /// (prevents premature merging of multi-cursor selections between steps).
@@ -51,7 +51,7 @@ pub(crate) fn repeat(
 /// Like [`repeat`], but the command must return `(Buffer, SelectionSet,
 /// ChangeSet)`. The N changesets are folded with [`ChangeSet::compose`] so the
 /// whole repetition becomes a single undo step when passed to
-/// [`crate::document::Document::apply_edit`].
+/// [`crate::core::document::Document::apply_edit`].
 ///
 /// If `count == 0`, returns the original state with an identity ChangeSet.
 pub(crate) fn repeat_edit(
@@ -1223,7 +1223,7 @@ mod tests {
 
     #[test]
     fn yank_then_paste_after_round_trip() {
-        use crate::register::yank_selections;
+        use crate::ops::register::yank_selections;
         // Yank "ello" from selection, then paste it after the cursor.
         // Initial: cursor on 'h', selection covers "ello".
         // After yank: yanked = ["ello"]
@@ -1247,7 +1247,7 @@ mod tests {
 
     #[test]
     fn yank_multi_cursor_then_paste_after_n_to_n() {
-        use crate::register::yank_selections;
+        use crate::ops::register::yank_selections;
         // Two cursors: one on 'h', one on 'o'. Yank both, paste after each.
         // Expected yanked: ["h", "o"]
         // After paste: "hh" at pos 0-1, "oo" at pos 4-5 (with shift).

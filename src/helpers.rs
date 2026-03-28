@@ -1,5 +1,5 @@
-use crate::buffer::Buffer;
-use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::buffer::Buffer;
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 
 #[cfg(test)]
 mod tests {

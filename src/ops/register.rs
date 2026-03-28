@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::buffer::Buffer;
-use crate::selection::SelectionSet;
+use crate::core::buffer::Buffer;
+use crate::core::selection::SelectionSet;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //

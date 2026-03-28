@@ -7,19 +7,19 @@ use crossterm::execute;
 use unicode_width::UnicodeWidthStr;
 
 use crate::auto_pairs::AutoPairsConfig;
-use crate::buffer::Buffer;
+use crate::core::buffer::Buffer;
 use crate::command::CommandRegistry;
-use crate::document::Document;
-use crate::highlight::HighlightSet;
+use crate::core::document::Document;
+use crate::ui::highlight::HighlightSet;
 use crate::io::FileMeta;
-use crate::register::RegisterSet;
-use crate::renderer::{cursor_screen_pos, render, RenderCtx};
-use crate::selection::{Selection, SelectionSet};
-use crate::statusline::StatusLineConfig;
+use crate::ops::register::RegisterSet;
+use crate::ui::renderer::{cursor_screen_pos, render, RenderCtx};
+use crate::core::selection::{Selection, SelectionSet};
+use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
-use crate::text_object::find_bracket_pair;
-use crate::theme::EditorColors;
-use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
+use crate::ops::text_object::find_bracket_pair;
+use crate::ui::theme::EditorColors;
+use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
 mod mappings;
 
@@ -257,7 +257,7 @@ impl Editor {
                 owned_hl = hl.build();
                 &owned_hl
             } else {
-                &crate::highlight::EMPTY  // static — zero allocation
+                &crate::ui::highlight::EMPTY  // static — zero allocation
             };
 
             // ── 4. Render ─────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// Errors returned by [`crate::changeset::ChangeSet::apply`] when the
+/// Errors returned by [`crate::core::changeset::ChangeSet::apply`] when the
 /// changeset cannot be applied to the given buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ApplyError {
@@ -37,7 +37,7 @@ impl fmt::Display for ApplyError {
     }
 }
 
-/// Errors returned by [`crate::transaction::Transaction::apply`], covering
+/// Errors returned by [`crate::core::transaction::Transaction::apply`], covering
 /// both changeset application and selection validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TransactionError {
@@ -83,8 +83,8 @@ impl From<ValidationError> for TransactionError {
 /// Errors that arise when validating plugin-constructed state before it
 /// touches the buffer.
 ///
-/// These are returned from [`crate::selection::SelectionSet::validate`] and
-/// propagated through [`crate::transaction::Transaction::apply`] so that a
+/// These are returned from [`crate::core::selection::SelectionSet::validate`] and
+/// propagated through [`crate::core::transaction::Transaction::apply`] so that a
 /// plugin layer can surface a meaningful message instead of silently
 /// corrupting the editor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
