@@ -1,5 +1,5 @@
-use crate::buffer::Buffer;
-use crate::error::ApplyError;
+use crate::core::buffer::Buffer;
+use crate::core::error::ApplyError;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

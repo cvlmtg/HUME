@@ -1,6 +1,6 @@
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
-use crate::buffer::Buffer;
+use crate::core::buffer::Buffer;
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`.
@@ -434,10 +434,10 @@ mod tests {
 
         // All files whose position-manipulation code must use grapheme boundaries.
         let files = [
-            "src/motion.rs",
-            "src/text_object.rs",
-            "src/selection_cmd.rs",
-            "src/edit.rs",
+            "src/ops/motion.rs",
+            "src/ops/text_object.rs",
+            "src/ops/selection_cmd.rs",
+            "src/ops/edit.rs",
             "src/auto_pairs.rs",
             "src/helpers.rs",
         ];

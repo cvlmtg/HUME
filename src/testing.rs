@@ -36,9 +36,9 @@
 ///
 /// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
 /// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
-use crate::buffer::Buffer;
-use crate::changeset::ChangeSet;
-use crate::selection::{Selection, SelectionSet};
+use crate::core::buffer::Buffer;
+use crate::core::changeset::ChangeSet;
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 

@@ -1,8 +1,8 @@
-use crate::buffer::Buffer;
-use crate::changeset::ChangeSet;
-use crate::edit::apply_edit;
-use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::selection::{Selection, SelectionSet};
+use crate::core::buffer::Buffer;
+use crate::core::changeset::ChangeSet;
+use crate::ops::edit::apply_edit;
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 

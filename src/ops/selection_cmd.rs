@@ -1,7 +1,7 @@
-use crate::buffer::Buffer;
-use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::buffer::Buffer;
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
-use crate::selection::{Selection, SelectionSet};
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -634,11 +634,11 @@ mod tests {
     fn collapse_two_selections_same_head_merges() {
         // Two selections with different anchors but the same head collapse to
         // one cursor — map_and_merge must reduce the count.
-        let buf = crate::buffer::Buffer::from("hello\n");
-        let sels = crate::selection::SelectionSet::from_vec(
+        let buf = crate::core::buffer::Buffer::from("hello\n");
+        let sels = crate::core::selection::SelectionSet::from_vec(
             vec![
-                crate::selection::Selection::new(0, 3), // head at 3
-                crate::selection::Selection::new(1, 3), // head at 3
+                crate::core::selection::Selection::new(0, 3), // head at 3
+                crate::core::selection::Selection::new(1, 3), // head at 3
             ],
             0,
         );
@@ -806,7 +806,7 @@ mod tests {
         // repeat(3, ...) copies the cursor to 3 consecutive lines below.
         // Buffer: "a\nb\nc\nd\ne\n". Cursor on 'a'(0).
         // After 3 copies: cursors on 'a'(0), 'b'(2), 'c'(4), 'd'(6).
-        use crate::edit::repeat;
+        use crate::ops::edit::repeat;
         assert_state!(
             "-[a]>\nb\nc\nd\ne\n",
             |(buf, sels)| repeat(3, &buf, sels, cmd_copy_selection_on_next_line),

@@ -1,7 +1,7 @@
-use crate::buffer::Buffer;
-use crate::changeset::ChangeSet;
-use crate::history::History;
-use crate::selection::SelectionSet;
+use crate::core::buffer::Buffer;
+use crate::core::changeset::ChangeSet;
+use crate::core::history::History;
+use crate::core::selection::SelectionSet;
 
 // ── IntoApplyResult ───────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ impl Document {
     /// 4. `self.buf` and `self.sels` are updated to the post-edit state.
     ///
     /// Calling this method means "this edit is one undo step". If the caller
-    /// uses [`crate::edit::repeat_edit`] inside the closure, all N iterations
+    /// uses [`crate::ops::edit::repeat_edit`] inside the closure, all N iterations
     /// are composed into one ChangeSet, so the whole repetition undoes in one
     /// step.
     pub(crate) fn apply_edit<R: IntoApplyResult>(
@@ -218,7 +218,7 @@ impl Document {
     /// Applies the necessary inverse/forward transactions sequentially to
     /// transform the buffer from the current state to the target state.
     /// No-op if `target` is the current revision or out of bounds.
-    pub(crate) fn goto_revision(&mut self, target: crate::history::RevisionId) {
+    pub(crate) fn goto_revision(&mut self, target: crate::core::history::RevisionId) {
         if let Some(transactions) = self.history.goto_revision(target) {
             for txn in transactions {
                 let (new_buf, new_sels) = txn
@@ -284,11 +284,11 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::edit::{
+    use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
         paste_before, repeat_edit,
     };
-    use crate::register::yank_selections;
+    use crate::ops::register::yank_selections;
     use crate::testing::{parse_state, serialize_state};
     use pretty_assertions::assert_eq;
 
@@ -521,7 +521,7 @@ mod tests {
 
         // B1: delete "ipsum "
         d.apply_edit(|b, _s| {
-            use crate::changeset::ChangeSetBuilder;
+            use crate::core::changeset::ChangeSetBuilder;
             // "Lorem ipsum dolor sit amet\n" is 27 chars.
             // Delete chars 6..12 ("ipsum ") → "Lorem dolor sit amet\n"
             let mut csb = ChangeSetBuilder::new(27);
@@ -531,7 +531,7 @@ mod tests {
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
             // Cursor at pos 6 (on 'd').
-            use crate::selection::{Selection, SelectionSet};
+            use crate::core::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::cursor(6));
             (new_buf, new_sels, cs)
         });
@@ -540,7 +540,7 @@ mod tests {
 
         // B2: change "dolor" → "foo"
         d.apply_edit(|b, _s| {
-            use crate::changeset::ChangeSetBuilder;
+            use crate::core::changeset::ChangeSetBuilder;
             // "Lorem dolor sit amet\n" is 21 chars. "dolor" at 6..11.
             let mut csb = ChangeSetBuilder::new(21);
             csb.retain(6);
@@ -549,7 +549,7 @@ mod tests {
             csb.retain_rest();
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
-            use crate::selection::{Selection, SelectionSet};
+            use crate::core::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::cursor(6));
             (new_buf, new_sels, cs)
         });
@@ -557,7 +557,7 @@ mod tests {
 
         // B3: change "sit" → "bar"
         d.apply_edit(|b, _s| {
-            use crate::changeset::ChangeSetBuilder;
+            use crate::core::changeset::ChangeSetBuilder;
             // "Lorem foo sit amet\n" is 19 chars. "sit" at 10..13.
             let mut csb = ChangeSetBuilder::new(19);
             csb.retain(10);
@@ -566,7 +566,7 @@ mod tests {
             csb.retain_rest();
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
-            use crate::selection::{Selection, SelectionSet};
+            use crate::core::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::cursor(10));
             (new_buf, new_sels, cs)
         });
@@ -581,7 +581,7 @@ mod tests {
 
         // C2: delete "dolor " → "Lorem sit amet\n"
         d.apply_edit(|b, _s| {
-            use crate::changeset::ChangeSetBuilder;
+            use crate::core::changeset::ChangeSetBuilder;
             // "Lorem dolor sit amet\n" is 21 chars. "dolor " at 6..12.
             let mut csb = ChangeSetBuilder::new(21);
             csb.retain(6);
@@ -589,7 +589,7 @@ mod tests {
             csb.retain_rest();
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
-            use crate::selection::{Selection, SelectionSet};
+            use crate::core::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::cursor(6));
             (new_buf, new_sels, cs)
         });
@@ -634,7 +634,7 @@ mod tests {
         d.apply_edit(|b, s| insert_char(b, s, 'c'));
         let initial = "-[h]>ello\n";
 
-        d.goto_revision(crate::history::RevisionId(0));
+        d.goto_revision(crate::core::history::RevisionId(0));
         assert_eq!(state(&d), initial);
     }
 

@@ -1,9 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pretty_assertions::assert_eq;
 
-use crate::document::Document;
+use crate::core::document::Document;
 use crate::testing::{parse_state, serialize_state};
-use crate::view::{compute_gutter_width, LineNumberStyle, ViewState};
+use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
 use super::{Editor, Mode, PendingKey};
 
@@ -26,13 +26,13 @@ fn editor_from(input: &str) -> Editor {
         mode: Mode::Normal,
         extend: false,
         pending: PendingKey::None,
-        registers: crate::register::RegisterSet::new(),
-        colors: crate::theme::EditorColors::default(),
+        registers: crate::ops::register::RegisterSet::new(),
+        colors: crate::ui::theme::EditorColors::default(),
         should_quit: false,
         minibuf: None,
         status_msg: None,
         file_meta: None,
-        statusline_config: crate::statusline::StatusLineConfig::default(),
+        statusline_config: crate::ui::statusline::StatusLineConfig::default(),
         registry: crate::command::CommandRegistry::with_defaults(),
         auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
         last_find: None,
@@ -121,7 +121,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 /// `delete_selection` would leave the register empty — invisible to pure tests.
 #[test]
 fn d_yanks_selection_into_register_before_deleting() {
-    use crate::register::DEFAULT_REGISTER;
+    use crate::ops::register::DEFAULT_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('d'));
@@ -137,7 +137,7 @@ fn d_yanks_selection_into_register_before_deleting() {
 /// pure tests of `yank_selections` never touch the `Editor.registers` field.
 #[test]
 fn y_populates_register_without_changing_buffer() {
-    use crate::register::DEFAULT_REGISTER;
+    use crate::ops::register::DEFAULT_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('y'));
@@ -153,7 +153,7 @@ fn y_populates_register_without_changing_buffer() {
 /// This logic lives entirely in the mapping — no pure test can see it.
 #[test]
 fn p_over_selection_swaps_displaced_text_into_register() {
-    use crate::register::DEFAULT_REGISTER;
+    use crate::ops::register::DEFAULT_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     // Seed the register with the text we'll paste.

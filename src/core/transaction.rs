@@ -1,7 +1,7 @@
-use crate::buffer::Buffer;
-use crate::changeset::ChangeSet;
-use crate::error::TransactionError;
-use crate::selection::SelectionSet;
+use crate::core::buffer::Buffer;
+use crate::core::changeset::ChangeSet;
+use crate::core::error::TransactionError;
+use crate::core::selection::SelectionSet;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
 ///
@@ -88,9 +88,9 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::changeset::ChangeSetBuilder;
-    use crate::error::{ApplyError, ValidationError};
-    use crate::selection::Selection;
+    use crate::core::changeset::ChangeSetBuilder;
+    use crate::core::error::{ApplyError, ValidationError};
+    use crate::core::selection::Selection;
     use pretty_assertions::assert_eq;
 
     #[test]

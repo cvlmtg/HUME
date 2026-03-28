@@ -13,22 +13,22 @@
 mod tests {
     use proptest::prelude::*;
 
-    use crate::buffer::Buffer;
-    use crate::document::Document;
-    use crate::edit::{
+    use crate::core::buffer::Buffer;
+    use crate::core::document::Document;
+    use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
-    use crate::motion::{
+    use crate::ops::motion::{
         cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
         cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
         cmd_select_prev_word,
     };
-    use crate::selection::{Selection, SelectionSet};
-    use crate::selection_cmd::{
+    use crate::core::selection::{Selection, SelectionSet};
+    use crate::ops::selection_cmd::{
         cmd_collapse_selection, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
     };
-    use crate::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
+    use crate::ops::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
 
     // ── Invariant checker ─────────────────────────────────────────────────────
 

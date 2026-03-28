@@ -1,11 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
-use crate::edit::{
+use crate::ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, replace_selections,
 };
-use crate::motion::{
+use crate::ops::motion::{
     cmd_extend_first_nonblank, cmd_extend_line_end, cmd_extend_line_start,
     cmd_extend_down, cmd_extend_left, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
     cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
@@ -16,14 +16,14 @@ use crate::motion::{
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
     find_char_backward, find_char_forward, MotionMode,
 };
-use crate::register::{yank_selections, DEFAULT_REGISTER};
-use crate::selection::Selection;
-use crate::selection_cmd::{
+use crate::ops::register::{yank_selections, DEFAULT_REGISTER};
+use crate::core::selection::Selection;
+use crate::ops::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
     cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
     cmd_remove_primary_selection, cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
 };
-use crate::text_object::{
+use crate::ops::text_object::{
     cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
     cmd_around_single_quote, cmd_around_word, cmd_extend_around_WORD, cmd_extend_around_angle,
@@ -530,7 +530,7 @@ impl Editor {
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = crate::grapheme::prev_grapheme_boundary(buf, sel.head);
+            let prev = crate::core::grapheme::prev_grapheme_boundary(buf, sel.head);
             match (buf.char_at(prev), buf.char_at(sel.head)) {
                 (Some(before), Some(at)) => {
                     pairs.iter().any(|p| p.open == before && p.close == at)
@@ -701,7 +701,7 @@ impl Editor {
         let buf = self.doc.buf();
         // The rope is always stored LF-normalized; restore CRLF for files that
         // originally used it so we don't silently change line endings on save.
-        let content = if buf.line_ending() == crate::buffer::LineEnding::CrLf {
+        let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
             buf.to_string().replace('\n', "\r\n")
         } else {
             buf.to_string()

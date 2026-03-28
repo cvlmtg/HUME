@@ -1,6 +1,6 @@
-use crate::buffer::Buffer;
-use crate::error::ValidationError;
-use crate::grapheme::next_grapheme_boundary;
+use crate::core::buffer::Buffer;
+use crate::core::error::ValidationError;
+use crate::core::grapheme::next_grapheme_boundary;
 
 /// A single selection range within a buffer.
 ///
@@ -446,7 +446,7 @@ impl SelectionSet {
     ///
     /// Unlike [`debug_assert_valid`][Self::debug_assert_valid], this check
     /// runs in all builds — including release. Call it at the trust boundary
-    /// where plugin-constructed [`Transaction`][crate::transaction::Transaction]s
+    /// where plugin-constructed [`Transaction`][crate::core::transaction::Transaction]s
     /// enter the system.
     pub(crate) fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
         if buf_len == 0 {
@@ -952,7 +952,7 @@ mod tests {
         let set = SelectionSet::single(Selection::cursor(0));
         assert!(matches!(
             set.validate(0),
-            Err(crate::error::ValidationError::EmptyBuffer)
+            Err(crate::core::error::ValidationError::EmptyBuffer)
         ));
     }
 
@@ -962,7 +962,7 @@ mod tests {
         let set = SelectionSet::single(Selection::cursor(5));
         assert!(matches!(
             set.validate(3),
-            Err(crate::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
+            Err(crate::core::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
         ));
     }
 
@@ -972,7 +972,7 @@ mod tests {
         let set = SelectionSet::single(Selection::new(10, 1));
         assert!(matches!(
             set.validate(5),
-            Err(crate::error::ValidationError::SelectionOutOfBounds { field: "anchor", .. })
+            Err(crate::core::error::ValidationError::SelectionOutOfBounds { field: "anchor", .. })
         ));
     }
 

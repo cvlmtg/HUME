@@ -1,7 +1,7 @@
-use crate::buffer::Buffer;
-use crate::display_line::{DisplayLine, DisplayLineSource};
+use crate::core::buffer::Buffer;
+use crate::ui::display_line::{DisplayLine, DisplayLineSource};
 use crate::helpers::line_end_exclusive;
-use crate::selection::SelectionSet;
+use crate::core::selection::SelectionSet;
 
 /// How many lines to keep between the cursor and the top/bottom edge of the
 /// viewport before scrolling. 3 lines gives a comfortable look-ahead without
@@ -152,8 +152,8 @@ impl ViewState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::Buffer;
-    use crate::selection::{Selection, SelectionSet};
+    use crate::core::buffer::Buffer;
+    use crate::core::selection::{Selection, SelectionSet};
 
     fn view(scroll_offset: usize, height: usize, buf: &Buffer) -> ViewState {
         ViewState {

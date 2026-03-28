@@ -19,10 +19,10 @@
 
 use std::collections::HashMap;
 
-use crate::buffer::Buffer;
-use crate::changeset::ChangeSet;
-use crate::edit::{delete_char_backward, delete_char_forward, delete_selection};
-use crate::motion::{
+use crate::core::buffer::Buffer;
+use crate::core::changeset::ChangeSet;
+use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
+use crate::ops::motion::{
     cmd_extend_down, cmd_extend_first_nonblank, cmd_extend_left, cmd_extend_line_end,
     cmd_extend_line_start, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
     cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
@@ -32,14 +32,14 @@ use crate::motion::{
     cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
-use crate::selection::SelectionSet;
-use crate::selection_cmd::{
+use crate::core::selection::SelectionSet;
+use crate::ops::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line,
     cmd_cycle_primary_backward, cmd_cycle_primary_forward, cmd_flip_selections,
     cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_split_selection_on_newlines,
     cmd_trim_selection_whitespace,
 };
-use crate::text_object::{
+use crate::ops::text_object::{
     cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
     cmd_around_single_quote, cmd_around_word, cmd_around_WORD, cmd_extend_around_angle,
