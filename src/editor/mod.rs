@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crossterm::cursor::SetCursorStyle;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
 use unicode_width::UnicodeWidthStr;
 
@@ -21,39 +21,10 @@ use crate::ops::text_object::find_bracket_pair;
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
+use self::keymap::{Keymap, KeymapCommand};
+
+mod keymap;
 mod mappings;
-
-// ── PendingKey ────────────────────────────────────────────────────────────────
-
-/// Tracks multi-key sequences that require waiting for additional key presses.
-///
-/// Text objects use a 3-key sequence: `m` → `i`/`a` → object char.
-/// For example, `mi(` selects the inner content of the nearest paren pair.
-///
-/// On any unrecognized key at any stage the pending state resets to `None` and
-/// the key is re-dispatched normally (so `mq` quits rather than silently eating
-/// the `q`). Esc always resets to `None`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) enum PendingKey {
-    #[default]
-    None,
-    /// After `m` — waiting for `i` (inner) or `a` (around).
-    Match,
-    /// After `mi` — waiting for the object char.
-    MatchInner,
-    /// After `ma` — waiting for the object char.
-    MatchAround,
-    /// After `r` — waiting for the replacement character.
-    Replace,
-    /// After `f` — waiting for the character to find forward (inclusive).
-    FindForward,
-    /// After `F` — waiting for the character to find backward (inclusive).
-    FindBackward,
-    /// After `t` — waiting for the character to find forward (exclusive: stop before).
-    TillForward,
-    /// After `T` — waiting for the character to find backward (exclusive: stop after).
-    TillBackward,
-}
 
 // ── Find/till state ───────────────────────────────────────────────────────────
 
@@ -115,7 +86,21 @@ pub(crate) struct Editor {
     /// When `true`, all motions extend the current selection rather than moving it.
     /// Toggled by `e` in Normal mode; cleared on entering Insert mode or pressing Esc.
     pub(super) extend: bool,
-    pub(super) pending: PendingKey,
+    /// Keys consumed so far in the current multi-key sequence (max depth 3).
+    ///
+    /// Empty when at the trie root. Re-walked from the root on each new keypress.
+    /// Cleared on Esc, on a successful command dispatch, or on NoMatch.
+    pub(super) pending_keys: Vec<KeyEvent>,
+    /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
+    ///
+    /// `None` until the user starts typing digits. Defaults to `1` at dispatch.
+    pub(super) count: Option<usize>,
+    /// Stored constructor for a wait-char binding (f/t/F/T/r).
+    ///
+    /// When `Some`, the next character keypress is consumed as an argument and
+    /// passed to this function to produce the `KeymapCommand` to execute.
+    /// Cleared immediately after use.
+    pub(super) wait_char: Option<fn(char) -> KeymapCommand>,
     pub(super) registers: RegisterSet,
     pub(super) colors: EditorColors,
     pub(super) should_quit: bool,
@@ -137,10 +122,14 @@ pub(crate) struct Editor {
     pub(super) statusline_config: StatusLineConfig,
     /// Registry of all mappable commands (motions, selections, edits).
     ///
-    /// The keymap trie (M4) will use this to translate command names to
-    /// function pointers, replacing the hardcoded `match` arms in `handle_normal`.
-    #[allow(dead_code)] // consumed by keymap trie (M4)
+    /// Keyed by name; looked up by `execute_keymap_command` when dispatching
+    /// [`KeymapCommand::Cmd`] bindings.
     pub(super) registry: CommandRegistry,
+    /// The trie-based keymap for each mode.
+    ///
+    /// Built once at startup from [`Keymap::default`]. Will be extended by the
+    /// Steel config layer (M5) to support user overrides.
+    pub(super) keymap: Keymap,
     /// Auto-pair configuration (bracket/quote completion, skip-close, auto-delete).
     ///
     /// Initialized with sensible defaults. The Steel scripting layer will allow
@@ -192,7 +181,9 @@ impl Editor {
             file_path,
             mode: Mode::Normal,
             extend: false,
-            pending: PendingKey::None,
+            pending_keys: Vec::new(),
+            count: None,
+            wait_char: None,
             registers: RegisterSet::new(),
             colors: EditorColors::default(),
             should_quit: false,
@@ -201,6 +192,7 @@ impl Editor {
             file_meta,
             statusline_config: StatusLineConfig::default(),
             registry: CommandRegistry::with_defaults(),
+            keymap: Keymap::default(),
             auto_pairs: AutoPairsConfig::default(),
             last_find: None,
             kitty_enabled: false,

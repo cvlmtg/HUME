@@ -140,19 +140,18 @@ impl CommandRegistry {
     }
 
     /// Look up a command by name.
-    #[allow(dead_code)] // used by keymap trie (M4)
     pub(crate) fn get(&self, name: &str) -> Option<&MappableCommand> {
         self.commands.get(name)
     }
 
     /// Iterate over all registered command names.
-    #[allow(dead_code)] // used by keymap trie (M4)
+    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
     pub(crate) fn names(&self) -> impl Iterator<Item = &&'static str> {
         self.commands.keys()
     }
 
     /// Total number of registered commands.
-    #[allow(dead_code)] // used by tests and keymap trie (M4)
+    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
     pub(crate) fn len(&self) -> usize {
         self.commands.len()
     }

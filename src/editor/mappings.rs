@@ -1,45 +1,20 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
+use crate::command::MappableCommand;
 use crate::ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, replace_selections,
 };
 use crate::ops::motion::{
-    cmd_extend_first_nonblank, cmd_extend_line_end, cmd_extend_line_start,
-    cmd_extend_down, cmd_extend_left, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
-    cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
-    cmd_extend_select_next_WORD, cmd_extend_select_next_word, cmd_extend_select_prev_WORD,
-    cmd_extend_select_prev_word, cmd_extend_up, cmd_goto_first_nonblank, cmd_goto_line_end,
-    cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
-    cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
-    cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
+    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
     find_char_backward, find_char_forward, MotionMode,
 };
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER};
-use crate::core::selection::Selection;
-use crate::ops::selection_cmd::{
-    cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_cycle_primary_backward,
-    cmd_cycle_primary_forward, cmd_flip_selections, cmd_keep_primary_selection,
-    cmd_remove_primary_selection, cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
-};
-use crate::ops::text_object::{
-    cmd_around_WORD, cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
-    cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
-    cmd_around_single_quote, cmd_around_word, cmd_extend_around_WORD, cmd_extend_around_angle,
-    cmd_extend_around_argument, cmd_extend_around_backtick, cmd_extend_around_brace,
-    cmd_extend_around_bracket, cmd_extend_around_double_quote, cmd_extend_around_line,
-    cmd_extend_around_paren, cmd_extend_around_single_quote, cmd_extend_around_word,
-    cmd_extend_inner_WORD, cmd_extend_inner_angle, cmd_extend_inner_argument,
-    cmd_extend_inner_backtick, cmd_extend_inner_brace, cmd_extend_inner_bracket,
-    cmd_extend_inner_double_quote, cmd_extend_inner_line, cmd_extend_inner_paren,
-    cmd_extend_inner_single_quote, cmd_extend_inner_word, cmd_inner_WORD, cmd_inner_angle,
-    cmd_inner_argument, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
-    cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren, cmd_inner_single_quote,
-    cmd_inner_word,
-};
+use crate::ops::selection_cmd::{cmd_collapse_selection, cmd_flip_selections};
 
-use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, PendingKey};
+use super::keymap::{EditorAction, KeymapCommand, WalkResult};
+use super::{Editor, FindChar, MiniBuffer, Mode};
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -57,400 +32,141 @@ impl Editor {
     // ── Normal mode ───────────────────────────────────────────────────────────
 
     fn handle_normal(&mut self, key: KeyEvent) {
-        // ── Pending key sequences ──────────────────────────────────────────────
-        //
-        // Text objects are entered as `m` → `i`/`a` → object char.
-        // Each stage either advances the sequence or resets and re-dispatches.
-        if self.pending != PendingKey::None {
+        // ── Consume WaitChar argument ─────────────────────────────────────────
+        // If a f/t/F/T/r binding fired on the previous keypress, the trie stored
+        // its constructor here. The next character (any key) becomes the argument.
+        if let Some(constructor) = self.wait_char.take() {
             if let KeyCode::Char(ch) = key.code {
-                match self.pending {
-                    PendingKey::Match => {
-                        match ch {
-                            'i' => { self.pending = PendingKey::MatchInner; return; }
-                            'a' => { self.pending = PendingKey::MatchAround; return; }
-                            _ => {} // fall through to normal dispatch below
-                        }
-                    }
-                    PendingKey::MatchInner => {
-                        self.pending = PendingKey::None;
-                        if self.dispatch_text_object(ch, true) {
-                            return;
-                        }
-                        // Unrecognized object char — fall through.
-                    }
-                    PendingKey::MatchAround => {
-                        self.pending = PendingKey::None;
-                        if self.dispatch_text_object(ch, false) {
-                            return;
-                        }
-                        // Unrecognized object char — fall through.
-                    }
-                    PendingKey::Replace => {
-                        self.pending = PendingKey::None;
-                        self.doc.apply_edit(|b, s| replace_selections(b, s, ch));
-                        return;
-                    }
-                    PendingKey::FindForward => {
-                        self.pending = PendingKey::None;
-                        let kind = FindKind::Inclusive;
-                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                        self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
-                        self.last_find = Some(FindChar { ch, kind });
-                        return;
-                    }
-                    PendingKey::FindBackward => {
-                        self.pending = PendingKey::None;
-                        let kind = FindKind::Inclusive;
-                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                        self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
-                        self.last_find = Some(FindChar { ch, kind });
-                        return;
-                    }
-                    PendingKey::TillForward => {
-                        self.pending = PendingKey::None;
-                        let kind = FindKind::Exclusive;
-                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                        self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
-                        self.last_find = Some(FindChar { ch, kind });
-                        return;
-                    }
-                    PendingKey::TillBackward => {
-                        self.pending = PendingKey::None;
-                        let kind = FindKind::Exclusive;
-                        let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                        self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
-                        self.last_find = Some(FindChar { ch, kind });
-                        return;
-                    }
-                    PendingKey::None => unreachable!(),
-                }
+                let count = self.count.take().unwrap_or(1);
+                let cmd = constructor(ch);
+                self.execute_keymap_command(cmd, count);
             }
-            // Non-char key (e.g. Esc) or unrecognized char: reset and fall through.
-            self.pending = PendingKey::None;
+            // Non-char key (e.g. Esc after pressing `f`) just resets — nothing to do,
+            // wait_char was already taken above.
+            return;
         }
 
-        // One-shot extend: Ctrl+motion (kitty keyboard protocol) extends without
-        // entering sticky extend mode. The kitty_enabled gate prevents Ctrl+w/b
-        // from accidentally triggering extend in legacy terminals where they might
-        // arrive as Char+CONTROL. Ctrl+h/j are safe (Backspace/Enter in legacy).
-        let kitty_ctrl = self.kitty_enabled && key.modifiers.contains(KeyModifiers::CONTROL);
-        let extend = self.extend || kitty_ctrl;
+        // ── Hard-reset on Esc ─────────────────────────────────────────────────
+        if key.code == KeyCode::Esc {
+            self.pending_keys.clear();
+            self.count = None;
+            self.extend = false;
+            return;
+        }
 
-        match key.code {
-            // ── Command mode ──────────────────────────────────────────────────
-            KeyCode::Char(':') => {
-                self.set_mode(Mode::Command);
-                self.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
+        // ── Count prefix accumulation ─────────────────────────────────────────
+        // Only accumulate when we're at the trie root (no pending sequence).
+        // `0` without an existing count is the goto-line-start binding, not a digit.
+        if self.pending_keys.is_empty() {
+            match key.code {
+                KeyCode::Char(d @ '1'..='9') => {
+                    let n = self.count.unwrap_or(0) * 10 + (d as usize - '0' as usize);
+                    self.count = Some(n);
+                    return;
+                }
+                KeyCode::Char('0') if self.count.is_some() => {
+                    self.count = Some(self.count.unwrap() * 10);
+                    return;
+                }
+                _ => {}
             }
+        }
 
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.should_quit = true;
-            }
+        // ── Ctrl-key normalisation ────────────────────────────────────────────
+        //
+        // Three categories of CONTROL keys:
+        //
+        // 1. Explicit Ctrl bindings (Ctrl+c, Ctrl+r, Ctrl+,, Ctrl+x, Ctrl+X):
+        //    Have a dedicated trie entry. Used as-is regardless of kitty mode.
+        //
+        // 2. Kitty one-shot extend (Ctrl+h/j/k/l/w/b and similar motion keys):
+        //    No explicit trie binding. Normalised by stripping CONTROL and
+        //    temporarily setting extend=true. Only triggers the one-shot extend
+        //    when kitty_enabled is true (otherwise strips CONTROL but leaves
+        //    extend unchanged, preserving legacy "Ctrl+motion = bare motion"
+        //    behaviour on real terminals).
+        //
+        // Detection: try the key as-is in the trie first. If NoMatch and the key
+        // had CONTROL, strip CONTROL and retry; set one_shot_extend=kitty_enabled.
 
-            // ── Basic motion ──────────────────────────────────────────────────
-            // In extend mode, motions grow the selection instead of moving it.
-            // Ctrl+motion (kitty only) is a one-shot extend — see `extend` above.
-            KeyCode::Char('h') | KeyCode::Left  => if extend {
-                self.apply_motion(|b, s| cmd_extend_left(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_move_left(b, s, 1))
-            },
-            KeyCode::Char('l') | KeyCode::Right => if extend {
-                self.apply_motion(|b, s| cmd_extend_right(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1))
-            },
-            KeyCode::Char('j') | KeyCode::Down  => if extend {
-                self.apply_motion(|b, s| cmd_extend_down(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_move_down(b, s, 1))
-            },
-            KeyCode::Char('k') | KeyCode::Up    => if extend {
-                self.apply_motion(|b, s| cmd_extend_up(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_move_up(b, s, 1))
-            },
-
-            // ── Word motion ───────────────────────────────────────────────────
-            // In extend mode: union the current selection with the next/prev word range.
-            KeyCode::Char('w') => if extend {
-                self.apply_motion(|b, s| cmd_extend_select_next_word(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_select_next_word(b, s, 1))
-            },
-            KeyCode::Char('W') => if extend {
-                self.apply_motion(|b, s| cmd_extend_select_next_WORD(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_select_next_WORD(b, s, 1))
-            },
-            KeyCode::Char('b') => if extend {
-                self.apply_motion(|b, s| cmd_extend_select_prev_word(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_select_prev_word(b, s, 1))
-            },
-            KeyCode::Char('B') => if extend {
-                self.apply_motion(|b, s| cmd_extend_select_prev_WORD(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_select_prev_WORD(b, s, 1))
-            },
-
-            // ── Line start / end ──────────────────────────────────────────────
-            KeyCode::Char('0') | KeyCode::Home => if extend {
-                self.apply_motion(|b, s| cmd_extend_line_start(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1))
-            },
-            KeyCode::Char('$') | KeyCode::End => if extend {
-                self.apply_motion(|b, s| cmd_extend_line_end(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1))
-            },
-            KeyCode::Char('^') => if extend {
-                self.apply_motion(|b, s| cmd_extend_first_nonblank(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1))
-            },
-
-            // ── Paragraph motion ──────────────────────────────────────────────
-            KeyCode::Char('{') => if extend {
-                self.apply_motion(|b, s| cmd_extend_prev_paragraph(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_prev_paragraph(b, s, 1))
-            },
-            KeyCode::Char('}') => if extend {
-                self.apply_motion(|b, s| cmd_extend_next_paragraph(b, s, 1))
-            } else {
-                self.apply_motion(|b, s| cmd_next_paragraph(b, s, 1))
-            },
-
-            // ── Page scroll ───────────────────────────────────────────────────
-            KeyCode::PageDown => {
-                let count = self.view.height.max(1);
-                if extend {
-                    self.apply_motion(|b, s| cmd_extend_down(b, s, count));
+        let (lookup_key, one_shot_extend) =
+            if key.modifiers.contains(KeyModifiers::CONTROL) && self.pending_keys.is_empty() {
+                // Fast-check: does an explicit Ctrl binding exist?
+                let ctrl_result = self.keymap.normal.walk(&[key]);
+                if matches!(ctrl_result, WalkResult::NoMatch) {
+                    // No explicit Ctrl binding — strip CONTROL and dispatch as bare key.
+                    let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
+                    let one_shot = self.kitty_enabled; // only extend in kitty mode
+                    (bare, one_shot)
                 } else {
-                    self.apply_motion(|b, s| cmd_move_down(b, s, count));
+                    (key, false)
                 }
-            }
-            KeyCode::PageUp => {
-                let count = self.view.height.max(1);
-                if extend {
-                    self.apply_motion(|b, s| cmd_extend_up(b, s, count));
-                } else {
-                    self.apply_motion(|b, s| cmd_move_up(b, s, count));
-                }
-            }
-
-            // ── Selection ─────────────────────────────────────────────────────
-            // `;` collapses and also exits extend mode — collapsing is a natural "done" signal.
-            KeyCode::Char(';') => {
-                self.extend = false;
-                self.apply_motion(cmd_collapse_selection);
-            }
-            // `,` — keep primary selection; `ctrl+,` — remove it (keep secondaries).
-            // Note: ctrl+, is only transmitted by kitty keyboard protocol; silently ignored in legacy mode.
-            KeyCode::Char(',') => if key.modifiers.contains(KeyModifiers::CONTROL) {
-                self.apply_motion(cmd_remove_primary_selection);
             } else {
-                self.apply_motion(cmd_keep_primary_selection);
-            },
-            // `S` — split each selection on newlines, producing one cursor per line.
-            // `R` — reserved for split-on-regex (needs minibuffer input, not yet implemented).
-            KeyCode::Char('S') => self.apply_motion(cmd_split_selection_on_newlines),
-            // `(`/`)` — cycle the primary selection backward/forward.
-            KeyCode::Char('(') => self.apply_motion(cmd_cycle_primary_backward),
-            KeyCode::Char(')') => self.apply_motion(cmd_cycle_primary_forward),
-            // `C` — duplicate the selection onto the next line (multicursor).
-            KeyCode::Char('C') => self.apply_motion(cmd_copy_selection_on_next_line),
-            // `_` — trim leading/trailing whitespace from each selection.
-            KeyCode::Char('_') => self.apply_motion(cmd_trim_selection_whitespace),
+                (key, false)
+            };
 
-            // ── Edit ──────────────────────────────────────────────────────────
-            // `d` — delete selection and yank into default register.
-            KeyCode::Char('d') => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.apply_edit(delete_selection);
-                self.registers.write(DEFAULT_REGISTER, yanked);
-            }
-            // `c` — change: yank, delete selection, then enter Insert mode.
-            // The delete and everything typed before Esc form one undo step (Vim model):
-            // we open the group here so the delete is folded in, then set_mode(Insert)
-            // sees the group already open and skips begin_edit_group.
-            KeyCode::Char('c') => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.begin_edit_group();
-                self.doc.apply_edit_grouped(delete_selection);
-                self.registers.write(DEFAULT_REGISTER, yanked);
-                self.set_mode(Mode::Insert);
-            }
-            // `y` — yank selection into default register (no buffer change).
-            KeyCode::Char('y') => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.registers.write(DEFAULT_REGISTER, yanked);
-            }
-            // `p` — paste after; if the selection is non-cursor, the displaced
-            // text is swapped back into the default register.
-            KeyCode::Char('p') => {
-                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
-                    let values = reg.values().to_vec();
-                    let displaced = self.doc.apply_edit(|b, s| paste_after(b, s, &values));
-                    if displaced.iter().any(|s| !s.is_empty()) {
-                        self.registers.write(DEFAULT_REGISTER, displaced);
-                    }
+        // Temporarily activate extend for kitty one-shot.
+        let saved_extend = self.extend;
+        if one_shot_extend {
+            self.extend = true;
+        }
+
+        self.pending_keys.push(lookup_key);
+        let result = self.keymap.normal.walk(&self.pending_keys);
+
+        match result {
+            WalkResult::Leaf(cmd) => {
+                self.pending_keys.clear();
+                let count = self.count.take().unwrap_or(1);
+                self.execute_keymap_command(cmd, count);
+                if one_shot_extend {
+                    self.extend = saved_extend;
                 }
             }
-            // `P` — paste before; same swap semantics as `p`.
-            KeyCode::Char('P') => {
-                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
-                    let values = reg.values().to_vec();
-                    let displaced = self.doc.apply_edit(|b, s| paste_before(b, s, &values));
-                    if displaced.iter().any(|s| !s.is_empty()) {
-                        self.registers.write(DEFAULT_REGISTER, displaced);
-                    }
+            WalkResult::WaitChar(constructor) => {
+                self.pending_keys.clear();
+                self.wait_char = Some(constructor);
+                if one_shot_extend {
+                    self.extend = saved_extend;
                 }
             }
-            KeyCode::Char('u') => self.doc.undo(),
-            KeyCode::Char('U') => self.doc.redo(),
-            // `r` — replace: wait for the next character, then replace every
-            // character in every selection with it (handled in pending dispatch above).
-            // `Ctrl+r` — redo (same key, modifier distinguishes).
-            KeyCode::Char('r') => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.doc.redo();
-                } else {
-                    self.pending = PendingKey::Replace;
+            WalkResult::Interior { .. } => {
+                // More keys needed. pending_keys stays populated.
+                // (Status bar could show the node name — future work.)
+                if one_shot_extend {
+                    self.extend = saved_extend;
                 }
             }
-
-            // ── Find/till character ───────────────────────────────────────────
-            // `f`/`F` — jump to next/previous occurrence of a character (inclusive).
-            // `t`/`T` — jump to just before/after the character (exclusive).
-            // The next keystroke supplies the target character (pending dispatch above).
-            KeyCode::Char('f') => self.pending = PendingKey::FindForward,
-            KeyCode::Char('F') => self.pending = PendingKey::FindBackward,
-            KeyCode::Char('t') => self.pending = PendingKey::TillForward,
-            KeyCode::Char('T') => self.pending = PendingKey::TillBackward,
-
-            // ── Repeat last find ──────────────────────────────────────────────
-            // `=` — repeat forward (absolute direction, always goes right).
-            // `-` — repeat backward (absolute direction, always goes left).
-            // Both are no-ops when no prior f/t/F/T has been executed.
-            KeyCode::Char('=') => {
-                if let Some(FindChar { ch, kind }) = self.last_find {
-                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                    self.apply_motion(|b, s| find_char_forward(b, s, mode, 1, ch, kind));
+            WalkResult::NoMatch => {
+                self.pending_keys.clear();
+                self.count = None;
+                if one_shot_extend {
+                    self.extend = saved_extend;
                 }
             }
-            KeyCode::Char('-') => {
-                if let Some(FindChar { ch, kind }) = self.last_find {
-                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                    self.apply_motion(|b, s| find_char_backward(b, s, mode, 1, ch, kind));
-                }
-            }
-
-            // ── Text objects ──────────────────────────────────────────────────
-            // `m` — enter match mode; next key selects inner (`i`) or around (`a`),
-            // then the object char completes the sequence.
-            KeyCode::Char('m') => self.pending = PendingKey::Match,
-
-            // ── Line selection ────────────────────────────────────────────────
-            // `x`: select the current line. If already on a full-line selection,
-            // jump to the next line. Ctrl+x / extend mode accumulates lines.
-            // `X`: same but walks backward; Ctrl+X accumulates backward.
-            KeyCode::Char('x') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
-                self.apply_motion(cmd_extend_select_line)
-            } else {
-                self.apply_motion(cmd_select_line)
-            },
-            KeyCode::Char('X') => if key.modifiers.contains(KeyModifiers::CONTROL) || self.extend {
-                self.apply_motion(cmd_extend_select_line_backward)
-            } else {
-                self.apply_motion(cmd_select_line_backward)
-            },
-
-            // ── Extend mode toggle ────────────────────────────────────────────
-            // `e` toggles sticky extend mode: motions extend the selection instead of moving.
-            KeyCode::Char('e') => self.extend = !self.extend,
-
-            // ── Mode transitions ──────────────────────────────────────────────
-            // `i` — enter Insert before the selection (collapse to start).
-            KeyCode::Char('i') => {
-                self.apply_motion(|_b, sels| sels.map(|s| Selection::cursor(s.start())));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `I` — enter Insert at the first non-blank character of the line.
-            KeyCode::Char('I') => {
-                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `a` — enter Insert after the cursor (one grapheme right).
-            // If the cursor is on the structural '\n' (end of buffer), don't
-            // advance further — there is nowhere to go.
-            KeyCode::Char('a') => {
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `A` — enter Insert after the last character of the line.
-            KeyCode::Char('A') => {
-                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `o` — dual-purpose:
-            //   extend mode: flip the anchor/head of every selection (Vim visual `o`).
-            //   normal mode: open a new line below the current line and enter Insert.
-            KeyCode::Char('o') => if self.extend {
-                self.apply_motion(cmd_flip_selections);
-            } else {
-                // Open the edit group *before* the newline insertion so that
-                // the structural '\n' and everything typed before Esc form one
-                // undo step (same pattern as `c`). set_mode(Insert) sees the
-                // group is already open and skips begin_edit_group.
-                self.doc.begin_edit_group();
-                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-                self.set_mode(Mode::Insert);
-            },
-
-            // `O` — open a new line above the current line and enter Insert.
-            // Moves to the line start, inserts a '\n' (pushing current content
-            // down), then steps left onto the new empty line.
-            // Same undo-group strategy as `o`.
-            KeyCode::Char('O') => {
-                self.doc.begin_edit_group();
-                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
-                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-                self.apply_motion(|b, s| cmd_move_left(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // Esc resets pending key sequence and extend mode.
-            KeyCode::Esc => {
-                self.pending = PendingKey::None;
-                self.extend = false;
-            }
-
-            _ => {}
         }
     }
 
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     fn handle_insert(&mut self, key: KeyEvent) {
-        match key.code {
-            // ── Return to Normal mode ─────────────────────────────────────────
-            KeyCode::Esc => self.set_mode(Mode::Normal),
-            // Ctrl+C acts as Esc in all modes (Vim convention).
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.set_mode(Mode::Normal);
+        // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
+        // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
+        // are NOT in the insert trie — they're handled below.
+        let trie_result = self.keymap.insert.walk(&[key]);
+        match trie_result {
+            WalkResult::Leaf(cmd) => {
+                self.execute_keymap_command(cmd, 1);
+                return;
             }
+            WalkResult::NoMatch => {}
+            // Interior / WaitChar can't arise in the insert trie (no multi-key
+            // sequences, no wait-char bindings).
+            WalkResult::Interior { .. } | WalkResult::WaitChar(_) => {}
+        }
 
-            // ── Character input ───────────────────────────────────────────────
+        // ── Character input ───────────────────────────────────────────────────
+        match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.auto_pairs.enabled {
                     if let Some(pair) = self.auto_pairs.pair_for_open(ch) {
@@ -492,15 +208,259 @@ impl Editor {
                 self.doc.apply_edit_grouped(delete_char_forward);
             }
 
-            // ── Navigation (same as Normal) ───────────────────────────────────
-            KeyCode::Left  => self.apply_motion(|b, s| cmd_move_left(b, s, 1)),
-            KeyCode::Right => self.apply_motion(|b, s| cmd_move_right(b, s, 1)),
-            KeyCode::Down  => self.apply_motion(|b, s| cmd_move_down(b, s, 1)),
-            KeyCode::Up    => self.apply_motion(|b, s| cmd_move_up(b, s, 1)),
-            KeyCode::Home  => self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1)),
-            KeyCode::End   => self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1)),
-
             _ => {}
+        }
+    }
+
+    // ── Command execution ─────────────────────────────────────────────────────
+
+    /// Execute a keymap command with the given count.
+    ///
+    /// Resolves extend-mode duality for `Cmd` variants, then dispatches either
+    /// through the [`CommandRegistry`] (for pure `cmd_*` functions) or directly
+    /// to [`execute_editor_action`] (for composite/side-effectful actions).
+    ///
+    /// [`CommandRegistry`]: crate::command::CommandRegistry
+    fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
+        match cmd {
+            KeymapCommand::Cmd { name, extend_name } => {
+                // Resolve the extend variant if extend mode is active.
+                let resolved = if self.extend {
+                    extend_name.unwrap_or(name)
+                } else {
+                    name
+                };
+                if let Some(reg_cmd) = self.registry.get(resolved).cloned() {
+                    match reg_cmd {
+                        MappableCommand::Motion { fun, .. } => {
+                            // Motion functions take (buf, sels, count). count defaults to 1
+                            // if the user typed no prefix.
+                            self.apply_motion(|b, s| fun(b, s, count));
+                        }
+                        MappableCommand::Selection { fun, .. } => {
+                            // Selection / text-object functions don't take count.
+                            self.apply_motion(|b, s| fun(b, s));
+                        }
+                        MappableCommand::Edit { fun, .. } => {
+                            self.doc.apply_edit(fun);
+                        }
+                    }
+                }
+            }
+            KeymapCommand::Action(action) => {
+                self.execute_editor_action(action, count);
+            }
+        }
+    }
+
+    /// Execute an [`EditorAction`] — composite or side-effectful operations that
+    /// cannot be expressed as pure `cmd_*` function pointers.
+    ///
+    /// This is a 1:1 migration of the `match` arms that previously lived inline
+    /// in `handle_normal`. Logic is unchanged; the structure is now centralised.
+    fn execute_editor_action(&mut self, action: EditorAction, count: usize) {
+        match action {
+            // ── Mode transitions ──────────────────────────────────────────────
+            EditorAction::EnterCommandMode => {
+                self.set_mode(Mode::Command);
+                self.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
+            }
+
+            EditorAction::ExitInsert => {
+                self.set_mode(Mode::Normal);
+            }
+
+            // `i` — collapse each selection to its start, enter Insert.
+            EditorAction::EnterInsertBefore => {
+                self.apply_motion(|_b, sels| {
+                    use crate::core::selection::Selection;
+                    sels.map(|s| Selection::cursor(s.start()))
+                });
+                self.set_mode(Mode::Insert);
+            }
+
+            // `a` — move one grapheme right, enter Insert.
+            EditorAction::EnterInsertAfter => {
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `I` — move to first non-blank on the line, enter Insert.
+            EditorAction::EnterInsertLineStart => {
+                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `A` — move to line end, then one more right, enter Insert.
+            EditorAction::EnterInsertLineEnd => {
+                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
+                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // `o` — dual purpose:
+            //   extend mode: flip anchor/head of every selection.
+            //   normal mode: open a new line below, enter Insert.
+            //
+            // The edit group opened here ensures the structural '\n' and
+            // everything typed before Esc form one undo step (same pattern as `c`).
+            EditorAction::OpenLineBelowOrFlip => {
+                if self.extend {
+                    self.apply_motion(cmd_flip_selections);
+                } else {
+                    self.doc.begin_edit_group();
+                    self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
+                    self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                    self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
+                    self.set_mode(Mode::Insert);
+                }
+            }
+
+            // `O` — open a new line above, enter Insert.
+            EditorAction::OpenLineAbove => {
+                self.doc.begin_edit_group();
+                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
+                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
+                self.apply_motion(|b, s| cmd_move_left(b, s, 1));
+                self.set_mode(Mode::Insert);
+            }
+
+            // ── Edit composites ───────────────────────────────────────────────
+
+            // `d` — yank selections into the default register, then delete them.
+            EditorAction::Delete => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
+                self.doc.apply_edit(delete_selection);
+                self.registers.write(DEFAULT_REGISTER, yanked);
+            }
+
+            // `c` — yank, delete, enter Insert (all in one undo group).
+            // The group is opened here so the delete is folded in; set_mode(Insert)
+            // sees the group is already open and skips begin_edit_group.
+            EditorAction::Change => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
+                self.doc.begin_edit_group();
+                self.doc.apply_edit_grouped(delete_selection);
+                self.registers.write(DEFAULT_REGISTER, yanked);
+                self.set_mode(Mode::Insert);
+            }
+
+            // `y` — yank selections into the default register (no buffer change).
+            EditorAction::Yank => {
+                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
+                self.registers.write(DEFAULT_REGISTER, yanked);
+            }
+
+            // `p` — paste after; swap displaced text back into the register when
+            // the selection was non-cursor (replace-and-swap semantics).
+            EditorAction::PasteAfter => {
+                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
+                    let values = reg.values().to_vec();
+                    let displaced = self.doc.apply_edit(|b, s| paste_after(b, s, &values));
+                    if displaced.iter().any(|s| !s.is_empty()) {
+                        self.registers.write(DEFAULT_REGISTER, displaced);
+                    }
+                }
+            }
+
+            // `P` — paste before; same swap semantics.
+            EditorAction::PasteBefore => {
+                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
+                    let values = reg.values().to_vec();
+                    let displaced = self.doc.apply_edit(|b, s| paste_before(b, s, &values));
+                    if displaced.iter().any(|s| !s.is_empty()) {
+                        self.registers.write(DEFAULT_REGISTER, displaced);
+                    }
+                }
+            }
+
+            EditorAction::Undo => self.doc.undo(),
+            EditorAction::Redo => self.doc.redo(),
+
+            // ── Selection state ───────────────────────────────────────────────
+
+            // `;` — collapse AND exit extend mode (collapsing is a "done" signal).
+            EditorAction::CollapseAndExitExtend => {
+                self.extend = false;
+                self.apply_motion(cmd_collapse_selection);
+            }
+
+            EditorAction::ToggleExtend => {
+                self.extend = !self.extend;
+            }
+
+            // ── Find / till character ─────────────────────────────────────────
+
+            EditorAction::FindForward { ch, kind } => {
+                let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                self.apply_motion(|b, s| find_char_forward(b, s, mode, count, ch, kind));
+                self.last_find = Some(FindChar { ch, kind });
+            }
+
+            EditorAction::FindBackward { ch, kind } => {
+                let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                self.apply_motion(|b, s| find_char_backward(b, s, mode, count, ch, kind));
+                self.last_find = Some(FindChar { ch, kind });
+            }
+
+            // `=` / `-` — repeat last find in absolute direction.
+            EditorAction::RepeatFindForward => {
+                if let Some(FindChar { ch, kind }) = self.last_find {
+                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                    self.apply_motion(|b, s| find_char_forward(b, s, mode, count, ch, kind));
+                }
+            }
+            EditorAction::RepeatFindBackward => {
+                if let Some(FindChar { ch, kind }) = self.last_find {
+                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+                    self.apply_motion(|b, s| find_char_backward(b, s, mode, count, ch, kind));
+                }
+            }
+
+            // `r` + char — replace every character in every selection with `ch`.
+            EditorAction::Replace(ch) => {
+                self.doc.apply_edit(|b, s| replace_selections(b, s, ch));
+            }
+
+            // ── Page scroll ───────────────────────────────────────────────────
+            // Uses view.height as count (not the user's count prefix).
+
+            EditorAction::PageDown => {
+                let page = self.view.height.max(1);
+                if self.extend {
+                    // "extend-down" command, look it up in registry.
+                    if let Some(MappableCommand::Motion { fun, .. }) =
+                        self.registry.get("extend-down").cloned()
+                    {
+                        self.apply_motion(|b, s| fun(b, s, page));
+                    }
+                } else if let Some(MappableCommand::Motion { fun, .. }) =
+                    self.registry.get("move-down").cloned()
+                {
+                    self.apply_motion(|b, s| fun(b, s, page));
+                }
+            }
+
+            EditorAction::PageUp => {
+                let page = self.view.height.max(1);
+                if self.extend {
+                    if let Some(MappableCommand::Motion { fun, .. }) =
+                        self.registry.get("extend-up").cloned()
+                    {
+                        self.apply_motion(|b, s| fun(b, s, page));
+                    }
+                } else if let Some(MappableCommand::Motion { fun, .. }) =
+                    self.registry.get("move-up").cloned()
+                {
+                    self.apply_motion(|b, s| fun(b, s, page));
+                }
+            }
+
+            // ── Misc ──────────────────────────────────────────────────────────
+
+            EditorAction::Quit => {
+                self.should_quit = true;
+            }
         }
     }
 
@@ -538,84 +498,6 @@ impl Editor {
                 _ => false,
             }
         })
-    }
-
-    // ── Text object dispatch ──────────────────────────────────────────────────
-
-    /// Dispatch a text-object command by object char.
-    ///
-    /// Called by the pending-key handler after `mi`/`ma` + object char.
-    /// Returns `true` if `ch` matched a known object, `false` if unrecognized
-    /// (caller falls through to normal dispatch).
-    ///
-    /// `inner == true` → select the interior (e.g. contents inside parens).
-    /// `inner == false` → select around (e.g. parens themselves included).
-    #[allow(non_snake_case)] // WORD (uppercase) is an intentional Vim/Helix concept
-    fn dispatch_text_object(&mut self, ch: char, inner: bool) -> bool {
-        if self.extend {
-            match (ch, inner) {
-                // ── Word / WORD ───────────────────────────────────────────────
-                ('w', true)  => self.apply_motion(cmd_extend_inner_word),
-                ('w', false) => self.apply_motion(cmd_extend_around_word),
-                ('W', true)  => self.apply_motion(cmd_extend_inner_WORD),
-                ('W', false) => self.apply_motion(cmd_extend_around_WORD),
-                // ── Brackets ─────────────────────────────────────────────────
-                ('(' | ')', true)  => self.apply_motion(cmd_extend_inner_paren),
-                ('(' | ')', false) => self.apply_motion(cmd_extend_around_paren),
-                ('[' | ']', true)  => self.apply_motion(cmd_extend_inner_bracket),
-                ('[' | ']', false) => self.apply_motion(cmd_extend_around_bracket),
-                ('{' | '}', true)  => self.apply_motion(cmd_extend_inner_brace),
-                ('{' | '}', false) => self.apply_motion(cmd_extend_around_brace),
-                ('<' | '>', true)  => self.apply_motion(cmd_extend_inner_angle),
-                ('<' | '>', false) => self.apply_motion(cmd_extend_around_angle),
-                // ── Quotes ───────────────────────────────────────────────────
-                ('"', true)  => self.apply_motion(cmd_extend_inner_double_quote),
-                ('"', false) => self.apply_motion(cmd_extend_around_double_quote),
-                ('\'', true)  => self.apply_motion(cmd_extend_inner_single_quote),
-                ('\'', false) => self.apply_motion(cmd_extend_around_single_quote),
-                ('`', true)  => self.apply_motion(cmd_extend_inner_backtick),
-                ('`', false) => self.apply_motion(cmd_extend_around_backtick),
-                // ── Arguments ────────────────────────────────────────────────
-                ('a', true)  => self.apply_motion(cmd_extend_inner_argument),
-                ('a', false) => self.apply_motion(cmd_extend_around_argument),
-                // ── Line ─────────────────────────────────────────────────────
-                ('l', true)  => self.apply_motion(cmd_extend_inner_line),
-                ('l', false) => self.apply_motion(cmd_extend_around_line),
-                _ => return false,
-            }
-        } else {
-            match (ch, inner) {
-                // ── Word / WORD ───────────────────────────────────────────────
-                ('w', true)  => self.apply_motion(cmd_inner_word),
-                ('w', false) => self.apply_motion(cmd_around_word),
-                ('W', true)  => self.apply_motion(cmd_inner_WORD),
-                ('W', false) => self.apply_motion(cmd_around_WORD),
-                // ── Brackets ─────────────────────────────────────────────────
-                ('(' | ')', true)  => self.apply_motion(cmd_inner_paren),
-                ('(' | ')', false) => self.apply_motion(cmd_around_paren),
-                ('[' | ']', true)  => self.apply_motion(cmd_inner_bracket),
-                ('[' | ']', false) => self.apply_motion(cmd_around_bracket),
-                ('{' | '}', true)  => self.apply_motion(cmd_inner_brace),
-                ('{' | '}', false) => self.apply_motion(cmd_around_brace),
-                ('<' | '>', true)  => self.apply_motion(cmd_inner_angle),
-                ('<' | '>', false) => self.apply_motion(cmd_around_angle),
-                // ── Quotes ───────────────────────────────────────────────────
-                ('"', true)  => self.apply_motion(cmd_inner_double_quote),
-                ('"', false) => self.apply_motion(cmd_around_double_quote),
-                ('\'', true)  => self.apply_motion(cmd_inner_single_quote),
-                ('\'', false) => self.apply_motion(cmd_around_single_quote),
-                ('`', true)  => self.apply_motion(cmd_inner_backtick),
-                ('`', false) => self.apply_motion(cmd_around_backtick),
-                // ── Arguments ────────────────────────────────────────────────
-                ('a', true)  => self.apply_motion(cmd_inner_argument),
-                ('a', false) => self.apply_motion(cmd_around_argument),
-                // ── Line ─────────────────────────────────────────────────────
-                ('l', true)  => self.apply_motion(cmd_inner_line),
-                ('l', false) => self.apply_motion(cmd_around_line),
-                _ => return false,
-            }
-        }
-        true
     }
 
     // ── Command mode ──────────────────────────────────────────────────────────
