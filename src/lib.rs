@@ -5,6 +5,7 @@ pub(crate) mod io;
 pub(crate) mod command;
 pub(crate) mod auto_pairs;
 pub(crate) mod helpers;
+pub(crate) mod os;
 pub(crate) mod terminal;
 pub(crate) mod editor;
 
