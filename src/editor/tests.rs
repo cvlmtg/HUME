@@ -5,7 +5,7 @@ use crate::core::document::Document;
 use crate::testing::{parse_state, serialize_state};
 use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
-use super::{Editor, Mode, PendingKey};
+use super::{Editor, Mode};
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 
@@ -25,7 +25,9 @@ fn editor_from(input: &str) -> Editor {
         file_path: None,
         mode: Mode::Normal,
         extend: false,
-        pending: PendingKey::None,
+        pending_keys: Vec::new(),
+        count: None,
+        wait_char: None,
         registers: crate::ops::register::RegisterSet::new(),
         colors: crate::ui::theme::EditorColors::default(),
         should_quit: false,
@@ -34,6 +36,7 @@ fn editor_from(input: &str) -> Editor {
         file_meta: None,
         statusline_config: crate::ui::statusline::StatusLineConfig::default(),
         registry: crate::command::CommandRegistry::with_defaults(),
+        keymap: super::keymap::Keymap::default(),
         auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
         last_find: None,
         kitty_enabled: false,
@@ -167,18 +170,18 @@ fn p_over_selection_swaps_displaced_text_into_register() {
 
 // ── `r<char>` pending-key replace sequence ─────────────────────────────────
 
-/// `r` alone must set `PendingKey::Replace`; the following character must
-/// replace every grapheme in every selection; and `Esc` after a bare `r`
-/// must cancel without side effects.
+/// `r` sets a wait-char constructor; the following character replaces every
+/// grapheme in every selection; and `Esc` after a bare `r` cancels without
+/// side effects.
 #[test]
 fn r_then_char_replaces_every_grapheme_in_selection() {
     let mut ed = editor_from("-[hell]>o\n");
 
     ed.handle_key(key('r'));
-    assert_eq!(ed.pending, PendingKey::Replace, "pending after 'r'");
+    assert!(ed.wait_char.is_some(), "wait_char set after 'r'");
 
     ed.handle_key(key('x'));
-    assert_eq!(ed.pending, PendingKey::None, "pending cleared after replacement char");
+    assert!(ed.wait_char.is_none(), "wait_char cleared after replacement char");
     assert_eq!(state(&ed), "-[xxxx]>o\n");
 }
 
@@ -186,46 +189,46 @@ fn r_then_char_replaces_every_grapheme_in_selection() {
 fn r_then_esc_cancels_without_side_effects() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('r'));
+    // Esc resets wait_char (and all other pending state).
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.pending, PendingKey::None);
+    assert!(ed.wait_char.is_none());
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged after cancelled replace");
 }
 
 // ── `m i w` three-key text-object sequence ─────────────────────────────────
 
-/// The pending-key state machine must advance through `Match` → `MatchInner`
-/// → `None` and dispatch the correct text-object command on the third key.
+/// The trie must advance through `m` (Interior) → `mi` (Interior) → `miw`
+/// (Leaf) and dispatch the correct text-object command on the third key.
 /// This exercises the entire three-key pipeline end-to-end.
 #[test]
 fn m_i_w_selects_inner_word() {
     let mut ed = editor_from("-[h]>ello world\n");
 
     ed.handle_key(key('m'));
-    assert_eq!(ed.pending, PendingKey::Match);
+    assert_eq!(ed.pending_keys.len(), 1, "pending_keys has 'm' after first press");
 
     ed.handle_key(key('i'));
-    assert_eq!(ed.pending, PendingKey::MatchInner);
+    assert_eq!(ed.pending_keys.len(), 2, "pending_keys has 'm','i' after second press");
 
     ed.handle_key(key('w'));
-    assert_eq!(ed.pending, PendingKey::None);
+    assert!(ed.pending_keys.is_empty(), "pending_keys cleared after dispatch");
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
 
-/// An unrecognised object char after `ma` must fall through cleanly — the
-/// pending state is cleared without modifying the buffer or the selection.
+/// An unrecognised object char after `ma` must clear pending state without
+/// modifying the buffer or the selection.
 #[test]
 fn m_a_unknown_char_falls_through_cleanly() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('m'));
     ed.handle_key(key('a'));
-    // '~' is not a known text-object char — should fall through.
+    // '~' is not a known text-object char — NoMatch clears pending state.
     ed.handle_key(key('~'));
 
-    assert_eq!(ed.pending, PendingKey::None);
-    // Selection and buffer are unchanged (fall-through re-dispatches '~' as a
-    // normal key, which is currently a no-op).
+    assert!(ed.pending_keys.is_empty(), "pending_keys cleared on NoMatch");
+    // Selection and buffer are unchanged.
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
