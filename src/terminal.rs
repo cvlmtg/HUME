@@ -46,18 +46,29 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
 /// Undo everything [`init`] did: pop the kitty keyboard flags (harmless no-op
 /// on legacy terminals), leave the alternate screen, and disable raw mode.
 ///
-/// Safe to call multiple times — all operations are idempotent on every major
-/// platform. The unconditional `PopKeyboardEnhancementFlags` sends `\x1b[<u`,
-/// which legacy terminals ignore.
+/// All three operations are attempted even if an earlier one fails — the goal
+/// is to leave the shell as usable as possible. The first error encountered is
+/// returned; subsequent errors are silently discarded.
 pub(crate) fn restore() -> io::Result<()> {
-    // Pop kitty keyboard protocol before anything else. The sequence is
-    // harmless on legacy terminals (no state was pushed, the bytes are ignored).
-    execute!(stdout(), PopKeyboardEnhancementFlags)?;
-    // Disable raw mode before leaving the alternate screen: if LeaveAlternateScreen
-    // fails we at least restore the input mode so the shell stays usable.
-    disable_raw_mode()?;
-    execute!(stdout(), LeaveAlternateScreen)?;
-    Ok(())
+    let mut first_err: Option<io::Error> = None;
+    let mut try_op = |r: io::Result<()>| {
+        if first_err.is_none() {
+            first_err = r.err();
+        }
+    };
+
+    // Pop kitty keyboard protocol first. Harmless on legacy terminals — no
+    // flags were pushed, so the sequence is silently ignored.
+    try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
+    // Disable raw mode before leaving the alternate screen so the shell stays
+    // usable even if LeaveAlternateScreen fails.
+    try_op(disable_raw_mode());
+    try_op(execute!(stdout(), LeaveAlternateScreen));
+
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// Install a panic hook that restores the terminal before printing the panic

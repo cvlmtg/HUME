@@ -4,11 +4,11 @@ use std::os::unix::io::AsRawFd;
 
 /// Probe for kitty keyboard protocol support by querying the terminal directly.
 ///
-/// Sends `\x1B[?u` (query progressive enhancement flags) followed by `\x1B[c`
-/// (primary device attributes / DA1). Per the kitty spec, a terminal that
-/// supports the protocol responds with `\x1B[?<flags>u`; a terminal that
-/// doesn't will respond only with the DA1 answer (`\x1B[?...c`), which acts as
-/// a sentinel.
+/// Sends three queries in one write: `\x1B[?u` (kitty keyboard protocol flags
+/// query), `\x1B[>q` (XTVERSION — terminal name/version, used as a fallback
+/// for terminals that support kitty push but don't answer the flags query),
+/// and `\x1B[c` (DA1 sentinel — virtually all terminals respond to this,
+/// bounding the read loop).
 ///
 /// We write to and read from `/dev/tty` directly, bypassing crossterm's
 /// internal event system, which is subject to timing issues on some terminals.
@@ -30,13 +30,14 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
     let mut response = Vec::with_capacity(256);
     let mut buf = [0u8; 256]; // large enough for kitty + XTVERSION + DA1
 
-    // We sent two queries and expect up to two responses:
-    //   \x1B[?<flags>u  — kitty flags reply  (only on kitty-capable terminals)
-    //   \x1B[?<attrs>c  — DA1 sentinel       (virtually all terminals)
+    // We sent three queries and expect up to three responses:
+    //   \x1B[?<flags>u        — kitty flags reply   (only on kitty-capable terminals)
+    //   \x1BP>|<name>\x1B\\   — XTVERSION reply     (most modern terminals)
+    //   \x1B[?<attrs>c        — DA1 sentinel         (virtually all terminals)
     //
     // We read until we have seen the DA1 'c' terminator, which signals that the
     // terminal has finished responding. Stopping at the first 'c' or 'u' would
-    // risk missing the kitty response if the two replies arrive in separate reads.
+    // risk missing the kitty response if the replies arrive in separate reads.
     //
     // Initial timeout is generous to handle slow/remote terminals; subsequent
     // reads use a short timeout since bytes arrive nearly instantaneously once
@@ -72,5 +73,5 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
         timeout_ms = 50;
     }
 
-    Ok(super::has_kitty_response(&response) || super::is_kitty_from_xtversion(&response))
+    Ok(super::has_kitty_response(&response) || super::has_kitty_xtversion(&response))
 }
