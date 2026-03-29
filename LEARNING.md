@@ -1025,3 +1025,139 @@ parameters.
   source).
 - **`'_`**: one reference, one place, the compiler can figure it out.
 - **No annotation**: a function that takes no references, or only owned values.
+
+---
+
+## Separating Description from Execution
+
+A recurring architectural pattern in HUME is splitting a feature into two
+layers: one that *names* or *describes* an operation as a value, and one that
+*runs* it. The `f`/`F` find-character commands are a concrete illustration.
+
+### The three layers for `f`
+
+**Layer 1 — key binding (`keymap.rs`, default trie)**
+
+```rust
+t.bind(key!('f'), KeyTrieNode::WaitChar(|ch| {
+    KeymapCommand::Action(EditorAction::FindForward { ch, kind: Inclusive })
+}));
+```
+
+This is pure *data*: the keymap records that pressing `f` should eventually
+produce a `FindForward` action once the argument character arrives. No editor
+state is touched here. The keymap can be printed, serialised, and rewritten by
+the scripting layer without knowing anything about buffers or selections.
+
+**Layer 2 — descriptor (`keymap.rs`, `EditorAction` enum)**
+
+```rust
+pub(crate) enum EditorAction {
+    FindForward  { ch: char, kind: FindKind },
+    FindBackward { ch: char, kind: FindKind },
+    // ...
+}
+```
+
+`EditorAction` is a plain data type — a closed enum of everything the editor
+can do that involves side effects. It plays the same role as a command object in
+the command pattern: it fully describes *what* to do, but knows nothing about
+*how*. Being a value, it can be stored (the `Quit` action that sets
+`should_quit`), matched in tests, and reasoned about without running anything.
+
+**Layer 3 — execution (`mappings.rs`, `execute_editor_action`)**
+
+```rust
+EditorAction::FindForward { ch, kind } => {
+    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
+    self.apply_motion(|buf, sels| find_char_forward(buf, sels, ch, kind, count, mode));
+    self.last_find = Some(FindChar { ch, kind });
+}
+```
+
+Only here does the code touch mutable editor state: the buffer, selections,
+`last_find`, extend mode. This is the single place that knows about
+`find_char_forward` and about storing the last find for `;`/`,` repeats.
+
+### Why not collapse the layers?
+
+The tempting alternative is to skip `EditorAction` and have the `WaitChar`
+closure call `find_char_forward` directly:
+
+```rust
+// Don't do this:
+t.bind(key!('f'), KeyTrieNode::WaitChar(|ch| {
+    KeymapCommand::Action(/* but Action would hold a closure... */)
+}));
+```
+
+The problem is that closures capturing mutable state (`&mut self`) can't be
+stored in a `HashMap` as a uniform type — they each have a unique anonymous
+type. You could use `Box<dyn Fn(&mut Editor)>`, but then:
+
+- The keymap becomes opaque: you can't inspect it, test it, or serialise it.
+- Every test has to run the full executor instead of pattern-matching a value.
+- The scripting layer can't enumerate or override bindings.
+
+Keeping `EditorAction` as a plain enum means the keymap is a pure value — a
+*description* of what the editor does, not an *execution* of it.
+
+### The same pattern elsewhere in HUME
+
+This separation is consistent across the codebase:
+
+| Description layer | Execution layer |
+|---|---|
+| `CommandRegistry` (`command.rs`) | `execute_keymap_command` (`mappings.rs`) |
+| `EditorAction` enum (`keymap.rs`) | `execute_editor_action` (`mappings.rs`) |
+| `KeymapCommand::Cmd { name, .. }` | Registry lookup + `MappableCommand` dispatch |
+| `Selection` (anchor + head chars) | `apply_motion` / `apply_edit` on `Document` |
+
+In each case, the description layer is a data type with no mutable access to
+editor state. The execution layer has `&mut self` and does exactly one job:
+interpret the description against the current state.
+
+This is the **command pattern** in Rust's idiom: instead of a trait object with
+an `execute` method, you use a concrete enum. Rust's exhaustive `match` then
+guarantees at compile time that every variant is handled — you can't add a new
+`EditorAction` variant without the compiler pointing you to every execution site
+that needs updating.
+
+### How the three files divide responsibility
+
+Zooming in on the `CommandRegistry` row of the table above, three files each
+own a single slice of the dispatch pipeline:
+
+| File | Role | Knows about keys? | Knows about editor state? |
+|---|---|---|---|
+| `command.rs` | Name → function pointer | No | No |
+| `keymap.rs` | Key sequence → command name | Yes | No |
+| `mappings.rs` | Resolve name, call function | No | Yes (`&mut self`) |
+
+**`command.rs`** is the registry: 87 `cmd_*` function pointers wrapped with a
+`&'static str` name and a doc string. It knows nothing about keys or about how
+the editor's mutable state is structured. You can query it by name and get back
+a `MappableCommand` value.
+
+**`keymap.rs`** is the key binding table: its trie maps key sequences to
+`KeymapCommand::Cmd { name: "move-right", extend_name: Some("extend-right") }`.
+It stores *names*, not function pointers. This is the thing the Steel scripting
+layer will rewrite to support user keymaps — and it can do so without touching
+any execution logic.
+
+**`mappings.rs`** is the glue. `execute_keymap_command` takes a name, looks it
+up in the registry, and calls the function pointer against `&mut self`:
+
+```
+keypress
+  → keymap.rs  trie walk  →  KeymapCommand::Cmd { name: "move-right" }
+  → mappings.rs            →  registry.get("move-right")
+  → command.rs             →  MappableCommand::Motion { fun: cmd_move_right }
+  → mappings.rs            →  fun(buf, sels, count)
+```
+
+The layering means any of the three can change independently. Adding a new
+command only touches `command.rs` (register it) and `keymap.rs` (bind a key).
+The executor in `mappings.rs` is unchanged. Rebinding a key only touches
+`keymap.rs`. Changing how dispatch works (e.g. adding macro recording) only
+touches `mappings.rs`.
