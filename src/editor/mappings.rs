@@ -41,8 +41,9 @@ impl Editor {
                 let cmd = constructor(ch);
                 self.execute_keymap_command(cmd, count);
             }
-            // Non-char key (e.g. Esc after pressing `f`) just resets — nothing to do,
-            // wait_char was already taken above.
+            // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
+            // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
+            self.count = None;
             return;
         }
 
