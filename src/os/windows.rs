@@ -17,9 +17,11 @@ use windows_sys::Win32::{
 /// Probe for kitty keyboard protocol support on Windows.
 ///
 /// Uses the same DA1-sentinel method as the Unix probe: sends `\x1B[?u`
-/// (query progressive enhancement flags) followed by `\x1B[c` (DA1). A
-/// terminal supporting the protocol responds with `\x1B[?<flags>u`; one that
-/// doesn't responds only with the DA1 reply.
+/// (kitty keyboard protocol flags query), `\x1B[>q` (XTVERSION — terminal
+/// name/version, fallback for terminals that support kitty push but don't
+/// answer the flags query), and `\x1B[c` (DA1 sentinel). A terminal supporting
+/// the protocol responds with `\x1B[?<flags>u`; one that doesn't responds only
+/// with the XTVERSION and DA1 replies.
 ///
 /// We temporarily enable `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin so that the
 /// terminal's response arrives as raw VT bytes via `ReadFile`, and restore the
@@ -48,15 +50,24 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
 
         // Enable VT processing on stdout so the terminal interprets the probe.
         // (crossterm enables this when entering the alt screen, but we probe
-        // before that, so we set it explicitly here.)
-        SetConsoleMode(
+        // before that, so we set it explicitly here.) If either SetConsoleMode
+        // fails, VT sequences won't work, so bail out rather than sending bytes
+        // into the void.
+        if SetConsoleMode(
             stdout_handle,
             orig_out_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-        );
+        ) == 0
+        {
+            return Ok(false);
+        }
 
         // Enable VT input on stdin so the terminal's response arrives as raw
         // bytes via ReadFile rather than as translated KEY_EVENT records.
-        SetConsoleMode(stdin_handle, orig_in_mode | ENABLE_VIRTUAL_TERMINAL_INPUT);
+        if SetConsoleMode(stdin_handle, orig_in_mode | ENABLE_VIRTUAL_TERMINAL_INPUT) == 0 {
+            // Restore stdout mode before returning.
+            SetConsoleMode(stdout_handle, orig_out_mode);
+            return Ok(false);
+        }
 
         let result = run_probe(stdout_handle, stdin_handle);
 
@@ -129,5 +140,5 @@ unsafe fn run_probe(
         }
     }
 
-    Ok(super::has_kitty_response(&response) || super::is_kitty_from_xtversion(&response))
+    Ok(super::has_kitty_response(&response) || super::has_kitty_xtversion(&response))
 }
