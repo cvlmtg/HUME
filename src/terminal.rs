@@ -3,7 +3,7 @@ use std::io::{self, stdout, Stdout};
 use crossterm::{
     execute,
     event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, supports_keyboard_enhancement},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
@@ -27,12 +27,7 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
     enable_raw_mode()?;
     let mut out = stdout();
 
-    // Check well-known env vars first: zero-cost and avoids the CSI probe's
-    // read timeout on terminals that are known to support kitty keyboard protocol
-    // (e.g. WezTerm sometimes times out on the probe even though it supports it).
-    // Fall back to the CSI probe only for unrecognised terminals.
-    let kitty_enabled = is_known_kitty_terminal()
-        || supports_keyboard_enhancement().unwrap_or(false);
+    let kitty_enabled = crate::os::probe_kitty_support().unwrap_or(false);
     if kitty_enabled {
         execute!(
             out,
@@ -63,28 +58,6 @@ pub(crate) fn restore() -> io::Result<()> {
     disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
     Ok(())
-}
-
-/// Detect kitty keyboard protocol support via environment variables.
-///
-/// Checked before the CSI `\x1B[?u` probe to avoid its read timeout on
-/// terminals that are known supporters. Each terminal sets a documented env var:
-///
-/// | Terminal | Variable |
-/// |----------|----------|
-/// | WezTerm  | `WEZTERM_EXECUTABLE` or `TERM_PROGRAM=WezTerm` |
-/// | kitty    | `KITTY_WINDOW_ID` or `TERM=xterm-kitty` |
-/// | ghostty  | `GHOSTTY_RESOURCES_DIR` or `TERM_PROGRAM=ghostty` |
-/// | foot     | `FOOT_SERVER_SOCKET` or `TERM=foot` |
-fn is_known_kitty_terminal() -> bool {
-    let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
-    let term = std::env::var("TERM").unwrap_or_default();
-    std::env::var("WEZTERM_EXECUTABLE").is_ok()
-        || std::env::var("KITTY_WINDOW_ID").is_ok()
-        || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok()
-        || std::env::var("FOOT_SERVER_SOCKET").is_ok()
-        || matches!(term_program.as_str(), "WezTerm" | "ghostty")
-        || matches!(term.as_str(), "xterm-kitty" | "foot" | "xterm-ghostty")
 }
 
 /// Install a panic hook that restores the terminal before printing the panic
