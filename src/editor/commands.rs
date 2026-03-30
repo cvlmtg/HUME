@@ -74,7 +74,7 @@ pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize) {
 
 pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize) {
     ed.set_mode(Mode::Command);
-    ed.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
+    ed.minibuf = Some(MiniBuffer { prompt: ':', input: String::new(), cursor: 0 });
 }
 
 pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize) {
@@ -325,7 +325,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
     ed.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search_direction = SearchDirection::Forward;
     ed.set_mode(Mode::Search);
-    ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new() });
+    ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
 }
 
 /// Enter backward search mode (`?`).
@@ -333,7 +333,7 @@ pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
     ed.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search_direction = SearchDirection::Backward;
     ed.set_mode(Mode::Search);
-    ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new() });
+    ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new(), cursor: 0 });
 }
 
 /// Build the primary selection after a search match.

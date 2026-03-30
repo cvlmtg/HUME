@@ -117,6 +117,8 @@ pub(crate) struct MiniBuffer {
     pub prompt: char,
     /// The text typed so far.
     pub input: String,
+    /// Byte offset of the edit cursor within `input`. Always on a UTF-8 char boundary.
+    pub cursor: usize,
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -463,7 +465,8 @@ impl Editor {
         self
     }
     pub(crate) fn with_minibuf(mut self, prompt: char, input: &str) -> Self {
-        self.minibuf = Some(MiniBuffer { prompt, input: input.to_string() });
+        let cursor = input.len(); // cursor at end of input, which is the default state
+        self.minibuf = Some(MiniBuffer { prompt, input: input.to_string(), cursor });
         self
     }
 }

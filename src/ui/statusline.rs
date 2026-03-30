@@ -124,7 +124,6 @@ fn render_command_line(
     prompt: char,
     input: &str,
 ) {
-
     // The command line fully replaces the status bar row — no segment layout,
     // no mode pill. The prompt character makes the mode self-evident.
     fill_row(screen_buf, colors, area, y);
