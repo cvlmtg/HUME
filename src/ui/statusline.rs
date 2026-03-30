@@ -146,7 +146,7 @@ fn render_status_message(
 
 /// Render the one-row status bar at the bottom of the area.
 ///
-/// Content is driven by [`StatusLineConfig`], which lives in `ctx`. Each slot
+/// Content is driven by [`StatusLineConfig`], which lives on `Editor`. Each slot
 /// (left, center, right) is a sequence of [`StatusSegment`]s that are rendered
 /// into styled spans and placed at the appropriate edge of the row.
 ///

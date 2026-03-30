@@ -197,6 +197,21 @@ fn r_then_esc_cancels_without_side_effects() {
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged after cancelled replace");
 }
 
+/// `f<Esc>` cancels the wait-char without moving the cursor.
+/// Unlike `r`, find/till has extend duality, so this exercises the extend
+/// branch being cleanly torn down too.
+#[test]
+fn f_then_esc_cancels_without_side_effects() {
+    let mut ed = editor_from("-[h]>ello a\n");
+    ed.handle_key(key('f'));
+    assert!(ed.wait_char.is_some(), "wait_char set after 'f'");
+    ed.handle_key(key_esc());
+
+    assert!(ed.wait_char.is_none(), "wait_char cleared after Esc");
+    assert!(ed.pending_char.is_none(), "pending_char not set");
+    assert_eq!(state(&ed), "-[h]>ello a\n", "buffer and cursor unchanged after cancelled find");
+}
+
 // ── `m i w` three-key text-object sequence ─────────────────────────────────
 
 /// The trie must advance through `m` (Interior) → `mi` (Interior) → `miw`
