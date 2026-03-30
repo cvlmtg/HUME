@@ -4,9 +4,8 @@ use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
-use crate::editor::Mode;
+use crate::editor::{Editor, Mode};
 use crate::core::grapheme::grapheme_count;
-use crate::ui::renderer::RenderCtx;
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -86,19 +85,19 @@ impl Default for StatusLineConfig {
 /// Priority: command mini-buffer > transient status message > normal status bar.
 pub(crate) fn render_bottom_row(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
     area: Rect,
     y: u16,
     cursor_line: usize,
     cursor_head: usize,
     buf: &Buffer,
 ) {
-    if let Some((prompt, input)) = ctx.minibuf {
-        render_command_line(screen_buf, ctx, area, y, prompt, input);
-    } else if let Some(msg) = ctx.status_msg {
-        render_status_message(screen_buf, ctx, area, y, msg);
+    if let Some(mb) = &editor.minibuf {
+        render_command_line(screen_buf, &editor.colors, area, y, mb.prompt, &mb.input);
+    } else if let Some(msg) = editor.status_msg.as_deref() {
+        render_status_message(screen_buf, &editor.colors, area, y, msg);
     } else {
-        render_status_bar(screen_buf, ctx, cursor_line, cursor_head, buf, area, y);
+        render_status_bar(screen_buf, editor, cursor_line, cursor_head, buf, area, y);
     }
 }
 
@@ -111,13 +110,12 @@ pub(crate) fn render_bottom_row(
 /// is positioned after the input by the caller.
 fn render_command_line(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    colors: &crate::ui::theme::EditorColors,
     area: Rect,
     y: u16,
     prompt: char,
     input: &str,
 ) {
-    let colors = ctx.colors;
 
     // The command line fully replaces the status bar row — no segment layout,
     // no mode pill. The prompt character makes the mode self-evident.
@@ -136,14 +134,14 @@ fn render_command_line(
 /// is cleared on the next keypress.
 fn render_status_message(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    colors: &crate::ui::theme::EditorColors,
     area: Rect,
     y: u16,
     msg: &str,
 ) {
     let blank: String = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, ctx.colors.status_bar);
-    screen_buf.set_string(area.x + 1, y, msg, ctx.colors.status_bar); // +1: left margin, see render_command_line
+    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+    screen_buf.set_string(area.x + 1, y, msg, colors.status_bar); // +1: left margin, see render_command_line
 }
 
 /// Render the one-row status bar at the bottom of the area.
@@ -163,24 +161,24 @@ fn render_status_message(
 /// - Right is dropped if it would overlap left.
 fn render_status_bar(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
     cursor_line: usize,
     cursor_head: usize,
     buf: &Buffer,
     area: Rect,
     y: u16,
 ) {
-    let colors = ctx.colors;
-    let config = ctx.statusline_config;
+    let colors = &editor.colors;
+    let config = &editor.statusline_config;
 
     // Fill the entire row with the base status bar style first.
     let blank: String = " ".repeat(area.width as usize);
     screen_buf.set_string(area.x, y, &blank, colors.status_bar);
 
     // Render each slot into a sequence of styled spans.
-    let left_spans = render_slot(&config.left, ctx, cursor_line, cursor_head, buf);
-    let center_spans = render_slot(&config.center, ctx, cursor_line, cursor_head, buf);
-    let right_spans = render_slot(&config.right, ctx, cursor_line, cursor_head, buf);
+    let left_spans = render_slot(&config.left, editor, cursor_line, cursor_head, buf);
+    let center_spans = render_slot(&config.center, editor, cursor_line, cursor_head, buf);
+    let right_spans = render_slot(&config.right, editor, cursor_line, cursor_head, buf);
 
     let left_w = slot_width(&left_spans);
     let center_w = slot_width(&center_spans);
@@ -222,17 +220,17 @@ fn render_status_bar(
 /// is active). The caller skips zero-width spans.
 fn render_segment(
     seg: StatusSegment,
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
     cursor_line: usize,
     cursor_head: usize,
     buf: &Buffer,
 ) -> (String, Style) {
-    let colors = ctx.colors;
+    let colors = &editor.colors;
     match seg {
         StatusSegment::ModePill => {
             // The mode pill includes a leading and trailing space so its
             // neighbors don't need to add their own padding.
-            let (label, style) = match (ctx.mode, ctx.extend) {
+            let (label, style) = match (editor.mode, editor.extend) {
                 (Mode::Normal, true)  => (" EXT ", colors.status_extend),
                 (Mode::Normal, false) => (" NOR ", colors.status_normal),
                 (Mode::Insert, _)     => (" INS ", colors.status_insert),
@@ -243,7 +241,7 @@ fn render_segment(
         }
         StatusSegment::Separator => ("│".to_string(), colors.status_bar),
         StatusSegment::FileName => {
-            let name = ctx.file_path
+            let name = editor.file_path.as_deref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("[scratch]");
@@ -254,14 +252,14 @@ fn render_segment(
             (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.status_bar)
         }
         StatusSegment::KittyProtocol => {
-            if ctx.kitty_enabled {
+            if editor.kitty_enabled {
                 ("🐱".to_string(), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
             }
         }
         StatusSegment::Selections => {
-            let n = ctx.doc.sels().len();
+            let n = editor.doc.sels().len();
             // Only show the count when there is more than one selection —
             // the single-cursor case is the default and needs no annotation.
             if n > 1 {
@@ -279,7 +277,7 @@ fn render_segment(
 /// mode) and applies the boundary-aware spacing rule between adjacent spans.
 fn render_slot(
     segments: &[StatusSegment],
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
     cursor_line: usize,
     cursor_head: usize,
     buf: &Buffer,
@@ -287,7 +285,7 @@ fn render_slot(
     let mut spans: Vec<(String, Style)> = Vec::new();
 
     for &seg in segments {
-        let (text, style) = render_segment(seg, ctx, cursor_line, cursor_head, buf);
+        let (text, style) = render_segment(seg, editor, cursor_line, cursor_head, buf);
         if text.is_empty() {
             continue;
         }
@@ -299,7 +297,7 @@ fn render_slot(
 
             if !a_ends_space && !b_starts_space {
                 // Neither boundary is a space — insert a gap span.
-                spans.push((" ".to_string(), ctx.colors.status_bar));
+                spans.push((" ".to_string(), editor.colors.status_bar));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
                 // Both boundaries are spaces — trim exactly one leading space
