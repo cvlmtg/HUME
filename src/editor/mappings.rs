@@ -430,16 +430,18 @@ impl Editor {
             // Save-as: write to the specified path.
             let path = std::path::Path::new(path_str);
             let result = if path.exists() {
-                // File already exists — read its metadata to preserve perms, then overwrite.
-                crate::io::read_file(path)
-                    .and_then(|(_, meta)| crate::io::write_file_atomic(&content, &meta).map(|()| meta))
+                // File already exists — read only its metadata to preserve perms, then overwrite.
+                crate::io::read_file_meta(path)
+                    .and_then(|meta| crate::io::write_file_atomic(&content, &meta).map(|()| meta))
             } else {
                 // New file — create with default permissions.
                 crate::io::write_file_new(&content, path)
             };
             match result {
                 Ok(meta) => {
-                    self.file_path = Some(path_str.into());
+                    // Store the canonicalized path so file_path and file_meta.resolved_path
+                    // always agree, even when the user supplied a relative or symlink path.
+                    self.file_path = Some(meta.resolved_path.clone());
                     self.file_meta = Some(meta);
                     self.doc.mark_saved();
                     self.status_msg = Some(format!("Written {line_count} lines"));

@@ -935,6 +935,22 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     assert!(!ed.doc.is_dirty());
 }
 
+#[test]
+fn colon_wq_path_saves_to_new_file_and_quits() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let new_path = tmp_dir.path().join("wq_test.txt");
+    assert!(!new_path.exists());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let cmd = format!(":wq {}", new_path.display());
+    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.should_quit);
+    assert!(new_path.exists());
+    assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
+}
+
 // ── File metadata preservation ────────────────────────────────────────────────
 
 #[cfg(unix)]
