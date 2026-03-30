@@ -73,6 +73,8 @@ pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
     /// Signature: `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
+    ///
+    /// Motions never mutate the buffer, so `repeatable` is always `false`.
     Motion {
         name: &'static str,
         fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet,
@@ -80,6 +82,8 @@ pub(crate) enum MappableCommand {
     /// Selection or text-object operation (no count).
     ///
     /// Signature: `fn(&Buffer, SelectionSet) -> SelectionSet`
+    ///
+    /// Pure selection ops never mutate the buffer, so `repeatable` is always `false`.
     Selection {
         name: &'static str,
         fun: fn(&Buffer, SelectionSet) -> SelectionSet,
@@ -90,6 +94,10 @@ pub(crate) enum MappableCommand {
     Edit {
         name: &'static str,
         fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
+        /// Whether `.` should replay this command. Set to `true` for edits that
+        /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
+        /// for internal primitives like `delete-char-backward`.
+        repeatable: bool,
     },
     /// Editor-level command requiring `&mut Editor` context.
     ///
@@ -103,6 +111,8 @@ pub(crate) enum MappableCommand {
     EditorCmd {
         name: &'static str,
         fun: fn(&mut super::Editor, usize),
+        /// Whether `.` should replay this command.
+        repeatable: bool,
     },
 }
 
@@ -116,7 +126,16 @@ impl MappableCommand {
         }
     }
 
-
+    /// Returns `true` if this command should be recorded for `.` repeat.
+    ///
+    /// Motions and selections are never repeatable — they don't mutate the
+    /// buffer. Edit and EditorCmd commands opt in explicitly at registration.
+    pub(crate) fn is_repeatable(&self) -> bool {
+        match self {
+            Self::Motion { .. } | Self::Selection { .. } => false,
+            Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
+        }
+    }
 }
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
@@ -176,12 +195,18 @@ impl CommandRegistry {
         }
         macro_rules! edit {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Edit { name: $name, fun: $fun })
+                self.register(MappableCommand::Edit { name: $name, fun: $fun, repeatable: false })
+            };
+            ($name:literal, $doc:literal, $fun:expr, repeatable) => {
+                self.register(MappableCommand::Edit { name: $name, fun: $fun, repeatable: true })
             };
         }
         macro_rules! editor_cmd {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun })
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false })
+            };
+            ($name:literal, $doc:literal, $fun:expr, repeatable) => {
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: true })
             };
         }
 
@@ -305,21 +330,21 @@ impl CommandRegistry {
         use super::commands::*;
 
         // ── Editor commands — mode transitions ────────────────────────────────
-        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",                     cmd_insert_before);
-        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",                cmd_insert_after);
-        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",             cmd_insert_at_line_start);
-        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",                     cmd_insert_at_line_end);
-        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",                     cmd_open_line_below);
-        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",                     cmd_open_line_above);
+        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",                     cmd_insert_before,        repeatable);
+        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",                cmd_insert_after,         repeatable);
+        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",             cmd_insert_at_line_start, repeatable);
+        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",                     cmd_insert_at_line_end,   repeatable);
+        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",                     cmd_open_line_below,      repeatable);
+        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",                     cmd_open_line_above,      repeatable);
         editor_cmd!("command-mode",         "Open the command-mode mini-buffer.",                                           cmd_command_mode);
         editor_cmd!("exit-insert",          "Return to normal mode from insert mode.",                                     cmd_exit_insert);
 
         // ── Editor commands — edit composites ─────────────────────────────────
-        editor_cmd!("delete",       "Yank selections into the default register, then delete them.",                        cmd_delete);
-        editor_cmd!("change",       "Yank, delete selections, then enter insert mode (one undo group).",                   cmd_change);
+        editor_cmd!("delete",       "Yank selections into the default register, then delete them.",                        cmd_delete,       repeatable);
+        editor_cmd!("change",       "Yank, delete selections, then enter insert mode (one undo group).",                   cmd_change,       repeatable);
         editor_cmd!("yank",         "Yank selections into the default register without deleting.",                         cmd_yank);
-        editor_cmd!("paste-after",  "Paste register contents after the selection.",                                        cmd_paste_after);
-        editor_cmd!("paste-before", "Paste register contents before the selection.",                                       cmd_paste_before);
+        editor_cmd!("paste-after",  "Paste register contents after the selection.",                                        cmd_paste_after,  repeatable);
+        editor_cmd!("paste-before", "Paste register contents before the selection.",                                       cmd_paste_before, repeatable);
         editor_cmd!("undo",         "Undo the last change.",                                                               cmd_undo);
         editor_cmd!("redo",         "Redo the last undone change.",                                                        cmd_redo);
 
@@ -342,13 +367,17 @@ impl CommandRegistry {
         editor_cmd!("extend-repeat-find-backward", "Extend: repeat the last find/till motion backward.",                  cmd_extend_repeat_find_backward);
 
         // ── Editor commands — replace (reads pending_char) ───────────────────
-        editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace);
+        editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace, repeatable);
 
         // ── Editor commands — page scroll ─────────────────────────────────────
         editor_cmd!("page-down",        "Scroll down by one viewport height.",                 cmd_page_down);
         editor_cmd!("extend-page-down", "Extend selections down by one viewport height.",      cmd_extend_page_down);
         editor_cmd!("page-up",          "Scroll up by one viewport height.",                   cmd_page_up);
         editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",        cmd_extend_page_up);
+
+        // ── Editor commands — repeat ──────────────────────────────────────────
+        // Not flagged repeatable: `.` repeating itself would be nonsensical.
+        editor_cmd!("repeat-last-action", "Repeat the last editing action (`.`).", cmd_repeat);
 
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
@@ -377,11 +406,12 @@ mod tests {
     ///    2 selection-state editor commands
     ///   12 find/till editor commands (8 + 4 repeat)
     ///    1 replace editor command
+    ///    1 repeat-last-action editor command
     ///    4 page-scroll editor commands
     ///    1 quit editor command
     ///   ──
-    ///  126 total
-    const EXPECTED_COMMAND_COUNT: usize = 126;
+    ///  127 total
+    const EXPECTED_COMMAND_COUNT: usize = 127;
 
     #[test]
     fn registry_has_expected_count() {

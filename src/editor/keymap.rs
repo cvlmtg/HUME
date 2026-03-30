@@ -404,6 +404,9 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('='), cmd!("repeat-find-forward",  "extend-repeat-find-forward"));
     t.bind_leaf(key!('-'), cmd!("repeat-find-backward", "extend-repeat-find-backward"));
 
+    // Repeat last editing action.
+    t.bind_leaf(key!('.'), cmd!("repeat-last-action"));
+
     // ── Goto prefix ───────────────────────────────────────────────────────────
     // `g` → second key (goto commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));

@@ -25,6 +25,28 @@ mod commands;
 mod keymap;
 mod mappings;
 
+// ── Dot-repeat state ─────────────────────────────────────────────────────────
+
+/// A recorded editing action that can be replayed by `.`.
+///
+/// Stores the recipe to re-execute a command rather than the raw changeset —
+/// changesets are position-dependent and can't be replayed at a different cursor.
+#[derive(Debug, Clone)]
+pub(super) struct RepeatableAction {
+    /// The command name that initiated this action (e.g. `"delete"`, `"change"`).
+    pub command: &'static str,
+    /// The count prefix used originally. Overridden when `.` itself is given a count.
+    pub count: usize,
+    /// Character argument for wait-char commands (`r`, `f`, `t`, …).
+    /// `None` for commands that don't consume a char.
+    pub char_arg: Option<char>,
+    /// Keystrokes typed during the insert session, if any.
+    ///
+    /// Populated by the insert-mode recording path when the command transitions
+    /// to Insert mode. Empty for non-insert actions like `delete` or `paste-after`.
+    pub insert_keys: Vec<KeyEvent>,
+}
+
 // ── Find/till state ───────────────────────────────────────────────────────────
 
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
@@ -150,6 +172,31 @@ pub(crate) struct Editor {
     /// Ctrl+h from Backspace, Ctrl+j from Enter, etc. — unlocking Ctrl+motion
     /// one-shot extend shortcuts. Set by the caller after [`Editor::open`].
     pub(crate) kitty_enabled: bool,
+
+    // ── Dot-repeat fields ─────────────────────────────────────────────────────
+
+    /// The last repeatable editing action, available for replay via `.`.
+    /// `None` until the user performs a repeatable command.
+    pub(super) last_action: Option<RepeatableAction>,
+    /// Insert-mode keystroke buffer, active while recording an insert session.
+    ///
+    /// `Some` between entering Insert mode (via a repeatable command) and
+    /// returning to Normal mode. Text-input keys (Char, Enter, Backspace, Delete)
+    /// are pushed here so they can be replayed by `.`. Navigation keys (arrows,
+    /// Esc) are not recorded — consistent with Vim's repeat semantics.
+    /// `None` at all other times.
+    pub(super) insert_recording: Option<Vec<KeyEvent>>,
+    /// Whether the user explicitly typed a count prefix before the current command.
+    ///
+    /// Set in `handle_normal` when `self.count` is `Some` before being consumed.
+    /// Read by `cmd_repeat` to decide whether to use the new count or reuse the
+    /// original action's count. Cleared after every dispatch.
+    pub(super) explicit_count: bool,
+    /// `true` while `cmd_repeat` is re-executing a recorded action.
+    ///
+    /// Prevents the replayed command from overwriting `last_action` and prevents
+    /// `set_mode` from opening a new `insert_recording` during replay.
+    pub(super) replaying: bool,
 }
 
 impl Editor {
@@ -201,6 +248,10 @@ impl Editor {
             auto_pairs: AutoPairsConfig::default(),
             last_find: None,
             kitty_enabled: false,
+            last_action: None,
+            insert_recording: None,
+            explicit_count: false,
+            replaying: false,
         })
     }
 
@@ -270,17 +321,29 @@ impl Editor {
         match (self.mode, mode) {
             (Mode::Normal, Mode::Insert) => {
                 self.extend = false;
-                // Only open a new group if one isn't already open. `c` opens
-                // the group itself (folding the delete in) before calling set_mode.
+                // Only open a new group if one isn't already open. `c` and
+                // `open-line-*` open the group themselves (folding structural
+                // edits in) before calling set_mode.
                 if !self.doc.is_group_open() {
                     self.doc.begin_edit_group();
+                }
+                // Start recording insert keystrokes for `.` repeat, but skip
+                // this during replay (we're feeding recorded keys, not new ones).
+                if !self.replaying {
+                    self.insert_recording = Some(Vec::new());
                 }
             }
             (Mode::Insert, Mode::Normal) => {
                 // Leaving Insert: commit all accumulated edits as one undo step.
                 self.doc.commit_edit_group();
+                // Finalize the insert recording into last_action (if both exist).
+                if let (Some(keys), Some(action)) =
+                    (self.insert_recording.take(), self.last_action.as_mut())
+                {
+                    action.insert_keys = keys;
+                }
             }
-            // Command mode transitions do not affect undo groups.
+            // Command mode transitions do not affect undo groups or recording.
             _ => {}
         }
         self.mode = mode;
@@ -333,6 +396,10 @@ impl Editor {
             auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
             last_find: None,
             kitty_enabled: false,
+            last_action: None,
+            insert_recording: None,
+            explicit_count: false,
+            replaying: false,
         }
     }
 

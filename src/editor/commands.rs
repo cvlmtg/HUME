@@ -237,6 +237,47 @@ pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
     }
 }
 
+// ── Dot repeat ───────────────────────────────────────────────────────────────
+
+/// Replay the last repeatable editing action.
+///
+/// Count semantics: if the user typed an explicit count before `.`, that count
+/// overrides the original; otherwise the original count is reused. This mirrors
+/// Vim's behaviour (`.` is `3.` → repeat with 3; `.` alone → repeat with original).
+pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
+    let Some(action) = ed.last_action.clone() else { return };
+
+    // Prefer an explicit user count; fall back to the count from the original action.
+    let effective_count = if ed.explicit_count { count } else { action.count };
+
+    // Restore the char arg so wait-char commands (replace, find/till) work.
+    ed.pending_char = action.char_arg;
+
+    // Guard against re-recording: take last_action so the replayed command
+    // doesn't overwrite it, then restore it afterwards.
+    ed.last_action = None;
+    ed.replaying = true;
+
+    // Re-execute the original command through the normal dispatch path.
+    let cmd = super::keymap::KeymapCommand { name: action.command, extend_name: None };
+    ed.execute_keymap_command(cmd, effective_count);
+
+    // Feed recorded insert keystrokes through the normal insert handler.
+    for key in action.insert_keys.clone() {
+        ed.handle_insert(key);
+    }
+
+    // If the command left us in Insert mode (e.g. `change`, `insert-before`),
+    // exit back to Normal — the edit group is committed in set_mode.
+    if ed.mode == super::Mode::Insert {
+        ed.set_mode(super::Mode::Normal);
+    }
+
+    // Restore the action so `.` can be pressed again.
+    ed.replaying = false;
+    ed.last_action = Some(action);
+}
+
 // ── Page scroll ───────────────────────────────────────────────────────────────
 //
 // Uses `view.height` as the move count rather than the user's numeric prefix.
