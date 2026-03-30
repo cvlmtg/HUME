@@ -1348,3 +1348,37 @@ fn dot_repeats_paste_after() {
     assert!(count >= 2, "expected at least 2 occurrences of 'ab', got: {buf:?}");
 }
 
+/// `f`/`t` are NOT repeatable (they have `=`/`-` for that). Pressing `.`
+/// after a find/till motion should be a no-op.
+#[test]
+fn dot_after_find_is_noop() {
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    // `f` + `o` moves cursor to the first 'o' in "hello".
+    ed.handle_key(key('f'));
+    ed.handle_key(key('o'));
+    let state_after_find = state(&ed);
+
+    // `.` should have nothing recorded and leave state unchanged.
+    assert!(ed.last_action.is_none());
+    ed.handle_key(key('.'));
+    assert_eq!(state(&ed), state_after_find);
+}
+
+/// Entering command mode (`:`) while `insert_recording` could theoretically be
+/// active should not leave stale recording state. This exercises the defensive
+/// clear in `set_mode`'s `_ => {}` arm.
+#[test]
+fn command_mode_clears_stale_insert_recording() {
+    let mut ed = editor_from("-[a]>\n");
+
+    // Manually set insert_recording to simulate a stale state (e.g. a future
+    // code path that forgets to clean up before transitioning to Command mode).
+    ed.insert_recording = Some(vec![key('x')]);
+
+    // Transition to Command mode — should clear the stale recording.
+    ed.handle_key(key(':'));
+    assert_eq!(ed.mode, Mode::Command);
+    assert!(ed.insert_recording.is_none());
+}
+

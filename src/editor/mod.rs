@@ -343,8 +343,13 @@ impl Editor {
                     action.insert_keys = keys;
                 }
             }
-            // Command mode transitions do not affect undo groups or recording.
-            _ => {}
+            // Other transitions (e.g. Normal → Command) do not affect undo groups.
+            // Clear any stale insert_recording defensively — it should never be
+            // Some here in normal usage, but belt-and-suspenders prevents a
+            // half-recorded session from leaking into the next insert entry.
+            _ => {
+                self.insert_recording = None;
+            }
         }
         self.mode = mode;
     }
