@@ -12,9 +12,9 @@ pub(crate) struct HighlightSet {
     entries: Vec<(usize, usize, Style)>,
 }
 
-/// A permanent empty highlight set. Use `&EMPTY` instead of
-/// `&HighlightSet::new()` when no highlights are needed — it avoids a heap
-/// allocation and can be stored as a `&'static HighlightSet`.
+/// A permanent empty highlight set for tests and contexts where no highlights
+/// are needed. Avoids a heap allocation and can be stored as a `&'static`.
+#[cfg(test)]
 pub(crate) static EMPTY: HighlightSet = HighlightSet { entries: Vec::new() };
 
 impl HighlightSet {
