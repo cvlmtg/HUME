@@ -29,25 +29,21 @@ pub(crate) struct FileMeta {
     pub gid: u32,
 }
 
-// ── read_file ─────────────────────────────────────────────────────────────────
+// ── read_file_meta ────────────────────────────────────────────────────────────
 
-/// Read a file from disk, resolving symlinks and capturing metadata.
+/// Capture metadata for an existing file without reading its content.
 ///
-/// Returns `(content, meta)` where:
-/// - `content` is the raw file text (CRLF normalization happens in `Buffer::from`)
-/// - `meta` carries the resolved path, permissions, and ownership for write-back
-pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
-    // canonicalize follows every symlink in the path and returns the real path.
-    // This is what we write to later — so the symlink is preserved.
+/// Used when saving over an existing file: we need the permissions and
+/// ownership to preserve them, but not the content itself.
+pub(crate) fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
     let resolved = fs::canonicalize(path)?;
-
     let metadata = fs::metadata(&resolved)?;
 
     #[cfg(unix)]
     let meta = {
         use std::os::unix::fs::MetadataExt;
         FileMeta {
-            resolved_path: resolved.clone(),
+            resolved_path: resolved,
             permissions: metadata.permissions(),
             uid: metadata.uid(),
             gid: metadata.gid(),
@@ -56,11 +52,23 @@ pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 
     #[cfg(not(unix))]
     let meta = FileMeta {
-        resolved_path: resolved.clone(),
+        resolved_path: resolved,
         permissions: metadata.permissions(),
     };
 
-    let content = fs::read_to_string(&resolved)?;
+    Ok(meta)
+}
+
+// ── read_file ─────────────────────────────────────────────────────────────────
+
+/// Read a file from disk, resolving symlinks and capturing metadata.
+///
+/// Returns `(content, meta)` where:
+/// - `content` is the raw file text (CRLF normalization happens in `Buffer::from`)
+/// - `meta` carries the resolved path, permissions, and ownership for write-back
+pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
+    let meta = read_file_meta(path)?;
+    let content = fs::read_to_string(&meta.resolved_path)?;
     Ok((content, meta))
 }
 
