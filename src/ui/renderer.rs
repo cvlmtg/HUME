@@ -991,6 +991,23 @@ mod tests {
          NOR │ [scratch]     1:1");
     }
 
+    #[test]
+    fn search_match_count_absent_in_command_mode() {
+        // After confirming a search, entering Command mode must NOT show the
+        // match count on the command line — that would be confusing.
+        let doc = doc_at("hello world hello\n", 0);
+        let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v)
+            .with_search_regex("hello")
+            .with_mode(Mode::Command)
+            .with_minibuf(':', "w");
+        let out = render_to_string(&editor, 30, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello world hello
+        ~
+         :w");
+    }
+
     // ── Dirty indicator ───────────────────────────────────────────────────────
 
     #[test]
