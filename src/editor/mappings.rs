@@ -366,11 +366,29 @@ impl Editor {
             .map(|m| m.input.trim().to_owned())
             .unwrap_or_default();
 
-        match input.as_str() {
-            "q" | "quit" => self.should_quit = true,
-            "w" | "write" => { self.write_file(); }
+        // Split into command name and optional argument (e.g. "w foo.txt" → "w" + "foo.txt").
+        let (cmd_raw, arg) = match input.split_once(' ') {
+            Some((c, a)) => (c.trim(), Some(a.trim())),
+            None => (input.as_str(), None),
+        };
+
+        // Strip a trailing `!` to detect force variants (e.g. "q!" → "q" + force=true).
+        let (cmd, force) = match cmd_raw.strip_suffix('!') {
+            Some(base) => (base, true),
+            None => (cmd_raw, false),
+        };
+
+        match cmd {
+            "q" | "quit" => {
+                if !force && self.doc.is_dirty() {
+                    self.status_msg = Some("Unsaved changes (add ! to override)".into());
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            "w" | "write" => { self.write_file_cmd(arg); }
             "wq" => {
-                if self.write_file() {
+                if self.write_file_cmd(arg) {
                     self.should_quit = true;
                 }
             }
@@ -380,39 +398,74 @@ impl Editor {
         }
     }
 
-    /// Serialize the buffer and write it to disk atomically, preserving the
-    /// original file's permissions, ownership, and symlink structure.
+    /// Serialize the buffer and write it to disk.
     ///
-    /// Delegates the I/O to `crate::io::write_file_atomic`. Sets
-    /// `self.status_msg` on both success and failure.
+    /// If `arg` is `Some(path)`, performs a save-as: writes to the specified
+    /// path and updates `self.file_path` / `self.file_meta` so that subsequent
+    /// `:w` (no argument) targets the same path.
+    ///
+    /// If `arg` is `None`, writes to the current file. Errors with
+    /// "no file name" if the buffer is a scratch buffer with no path.
+    ///
+    /// On success, calls `self.doc.mark_saved()` and sets a status message.
     /// Returns `true` on success, `false` on any error.
-    fn write_file(&mut self) -> bool {
-        let Some(meta) = self.file_meta.as_ref() else {
-            self.status_msg = Some("Error: no file name".into());
-            return false;
-        };
+    fn write_file_cmd(&mut self, arg: Option<&str>) -> bool {
+        let (content, line_count) = {
+            let buf = self.doc.buf();
+            // The rope is always stored LF-normalized; restore CRLF for files that
+            // originally used it so we don't silently change line endings on save.
+            let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
+                buf.to_string().replace('\n', "\r\n")
+            } else {
+                buf.to_string()
+            };
+            // The buffer always ends with a structural '\n', so len_lines() returns
+            // one more than the number of visible lines (ropey counts the empty
+            // string after the final newline as an extra line).
+            let line_count = buf.len_lines().saturating_sub(1);
+            (content, line_count)
+        }; // buf borrow released here
 
-        let buf = self.doc.buf();
-        // The rope is always stored LF-normalized; restore CRLF for files that
-        // originally used it so we don't silently change line endings on save.
-        let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
-            buf.to_string().replace('\n', "\r\n")
-        } else {
-            buf.to_string()
-        };
-        // The buffer always ends with a structural '\n', so len_lines() returns
-        // one more than the number of visible lines (ropey counts the empty
-        // string after the final newline as an extra line).
-        let line_count = buf.len_lines().saturating_sub(1);
-
-        match crate::io::write_file_atomic(&content, meta) {
-            Ok(()) => {
-                self.status_msg = Some(format!("Written {line_count} lines"));
-                true
+        if let Some(path_str) = arg {
+            // Save-as: write to the specified path.
+            let path = std::path::Path::new(path_str);
+            let result = if path.exists() {
+                // File already exists — read its metadata to preserve perms, then overwrite.
+                crate::io::read_file(path)
+                    .and_then(|(_, meta)| crate::io::write_file_atomic(&content, &meta).map(|()| meta))
+            } else {
+                // New file — create with default permissions.
+                crate::io::write_file_new(&content, path)
+            };
+            match result {
+                Ok(meta) => {
+                    self.file_path = Some(path_str.into());
+                    self.file_meta = Some(meta);
+                    self.doc.mark_saved();
+                    self.status_msg = Some(format!("Written {line_count} lines"));
+                    true
+                }
+                Err(e) => {
+                    self.status_msg = Some(format!("Error: {e}"));
+                    false
+                }
             }
-            Err(e) => {
-                self.status_msg = Some(format!("Error: {e}"));
-                false
+        } else {
+            // Write to the current file.
+            let Some(meta) = self.file_meta.as_ref() else {
+                self.status_msg = Some("Error: no file name".into());
+                return false;
+            };
+            match crate::io::write_file_atomic(&content, meta) {
+                Ok(()) => {
+                    self.doc.mark_saved();
+                    self.status_msg = Some(format!("Written {line_count} lines"));
+                    true
+                }
+                Err(e) => {
+                    self.status_msg = Some(format!("Error: {e}"));
+                    false
+                }
             }
         }
     }

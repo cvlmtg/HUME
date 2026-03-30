@@ -213,7 +213,6 @@ impl History {
     }
 
     /// The currently active revision.
-    #[cfg(test)]
     pub(crate) fn current_id(&self) -> RevisionId {
         self.current
     }

@@ -51,6 +51,8 @@ pub(crate) enum StatusSegment {
     ///
     /// Useful for diagnosing whether the protocol was successfully negotiated.
     KittyProtocol,
+    /// Dirty indicator: `"[+]"` when the buffer has unsaved changes, empty otherwise.
+    DirtyIndicator,
 }
 
 /// Describes the content layout of the status bar's three horizontal slots.
@@ -79,7 +81,7 @@ pub(crate) struct StatusLineConfig {
 impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {
-            left: vec![StatusSegment::ModePill, StatusSegment::Separator, StatusSegment::FileName],
+            left: vec![StatusSegment::ModePill, StatusSegment::Separator, StatusSegment::FileName, StatusSegment::DirtyIndicator],
             center: vec![],
             right: vec![StatusSegment::KittyProtocol, StatusSegment::Position],
         }
@@ -261,6 +263,13 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
             // the single-cursor case is the default and needs no annotation.
             if n > 1 {
                 (format!("{n} sels"), colors.status_bar)
+            } else {
+                (String::new(), colors.status_bar)
+            }
+        }
+        StatusSegment::DirtyIndicator => {
+            if editor.doc.is_dirty() {
+                ("[+]".to_string(), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
             }

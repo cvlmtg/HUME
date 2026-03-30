@@ -1,6 +1,6 @@
 use crate::core::buffer::Buffer;
 use crate::core::changeset::ChangeSet;
-use crate::core::history::History;
+use crate::core::history::{History, RevisionId};
 use crate::core::selection::SelectionSet;
 
 // ── IntoApplyResult ───────────────────────────────────────────────────────────
@@ -68,6 +68,10 @@ pub(crate) struct Document {
     history: History,
     /// Non-`None` while an edit group is open (i.e. while in insert mode).
     group: Option<EditGroup>,
+    /// The revision at which the buffer was last saved (or first opened).
+    /// `is_dirty()` compares `history.current_id()` against this value so
+    /// that undoing back to the save point correctly reports a clean buffer.
+    saved_revision: RevisionId,
 }
 
 /// Accumulated state for an open edit group.
@@ -86,7 +90,23 @@ impl Document {
     pub(crate) fn new(buf: Buffer, sels: SelectionSet) -> Self {
         let buf_len = buf.len_chars();
         let history = History::new(sels.clone(), buf_len);
-        Self { buf, sels, history, group: None }
+        // RevisionId(0) is the root — the initial state is considered saved.
+        Self { buf, sels, history, group: None, saved_revision: RevisionId(0) }
+    }
+
+    /// Returns `true` if the buffer has unsaved changes.
+    ///
+    /// Comparing revision IDs means undoing back to the save point correctly
+    /// reports a clean buffer — a simple `dirty: bool` flag cannot do this.
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.history.current_id() != self.saved_revision
+    }
+
+    /// Record the current revision as the saved state.
+    ///
+    /// Call this immediately after a successful file write.
+    pub(crate) fn mark_saved(&mut self) {
+        self.saved_revision = self.history.current_id();
     }
 
     /// Apply an edit command and record it in the undo history.
@@ -725,6 +745,60 @@ mod tests {
 
         d.redo();
         assert_eq!(state(&d), "ab-[h]>ello\n");
+    }
+
+    // ── dirty tracking ───────────────────────────────────────────────────────
+
+    #[test]
+    fn fresh_doc_is_not_dirty() {
+        let d = doc("-[h]>ello\n");
+        assert!(!d.is_dirty());
+    }
+
+    #[test]
+    fn edit_makes_dirty() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        assert!(d.is_dirty());
+    }
+
+    #[test]
+    fn mark_saved_clears_dirty() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        assert!(d.is_dirty());
+        d.mark_saved();
+        assert!(!d.is_dirty());
+    }
+
+    #[test]
+    fn undo_to_saved_revision_is_clean() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        d.mark_saved();
+        d.apply_edit(|b, s| insert_char(b, s, 'y'));
+        assert!(d.is_dirty());
+        d.undo(); // back to saved revision
+        assert!(!d.is_dirty());
+    }
+
+    #[test]
+    fn undo_past_saved_revision_is_dirty() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        d.mark_saved();
+        d.undo(); // now before the save point
+        assert!(d.is_dirty());
+    }
+
+    #[test]
+    fn grouped_edit_makes_dirty() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+        d.commit_edit_group();
+        assert!(d.is_dirty());
     }
 
     // ── apply_edit returns displaced text for paste ───────────────────────────

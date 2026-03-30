@@ -917,4 +917,34 @@ mod tests {
           1
          NOR NOR");
     }
+
+    // ── Dirty indicator ───────────────────────────────────────────────────────
+
+    #[test]
+    fn render_dirty_indicator_shown_when_dirty() {
+        let mut doc = doc_at("hello\n", 0);
+        // Apply an edit so the document is dirty.
+        doc.apply_edit(|b, s| crate::ops::edit::insert_char(b, s, 'x'));
+        let v = view(&doc, 25, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v)
+            .with_file_path(std::path::PathBuf::from("/tmp/notes.txt"));
+        let out = render_to_string(&editor, 25, 3);
+        insta::assert_snapshot!(out, @r"
+          1 xhello
+        ~
+         NOR │ notes.txt [+] 1:2");
+    }
+
+    #[test]
+    fn render_dirty_indicator_absent_when_clean() {
+        let doc = doc_at("hello\n", 0);
+        let v = view(&doc, 25, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v)
+            .with_file_path(std::path::PathBuf::from("/tmp/notes.txt"));
+        let out = render_to_string(&editor, 25, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello
+        ~
+         NOR │ notes.txt     1:1");
+    }
 }

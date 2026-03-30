@@ -110,3 +110,53 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()
     tmp.persist(target).map_err(|e| e.error)?;
     Ok(())
 }
+
+// ── write_file_new ────────────────────────────────────────────────────────────
+
+/// Write `content` to a **new** file at `path`, creating it with default
+/// permissions (0o644 on Unix, inherited from the temp file on Windows).
+///
+/// Uses the same temp-file + rename strategy as [`write_file_atomic`] so the
+/// file is never partially visible even for a new path.
+///
+/// Returns the `FileMeta` for the newly created file, suitable for storing on
+/// the `Editor` so that subsequent `:w` (no argument) targets the same path.
+pub(crate) fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    io::Write::write_all(&mut tmp, content.as_bytes())?;
+
+    // Set 0o644 (rw-r--r--) before rename — safe default for a new file.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tmp.as_file()
+            .set_permissions(fs::Permissions::from_mode(0o644))?;
+    }
+
+    tmp.persist(path).map_err(|e| e.error)?;
+
+    // Read back metadata from the real path now that it exists.
+    let resolved = fs::canonicalize(path)?;
+    let metadata = fs::metadata(&resolved)?;
+
+    #[cfg(unix)]
+    let meta = {
+        use std::os::unix::fs::MetadataExt;
+        FileMeta {
+            resolved_path: resolved,
+            permissions: metadata.permissions(),
+            uid: metadata.uid(),
+            gid: metadata.gid(),
+        }
+    };
+
+    #[cfg(not(unix))]
+    let meta = FileMeta {
+        resolved_path: resolved,
+        permissions: metadata.permissions(),
+    };
+
+    Ok(meta)
+}
