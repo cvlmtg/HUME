@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
-use self::command::CommandRegistry;
+use self::registry::CommandRegistry;
 use crate::core::document::Document;
 use crate::ui::highlight::HighlightSet;
 use crate::io::FileMeta;
@@ -21,9 +21,10 @@ use crate::ops::text_object::find_bracket_pair;
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
-use self::keymap::{Keymap, KeymapCommand};
+use self::keymap::{Keymap, WaitCharPending};
 
-mod command;
+mod registry;
+mod commands;
 mod keymap;
 mod mappings;
 
@@ -96,12 +97,17 @@ pub(crate) struct Editor {
     ///
     /// `None` until the user starts typing digits. Defaults to `1` at dispatch.
     pub(super) count: Option<usize>,
-    /// Stored constructor for a wait-char binding (f/t/F/T/r).
+    /// Pending wait-char state for a f/t/F/T/r binding.
     ///
-    /// When `Some`, the next character keypress is consumed as an argument and
-    /// passed to this function to produce the `KeymapCommand` to execute.
+    /// When `Some`, the next character keypress is consumed as an argument,
+    /// stored in `pending_char`, and the named command is dispatched.
     /// Cleared immediately after use.
-    pub(super) wait_char: Option<fn(char) -> KeymapCommand>,
+    pub(super) wait_char: Option<WaitCharPending>,
+    /// Character argument for the current parameterized command (find/till/replace).
+    ///
+    /// Set just before dispatching a wait-char command; consumed (`.take()`) by
+    /// `dispatch_editor_cmd`. Always `None` between commands.
+    pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
     pub(super) colors: EditorColors,
     pub(super) should_quit: bool,
@@ -185,6 +191,7 @@ impl Editor {
             pending_keys: Vec::new(),
             count: None,
             wait_char: None,
+            pending_char: None,
             registers: RegisterSet::new(),
             colors: EditorColors::default(),
             should_quit: false,

@@ -20,142 +20,47 @@
 //! Every motion/text-object binding stores a `name` (normal) and an optional
 //! `extend_name`. When extend mode is active the dispatcher resolves the extend
 //! variant automatically — no binding duplication needed.
+//!
+//! # Wait-char bindings
+//!
+//! Keys like f/t/F/T/r produce a [`WaitCharPending`] that stores the command
+//! name to dispatch and an optional extend-mode variant. When the next character
+//! arrives, the dispatcher stores it in `Editor.pending_char` and dispatches
+//! the named command. Extend-mode resolution happens at char-consumption time.
 
 use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::FindKind;
+// ── WaitCharPending ───────────────────────────────────────────────────────────
 
-// ── key! macro ────────────────────────────────────────────────────────────────
-
-/// Construct a [`KeyEvent`] value concisely for use in keymap builders and tests.
+/// State stored on the editor after a wait-char key (f/t/F/T/r).
 ///
-/// ```rust,ignore
-/// key!('w')           // Char('w'), no modifiers
-/// key!(Ctrl + 'h')    // Char('h'), CONTROL modifier
-/// key!(Esc)           // Esc, no modifiers
-/// key!(Left)          // Left arrow, no modifiers
-/// ```
-macro_rules! key {
-    // Ctrl+char — must come first so `Ctrl + 'h'` is not mistakenly parsed
-    // by a later arm.
-    (Ctrl + $ch:literal) => {
-        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::CONTROL)
-    };
-    // Named KeyCode variant: `key!(Esc)`, `key!(Left)`, `key!(Backspace)`, …
-    // Rust macros dispatch by syntactic category: `Esc` is an *identifier*
-    // (`$variant:ident`), while `'w'` is a *literal* (`$ch:literal`), so these
-    // two arms never overlap even though they look similar.
-    ($variant:ident) => {
-        KeyEvent::new(KeyCode::$variant, KeyModifiers::NONE)
-    };
-    // Plain character literal
-    ($ch:literal) => {
-        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::NONE)
-    };
-}
-
-// ── EditorAction ──────────────────────────────────────────────────────────────
-
-/// Editor-level actions that cannot be expressed as pure `cmd_*` function
-/// pointers because they require side effects: register access, mode
-/// transitions, undo group management, or composite multi-step operations.
-///
-/// This is a *closed* enum — the default Rust keymap binds a finite set of
-/// special cases. Commands that are pure `(&Buffer, SelectionSet) -> SelectionSet`
-/// or `(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)` are
-/// registered in the [`CommandRegistry`] and referenced by name via
-/// [`KeymapCommand::Cmd`] instead.
-///
-/// [`CommandRegistry`]: super::command::CommandRegistry
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EditorAction {
-    // ── Mode transitions ──────────────────────────────────────────────────
-    /// `i` — enter Insert before the selection (collapse to start).
-    EnterInsertBefore,
-    /// `a` — enter Insert after the cursor (move one grapheme right).
-    EnterInsertAfter,
-    /// `I` — enter Insert at the first non-blank character on the line.
-    EnterInsertLineStart,
-    /// `A` — enter Insert after the last character on the line.
-    EnterInsertLineEnd,
-    /// `o` (normal mode) — open a new line below and enter Insert.
-    /// `o` (extend mode) — flip anchor/head of every selection.
-    OpenLineBelowOrFlip,
-    /// `O` — open a new line above and enter Insert.
-    OpenLineAbove,
-    /// `:` — open the command-mode mini-buffer.
-    EnterCommandMode,
-    /// `Esc` (Insert mode) — return to Normal mode.
-    ExitInsert,
-
-    // ── Edit composites ───────────────────────────────────────────────────
-    /// `d` — yank selections into the default register, then delete them.
-    Delete,
-    /// `c` — yank, delete, then enter Insert (change). All in one undo group.
-    Change,
-    /// `y` — yank selections into the default register (no buffer change).
-    Yank,
-    /// `p` — paste after; swap displaced text back if selection was non-cursor.
-    PasteAfter,
-    /// `P` — paste before; same swap semantics.
-    PasteBefore,
-    /// `u` — undo.
-    Undo,
-    /// `U` / `Ctrl+r` — redo.
-    Redo,
-
-    // ── Selection state ───────────────────────────────────────────────────
-    /// `;` — collapse selection to cursor AND clear sticky extend mode.
-    CollapseAndExitExtend,
-    /// `e` — toggle sticky extend mode.
-    ToggleExtend,
-
-    // ── Find/till character ───────────────────────────────────────────────
-    /// `f`/`F` or `t`/`T` after the target char is known.
-    FindForward  { ch: char, kind: FindKind },
-    FindBackward { ch: char, kind: FindKind },
-    /// `=` — repeat last find forward (absolute direction).
-    RepeatFindForward,
-    /// `-` — repeat last find backward (absolute direction).
-    RepeatFindBackward,
-
-    // ── Replace ───────────────────────────────────────────────────────────
-    /// `r` after the replacement char is known.
-    Replace(char),
-
-    // ── Page scroll ───────────────────────────────────────────────────────
-    /// `PageDown` — move down by `view.height` lines.
-    /// Stored as an action (not a count motion) because the count is derived
-    /// from viewport dimensions, not the user's numeric prefix.
-    PageDown,
-    /// `PageUp` — move up by `view.height` lines.
-    PageUp,
-
-    // ── Misc ──────────────────────────────────────────────────────────────
-    /// `Ctrl+c` — quit.
-    Quit,
+/// On the next keypress the dispatcher stores the character in
+/// `Editor.pending_char` and dispatches `cmd_name` (or `extend_name` when
+/// extend mode is active).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WaitCharPending {
+    pub cmd_name: &'static str,
+    pub extend_name: Option<&'static str>,
 }
 
 // ── KeymapCommand ─────────────────────────────────────────────────────────────
 
 /// What a key binding resolves to after trie lookup.
+///
+/// Every binding — including composite editor operations — is expressed as
+/// a `Cmd` referencing a name in the [`CommandRegistry`]. There is no parallel
+/// `Action` escape hatch.
+///
+/// [`CommandRegistry`]: super::registry::CommandRegistry
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum KeymapCommand {
-    /// A [`CommandRegistry`] command looked up by name.
-    ///
-    /// `extend_name` is the name to use when extend mode is active. If `None`,
-    /// `name` is used regardless of extend mode (for commands without an extend
-    /// variant, e.g. selection manipulation commands).
-    ///
-    /// [`CommandRegistry`]: super::command::CommandRegistry
-    Cmd {
-        name: &'static str,
-        extend_name: Option<&'static str>,
-    },
-    /// An action that needs editor-level side effects.
-    Action(EditorAction),
+pub(crate) struct KeymapCommand {
+    /// The command name to look up in the registry (normal mode).
+    pub name: &'static str,
+    /// The command name to use instead when extend mode is active.
+    /// `None` means the same `name` is used regardless of extend state.
+    pub extend_name: Option<&'static str>,
 }
 
 // ── WalkResult ────────────────────────────────────────────────────────────────
@@ -170,8 +75,9 @@ pub(super) enum WalkResult {
     #[allow(dead_code)]
     Interior { name: &'static str },
     /// The last key of the sequence matches a wait-char binding. The caller
-    /// should consume the *next* character and pass it to the constructor.
-    WaitChar(fn(char) -> KeymapCommand),
+    /// should consume the next character, store it in `pending_char`, and
+    /// dispatch the named command.
+    WaitChar(WaitCharPending),
     /// The sequence has no match in this trie.
     NoMatch,
 }
@@ -196,7 +102,7 @@ enum KeyTrieNode {
     /// Interior node — more keys needed.
     Node(KeyTrie),
     /// The next character is consumed as an argument (f/t/F/T/r).
-    WaitChar(fn(char) -> KeymapCommand),
+    WaitChar(WaitCharPending),
 }
 
 impl KeyTrie {
@@ -232,8 +138,8 @@ impl KeyTrie {
                     // keys have no match.
                     return WalkResult::NoMatch;
                 }
-                Some(KeyTrieNode::WaitChar(f)) if i == last => {
-                    return WalkResult::WaitChar(*f);
+                Some(KeyTrieNode::WaitChar(wc)) if i == last => {
+                    return WalkResult::WaitChar(*wc);
                 }
                 Some(KeyTrieNode::WaitChar(_)) => {
                     // WaitChar is always a leaf — can't go deeper.
@@ -274,22 +180,59 @@ impl Default for Keymap {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Construct a [`KeymapCommand::Cmd`] leaf with extend duality.
-#[inline]
-fn cmd(name: &'static str, extend_name: &'static str) -> KeymapCommand {
-    KeymapCommand::Cmd { name, extend_name: Some(extend_name) }
+/// Construct a [`KeymapCommand`].
+///
+/// - `cmd!("name", "extend-name")` — with extend duality.
+/// - `cmd!("name")` — no extend variant (`extend_name` is `None`).
+macro_rules! cmd {
+    ($name:expr, $extend:expr) => {
+        KeymapCommand { name: $name, extend_name: Some($extend) }
+    };
+    ($name:expr) => {
+        KeymapCommand { name: $name, extend_name: None }
+    };
 }
 
-/// Construct a [`KeymapCommand::Cmd`] leaf without an extend variant.
-#[inline]
-fn cmd_plain(name: &'static str) -> KeymapCommand {
-    KeymapCommand::Cmd { name, extend_name: None }
+/// Construct a wait-char trie node.
+///
+/// - `wait_char!("name", "extend-name")` — with extend duality.
+/// - `wait_char!("name")` — no extend variant.
+macro_rules! wait_char {
+    ($cmd_name:expr, $extend:expr) => {
+        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, extend_name: Some($extend) })
+    };
+    ($cmd_name:expr) => {
+        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, extend_name: None })
+    };
 }
 
-/// Construct a [`KeymapCommand::Action`] leaf.
-#[inline]
-fn action(act: EditorAction) -> KeymapCommand {
-    KeymapCommand::Action(act)
+// ── key! macro ────────────────────────────────────────────────────────────────
+
+/// Construct a [`KeyEvent`] value concisely for use in keymap builders and tests.
+///
+/// ```rust,ignore
+/// key!('w')           // Char('w'), no modifiers
+/// key!(Ctrl + 'h')    // Char('h'), CONTROL modifier
+/// key!(Esc)           // Esc, no modifiers
+/// key!(Left)          // Left arrow, no modifiers
+/// ```
+macro_rules! key {
+    // Ctrl+char — must come first so `Ctrl + 'h'` is not mistakenly parsed
+    // by a later arm.
+    (Ctrl + $ch:literal) => {
+        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::CONTROL)
+    };
+    // Named KeyCode variant: `key!(Esc)`, `key!(Left)`, `key!(Backspace)`, …
+    // Rust macros dispatch by syntactic category: `Esc` is an *identifier*
+    // (`$variant:ident`), while `'w'` is a *literal* (`$ch:literal`), so these
+    // two arms never overlap even though they look similar.
+    ($variant:ident) => {
+        KeyEvent::new(KeyCode::$variant, KeyModifiers::NONE)
+    };
+    // Plain character literal
+    ($ch:literal) => {
+        KeyEvent::new(KeyCode::Char($ch), KeyModifiers::NONE)
+    };
 }
 
 // ── Text object trie ──────────────────────────────────────────────────────────
@@ -335,8 +278,8 @@ fn build_text_object_trie() -> KeyTrie {
     for (chars, inner_name, ext_inner_name, around_name, ext_around_name) in objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
-            inner_trie.bind_leaf(k, cmd(inner_name, ext_inner_name));
-            around_trie.bind_leaf(k, cmd(around_name, ext_around_name));
+            inner_trie.bind_leaf(k, cmd!(inner_name, ext_inner_name));
+            around_trie.bind_leaf(k, cmd!(around_name, ext_around_name));
         }
     }
 
@@ -354,14 +297,14 @@ fn default_normal_keymap() -> KeyTrie {
     // ── Basic motion ─────────────────────────────────────────────────────────
     // Each motion binding stores both the normal and extend-mode variant name.
     // The dispatcher resolves the right one at execution time.
-    t.bind_leaf(key!('h'),    cmd("move-left",    "extend-left"));
-    t.bind_leaf(key!(Left),   cmd("move-left",    "extend-left"));
-    t.bind_leaf(key!('l'),    cmd("move-right",   "extend-right"));
-    t.bind_leaf(key!(Right),  cmd("move-right",   "extend-right"));
-    t.bind_leaf(key!('j'),    cmd("move-down",    "extend-down"));
-    t.bind_leaf(key!(Down),   cmd("move-down",    "extend-down"));
-    t.bind_leaf(key!('k'),    cmd("move-up",      "extend-up"));
-    t.bind_leaf(key!(Up),     cmd("move-up",      "extend-up"));
+    t.bind_leaf(key!('h'),    cmd!("move-left",    "extend-left"));
+    t.bind_leaf(key!(Left),   cmd!("move-left",    "extend-left"));
+    t.bind_leaf(key!('l'),    cmd!("move-right",   "extend-right"));
+    t.bind_leaf(key!(Right),  cmd!("move-right",   "extend-right"));
+    t.bind_leaf(key!('j'),    cmd!("move-down",    "extend-down"));
+    t.bind_leaf(key!(Down),   cmd!("move-down",    "extend-down"));
+    t.bind_leaf(key!('k'),    cmd!("move-up",      "extend-up"));
+    t.bind_leaf(key!(Up),     cmd!("move-up",      "extend-up"));
 
     // NOTE: Ctrl+h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
     // The dispatcher normalises them: strips CONTROL and temporarily sets extend=true
@@ -370,90 +313,93 @@ fn default_normal_keymap() -> KeyTrie {
     // See `handle_normal` in mappings.rs for the normalisation logic.
 
     // ── Word motion ───────────────────────────────────────────────────────────
-    t.bind_leaf(key!('w'), cmd("select-next-word",  "extend-select-next-word"));
-    t.bind_leaf(key!('W'), cmd("select-next-WORD",  "extend-select-next-WORD"));
-    t.bind_leaf(key!('b'), cmd("select-prev-word",  "extend-select-prev-word"));
-    t.bind_leaf(key!('B'), cmd("select-prev-WORD",  "extend-select-prev-WORD"));
+    t.bind_leaf(key!('w'), cmd!("select-next-word",  "extend-select-next-word"));
+    t.bind_leaf(key!('W'), cmd!("select-next-WORD",  "extend-select-next-WORD"));
+    t.bind_leaf(key!('b'), cmd!("select-prev-word",  "extend-select-prev-word"));
+    t.bind_leaf(key!('B'), cmd!("select-prev-WORD",  "extend-select-prev-WORD"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('0'),   cmd("goto-line-start",    "extend-line-start"));
-    t.bind_leaf(key!(Home),  cmd("goto-line-start",    "extend-line-start"));
-    t.bind_leaf(key!('$'),   cmd("goto-line-end",      "extend-line-end"));
-    t.bind_leaf(key!(End),   cmd("goto-line-end",      "extend-line-end"));
-    t.bind_leaf(key!('^'),   cmd("goto-first-nonblank","extend-first-nonblank"));
+    t.bind_leaf(key!('0'),   cmd!("goto-line-start",    "extend-line-start"));
+    t.bind_leaf(key!(Home),  cmd!("goto-line-start",    "extend-line-start"));
+    t.bind_leaf(key!('$'),   cmd!("goto-line-end",      "extend-line-end"));
+    t.bind_leaf(key!(End),   cmd!("goto-line-end",      "extend-line-end"));
+    t.bind_leaf(key!('^'),   cmd!("goto-first-nonblank","extend-first-nonblank"));
 
     // ── Paragraph motion ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('{'), cmd("prev-paragraph", "extend-prev-paragraph"));
-    t.bind_leaf(key!('}'), cmd("next-paragraph", "extend-next-paragraph"));
+    t.bind_leaf(key!('{'), cmd!("prev-paragraph", "extend-prev-paragraph"));
+    t.bind_leaf(key!('}'), cmd!("next-paragraph", "extend-next-paragraph"));
 
     // ── Line selection ────────────────────────────────────────────────────────
-    t.bind_leaf(key!('x'), cmd("select-line",          "extend-select-line"));
-    t.bind_leaf(key!('X'), cmd("select-line-backward", "extend-select-line-backward"));
+    t.bind_leaf(key!('x'), cmd!("select-line",          "extend-select-line"));
+    t.bind_leaf(key!('X'), cmd!("select-line-backward", "extend-select-line-backward"));
     // Ctrl+x/X extend the selection to cover additional lines — works in both
     // kitty and legacy mode (unlike the basic-motion Ctrl keys, these are not
     // kitty-only; they were explicitly gated on CONTROL in the old code).
-    t.bind_leaf(key!(Ctrl + 'x'), cmd_plain("extend-select-line"));
-    t.bind_leaf(key!(Ctrl + 'X'), cmd_plain("extend-select-line-backward"));
+    t.bind_leaf(key!(Ctrl + 'x'), cmd!("extend-select-line"));
+    t.bind_leaf(key!(Ctrl + 'X'), cmd!("extend-select-line-backward"));
 
     // ── Page scroll ───────────────────────────────────────────────────────────
-    // PageUp/PageDown use view.height as count — handled as actions, not motions.
-    t.bind_leaf(key!(PageDown), action(EditorAction::PageDown));
-    t.bind_leaf(key!(PageUp),   action(EditorAction::PageUp));
+    // PageUp/PageDown use view.height as count — handled by EditorCmd, not a
+    // raw motion count. Extend duality is expressed in the normal way.
+    t.bind_leaf(key!(PageDown), cmd!("page-down", "extend-page-down"));
+    t.bind_leaf(key!(PageUp),   cmd!("page-up",   "extend-page-up"));
 
     // ── Selection manipulation ────────────────────────────────────────────────
-    t.bind_leaf(key!(';'), action(EditorAction::CollapseAndExitExtend));
-    t.bind_leaf(key!(','), cmd_plain("keep-primary-selection"));
+    t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));
+    t.bind_leaf(key!(','), cmd!("keep-primary-selection"));
     // Ctrl+, removes primary; only transmitted with kitty keyboard protocol but
     // binding it here is harmless — legacy terminals never send it.
-    t.bind_leaf(key!(Ctrl + ','), cmd_plain("remove-primary-selection"));
-    t.bind_leaf(key!('S'), cmd_plain("split-selection-on-newlines"));
-    t.bind_leaf(key!('('), cmd_plain("cycle-primary-backward"));
-    t.bind_leaf(key!(')'), cmd_plain("cycle-primary-forward"));
-    t.bind_leaf(key!('C'), cmd_plain("copy-selection-on-next-line"));
-    t.bind_leaf(key!('_'), cmd_plain("trim-selection-whitespace"));
+    t.bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
+    t.bind_leaf(key!('S'), cmd!("split-selection-on-newlines"));
+    t.bind_leaf(key!('('), cmd!("cycle-primary-backward"));
+    t.bind_leaf(key!(')'), cmd!("cycle-primary-forward"));
+    t.bind_leaf(key!('C'), cmd!("copy-selection-on-next-line"));
+    t.bind_leaf(key!('_'), cmd!("trim-selection-whitespace"));
 
     // ── Extend mode ───────────────────────────────────────────────────────────
-    t.bind_leaf(key!('e'), action(EditorAction::ToggleExtend));
+    t.bind_leaf(key!('e'), cmd!("toggle-extend"));
 
     // ── Edit ──────────────────────────────────────────────────────────────────
-    t.bind_leaf(key!('d'), action(EditorAction::Delete));
-    t.bind_leaf(key!('c'), action(EditorAction::Change));
-    t.bind_leaf(key!('y'), action(EditorAction::Yank));
-    t.bind_leaf(key!('p'), action(EditorAction::PasteAfter));
-    t.bind_leaf(key!('P'), action(EditorAction::PasteBefore));
-    t.bind_leaf(key!('u'), action(EditorAction::Undo));
-    t.bind_leaf(key!('U'), action(EditorAction::Redo));
+    t.bind_leaf(key!('d'), cmd!("delete"));
+    t.bind_leaf(key!('c'), cmd!("change"));
+    t.bind_leaf(key!('y'), cmd!("yank"));
+    t.bind_leaf(key!('p'), cmd!("paste-after"));
+    t.bind_leaf(key!('P'), cmd!("paste-before"));
+    t.bind_leaf(key!('u'), cmd!("undo"));
+    t.bind_leaf(key!('U'), cmd!("redo"));
     // `r` (no Ctrl) → wait for replacement char; `Ctrl+r` → redo.
-    t.bind(key!('r'), KeyTrieNode::WaitChar(|ch| action(EditorAction::Replace(ch))));
-    t.bind_leaf(key!(Ctrl + 'r'), action(EditorAction::Redo));
+    t.bind(key!('r'), wait_char!("replace"));
+    t.bind_leaf(key!(Ctrl + 'r'), cmd!("redo"));
 
     // ── Find / till character ─────────────────────────────────────────────────
-    t.bind(key!('f'), KeyTrieNode::WaitChar(|ch| action(EditorAction::FindForward  { ch, kind: FindKind::Inclusive })));
-    t.bind(key!('F'), KeyTrieNode::WaitChar(|ch| action(EditorAction::FindBackward { ch, kind: FindKind::Inclusive })));
-    t.bind(key!('t'), KeyTrieNode::WaitChar(|ch| action(EditorAction::FindForward  { ch, kind: FindKind::Exclusive })));
-    t.bind(key!('T'), KeyTrieNode::WaitChar(|ch| action(EditorAction::FindBackward { ch, kind: FindKind::Exclusive })));
+    // Each key waits for the next character, then dispatches the named command.
+    // Extend duality is resolved at char-consumption time.
+    t.bind(key!('f'), wait_char!("find-forward",  "extend-find-forward"));
+    t.bind(key!('F'), wait_char!("find-backward", "extend-find-backward"));
+    t.bind(key!('t'), wait_char!("till-forward",  "extend-till-forward"));
+    t.bind(key!('T'), wait_char!("till-backward", "extend-till-backward"));
 
     // Repeat last find in absolute direction.
-    t.bind_leaf(key!('='), action(EditorAction::RepeatFindForward));
-    t.bind_leaf(key!('-'), action(EditorAction::RepeatFindBackward));
+    t.bind_leaf(key!('='), cmd!("repeat-find-forward",  "extend-repeat-find-forward"));
+    t.bind_leaf(key!('-'), cmd!("repeat-find-backward", "extend-repeat-find-backward"));
 
     // ── Text objects ──────────────────────────────────────────────────────────
     // `m` → `i`/`a` → object char (3-key sequence).
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
 
     // ── Mode transitions ──────────────────────────────────────────────────────
-    t.bind_leaf(key!(':'), action(EditorAction::EnterCommandMode));
-    t.bind_leaf(key!('i'), action(EditorAction::EnterInsertBefore));
-    t.bind_leaf(key!('a'), action(EditorAction::EnterInsertAfter));
-    t.bind_leaf(key!('I'), action(EditorAction::EnterInsertLineStart));
-    t.bind_leaf(key!('A'), action(EditorAction::EnterInsertLineEnd));
-    // `o` in normal mode: open line below; in extend mode: flip selections.
-    // The dual behaviour is handled in execute_editor_action.
-    t.bind_leaf(key!('o'), action(EditorAction::OpenLineBelowOrFlip));
-    t.bind_leaf(key!('O'), action(EditorAction::OpenLineAbove));
+    t.bind_leaf(key!(':'), cmd!("command-mode"));
+    t.bind_leaf(key!('i'), cmd!("insert-before"));
+    t.bind_leaf(key!('a'), cmd!("insert-after"));
+    t.bind_leaf(key!('I'), cmd!("insert-at-line-start"));
+    t.bind_leaf(key!('A'), cmd!("insert-at-line-end"));
+    // `o` in normal mode: open line below.
+    // `o` in extend mode: flip selections (the extend-duality mechanism handles this).
+    t.bind_leaf(key!('o'), cmd!("open-line-below", "flip-selections"));
+    t.bind_leaf(key!('O'), cmd!("open-line-above"));
 
     // Ctrl+c quits from normal mode.
-    t.bind_leaf(key!(Ctrl + 'c'), action(EditorAction::Quit));
+    t.bind_leaf(key!(Ctrl + 'c'), cmd!("quit"));
 
     t
 }
@@ -464,19 +410,19 @@ fn default_insert_keymap() -> KeyTrie {
     let mut t = KeyTrie::new("insert");
 
     // Return to Normal mode.
-    t.bind_leaf(key!(Esc),       action(EditorAction::ExitInsert));
-    t.bind_leaf(key!(Ctrl + 'c'), action(EditorAction::ExitInsert));
+    t.bind_leaf(key!(Esc),        cmd!("exit-insert"));
+    t.bind_leaf(key!(Ctrl + 'c'), cmd!("exit-insert"));
 
     // Navigation (no extend in insert mode).
-    t.bind_leaf(key!(Left),  cmd_plain("move-left"));
-    t.bind_leaf(key!(Right), cmd_plain("move-right"));
-    t.bind_leaf(key!(Down),  cmd_plain("move-down"));
-    t.bind_leaf(key!(Up),    cmd_plain("move-up"));
-    t.bind_leaf(key!(Home),  cmd_plain("goto-line-start"));
-    t.bind_leaf(key!(End),   cmd_plain("goto-line-end"));
+    t.bind_leaf(key!(Left),  cmd!("move-left"));
+    t.bind_leaf(key!(Right), cmd!("move-right"));
+    t.bind_leaf(key!(Down),  cmd!("move-down"));
+    t.bind_leaf(key!(Up),    cmd!("move-up"));
+    t.bind_leaf(key!(Home),  cmd!("goto-line-start"));
+    t.bind_leaf(key!(End),   cmd!("goto-line-end"));
 
-    // Special insert-mode keys (Backspace, Delete, Enter) are handled as
-    // EditorActions because they interact with auto-pairs logic.
+    // Special insert-mode keys (Backspace, Delete, Enter) are handled directly
+    // in handle_insert because they interact with auto-pairs logic.
     // Characters that are NOT in the trie fall through to char-insertion.
 
     t
@@ -494,19 +440,23 @@ mod tests {
     fn single_key_leaf() {
         let trie = default_normal_keymap();
         let result = trie.walk(&[key!('h')]);
-        assert!(matches!(result, WalkResult::Leaf(KeymapCommand::Cmd { name: "move-left", .. })));
+        assert!(matches!(result, WalkResult::Leaf(KeymapCommand { name: "move-left", .. })));
     }
 
     #[test]
-    fn single_key_action() {
+    fn single_key_editor_cmd() {
         let trie = default_normal_keymap();
         assert!(matches!(
             trie.walk(&[key!('d')]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::Delete))
+            WalkResult::Leaf(KeymapCommand { name: "delete", .. })
         ));
         assert!(matches!(
             trie.walk(&[key!('u')]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::Undo))
+            WalkResult::Leaf(KeymapCommand { name: "undo", .. })
+        ));
+        assert!(matches!(
+            trie.walk(&[key!('i')]),
+            WalkResult::Leaf(KeymapCommand { name: "insert-before", .. })
         ));
     }
 
@@ -521,21 +471,28 @@ mod tests {
     }
 
     #[test]
-    fn wait_char_constructor_produces_correct_action() {
+    fn wait_char_has_correct_names() {
         let trie = default_normal_keymap();
-        let WalkResult::WaitChar(f) = trie.walk(&[key!('f')]) else { panic!("expected WaitChar") };
-        let cmd = f('x');
-        assert!(matches!(
-            cmd,
-            KeymapCommand::Action(EditorAction::FindForward { ch: 'x', kind: FindKind::Inclusive })
-        ));
 
-        let WalkResult::WaitChar(f) = trie.walk(&[key!('t')]) else { panic!("expected WaitChar") };
-        let cmd = f('x');
-        assert!(matches!(
-            cmd,
-            KeymapCommand::Action(EditorAction::FindForward { ch: 'x', kind: FindKind::Exclusive })
-        ));
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('f')]) else { panic!("expected WaitChar") };
+        assert_eq!(wc.cmd_name, "find-forward");
+        assert_eq!(wc.extend_name, Some("extend-find-forward"));
+
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('t')]) else { panic!("expected WaitChar") };
+        assert_eq!(wc.cmd_name, "till-forward");
+        assert_eq!(wc.extend_name, Some("extend-till-forward"));
+
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('F')]) else { panic!("expected WaitChar") };
+        assert_eq!(wc.cmd_name, "find-backward");
+        assert_eq!(wc.extend_name, Some("extend-find-backward"));
+
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('T')]) else { panic!("expected WaitChar") };
+        assert_eq!(wc.cmd_name, "till-backward");
+        assert_eq!(wc.extend_name, Some("extend-till-backward"));
+
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('r')]) else { panic!("expected WaitChar") };
+        assert_eq!(wc.cmd_name, "replace");
+        assert_eq!(wc.extend_name, None);
     }
 
     #[test]
@@ -561,7 +518,7 @@ mod tests {
 
         // inner-word
         let result = trie.walk(&[key!('m'), key!('i'), key!('w')]);
-        let WalkResult::Leaf(KeymapCommand::Cmd { name, extend_name }) = result else {
+        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = result else {
             panic!("expected Cmd leaf, got something else");
         };
         assert_eq!(name, "inner-word");
@@ -569,13 +526,13 @@ mod tests {
 
         // around-paren (both `(` and `)` map to the same text object)
         let result = trie.walk(&[key!('m'), key!('a'), key!('(')]);
-        let WalkResult::Leaf(KeymapCommand::Cmd { name, .. }) = result else {
+        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
             panic!("expected Cmd leaf");
         };
         assert_eq!(name, "around-paren");
 
         let result = trie.walk(&[key!('m'), key!('a'), key!(')')]);
-        let WalkResult::Leaf(KeymapCommand::Cmd { name, .. }) = result else {
+        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
             panic!("expected Cmd leaf");
         };
         assert_eq!(name, "around-paren");
@@ -601,7 +558,7 @@ mod tests {
     #[test]
     fn extend_name_stored_on_motion() {
         let trie = default_normal_keymap();
-        let WalkResult::Leaf(KeymapCommand::Cmd { name, extend_name }) = trie.walk(&[key!('w')]) else {
+        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!('w')]) else {
             panic!("expected Cmd leaf");
         };
         assert_eq!(name, "select-next-word");
@@ -611,11 +568,22 @@ mod tests {
     #[test]
     fn plain_cmd_has_no_extend_name() {
         let trie = default_normal_keymap();
-        let WalkResult::Leaf(KeymapCommand::Cmd { name, extend_name }) = trie.walk(&[key!(',')]) else {
+        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!(',')]) else {
             panic!("expected Cmd leaf");
         };
         assert_eq!(name, "keep-primary-selection");
         assert_eq!(extend_name, None);
+    }
+
+    #[test]
+    fn o_has_extend_duality_for_flip() {
+        // `o` maps to open-line-below normally, flip-selections in extend mode.
+        let trie = default_normal_keymap();
+        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!('o')]) else {
+            panic!("expected Cmd leaf");
+        };
+        assert_eq!(name, "open-line-below");
+        assert_eq!(extend_name, Some("flip-selections"));
     }
 
     // ── Insert keymap ─────────────────────────────────────────────────────────
@@ -625,7 +593,7 @@ mod tests {
         let trie = default_insert_keymap();
         assert!(matches!(
             trie.walk(&[key!(Esc)]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::ExitInsert))
+            WalkResult::Leaf(KeymapCommand { name: "exit-insert", .. })
         ));
     }
 
@@ -634,7 +602,7 @@ mod tests {
         let trie = default_insert_keymap();
         assert!(matches!(
             trie.walk(&[key!(Left)]),
-            WalkResult::Leaf(KeymapCommand::Cmd { name: "move-left", .. })
+            WalkResult::Leaf(KeymapCommand { name: "move-left", .. })
         ));
     }
 
@@ -653,63 +621,32 @@ mod tests {
         let trie = default_insert_keymap();
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'c')]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::ExitInsert))
+            WalkResult::Leaf(KeymapCommand { name: "exit-insert", .. })
         ));
     }
 
     #[test]
     fn ctrl_bindings_in_normal_keymap() {
         let trie = default_normal_keymap();
-        // Ctrl+c → Quit
+        // Ctrl+c → quit
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'c')]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::Quit))
+            WalkResult::Leaf(KeymapCommand { name: "quit", .. })
         ));
-        // Ctrl+r → Redo (explicit binding, not a stripped Ctrl)
+        // Ctrl+r → redo (explicit binding, not a stripped Ctrl)
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'r')]),
-            WalkResult::Leaf(KeymapCommand::Action(EditorAction::Redo))
+            WalkResult::Leaf(KeymapCommand { name: "redo", .. })
         ));
         // Ctrl+x → extend-select-line (not stripped like motion Ctrl keys)
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'x')]),
-            WalkResult::Leaf(KeymapCommand::Cmd { name: "extend-select-line", .. })
-        ));
-    }
-
-    #[test]
-    fn wait_char_r_produces_replace() {
-        let trie = default_normal_keymap();
-        let WalkResult::WaitChar(f) = trie.walk(&[key!('r')]) else { panic!("expected WaitChar") };
-        assert!(matches!(f('!'), KeymapCommand::Action(EditorAction::Replace('!'))));
-    }
-
-    #[test]
-    fn wait_char_f_t_backward_produce_find_backward() {
-        let trie = default_normal_keymap();
-
-        let WalkResult::WaitChar(f) = trie.walk(&[key!('F')]) else { panic!("expected WaitChar") };
-        assert!(matches!(
-            f('x'),
-            KeymapCommand::Action(EditorAction::FindBackward { ch: 'x', kind: FindKind::Inclusive })
-        ));
-
-        let WalkResult::WaitChar(f) = trie.walk(&[key!('T')]) else { panic!("expected WaitChar") };
-        assert!(matches!(
-            f('x'),
-            KeymapCommand::Action(EditorAction::FindBackward { ch: 'x', kind: FindKind::Exclusive })
+            WalkResult::Leaf(KeymapCommand { name: "extend-select-line", .. })
         ));
     }
 
     #[test]
     fn no_duplicate_normal_bindings() {
-        // HashMap::insert silently overwrites. Rebuild the trie and verify
-        // each top-level key appears only once by checking that the count of
-        // unique keys equals the total count of bind_leaf calls.
-        // We do this indirectly: walk every single-char + special key and
-        // assert that the result is stable (no overwrites produce NoMatch).
-        //
-        // More directly: rebuild a fresh trie and count entries.
         let trie = default_normal_keymap();
         // Spot-check a set of keys that would be ambiguous if duplicated.
         let must_be_bound = [

@@ -1,20 +1,12 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
-use super::command::MappableCommand;
-use crate::ops::edit::{
-    delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
-    paste_before, replace_selections,
-};
-use crate::ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
-    find_char_backward, find_char_forward, MotionMode,
-};
-use crate::ops::register::{yank_selections, DEFAULT_REGISTER};
-use crate::ops::selection_cmd::{cmd_collapse_selection, cmd_flip_selections};
+use super::registry::MappableCommand;
+use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
+use crate::ops::motion::cmd_move_right;
 
-use super::keymap::{EditorAction, KeymapCommand, WalkResult};
-use super::{Editor, FindChar, MiniBuffer, Mode};
+use super::keymap::{KeymapCommand, WalkResult};
+use super::{Editor, Mode};
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -33,12 +25,21 @@ impl Editor {
 
     fn handle_normal(&mut self, key: KeyEvent) {
         // ── Consume WaitChar argument ─────────────────────────────────────────
-        // If a f/t/F/T/r binding fired on the previous keypress, the trie stored
-        // its constructor here. The next character (any key) becomes the argument.
-        if let Some(constructor) = self.wait_char.take() {
+        // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
+        // holds the command name to dispatch. The next character (any key)
+        // becomes the argument — stored in `pending_char` for the command to read.
+        if let Some(wc) = self.wait_char.take() {
             if let KeyCode::Char(ch) = key.code {
                 let count = self.count.take().unwrap_or(1);
-                let cmd = constructor(ch);
+                self.pending_char = Some(ch);
+                // Resolve extend duality at char-consumption time (not setup time),
+                // since extend mode could change between the trigger key and the char.
+                let name = if self.extend {
+                    wc.extend_name.unwrap_or(wc.cmd_name)
+                } else {
+                    wc.cmd_name
+                };
+                let cmd = KeymapCommand { name, extend_name: None };
                 self.execute_keymap_command(cmd, count);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
@@ -124,16 +125,15 @@ impl Editor {
                     self.extend = saved_extend;
                 }
             }
-            WalkResult::WaitChar(constructor) => {
+            WalkResult::WaitChar(wc) => {
                 self.pending_keys.clear();
-                self.wait_char = Some(constructor);
+                self.wait_char = Some(wc);
                 if one_shot_extend {
                     self.extend = saved_extend;
                 }
             }
             WalkResult::Interior { .. } => {
                 // More keys needed. pending_keys stays populated.
-                // More keys needed — pending_keys stays populated.
                 if one_shot_extend {
                     self.extend = saved_extend;
                 }
@@ -217,252 +217,40 @@ impl Editor {
 
     /// Execute a keymap command with the given count.
     ///
-    /// Resolves extend-mode duality for `Cmd` variants, then dispatches either
-    /// through the [`CommandRegistry`] (for pure `cmd_*` functions) or directly
-    /// to [`execute_editor_action`] (for composite/side-effectful actions).
+    /// Resolves extend-mode duality, then dispatches through the
+    /// [`CommandRegistry`]. `EditorCmd` variants are dispatched to
+    /// [`dispatch_editor_cmd`].
     ///
-    /// [`CommandRegistry`]: super::command::CommandRegistry
+    /// [`CommandRegistry`]: super::registry::CommandRegistry
     fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
-        match cmd {
-            KeymapCommand::Cmd { name, extend_name } => {
-                // Resolve the extend variant if extend mode is active.
-                let resolved = if self.extend {
-                    extend_name.unwrap_or(name)
-                } else {
-                    name
-                };
-                if let Some(reg_cmd) = self.registry.get(resolved).cloned() {
-                    match reg_cmd {
-                        MappableCommand::Motion { fun, .. } => {
-                            // Motion functions take (buf, sels, count). count defaults to 1
-                            // if the user typed no prefix.
-                            self.apply_motion(|b, s| fun(b, s, count));
-                        }
-                        MappableCommand::Selection { fun, .. } => {
-                            // Selection / text-object functions don't take count.
-                            self.apply_motion(|b, s| fun(b, s));
-                        }
-                        MappableCommand::Edit { fun, .. } => {
-                            self.doc.apply_edit(fun);
-                        }
-                    }
+        // Resolve extend-mode duality: when extend is active, prefer extend_name.
+        // (For WaitChar commands this is already resolved before calling here.)
+        let resolved = if self.extend {
+            cmd.extend_name.unwrap_or(cmd.name)
+        } else {
+            cmd.name
+        };
+
+        if let Some(reg_cmd) = self.registry.get(resolved).cloned() {
+            match reg_cmd {
+                MappableCommand::Motion { fun, .. } => {
+                    // Motion functions take (buf, sels, count). count defaults to 1
+                    // if the user typed no prefix.
+                    self.apply_motion(|b, s| fun(b, s, count));
                 }
-            }
-            KeymapCommand::Action(action) => {
-                self.execute_editor_action(action, count);
+                MappableCommand::Selection { fun, .. } => {
+                    // Selection / text-object functions don't take count.
+                    self.apply_motion(fun);
+                }
+                MappableCommand::Edit { fun, .. } => {
+                    self.doc.apply_edit(fun);
+                }
+                MappableCommand::EditorCmd { fun, .. } => {
+                    fun(self, count);
+                }
             }
         }
     }
-
-    /// Execute an [`EditorAction`] — composite or side-effectful operations that
-    /// cannot be expressed as pure `cmd_*` function pointers.
-    ///
-    fn execute_editor_action(&mut self, action: EditorAction, count: usize) {
-        match action {
-            // ── Mode transitions ──────────────────────────────────────────────
-            EditorAction::EnterCommandMode => {
-                self.set_mode(Mode::Command);
-                self.minibuf = Some(MiniBuffer { prompt: ':', input: String::new() });
-            }
-
-            EditorAction::ExitInsert => {
-                self.set_mode(Mode::Normal);
-            }
-
-            // `i` — collapse each selection to its start, enter Insert.
-            EditorAction::EnterInsertBefore => {
-                self.apply_motion(|_b, sels| {
-                    use crate::core::selection::Selection;
-                    sels.map(|s| Selection::cursor(s.start()))
-                });
-                self.set_mode(Mode::Insert);
-            }
-
-            // `a` — move one grapheme right, enter Insert.
-            EditorAction::EnterInsertAfter => {
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `I` — move to first non-blank on the line, enter Insert.
-            EditorAction::EnterInsertLineStart => {
-                self.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `A` — move to line end, then one more right, enter Insert.
-            EditorAction::EnterInsertLineEnd => {
-                self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-                self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // `o` — dual purpose:
-            //   extend mode: flip anchor/head of every selection.
-            //   normal mode: open a new line below, enter Insert.
-            //
-            // The edit group opened here ensures the structural '\n' and
-            // everything typed before Esc form one undo step (same pattern as `c`).
-            EditorAction::OpenLineBelowOrFlip => {
-                if self.extend {
-                    self.apply_motion(cmd_flip_selections);
-                } else {
-                    self.doc.begin_edit_group();
-                    self.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-                    self.apply_motion(|b, s| cmd_move_right(b, s, 1));
-                    self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-                    self.set_mode(Mode::Insert);
-                }
-            }
-
-            // `O` — open a new line above, enter Insert.
-            EditorAction::OpenLineAbove => {
-                self.doc.begin_edit_group();
-                self.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
-                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-                self.apply_motion(|b, s| cmd_move_left(b, s, 1));
-                self.set_mode(Mode::Insert);
-            }
-
-            // ── Edit composites ───────────────────────────────────────────────
-
-            // `d` — yank selections into the default register, then delete them.
-            EditorAction::Delete => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.apply_edit(delete_selection);
-                self.registers.write(DEFAULT_REGISTER, yanked);
-            }
-
-            // `c` — yank, delete, enter Insert (all in one undo group).
-            // The group is opened here so the delete is folded in; set_mode(Insert)
-            // sees the group is already open and skips begin_edit_group.
-            EditorAction::Change => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.doc.begin_edit_group();
-                self.doc.apply_edit_grouped(delete_selection);
-                self.registers.write(DEFAULT_REGISTER, yanked);
-                self.set_mode(Mode::Insert);
-            }
-
-            // `y` — yank selections into the default register (no buffer change).
-            EditorAction::Yank => {
-                let yanked = yank_selections(self.doc.buf(), self.doc.sels());
-                self.registers.write(DEFAULT_REGISTER, yanked);
-            }
-
-            // `p` — paste after; swap displaced text back into the register when
-            // the selection was non-cursor (replace-and-swap semantics).
-            EditorAction::PasteAfter => {
-                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
-                    let values = reg.values().to_vec();
-                    let displaced = self.doc.apply_edit(|b, s| paste_after(b, s, &values));
-                    if displaced.iter().any(|s| !s.is_empty()) {
-                        self.registers.write(DEFAULT_REGISTER, displaced);
-                    }
-                }
-            }
-
-            // `P` — paste before; same swap semantics.
-            EditorAction::PasteBefore => {
-                if let Some(reg) = self.registers.read(DEFAULT_REGISTER) {
-                    let values = reg.values().to_vec();
-                    let displaced = self.doc.apply_edit(|b, s| paste_before(b, s, &values));
-                    if displaced.iter().any(|s| !s.is_empty()) {
-                        self.registers.write(DEFAULT_REGISTER, displaced);
-                    }
-                }
-            }
-
-            EditorAction::Undo => self.doc.undo(),
-            EditorAction::Redo => self.doc.redo(),
-
-            // ── Selection state ───────────────────────────────────────────────
-
-            // `;` — collapse AND exit extend mode (collapsing is a "done" signal).
-            EditorAction::CollapseAndExitExtend => {
-                self.extend = false;
-                self.apply_motion(cmd_collapse_selection);
-            }
-
-            EditorAction::ToggleExtend => {
-                self.extend = !self.extend;
-            }
-
-            // ── Find / till character ─────────────────────────────────────────
-
-            EditorAction::FindForward { ch, kind } => {
-                let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                self.apply_motion(|b, s| find_char_forward(b, s, mode, count, ch, kind));
-                self.last_find = Some(FindChar { ch, kind });
-            }
-
-            EditorAction::FindBackward { ch, kind } => {
-                let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                self.apply_motion(|b, s| find_char_backward(b, s, mode, count, ch, kind));
-                self.last_find = Some(FindChar { ch, kind });
-            }
-
-            // `=` / `-` — repeat last find in absolute direction.
-            EditorAction::RepeatFindForward => {
-                if let Some(FindChar { ch, kind }) = self.last_find {
-                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                    self.apply_motion(|b, s| find_char_forward(b, s, mode, count, ch, kind));
-                }
-            }
-            EditorAction::RepeatFindBackward => {
-                if let Some(FindChar { ch, kind }) = self.last_find {
-                    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-                    self.apply_motion(|b, s| find_char_backward(b, s, mode, count, ch, kind));
-                }
-            }
-
-            // `r` + char — replace every character in every selection with `ch`.
-            EditorAction::Replace(ch) => {
-                self.doc.apply_edit(|b, s| replace_selections(b, s, ch));
-            }
-
-            // ── Page scroll ───────────────────────────────────────────────────
-            // Uses view.height as count (not the user's count prefix).
-
-            EditorAction::PageDown => {
-                let page = self.view.height.max(1);
-                if self.extend {
-                    // "extend-down" command, look it up in registry.
-                    if let Some(MappableCommand::Motion { fun, .. }) =
-                        self.registry.get("extend-down").cloned()
-                    {
-                        self.apply_motion(|b, s| fun(b, s, page));
-                    }
-                } else if let Some(MappableCommand::Motion { fun, .. }) =
-                    self.registry.get("move-down").cloned()
-                {
-                    self.apply_motion(|b, s| fun(b, s, page));
-                }
-            }
-
-            EditorAction::PageUp => {
-                let page = self.view.height.max(1);
-                if self.extend {
-                    if let Some(MappableCommand::Motion { fun, .. }) =
-                        self.registry.get("extend-up").cloned()
-                    {
-                        self.apply_motion(|b, s| fun(b, s, page));
-                    }
-                } else if let Some(MappableCommand::Motion { fun, .. }) =
-                    self.registry.get("move-up").cloned()
-                {
-                    self.apply_motion(|b, s| fun(b, s, page));
-                }
-            }
-
-            // ── Misc ──────────────────────────────────────────────────────────
-
-            EditorAction::Quit => {
-                self.should_quit = true;
-            }
-        }
-    }
-
     // ── Auto-pair helpers ─────────────────────────────────────────────────────
 
     /// Returns `true` if every selection is a cursor AND the character at each

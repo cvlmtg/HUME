@@ -1,21 +1,26 @@
 //! Mappable command registry.
 //!
-//! A [`MappableCommand`] wraps a `cmd_*` function pointer together with a
-//! string name and a one-line doc string. All commands live in a
-//! [`CommandRegistry`] keyed by name, built once via
-//! [`CommandRegistry::with_defaults`].
+//! A [`MappableCommand`] wraps a command together with a string name and a
+//! one-line doc string. All commands live in a [`CommandRegistry`] keyed by
+//! name, built once via [`CommandRegistry::with_defaults`].
 //!
-//! **Two distinct command systems exist in HUME** (following Helix/Kakoune):
+//! **Every user-facing operation is a named command in this registry.**
+//! There is no parallel dispatch system — the keymap trie stores command
+//! *names*; the registry resolves those names to `MappableCommand` values at
+//! dispatch time inside `execute_keymap_command` (`editor/mappings.rs`).
 //!
-//! 1. **Mappable commands** (this file): parameterless, bound to keys by the
-//!    keymap layer. Motions, selections, text objects, and edits. NOT invoked
-//!    from `:`.
-//! 2. **Typed commands** (`editor/mappings.rs` `execute_command`): entered
-//!    via `:`, take string arguments — `:w`, `:q`, future `:w <path>`, etc.
+//! Four command variants exist:
 //!
-//! The keymap trie (`editor/keymap.rs`) stores command *names*; the registry
-//! resolves those names to `MappableCommand` function pointers at dispatch time
-//! inside `execute_keymap_command` (`editor/mappings.rs`).
+//! 1. **Motion** — pure `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
+//! 2. **Selection** — pure `fn(&Buffer, SelectionSet) -> SelectionSet`
+//! 3. **Edit** — pure `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
+//! 4. **EditorCmd** — `fn(&mut Editor, usize)` for composite/side-effectful
+//!    operations (mode changes, registers, undo groups, parameterized motions).
+//!    Implemented in `editor/editor_cmd.rs`; stored and dispatched as a
+//!    function pointer exactly like the other variants.
+//!
+//! Typed commands entered via `:` (`:w`, `:q`, etc.) are a separate system in
+//! `editor/mappings.rs:execute_command` and are NOT stored here.
 
 use std::collections::HashMap;
 
@@ -59,9 +64,8 @@ use crate::ops::text_object::{
 
 /// A command that can be bound to a key in a keymap.
 ///
-/// Three variants mirror the three function signatures used by all editing
-/// commands in the codebase. The keymap trie stores command *names*; the
-/// registry resolves names to `MappableCommand` values at dispatch time.
+/// The keymap trie stores command *names*; the registry resolves names to
+/// `MappableCommand` values at dispatch time.
 #[derive(Clone)]
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
@@ -83,14 +87,24 @@ pub(crate) enum MappableCommand {
     /// Buffer-modifying edit with no extra arguments.
     ///
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
-    ///
-    /// Parameterized edits (`insert_char`, `paste_after`, etc.) are NOT
-    /// registered — they need closures at the call site and are handled as
-    /// [`EditorAction`](super::keymap::EditorAction) variants instead.
     Edit {
         name: &'static str,
         doc: &'static str,
         fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
+    },
+    /// Editor-level command requiring `&mut Editor` context.
+    ///
+    /// Signature: `fn(&mut Editor, usize)`
+    ///
+    /// Covers composite operations: mode changes, register access, undo group
+    /// management, and parameterized motions (find/till/replace). Stored and
+    /// dispatched as a function pointer exactly like the other variants —
+    /// `fn(&mut Editor, usize)` is a thin pointer so there is no self-referential
+    /// sizing issue despite `Editor` owning the registry.
+    EditorCmd {
+        name: &'static str,
+        doc: &'static str,
+        fun: fn(&mut super::Editor, usize),
     },
 }
 
@@ -99,7 +113,8 @@ impl MappableCommand {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
-            | Self::Edit { name, .. } => name,
+            | Self::Edit { name, .. }
+            | Self::EditorCmd { name, .. } => name,
         }
     }
 
@@ -108,7 +123,8 @@ impl MappableCommand {
         match self {
             Self::Motion { doc, .. }
             | Self::Selection { doc, .. }
-            | Self::Edit { doc, .. } => doc,
+            | Self::Edit { doc, .. }
+            | Self::EditorCmd { doc, .. } => doc,
         }
     }
 }
@@ -120,13 +136,13 @@ impl MappableCommand {
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
 /// The keymap trie (`editor/keymap.rs`) stores command names as `&'static str`;
 /// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
-/// dispatch time to obtain the actual function pointer.
+/// dispatch time to obtain the actual function pointer or dispatch EditorCmds.
 pub(crate) struct CommandRegistry {
     commands: HashMap<&'static str, MappableCommand>,
 }
 
 impl CommandRegistry {
-    /// Build a registry pre-populated with every default `cmd_*` function.
+    /// Build a registry pre-populated with every default command.
     pub(crate) fn with_defaults() -> Self {
         let mut reg = Self {
             commands: HashMap::new(),
@@ -158,7 +174,6 @@ impl CommandRegistry {
 
     fn register_defaults(&mut self) {
         // Local macros to cut down on struct-literal boilerplate.
-        // Each arm builds the right variant and calls `self.register`.
         macro_rules! motion {
             ($name:literal, $doc:literal, $fun:expr) => {
                 self.register(MappableCommand::Motion {
@@ -180,6 +195,15 @@ impl CommandRegistry {
         macro_rules! edit {
             ($name:literal, $doc:literal, $fun:expr) => {
                 self.register(MappableCommand::Edit {
+                    name: $name,
+                    doc: $doc,
+                    fun: $fun,
+                })
+            };
+        }
+        macro_rules! editor_cmd {
+            ($name:literal, $doc:literal, $fun:expr) => {
+                self.register(MappableCommand::EditorCmd {
                     name: $name,
                     doc: $doc,
                     fun: $fun,
@@ -297,6 +321,57 @@ impl CommandRegistry {
         edit!("delete-char-forward", "Delete the character (or selection) under the cursor.", delete_char_forward);
         edit!("delete-char-backward", "Delete the character before each cursor.", delete_char_backward);
         edit!("delete-selection", "Delete all selections.", delete_selection);
+
+        use super::commands::*;
+
+        // ── Editor commands — mode transitions ────────────────────────────────
+        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",                     cmd_insert_before);
+        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",                cmd_insert_after);
+        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",             cmd_insert_at_line_start);
+        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",                     cmd_insert_at_line_end);
+        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",                     cmd_open_line_below);
+        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",                     cmd_open_line_above);
+        editor_cmd!("command-mode",         "Open the command-mode mini-buffer.",                                           cmd_command_mode);
+        editor_cmd!("exit-insert",          "Return to normal mode from insert mode.",                                     cmd_exit_insert);
+
+        // ── Editor commands — edit composites ─────────────────────────────────
+        editor_cmd!("delete",       "Yank selections into the default register, then delete them.",                        cmd_delete);
+        editor_cmd!("change",       "Yank, delete selections, then enter insert mode (one undo group).",                   cmd_change);
+        editor_cmd!("yank",         "Yank selections into the default register without deleting.",                         cmd_yank);
+        editor_cmd!("paste-after",  "Paste register contents after the selection.",                                        cmd_paste_after);
+        editor_cmd!("paste-before", "Paste register contents before the selection.",                                       cmd_paste_before);
+        editor_cmd!("undo",         "Undo the last change.",                                                               cmd_undo);
+        editor_cmd!("redo",         "Redo the last undone change.",                                                        cmd_redo);
+
+        // ── Editor commands — selection state ────────────────────────────────
+        editor_cmd!("toggle-extend",            "Toggle sticky extend mode.",                                              cmd_toggle_extend);
+        editor_cmd!("collapse-and-exit-extend", "Collapse each selection to its cursor and exit extend mode.",             cmd_collapse_and_exit_extend);
+
+        // ── Editor commands — find / till (read pending_char) ─────────────────
+        editor_cmd!("find-forward",                "Find next occurrence of a character (inclusive, forward).",            cmd_find_forward);
+        editor_cmd!("extend-find-forward",         "Extend to next occurrence of a character (inclusive, forward).",       cmd_extend_find_forward);
+        editor_cmd!("find-backward",               "Find previous occurrence of a character (inclusive, backward).",       cmd_find_backward);
+        editor_cmd!("extend-find-backward",        "Extend to previous occurrence of a character (inclusive, backward).",  cmd_extend_find_backward);
+        editor_cmd!("till-forward",                "Move to just before next occurrence of a character (exclusive).",      cmd_till_forward);
+        editor_cmd!("extend-till-forward",         "Extend to just before next occurrence of a character (exclusive).",    cmd_extend_till_forward);
+        editor_cmd!("till-backward",               "Move to just after previous occurrence of a character (exclusive).",   cmd_till_backward);
+        editor_cmd!("extend-till-backward",        "Extend to just after previous occurrence of a character (exclusive).", cmd_extend_till_backward);
+        editor_cmd!("repeat-find-forward",         "Repeat the last find/till motion forward.",                            cmd_repeat_find_forward);
+        editor_cmd!("extend-repeat-find-forward",  "Extend: repeat the last find/till motion forward.",                   cmd_extend_repeat_find_forward);
+        editor_cmd!("repeat-find-backward",        "Repeat the last find/till motion backward.",                           cmd_repeat_find_backward);
+        editor_cmd!("extend-repeat-find-backward", "Extend: repeat the last find/till motion backward.",                  cmd_extend_repeat_find_backward);
+
+        // ── Editor commands — replace (reads pending_char) ───────────────────
+        editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace);
+
+        // ── Editor commands — page scroll ─────────────────────────────────────
+        editor_cmd!("page-down",        "Scroll down by one viewport height.",                 cmd_page_down);
+        editor_cmd!("extend-page-down", "Extend selections down by one viewport height.",      cmd_extend_page_down);
+        editor_cmd!("page-up",          "Scroll up by one viewport height.",                   cmd_page_up);
+        editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",        cmd_extend_page_up);
+
+        // ── Editor commands — misc ────────────────────────────────────────────
+        editor_cmd!("quit", "Quit the editor.", cmd_quit);
     }
 }
 
@@ -308,8 +383,8 @@ mod tests {
 
     /// The expected number of commands registered by `with_defaults`.
     ///
-    /// This acts as an exhaustiveness guard: if a new `cmd_*` function is added
-    /// without a corresponding registry entry, this test catches the omission.
+    /// This acts as an exhaustiveness guard: if a new command is added without
+    /// a corresponding registry entry, this test catches the omission.
     ///
     /// Count breakdown:
     ///   26 motions (with count)
@@ -317,9 +392,16 @@ mod tests {
     ///   10 selection commands
     ///   44 text objects (4 line + 8 word + 16 bracket + 12 quote + 4 argument)
     ///    3 edit commands
+    ///    8 mode-transition editor commands
+    ///    7 edit-composite editor commands
+    ///    2 selection-state editor commands
+    ///   12 find/till editor commands (8 + 4 repeat)
+    ///    1 replace editor command
+    ///    4 page-scroll editor commands
+    ///    1 quit editor command
     ///   ──
-    ///   87 total
-    const EXPECTED_COMMAND_COUNT: usize = 87;
+    ///  122 total
+    const EXPECTED_COMMAND_COUNT: usize = 122;
 
     #[test]
     fn registry_has_expected_count() {
@@ -327,7 +409,7 @@ mod tests {
         assert_eq!(
             reg.len(),
             EXPECTED_COMMAND_COUNT,
-            "registered command count mismatch — did you add a cmd_* without registering it?"
+            "registered command count mismatch — did you add a command without registering it?"
         );
     }
 
@@ -349,14 +431,24 @@ mod tests {
         let cmd = reg.get("delete-selection").expect("delete-selection should be registered");
         assert_eq!(cmd.name(), "delete-selection");
         assert!(matches!(cmd, MappableCommand::Edit { .. }));
+
+        // EditorCmd
+        let cmd = reg.get("quit").expect("quit should be registered");
+        assert_eq!(cmd.name(), "quit");
+        assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+
+        let cmd = reg.get("find-forward").expect("find-forward should be registered");
+        assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+
+        let cmd = reg.get("delete").expect("delete should be registered");
+        assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
     }
 
     #[test]
     fn unknown_name_returns_none() {
         let reg = CommandRegistry::with_defaults();
         assert!(reg.get("does-not-exist").is_none());
-        // Make sure a typed command (`:q`) is not in the mappable registry.
-        assert!(reg.get("quit").is_none());
+        assert!(reg.get("nonexistent-command").is_none());
     }
 
     #[test]
