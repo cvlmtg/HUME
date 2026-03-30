@@ -118,8 +118,8 @@ pub(crate) struct Editor {
     /// Status bar layout configuration.
     ///
     /// Initialized with [`StatusLineConfig::default`] (mode pill + separator +
-    /// filename on the left, position on the right). The Steel scripting layer
-    /// will replace this with the user's configured value when it is ready.
+    /// filename on the left, position on the right). Configurable via the
+    /// Steel scripting layer.
     pub(super) statusline_config: StatusLineConfig,
     /// Registry of all mappable commands (motions, selections, edits).
     ///
@@ -128,13 +128,13 @@ pub(crate) struct Editor {
     pub(super) registry: CommandRegistry,
     /// The trie-based keymap for each mode.
     ///
-    /// Built once at startup from [`Keymap::default`]. Will be extended by the
-    /// Steel config layer (M5) to support user overrides.
+    /// Built once at startup from [`Keymap::default`]. Extended by the Steel
+    /// config layer to support user overrides.
     pub(super) keymap: Keymap,
     /// Auto-pair configuration (bracket/quote completion, skip-close, auto-delete).
     ///
-    /// Initialized with sensible defaults. The Steel scripting layer will allow
-    /// users to override this globally or per language once scripting is ready.
+    /// Initialized with sensible defaults. Configurable globally or per language
+    /// via the Steel scripting layer.
     pub(super) auto_pairs: AutoPairsConfig,
     /// The character and kind (inclusive/exclusive) from the last f/t/F/T motion.
     ///

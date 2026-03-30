@@ -182,7 +182,7 @@ pub(super) enum WalkResult {
 ///
 /// Maps [`KeyEvent`] values to either a sub-trie (interior node) or a leaf
 /// command. The trie is built once at startup and never mutated during editing
-/// (mutation is an M5 concern for Steel config overrides).
+/// (the Steel config layer will support user overrides).
 pub(super) struct KeyTrie {
     /// Human-readable name shown in the status bar when the user is mid-sequence
     /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).

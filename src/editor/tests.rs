@@ -935,8 +935,7 @@ fn auto_pairs_disabled() {
 // Note: wrap-selection (insert_pair_close with a non-cursor selection) is tested
 // at the unit level in auto_pairs::tests. It is not reachable via the normal
 // editor insert-mode entry points because all of them (i, a, c, o, …) collapse
-// to a cursor before entering Insert. Wrap will become reachable once a dedicated
-// surround command is added.
+// to a cursor before entering Insert.
 
 // ── f/t character find ────────────────────────────────────────────────────────
 

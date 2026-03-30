@@ -27,8 +27,6 @@ use crate::core::selection::{Selection, SelectionSet};
 
 /// Apply a `(&Buffer, SelectionSet) -> SelectionSet` command `count` times.
 ///
-// Not yet called from the editor layer; kept as the intended count mechanism
-// for when `<count>d` / `<count>c` style repetition is wired up.
 #[allow(dead_code)]
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet

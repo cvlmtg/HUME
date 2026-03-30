@@ -17,7 +17,7 @@ use crate::ui::renderer::RenderCtx;
 /// there is no special chrome. You control the layout by choosing which
 /// segments appear in each slot and in what order.
 ///
-/// The Steel scripting layer will construct [`StatusLineConfig`] values at
+/// The Steel scripting layer constructs [`StatusLineConfig`] values at
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusSegment {

@@ -119,7 +119,6 @@ impl Buffer {
 
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
-    // Not yet called by the editor layer; will be used for rendering empty-buffer hints.
     #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         debug_assert!(
@@ -177,7 +176,6 @@ impl Buffer {
         Some(self.rope.char(char_idx))
     }
 
-    // Not yet called externally; retained as a building block for future direct-buffer ops.
     #[allow(dead_code)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///

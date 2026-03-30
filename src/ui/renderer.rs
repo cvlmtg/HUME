@@ -39,7 +39,7 @@ pub(crate) struct RenderCtx<'a> {
     pub status_msg: Option<&'a str>,
     /// Status bar layout configuration: which segments appear in which slots.
     /// Defaults to the built-in three-slot layout (mode pill + filename left,
-    /// position right). The Steel scripting layer will provide this at runtime.
+    /// position right). Configurable via the Steel scripting layer.
     pub statusline_config: &'a StatusLineConfig,
     /// Ephemeral highlights to overlay (bracket match, search hits, diagnostics).
     /// Must be built (sorted) before passing to `render`.

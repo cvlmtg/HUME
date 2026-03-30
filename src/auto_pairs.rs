@@ -23,8 +23,7 @@ impl Pair {
 /// Configuration for automatic bracket and quote pairing.
 ///
 /// The `enabled` flag is a master switch; `pairs` controls which characters
-/// participate. Both are exposed for Steel scripting, which will allow the
-/// user to toggle auto-pairs globally or override the set per language.
+/// participate. Both are configurable via the Steel scripting layer.
 #[derive(Debug, Clone)]
 pub(crate) struct AutoPairsConfig {
     /// Master switch. When `false`, all auto-pair behavior is disabled and

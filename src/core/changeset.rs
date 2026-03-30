@@ -53,10 +53,6 @@ pub(crate) enum Operation {
 /// `ChangeSetBuilder::new_pos()`, so they never consult `map_pos`. Undo/redo
 /// uses a store-and-restore strategy (the inverse `Transaction` carries the
 /// original `SelectionSet`), also without `map_pos`.
-// `Assoc` and `map_pos` are not yet called — HUME uses direct cursor tracking
-// rather than position mapping. They are kept because position mapping is a
-// standard part of the OT interface and will be needed for collaborative
-// editing or LSP offset translation.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Assoc {

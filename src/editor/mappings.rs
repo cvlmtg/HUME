@@ -133,7 +133,7 @@ impl Editor {
             }
             WalkResult::Interior { .. } => {
                 // More keys needed. pending_keys stays populated.
-                // (Status bar could show the node name — future work.)
+                // More keys needed — pending_keys stays populated.
                 if one_shot_extend {
                     self.extend = saved_extend;
                 }
@@ -257,8 +257,6 @@ impl Editor {
     /// Execute an [`EditorAction`] — composite or side-effectful operations that
     /// cannot be expressed as pure `cmd_*` function pointers.
     ///
-    /// This is a 1:1 migration of the `match` arms that previously lived inline
-    /// in `handle_normal`. Logic is unchanged; the structure is now centralised.
     fn execute_editor_action(&mut self, action: EditorAction, count: usize) {
         match action {
             // ── Mode transitions ──────────────────────────────────────────────
