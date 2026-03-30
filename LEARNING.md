@@ -1028,136 +1028,141 @@ parameters.
 
 ---
 
-## Separating Description from Execution
+## The Command/Keymap/Dispatch Architecture
 
-A recurring architectural pattern in HUME is splitting a feature into two
-layers: one that *names* or *describes* an operation as a value, and one that
-*runs* it. The `f`/`F` find-character commands are a concrete illustration.
+HUME's key handling is split across four files, each owning one responsibility.
+Understanding the split — and what each layer does *not* know — is the key to
+extending the editor safely.
 
-### The three layers for `f`
+### The four files
 
-**Layer 1 — key binding (`keymap.rs`, default trie)**
-
-```rust
-t.bind(key!('f'), KeyTrieNode::WaitChar(|ch| {
-    KeymapCommand::Action(EditorAction::FindForward { ch, kind: Inclusive })
-}));
-```
-
-This is pure *data*: the keymap records that pressing `f` should eventually
-produce a `FindForward` action once the argument character arrives. No editor
-state is touched here. The keymap can be printed, serialised, and rewritten by
-the scripting layer without knowing anything about buffers or selections.
-
-**Layer 2 — descriptor (`keymap.rs`, `EditorAction` enum)**
-
-```rust
-pub(crate) enum EditorAction {
-    FindForward  { ch: char, kind: FindKind },
-    FindBackward { ch: char, kind: FindKind },
-    // ...
-}
-```
-
-`EditorAction` is a plain data type — a closed enum of everything the editor
-can do that involves side effects. It plays the same role as a command object in
-the command pattern: it fully describes *what* to do, but knows nothing about
-*how*. Being a value, it can be stored (the `Quit` action that sets
-`should_quit`), matched in tests, and reasoned about without running anything.
-
-**Layer 3 — execution (`mappings.rs`, `execute_editor_action`)**
-
-```rust
-EditorAction::FindForward { ch, kind } => {
-    let mode = if self.extend { MotionMode::Extend } else { MotionMode::Move };
-    self.apply_motion(|buf, sels| find_char_forward(buf, sels, ch, kind, count, mode));
-    self.last_find = Some(FindChar { ch, kind });
-}
-```
-
-Only here does the code touch mutable editor state: the buffer, selections,
-`last_find`, extend mode. This is the single place that knows about
-`find_char_forward` and about storing the last find for `;`/`,` repeats.
-
-### Why not collapse the layers?
-
-The tempting alternative is to skip `EditorAction` and have the `WaitChar`
-closure call `find_char_forward` directly:
-
-```rust
-// Don't do this:
-t.bind(key!('f'), KeyTrieNode::WaitChar(|ch| {
-    KeymapCommand::Action(/* but Action would hold a closure... */)
-}));
-```
-
-The problem is that closures capturing mutable state (`&mut self`) can't be
-stored in a `HashMap` as a uniform type — they each have a unique anonymous
-type. You could use `Box<dyn Fn(&mut Editor)>`, but then:
-
-- The keymap becomes opaque: you can't inspect it, test it, or serialise it.
-- Every test has to run the full executor instead of pattern-matching a value.
-- The scripting layer can't enumerate or override bindings.
-
-Keeping `EditorAction` as a plain enum means the keymap is a pure value — a
-*description* of what the editor does, not an *execution* of it.
-
-### The same pattern elsewhere in HUME
-
-This separation is consistent across the codebase:
-
-| Description layer | Execution layer |
-|---|---|
-| `CommandRegistry` (`command.rs`) | `execute_keymap_command` (`mappings.rs`) |
-| `EditorAction` enum (`keymap.rs`) | `execute_editor_action` (`mappings.rs`) |
-| `KeymapCommand::Cmd { name, .. }` | Registry lookup + `MappableCommand` dispatch |
-| `Selection` (anchor + head chars) | `apply_motion` / `apply_edit` on `Document` |
-
-In each case, the description layer is a data type with no mutable access to
-editor state. The execution layer has `&mut self` and does exactly one job:
-interpret the description against the current state.
-
-This is the **command pattern** in Rust's idiom: instead of a trait object with
-an `execute` method, you use a concrete enum. Rust's exhaustive `match` then
-guarantees at compile time that every variant is handled — you can't add a new
-`EditorAction` variant without the compiler pointing you to every execution site
-that needs updating.
-
-### How the three files divide responsibility
-
-Zooming in on the `CommandRegistry` row of the table above, three files each
-own a single slice of the dispatch pipeline:
-
-| File | Role | Knows about keys? | Knows about editor state? |
+| File | Role | Knows about keys? | Knows about `&mut Editor`? |
 |---|---|---|---|
-| `command.rs` | Name → function pointer | No | No |
+| `registry.rs` | Name → function pointer | No | No |
+| `commands.rs` | Editor-level command implementations | No | Yes (via `&mut Editor` param) |
 | `keymap.rs` | Key sequence → command name | Yes | No |
 | `mappings.rs` | Resolve name, call function | No | Yes (`&mut self`) |
 
-**`command.rs`** is the registry: 87 `cmd_*` function pointers wrapped with a
-`&'static str` name and a doc string. It knows nothing about keys or about how
-the editor's mutable state is structured. You can query it by name and get back
-a `MappableCommand` value.
+**`registry.rs`** is the command registry. Every user-facing operation is a
+named `MappableCommand` — a function pointer wrapped with a `&'static str` name
+and a doc string. Four variants exist:
 
-**`keymap.rs`** is the key binding table: its trie maps key sequences to
-`KeymapCommand::Cmd { name: "move-right", extend_name: Some("extend-right") }`.
-It stores *names*, not function pointers. This is the thing the Steel scripting
-layer will rewrite to support user keymaps — and it can do so without touching
-any execution logic.
+```rust
+enum MappableCommand {
+    Motion    { name, doc, fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet },
+    Selection { name, doc, fun: fn(&Buffer, SelectionSet) -> SelectionSet },
+    Edit      { name, doc, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet) },
+    EditorCmd { name, doc, fun: fn(&mut Editor, usize) },
+}
+```
+
+The first three are pure functions — they take buffer/selections and return new
+ones. `EditorCmd` takes `&mut Editor` for composite operations that need mode
+changes, registers, undo groups, or parameterized motions.
+
+**`commands.rs`** holds the 35 `EditorCmd` implementations as free functions:
+`cmd_change`, `cmd_find_forward`, `cmd_open_line_below`, etc. Each is a
+`fn(&mut Editor, usize)` registered by name in the registry. This parallels
+how `ops/motion.rs` holds pure motion functions.
+
+**`keymap.rs`** is the key binding table. A trie maps key sequences to command
+names via `KeymapCommand`:
+
+```rust
+struct KeymapCommand {
+    name: &'static str,
+    extend_name: Option<&'static str>,
+}
+```
+
+The keymap stores *names*, not function pointers. This is what the Steel
+scripting layer will rewrite to support user keymaps — and it can do so without
+touching any execution logic.
 
 **`mappings.rs`** is the glue. `execute_keymap_command` takes a name, looks it
-up in the registry, and calls the function pointer against `&mut self`:
+up in the registry, and calls the function pointer:
 
 ```
 keypress
-  → keymap.rs  trie walk  →  KeymapCommand::Cmd { name: "move-right" }
-  → mappings.rs            →  registry.get("move-right")
-  → command.rs             →  MappableCommand::Motion { fun: cmd_move_right }
+  → keymap.rs  trie walk  →  KeymapCommand { name: "move-right", extend_name: Some("extend-right") }
+  → mappings.rs            →  registry.get("move-right")  (or "extend-right" if extend mode is on)
+  → registry.rs            →  MappableCommand::Motion { fun: cmd_move_right }
   → mappings.rs            →  fun(buf, sels, count)
 ```
 
-The layering means any of the three can change independently. Adding a new
-command only touches `command.rs` (register it) and `keymap.rs` (bind a key).
-The executor in `mappings.rs` is unchanged. Rebinding a key only touches
-`keymap.rs`. Changing how dispatch works (e.g. adding macro recording) only
-touches `mappings.rs`.
+### Extend-mode duality
+
+Many Normal mode keys do different things depending on whether extend mode is
+active. Instead of doubling the keymap, each binding can carry an
+`extend_name`:
+
+```rust
+// h = move-left normally, extend-left in extend mode
+cmd!("move-left", "extend-left")
+
+// d = delete always (no extend variant)
+cmd!("delete")
+```
+
+Resolution happens at dispatch time in `mappings.rs`. The keymap itself is
+unaware of extend mode — it just stores two names.
+
+For `WaitChar` commands (f/t/F/T/r), extend resolution is deferred further:
+it happens when the *character argument* arrives, not when the trigger key is
+pressed. This is because extend mode could toggle between the two keypresses.
+
+### WaitChar: parameterized commands
+
+Some commands need a character argument: `f` (find), `t` (till), `r` (replace).
+The trie stores these as `WaitChar` nodes:
+
+```rust
+wait_char!("find-forward", "extend-find-forward")
+```
+
+When the trie walk hits a `WaitChar` node, `mappings.rs` stores the pending
+command in `Editor.wait_char`. The *next* keypress is consumed as the character
+argument, stored in `Editor.pending_char`, and the command is dispatched. The
+command function (e.g. `cmd_find_forward` in `commands.rs`) reads the character
+via `ed.pending_char.take()`.
+
+### Commands are mode-agnostic
+
+Commands in the registry have no mode affinity. `"flip-selections"` is just a
+name that resolves to a function pointer. If Steel binds it to a key in the
+insert keymap trie, `handle_insert` walks the trie, gets a `Leaf`, and calls
+`execute_keymap_command` — which calls the function. The selection flips, the
+editor stays in Insert mode.
+
+Whether that binding is *useful* is the user's responsibility. The editor
+doesn't second-guess it.
+
+### Insert mode limitations
+
+Normal mode accumulates multi-key sequences in `pending_keys` and handles
+`WaitChar` state. Insert mode does neither — its trie walk is single-key only.
+This means:
+
+- **Multi-key sequences** (e.g. `mi` for inner-word) won't work in Insert mode.
+- **WaitChar commands** (e.g. `find-forward`, which needs a second keypress for
+  the character argument) will silently do nothing, because Insert mode doesn't
+  set `wait_char` or consume the follow-up character.
+- **Simple Leaf commands** (e.g. `flip-selections`, `collapse-selection`) work
+  fine if bound to a single key in the insert trie.
+
+This is a design constraint, not a bug. Insert mode is optimised for typing —
+complex command sequences belong in Normal mode. If a future need arises for
+multi-key insert bindings, the `pending_keys` / `WaitChar` machinery from
+`handle_normal` would need to be replicated in `handle_insert`.
+
+### Independence of layers
+
+The layering means any of the four files can change independently:
+
+- **New command**: add the function in the appropriate `ops/` file or
+  `commands.rs`, register it in `registry.rs`, bind a key in `keymap.rs`.
+  `mappings.rs` is unchanged.
+- **Rebind a key**: only touch `keymap.rs`.
+- **Change dispatch** (e.g. add macro recording): only touch `mappings.rs`.
+- **User keymaps via Steel**: rewrite `keymap.rs` trie entries. The registry
+  and dispatch layer are unaffected.
