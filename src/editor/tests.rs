@@ -35,7 +35,7 @@ fn editor_from(input: &str) -> Editor {
         status_msg: None,
         file_meta: None,
         statusline_config: crate::ui::statusline::StatusLineConfig::default(),
-        registry: crate::command::CommandRegistry::with_defaults(),
+        registry: super::command::CommandRegistry::with_defaults(),
         keymap: super::keymap::Keymap::default(),
         auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
         last_find: None,

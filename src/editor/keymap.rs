@@ -68,7 +68,7 @@ macro_rules! key {
 /// registered in the [`CommandRegistry`] and referenced by name via
 /// [`KeymapCommand::Cmd`] instead.
 ///
-/// [`CommandRegistry`]: crate::command::CommandRegistry
+/// [`CommandRegistry`]: super::command::CommandRegistry
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditorAction {
     // ── Mode transitions ──────────────────────────────────────────────────
@@ -149,7 +149,7 @@ pub(crate) enum KeymapCommand {
     /// `name` is used regardless of extend mode (for commands without an extend
     /// variant, e.g. selection manipulation commands).
     ///
-    /// [`CommandRegistry`]: crate::command::CommandRegistry
+    /// [`CommandRegistry`]: super::command::CommandRegistry
     Cmd {
         name: &'static str,
         extend_name: Option<&'static str>,

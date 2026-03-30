@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
-use crate::command::CommandRegistry;
+use self::command::CommandRegistry;
 use crate::core::document::Document;
 use crate::ui::highlight::HighlightSet;
 use crate::io::FileMeta;
@@ -23,6 +23,7 @@ use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
 use self::keymap::{Keymap, KeymapCommand};
 
+mod command;
 mod keymap;
 mod mappings;
 

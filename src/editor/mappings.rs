@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
-use crate::command::MappableCommand;
+use super::command::MappableCommand;
 use crate::ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, replace_selections,
@@ -221,7 +221,7 @@ impl Editor {
     /// through the [`CommandRegistry`] (for pure `cmd_*` functions) or directly
     /// to [`execute_editor_action`] (for composite/side-effectful actions).
     ///
-    /// [`CommandRegistry`]: crate::command::CommandRegistry
+    /// [`CommandRegistry`]: super::command::CommandRegistry
     fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
         match cmd {
             KeymapCommand::Cmd { name, extend_name } => {

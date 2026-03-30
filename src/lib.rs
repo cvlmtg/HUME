@@ -2,7 +2,6 @@ pub(crate) mod core;
 pub(crate) mod ops;
 pub(crate) mod ui;
 pub(crate) mod io;
-pub(crate) mod command;
 pub(crate) mod auto_pairs;
 pub(crate) mod helpers;
 pub(crate) mod os;
