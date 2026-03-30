@@ -85,6 +85,23 @@ fn move_left(buf: &Buffer, head: usize) -> usize {
     prev_grapheme_boundary(buf, head)
 }
 
+// ── Buffer-level goto motions (inner) ────────────────────────────────────────
+
+/// Jump to the first character of the buffer.
+fn goto_first_line(_buf: &Buffer, _head: usize) -> usize {
+    0
+}
+
+/// Jump to the first character of the last (real) line of the buffer.
+///
+/// `ropey`'s `len_lines()` counts the empty "ghost" line that follows every
+/// trailing `\n`, so the last content line is always at index `len_lines() - 2`.
+/// For the minimal buffer (`"\n"`) that yields index 0, which is correct.
+fn goto_last_line(buf: &Buffer, _head: usize) -> usize {
+    let last_line = buf.len_lines().saturating_sub(2);
+    buf.line_to_char(last_line)
+}
+
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
@@ -642,6 +659,15 @@ motion_cmd!(/// Extend all selections one grapheme to the right (anchor stays, h
 motion_cmd!(/// Extend all selections one grapheme to the left (anchor stays, head moves).
     cmd_extend_left, Extend, move_left);
 
+motion_cmd!(/// Move all cursors to the first character of the buffer (`gg`).
+    cmd_goto_first_line, Move, goto_first_line);
+motion_cmd!(/// Move all cursors to the first character of the last line (`ge`).
+    cmd_goto_last_line, Move, goto_last_line);
+motion_cmd!(/// Extend all selections to the first character of the buffer.
+    cmd_extend_first_line, Extend, goto_first_line);
+motion_cmd!(/// Extend all selections to the first character of the last line.
+    cmd_extend_last_line, Extend, goto_last_line);
+
 motion_cmd!(/// Move all cursors to the start of their current line.
     cmd_goto_line_start, Move, goto_line_start);
 motion_cmd!(/// Move all cursors to the last non-newline character on their current line.
@@ -1119,6 +1145,73 @@ mod tests {
             "-[f]>oo -[b]>ar\n",
             |(buf, sels)| cmd_extend_right(&buf, sels, 2),
             "-[foo]> -[bar]>\n"
+        );
+    }
+
+    // ── goto_first_line ───────────────────────────────────────────────────────
+
+    #[test]
+    fn goto_first_line_from_middle() {
+        assert_state!("hello\nwor-[l]>d\n", |(buf, sels)| cmd_goto_first_line(&buf, sels, 1), "-[h]>ello\nworld\n");
+    }
+
+    #[test]
+    fn goto_first_line_already_at_start() {
+        assert_state!("-[h]>ello\nworld\n", |(buf, sels)| cmd_goto_first_line(&buf, sels, 1), "-[h]>ello\nworld\n");
+    }
+
+    #[test]
+    fn goto_first_line_single_line_buffer() {
+        assert_state!("hel-[l]>o\n", |(buf, sels)| cmd_goto_first_line(&buf, sels, 1), "-[h]>ello\n");
+    }
+
+    #[test]
+    fn goto_first_line_empty_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_goto_first_line(&buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn goto_first_line_multi_cursor() {
+        assert_state!(
+            "-[a]>bc\ndef\nghi-[j]>\n",
+            |(buf, sels)| cmd_goto_first_line(&buf, sels, 1),
+            "-[a]>bc\ndef\nghij\n"
+        );
+    }
+
+    // ── goto_last_line ────────────────────────────────────────────────────────
+
+    #[test]
+    fn goto_last_line_from_first() {
+        assert_state!("-[h]>ello\nworld\n", |(buf, sels)| cmd_goto_last_line(&buf, sels, 1), "hello\n-[w]>orld\n");
+    }
+
+    #[test]
+    fn goto_last_line_already_at_last() {
+        assert_state!("hello\n-[w]>orld\n", |(buf, sels)| cmd_goto_last_line(&buf, sels, 1), "hello\n-[w]>orld\n");
+    }
+
+    #[test]
+    fn goto_last_line_single_line_buffer() {
+        assert_state!("-[\n]>", |(buf, sels)| cmd_goto_last_line(&buf, sels, 1), "-[\n]>");
+    }
+
+    #[test]
+    fn goto_last_line_multi_line() {
+        assert_state!(
+            "aaa\n-[b]>bb\nccc\n",
+            |(buf, sels)| cmd_goto_last_line(&buf, sels, 1),
+            "aaa\nbbb\n-[c]>cc\n"
+        );
+    }
+
+    #[test]
+    fn goto_last_line_multi_cursor() {
+        // Both cursors converge to the same position — merged into one.
+        assert_state!(
+            "-[a]>aa\nbbb\n-[c]>cc\n",
+            |(buf, sels)| cmd_goto_last_line(&buf, sels, 1),
+            "aaa\nbbb\n-[c]>cc\n"
         );
     }
 

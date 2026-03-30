@@ -28,11 +28,13 @@ use crate::core::buffer::Buffer;
 use crate::core::changeset::ChangeSet;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
 use crate::ops::motion::{
-    cmd_extend_down, cmd_extend_first_nonblank, cmd_extend_left, cmd_extend_line_end,
+    cmd_extend_down, cmd_extend_first_line, cmd_extend_first_nonblank, cmd_extend_last_line,
+    cmd_extend_left, cmd_extend_line_end,
     cmd_extend_line_start, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
     cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
     cmd_extend_select_next_WORD, cmd_extend_select_next_word, cmd_extend_select_prev_WORD,
-    cmd_extend_select_prev_word, cmd_extend_up, cmd_goto_first_nonblank, cmd_goto_line_end,
+    cmd_extend_select_prev_word, cmd_extend_up, cmd_goto_first_line, cmd_goto_first_nonblank,
+    cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
     cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
@@ -192,6 +194,12 @@ impl CommandRegistry {
         motion!("extend-left", "Extend selections one grapheme to the left.", cmd_extend_left);
         motion!("extend-down", "Extend selections down one line.", cmd_extend_down);
         motion!("extend-up", "Extend selections up one line.", cmd_extend_up);
+
+        // ── Buffer-level goto motions ─────────────────────────────────────────
+        motion!("goto-first-line", "Move cursors to the first character of the buffer.", cmd_goto_first_line);
+        motion!("goto-last-line",  "Move cursors to the first character of the last line.", cmd_goto_last_line);
+        motion!("extend-first-line", "Extend selections to the first character of the buffer.", cmd_extend_first_line);
+        motion!("extend-last-line",  "Extend selections to the first character of the last line.", cmd_extend_last_line);
 
         // ── Line-position motions ─────────────────────────────────────────────
         motion!("goto-line-start", "Move cursors to the start of the line.", cmd_goto_line_start);
@@ -359,7 +367,7 @@ mod tests {
     /// a corresponding registry entry, this test catches the omission.
     ///
     /// Count breakdown:
-    ///   26 motions (with count)
+    ///   30 motions (26 + 4 buffer-level goto: goto/extend first/last line)
     ///    4 line-selection motions (no count)
     ///   10 selection commands
     ///   44 text objects (4 line + 8 word + 16 bracket + 12 quote + 4 argument)
@@ -372,8 +380,8 @@ mod tests {
     ///    4 page-scroll editor commands
     ///    1 quit editor command
     ///   ──
-    ///  122 total
-    const EXPECTED_COMMAND_COUNT: usize = 122;
+    ///  126 total
+    const EXPECTED_COMMAND_COUNT: usize = 126;
 
     #[test]
     fn registry_has_expected_count() {
