@@ -7,7 +7,6 @@ use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::core::buffer::Buffer;
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
@@ -15,7 +14,7 @@ use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
 use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row};
 use crate::ui::theme::EditorColors;
-use crate::ui::view::{LineNumberStyle, ViewState};
+use crate::ui::view::LineNumberStyle;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -56,35 +55,20 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     let lay = layout(area, editor.view.gutter_width as u16);
     let highlights = compute_highlights(editor);
 
-    let doc = &editor.doc;
-    let view = &editor.view;
-    let buf = doc.buf();
-    let sels = doc.sels();
-    let primary_head = sels.primary().head;
-    let cursor_line = buf.char_to_line(primary_head);
-
-    let display_lines = view.display_lines(buf);
+    let buf = editor.doc.buf();
+    let display_lines = editor.view.display_lines(buf);
 
     // ── Content rows ──────────────────────────────────────────────────────────
 
-    for row in 0..view.height {
+    for row in 0..editor.view.height {
         let y = area.y + row as u16;
         if y >= area.bottom() {
             break;
         }
 
         if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, editor, dl, cursor_line, lay.gutter.x, y);
-            render_content(
-                screen_buf,
-                editor,
-                &highlights,
-                dl,
-                lay.content.x,
-                y,
-                lay.content.width,
-                cursor_line,
-            );
+            render_gutter(screen_buf, editor, dl, lay.gutter.x, y);
+            render_content(screen_buf, editor, &highlights, dl, lay.content.x, y, lay.content.width);
         } else {
             // Past end of buffer — draw `~` in the gutter column.
             screen_buf.set_string(area.x, y, "~", editor.colors.tilde);
@@ -94,7 +78,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     // ── Bottom row (status bar / command line / status message) ───────────────
 
     if lay.status_bar.y < area.bottom() {
-        render_bottom_row(screen_buf, editor, area, lay.status_bar.y, cursor_line, primary_head, buf);
+        render_bottom_row(screen_buf, editor, area, lay.status_bar.y);
     }
 
     CursorState { pos: compute_cursor_pos(editor) }
@@ -173,10 +157,7 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
 fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     match editor.mode {
         Mode::Normal => None,
-        Mode::Insert => {
-            let head = editor.doc.sels().primary().head;
-            cursor_screen_pos(editor.doc.buf(), &editor.view, head)
-        }
+        Mode::Insert => cursor_screen_pos(editor),
         Mode::Command => {
             let mb = editor.minibuf.as_ref()?;
             // Status bar layout: col 0 = left margin, col 1 = prompt char, col 2+ = input.
@@ -188,8 +169,11 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     }
 }
 
-/// Map a buffer char offset to screen (col, row), or `None` if scrolled out.
-fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> Option<(u16, u16)> {
+/// Map the primary cursor to screen (col, row), or `None` if scrolled out.
+fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
+    let buf = editor.doc.buf();
+    let view = &editor.view;
+    let head = editor.doc.sels().primary().head;
     let cursor_line = buf.char_to_line(head);
     let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
     if screen_row >= view.height {
@@ -211,7 +195,6 @@ fn render_gutter(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
     dl: &DisplayLine<'_>,
-    cursor_line: usize,
     x: u16,
     y: u16,
 ) {
@@ -219,6 +202,7 @@ fn render_gutter(
     let Some(line_number) = dl.line_number else { return };
     let line_idx = line_number.saturating_sub(1); // 0-based
 
+    let cursor_line = editor.doc.buf().char_to_line(editor.doc.sels().primary().head);
     let view = &editor.view;
     let label = match view.line_number_style {
         LineNumberStyle::Absolute => format!("{line_number}"),
@@ -284,7 +268,6 @@ fn resolve_style(
 /// characters and combining sequences are treated as single units. Display
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns. Style resolution is delegated to [`resolve_style`].
-#[allow(clippy::too_many_arguments)]
 fn render_content(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
@@ -293,11 +276,11 @@ fn render_content(
     x: u16,
     y: u16,
     width: u16,
-    cursor_line: usize,
 ) {
     let mode = editor.mode;
     let colors = &editor.colors;
     let sels = editor.doc.sels();
+    let cursor_line = editor.doc.buf().char_to_line(sels.primary().head);
     let char_offset = dl.char_offset.unwrap_or(0);
 
     // line_end_excl = position of the stripped '\n' (one past the last content char).

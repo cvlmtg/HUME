@@ -4,8 +4,8 @@ use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
-use crate::editor::{Editor, Mode};
 use crate::core::grapheme::grapheme_count;
+use crate::editor::{Editor, Mode};
 
 /// Fill an entire status-bar row with spaces in the base style.
 ///
@@ -97,16 +97,13 @@ pub(crate) fn render_bottom_row(
     editor: &Editor,
     area: Rect,
     y: u16,
-    cursor_line: usize,
-    cursor_head: usize,
-    buf: &Buffer,
 ) {
     if let Some(mb) = &editor.minibuf {
         render_command_line(screen_buf, &editor.colors, area, y, mb.prompt, &mb.input);
     } else if let Some(msg) = editor.status_msg.as_deref() {
         render_status_message(screen_buf, &editor.colors, area, y, msg);
     } else {
-        render_status_bar(screen_buf, editor, cursor_line, cursor_head, buf, area, y);
+        render_status_bar(screen_buf, editor, area, y);
     }
 }
 
@@ -169,9 +166,6 @@ fn render_status_message(
 fn render_status_bar(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
-    cursor_line: usize,
-    cursor_head: usize,
-    buf: &Buffer,
     area: Rect,
     y: u16,
 ) {
@@ -182,9 +176,9 @@ fn render_status_bar(
     fill_row(screen_buf, colors, area, y);
 
     // Render each slot into a sequence of styled spans.
-    let left_spans = render_slot(&config.left, editor, cursor_line, cursor_head, buf);
-    let center_spans = render_slot(&config.center, editor, cursor_line, cursor_head, buf);
-    let right_spans = render_slot(&config.right, editor, cursor_line, cursor_head, buf);
+    let left_spans = render_slot(&config.left, editor);
+    let center_spans = render_slot(&config.center, editor);
+    let right_spans = render_slot(&config.right, editor);
 
     let left_w = slot_width(&left_spans);
     let center_w = slot_width(&center_spans);
@@ -224,13 +218,7 @@ fn render_status_bar(
 /// Returns `(String::new(), _)` for segments that have nothing to show in the
 /// current context (e.g. [`StatusSegment::Selections`] when only one selection
 /// is active). The caller skips zero-width spans.
-fn render_segment(
-    seg: StatusSegment,
-    editor: &Editor,
-    cursor_line: usize,
-    cursor_head: usize,
-    buf: &Buffer,
-) -> (String, Style) {
+fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
     let colors = &editor.colors;
     match seg {
         StatusSegment::ModePill => {
@@ -254,6 +242,9 @@ fn render_segment(
             (name.to_string(), colors.status_bar)
         }
         StatusSegment::Position => {
+            let buf = editor.doc.buf();
+            let cursor_head = editor.doc.sels().primary().head;
+            let cursor_line = buf.char_to_line(cursor_head);
             let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
             (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.status_bar)
         }
@@ -281,18 +272,12 @@ fn render_segment(
 ///
 /// Skips empty segments (e.g. [`StatusSegment::Selections`] in single-cursor
 /// mode) and applies the boundary-aware spacing rule between adjacent spans.
-fn render_slot(
-    segments: &[StatusSegment],
-    editor: &Editor,
-    cursor_line: usize,
-    cursor_head: usize,
-    buf: &Buffer,
-) -> Vec<(String, Style)> {
+fn render_slot(segments: &[StatusSegment], editor: &Editor) -> Vec<(String, Style)> {
     // Each segment produces at most 2 spans (the segment + a possible gap span).
     let mut spans: Vec<(String, Style)> = Vec::with_capacity(segments.len() * 2);
 
     for &seg in segments {
-        let (text, style) = render_segment(seg, editor, cursor_line, cursor_head, buf);
+        let (text, style) = render_segment(seg, editor);
         if text.is_empty() {
             continue;
         }
