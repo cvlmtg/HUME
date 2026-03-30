@@ -934,6 +934,66 @@ mod tests {
          NOR NOR");
     }
 
+    // ── Search match count ────────────────────────────────────────────────────
+
+    #[test]
+    fn search_match_count_in_status_bar() {
+        // "hello world hello\n" — cursor on the first 'h' (char 0).
+        // Searching "hello" yields 2 matches; cursor is on match 1.
+        let doc = doc_at("hello world hello\n", 0);
+        let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v).with_search_regex("hello");
+        let out = render_to_string(&editor, 30, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello world hello
+        ~
+         NOR │ [scratch]    [1/2] 1:1");
+    }
+
+    #[test]
+    fn search_match_count_zero_when_cursor_between_matches() {
+        // Cursor on ' ' (char 5), which is between the two "hello" matches.
+        // current index should be 0.
+        let doc = doc_at("hello world hello\n", 5);
+        let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v).with_search_regex("hello");
+        let out = render_to_string(&editor, 30, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello world hello
+        ~
+         NOR │ [scratch]    [0/2] 1:6");
+    }
+
+    #[test]
+    fn search_match_count_in_search_mode_minibuf() {
+        // In Search mode the mini-buffer replaces the status bar.
+        // The match count should appear right-aligned on the command line row.
+        let doc = doc_at("hello world hello\n", 0);
+        let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v)
+            .with_mode(Mode::Search)
+            .with_minibuf('/', "hello")
+            .with_search_regex("hello");
+        let out = render_to_string(&editor, 30, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello world hello
+        ~
+         /hello                 [1/2]");
+    }
+
+    #[test]
+    fn search_match_count_absent_without_search_regex() {
+        // No active search — count must not appear.
+        let doc = doc_at("hello\n", 0);
+        let v = view(&doc, 25, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v);
+        let out = render_to_string(&editor, 25, 3);
+        insta::assert_snapshot!(out, @r"
+          1 hello
+        ~
+         NOR │ [scratch]     1:1");
+    }
+
     // ── Dirty indicator ───────────────────────────────────────────────────────
 
     #[test]
