@@ -145,26 +145,6 @@ pub(crate) fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta>
 
     tmp.persist(path).map_err(|e| e.error)?;
 
-    // Read back metadata from the real path now that it exists.
-    let resolved = fs::canonicalize(path)?;
-    let metadata = fs::metadata(&resolved)?;
-
-    #[cfg(unix)]
-    let meta = {
-        use std::os::unix::fs::MetadataExt;
-        FileMeta {
-            resolved_path: resolved,
-            permissions: metadata.permissions(),
-            uid: metadata.uid(),
-            gid: metadata.gid(),
-        }
-    };
-
-    #[cfg(not(unix))]
-    let meta = FileMeta {
-        resolved_path: resolved,
-        permissions: metadata.permissions(),
-    };
-
-    Ok(meta)
+    // Read back the metadata now that the file exists on disk.
+    read_file_meta(path)
 }

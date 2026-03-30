@@ -367,25 +367,21 @@ impl Editor {
             .unwrap_or_default();
 
         // Split into command name and optional argument (e.g. "w foo.txt" → "w" + "foo.txt").
-        let (cmd_raw, arg) = match input.split_once(' ') {
-            Some((c, a)) => (c.trim(), Some(a.trim())),
+        // input is already trimmed, so splitting on the first space is sufficient.
+        let (cmd, arg) = match input.split_once(' ') {
+            Some((c, a)) => (c, Some(a.trim())),
             None => (input.as_str(), None),
-        };
-
-        // Strip a trailing `!` to detect force variants (e.g. "q!" → "q" + force=true).
-        let (cmd, force) = match cmd_raw.strip_suffix('!') {
-            Some(base) => (base, true),
-            None => (cmd_raw, false),
         };
 
         match cmd {
             "q" | "quit" => {
-                if !force && self.doc.is_dirty() {
+                if self.doc.is_dirty() {
                     self.status_msg = Some("Unsaved changes (add ! to override)".into());
                 } else {
                     self.should_quit = true;
                 }
             }
+            "q!" | "quit!" => { self.should_quit = true; }
             "w" | "write" => { self.write_file_cmd(arg); }
             "wq" => {
                 if self.write_file_cmd(arg) {
@@ -429,13 +425,11 @@ impl Editor {
         if let Some(path_str) = arg {
             // Save-as: write to the specified path.
             let path = std::path::Path::new(path_str);
-            let result = if path.exists() {
-                // File already exists — read only its metadata to preserve perms, then overwrite.
-                crate::io::read_file_meta(path)
-                    .and_then(|meta| crate::io::write_file_atomic(&content, &meta).map(|()| meta))
-            } else {
-                // New file — create with default permissions.
-                crate::io::write_file_new(&content, path)
+            // Try to preserve existing file's permissions; if the file doesn't
+            // exist yet, write_file_new creates it with default permissions.
+            let result = match crate::io::read_file_meta(path) {
+                Ok(meta) => crate::io::write_file_atomic(&content, &meta).map(|()| meta),
+                Err(_)   => crate::io::write_file_new(&content, path),
             };
             match result {
                 Ok(meta) => {
