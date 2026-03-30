@@ -386,6 +386,7 @@ impl CommandRegistry {
         editor_cmd!("search-prev",           "Jump to the previous search match (`N`).",                cmd_search_prev);
         editor_cmd!("extend-search-next",    "Extend selection to the next search match.",              cmd_extend_search_next);
         editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
+        editor_cmd!("clear-search",          "Clear search highlights (`:clearsearch` / `:cs`).",       cmd_clear_search);
 
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
@@ -415,12 +416,12 @@ mod tests {
     ///   12 find/till editor commands (8 + 4 repeat)
     ///    1 replace editor command
     ///    1 repeat-last-action editor command
-    ///    6 search editor commands (search-forward/backward, search-next/prev, extend variants)
+    ///    7 search editor commands (search-forward/backward, search-next/prev, extend variants, clear-search)
     ///    4 page-scroll editor commands
     ///    1 quit editor command
     ///   ──
-    ///  133 total
-    const EXPECTED_COMMAND_COUNT: usize = 133;
+    ///  134 total
+    const EXPECTED_COMMAND_COUNT: usize = 134;
 
     #[test]
     fn registry_has_expected_count() {

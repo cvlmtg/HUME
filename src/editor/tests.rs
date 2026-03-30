@@ -1673,3 +1673,51 @@ fn extend_search_next_extends_selection() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
+/// `Esc` in Normal mode clears the active search regex and its cached state.
+#[test]
+fn esc_in_normal_clears_search() {
+    let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
+
+    assert!(ed.search_regex.is_some(), "pre-condition: search regex is set");
+    assert!(ed.search_match_count.is_some(), "pre-condition: cache is populated");
+
+    ed.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    ed.update_search_cache();
+
+    assert!(ed.search_regex.is_none(), "search_regex should be cleared by Esc");
+    assert!(ed.search_match_count.is_none(), "search_match_count should be cleared by Esc");
+    assert!(ed.search_matches.is_empty(), "search_matches should be cleared by Esc");
+}
+
+/// `:clearsearch` / `:cs` in Command mode clears the active search regex and its cached state.
+#[test]
+fn command_clearsearch_clears_search() {
+    let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
+
+    assert!(ed.search_regex.is_some(), "pre-condition: search regex is set");
+
+    // :clearsearch
+    ed.handle_key(key(':'));
+    for ch in "clearsearch".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    ed.update_search_cache();
+
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.search_regex.is_none(), "search_regex should be cleared by :clearsearch");
+    assert!(ed.search_match_count.is_none(), "search_match_count should be cleared by :clearsearch");
+    assert!(ed.search_matches.is_empty(), "search_matches should be cleared by :clearsearch");
+
+    // :cs shorthand also works
+    let mut ed2 = editor_from("-[h]>ello hello\n").with_search_regex("hello");
+    ed2.handle_key(key(':'));
+    for ch in "cs".chars() {
+        ed2.handle_key(key(ch));
+    }
+    ed2.handle_key(key_enter());
+    ed2.update_search_cache();
+
+    assert!(ed2.search_regex.is_none(), "search_regex should be cleared by :cs");
+}
+

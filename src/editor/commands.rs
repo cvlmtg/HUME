@@ -435,6 +435,15 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
     }
 }
 
+/// Clear the active search regex and dismiss all match highlights.
+///
+/// Bound to `Esc` in Normal mode and invocable as `:clearsearch` / `:cs` in Command mode.
+pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
+    ed.search_regex = None;
+    // update_search_cache() is called by the event loop after handle_key returns,
+    // so the cache (search_matches, search_match_count) is flushed before the next render.
+}
+
 pub(super) fn cmd_search_next(ed: &mut Editor, count: usize) {
     search_jump(ed, count, ed.search_direction, false);
 }
