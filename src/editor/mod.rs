@@ -370,14 +370,16 @@ impl Editor {
 
     /// Recompute and cache the match list and current/total count.
     ///
-    /// Called once after each `handle_key` so the render path can read
-    /// pre-computed values instead of running the regex over the buffer twice.
+    /// Called once after each `handle_key` so the render path reads
+    /// pre-computed values and does zero regex work.
+    /// Skipped when there is no active search and the cache is already empty.
     pub(super) fn update_search_cache(&mut self) {
         if let Some(regex) = &self.search_regex {
             self.search_matches = find_all_matches(self.doc.buf(), regex);
             let head = self.doc.sels().primary().head;
             self.search_match_count = Some(search_match_info(&self.search_matches, head));
-        } else {
+        } else if !self.search_matches.is_empty() {
+            // search_regex was just cleared — flush the stale cache.
             self.search_matches.clear();
             self.search_match_count = None;
         }
