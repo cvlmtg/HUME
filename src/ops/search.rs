@@ -104,16 +104,16 @@ pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize
 /// `current_1based` is the 1-based index of the match whose range contains
 /// `cursor_head`, or `0` when the cursor is not on any match (e.g. during
 /// live search before a hit is found).
-///
-/// Used by the renderer to build the `[3/42]` search count display.
 pub(crate) fn search_match_info(buf: &Buffer, regex: &Regex, cursor_head: usize) -> (usize, usize) {
     let matches = find_all_matches(buf, regex);
     let total = matches.len();
-    // Binary search for the match whose range contains cursor_head.
-    // Matches are in document order; we want the first one where start <= cursor_head <= end_incl.
-    let current = matches
-        .iter()
-        .position(|&(start, end_incl)| start <= cursor_head && cursor_head <= end_incl)
+    // partition_point gives the first index where start > cursor_head, so
+    // idx-1 is the last match that could contain cursor_head. If cursor_head
+    // also falls within its end, the cursor is on that match.
+    let idx = matches.partition_point(|&(start, _)| start <= cursor_head);
+    let current = idx
+        .checked_sub(1)
+        .filter(|&i| cursor_head <= matches[i].1)
         .map(|i| i + 1) // convert to 1-based
         .unwrap_or(0);
     (current, total)
