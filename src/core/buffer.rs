@@ -117,6 +117,15 @@ impl Buffer {
         self.rope.len_chars()
     }
 
+    /// Index of the last content character — the character just before the
+    /// structural trailing `\n`.
+    ///
+    /// Edit operations that must not consume the trailing `\n` cap their
+    /// `end_inclusive` at this value.
+    pub(crate) fn last_content_char(&self) -> usize {
+        self.len_chars().saturating_sub(2)
+    }
+
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
     #[allow(dead_code)]
