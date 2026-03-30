@@ -35,7 +35,8 @@ pub(crate) struct CursorState {
 pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
     match mode {
         Mode::Normal => SetCursorStyle::SteadyBlock,
-        Mode::Insert | Mode::Command | Mode::Search => SetCursorStyle::SteadyBar,
+        Mode::Insert => SetCursorStyle::SteadyBar,
+        Mode::Command | Mode::Search => SetCursorStyle::SteadyBlock,
     }
 }
 
