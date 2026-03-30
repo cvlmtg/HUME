@@ -258,6 +258,17 @@ mod tests {
     }
 
     #[test]
+    fn backward_from_position_zero_wraps() {
+        // Primary range is 0..0 (empty), so the entire buffer is searched as the
+        // wrap range. This exercises the path where the early-return guard in
+        // search_last_in fires and the wrap leg does all the work.
+        let b = buf("hello world\n");
+        let (s, e, wrapped) = find_next_match(&b, &re("world"), 0, SearchDirection::Backward).unwrap();
+        assert_eq!((s, e), (6, 10));
+        assert!(wrapped);
+    }
+
+    #[test]
     fn backward_multiple_matches_picks_last_before_from() {
         let b = buf("aababab\n");
         // Matches: (1,2), (3,4), (5,6). Searching backward from char 5.

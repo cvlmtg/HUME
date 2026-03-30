@@ -1528,3 +1528,146 @@ fn command_mode_clears_stale_insert_recording() {
     assert!(ed.insert_recording.is_none());
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
+
+/// `/` opens Search mode; typing a pattern triggers live search; `Enter` confirms
+/// the match and writes the pattern to the `'s'` register.
+#[test]
+fn search_forward_enter_confirms() {
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    ed.handle_key(key('/'));
+    assert_eq!(ed.mode, Mode::Search);
+
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Live search has already moved the selection to "world".
+    assert_eq!(state(&ed), "hello -[world]>\n");
+
+    ed.handle_key(key_enter());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello -[world]>\n");
+    // Pattern written to the 's' register for n/N repeat.
+    assert_eq!(reg(&ed, 's'), vec!["world"]);
+}
+
+/// `Esc` during search restores the selection to its pre-search state.
+#[test]
+fn search_esc_restores_position() {
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    ed.handle_key(key('/'));
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "hello -[world]>\n");
+
+    ed.handle_key(key_esc());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+}
+
+/// `n` repeats the last confirmed forward search, advancing through matches in
+/// document order.
+#[test]
+fn search_n_repeats_forward() {
+    // "ab ab ab\n" — three "ab" matches at (0,1), (3,4), (6,7).
+    let mut ed = editor_from("-[a]>b ab ab\n");
+
+    ed.handle_key(key('/'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "-[ab]> ab ab\n");
+
+    ed.handle_key(key('n'));
+    assert_eq!(state(&ed), "ab -[ab]> ab\n");
+
+    ed.handle_key(key('n'));
+    assert_eq!(state(&ed), "ab ab -[ab]>\n");
+}
+
+/// `N` repeats the last search in the opposite direction.
+#[test]
+fn search_N_repeats_backward() {
+    let mut ed = editor_from("-[a]>b ab ab\n");
+
+    ed.handle_key(key('/'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    // Advance to the second match.
+    ed.handle_key(key('n'));
+    assert_eq!(state(&ed), "ab -[ab]> ab\n");
+
+    // N goes back.
+    ed.handle_key(key('N'));
+    assert_eq!(state(&ed), "-[ab]> ab ab\n");
+}
+
+/// `?` searches backward — the confirmed match is the last occurrence before
+/// the pre-search cursor position.
+#[test]
+fn search_backward_confirms() {
+    // Cursor at the third "ab"; backward search should land on the second.
+    let mut ed = editor_from("ab ab -[a]>b\n");
+
+    ed.handle_key(key('?'));
+    assert_eq!(ed.mode, Mode::Search);
+
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "ab -[ab]> ab\n");
+}
+
+/// When no match exists, `n` sets the "no match" status message.
+/// Confirming a search with no match returns to the pre-search position.
+#[test]
+fn search_no_match_behaviour() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    // Confirm a pattern that matches nothing.
+    ed.handle_key(key('/'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key('z'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    // Position restored to pre-search (live search restores on each no-match keystroke).
+    assert_eq!(state(&ed), "-[h]>ello\n");
+
+    // n: "no match" status message.
+    ed.handle_key(key('n'));
+    assert_eq!(ed.status_msg.as_deref(), Some("no match"));
+}
+
+/// Extend-search-next keeps the original anchor and moves the head to the match.
+#[test]
+fn extend_search_next_extends_selection() {
+    // Cursor on 'h'; search forward for "world" with extend active.
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.extend = true;
+
+    ed.handle_key(key('/'));
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Live search in extend mode: anchor stays at 0 ('h'), head moves to 10 ('d').
+    assert_eq!(state(&ed), "-[hello world]>\n");
+
+    ed.handle_key(key_enter());
+    ed.extend = false;
+
+    // n in extend mode: anchor stays at 0, head jumps to next match.
+    ed.extend = true;
+    // Only one "world" — wraps back to the same match.
+    ed.handle_key(key('n'));
+    // Selection should still cover from anchor=0 to the match end.
+    assert_eq!(state(&ed), "-[hello world]>\n");
+}
+
