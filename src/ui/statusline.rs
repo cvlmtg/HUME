@@ -1,6 +1,7 @@
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
@@ -101,7 +102,7 @@ pub(crate) fn render_bottom_row(
     y: u16,
 ) {
     if let Some(mb) = &editor.minibuf {
-        render_command_line(screen_buf, &editor.colors, area, y, mb.prompt, &mb.input);
+        render_command_line(screen_buf, &editor.colors, area, y, mb.prompt, &mb.input, mb.cursor);
     } else if let Some(msg) = editor.status_msg.as_deref() {
         render_status_message(screen_buf, &editor.colors, area, y, msg);
     } else {
@@ -123,6 +124,7 @@ fn render_command_line(
     y: u16,
     prompt: char,
     input: &str,
+    cursor: usize,
 ) {
     // The command line fully replaces the status bar row — no segment layout,
     // no mode pill. The prompt character makes the mode self-evident.
@@ -132,6 +134,24 @@ fn render_command_line(
     // in the normal status bar so the text is visually aligned.
     let cmd_str = format!("{prompt}{input}");
     screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
+
+    // Visual block cursor: remove the REVERSED modifier from the cursor cell.
+    //
+    // The status bar uses REVERSED (light bg on dark terminals). Patching with
+    // `remove_modifier(REVERSED)` clears that bit, leaving terminal-default
+    // colors (dark bg) — a visible block against the light status bar row.
+    // We own the cursor rendering here rather than relying on the terminal
+    // cursor, which draws in the terminal's own cursor color (often white,
+    // invisible on a white/reversed background).
+    //
+    // col 0 = left margin space, col 1 = prompt char, col 2+ = input text.
+    let cursor_x = area.x + 1 + 1 + UnicodeWidthStr::width(&input[..cursor]) as u16;
+    if cursor_x < area.right() {
+        // The grapheme under the cursor, or a space when the cursor is past the end.
+        let ch = input[cursor..].graphemes(true).next().unwrap_or(" ");
+        let cursor_style = Style::new().remove_modifier(Modifier::REVERSED);
+        screen_buf.set_string(cursor_x, y, ch, cursor_style);
+    }
 }
 
 /// Render a transient status message on the bottom row.
