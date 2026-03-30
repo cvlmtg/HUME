@@ -104,29 +104,32 @@ pub(super) fn cmd_yank(ed: &mut Editor, _count: usize) {
     ed.registers.write(DEFAULT_REGISTER, yanked);
 }
 
-/// Paste after; swap displaced text back into the register when the selection
-/// was non-cursor (replace-and-swap semantics).
-pub(super) fn cmd_paste_after(ed: &mut Editor, _count: usize) {
-    use crate::ops::edit::paste_after;
+/// Shared body for paste commands: read the default register, run `paste_fn`,
+/// then write displaced text back if any selection was non-cursor (replace-and-swap).
+fn do_paste(
+    ed: &mut Editor,
+    paste_fn: impl Fn(Buffer, SelectionSet, &[String]) -> (Buffer, SelectionSet, crate::core::changeset::ChangeSet, Vec<String>),
+) {
     if let Some(reg) = ed.registers.read(DEFAULT_REGISTER) {
         let values = reg.values().to_vec();
-        let displaced = ed.doc.apply_edit(|b, s| paste_after(b, s, &values));
+        let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
         if displaced.iter().any(|s| !s.is_empty()) {
             ed.registers.write(DEFAULT_REGISTER, displaced);
         }
     }
 }
 
-/// Paste before; same replace-and-swap semantics as `cmd_paste_after`.
+/// Paste after the selection; swap displaced text back into the register when
+/// the selection was non-cursor (replace-and-swap semantics).
+pub(super) fn cmd_paste_after(ed: &mut Editor, _count: usize) {
+    use crate::ops::edit::paste_after;
+    do_paste(ed, paste_after);
+}
+
+/// Paste before the selection; same replace-and-swap semantics as `cmd_paste_after`.
 pub(super) fn cmd_paste_before(ed: &mut Editor, _count: usize) {
     use crate::ops::edit::paste_before;
-    if let Some(reg) = ed.registers.read(DEFAULT_REGISTER) {
-        let values = reg.values().to_vec();
-        let displaced = ed.doc.apply_edit(|b, s| paste_before(b, s, &values));
-        if displaced.iter().any(|s| !s.is_empty()) {
-            ed.registers.write(DEFAULT_REGISTER, displaced);
-        }
-    }
+    do_paste(ed, paste_before);
 }
 
 pub(super) fn cmd_undo(ed: &mut Editor, _count: usize) {

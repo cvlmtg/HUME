@@ -7,6 +7,15 @@ use crate::core::buffer::Buffer;
 use crate::editor::{Editor, Mode};
 use crate::core::grapheme::grapheme_count;
 
+/// Fill an entire status-bar row with spaces in the base style.
+///
+/// All three bottom-row renderers do this as their first step to clear
+/// whatever was drawn in the previous frame.
+fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors, area: Rect, y: u16) {
+    let blank = " ".repeat(area.width as usize);
+    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// A named element that can appear in a statusline slot.
@@ -119,8 +128,7 @@ fn render_command_line(
 
     // The command line fully replaces the status bar row — no segment layout,
     // no mode pill. The prompt character makes the mode self-evident.
-    let blank: String = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+    fill_row(screen_buf, colors, area, y);
 
     // +1: 1-column left margin, matching the leading space of the mode pill
     // in the normal status bar so the text is visually aligned.
@@ -139,8 +147,7 @@ fn render_status_message(
     y: u16,
     msg: &str,
 ) {
-    let blank: String = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+    fill_row(screen_buf, colors, area, y);
     screen_buf.set_string(area.x + 1, y, msg, colors.status_bar); // +1: left margin, see render_command_line
 }
 
@@ -172,8 +179,7 @@ fn render_status_bar(
     let config = &editor.statusline_config;
 
     // Fill the entire row with the base status bar style first.
-    let blank: String = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+    fill_row(screen_buf, colors, area, y);
 
     // Render each slot into a sequence of styled spans.
     let left_spans = render_slot(&config.left, editor, cursor_line, cursor_head, buf);
@@ -282,7 +288,8 @@ fn render_slot(
     cursor_head: usize,
     buf: &Buffer,
 ) -> Vec<(String, Style)> {
-    let mut spans: Vec<(String, Style)> = Vec::new();
+    // Each segment produces at most 2 spans (the segment + a possible gap span).
+    let mut spans: Vec<(String, Style)> = Vec::with_capacity(segments.len() * 2);
 
     for &seg in segments {
         let (text, style) = render_segment(seg, editor, cursor_line, cursor_head, buf);

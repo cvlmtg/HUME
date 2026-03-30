@@ -205,7 +205,7 @@ fn delete_sel_region(
 ) {
     let start = sel.start();
     // Cap at the last content char so the structural trailing '\n' is never removed.
-    let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
+    let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
     b.retain(start - b.old_pos());
     b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
     let sel = Selection::cursor(b.new_pos());
@@ -270,7 +270,7 @@ where
             // Cap end at the last content char so the structural trailing '\n'
             // is never deleted.
             let start = sel.start();
-            let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
+            let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
             let end_excl = end_incl + 1;
             replaced.push(buf.slice(start..end_excl).to_string());
             b.retain(start - b.old_pos());
@@ -309,7 +309,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         if !sel.is_cursor() {
             // Delete the selected region. Cap at the last content char to protect
             // the structural trailing '\n'.
-            let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
+            let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
             b.delete(end_incl + 1 - start);
         }
         b.insert_char(ch);
