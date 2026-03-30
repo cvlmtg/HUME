@@ -90,8 +90,8 @@ impl Document {
     pub(crate) fn new(buf: Buffer, sels: SelectionSet) -> Self {
         let buf_len = buf.len_chars();
         let history = History::new(sels.clone(), buf_len);
-        // RevisionId(0) is the root — the initial state is considered saved.
-        Self { buf, sels, history, group: None, saved_revision: RevisionId(0) }
+        let saved_revision = history.current_id();
+        Self { buf, sels, history, group: None, saved_revision }
     }
 
     /// Returns `true` if the buffer has unsaved changes.
