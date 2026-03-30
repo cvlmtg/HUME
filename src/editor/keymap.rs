@@ -289,6 +289,27 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie
 }
 
+// ── Goto trie ─────────────────────────────────────────────────────────────────
+
+/// Build the `g` sub-trie for goto commands.
+///
+/// ```text
+/// g ─┬─ g  → goto-first-line
+///    ├─ e  → goto-last-line
+///    ├─ h  → goto-line-start
+///    ├─ l  → goto-line-end
+///    └─ s  → goto-first-nonblank
+/// ```
+fn build_goto_trie() -> KeyTrie {
+    let mut t = KeyTrie::new("goto");
+    t.bind_leaf(key!('g'), cmd!("goto-first-line",     "extend-first-line"));
+    t.bind_leaf(key!('e'), cmd!("goto-last-line",      "extend-last-line"));
+    t.bind_leaf(key!('h'), cmd!("goto-line-start",     "extend-line-start"));
+    t.bind_leaf(key!('l'), cmd!("goto-line-end",       "extend-line-end"));
+    t.bind_leaf(key!('s'), cmd!("goto-first-nonblank", "extend-first-nonblank"));
+    t
+}
+
 // ── Default Normal keymap ─────────────────────────────────────────────────────
 
 fn default_normal_keymap() -> KeyTrie {
@@ -382,6 +403,10 @@ fn default_normal_keymap() -> KeyTrie {
     // Repeat last find in absolute direction.
     t.bind_leaf(key!('='), cmd!("repeat-find-forward",  "extend-repeat-find-forward"));
     t.bind_leaf(key!('-'), cmd!("repeat-find-backward", "extend-repeat-find-backward"));
+
+    // ── Goto prefix ───────────────────────────────────────────────────────────
+    // `g` → second key (goto commands, 2-key sequence).
+    t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));
 
     // ── Text objects ──────────────────────────────────────────────────────────
     // `m` → `i`/`a` → object char (3-key sequence).
