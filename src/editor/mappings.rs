@@ -67,7 +67,7 @@ impl Editor {
                     return;
                 }
                 KeyCode::Char('0') if self.count.is_some() => {
-                    self.count = Some(self.count.unwrap_or(0) * 10);
+                    self.count = Some(self.count.unwrap() * 10);
                     return;
                 }
                 _ => {}

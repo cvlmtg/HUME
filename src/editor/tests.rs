@@ -197,9 +197,8 @@ fn r_then_esc_cancels_without_side_effects() {
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged after cancelled replace");
 }
 
-/// `f<Esc>` cancels the wait-char without moving the cursor.
-/// Unlike `r`, find/till has extend duality, so this exercises the extend
-/// branch being cleanly torn down too.
+/// Unlike `r`, find/till has extend duality — this exercises that branch
+/// being cleanly torn down on Esc.
 #[test]
 fn f_then_esc_cancels_without_side_effects() {
     let mut ed = editor_from("-[h]>ello a\n");

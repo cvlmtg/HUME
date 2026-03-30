@@ -66,7 +66,7 @@ use crate::ops::text_object::{
 ///
 /// The keymap trie stores command *names*; the registry resolves names to
 /// `MappableCommand` values at dispatch time.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///

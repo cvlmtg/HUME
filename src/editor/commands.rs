@@ -241,11 +241,10 @@ pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
 /// Shared implementation for the four page-scroll commands.
 fn page_scroll(ed: &mut Editor, motion_name: &str) {
     let page = ed.view.height.max(1);
-    if let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).cloned() {
-        ed.apply_motion(|b, s| fun(b, s, page));
-    } else {
+    let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
         unreachable!("page_scroll: motion '{}' not in registry", motion_name);
-    }
+    };
+    ed.apply_motion(|b, s| fun(b, s, page));
 }
 
 pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize) {
