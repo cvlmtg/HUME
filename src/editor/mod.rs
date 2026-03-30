@@ -13,7 +13,7 @@ use crate::core::document::Document;
 use crate::ui::highlight::HighlightSet;
 use crate::io::FileMeta;
 use crate::ops::register::RegisterSet;
-use crate::ui::renderer::{cursor_screen_pos, render, RenderCtx};
+use crate::ui::renderer::{cursor_screen_pos, render};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
@@ -71,7 +71,7 @@ pub(crate) enum Mode {
 ///
 /// Designed to be reused for search (`/`) in M4 — `prompt` distinguishes
 /// the context without needing separate mode variants for each prompt type.
-pub(super) struct MiniBuffer {
+pub(crate) struct MiniBuffer {
     /// The character shown before the input, e.g. `:` for commands, `/` for search.
     pub prompt: char,
     /// The text typed so far.
@@ -81,13 +81,13 @@ pub(super) struct MiniBuffer {
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
-    pub(super) doc: Document,
-    pub(super) view: ViewState,
-    pub(super) file_path: Option<PathBuf>,
-    pub(super) mode: Mode,
+    pub(crate) doc: Document,
+    pub(crate) view: ViewState,
+    pub(crate) file_path: Option<PathBuf>,
+    pub(crate) mode: Mode,
     /// When `true`, all motions extend the current selection rather than moving it.
     /// Toggled by `e` in Normal mode; cleared on entering Insert mode or pressing Esc.
-    pub(super) extend: bool,
+    pub(crate) extend: bool,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     ///
     /// Empty when at the trie root. Re-walked from the root on each new keypress.
@@ -109,14 +109,14 @@ pub(crate) struct Editor {
     /// `dispatch_editor_cmd`. Always `None` between commands.
     pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
-    pub(super) colors: EditorColors,
+    pub(crate) colors: EditorColors,
     pub(super) should_quit: bool,
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
-    pub(super) minibuf: Option<MiniBuffer>,
+    pub(crate) minibuf: Option<MiniBuffer>,
     /// Transient one-line message shown in the status bar after an action
     /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
-    pub(super) status_msg: Option<String>,
+    pub(crate) status_msg: Option<String>,
     /// Metadata captured from the file at open time (permissions, ownership,
     /// resolved path). `None` for scratch buffers. Used by the write path to
     /// preserve the original file's attributes across atomic saves.
@@ -126,7 +126,7 @@ pub(crate) struct Editor {
     /// Initialized with [`StatusLineConfig::default`] (mode pill + separator +
     /// filename on the left, position on the right). Configurable via the
     /// Steel scripting layer.
-    pub(super) statusline_config: StatusLineConfig,
+    pub(crate) statusline_config: StatusLineConfig,
     /// Registry of all mappable commands (motions, selections, edits).
     ///
     /// Keyed by name; looked up by `execute_keymap_command` when dispatching
@@ -261,42 +261,9 @@ impl Editor {
             };
 
             // ── 4. Render ─────────────────────────────────────────────────────
-            // Capture references before the draw closure so the borrow checker
-            // sees them as separate borrows of distinct fields, not of `self`.
-            let ctx = RenderCtx {
-                doc: &self.doc,
-                view: &self.view,
-                file_path: self.file_path.as_deref(),
-                mode: self.mode,
-                extend: self.extend,
-                colors: &self.colors,
-                minibuf: self.minibuf.as_ref().map(|m| (m.prompt, m.input.as_str())),
-                status_msg: self.status_msg.as_deref(),
-                statusline_config: &self.statusline_config,
-                highlights,
-                kitty_enabled: self.kitty_enabled,
-            };
-            term.draw(|frame| {
-                render(&ctx, frame.area(), frame.buffer_mut());
-                // In Insert and Command mode, show the real terminal cursor (bar).
-                // Normal mode uses the white-block cursor_head cell style — no real cursor needed.
-                match ctx.mode {
-                    Mode::Insert => {
-                        if let Some(pos) = cursor_screen_pos(ctx.doc.buf(), ctx.view, ctx.doc.sels().primary().head) {
-                            frame.set_cursor_position(pos);
-                        }
-                    }
-                    Mode::Command => {
-                        if let Some((_, input)) = ctx.minibuf {
-                            // Layout: 1-col margin + prompt char = col 2, then display-width of input.
-                            let col = 2 + UnicodeWidthStr::width(input) as u16;
-                            let row = ctx.view.height as u16;
-                            frame.set_cursor_position((col, row));
-                        }
-                    }
-                    Mode::Normal => {}
-                }
-            })?;
+            // All mutations are done above. Rust allows a shared reborrow of
+            // `self` here since no mutable reference is live at this point.
+            render_frame(term, self, highlights)?;
 
             // ── 4b. Cursor shape ──────────────────────────────────────────────
             // Emitted *after* draw so it's the last escape sequence the terminal
@@ -364,6 +331,81 @@ impl Editor {
             f(buf, sels)
         };
         self.doc.set_selections(new_sels);
+    }
+}
+
+// ── Render helper ─────────────────────────────────────────────────────────────
+
+/// Render one frame: paint the screen buffer and position the terminal cursor.
+///
+/// Takes a shared `&Editor` — all mutations for this frame (dimension sync,
+/// scroll, highlight computation) are done before this is called in `run`.
+fn render_frame(term: &mut Term, editor: &Editor, highlights: &HighlightSet) -> io::Result<()> {
+    term.draw(|frame| {
+        render(editor, highlights, frame.area(), frame.buffer_mut());
+        // In Insert and Command mode, show the real terminal cursor (bar).
+        // Normal mode uses the white-block cursor_head cell style — no real cursor needed.
+        match editor.mode {
+            Mode::Insert => {
+                if let Some(pos) = cursor_screen_pos(editor.doc.buf(), &editor.view, editor.doc.sels().primary().head) {
+                    frame.set_cursor_position(pos);
+                }
+            }
+            Mode::Command => {
+                if let Some(mb) = &editor.minibuf {
+                    // Layout: 1-col margin + prompt char = col 2, then display-width of input.
+                    let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
+                    let row = editor.view.height as u16;
+                    frame.set_cursor_position((col, row));
+                }
+            }
+            Mode::Normal => {}
+        }
+    })?;
+    Ok(())
+}
+
+// ── Test constructors ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+impl Editor {
+    /// Construct a minimal `Editor` for renderer unit tests.
+    ///
+    /// Only `doc` and `view` are meaningful — all other fields are set to
+    /// sensible defaults (Normal mode, default colors, no file path, etc.).
+    /// Use the builder methods below to override specific fields.
+    pub(crate) fn for_testing(doc: Document, view: ViewState) -> Self {
+        Self {
+            doc,
+            view,
+            file_path: None,
+            mode: Mode::Normal,
+            extend: false,
+            pending_keys: Vec::new(),
+            count: None,
+            wait_char: None,
+            pending_char: None,
+            registers: RegisterSet::new(),
+            colors: EditorColors::default(),
+            should_quit: false,
+            minibuf: None,
+            status_msg: None,
+            file_meta: None,
+            statusline_config: StatusLineConfig::default(),
+            registry: registry::CommandRegistry::with_defaults(),
+            keymap: keymap::Keymap::default(),
+            auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
+            last_find: None,
+            kitty_enabled: false,
+        }
+    }
+
+    pub(crate) fn with_mode(mut self, mode: Mode) -> Self { self.mode = mode; self }
+    pub(crate) fn with_extend(mut self, extend: bool) -> Self { self.extend = extend; self }
+    pub(crate) fn with_file_path(mut self, path: PathBuf) -> Self { self.file_path = Some(path); self }
+    pub(crate) fn with_statusline_config(mut self, config: StatusLineConfig) -> Self {
+        self.statusline_config = config;
+        self
     }
 }
 

@@ -946,14 +946,14 @@ first.
 The problem arises when you put a reference **inside a struct**:
 
 ```rust
-struct RenderCtx {
-    doc: &Document,   // ← which Document? how long does this live?
+struct DisplayLine {
+    content: &RopeSlice,   // ← which RopeSlice? how long does this live?
 }
 ```
 
-The compiler has no way to know when `doc` will be used, so it cannot verify
-safety. The lifetime annotation `&'a` is the solution: it gives the compiler
-a name to reason about.
+The compiler has no way to know when `content` will be used, so it cannot
+verify safety. The lifetime annotation `&'a` is the solution: it gives the
+compiler a name to reason about.
 
 ### What `'a` means
 
@@ -962,18 +962,17 @@ point into the same scope and will not outlive it." The `'a` is not a duration
 or a timer; it is a constraint.
 
 ```rust
-pub(crate) struct RenderCtx<'a> {
-    pub doc:   &'a Document,
-    pub view:  &'a ViewState,
-    pub colors: &'a EditorColors,
-    // ...
+pub(crate) struct DisplayLine<'a> {
+    pub content: RopeSlice<'a>,
+    pub line_number: Option<usize>,
+    pub char_offset: Option<usize>,
 }
 ```
 
-This declaration says: "`RenderCtx` borrows from some scope. All references
-tagged `'a` must remain valid for at least as long as this `RenderCtx` exists."
-When the `RenderCtx` is dropped, those borrows are released — and the compiler
-verifies this statically.
+This declaration says: "`DisplayLine` borrows from some scope. All references
+tagged `'a` must remain valid for at least as long as this `DisplayLine`
+exists." When the `DisplayLine` is dropped, those borrows are released — and
+the compiler verifies this statically.
 
 The `'a` on the struct and the `'a` on each field are the **same label**. The
 compiler unifies them: every `&'a T` field must be borrowed from a scope that
@@ -981,24 +980,21 @@ outlives the struct instance.
 
 ### How it looks at the call site
 
-In `editor/mod.rs`, `RenderCtx` is constructed each frame inside an event-loop
-iteration:
+In `renderer.rs`, display lines are computed from the buffer for one frame:
 
 ```rust
-let ctx = RenderCtx {
-    doc:    &self.doc,
-    view:   &self.view,
-    colors: &self.colors,
-    // ...
-};
-term.draw(|frame| render(&ctx, frame.area(), frame.buffer_mut()));
-// ctx is dropped here — all borrows released
+let display_lines = view.display_lines(buf);
+// display_lines borrows from buf — 'a is the lifetime of buf
+for dl in &display_lines {
+    render_gutter(screen_buf, view, colors, dl, cursor_line, x, y);
+    // dl: &DisplayLine<'_> — borrow of buf is live here
+}
+// display_lines dropped here — borrow of buf ends
 ```
 
-`self.doc`, `self.view`, and `self.colors` all live on `self`, which outlives
-the `ctx`. The compiler can see this, so it accepts the code. If you tried to
-store `ctx` in a field of `self` (making it outlive `self`), the compiler
-would reject it — the borrow would outlive its source.
+`buf` outlives the loop, so the compiler accepts this. If you tried to store
+`display_lines` in a field of `Editor`, the compiler would reject it — the
+borrow of `buf` would outlive the frame.
 
 ### Lifetime elision: when you don't see `'a`
 
@@ -1007,10 +1003,10 @@ signatures are the main beneficiary:
 
 ```rust
 // Written explicitly:
-fn render<'a>(ctx: &'a RenderCtx<'a>, ...) { ... }
+fn render_gutter<'a>(view: &'a ViewState, dl: &DisplayLine<'a>, ...) { ... }
 
 // What you actually write (elision rules fill in the 'a):
-fn render(ctx: &RenderCtx<'_>, ...) { ... }
+fn render_gutter(view: &ViewState, dl: &DisplayLine<'_>, ...) { ... }
 ```
 
 The `'_` is an anonymous lifetime — "some lifetime, inferred by the compiler."

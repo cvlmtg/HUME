@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::path::Path;
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
@@ -8,46 +7,11 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
 use crate::ui::display_line::DisplayLine;
-use crate::core::document::Document;
-use crate::editor::Mode;
+use crate::editor::{Editor, Mode};
 use crate::ui::highlight::HighlightSet;
-use crate::core::selection::SelectionSet;
-use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row, StatusLineConfig};
+use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row};
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{LineNumberStyle, ViewState};
-
-// ── Render context ────────────────────────────────────────────────────────────
-
-/// All logical inputs to the renderer, bundled together.
-///
-/// Separates "what to render" (this struct) from "where to render it"
-/// (`area` and `screen_buf`, passed directly to [`render`]). Adding a new
-/// render-time flag (e.g. `show_diagnostics`) means touching this struct
-/// and its one construction site, not every function signature in the pipeline.
-pub(crate) struct RenderCtx<'a> {
-    pub doc: &'a Document,
-    pub view: &'a ViewState,
-    pub mode: Mode,
-    pub extend: bool,
-    pub file_path: Option<&'a Path>,
-    pub colors: &'a EditorColors,
-    /// `Some((prompt, input))` when the command mini-buffer is active.
-    /// The bottom row renders the prompt + typed text instead of the status bar.
-    pub minibuf: Option<(char, &'a str)>,
-    /// Transient message to show in the status bar row (e.g. "Written 42 lines").
-    /// Displayed only when `minibuf` is `None`.
-    pub status_msg: Option<&'a str>,
-    /// Status bar layout configuration: which segments appear in which slots.
-    /// Defaults to the built-in three-slot layout (mode pill + filename left,
-    /// position right). Configurable via the Steel scripting layer.
-    pub statusline_config: &'a StatusLineConfig,
-    /// Ephemeral highlights to overlay (bracket match, search hits, diagnostics).
-    /// Must be built (sorted) before passing to `render`.
-    pub highlights: &'a HighlightSet,
-    /// Whether the kitty keyboard protocol is active this session.
-    /// Shown as `🐱` in the status bar next to the position indicator.
-    pub kitty_enabled: bool,
-}
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -58,12 +22,14 @@ pub(crate) struct RenderCtx<'a> {
 ///   - rows `0 .. view.height` — document content + gutter
 ///   - row `view.height`       — status bar (1 row, always the last)
 ///
+/// `highlights` is computed per-frame (bracket match, search hits) and passed
+/// separately rather than stored on `Editor` — it is ephemeral.
+///
 /// This function is pure: it only writes to `screen_buf` and reads from its
-/// arguments. All terminal I/O is handled by the caller (the editor event
-/// loop).
-pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf) {
-    let doc = ctx.doc;
-    let view = ctx.view;
+/// arguments. All terminal I/O is handled by the caller (the editor event loop).
+pub(crate) fn render(editor: &Editor, highlights: &HighlightSet, area: Rect, screen_buf: &mut ScreenBuf) {
+    let doc = &editor.doc;
+    let view = &editor.view;
     let buf = doc.buf();
     let sels = doc.sels();
     let primary_head = sels.primary().head;
@@ -80,20 +46,20 @@ pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf
         }
 
         if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, ctx, dl, cursor_line, area.x, y);
+            render_gutter(screen_buf, view, &editor.colors, dl, cursor_line, area.x, y);
             render_content(
                 screen_buf,
-                ctx,
+                editor,
+                highlights,
                 dl,
                 area.x + view.gutter_width as u16,
                 y,
                 area.width.saturating_sub(view.gutter_width as u16),
-                sels,
                 cursor_line,
             );
         } else {
             // Past end of buffer — draw `~` in the gutter column.
-            screen_buf.set_string(area.x, y, "~", ctx.colors.tilde);
+            screen_buf.set_string(area.x, y, "~", editor.colors.tilde);
         }
     }
 
@@ -101,7 +67,7 @@ pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf
 
     let status_y = area.y + view.height as u16;
     if status_y < area.bottom() {
-        render_bottom_row(screen_buf, ctx, area, status_y, cursor_line, primary_head, buf);
+        render_bottom_row(screen_buf, editor, area, status_y, cursor_line, primary_head, buf);
     }
 }
 
@@ -115,7 +81,8 @@ pub(crate) fn render(ctx: &RenderCtx<'_>, area: Rect, screen_buf: &mut ScreenBuf
 /// so it stands out.
 fn render_gutter(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    view: &ViewState,
+    colors: &EditorColors,
     dl: &DisplayLine<'_>,
     cursor_line: usize,
     x: u16,
@@ -125,7 +92,7 @@ fn render_gutter(
     let Some(line_number) = dl.line_number else { return };
     let line_idx = line_number.saturating_sub(1); // 0-based
 
-    let label = match ctx.view.line_number_style {
+    let label = match view.line_number_style {
         LineNumberStyle::Absolute => format!("{line_number}"),
         LineNumberStyle::Relative => format!("{}", line_idx.abs_diff(cursor_line)),
         LineNumberStyle::Hybrid => {
@@ -138,13 +105,13 @@ fn render_gutter(
     };
 
     // Right-align the label in `gutter_width - 1` columns, then one space.
-    let gutter_str = format!("{:>width$} ", label, width = ctx.view.gutter_width.saturating_sub(1));
+    let gutter_str = format!("{:>width$} ", label, width = view.gutter_width.saturating_sub(1));
 
     let is_cursor_line = line_idx == cursor_line;
     let style = if is_cursor_line {
-        ctx.colors.gutter_cursor_line
+        colors.gutter_cursor_line
     } else {
-        ctx.colors.gutter
+        colors.gutter
     };
 
     screen_buf.set_string(x, y, &gutter_str, style);
@@ -164,18 +131,20 @@ fn render_gutter(
 /// cursor row gets `cursor_line` (subtle dark tint). Priority order:
 /// cursor_head > selection > highlights > cursor_line > default. If a cursor head sits past
 /// the last grapheme (end-of-line / empty line), a styled space is drawn there.
+#[allow(clippy::too_many_arguments)]
 fn render_content(
     screen_buf: &mut ScreenBuf,
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
+    highlights: &HighlightSet,
     dl: &DisplayLine<'_>,
     x: u16,
     y: u16,
     width: u16,
-    sels: &SelectionSet,
     cursor_line: usize,
 ) {
-    let mode = ctx.mode;
-    let colors = ctx.colors;
+    let mode = editor.mode;
+    let colors = &editor.colors;
+    let sels = editor.doc.sels();
     let char_offset = dl.char_offset.unwrap_or(0);
 
     // line_end_excl = position of the stripped '\n' (one past the last content char).
@@ -245,7 +214,7 @@ fn render_content(
             colors.cursor_head
         } else if is_selected {
             colors.selection
-        } else if let Some(hl) = ctx.highlights.style_at(char_pos) {
+        } else if let Some(hl) = highlights.style_at(char_pos) {
             hl
         } else if is_cursor_line_row {
             colors.cursor_line
@@ -303,13 +272,14 @@ pub(crate) fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> 
 /// `height` must be `view.height + 1` (content rows + status bar).
 #[cfg(test)]
 pub(crate) fn render_to_string(
-    ctx: &RenderCtx<'_>,
+    editor: &Editor,
+    highlights: &HighlightSet,
     width: u16,
     height: u16,
 ) -> String {
     let area = Rect::new(0, 0, width, height);
     let mut screen_buf = ScreenBuf::empty(area);
-    render(ctx, area, &mut screen_buf);
+    render(editor, highlights, area, &mut screen_buf);
 
     (0..height)
         .map(|y| {
@@ -329,10 +299,9 @@ mod tests {
     use super::*;
     use crate::core::buffer::Buffer;
     use crate::core::document::Document;
-    use crate::editor::Mode;
+    use crate::editor::{Editor, Mode};
     use crate::core::selection::{Selection, SelectionSet};
-    use crate::ui::statusline::StatusSegment;
-    use crate::ui::theme::EditorColors;
+    use crate::ui::statusline::{StatusLineConfig, StatusSegment};
     use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -356,13 +325,9 @@ mod tests {
         }
     }
 
-    /// Build a default-colors RenderCtx for a test.
-    fn ctx<'a>(doc: &'a Document, view: &'a ViewState, colors: &'a EditorColors) -> RenderCtx<'a> {
-        // OnceLock gives us a 'static reference to the default config so we
-        // don't need to thread a config lifetime through every test helper call.
-        static DEFAULT_CONFIG: std::sync::OnceLock<StatusLineConfig> = std::sync::OnceLock::new();
-        let config = DEFAULT_CONFIG.get_or_init(StatusLineConfig::default);
-        RenderCtx { doc, view, mode: Mode::Normal, extend: false, file_path: None, colors, minibuf: None, status_msg: None, statusline_config: config, highlights: &crate::ui::highlight::EMPTY, kitty_enabled: false }
+    /// Build a default Editor for rendering tests.
+    fn editor_for(doc: Document, view: ViewState) -> Editor {
+        Editor::for_testing(doc, view)
     }
 
     // ── Snapshot tests ────────────────────────────────────────────────────────
@@ -372,8 +337,7 @@ mod tests {
         let doc = doc_at("hello\nworld\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         // height = 3 content rows + 1 status = 4 total
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -385,8 +349,7 @@ mod tests {
     fn render_empty_buffer() {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
         // Empty buffer has one visible line (the structural \n) with no content.
         insta::assert_snapshot!(out, @r"
           1
@@ -400,8 +363,7 @@ mod tests {
         // Cursor on 'w' at the start of "world\n" — char offset 6.
         let doc = doc_at("hello\nworld\n", 6);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 4);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -413,12 +375,9 @@ mod tests {
     fn render_status_bar_with_file_path() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let path = std::path::Path::new("/home/user/notes.txt");
-        let out = render_to_string(
-            &RenderCtx { file_path: Some(path), ..ctx(&doc, &v, &c) },
-            20, 3,
-        );
+        let editor = editor_for(doc, v)
+            .with_file_path(std::path::PathBuf::from("/home/user/notes.txt"));
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -429,8 +388,7 @@ mod tests {
     fn render_line_numbers_absolute() {
         let doc = doc_at("a\nb\nc\n", 0);
         let v = view(&doc, 20, 4, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -444,8 +402,7 @@ mod tests {
         // Cursor on line 1 (0-based). Line 0 is 1 away, line 2 is 1 away.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Relative);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           0 b
@@ -459,8 +416,7 @@ mod tests {
         // Cursor on line 1 (0-based). Cursor line shows absolute; others relative.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Hybrid);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 5);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -474,8 +430,7 @@ mod tests {
         // 1-line file with a 5-row viewport: 1 content row + 4 tildes.
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 5, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 6);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 6);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -492,8 +447,7 @@ mod tests {
         // Cursor at end of "café" = char offset 4.
         let doc = doc_at("café\n", 4);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&ctx(&doc, &v, &c), 20, 3);
+        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 3);
         // Position should show 1:5 (4 graphemes before cursor, so col 5).
         insta::assert_snapshot!(out, @r"
           1 café
@@ -515,7 +469,6 @@ mod tests {
             0, // primary = first
         );
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState {
             scroll_offset: 0,
@@ -524,9 +477,10 @@ mod tests {
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
         };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 5);
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx(&doc, &v, &c), area, &mut screen);
+        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
 
         // Both cursor cells must have the cursor_head background (white).
         // 'a' is at column gw (after the gutter), row 0.
@@ -548,7 +502,6 @@ mod tests {
         let buf = Buffer::from("hello\n");
         let sels = SelectionSet::single(Selection::new(1, 3));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState {
             scroll_offset: 0,
@@ -557,9 +510,10 @@ mod tests {
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
         };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx(&doc, &v, &c), area, &mut screen);
+        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -589,12 +543,12 @@ mod tests {
         // anchor=0 ('a'), head=2 ('c'). Chars 0,1 are selection body; char 2 is cursor head.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx(&doc, &v, &c), area, &mut screen);
+        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -612,12 +566,12 @@ mod tests {
         // Cursor on 'a' (char 0). Line 0 is the cursor line.
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx(&doc, &v, &c), area, &mut screen);
+        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let cursor_head_bg = Color::Rgb(255, 255, 255);
@@ -639,12 +593,12 @@ mod tests {
         // Selection from anchor=0 ('a') to head=2 ('c'). Cursor line = line 0.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx(&doc, &v, &c), area, &mut screen);
+        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -661,16 +615,6 @@ mod tests {
 
     // ── Bracket match highlight tests ─────────────────────────────────────────
 
-    /// Build a RenderCtx with a specific HighlightSet for bracket-match testing.
-    fn ctx_with_highlights<'a>(
-        doc: &'a Document,
-        view: &'a ViewState,
-        colors: &'a EditorColors,
-        highlights: &'a HighlightSet,
-    ) -> RenderCtx<'a> {
-        RenderCtx { highlights, ..ctx(doc, view, colors) }
-    }
-
     #[test]
     fn bracket_match_highlight_renders() {
         // Cursor on '(' at pos 0; matching ')' at pos 6. The ')' cell should
@@ -680,18 +624,19 @@ mod tests {
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
+        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
 
         let bracket_bg = Color::Rgb(60, 55, 20);
         let cursor_head_bg = Color::Rgb(255, 255, 255);
 
-        // Build a highlight for ')' at char pos 6.
-        let hl = HighlightSet::new().build(); // empty — first check without highlight
-        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+        // First check without any highlight.
+        let hl_empty = HighlightSet::new().build();
+        render(&editor, &hl_empty, area, &mut screen);
         assert_eq!(screen[(gw as u16, 0)].bg, cursor_head_bg, "'(' is cursor_head");
         assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "no highlight yet");
 
@@ -700,7 +645,7 @@ mod tests {
         hl2.push(6, 6, c.bracket_match);
         let hl2 = hl2.build();
         let mut screen2 = ScreenBuf::empty(area);
-        render(&ctx_with_highlights(&doc, &v, &c, &hl2), area, &mut screen2);
+        render(&editor, &hl2, area, &mut screen2);
         assert_eq!(screen2[(gw as u16, 0)].bg, cursor_head_bg, "'(' still cursor_head");
         assert_eq!(screen2[(gw as u16 + 6, 0)].bg, bracket_bg, "')' gets bracket_match bg");
     }
@@ -714,20 +659,20 @@ mod tests {
         // anchor=6 (')')  head=1 ('h') — ')' is selected but NOT the head.
         let sels = SelectionSet::single(Selection::new(6, 1));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
+        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
 
-        let selection_bg   = Color::Rgb(68, 68, 120);
-        let bracket_bg     = Color::Rgb(60, 55, 20);
+        let selection_bg = Color::Rgb(68, 68, 120);
+        let bracket_bg   = Color::Rgb(60, 55, 20);
 
-        // Highlight ')' at pos 6 with bracket_match.
         let mut hl = HighlightSet::new();
         hl.push(6, 6, c.bracket_match);
         let hl = hl.build();
-        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+        render(&editor, &hl, area, &mut screen);
 
         // ')' is at char 6 = gw + 6 on screen. It's selected, so selection wins.
         assert_eq!(screen[(gw as u16 + 6, 0)].bg, selection_bg, "selection beats bracket_match");
@@ -743,20 +688,20 @@ mod tests {
         let buf = Buffer::from("()\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = EditorColors::default();
+        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 10, 3);
 
-        let bracket_bg   = Color::Rgb(60, 55, 20);
+        let bracket_bg     = Color::Rgb(60, 55, 20);
         let cursor_line_bg = Color::Rgb(35, 35, 45);
 
-        // ')' is at char 1 = screen col gw+1.
         let mut hl = HighlightSet::new();
         hl.push(1, 1, c.bracket_match);
         let hl = hl.build();
         let mut screen = ScreenBuf::empty(area);
-        render(&ctx_with_highlights(&doc, &v, &c, &hl), area, &mut screen);
+        render(&editor, &hl, area, &mut screen);
 
         assert_eq!(screen[(gw as u16 + 1, 0)].bg, bracket_bg,     "bracket_match beats cursor_line");
         assert_ne!(screen[(gw as u16 + 1, 0)].bg, cursor_line_bg, "cursor_line must not win");
@@ -766,8 +711,8 @@ mod tests {
     fn render_insert_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&RenderCtx { mode: Mode::Insert, ..ctx(&doc, &v, &c) }, 20, 3);
+        let editor = editor_for(doc, v).with_mode(Mode::Insert);
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -778,8 +723,8 @@ mod tests {
     fn render_extend_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
-        let out = render_to_string(&RenderCtx { extend: true, ..ctx(&doc, &v, &c) }, 20, 3);
+        let editor = editor_for(doc, v).with_extend(true);
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -800,13 +745,13 @@ mod tests {
         // Rule (a): a space must be inserted between them.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
         let config = StatusLineConfig {
             left: vec![StatusSegment::Separator, StatusSegment::FileName],
             center: vec![],
             right: vec![],
         };
-        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        let editor = editor_for(doc, v).with_statusline_config(config);
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
         // The gap span produces exactly one space between │ and [scratch].
         insta::assert_snapshot!(out, @r"
           1
@@ -820,13 +765,13 @@ mod tests {
         // no extra space is inserted and no space is trimmed.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
         let config = StatusLineConfig {
             left: vec![StatusSegment::ModePill, StatusSegment::FileName],
             center: vec![],
             right: vec![],
         };
-        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        let editor = editor_for(doc, v).with_statusline_config(config);
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
         // ModePill's trailing space serves as the single separator — no double space.
         insta::assert_snapshot!(out, @r"
           1
@@ -840,13 +785,13 @@ mod tests {
         // exactly one space between them, not two.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
-        let c = EditorColors::default();
         let config = StatusLineConfig {
             left: vec![StatusSegment::ModePill, StatusSegment::ModePill],
             center: vec![],
             right: vec![],
         };
-        let out = render_to_string(&RenderCtx { statusline_config: &config, ..ctx(&doc, &v, &c) }, 20, 2);
+        let editor = editor_for(doc, v).with_statusline_config(config);
+        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
         // " NOR " + trim(" NOR ") = " NOR NOR " — one space between, not two.
         insta::assert_snapshot!(out, @r"
           1
