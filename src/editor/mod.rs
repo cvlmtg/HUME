@@ -343,6 +343,10 @@ impl Editor {
         self.statusline_config = config;
         self
     }
+    pub(crate) fn with_minibuf(mut self, prompt: char, input: &str) -> Self {
+        self.minibuf = Some(MiniBuffer { prompt, input: input.to_string() });
+        self
+    }
 }
 
 #[cfg(test)]

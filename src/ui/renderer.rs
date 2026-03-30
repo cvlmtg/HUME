@@ -179,7 +179,8 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
         }
         Mode::Command => {
             let mb = editor.minibuf.as_ref()?;
-            // Layout: 1-col left margin + prompt char = col 2, then display-width of input.
+            // Status bar layout: col 0 = left margin, col 1 = prompt char, col 2+ = input.
+            // Cursor sits after the last input character.
             let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
             let row = editor.view.height as u16;
             Some((col, row))
@@ -811,6 +812,59 @@ mod tests {
           1 hi
         ~
          EXT │ [scratch]1:1");
+    }
+
+    #[test]
+    fn command_mode_cursor_position() {
+        // Command mode: cursor should sit at col 2 + display_width(input), row = view.height.
+        use ratatui::layout::Rect;
+        let doc = doc_at("hi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        // ":set" → prompt at col 1, "set" (3 chars) at cols 2-4, cursor at col 5.
+        let editor = editor_for(doc, v)
+            .with_mode(Mode::Command)
+            .with_minibuf(':', "set");
+        let area = Rect::new(0, 0, 20, 3);
+        let mut screen = ScreenBuf::empty(area);
+        let cursor = render(&editor, area, &mut screen);
+        // view.height = 2, so status bar is at row 2.
+        assert_eq!(cursor.pos, Some((5, 2)), "cursor after ':set' should be at col 5, row 2");
+    }
+
+    #[test]
+    fn command_mode_cursor_empty_input() {
+        // With empty input the cursor sits at col 2 (right after the prompt char).
+        use ratatui::layout::Rect;
+        let doc = doc_at("hi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v)
+            .with_mode(Mode::Command)
+            .with_minibuf(':', "");
+        let area = Rect::new(0, 0, 20, 3);
+        let mut screen = ScreenBuf::empty(area);
+        let cursor = render(&editor, area, &mut screen);
+        assert_eq!(cursor.pos, Some((2, 2)), "cursor with empty input should be at col 2, row 2");
+    }
+
+    #[test]
+    fn insert_mode_no_bracket_highlight() {
+        // In Insert mode bracket matching is suppressed — the partner bracket
+        // must NOT receive the bracket_match background.
+        use ratatui::layout::Rect;
+        use ratatui::style::Color;
+        let buf = Buffer::from("(hello)\n");
+        let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
+        let doc = Document::new(buf, sels);
+        let gw = compute_gutter_width(doc.buf().len_lines());
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let editor = editor_for(doc, v).with_mode(Mode::Insert);
+        let area = Rect::new(0, 0, 15, 3);
+        let mut screen = ScreenBuf::empty(area);
+        render(&editor, area, &mut screen);
+
+        let bracket_bg = Color::Rgb(60, 55, 20);
+        // ')' at col gw+6 must NOT have bracket_match bg in Insert mode.
+        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "bracket match must be suppressed in Insert mode");
     }
 
     // ── Smart-join tests ──────────────────────────────────────────────────────
