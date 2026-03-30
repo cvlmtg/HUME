@@ -140,7 +140,7 @@ to every selection in the set simultaneously. The *primary* is just the
    only) and `cmd_remove_primary_selection` (remove primary) operate on
    exactly one selection. The primary determines which one.
 
-4. **Registers** (`src/register.rs`): when you yank with N cursors, the
+4. **Registers** (`src/ops/register.rs`): when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
    order. Pasting with N cursors maps each slot back to the corresponding
    cursor. If the cursor count doesn't match at paste time, the full register
@@ -178,7 +178,7 @@ to every selection in the set simultaneously. The *primary* is just the
    without the full `a`–`z` namespace overhead. Ten slots (`0`–`9`) covers
    real workflows; the `q` default keeps the common case a one-key operation.
 
-5. **Paste-as-replace** (`src/edit.rs`): In a select-then-act model, `p`/`P`
+5. **Paste-as-replace** (`src/ops/edit.rs`): In a select-then-act model, `p`/`P`
    has to handle two distinct cases:
 
    - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the
@@ -337,10 +337,10 @@ forward Transaction redoes the edit.
 
 ### Implementation
 
-- `src/changeset.rs` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
-- `src/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
-- `src/edit.rs` — edit operations build changesets via the builder
-- `src/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
+- `src/core/changeset.rs` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
+- `src/core/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
+- `src/ops/edit.rs` — edit operations build changesets via the builder
+- `src/core/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
 
   An **arena** is a `Vec` that owns all the nodes of a tree or graph. Instead
   of linking nodes with pointers or `Rc<RefCell<...>>`, each node stores plain
@@ -349,7 +349,7 @@ forward Transaction redoes the edit.
   one contiguous allocation instead of many small heap objects. The trade-off is
   that nodes are never individually freed — the whole arena is dropped at once.
   For an undo tree that only grows, this is fine.
-- `src/document.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
+- `src/core/document.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
 
 ---
 
@@ -986,7 +986,7 @@ In `renderer.rs`, display lines are computed from the buffer for one frame:
 let display_lines = view.display_lines(buf);
 // display_lines borrows from buf — 'a is the lifetime of buf
 for dl in &display_lines {
-    render_gutter(screen_buf, view, colors, dl, cursor_line, x, y);
+    render_gutter(screen_buf, editor, dl, x, y);
     // dl: &DisplayLine<'_> — borrow of buf is live here
 }
 // display_lines dropped here — borrow of buf ends
@@ -1003,10 +1003,10 @@ signatures are the main beneficiary:
 
 ```rust
 // Written explicitly:
-fn render_gutter<'a>(view: &'a ViewState, dl: &DisplayLine<'a>, ...) { ... }
+fn render_gutter<'a>(editor: &'a Editor, dl: &DisplayLine<'a>, ...) { ... }
 
 // What you actually write (elision rules fill in the 'a):
-fn render_gutter(view: &ViewState, dl: &DisplayLine<'_>, ...) { ... }
+fn render_gutter(editor: &Editor, dl: &DisplayLine<'_>, ...) { ... }
 ```
 
 The `'_` is an anonymous lifetime — "some lifetime, inferred by the compiler."
@@ -1040,15 +1040,15 @@ extending the editor safely.
 | `mappings.rs` | Resolve name, call function | No | Yes (`&mut self`) |
 
 **`registry.rs`** is the command registry. Every user-facing operation is a
-named `MappableCommand` — a function pointer wrapped with a `&'static str` name
-and a doc string. Four variants exist:
+named `MappableCommand` — a function pointer wrapped with a `&'static str` name.
+Four variants exist:
 
 ```rust
 enum MappableCommand {
-    Motion    { name, doc, fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet },
-    Selection { name, doc, fun: fn(&Buffer, SelectionSet) -> SelectionSet },
-    Edit      { name, doc, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet) },
-    EditorCmd { name, doc, fun: fn(&mut Editor, usize) },
+    Motion    { name, fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet },
+    Selection { name, fun: fn(&Buffer, SelectionSet) -> SelectionSet },
+    Edit      { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet) },
+    EditorCmd { name, fun: fn(&mut Editor, usize) },
 }
 ```
 
