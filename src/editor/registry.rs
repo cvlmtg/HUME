@@ -73,7 +73,6 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
     Motion {
         name: &'static str,
-        doc: &'static str,
         fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet,
     },
     /// Selection or text-object operation (no count).
@@ -81,7 +80,6 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(&Buffer, SelectionSet) -> SelectionSet`
     Selection {
         name: &'static str,
-        doc: &'static str,
         fun: fn(&Buffer, SelectionSet) -> SelectionSet,
     },
     /// Buffer-modifying edit with no extra arguments.
@@ -89,7 +87,6 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
     Edit {
         name: &'static str,
-        doc: &'static str,
         fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
     },
     /// Editor-level command requiring `&mut Editor` context.
@@ -103,7 +100,6 @@ pub(crate) enum MappableCommand {
     /// sizing issue despite `Editor` owning the registry.
     EditorCmd {
         name: &'static str,
-        doc: &'static str,
         fun: fn(&mut super::Editor, usize),
     },
 }
@@ -118,15 +114,7 @@ impl MappableCommand {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn doc(&self) -> &'static str {
-        match self {
-            Self::Motion { doc, .. }
-            | Self::Selection { doc, .. }
-            | Self::Edit { doc, .. }
-            | Self::EditorCmd { doc, .. } => doc,
-        }
-    }
+
 }
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
@@ -176,38 +164,22 @@ impl CommandRegistry {
         // Local macros to cut down on struct-literal boilerplate.
         macro_rules! motion {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Motion {
-                    name: $name,
-                    doc: $doc,
-                    fun: $fun,
-                })
+                self.register(MappableCommand::Motion { name: $name, fun: $fun })
             };
         }
         macro_rules! selection {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Selection {
-                    name: $name,
-                    doc: $doc,
-                    fun: $fun,
-                })
+                self.register(MappableCommand::Selection { name: $name, fun: $fun })
             };
         }
         macro_rules! edit {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Edit {
-                    name: $name,
-                    doc: $doc,
-                    fun: $fun,
-                })
+                self.register(MappableCommand::Edit { name: $name, fun: $fun })
             };
         }
         macro_rules! editor_cmd {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd {
-                    name: $name,
-                    doc: $doc,
-                    fun: $fun,
-                })
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun })
             };
         }
 

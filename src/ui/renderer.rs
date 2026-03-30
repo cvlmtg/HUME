@@ -74,7 +74,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         }
 
         if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, view, &editor.colors, dl, cursor_line, lay.gutter.x, y);
+            render_gutter(screen_buf, editor, dl, cursor_line, lay.gutter.x, y);
             render_content(
                 screen_buf,
                 editor,
@@ -209,8 +209,7 @@ fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> Option<(u16
 /// so it stands out.
 fn render_gutter(
     screen_buf: &mut ScreenBuf,
-    view: &ViewState,
-    colors: &EditorColors,
+    editor: &Editor,
     dl: &DisplayLine<'_>,
     cursor_line: usize,
     x: u16,
@@ -220,6 +219,7 @@ fn render_gutter(
     let Some(line_number) = dl.line_number else { return };
     let line_idx = line_number.saturating_sub(1); // 0-based
 
+    let view = &editor.view;
     let label = match view.line_number_style {
         LineNumberStyle::Absolute => format!("{line_number}"),
         LineNumberStyle::Relative => format!("{}", line_idx.abs_diff(cursor_line)),
@@ -235,6 +235,7 @@ fn render_gutter(
     // Right-align the label in `gutter_width - 1` columns, then one space.
     let gutter_str = format!("{:>width$} ", label, width = view.gutter_width.saturating_sub(1));
 
+    let colors = &editor.colors;
     let style = if line_idx == cursor_line { colors.gutter_cursor_line } else { colors.gutter };
     screen_buf.set_string(x, y, &gutter_str, style);
 }
