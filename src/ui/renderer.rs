@@ -171,11 +171,11 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     match editor.mode {
         Mode::Normal => None,
         Mode::Insert => cursor_screen_pos(editor),
-        // In Command and Search modes the cursor sits in the mini-buffer at the
-        // bottom row: col 0 = left margin space, col 1 = prompt char, col 2+ = input.
+        // In Command and Search modes the terminal cursor sits in the mini-buffer.
+        // col 0 = left margin, col 1 = prompt, col 2+ = input up to cursor byte offset.
         Mode::Command | Mode::Search => {
             let mb = editor.minibuf.as_ref()?;
-            let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
+            let col = 1 + 1 + UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
             let row = editor.view.height as u16;
             Some((col, row))
         }
@@ -814,18 +814,18 @@ mod tests {
 
     #[test]
     fn command_mode_cursor_position() {
-        // Command mode: cursor should sit at col 2 + display_width(input), row = view.height.
+        // Command mode: terminal cursor after the input text.
+        // col 0 = left margin, col 1 = prompt ':',  col 2+ = input.
+        // ":set" → cursor at col 5 (2 + len("set")), row = view.height = 2.
         use ratatui::layout::Rect;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        // ":set" → prompt at col 1, "set" (3 chars) at cols 2-4, cursor at col 5.
         let editor = editor_for(doc, v)
             .with_mode(Mode::Command)
             .with_minibuf(':', "set");
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
-        // view.height = 2, so status bar is at row 2.
         assert_eq!(cursor.pos, Some((5, 2)), "cursor after ':set' should be at col 5, row 2");
     }
 

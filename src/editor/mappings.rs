@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use regex_cursor::engines::meta::Regex;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use super::commands::search_sel;
@@ -363,13 +364,15 @@ impl Editor {
 
             // ── Edit input ────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                let became_empty = self.minibuf.as_mut().map_or(false, |mb| {
-                    if !mb.input.is_empty() {
-                        mb.input.pop();
+                let is_now_empty = self.minibuf.as_mut().map_or(false, |mb| {
+                    if mb.cursor > 0 {
+                        let prev = prev_grapheme_byte(&mb.input, mb.cursor);
+                        mb.input.drain(prev..mb.cursor);
+                        mb.cursor = prev;
                     }
                     mb.input.is_empty()
                 });
-                if became_empty {
+                if is_now_empty {
                     // Restore position when pattern is fully erased, but stay in search.
                     if let Some(sels) = self.pre_search_sels.clone() {
                         self.doc.set_selections(sels);
@@ -381,9 +384,22 @@ impl Editor {
             }
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(mb) = &mut self.minibuf {
-                    mb.input.push(ch);
+                    mb.input.insert(mb.cursor, ch);
+                    mb.cursor += ch.len_utf8();
                 }
                 self.update_live_search();
+            }
+
+            // ── Cursor movement ───────────────────────────────────────────────
+            KeyCode::Left => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.cursor = prev_grapheme_byte(&mb.input, mb.cursor);
+                }
+            }
+            KeyCode::Right => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.cursor = next_grapheme_byte(&mb.input, mb.cursor);
+                }
             }
 
             _ => {}
@@ -481,18 +497,33 @@ impl Editor {
             // ── Edit input ────────────────────────────────────────────────────
             KeyCode::Backspace => {
                 if let Some(mb) = &mut self.minibuf {
-                    if mb.input.is_empty() {
-                        // Backspace on empty input cancels (Kakoune behaviour).
+                    if mb.cursor == 0 {
+                        // Backspace on empty / at start cancels (Kakoune behaviour).
                         self.set_mode(Mode::Normal);
                         self.minibuf = None;
                     } else {
-                        mb.input.pop();
+                        let prev = prev_grapheme_byte(&mb.input, mb.cursor);
+                        mb.input.drain(prev..mb.cursor);
+                        mb.cursor = prev;
                     }
                 }
             }
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(mb) = &mut self.minibuf {
-                    mb.input.push(ch);
+                    mb.input.insert(mb.cursor, ch);
+                    mb.cursor += ch.len_utf8();
+                }
+            }
+
+            // ── Cursor movement ───────────────────────────────────────────────
+            KeyCode::Left => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.cursor = prev_grapheme_byte(&mb.input, mb.cursor);
+                }
+            }
+            KeyCode::Right => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.cursor = next_grapheme_byte(&mb.input, mb.cursor);
                 }
             }
 
@@ -623,4 +654,23 @@ impl Editor {
             }
         }
     }
+}
+
+// ── Mini-buffer grapheme helpers ──────────────────────────────────────────────
+
+/// Return the byte offset of the grapheme cluster that ends at `cursor`.
+///
+/// If `cursor` is already at 0 (start of string), returns 0.
+fn prev_grapheme_byte(s: &str, cursor: usize) -> usize {
+    // Walk graphemes in the slice before the cursor; the last one's start index
+    // is where the cursor should move to.
+    s[..cursor].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0)
+}
+
+/// Return the byte offset immediately after the grapheme cluster that starts at `cursor`.
+///
+/// If `cursor` is at or past the end of the string, returns `s.len()`.
+fn next_grapheme_byte(s: &str, cursor: usize) -> usize {
+    // The slice `s[cursor..]` starts at the cursor; take the first grapheme's length.
+    s[cursor..].grapheme_indices(true).next().map(|(_, g)| cursor + g.len()).unwrap_or(s.len())
 }
