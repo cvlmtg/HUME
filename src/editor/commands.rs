@@ -445,16 +445,16 @@ pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
 }
 
 pub(super) fn cmd_search_next(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, ed.search_direction, false);
+    search_jump(ed, count, SearchDirection::Forward, false);
 }
 pub(super) fn cmd_extend_search_next(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, ed.search_direction, true);
+    search_jump(ed, count, SearchDirection::Forward, true);
 }
 pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, ed.search_direction.flip(), false);
+    search_jump(ed, count, SearchDirection::Backward, false);
 }
 pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, ed.search_direction.flip(), true);
+    search_jump(ed, count, SearchDirection::Backward, true);
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────

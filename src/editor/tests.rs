@@ -1590,7 +1590,7 @@ fn search_n_repeats_forward() {
     assert_eq!(state(&ed), "ab ab -[ab]>\n");
 }
 
-/// `N` repeats the last search in the opposite direction.
+/// `n` always goes forward and `N` always goes backward regardless of how the search was initiated.
 #[test]
 fn search_N_repeats_backward() {
     let mut ed = editor_from("-[a]>b ab ab\n");
@@ -1606,6 +1606,25 @@ fn search_N_repeats_backward() {
     // N goes back.
     ed.handle_key(key('N'));
     assert_eq!(state(&ed), "-[ab]> ab ab\n");
+}
+
+/// After a `?` backward search, `n` still goes forward (absolute direction model).
+///
+/// Vim would go backward here; Helix/Kakoune go forward. HUME follows Helix/Kakoune.
+#[test]
+fn search_backward_n_goes_forward() {
+    // Three matches; cursor at the third. `?` lands on the second.
+    let mut ed = editor_from("ab ab -[a]>b\n");
+
+    ed.handle_key(key('?'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "ab -[ab]> ab\n");
+
+    // n must go forward (to the third match), not backward (to the first).
+    ed.handle_key(key('n'));
+    assert_eq!(state(&ed), "ab ab -[ab]>\n");
 }
 
 /// `?` searches backward — the confirmed match is the last occurrence before
