@@ -336,6 +336,26 @@ pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
     ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new() });
 }
 
+/// Build the primary selection after a search match.
+///
+/// `anchor = Some(a)` — extend mode: keep the caller's anchor, move head to
+/// the match edge that faces the search direction.
+/// `anchor = None` — move mode: cover the matched text exactly.
+pub(super) fn search_sel(
+    start: usize,
+    end_incl: usize,
+    anchor: Option<usize>,
+    direction: SearchDirection,
+) -> Selection {
+    match anchor {
+        Some(a) => Selection::new(a, match direction {
+            SearchDirection::Forward  => end_incl,
+            SearchDirection::Backward => start,
+        }),
+        None => Selection::new(start, end_incl),
+    }
+}
+
 /// Shared body for `n` / `N` / extend variants.
 ///
 /// Reads the cached `search_regex` (compiled during the search session), or
@@ -386,7 +406,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
     for _ in 0..count {
         match find_next_match(ed.doc.buf(), &regex, from_char, direction) {
             Some((start, end_incl, wrapped)) => {
-                if wrapped { any_wrapped = true; }
+                any_wrapped = wrapped; // track only the final jump's wrap state
                 last_match = Some((start, end_incl));
                 from_char = match direction {
                     SearchDirection::Forward => next_grapheme_boundary(ed.doc.buf(), end_incl),
@@ -406,19 +426,8 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
             if any_wrapped {
                 ed.status_msg = Some("search wrapped".into());
             }
-            let new_sel = match anchor {
-                Some(a) => {
-                    let head = match direction {
-                        SearchDirection::Forward => end_incl,
-                        SearchDirection::Backward => start,
-                    };
-                    Selection::new(a, head)
-                }
-                None => Selection::new(start, end_incl),
-            };
-            let primary_idx = ed.doc.sels().primary_index();
-            let new_sels = ed.doc.sels().clone().replace(primary_idx, new_sel);
-            ed.doc.set_selections(new_sels);
+            let new_sel = search_sel(start, end_incl, anchor, direction);
+            ed.set_primary_selection(new_sel);
         }
         None => {
             ed.status_msg = Some("no match".into());

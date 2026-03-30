@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use regex_cursor::engines::meta::Regex;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
+use super::commands::search_sel;
 use super::registry::MappableCommand;
 use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
@@ -317,6 +318,15 @@ impl Editor {
         })
     }
 
+    // ── Selection helpers ─────────────────────────────────────────────────────
+
+    /// Replace the primary selection, preserving all other selections.
+    pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
+        let idx = self.doc.sels().primary_index();
+        let new_sels = self.doc.sels().clone().replace(idx, new_sel);
+        self.doc.set_selections(new_sels);
+    }
+
     // ── Search mode ───────────────────────────────────────────────────────────
 
     fn handle_search(&mut self, key: KeyEvent) {
@@ -354,12 +364,10 @@ impl Editor {
             // ── Edit input ────────────────────────────────────────────────────
             KeyCode::Backspace => {
                 let became_empty = self.minibuf.as_mut().map_or(false, |mb| {
-                    if mb.input.is_empty() {
-                        true
-                    } else {
+                    if !mb.input.is_empty() {
                         mb.input.pop();
-                        mb.input.is_empty()
                     }
+                    mb.input.is_empty()
                 });
                 if became_empty {
                     // Restore position when pattern is fully erased, but stay in search.
@@ -429,28 +437,17 @@ impl Editor {
 
         match find_next_match(self.doc.buf(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
-                // Move the primary selection to the match.
-                let new_sel = if self.extend {
+                let anchor = if self.extend {
                     // Extend from the original anchor.
-                    let anchor = self.pre_search_sels.as_ref()
-                        .map(|s| s.primary().anchor)
-                        .unwrap_or(start);
-                    let head = match direction {
-                        SearchDirection::Forward => end_incl,
-                        SearchDirection::Backward => start,
-                    };
-                    Selection::new(anchor, head)
+                    Some(self.pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
                 } else {
-                    Selection::new(start, end_incl)
+                    None
                 };
-                let primary_idx = self.doc.sels().primary_index();
-                let new_sels = self.doc.sels().clone().replace(primary_idx, new_sel);
-                self.doc.set_selections(new_sels);
+                self.set_primary_selection(search_sel(start, end_incl, anchor, direction));
             }
             None => {
                 // No match — restore position to pre-search.
-                if let Some(sels) = &self.pre_search_sels {
-                    let sels = sels.clone();
+                if let Some(sels) = self.pre_search_sels.clone() {
                     self.doc.set_selections(sels);
                 }
             }
