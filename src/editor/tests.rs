@@ -826,6 +826,115 @@ fn status_msg_cleared_on_next_keypress() {
     assert!(ed.status_msg.is_none());
 }
 
+// ── Dirty-buffer tracking and :q guard ───────────────────────────────────────
+
+#[test]
+fn fresh_editor_is_not_dirty() {
+    let ed = editor_from("-[h]>ello\n");
+    assert!(!ed.doc.is_dirty());
+}
+
+#[test]
+fn typing_in_insert_mode_makes_dirty() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc.is_dirty());
+}
+
+#[test]
+fn colon_w_marks_buffer_clean() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    // Make the buffer dirty.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc.is_dirty());
+    // Write — should clear dirty flag.
+    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(!ed.doc.is_dirty());
+}
+
+#[test]
+fn colon_q_on_dirty_buffer_refuses() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // Make dirty.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    // :q should refuse.
+    for ch in ":q".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(!ed.should_quit);
+    assert_eq!(ed.status_msg.as_deref(), Some("Unsaved changes (add ! to override)"));
+}
+
+#[test]
+fn colon_q_bang_on_dirty_buffer_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // Make dirty.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    // :q! should quit regardless.
+    for ch in ":q!".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+}
+
+#[test]
+fn colon_q_on_clean_buffer_quits() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // Buffer is fresh (not dirty) — :q should quit.
+    for ch in ":q".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+}
+
+#[test]
+fn colon_w_path_creates_new_file() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let new_path = tmp_dir.path().join("new_file.txt");
+    assert!(!new_path.exists());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let cmd = format!(":w {}", new_path.display());
+    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert!(new_path.exists());
+    assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
+    // file_path should be updated.
+    assert!(ed.file_path.is_some());
+    // Buffer should now be clean.
+    assert!(!ed.doc.is_dirty());
+}
+
+#[test]
+fn colon_w_path_updates_file_path_for_subsequent_writes() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let new_path = tmp_dir.path().join("subsequent.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    // First :w with path — sets file_path and file_meta.
+    let cmd = format!(":w {}", new_path.display());
+    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.file_meta.is_some());
+
+    // Make dirty again and write without a path — should use the new path.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key_esc());
+    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert!(!ed.doc.is_dirty());
+}
+
 // ── File metadata preservation ────────────────────────────────────────────────
 
 #[cfg(unix)]
