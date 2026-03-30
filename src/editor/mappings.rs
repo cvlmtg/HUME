@@ -368,23 +368,37 @@ impl Editor {
 
         // Split into command name and optional argument (e.g. "w foo.txt" → "w" + "foo.txt").
         // input is already trimmed, so splitting on the first space is sufficient.
-        let (cmd, arg) = match input.split_once(' ') {
+        let (cmd_raw, arg) = match input.split_once(' ') {
             Some((c, a)) => (c, Some(a.trim())),
             None => (input.as_str(), None),
         };
 
+        // Parse trailing `!` once so all command arms can opt in to force semantics.
+        // Commands that don't support `!` explicitly reject it with an error.
+        let (cmd, force) = match cmd_raw.strip_suffix('!') {
+            Some(base) => (base, true),
+            None => (cmd_raw, false),
+        };
+
         match cmd {
             "q" | "quit" => {
-                if self.doc.is_dirty() {
+                if !force && self.doc.is_dirty() {
                     self.status_msg = Some("Unsaved changes (add ! to override)".into());
                 } else {
                     self.should_quit = true;
                 }
             }
-            "q!" | "quit!" => { self.should_quit = true; }
-            "w" | "write" => { self.write_file_cmd(arg); }
+            "w" | "write" => {
+                // No read-only file semantics yet, so :w! has no defined meaning.
+                if force {
+                    self.status_msg = Some("Error: w! is not supported".into());
+                } else {
+                    self.write_file_cmd(arg);
+                }
+            }
             "wq" => {
-                if self.write_file_cmd(arg) {
+                // force applies to the quit part: quit even if the write fails.
+                if self.write_file_cmd(arg) || force {
                     self.should_quit = true;
                 }
             }

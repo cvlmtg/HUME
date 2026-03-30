@@ -951,6 +951,24 @@ fn colon_wq_path_saves_to_new_file_and_quits() {
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
 }
 
+#[test]
+fn colon_w_bang_is_rejected() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    for ch in ":w!".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert_eq!(ed.status_msg.as_deref(), Some("Error: w! is not supported"));
+    assert!(!ed.should_quit);
+}
+
+#[test]
+fn colon_wq_bang_quits_even_if_write_fails() {
+    // Scratch buffer (no file_path) — write will fail, but :wq! should still quit.
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":wq!".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+}
+
 // ── File metadata preservation ────────────────────────────────────────────────
 
 #[cfg(unix)]
