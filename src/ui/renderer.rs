@@ -1,33 +1,61 @@
 use std::borrow::Cow;
 
+use crossterm::cursor::SetCursorStyle;
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
-use crate::ui::display_line::DisplayLine;
+use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
+use crate::ops::text_object::find_bracket_pair;
+use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
 use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row};
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{LineNumberStyle, ViewState};
 
-// ── Public entry point ────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/// The terminal cursor position to apply inside `frame.draw()`.
+///
+/// `None` in Normal mode — the visual `cursor_head` cell acts as the cursor,
+/// so the real terminal cursor is hidden. `Some` in Insert and Command modes
+/// where the bar cursor needs to track the editing position.
+pub(crate) struct CursorState {
+    pub pos: Option<(u16, u16)>,
+}
+
+/// The cursor shape to emit **after** `term.draw()`.
+///
+/// Must be the last escape sequence before blocking — ratatui's `ShowCursor`
+/// flush can otherwise reset the shape on some terminals.
+pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
+    match mode {
+        Mode::Normal => SetCursorStyle::SteadyBlock,
+        Mode::Insert | Mode::Command => SetCursorStyle::SteadyBar,
+    }
+}
 
 /// Render the current editor state into a ratatui screen buffer.
 ///
 /// `area` is the full terminal area (including the status bar row).
-/// The renderer splits it into:
-///   - rows `0 .. view.height` — document content + gutter
-///   - row `view.height`       — status bar (1 row, always the last)
+/// The renderer splits it via [`layout`] into gutter, content, and status bar.
 ///
-/// `highlights` is computed per-frame (bracket match, search hits) and passed
-/// separately rather than stored on `Editor` — it is ephemeral.
+/// Highlights (bracket match, future search hits) are computed internally from
+/// `editor` state — ephemeral per-frame values, not part of the public API.
+///
+/// Returns [`CursorState`] for the caller to apply inside the draw closure.
+/// The cursor shape must be applied after the draw call via [`cursor_style`].
 ///
 /// This function is pure: it only writes to `screen_buf` and reads from its
-/// arguments. All terminal I/O is handled by the caller (the editor event loop).
-pub(crate) fn render(editor: &Editor, highlights: &HighlightSet, area: Rect, screen_buf: &mut ScreenBuf) {
+/// arguments. All terminal I/O is handled by the caller.
+pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) -> CursorState {
+    let lay = layout(area, editor.view.gutter_width as u16);
+    let highlights = compute_highlights(editor);
+
     let doc = &editor.doc;
     let view = &editor.view;
     let buf = doc.buf();
@@ -46,15 +74,15 @@ pub(crate) fn render(editor: &Editor, highlights: &HighlightSet, area: Rect, scr
         }
 
         if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, view, &editor.colors, dl, cursor_line, area.x, y);
+            render_gutter(screen_buf, view, &editor.colors, dl, cursor_line, lay.gutter.x, y);
             render_content(
                 screen_buf,
                 editor,
-                highlights,
+                &highlights,
                 dl,
-                area.x + view.gutter_width as u16,
+                lay.content.x,
                 y,
-                area.width.saturating_sub(view.gutter_width as u16),
+                lay.content.width,
                 cursor_line,
             );
         } else {
@@ -65,10 +93,109 @@ pub(crate) fn render(editor: &Editor, highlights: &HighlightSet, area: Rect, scr
 
     // ── Bottom row (status bar / command line / status message) ───────────────
 
-    let status_y = area.y + view.height as u16;
-    if status_y < area.bottom() {
-        render_bottom_row(screen_buf, editor, area, status_y, cursor_line, primary_head, buf);
+    if lay.status_bar.y < area.bottom() {
+        render_bottom_row(screen_buf, editor, area, lay.status_bar.y, cursor_line, primary_head, buf);
     }
+
+    CursorState { pos: compute_cursor_pos(editor) }
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+struct Layout {
+    gutter: Rect,
+    content: Rect,
+    status_bar: Rect,
+}
+
+/// Divide the terminal area into gutter, content, and status bar regions.
+///
+/// Spatial relationships are explicit here rather than scattered across
+/// individual render functions. When splits/panes arrive, each pane gets its
+/// own `Layout` computed from its allocated sub-area.
+fn layout(area: Rect, gutter_width: u16) -> Layout {
+    let content_height = area.height.saturating_sub(1);
+    let gutter = Rect::new(area.x, area.y, gutter_width, content_height);
+    let content = Rect::new(
+        area.x + gutter_width,
+        area.y,
+        area.width.saturating_sub(gutter_width),
+        content_height,
+    );
+    let status_bar = Rect::new(area.x, area.y + content_height, area.width, 1);
+    Layout { gutter, content, status_bar }
+}
+
+// ── Highlights ────────────────────────────────────────────────────────────────
+
+/// Compute per-frame highlights from editor state.
+///
+/// Produces bracket-match highlights when the primary cursor sits on a bracket
+/// in Normal mode. Insert mode suppresses bracket matching — the bar cursor
+/// doesn't "sit on" a character the same way.
+///
+/// Future: search hit ranges and diagnostic underlines will be added here.
+fn compute_highlights(editor: &Editor) -> HighlightSet {
+    if editor.mode == Mode::Insert {
+        // Zero allocation: building an empty set is trivial.
+        return HighlightSet::new().build();
+    }
+
+    let head = editor.doc.sels().primary().head;
+    let mut hl = HighlightSet::new();
+
+    if let Some(ch) = editor.doc.buf().char_at(head) {
+        let pair = match ch {
+            '(' | ')' => Some(('(', ')')),
+            '[' | ']' => Some(('[', ']')),
+            '{' | '}' => Some(('{', '}')),
+            '<' | '>' => Some(('<', '>')),
+            _ => None,
+        };
+        if let Some((open, close)) = pair
+            && let Some((op, cp)) = find_bracket_pair(editor.doc.buf(), head, open, close)
+        {
+            // Highlight the OTHER bracket — the cursor already marks the one it's on.
+            let match_pos = if head == op { cp } else { op };
+            hl.push(match_pos, match_pos, editor.colors.bracket_match);
+        }
+    }
+
+    hl.build()
+}
+
+// ── Cursor ────────────────────────────────────────────────────────────────────
+
+/// Compute the terminal cursor position for the current editor state.
+///
+/// Returns `None` in Normal mode — the visual `cursor_head` cell acts as the
+/// cursor; the real terminal cursor should be hidden.
+fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
+    match editor.mode {
+        Mode::Normal => None,
+        Mode::Insert => {
+            let head = editor.doc.sels().primary().head;
+            cursor_screen_pos(editor.doc.buf(), &editor.view, head)
+        }
+        Mode::Command => {
+            let mb = editor.minibuf.as_ref()?;
+            // Layout: 1-col left margin + prompt char = col 2, then display-width of input.
+            let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
+            let row = editor.view.height as u16;
+            Some((col, row))
+        }
+    }
+}
+
+/// Map a buffer char offset to screen (col, row), or `None` if scrolled out.
+fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> Option<(u16, u16)> {
+    let cursor_line = buf.char_to_line(head);
+    let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
+    if screen_row >= view.height {
+        return None;
+    }
+    let col = grapheme_col_in_line(buf, cursor_line, head);
+    Some(((view.gutter_width + col) as u16, screen_row as u16))
 }
 
 // ── Gutter ────────────────────────────────────────────────────────────────────
@@ -107,30 +234,54 @@ fn render_gutter(
     // Right-align the label in `gutter_width - 1` columns, then one space.
     let gutter_str = format!("{:>width$} ", label, width = view.gutter_width.saturating_sub(1));
 
-    let is_cursor_line = line_idx == cursor_line;
-    let style = if is_cursor_line {
-        colors.gutter_cursor_line
-    } else {
-        colors.gutter
-    };
-
+    let style = if line_idx == cursor_line { colors.gutter_cursor_line } else { colors.gutter };
     screen_buf.set_string(x, y, &gutter_str, style);
 }
 
 // ── Content ───────────────────────────────────────────────────────────────────
+
+/// Resolve the style for a single character at `char_pos`.
+///
+/// Priority (highest first):
+/// 1. `cursor_head`  — the selection's head position (the actual cursor cell)
+/// 2. `selection`    — other chars within any selection's inclusive range
+/// 3. `highlights`   — bracket match, search hits, diagnostics
+/// 4. (future slot)  — syntax highlighting would go here
+/// 5. `cursor_line`  — subtle bg tint on the primary cursor's line
+/// 6. `default`      — no decoration
+///
+/// In Insert mode `show_sels` is false — all selection/cursor highlights are
+/// suppressed and the real terminal bar cursor is used instead.
+fn resolve_style(
+    char_pos: usize,
+    colors: &EditorColors,
+    highlights: &HighlightSet,
+    sels_on_line: &[Selection],
+    is_cursor_line: bool,
+    show_sels: bool,
+) -> Style {
+    if show_sels && sels_on_line.iter().any(|s| char_pos == s.head) {
+        return colors.cursor_head;
+    }
+    if show_sels && sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end()) {
+        return colors.selection;
+    }
+    if let Some(hl) = highlights.style_at(char_pos) {
+        return hl;
+    }
+    // Future: syntax highlighting goes here (between highlights and cursor_line).
+    if is_cursor_line {
+        return colors.cursor_line;
+    }
+    colors.default
+}
 
 /// Render the text content of one display line into the screen buffer.
 ///
 /// Iterates grapheme clusters (via `unicode-segmentation`) so that multi-byte
 /// characters and combining sequences are treated as single units. Display
 /// widths come from `unicode-width` so CJK double-width characters consume
-/// exactly 2 columns.
-///
-/// Selection styling uses `EditorColors`: cursor head gets `cursor_head` (white
-/// block), selected body gets `selection` (blue-purple background), and the
-/// cursor row gets `cursor_line` (subtle dark tint). Priority order:
-/// cursor_head > selection > highlights > cursor_line > default. If a cursor head sits past
-/// the last grapheme (end-of-line / empty line), a styled space is drawn there.
+/// exactly 2 columns. Style resolution is delegated to [`resolve_style`].
 #[allow(clippy::too_many_arguments)]
 fn render_content(
     screen_buf: &mut ScreenBuf,
@@ -155,9 +306,10 @@ fn render_content(
     // style checks can iterate a tiny local slice rather than re-filtering the
     // full set each time. Selection is Copy (two usizes), and the count per line
     // is typically 1, so this Vec rarely exceeds a single inline allocation.
-    let sels_on_line: Vec<_> = sels
+    let sels_on_line: Vec<Selection> = sels
         .iter_sorted()
         .filter(|s| s.end() >= char_offset && s.start() <= line_end_excl)
+        .copied()
         .collect();
 
     if sels_on_line.is_empty() && dl.char_offset.is_none() {
@@ -195,33 +347,7 @@ fn render_content(
             break; // clip at right edge
         }
 
-        // Style priority (highest first):
-        //   1. cursor_head   — the selection's head position (the actual cursor)
-        //   2. selection     — other chars within any selection's inclusive range
-        //   3. highlights    — bracket match, search hits, diagnostics
-        //   4. cursor_line   — subtle bg tint on the primary cursor's line
-        //   5. default       — no decoration
-        //
-        // In Insert mode suppress all selection/cursor highlights — the real
-        // terminal bar cursor (set via frame.set_cursor_position) is visible
-        // instead. In Normal mode the guard always passes.
-        let is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
-        let is_selected = !is_head && show_sels && sels_on_line.iter().any(|s| {
-            char_pos >= s.start() && char_pos <= s.end()
-        });
-
-        let style = if is_head {
-            colors.cursor_head
-        } else if is_selected {
-            colors.selection
-        } else if let Some(hl) = highlights.style_at(char_pos) {
-            hl
-        } else if is_cursor_line_row {
-            colors.cursor_line
-        } else {
-            colors.default
-        };
-
+        let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
         screen_buf.set_string(x + col, y, grapheme, style);
         col += advance;
         char_pos += grapheme.chars().count();
@@ -242,25 +368,6 @@ fn render_content(
     }
 }
 
-// ── Cursor position ───────────────────────────────────────────────────────────
-
-/// Compute the screen (col, row) of the primary cursor, or `None` if it is
-/// scrolled out of the viewport.
-///
-/// Used by the editor to call `frame.set_cursor_position()` so ratatui shows
-/// the real terminal cursor — which is what `SetCursorStyle` actually controls.
-/// Without this, ratatui hides the real cursor (because no frame cursor is set)
-/// and `SetCursorStyle` has nothing visible to act on.
-pub(crate) fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> Option<(u16, u16)> {
-    let cursor_line = buf.char_to_line(head);
-    let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
-    if screen_row >= view.height {
-        return None;
-    }
-    let col = grapheme_col_in_line(buf, cursor_line, head);
-    Some(((view.gutter_width + col) as u16, screen_row as u16))
-}
-
 // ── Test helper ───────────────────────────────────────────────────────────────
 
 /// Render to a plain string for snapshot testing.
@@ -271,15 +378,10 @@ pub(crate) fn cursor_screen_pos(buf: &Buffer, view: &ViewState, head: usize) -> 
 ///
 /// `height` must be `view.height + 1` (content rows + status bar).
 #[cfg(test)]
-pub(crate) fn render_to_string(
-    editor: &Editor,
-    highlights: &HighlightSet,
-    width: u16,
-    height: u16,
-) -> String {
+pub(crate) fn render_to_string(editor: &Editor, width: u16, height: u16) -> String {
     let area = Rect::new(0, 0, width, height);
     let mut screen_buf = ScreenBuf::empty(area);
-    render(editor, highlights, area, &mut screen_buf);
+    render(editor, area, &mut screen_buf);
 
     (0..height)
         .map(|y| {
@@ -336,8 +438,7 @@ mod tests {
     fn render_simple_file() {
         let doc = doc_at("hello\nworld\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        // height = 3 content rows + 1 status = 4 total
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
+        let out = render_to_string(&editor_for(doc, v), 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -349,7 +450,7 @@ mod tests {
     fn render_empty_buffer() {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
+        let out = render_to_string(&editor_for(doc, v), 20, 4);
         // Empty buffer has one visible line (the structural \n) with no content.
         insta::assert_snapshot!(out, @r"
           1
@@ -363,7 +464,7 @@ mod tests {
         // Cursor on 'w' at the start of "world\n" — char offset 6.
         let doc = doc_at("hello\nworld\n", 6);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 4);
+        let out = render_to_string(&editor_for(doc, v), 20, 4);
         insta::assert_snapshot!(out, @r"
           1 hello
           2 world
@@ -377,7 +478,7 @@ mod tests {
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v)
             .with_file_path(std::path::PathBuf::from("/home/user/notes.txt"));
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
+        let out = render_to_string(&editor, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -388,7 +489,7 @@ mod tests {
     fn render_line_numbers_absolute() {
         let doc = doc_at("a\nb\nc\n", 0);
         let v = view(&doc, 20, 4, LineNumberStyle::Absolute);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
+        let out = render_to_string(&editor_for(doc, v), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -402,7 +503,7 @@ mod tests {
         // Cursor on line 1 (0-based). Line 0 is 1 away, line 2 is 1 away.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Relative);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
+        let out = render_to_string(&editor_for(doc, v), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           0 b
@@ -416,7 +517,7 @@ mod tests {
         // Cursor on line 1 (0-based). Cursor line shows absolute; others relative.
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Hybrid);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 5);
+        let out = render_to_string(&editor_for(doc, v), 20, 5);
         insta::assert_snapshot!(out, @r"
           1 a
           2 b
@@ -430,7 +531,7 @@ mod tests {
         // 1-line file with a 5-row viewport: 1 content row + 4 tildes.
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 5, LineNumberStyle::Absolute);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 6);
+        let out = render_to_string(&editor_for(doc, v), 20, 6);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -447,7 +548,7 @@ mod tests {
         // Cursor at end of "café" = char offset 4.
         let doc = doc_at("café\n", 4);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let out = render_to_string(&editor_for(doc, v), &crate::ui::highlight::EMPTY, 20, 3);
+        let out = render_to_string(&editor_for(doc, v), 20, 3);
         // Position should show 1:5 (4 graphemes before cursor, so col 5).
         insta::assert_snapshot!(out, @r"
           1 café
@@ -480,7 +581,7 @@ mod tests {
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 5);
         let mut screen = ScreenBuf::empty(area);
-        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
+        render(&editor, area, &mut screen);
 
         // Both cursor cells must have the cursor_head background (white).
         // 'a' is at column gw (after the gutter), row 0.
@@ -513,7 +614,7 @@ mod tests {
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
+        render(&editor, area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -548,7 +649,7 @@ mod tests {
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
+        render(&editor, area, &mut screen);
 
         let cursor_head_bg = Color::Rgb(255, 255, 255);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -571,7 +672,7 @@ mod tests {
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
-        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
+        render(&editor, area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let cursor_head_bg = Color::Rgb(255, 255, 255);
@@ -598,7 +699,7 @@ mod tests {
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
-        render(&editor, &crate::ui::highlight::EMPTY, area, &mut screen);
+        render(&editor, area, &mut screen);
 
         let cursor_line_bg = Color::Rgb(35, 35, 45);
         let selection_bg   = Color::Rgb(68, 68, 120);
@@ -616,92 +717,73 @@ mod tests {
     // ── Bracket match highlight tests ─────────────────────────────────────────
 
     #[test]
-    fn bracket_match_highlight_renders() {
-        // Cursor on '(' at pos 0; matching ')' at pos 6. The ')' cell should
-        // carry bracket_match bg; '(' gets cursor_head (it's the cursor position).
+    fn bracket_match_highlights_partner() {
+        // Cursor on '(' at pos 0. render() computes the match automatically —
+        // the ')' at pos 6 should receive bracket_match bg; '(' gets cursor_head.
         use ratatui::layout::Rect;
         use ratatui::style::Color;
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
+        render(&editor, area, &mut screen);
 
-        let bracket_bg = Color::Rgb(60, 55, 20);
+        let bracket_bg     = Color::Rgb(60, 55, 20);
         let cursor_head_bg = Color::Rgb(255, 255, 255);
 
-        // First check without any highlight.
-        let hl_empty = HighlightSet::new().build();
-        render(&editor, &hl_empty, area, &mut screen);
-        assert_eq!(screen[(gw as u16, 0)].bg, cursor_head_bg, "'(' is cursor_head");
-        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "no highlight yet");
-
-        // Now with the bracket match entry for ')' at char pos 6.
-        let mut hl2 = HighlightSet::new();
-        hl2.push(6, 6, c.bracket_match);
-        let hl2 = hl2.build();
-        let mut screen2 = ScreenBuf::empty(area);
-        render(&editor, &hl2, area, &mut screen2);
-        assert_eq!(screen2[(gw as u16, 0)].bg, cursor_head_bg, "'(' still cursor_head");
-        assert_eq!(screen2[(gw as u16 + 6, 0)].bg, bracket_bg, "')' gets bracket_match bg");
+        assert_eq!(screen[(gw as u16, 0)].bg, cursor_head_bg,     "'(' is cursor_head");
+        assert_eq!(screen[(gw as u16 + 6, 0)].bg, bracket_bg,     "')' gets bracket_match bg");
     }
 
     #[test]
     fn bracket_match_does_not_override_selection() {
-        // ')' is within the selection — selection style must win over bracket_match.
+        // Cursor on '(' at pos 0 triggers bracket match for ')' at pos 6.
+        // ')' is also within the selection — selection style must win over bracket_match.
         use ratatui::layout::Rect;
         use ratatui::style::Color;
         let buf = Buffer::from("(hello)\n");
-        // anchor=6 (')')  head=1 ('h') — ')' is selected but NOT the head.
-        let sels = SelectionSet::single(Selection::new(6, 1));
+        // Backward selection: anchor=6 (')'), head=0 ('('). Covers '(hello)' [0..6].
+        // Cursor (head) is on '(' → bracket match fires → ')' at 6 gets bracket_match.
+        // But ')' is also in the selection body (not the head), so selection wins.
+        let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
-        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
+        render(&editor, area, &mut screen);
 
         let selection_bg = Color::Rgb(68, 68, 120);
         let bracket_bg   = Color::Rgb(60, 55, 20);
 
-        let mut hl = HighlightSet::new();
-        hl.push(6, 6, c.bracket_match);
-        let hl = hl.build();
-        render(&editor, &hl, area, &mut screen);
-
-        // ')' is at char 6 = gw + 6 on screen. It's selected, so selection wins.
+        // ')' at char 6 is selected, so selection wins over bracket_match.
         assert_eq!(screen[(gw as u16 + 6, 0)].bg, selection_bg, "selection beats bracket_match");
-        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg, "bracket_match must not show");
+        assert_ne!(screen[(gw as u16 + 6, 0)].bg, bracket_bg,   "bracket_match must not show");
     }
 
     #[test]
     fn bracket_match_overrides_cursor_line() {
-        // '(' at pos 0 is the cursor; ')' at pos 1 is the bracket match.
-        // Both are on the cursor line — bracket_match must beat cursor_line.
+        // Cursor on '(' at pos 0; ')' at pos 1 gets bracket_match on the cursor line.
+        // bracket_match must beat cursor_line.
         use ratatui::layout::Rect;
         use ratatui::style::Color;
         let buf = Buffer::from("()\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let c = crate::ui::theme::EditorColors::default();
         let gw = compute_gutter_width(doc.buf().len_lines());
         let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 10, 3);
+        let mut screen = ScreenBuf::empty(area);
+        render(&editor, area, &mut screen);
 
         let bracket_bg     = Color::Rgb(60, 55, 20);
         let cursor_line_bg = Color::Rgb(35, 35, 45);
-
-        let mut hl = HighlightSet::new();
-        hl.push(1, 1, c.bracket_match);
-        let hl = hl.build();
-        let mut screen = ScreenBuf::empty(area);
-        render(&editor, &hl, area, &mut screen);
 
         assert_eq!(screen[(gw as u16 + 1, 0)].bg, bracket_bg,     "bracket_match beats cursor_line");
         assert_ne!(screen[(gw as u16 + 1, 0)].bg, cursor_line_bg, "cursor_line must not win");
@@ -712,7 +794,7 @@ mod tests {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
+        let out = render_to_string(&editor, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -724,7 +806,7 @@ mod tests {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_extend(true);
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 3);
+        let out = render_to_string(&editor, 20, 3);
         insta::assert_snapshot!(out, @r"
           1 hi
         ~
@@ -751,7 +833,7 @@ mod tests {
             right: vec![],
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
+        let out = render_to_string(&editor, 20, 2);
         // The gap span produces exactly one space between │ and [scratch].
         insta::assert_snapshot!(out, @r"
           1
@@ -771,7 +853,7 @@ mod tests {
             right: vec![],
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
+        let out = render_to_string(&editor, 20, 2);
         // ModePill's trailing space serves as the single separator — no double space.
         insta::assert_snapshot!(out, @r"
           1
@@ -791,7 +873,7 @@ mod tests {
             right: vec![],
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
-        let out = render_to_string(&editor, &crate::ui::highlight::EMPTY, 20, 2);
+        let out = render_to_string(&editor, 20, 2);
         // " NOR " + trim(" NOR ") = " NOR NOR " — one space between, not two.
         insta::assert_snapshot!(out, @r"
           1

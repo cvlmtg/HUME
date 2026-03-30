@@ -4,20 +4,17 @@ use std::path::PathBuf;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
-use unicode_width::UnicodeWidthStr;
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
 use crate::core::document::Document;
-use crate::ui::highlight::HighlightSet;
 use crate::io::FileMeta;
 use crate::ops::register::RegisterSet;
-use crate::ui::renderer::{cursor_screen_pos, render};
+use crate::ui::renderer::{cursor_style, render};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
-use crate::ops::text_object::find_bracket_pair;
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
@@ -228,52 +225,22 @@ impl Editor {
             // ── 3. Scroll ─────────────────────────────────────────────────────
             self.view.ensure_cursor_visible(self.doc.buf(), self.doc.sels());
 
-            // ── 3b. Bracket match highlight ───────────────────────────────────
-            // When the primary cursor sits on a bracket, highlight the matching
-            // partner. Suppressed in Insert mode — the bar cursor doesn't "sit
-            // on" a character the same way.
-            // `owned_hl` holds the built set when highlights are computed; in
-            // Insert mode we skip computation and borrow the static EMPTY instead.
-            let owned_hl;
-            let highlights: &HighlightSet = if self.mode != Mode::Insert {
-                let head = self.doc.sels().primary().head;
-                let mut hl = HighlightSet::new();
-                if let Some(ch) = self.doc.buf().char_at(head) {
-                    let pair = match ch {
-                        '(' | ')' => Some(('(', ')')),
-                        '[' | ']' => Some(('[', ']')),
-                        '{' | '}' => Some(('{', '}')),
-                        '<' | '>' => Some(('<', '>')),
-                        _ => None,
-                    };
-                    if let Some((open, close)) = pair
-                        && let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close)
-                    {
-                        // Highlight the OTHER bracket — the cursor already marks the one it's on.
-                        let match_pos = if head == op { cp } else { op };
-                        hl.push(match_pos, match_pos, self.colors.bracket_match);
-                    }
-                }
-                owned_hl = hl.build();
-                &owned_hl
-            } else {
-                &crate::ui::highlight::EMPTY  // static — zero allocation
-            };
-
             // ── 4. Render ─────────────────────────────────────────────────────
             // All mutations are done above. Rust allows a shared reborrow of
             // `self` here since no mutable reference is live at this point.
-            render_frame(term, self, highlights)?;
+            // Highlights (bracket match, etc.) are computed inside render().
+            term.draw(|frame| {
+                let cursor = render(self, frame.area(), frame.buffer_mut());
+                if let Some(pos) = cursor.pos {
+                    frame.set_cursor_position(pos);
+                }
+            })?;
 
             // ── 4b. Cursor shape ──────────────────────────────────────────────
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let cursor_style = match self.mode {
-                Mode::Normal => SetCursorStyle::SteadyBlock,
-                Mode::Insert | Mode::Command => SetCursorStyle::SteadyBar,
-            };
-            let _ = execute!(std::io::stdout(), cursor_style);
+            let _ = execute!(std::io::stdout(), cursor_style(self.mode));
 
             // ── 5 & 6. Event ──────────────────────────────────────────────────
             match event::read()? {
@@ -332,37 +299,6 @@ impl Editor {
         };
         self.doc.set_selections(new_sels);
     }
-}
-
-// ── Render helper ─────────────────────────────────────────────────────────────
-
-/// Render one frame: paint the screen buffer and position the terminal cursor.
-///
-/// Takes a shared `&Editor` — all mutations for this frame (dimension sync,
-/// scroll, highlight computation) are done before this is called in `run`.
-fn render_frame(term: &mut Term, editor: &Editor, highlights: &HighlightSet) -> io::Result<()> {
-    term.draw(|frame| {
-        render(editor, highlights, frame.area(), frame.buffer_mut());
-        // In Insert and Command mode, show the real terminal cursor (bar).
-        // Normal mode uses the white-block cursor_head cell style — no real cursor needed.
-        match editor.mode {
-            Mode::Insert => {
-                if let Some(pos) = cursor_screen_pos(editor.doc.buf(), &editor.view, editor.doc.sels().primary().head) {
-                    frame.set_cursor_position(pos);
-                }
-            }
-            Mode::Command => {
-                if let Some(mb) = &editor.minibuf {
-                    // Layout: 1-col margin + prompt char = col 2, then display-width of input.
-                    let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
-                    let row = editor.view.height as u16;
-                    frame.set_cursor_position((col, row));
-                }
-            }
-            Mode::Normal => {}
-        }
-    })?;
-    Ok(())
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
