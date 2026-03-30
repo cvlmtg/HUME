@@ -35,8 +35,7 @@ pub(crate) struct CursorState {
 pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
     match mode {
         Mode::Normal => SetCursorStyle::SteadyBlock,
-        Mode::Insert => SetCursorStyle::SteadyBar,
-        Mode::Command | Mode::Search => SetCursorStyle::SteadyBlock,
+        Mode::Insert | Mode::Command | Mode::Search => SetCursorStyle::SteadyBar,
     }
 }
 
@@ -172,14 +171,9 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     match editor.mode {
         Mode::Normal => None,
         Mode::Insert => cursor_screen_pos(editor),
-        // In Command and Search modes the terminal cursor sits in the mini-buffer.
-        // col 0 = left margin, col 1 = prompt, col 2+ = input up to cursor byte offset.
-        Mode::Command | Mode::Search => {
-            let mb = editor.minibuf.as_ref()?;
-            let col = 1 + 1 + UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
-            let row = editor.view.height as u16;
-            Some((col, row))
-        }
+        // Command/Search use a visual block cursor rendered directly onto the
+        // status-bar cell (see render_command_line). No terminal cursor needed.
+        Mode::Command | Mode::Search => None,
     }
 }
 
@@ -815,25 +809,30 @@ mod tests {
 
     #[test]
     fn command_mode_cursor_position() {
-        // Command mode: terminal cursor after the input text.
-        // col 0 = left margin, col 1 = prompt ':',  col 2+ = input.
-        // ":set" → cursor at col 5 (2 + len("set")), row = view.height = 2.
+        // Command mode uses a visual block cursor on the status-bar cell.
+        // The terminal cursor is hidden (None); the cell at the cursor position
+        // must have REVERSED cleared so it appears as normal video (dark bg).
         use ratatui::layout::Rect;
+        use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        // ":set" with cursor at end → cursor cell at col 5, row 2.
         let editor = editor_for(doc, v)
             .with_mode(Mode::Command)
             .with_minibuf(':', "set");
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
-        assert_eq!(cursor.pos, Some((5, 2)), "cursor after ':set' should be at col 5, row 2");
+        assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
+        let cell = screen.cell((5, 2)).unwrap();
+        assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
     #[test]
     fn command_mode_cursor_empty_input() {
-        // With empty input the cursor sits at col 2 (right after the prompt char).
+        // With empty input the cursor cell is at col 2 (right after the prompt).
         use ratatui::layout::Rect;
+        use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v)
@@ -842,7 +841,9 @@ mod tests {
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
-        assert_eq!(cursor.pos, Some((2, 2)), "cursor with empty input should be at col 2, row 2");
+        assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
+        let cell = screen.cell((2, 2)).unwrap();
+        assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
     #[test]
