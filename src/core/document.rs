@@ -211,7 +211,7 @@ impl Document {
         }
     }
 
-    // Not yet called from the editor; will be needed for the undo-tree UI (M4).
+    // Not yet called from the editor; will be needed for the undo-tree plugin (future milestone).
     #[allow(dead_code)]
     /// Jump to an arbitrary revision in the undo tree.
     ///
