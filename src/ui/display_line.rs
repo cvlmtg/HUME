@@ -1,17 +1,5 @@
 use ropey::RopeSlice;
 
-/// Where a display line's content comes from.
-///
-/// Every line the renderer draws must have a source. Currently the only source
-/// is a real buffer line, but the enum exists so that virtual lines
-/// (diagnostics, ghost text, soft-wrap continuations) can be added later
-/// without changing the renderer's iteration contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DisplayLineSource {
-    /// A real line from the buffer. `line_idx` is the 0-based line index.
-    BufferLine { line_idx: usize },
-}
-
 /// A single line as presented on screen.
 ///
 /// This is the unit the renderer iterates over. Currently every `DisplayLine`
@@ -24,10 +12,6 @@ pub(crate) enum DisplayLineSource {
 /// the display-line iterator. The `DisplayLine` cannot outlive that borrow.
 #[derive(Debug)]
 pub(crate) struct DisplayLine<'buf> {
-    /// Where this line comes from (buffer line, virtual line, etc.).
-    #[allow(dead_code)]
-    pub source: DisplayLineSource,
-
     /// The displayable text of this line.
     ///
     /// For buffer lines this is the rope slice for that line, with the

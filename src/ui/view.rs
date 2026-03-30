@@ -1,5 +1,5 @@
 use crate::core::buffer::Buffer;
-use crate::ui::display_line::{DisplayLine, DisplayLineSource};
+use crate::ui::display_line::DisplayLine;
 use crate::helpers::line_end_exclusive;
 use crate::core::selection::SelectionSet;
 
@@ -116,7 +116,6 @@ impl ViewState {
                 };
 
                 DisplayLine {
-                    source: DisplayLineSource::BufferLine { line_idx },
                     content: buf.slice(start..content_end),
                     line_number: Some(line_idx + 1), // 1-based for display
                     char_offset: Some(start),

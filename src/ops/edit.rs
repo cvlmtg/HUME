@@ -17,9 +17,9 @@ use crate::core::selection::{Selection, SelectionSet};
 // standard higher-order-function pattern: the frame is the "algorithm", the
 // closure is the "policy".
 //
-// Two variants exist because paste operations return extra captured data:
-//   • apply_edit              → (Buffer, SelectionSet, ChangeSet)
-//   • apply_edit_with_capture → (Buffer, SelectionSet, ChangeSet, Vec<String>)
+// `apply_edit_with_capture` is the core: it runs the 5-step frame and also
+// collects per-selection output (e.g. yanked text for paste). `apply_edit` is
+// a thin wrapper for the common case where captured output is not needed.
 //
 // The ChangeSet is returned so the undo system can call `cs.invert(&old_buf)`
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
@@ -83,7 +83,7 @@ pub(crate) fn repeat_edit(
     (current_buf, current_sels, cs)
 }
 
-/// Core loop for editing operations that produce `(Buffer, SelectionSet)`.
+/// Core loop for editing operations that also capture per-selection output.
 ///
 /// The closure `f` receives:
 ///   - `b`         — the changeset builder (original-buffer coordinate space)
@@ -91,6 +91,10 @@ pub(crate) fn repeat_edit(
 ///   - `i`         — 0-based iteration index in sorted order (N-to-N paste uses this)
 ///   - `sel`       — the current selection
 ///   - `new_sels`  — accumulator for result selections; `f` must push exactly one entry
+///   - `captured`  — accumulator for per-selection output (e.g. displaced text)
+///
+/// Returns the new buffer, merged selection set, changeset, and captured strings.
+/// Use [`apply_edit`] when captured output is not needed.
 ///
 /// # Why `FnMut` and not `Fn`?
 ///
@@ -100,39 +104,7 @@ pub(crate) fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-pub(crate) fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
-where
-    F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>),
-{
-    let mut b = ChangeSetBuilder::new(buf.len_chars());
-    let mut new_sels = Vec::with_capacity(sels.len());
-    let primary_idx = sels.primary_index();
-
-    for (i, sel) in sels.iter_sorted().enumerate() {
-        f(&mut b, &buf, i, sel, &mut new_sels);
-    }
-
-    b.retain_rest();
-    // Split finish() from apply() so the ChangeSet can be returned to the
-    // caller for undo/redo bookkeeping. invert() must be called against the
-    // pre-edit buffer — the caller (Document) holds that buffer and handles
-    // the timing constraint.
-    let cs = b.finish();
-    let new_buf = cs
-        .apply(&buf)
-        .expect("edit operation produced an invalid changeset — this is a bug");
-    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
-    new_sel_set.debug_assert_valid(&new_buf);
-    (new_buf, new_sel_set, cs)
-}
-
-/// Core loop for editing operations that also capture per-selection output.
-///
-/// Identical to [`apply_edit`] except the closure receives an extra
-/// `&mut Vec<String>` accumulator (`captured`) and the return type includes
-/// the captured vec as a third element. Used by paste operations that return
-/// the text they displaced.
-fn apply_edit_with_capture<F>(
+pub(crate) fn apply_edit_with_capture<F>(
     buf: Buffer,
     sels: SelectionSet,
     mut f: F,
@@ -150,6 +122,10 @@ where
     }
 
     b.retain_rest();
+    // Split finish() from apply() so the ChangeSet can be returned to the
+    // caller for undo/redo bookkeeping. invert() must be called against the
+    // pre-edit buffer — the caller (Document) holds that buffer and handles
+    // the timing constraint.
     let cs = b.finish();
     let new_buf = cs
         .apply(&buf)
@@ -157,6 +133,19 @@ where
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
     new_sel_set.debug_assert_valid(&new_buf);
     (new_buf, new_sel_set, cs, captured)
+}
+
+/// Convenience wrapper around [`apply_edit_with_capture`] for edits that
+/// don't need to capture per-selection output.
+pub(crate) fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
+where
+    F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>),
+{
+    let (new_buf, new_sels, cs, _) =
+        apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, _captured| {
+            f(b, buf, i, sel, new_sels);
+        });
+    (new_buf, new_sels, cs)
 }
 
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
