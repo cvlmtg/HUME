@@ -119,8 +119,11 @@ impl Editor {
         match result {
             WalkResult::Leaf(cmd) => {
                 self.pending_keys.clear();
-                let count = self.count.take().unwrap_or(1);
+                let raw_count = self.count.take();
+                self.explicit_count = raw_count.is_some();
+                let count = raw_count.unwrap_or(1);
                 self.execute_keymap_command(cmd, count);
+                self.explicit_count = false;
                 if one_shot_extend {
                     self.extend = saved_extend;
                 }
@@ -150,7 +153,7 @@ impl Editor {
 
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    fn handle_insert(&mut self, key: KeyEvent) {
+    pub(super) fn handle_insert(&mut self, key: KeyEvent) {
         // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
@@ -164,6 +167,13 @@ impl Editor {
             // Interior / WaitChar can't arise in the insert trie (no multi-key
             // sequences, no wait-char bindings).
             WalkResult::Interior { .. } | WalkResult::WaitChar(_) => {}
+        }
+
+        // ── Dot-repeat recording ──────────────────────────────────────────────
+        // Trie-matched keys (Esc, arrows) returned early above, so everything
+        // reaching here is a text-modifying key — safe to record for replay.
+        if let Some(ref mut rec) = self.insert_recording {
+            rec.push(key);
         }
 
         // ── Character input ───────────────────────────────────────────────────
@@ -222,7 +232,7 @@ impl Editor {
     /// [`dispatch_editor_cmd`].
     ///
     /// [`CommandRegistry`]: super::registry::CommandRegistry
-    fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
+    pub(super) fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
         // Resolve extend-mode duality: when extend is active, prefer extend_name.
         // (For WaitChar commands this is already resolved before calling here.)
         let resolved = if self.extend {
@@ -232,6 +242,9 @@ impl Editor {
         };
 
         if let Some(reg_cmd) = self.registry.get(resolved).cloned() {
+            // Snapshot pending_char before dispatch — commands consume it via `.take()`.
+            let char_arg = self.pending_char;
+
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
                     // Motion functions take (buf, sels, count). count defaults to 1
@@ -248,6 +261,18 @@ impl Editor {
                 MappableCommand::EditorCmd { fun, .. } => {
                     fun(self, count);
                 }
+            }
+
+            // Record repeatable actions for `.` replay.
+            // Skip during replay (would overwrite last_action) and for
+            // non-repeatable commands (motions, selections, undo, etc.).
+            if !self.replaying && reg_cmd.is_repeatable() {
+                self.last_action = Some(super::RepeatableAction {
+                    command: resolved,
+                    count,
+                    char_arg,
+                    insert_keys: Vec::new(),
+                });
             }
         }
     }
