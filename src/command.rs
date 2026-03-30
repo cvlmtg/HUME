@@ -13,9 +13,9 @@
 //! 2. **Typed commands** (`editor/mappings.rs` `execute_command`): entered
 //!    via `:`, take string arguments — `:w`, `:q`, future `:w <path>`, etc.
 //!
-//! The registry is the data source the keymap trie (M4) will use to translate
-//! command names to function pointers. It replaces the hardcoded `match` arms
-//! in `handle_normal`.
+//! The keymap trie (`editor/keymap.rs`) stores command *names*; the registry
+//! resolves those names to `MappableCommand` function pointers at dispatch time
+//! inside `execute_keymap_command` (`editor/mappings.rs`).
 
 use std::collections::HashMap;
 
@@ -63,7 +63,6 @@ use crate::ops::text_object::{
 /// commands in the codebase. The keymap trie stores command *names*; the
 /// registry resolves names to `MappableCommand` values at dispatch time.
 #[derive(Clone)]
-#[allow(dead_code)] // `doc` and `fun` are unused until the keymap trie (M4) dispatches through them
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
@@ -104,7 +103,7 @@ impl MappableCommand {
         }
     }
 
-    #[allow(dead_code)] // used by keymap trie (M4)
+    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
     pub(crate) fn doc(&self) -> &'static str {
         match self {
             Self::Motion { doc, .. }
@@ -119,8 +118,9 @@ impl MappableCommand {
 /// Registry of all mappable commands, keyed by name.
 ///
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
-/// The keymap trie (M4) will look up command names here at dispatch time,
-/// replacing the hardcoded `match` arms in `handle_normal`.
+/// The keymap trie (`editor/keymap.rs`) stores command names as `&'static str`;
+/// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
+/// dispatch time to obtain the actual function pointer.
 pub(crate) struct CommandRegistry {
     commands: HashMap<&'static str, MappableCommand>,
 }
