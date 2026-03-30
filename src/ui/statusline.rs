@@ -7,7 +7,6 @@ use unicode_width::UnicodeWidthStr;
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::grapheme_count;
 use crate::editor::{Editor, Mode};
-use crate::ops::search::search_match_info;
 
 /// Fill an entire status-bar row with spaces in the base style.
 ///
@@ -146,9 +145,7 @@ fn render_command_line(
 
     // Search match count: draw "[3/42]" right-aligned with a 1-col margin.
     // Only shown when a search regex is active (i.e. we're in Search mode).
-    if let Some(regex) = &editor.search_regex {
-        let head = editor.doc.sels().primary().head;
-        let (current, total) = search_match_info(editor.doc.buf(), regex, head);
+    if let Some((current, total)) = editor.search_match_count {
         let label = format!("[{current}/{total}]");
         let label_w = UnicodeWidthStr::width(label.as_str()) as u16;
         let count_x = area.right().saturating_sub(label_w + 1);
@@ -317,9 +314,7 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
             }
         }
         StatusSegment::SearchMatches => {
-            if let Some(regex) = &editor.search_regex {
-                let head = editor.doc.sels().primary().head;
-                let (current, total) = search_match_info(editor.doc.buf(), regex, head);
+            if let Some((current, total)) = editor.search_match_count {
                 (format!("[{current}/{total}]"), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)

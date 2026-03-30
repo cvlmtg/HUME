@@ -98,14 +98,16 @@ pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize
 
 // ── search_match_info ─────────────────────────────────────────────────────────
 
-/// Return `(current_1based, total)` for the active search regex.
+/// Return `(current_1based, total)` for a pre-computed match list.
 ///
-/// `total` is the number of non-overlapping matches in the buffer.
+/// `total` is the number of matches in `matches`.
 /// `current_1based` is the 1-based index of the match whose range contains
 /// `cursor_head`, or `0` when the cursor is not on any match (e.g. during
 /// live search before a hit is found).
-pub(crate) fn search_match_info(buf: &Buffer, regex: &Regex, cursor_head: usize) -> (usize, usize) {
-    let matches = find_all_matches(buf, regex);
+///
+/// `matches` must be in document order (sorted by start position, non-overlapping),
+/// as produced by [`find_all_matches`].
+pub(crate) fn search_match_info(matches: &[(usize, usize)], cursor_head: usize) -> (usize, usize) {
     let total = matches.len();
     // partition_point gives the first index where start > cursor_head, so
     // idx-1 is the last match that could contain cursor_head. If cursor_head
@@ -303,38 +305,32 @@ mod tests {
 
     #[test]
     fn match_info_no_match_in_buffer() {
-        // Pattern not present — total=0, current=0.
-        let b = buf("hello\n");
-        assert_eq!(search_match_info(&b, &re("xyz"), 0), (0, 0));
+        // Empty match list — total=0, current=0.
+        assert_eq!(search_match_info(&[], 0), (0, 0));
     }
 
     #[test]
     fn match_info_cursor_on_only_match() {
         // "world" at chars 6..10; cursor on 'w' (6) → current=1, total=1.
-        let b = buf("hello world\n");
-        assert_eq!(search_match_info(&b, &re("world"), 6), (1, 1));
+        assert_eq!(search_match_info(&[(6, 10)], 6), (1, 1));
     }
 
     #[test]
     fn match_info_cursor_on_last_char_of_match() {
-        // Cursor on 'd' (10, inclusive end of "world") → still current=1.
-        let b = buf("hello world\n");
-        assert_eq!(search_match_info(&b, &re("world"), 10), (1, 1));
+        // Cursor on 'd' (10, inclusive end) → still current=1.
+        assert_eq!(search_match_info(&[(6, 10)], 10), (1, 1));
     }
 
     #[test]
     fn match_info_cursor_between_matches() {
-        // "ab" at (1,2), (3,4), (5,6) in "aababab\n". Cursor on 'a' at pos 0 —
-        // not inside any match → current=0, total=3.
-        let b = buf("aababab\n");
-        assert_eq!(search_match_info(&b, &re("ab"), 0), (0, 3));
+        // "ab" at (1,2), (3,4), (5,6). Cursor on pos 0 — not inside any match.
+        assert_eq!(search_match_info(&[(1, 2), (3, 4), (5, 6)], 0), (0, 3));
     }
 
     #[test]
     fn match_info_cursor_on_second_of_three_matches() {
         // Cursor on char 3 (start of second "ab") → current=2, total=3.
-        let b = buf("aababab\n");
-        assert_eq!(search_match_info(&b, &re("ab"), 3), (2, 3));
+        assert_eq!(search_match_info(&[(1, 2), (3, 4), (5, 6)], 3), (2, 3));
     }
 
     // ── Unicode / grapheme cluster ────────────────────────────────────────────

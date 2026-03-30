@@ -48,6 +48,8 @@ fn editor_from(input: &str) -> Editor {
         search_direction: super::SearchDirection::Forward,
         pre_search_sels: None,
         search_regex: None,
+        search_matches: Vec::new(),
+        search_match_count: None,
     }
 }
 
