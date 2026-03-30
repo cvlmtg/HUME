@@ -469,6 +469,10 @@ impl Editor {
         self.minibuf = Some(MiniBuffer { prompt, input: input.to_string(), cursor });
         self
     }
+    pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
+        self.search_regex = regex_cursor::engines::meta::Regex::new(pattern).ok();
+        self
+    }
 }
 
 #[cfg(test)]

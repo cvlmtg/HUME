@@ -7,6 +7,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::grapheme_count;
 use crate::editor::{Editor, Mode};
+use crate::ops::search::search_match_info;
 
 /// Fill an entire status-bar row with spaces in the base style.
 ///
@@ -54,6 +55,12 @@ pub(crate) enum StatusSegment {
     KittyProtocol,
     /// Dirty indicator: `"[+]"` when the buffer has unsaved changes, empty otherwise.
     DirtyIndicator,
+    /// Search match count: `"[3/42]"` when a search regex is active, empty otherwise.
+    ///
+    /// The current index is 1-based — the match whose range contains the primary
+    /// cursor head. Shows `0` when the cursor is between matches (e.g. the live
+    /// search has no hit yet).
+    SearchMatches,
 }
 
 /// Describes the content layout of the status bar's three horizontal slots.
@@ -84,7 +91,7 @@ impl Default for StatusLineConfig {
         Self {
             left: vec![StatusSegment::ModePill, StatusSegment::Separator, StatusSegment::FileName, StatusSegment::DirtyIndicator],
             center: vec![],
-            right: vec![StatusSegment::KittyProtocol, StatusSegment::Position],
+            right: vec![StatusSegment::KittyProtocol, StatusSegment::SearchMatches, StatusSegment::Position],
         }
     }
 }
@@ -102,7 +109,7 @@ pub(crate) fn render_bottom_row(
     y: u16,
 ) {
     if let Some(mb) = &editor.minibuf {
-        render_command_line(screen_buf, &editor.colors, area, y, mb.prompt, &mb.input, mb.cursor);
+        render_command_line(screen_buf, editor, area, y, mb.prompt, &mb.input, mb.cursor);
     } else if let Some(msg) = editor.status_msg.as_deref() {
         render_status_message(screen_buf, &editor.colors, area, y, msg);
     } else {
@@ -119,13 +126,15 @@ pub(crate) fn render_bottom_row(
 /// is positioned after the input by the caller.
 fn render_command_line(
     screen_buf: &mut ScreenBuf,
-    colors: &crate::ui::theme::EditorColors,
+    editor: &Editor,
     area: Rect,
     y: u16,
     prompt: char,
     input: &str,
     cursor: usize,
 ) {
+    let colors = &editor.colors;
+
     // The command line fully replaces the status bar row — no segment layout,
     // no mode pill. The prompt character makes the mode self-evident.
     fill_row(screen_buf, colors, area, y);
@@ -134,6 +143,17 @@ fn render_command_line(
     // in the normal status bar so the text is visually aligned.
     let cmd_str = format!("{prompt}{input}");
     screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
+
+    // Search match count: draw "[3/42]" right-aligned with a 1-col margin.
+    // Only shown when a search regex is active (i.e. we're in Search mode).
+    if let Some(regex) = &editor.search_regex {
+        let head = editor.doc.sels().primary().head;
+        let (current, total) = search_match_info(editor.doc.buf(), regex, head);
+        let label = format!("[{current}/{total}]");
+        let label_w = UnicodeWidthStr::width(label.as_str()) as u16;
+        let count_x = area.right().saturating_sub(label_w + 1);
+        screen_buf.set_string(count_x, y, &label, colors.status_bar);
+    }
 
     // Visual block cursor: remove the REVERSED modifier from the cursor cell.
     //
@@ -292,6 +312,15 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
         StatusSegment::DirtyIndicator => {
             if editor.doc.is_dirty() {
                 ("[+]".to_string(), colors.status_bar)
+            } else {
+                (String::new(), colors.status_bar)
+            }
+        }
+        StatusSegment::SearchMatches => {
+            if let Some(regex) = &editor.search_regex {
+                let head = editor.doc.sels().primary().head;
+                let (current, total) = search_match_info(editor.doc.buf(), regex, head);
+                (format!("[{current}/{total}]"), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
             }
