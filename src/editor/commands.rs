@@ -243,7 +243,7 @@ pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
 ///
 /// Count semantics: if the user typed an explicit count before `.`, that count
 /// overrides the original; otherwise the original count is reused. This mirrors
-/// Vim's behaviour (`.` is `3.` → repeat with 3; `.` alone → repeat with original).
+/// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
 pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     let Some(action) = ed.last_action.clone() else { return };
 
@@ -255,6 +255,12 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 
     // Guard against re-recording: take last_action so the replayed command
     // doesn't overwrite it, then restore it afterwards.
+    //
+    // Note: a RAII guard for `replaying` is not possible here without unsafe —
+    // holding `&mut ed.replaying` across calls that take `&mut ed` violates the
+    // borrow checker. A panic in this path would crash the editor regardless
+    // (raw mode is left active, making recovery moot), so manual save/restore
+    // is the right approach.
     ed.last_action = None;
     ed.replaying = true;
 
@@ -263,8 +269,9 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     ed.execute_keymap_command(cmd, effective_count);
 
     // Feed recorded insert keystrokes through the normal insert handler.
-    for key in action.insert_keys.clone() {
-        ed.handle_insert(key);
+    // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.
+    for key in &action.insert_keys {
+        ed.handle_insert(*key);
     }
 
     // If the command left us in Insert mode (e.g. `change`, `insert-before`),
