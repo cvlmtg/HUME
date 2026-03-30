@@ -243,6 +243,8 @@ fn page_scroll(ed: &mut Editor, motion_name: &str) {
     let page = ed.view.height.max(1);
     if let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).cloned() {
         ed.apply_motion(|b, s| fun(b, s, page));
+    } else {
+        unreachable!("page_scroll: motion '{}' not in registry", motion_name);
     }
 }
 
