@@ -407,6 +407,15 @@ fn default_normal_keymap() -> KeyTrie {
     // Repeat last editing action.
     t.bind_leaf(key!('.'), cmd!("repeat-last-action"));
 
+    // ── Search ────────────────────────────────────────────────────────────────
+    // `/` opens forward search; `?` opens backward search.
+    // `n` repeats in the original direction; `N` repeats in the opposite direction.
+    // Both `n` and `N` have extend duality (keep anchor, move head).
+    t.bind_leaf(key!('/'), cmd!("search-forward"));
+    t.bind_leaf(key!('?'), cmd!("search-backward"));
+    t.bind_leaf(key!('n'), cmd!("search-next", "extend-search-next"));
+    t.bind_leaf(key!('N'), cmd!("search-prev", "extend-search-prev"));
+
     // ── Goto prefix ───────────────────────────────────────────────────────────
     // `g` → second key (goto commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));

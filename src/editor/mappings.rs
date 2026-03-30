@@ -1,12 +1,16 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use regex_cursor::engines::meta::Regex;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use super::registry::MappableCommand;
+use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
+use crate::ops::register::SEARCH_REGISTER;
+use crate::ops::search::find_next_match;
 
 use super::keymap::{KeymapCommand, WalkResult};
-use super::{Editor, Mode};
+use super::{Editor, Mode, SearchDirection};
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -18,6 +22,7 @@ impl Editor {
             Mode::Normal => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
             Mode::Command => self.handle_command(key),
+            Mode::Search => self.handle_search(key),
         }
     }
 
@@ -310,6 +315,148 @@ impl Editor {
                 _ => false,
             }
         })
+    }
+
+    // ── Search mode ───────────────────────────────────────────────────────────
+
+    fn handle_search(&mut self, key: KeyEvent) {
+        match key.code {
+            // ── Cancel ────────────────────────────────────────────────────────
+            // Restore the pre-search selections, clear all search state, and
+            // return to Normal mode.
+            KeyCode::Esc => self.cancel_search(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.cancel_search();
+            }
+
+            // ── Confirm ───────────────────────────────────────────────────────
+            // Write the pattern to the 's' register, keep the found position,
+            // and return to Normal mode.
+            KeyCode::Enter => {
+                let pattern = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
+                if pattern.is_empty() {
+                    // Empty Enter acts like Esc.
+                    self.cancel_search();
+                } else {
+                    // Persist pattern in 's' register for future n/N.
+                    self.registers.write(SEARCH_REGISTER, vec![pattern]);
+                    // Keep the position that live search already moved us to;
+                    // discard the pre-search snapshot.
+                    self.pre_search_sels = None;
+                    // Keep search_regex alive for immediate n/N without recompile.
+                    // set_mode(Normal) would clear it via the Search→Normal arm, so
+                    // we transition manually to preserve it.
+                    self.mode = Mode::Normal;
+                    self.minibuf = None;
+                }
+            }
+
+            // ── Edit input ────────────────────────────────────────────────────
+            KeyCode::Backspace => {
+                let became_empty = self.minibuf.as_mut().map_or(false, |mb| {
+                    if mb.input.is_empty() {
+                        true
+                    } else {
+                        mb.input.pop();
+                        mb.input.is_empty()
+                    }
+                });
+                if became_empty {
+                    // Restore position when pattern is fully erased, but stay in search.
+                    if let Some(sels) = self.pre_search_sels.clone() {
+                        self.doc.set_selections(sels);
+                    }
+                    self.search_regex = None;
+                } else {
+                    self.update_live_search();
+                }
+            }
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Some(mb) = &mut self.minibuf {
+                    mb.input.push(ch);
+                }
+                self.update_live_search();
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Cancel search: restore pre-search position, clear all search state, return to Normal.
+    fn cancel_search(&mut self) {
+        if let Some(sels) = self.pre_search_sels.take() {
+            self.doc.set_selections(sels);
+        }
+        self.search_regex = None;
+        self.mode = Mode::Normal;
+        self.minibuf = None;
+    }
+
+    /// Recompile the regex from the current mini-buffer input and jump to the
+    /// first match from the pre-search position.
+    ///
+    /// Called on every keystroke while in Search mode.
+    fn update_live_search(&mut self) {
+        let pattern = match self.minibuf.as_ref() {
+            Some(mb) if !mb.input.is_empty() => mb.input.clone(),
+            _ => return,
+        };
+
+        let regex = match Regex::new(&pattern) {
+            Ok(r) => r,
+            Err(_) => {
+                // Invalid regex in progress — don't move; just clear cached regex.
+                self.search_regex = None;
+                return;
+            }
+        };
+
+        let direction = self.search_direction;
+
+        // Start from the original pre-search position (not the current position),
+        // so each additional character refines from the same anchor point.
+        let from_char = match &self.pre_search_sels {
+            Some(sels) => {
+                let buf = self.doc.buf();
+                let primary = sels.primary();
+                match direction {
+                    SearchDirection::Forward => primary.start(),
+                    SearchDirection::Backward => primary.end_inclusive(buf),
+                }
+            }
+            None => 0,
+        };
+
+        match find_next_match(self.doc.buf(), &regex, from_char, direction) {
+            Some((start, end_incl, _wrapped)) => {
+                // Move the primary selection to the match.
+                let new_sel = if self.extend {
+                    // Extend from the original anchor.
+                    let anchor = self.pre_search_sels.as_ref()
+                        .map(|s| s.primary().anchor)
+                        .unwrap_or(start);
+                    let head = match direction {
+                        SearchDirection::Forward => end_incl,
+                        SearchDirection::Backward => start,
+                    };
+                    Selection::new(anchor, head)
+                } else {
+                    Selection::new(start, end_incl)
+                };
+                let primary_idx = self.doc.sels().primary_index();
+                let new_sels = self.doc.sels().clone().replace(primary_idx, new_sel);
+                self.doc.set_selections(new_sels);
+            }
+            None => {
+                // No match — restore position to pre-search.
+                if let Some(sels) = &self.pre_search_sels {
+                    let sels = sels.clone();
+                    self.doc.set_selections(sels);
+                }
+            }
+        }
+
+        self.search_regex = Some(regex);
     }
 
     // ── Command mode ──────────────────────────────────────────────────────────

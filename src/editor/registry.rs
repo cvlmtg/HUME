@@ -379,6 +379,14 @@ impl CommandRegistry {
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
         editor_cmd!("repeat-last-action", "Repeat the last editing action (`.`).", cmd_repeat);
 
+        // ── Editor commands — search ──────────────────────────────────────────
+        editor_cmd!("search-forward",        "Enter search mode (forward, `/`).",                       cmd_search_forward);
+        editor_cmd!("search-backward",       "Enter search mode (backward, `?`).",                      cmd_search_backward);
+        editor_cmd!("search-next",           "Jump to the next search match (`n`).",                    cmd_search_next);
+        editor_cmd!("search-prev",           "Jump to the previous search match (`N`).",                cmd_search_prev);
+        editor_cmd!("extend-search-next",    "Extend selection to the next search match.",              cmd_extend_search_next);
+        editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
+
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
     }
@@ -407,11 +415,12 @@ mod tests {
     ///   12 find/till editor commands (8 + 4 repeat)
     ///    1 replace editor command
     ///    1 repeat-last-action editor command
+    ///    6 search editor commands (search-forward/backward, search-next/prev, extend variants)
     ///    4 page-scroll editor commands
     ///    1 quit editor command
     ///   ──
-    ///  127 total
-    const EXPECTED_COMMAND_COUNT: usize = 127;
+    ///  133 total
+    const EXPECTED_COMMAND_COUNT: usize = 133;
 
     #[test]
     fn registry_has_expected_count() {

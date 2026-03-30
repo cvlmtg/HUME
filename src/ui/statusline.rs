@@ -230,7 +230,10 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
                 (Mode::Normal, true)  => (" EXT ", colors.status_extend),
                 (Mode::Normal, false) => (" NOR ", colors.status_normal),
                 (Mode::Insert, _)     => (" INS ", colors.status_insert),
-                // Command mode is handled by render_command_line before this is reached.
+                // Search mode normally renders the mini-buffer via render_command_line,
+                // but this arm is a fallback for the edge case where minibuf is None.
+                (Mode::Search, _)     => (" SRC ", colors.status_search),
+                // Command mode always has minibuf=Some, so render_command_line fires first.
                 (Mode::Command, _)    => unreachable!("render_command_line handles Command mode"),
             };
             (label.to_string(), style)
