@@ -11,6 +11,7 @@ use self::registry::CommandRegistry;
 use crate::core::document::Document;
 use crate::io::FileMeta;
 use crate::ops::register::RegisterSet;
+use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ui::renderer::{cursor_style, render};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::StatusLineConfig;
@@ -201,9 +202,15 @@ pub(crate) struct Editor {
     pub(super) pre_search_sels: Option<SelectionSet>,
     /// Compiled regex from the last confirmed (or in-progress) search pattern.
     /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
-    /// Stored on `Editor` rather than behind `&mut` so the renderer can read it
-    /// for per-frame highlight computation without any mutable access.
     pub(super) search_regex: Option<regex_cursor::engines::meta::Regex>,
+    /// All non-overlapping matches of `search_regex` in the current buffer,
+    /// as `(start_char, end_char_inclusive)` pairs in document order.
+    /// Recomputed by `update_search_cache` after each keypress; empty when
+    /// `search_regex` is `None`.
+    pub(super) search_matches: Vec<(usize, usize)>,
+    /// Cached `(current_1based, total)` derived from `search_matches` and the
+    /// primary cursor position. `None` when `search_regex` is `None`.
+    pub(super) search_match_count: Option<(usize, usize)>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -293,6 +300,8 @@ impl Editor {
             search_direction: SearchDirection::Forward,
             pre_search_sels: None,
             search_regex: None,
+            search_matches: Vec::new(),
+            search_match_count: None,
         })
     }
 
@@ -339,7 +348,10 @@ impl Editor {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
-                Event::Key(key) if key.kind != KeyEventKind::Release => self.handle_key(key),
+                Event::Key(key) if key.kind != KeyEventKind::Release => {
+                    self.handle_key(key);
+                    self.update_search_cache();
+                }
                 Event::Key(_) => {}
                 Event::Resize(_, _) => {} // dimensions re-read at loop top
                 _ => {}
@@ -355,6 +367,21 @@ impl Editor {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// Recompute and cache the match list and current/total count.
+    ///
+    /// Called once after each `handle_key` so the render path can read
+    /// pre-computed values instead of running the regex over the buffer twice.
+    pub(super) fn update_search_cache(&mut self) {
+        if let Some(regex) = &self.search_regex {
+            self.search_matches = find_all_matches(self.doc.buf(), regex);
+            let head = self.doc.sels().primary().head;
+            self.search_match_count = Some(search_match_info(&self.search_matches, head));
+        } else {
+            self.search_matches.clear();
+            self.search_match_count = None;
+        }
+    }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
@@ -454,6 +481,8 @@ impl Editor {
             search_direction: SearchDirection::Forward,
             pre_search_sels: None,
             search_regex: None,
+            search_matches: Vec::new(),
+            search_match_count: None,
         }
     }
 
@@ -471,6 +500,7 @@ impl Editor {
     }
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
         self.search_regex = regex_cursor::engines::meta::Regex::new(pattern).ok();
+        self.update_search_cache();
         self
     }
 }

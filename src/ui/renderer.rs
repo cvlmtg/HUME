@@ -9,7 +9,6 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
-use crate::ops::search::find_all_matches;
 use crate::ops::text_object::find_bracket_pair;
 use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
@@ -134,10 +133,8 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
     let mut hl = HighlightSet::new();
 
     // ── Search match highlights ───────────────────────────────────────────────
-    if let Some(regex) = &editor.search_regex {
-        for (start, end_incl) in find_all_matches(editor.doc.buf(), regex) {
-            hl.push(start, end_incl, editor.colors.search_match);
-        }
+    for &(start, end_incl) in &editor.search_matches {
+        hl.push(start, end_incl, editor.colors.search_match);
     }
 
     // ── Bracket match highlight ───────────────────────────────────────────────
