@@ -185,6 +185,28 @@ impl Buffer {
         Some(self.rope.char(char_idx))
     }
 
+    /// Convert a byte offset to a char (Unicode scalar value) offset.
+    ///
+    /// Used to convert regex match byte offsets (from `regex-cursor`) back to
+    /// HUME's native char-offset coordinate system. The byte offset must lie on
+    /// a UTF-8 codepoint boundary; behaviour is unspecified otherwise.
+    pub(crate) fn byte_to_char(&self, byte_idx: usize) -> usize {
+        self.rope.byte_to_char(byte_idx)
+    }
+
+    /// Convert a char offset to a byte offset.
+    ///
+    /// Used to translate HUME's char-indexed cursor positions into the byte
+    /// offsets that `regex-cursor` operates on.
+    pub(crate) fn char_to_byte(&self, char_idx: usize) -> usize {
+        self.rope.char_to_byte(char_idx)
+    }
+
+    /// Total byte length of the buffer content.
+    pub(crate) fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
+    }
+
     #[allow(dead_code)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///

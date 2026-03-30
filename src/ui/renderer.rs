@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
+use crate::ops::search::find_all_matches;
 use crate::ops::text_object::find_bracket_pair;
 use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
@@ -34,7 +35,7 @@ pub(crate) struct CursorState {
 pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
     match mode {
         Mode::Normal => SetCursorStyle::SteadyBlock,
-        Mode::Insert | Mode::Command => SetCursorStyle::SteadyBar,
+        Mode::Insert | Mode::Command | Mode::Search => SetCursorStyle::SteadyBar,
     }
 }
 
@@ -115,10 +116,14 @@ fn layout(area: Rect, gutter_width: u16) -> Layout {
 /// Compute per-frame highlights from editor state.
 ///
 /// Produces bracket-match highlights when the primary cursor sits on a bracket
-/// in Normal mode. Insert mode suppresses bracket matching — the bar cursor
-/// doesn't "sit on" a character the same way.
+/// in Normal or Search mode. Insert mode suppresses bracket matching — the bar
+/// cursor doesn't "sit on" a character the same way.
 ///
-/// Future: search hit ranges and diagnostic underlines will be added here.
+/// When a search regex is cached (during Search mode or after confirming a
+/// search for use with `n`/`N`), all match ranges are highlighted with
+/// `editor.colors.search_match`. The primary match is already shown as a
+/// selection, so overlapping search highlights will be visually overridden by
+/// the selection/cursor colors in [`resolve_style`].
 fn compute_highlights(editor: &Editor) -> HighlightSet {
     if editor.mode == Mode::Insert {
         // Zero allocation: building an empty set is trivial.
@@ -128,6 +133,14 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
     let head = editor.doc.sels().primary().head;
     let mut hl = HighlightSet::new();
 
+    // ── Search match highlights ───────────────────────────────────────────────
+    if let Some(regex) = &editor.search_regex {
+        for (start, end_incl) in find_all_matches(editor.doc.buf(), regex) {
+            hl.push(start, end_incl, editor.colors.search_match);
+        }
+    }
+
+    // ── Bracket match highlight ───────────────────────────────────────────────
     if let Some(ch) = editor.doc.buf().char_at(head) {
         let pair = match ch {
             '(' | ')' => Some(('(', ')')),
@@ -158,10 +171,10 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     match editor.mode {
         Mode::Normal => None,
         Mode::Insert => cursor_screen_pos(editor),
-        Mode::Command => {
+        // In Command and Search modes the cursor sits in the mini-buffer at the
+        // bottom row: col 0 = left margin space, col 1 = prompt char, col 2+ = input.
+        Mode::Command | Mode::Search => {
             let mb = editor.minibuf.as_ref()?;
-            // Status bar layout: col 0 = left margin, col 1 = prompt char, col 2+ = input.
-            // Cursor sits after the last input character.
             let col = 2 + UnicodeWidthStr::width(mb.input.as_str()) as u16;
             let row = editor.view.height as u16;
             Some((col, row))
@@ -320,6 +333,7 @@ fn render_content(
     let mut col: u16 = 0;
     let mut char_pos = char_offset;
 
+    // Show selections in Normal and Search mode; suppress in Insert (bar cursor does the job).
     let show_sels = mode != Mode::Insert;
 
     for grapheme in content_cow.graphemes(true) {

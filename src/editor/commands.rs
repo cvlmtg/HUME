@@ -11,18 +11,22 @@
 //! The `count` parameter is the user's numeric prefix (default 1). Commands
 //! that don't use a count accept it and ignore it (`_count`).
 
+use regex_cursor::engines::meta::Regex;
+
 use crate::core::buffer::Buffer;
+use crate::core::grapheme::next_grapheme_boundary;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ops::edit::{delete_selection, insert_char};
 use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
     find_char_backward, find_char_forward, MotionMode,
 };
-use crate::ops::register::{yank_selections, DEFAULT_REGISTER};
+use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
+use crate::ops::search::find_next_match;
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
 use super::registry::MappableCommand;
-use super::{Editor, FindChar, FindKind, MiniBuffer, Mode};
+use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
@@ -309,6 +313,130 @@ pub(super) fn cmd_page_up(ed: &mut Editor, _count: usize) {
 }
 pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
     page_scroll(ed, "extend-up");
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+/// Enter forward search mode (`/`).
+///
+/// Snapshots the current selections for `Esc`-restore, then opens the
+/// mini-buffer with the `/` prompt.
+pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
+    ed.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search_direction = SearchDirection::Forward;
+    ed.set_mode(Mode::Search);
+    ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new() });
+}
+
+/// Enter backward search mode (`?`).
+pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
+    ed.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search_direction = SearchDirection::Backward;
+    ed.set_mode(Mode::Search);
+    ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new() });
+}
+
+/// Shared body for `n` / `N` / extend variants.
+///
+/// Reads the cached `search_regex` (compiled during the search session), or
+/// recompiles from the `'s'` register if the cache is empty. Repeats `count`
+/// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
+/// selection depending on `extend`.
+fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend: bool) {
+    // Try the cached regex first; fall back to the 's' register.
+    let regex: Regex = match ed.search_regex.clone() {
+        Some(r) => r,
+        None => {
+            let pattern = ed
+                .registers
+                .read(SEARCH_REGISTER)
+                .and_then(|r| r.values().first().cloned())
+                .unwrap_or_default();
+            if pattern.is_empty() {
+                return;
+            }
+            match Regex::new(&pattern) {
+                Ok(r) => {
+                    ed.search_regex = Some(r.clone());
+                    r
+                }
+                Err(_) => return,
+            }
+        }
+    };
+
+    // Capture anchor before the loop (extend mode keeps the original anchor fixed).
+    let (mut from_char, anchor) = {
+        let buf = ed.doc.buf();
+        let primary = ed.doc.sels().primary();
+        let from = match direction {
+            // Step past the current match so we don't re-find it on the first jump.
+            SearchDirection::Forward => next_grapheme_boundary(buf, primary.end_inclusive(buf)),
+            SearchDirection::Backward => primary.start(),
+        };
+        (from, if extend { Some(primary.anchor) } else { None })
+    };
+
+    // Jump `count` times, advancing `from_char` after each match so that
+    // `3n` really does land on the 3rd match from the current position.
+    let count = count.max(1);
+    let mut last_match: Option<(usize, usize)> = None;
+    let mut any_wrapped = false;
+
+    for _ in 0..count {
+        match find_next_match(ed.doc.buf(), &regex, from_char, direction) {
+            Some((start, end_incl, wrapped)) => {
+                if wrapped { any_wrapped = true; }
+                last_match = Some((start, end_incl));
+                from_char = match direction {
+                    SearchDirection::Forward => next_grapheme_boundary(ed.doc.buf(), end_incl),
+                    // For backward: next search must land before the current match start.
+                    SearchDirection::Backward => start,
+                };
+            }
+            None => {
+                last_match = None;
+                break;
+            }
+        }
+    }
+
+    match last_match {
+        Some((start, end_incl)) => {
+            if any_wrapped {
+                ed.status_msg = Some("search wrapped".into());
+            }
+            let new_sel = match anchor {
+                Some(a) => {
+                    let head = match direction {
+                        SearchDirection::Forward => end_incl,
+                        SearchDirection::Backward => start,
+                    };
+                    Selection::new(a, head)
+                }
+                None => Selection::new(start, end_incl),
+            };
+            let primary_idx = ed.doc.sels().primary_index();
+            let new_sels = ed.doc.sels().clone().replace(primary_idx, new_sel);
+            ed.doc.set_selections(new_sels);
+        }
+        None => {
+            ed.status_msg = Some("no match".into());
+        }
+    }
+}
+
+pub(super) fn cmd_search_next(ed: &mut Editor, count: usize) {
+    search_jump(ed, count, ed.search_direction, false);
+}
+pub(super) fn cmd_extend_search_next(ed: &mut Editor, count: usize) {
+    search_jump(ed, count, ed.search_direction, true);
+}
+pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize) {
+    search_jump(ed, count, ed.search_direction.flip(), false);
+}
+pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
+    search_jump(ed, count, ed.search_direction.flip(), true);
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────

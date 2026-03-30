@@ -39,6 +39,12 @@ pub(crate) struct EditorColors {
     /// `cursor_head`; higher than `cursor_line`.
     pub bracket_match: Style,
 
+    /// Search match highlight. Shown on all pattern matches while search mode
+    /// is active (or until the next keypress clears the regex). Lower priority
+    /// than `selection` and `cursor_head` — the primary match is visible as a
+    /// selection; other matches use this highlight.
+    pub search_match: Style,
+
     // ── Gutter ────────────────────────────────────────────────────────────────
 
     /// Line number gutter on the cursor line.
@@ -69,6 +75,8 @@ pub(crate) struct EditorColors {
     /// Mode label in Extend mode (`EXT`). Yellow distinguishes it from Normal.
     pub status_extend: Style,
 
+    /// Mode label in Search mode (`SRC`). Magenta makes the prompt visually distinct.
+    pub status_search: Style,
 }
 
 impl EditorColors {
@@ -85,6 +93,9 @@ impl EditorColors {
                 .bg(Color::Rgb(60, 55, 20))
                 .fg(Color::Rgb(220, 180, 50))
                 .add_modifier(Modifier::BOLD),
+            search_match: Style::new()
+                .bg(Color::Rgb(80, 40, 0))
+                .fg(Color::Rgb(255, 180, 80)),
             gutter_cursor_line: Style::new()
                 .fg(Color::Rgb(180, 180, 180))
                 .bg(Color::Rgb(35, 35, 45)),
@@ -94,6 +105,7 @@ impl EditorColors {
             status_normal: reversed,
             status_insert: reversed.fg(Color::Cyan),
             status_extend: reversed.fg(Color::Yellow),
+            status_search: reversed.fg(Color::Magenta),
         }
     }
 }

@@ -75,6 +75,8 @@ pub(super) struct FindChar {
 ///
 /// Starts as `Normal`. `Insert` is entered via `i`/`a` and exited via `Escape`.
 /// `Command` is entered via `:` and exited via `Enter` (execute) or `Esc` (cancel).
+/// `Search` is entered via `/` (forward) or `?` (backward); live highlights update
+/// on every keystroke; `Enter` confirms, `Esc` restores the pre-search position.
 /// The keymap is completely different in each mode — `handle_key` dispatches
 /// to the appropriate handler accordingly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +84,26 @@ pub(crate) enum Mode {
     Normal,
     Insert,
     Command,
+    Search,
+}
+
+// ── Search state ──────────────────────────────────────────────────────────────
+
+/// Direction for `/`/`?` search and `n`/`N` repeat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SearchDirection {
+    Forward,
+    Backward,
+}
+
+impl SearchDirection {
+    /// Return the opposite direction. `N` uses this to flip the last search direction.
+    pub(crate) fn flip(self) -> Self {
+        match self {
+            Self::Forward => Self::Backward,
+            Self::Backward => Self::Forward,
+        }
+    }
 }
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
@@ -166,6 +188,20 @@ pub(crate) struct Editor {
     /// Used by the repeat keys: `=` repeats the search forward, `-` backward.
     /// `None` until the user performs a find/till motion.
     pub(super) last_find: Option<FindChar>,
+
+    // ── Search fields ─────────────────────────────────────────────────────────
+
+    /// Direction of the current or last search. Set when entering Search mode;
+    /// persists after confirming so `n`/`N` know which direction to repeat.
+    pub(super) search_direction: SearchDirection,
+    /// Snapshot of selections taken when entering Search mode.
+    /// Restored on `Esc`; discarded on `Enter` (confirmed search).
+    pub(super) pre_search_sels: Option<SelectionSet>,
+    /// Compiled regex from the last confirmed (or in-progress) search pattern.
+    /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
+    /// Stored on `Editor` rather than behind `&mut` so the renderer can read it
+    /// for per-frame highlight computation without any mutable access.
+    pub(super) search_regex: Option<regex_cursor::engines::meta::Regex>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -252,6 +288,9 @@ impl Editor {
             insert_recording: None,
             explicit_count: false,
             replaying: false,
+            search_direction: SearchDirection::Forward,
+            pre_search_sels: None,
+            search_regex: None,
         })
     }
 
@@ -347,6 +386,11 @@ impl Editor {
             // Clear any stale insert_recording defensively — it should never be
             // Some here in normal usage, but belt-and-suspenders prevents a
             // half-recorded session from leaking into the next insert entry.
+            //
+            // Note: Search → Normal is handled directly in `handle_search` (confirm)
+            // and `cancel_search` (cancel) rather than here, because the two paths
+            // need different cleanup (confirm keeps `search_regex` for `n`/`N`;
+            // cancel clears it). Centralising them here would require a parameter.
             _ => {
                 self.insert_recording = None;
             }
@@ -405,6 +449,9 @@ impl Editor {
             insert_recording: None,
             explicit_count: false,
             replaying: false,
+            search_direction: SearchDirection::Forward,
+            pre_search_sels: None,
+            search_regex: None,
         }
     }
 

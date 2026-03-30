@@ -45,6 +45,9 @@ fn editor_from(input: &str) -> Editor {
         insert_recording: None,
         explicit_count: false,
         replaying: false,
+        search_direction: super::SearchDirection::Forward,
+        pre_search_sels: None,
+        search_regex: None,
     }
 }
 

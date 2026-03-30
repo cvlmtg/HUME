@@ -10,6 +10,7 @@ crossterm = "0.29"
 ratatui = "0.30"
 unicode-width = "0.2"
 tempfile = "3"
+regex-cursor = "0.1.5"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
