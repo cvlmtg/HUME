@@ -3,7 +3,7 @@ use regex_cursor::engines::meta::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
-use super::commands::search_sel;
+use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
 use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
@@ -60,6 +60,7 @@ impl Editor {
             self.pending_keys.clear();
             self.count = None;
             self.extend = false;
+            cmd_clear_search(self, 0);
             return;
         }
 
@@ -576,6 +577,9 @@ impl Editor {
                 if self.write_file_cmd(arg) || force {
                     self.should_quit = true;
                 }
+            }
+            "clearsearch" | "cs" => {
+                cmd_clear_search(self, 0);
             }
             other => {
                 self.status_msg = Some(format!("Unknown command: {other}"));
