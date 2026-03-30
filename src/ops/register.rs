@@ -13,7 +13,7 @@ use crate::core::selection::SelectionSet;
 //   '0'–'9'  Named storage — text or macros (last write wins).
 //   'q'      Default macro register. `qq` records, `Q` replays.
 //            `q3` records into register '3', `Q3` replays from it.
-//   'c'      System clipboard. (Deferred to M3 — needs OS integration.)
+//   'c'      System clipboard (requires OS integration).
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
@@ -29,7 +29,7 @@ pub(crate) const DEFAULT_REGISTER: char = '"';
 /// Use `"by` to yank without touching the default register.
 pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
 
-/// The system clipboard register (`c`). Deferred to M3 (requires OS integration).
+/// The system clipboard register (`c`). Requires OS integration.
 /// Reserved here so the editor layer can reference it by name.
 #[allow(dead_code)]
 pub(crate) const CLIPBOARD_REGISTER: char = 'c';
@@ -51,12 +51,7 @@ pub(crate) const MACRO_REGISTER: char = 'q';
 /// time, in document order. A single-cursor yank produces a `Vec` of length 1.
 ///
 /// The linewise-vs-charwise distinction is not tracked explicitly. At paste
-/// time, content that ends with `\n` is treated as linewise. This heuristic
-/// covers the common cases and can be promoted to an explicit flag later.
-///
-/// In the future, a `RegisterContent` enum will distinguish `Text(Vec<String>)`
-/// from `Keystrokes(Vec<KeyEvent>)` so that macro registers and text registers
-/// can share the same storage cleanly.
+/// time, content that ends with `\n` is treated as linewise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Register {
     values: Vec<String>,
@@ -85,10 +80,7 @@ impl Register {
 ///
 /// Named registers `'0'`–`'9'` are user storage. Special registers `'c'`
 /// (clipboard), `'s'` (search), and `'q'` (macro) are reserved by constants
-/// above; their behaviour is wired in the editor layer (M3).
-///
-/// A register picker UI (like Helix's) will be added in M3 so users can
-/// discover register names and contents without memorising them.
+/// above; their behaviour is wired in the editor layer.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RegisterSet {
     registers: HashMap<char, Register>,

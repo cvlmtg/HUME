@@ -16,9 +16,6 @@ const SCROLL_MARGIN: usize = 3;
 /// - `Hybrid` *(default)* — the cursor line shows its absolute number; all
 ///   other lines show their relative distance. This gives the best of both
 ///   worlds: you can navigate by exact line number and jump by relative offset.
-// `Absolute` and `Relative` are not yet wired to a config option;
-// only `Hybrid` (the default) is active. Keep the variants so the enum
-// matches the future config schema without a breaking change.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum LineNumberStyle {

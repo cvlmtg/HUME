@@ -85,8 +85,8 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
     ///
     /// Parameterized edits (`insert_char`, `paste_after`, etc.) are NOT
-    /// registered — they need closures at the call site and will be handled
-    /// by the keymap layer separately.
+    /// registered — they need closures at the call site and are handled as
+    /// [`EditorAction`](super::keymap::EditorAction) variants instead.
     Edit {
         name: &'static str,
         doc: &'static str,
@@ -103,7 +103,7 @@ impl MappableCommand {
         }
     }
 
-    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
+    #[allow(dead_code)]
     pub(crate) fn doc(&self) -> &'static str {
         match self {
             Self::Motion { doc, .. }
@@ -145,13 +145,13 @@ impl CommandRegistry {
     }
 
     /// Iterate over all registered command names.
-    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
+    #[allow(dead_code)]
     pub(crate) fn names(&self) -> impl Iterator<Item = &&'static str> {
         self.commands.keys()
     }
 
     /// Total number of registered commands.
-    #[allow(dead_code)] // Used by the Steel scripting layer (not yet wired up)
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.commands.len()
     }

@@ -194,9 +194,6 @@ impl History {
         Some(self.revisions[child_id.0].forward.clone())
     }
 
-    // The methods below are used in tests and will be needed by the undo-tree
-    // UI and status bar. The compiler warns because they're only called from
-    // `#[cfg(test)]` blocks or forwarded through `Document`.
     #[allow(dead_code)]
     /// True if there is at least one revision above the current position.
     pub(crate) fn can_undo(&self) -> bool {

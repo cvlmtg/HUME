@@ -211,7 +211,6 @@ impl Document {
         }
     }
 
-    // Not yet called from the editor; will be needed for the undo-tree plugin (future milestone).
     #[allow(dead_code)]
     /// Jump to an arbitrary revision in the undo tree.
     ///
@@ -265,7 +264,6 @@ impl Document {
         self.group.is_some()
     }
 
-    // Used in tests and will be used by the status-bar renderer (M3).
     #[allow(dead_code)]
     /// True if there is at least one edit to undo.
     pub(crate) fn can_undo(&self) -> bool {

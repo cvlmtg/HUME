@@ -10,9 +10,6 @@ use ropey::RopeSlice;
 pub(crate) enum DisplayLineSource {
     /// A real line from the buffer. `line_idx` is the 0-based line index.
     BufferLine { line_idx: usize },
-    // Future variants (not yet implemented):
-    // VirtualDiagnostic { after_line: usize }
-    // SoftWrapContinuation { line_idx: usize, segment: usize }
 }
 
 /// A single line as presented on screen.
@@ -28,8 +25,6 @@ pub(crate) enum DisplayLineSource {
 #[derive(Debug)]
 pub(crate) struct DisplayLine<'buf> {
     /// Where this line comes from (buffer line, virtual line, etc.).
-    // Not yet consumed by the renderer; will be used when virtual lines (diagnostics, ghost text)
-    // are introduced and need to be distinguished from real buffer lines.
     #[allow(dead_code)]
     pub source: DisplayLineSource,
 
