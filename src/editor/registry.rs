@@ -377,24 +377,24 @@ impl CommandRegistry {
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
-        editor_cmd!("repeat-last-action", "Repeat the last editing action (`.`).", cmd_repeat);
+        editor_cmd!("repeat-last-action", "Repeat the last editing action.", cmd_repeat);
 
         // ── Editor commands — search ──────────────────────────────────────────
-        editor_cmd!("search-forward",        "Enter search mode (forward, `/`).",                       cmd_search_forward);
-        editor_cmd!("search-backward",       "Enter search mode (backward, `?`).",                      cmd_search_backward);
-        editor_cmd!("search-next",           "Jump to the next search match (`n`).",                    cmd_search_next);
-        editor_cmd!("search-prev",           "Jump to the previous search match (`N`).",                cmd_search_prev);
+        editor_cmd!("search-forward",        "Enter search mode (forward).",                            cmd_search_forward);
+        editor_cmd!("search-backward",       "Enter search mode (backward).",                           cmd_search_backward);
+        editor_cmd!("search-next",           "Jump to the next search match.",                          cmd_search_next);
+        editor_cmd!("search-prev",           "Jump to the previous search match.",                      cmd_search_prev);
         editor_cmd!("extend-search-next",    "Extend selection to the next search match.",              cmd_extend_search_next);
         editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
         editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
 
         // ── Editor commands — select ─────────────────────────────────────────
-        editor_cmd!("select-within",          "Select regex matches within selections (`s`).",           cmd_select_within);
-        editor_cmd!("use-selection-as-search", "Use primary selection as search pattern (`*`).",         cmd_use_selection_as_search);
+        editor_cmd!("select-within",          "Select regex matches within current selections.",          cmd_select_within);
+        editor_cmd!("use-selection-as-search", "Use primary selection text as the search pattern.",      cmd_use_selection_as_search);
 
         // ── Editor commands — jump list ──────────────────────────────────────
-        editor_cmd!("jump-backward", "Navigate to the previous jump position (`Ctrl-o`).", cmd_jump_backward);
-        editor_cmd!("jump-forward",  "Navigate to the next jump position (`Ctrl-i`).",     cmd_jump_forward);
+        editor_cmd!("jump-backward", "Navigate to the previous position in the jump list.", cmd_jump_backward);
+        editor_cmd!("jump-forward",  "Navigate to the next position in the jump list.",     cmd_jump_forward);
 
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);

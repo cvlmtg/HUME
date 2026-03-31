@@ -1,9 +1,10 @@
 //! Jump list — a navigable history of cursor positions before large movements.
 //!
 //! Records the cursor position (as a full [`SelectionSet`]) before "jump"
-//! commands like `gg`, `G`, `n`, `N`, page scroll, and any motion that crosses
+//! commands like `goto-first-line`, `goto-last-line`, `search-next`,
+//! `search-prev`, page scroll, and any motion that crosses
 //! more than [`JUMP_LINE_THRESHOLD`] lines. The user navigates the history with
-//! `Ctrl-o` (backward) and `Ctrl-i` (forward).
+//! `jump-backward` and `jump-forward`.
 //!
 //! Internally this is a `Vec<JumpEntry>` with a cursor index, capped at
 //! [`JUMP_LIST_CAPACITY`]. When the user navigates backward and then makes a
@@ -76,8 +77,8 @@ impl JumpList {
             return None;
         }
 
-        // At the present: always save the current position so Ctrl-i can
-        // return to it. No dedup here — unlike `push()`, the "save current"
+        // At the present: always save the current position so `jump-forward`
+        // can return to it. No dedup here — unlike `push()`, the "save current"
         // path must preserve the exact return point even if it's on the same
         // line as the last recorded jump (e.g., two search matches on one line).
         if self.cursor == self.entries.len() {

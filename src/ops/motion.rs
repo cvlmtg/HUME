@@ -8,15 +8,15 @@ use crate::core::selection::{Selection, SelectionSet};
 
 /// Controls how a motion updates the selection's anchor and head.
 ///
-/// | Mode | Anchor | Head | Typical keys |
-/// |------|--------|------|-------------|
-/// | `Move`   | `new_head` | `new_head` | `h`, `j`, `k`, `l` — plain cursor move |
-/// | `Extend` | `old_anchor` | `new_head` | extend-mode variants — grow selection |
+/// | Mode | Anchor | Head | Usage |
+/// |------|--------|------|-------|
+/// | `Move`   | `new_head` | `new_head` | `move-*` commands — plain cursor move |
+/// | `Extend` | `old_anchor` | `new_head` | `extend-*` commands — grow selection |
 ///
 /// `Move` always produces a collapsed single-character selection (anchor == head).
 /// `Extend` keeps the existing anchor, only moving the head.
 ///
-/// Word motions (`w`/`b`/`W`/`B`) use [`apply_word_select`] instead of this
+/// Word motions (`select-next-word` etc.) use [`apply_word_select`] instead of this
 /// enum — they return `(word_start, word_end)` pairs that become fresh
 /// forward selections without any accumulated anchor. In extend mode, word
 /// motions use [`apply_word_select_extend_forward`] /
@@ -454,7 +454,7 @@ fn apply_word_select(
 /// Apply a forward word-select motion in extend mode: union the returned word range
 /// with the existing selection rather than replacing it.
 ///
-/// The motion origin is `sel.end()` so that pressing `w`/`W` always searches
+/// The motion origin is `sel.end()` so that `select-next-word`/`select-next-WORD` always searches
 /// *ahead* of the current selection, regardless of how far it already extends.
 /// If `motion` returns `None`, iteration stops early and the last selection is kept.
 fn apply_word_select_extend_forward(
@@ -487,7 +487,7 @@ fn apply_word_select_extend_forward(
 /// Apply a backward word-select motion in extend mode: union the returned word range
 /// with the existing selection rather than replacing it.
 ///
-/// The motion origin is `sel.start()` so that pressing `b`/`B` always searches
+/// The motion origin is `sel.start()` so that `select-prev-word`/`select-prev-WORD` always searches
 /// *behind* the current selection, regardless of how far it already extends.
 /// Without this, `select_prev_word(sel.head)` finds a word already inside the
 /// selection, making union a no-op.
@@ -785,7 +785,7 @@ pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet 
     result
 }
 
-/// Extend-mode / Ctrl+`x`: grow the selection to cover the current line.
+/// Extend variant of `select-line`: grow the selection to cover the current line.
 /// If the selection already ends on a `\n`, accumulates the next line instead.
 /// Always produces a forward selection (anchor=start, head=`\n`).
 pub(crate) fn cmd_extend_select_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
@@ -833,7 +833,7 @@ pub(crate) fn cmd_select_line_backward(buf: &Buffer, sels: SelectionSet) -> Sele
     result
 }
 
-/// Extend-mode / Ctrl+`X`: grow the selection to cover the current line.
+/// Extend variant of `select-line-backward`: grow the selection to cover the current line.
 /// If the selection already starts at a line boundary, accumulates the previous
 /// line. Always produces a backward selection (anchor=bottom `\n`, head=top start).
 pub(crate) fn cmd_extend_select_line_backward(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
