@@ -28,7 +28,8 @@ mod keymap;
 mod mappings;
 mod minibuf;
 
-pub(crate) use minibuf::{MiniBuffer, MiniBufferEvent};
+pub(crate) use minibuf::MiniBuffer;
+use minibuf::MiniBufferEvent;
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
