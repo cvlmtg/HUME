@@ -1795,29 +1795,14 @@ fn select_within_writes_search_register() {
     assert_eq!(reg(&ed, 's'), vec!["ab"]);
 }
 
-/// `s` + confirm clears search highlights (they were just a preview tool).
+/// `s` does not set the search regex — highlights would be misleading
+/// because they appear outside the selection scope.
 #[test]
-fn select_within_confirm_clears_search() {
+fn select_within_does_not_set_search_regex() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
-    // During live preview, search regex is set for highlights.
-    assert!(ed.search.regex.is_some());
-    ed.handle_key(key_enter());
-    // After confirm, search state is cleared — no stale [0/0] in statusline.
-    assert!(ed.search.regex.is_none());
-}
-
-/// `s` + Esc clears search highlights from the live preview.
-#[test]
-fn select_within_esc_clears_search() {
-    let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.handle_key(key('s'));
-    ed.handle_key(key('a'));
-    ed.handle_key(key('b'));
-    assert!(ed.search.regex.is_some());
-    ed.handle_key(key_esc());
     assert!(ed.search.regex.is_none());
 }
 
