@@ -146,7 +146,7 @@ fn render_command_line(
     // Search match count: draw "[3/42]" right-aligned with a 1-col margin.
     // Shown only in Search mode — not in Command mode, which also uses this
     // renderer but has no business displaying a leftover search count.
-    if editor.mode == Mode::Search && let Some((current, total)) = editor.search.match_count {
+    if editor.mode == Mode::Search && let Some((current, total)) = editor.search.match_count() {
         let label = format!("[{current}/{total}]");
         let label_w = UnicodeWidthStr::width(label.as_str()) as u16;
         let count_x = area.right().saturating_sub(label_w + 1);
@@ -315,7 +315,7 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
             }
         }
         StatusSegment::SearchMatches => {
-            if let Some((current, total)) = editor.search.match_count {
+            if let Some((current, total)) = editor.search.match_count() {
                 (format!("[{current}/{total}]"), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
