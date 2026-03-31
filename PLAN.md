@@ -96,7 +96,7 @@ Theme: replace hardcoded key dispatch with a proper command registry and keymap 
 - [x] **File save robustness**: `:w <path>` save-as, "no file name" error, dirty-buffer tracking in status bar (builds on M3 command mode). `:q` guard warns on unsaved changes; `:q!` force-quits. Dirty state is revision-based (`saved_revision` in `Document` vs `History::current_id()`) so undo back to save point correctly reports clean. `DirtyIndicator` segment in status bar shows `[+]`. Command parsing split into name + arg + force flag.
 - [x] **Incremental search** (`/` and `?`): `Mode::Search { direction }`, reuses command-mode mini-buffer; live match highlighting via `HighlightSet` (`src/highlight.rs` — already exists, push match ranges each frame); `n`/`N` repeat; `Esc` restores position; pattern stored in `'s'` register.
 - [x] **Search-based selection** (`*` and `s`): `*` uses current selection as search pattern (expands to word under cursor for single-char selections); `s` enters Select mode — prompts for a regex, all matches within current selections become new selections (live preview). Combined with `c`, this gives search-and-replace via multi-cursor.
-- [ ] **Jump list**: ring buffer of cursor positions; record on search jumps, goto, and motions > N lines; `Ctrl-o` / `Ctrl-i` navigate.
+- [x] **Jump list**: Vec+cursor of cursor positions; record on search jumps, goto, and motions > 5 lines; `Ctrl-o` / `Ctrl-i` (`Tab`) navigate.
 - [ ] **Surround operations** (`ms`/`md`/`mr`): add/delete/replace surrounding brackets or quotes; builds on `find_bracket_pair` in `text_object.rs`; uses `m` prefix in the keymap trie.
 
 ### Future milestones

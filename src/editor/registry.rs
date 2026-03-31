@@ -392,6 +392,10 @@ impl CommandRegistry {
         editor_cmd!("select-within",          "Select regex matches within selections (`s`).",           cmd_select_within);
         editor_cmd!("use-selection-as-search", "Use primary selection as search pattern (`*`).",         cmd_use_selection_as_search);
 
+        // ── Editor commands — jump list ──────────────────────────────────────
+        editor_cmd!("jump-backward", "Navigate to the previous jump position (`Ctrl-o`).", cmd_jump_backward);
+        editor_cmd!("jump-forward",  "Navigate to the next jump position (`Ctrl-i`).",     cmd_jump_forward);
+
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
     }
@@ -423,10 +427,11 @@ mod tests {
     ///    7 search editor commands (search-forward/backward, search-next/prev, extend variants, clear-search)
     ///    2 select editor commands (select-within, use-selection-as-search)
     ///    4 page-scroll editor commands
+    ///    2 jump-list editor commands
     ///    1 quit editor command
     ///   ──
-    ///  136 total
-    const EXPECTED_COMMAND_COUNT: usize = 136;
+    ///  138 total
+    const EXPECTED_COMMAND_COUNT: usize = 138;
 
     #[test]
     fn registry_has_expected_count() {

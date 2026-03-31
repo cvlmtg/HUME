@@ -685,3 +685,23 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> bool {
         }
     }
 }
+
+// ── Jump list navigation ─────────────────────────────────────────────────────
+
+pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize) {
+    let current = crate::core::jump_list::JumpEntry {
+        selections: ed.doc.sels().clone(),
+        primary_line: ed.doc.buf().char_to_line(ed.doc.sels().primary().head),
+    };
+    if let Some(entry) = ed.jump_list.backward(current) {
+        let sels = entry.selections.clone();
+        ed.doc.set_selections(sels);
+    }
+}
+
+pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize) {
+    if let Some(entry) = ed.jump_list.forward() {
+        let sels = entry.selections.clone();
+        ed.doc.set_selections(sels);
+    }
+}

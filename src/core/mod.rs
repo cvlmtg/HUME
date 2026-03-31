@@ -6,3 +6,4 @@ pub(crate) mod document;
 pub(crate) mod selection;
 pub(crate) mod grapheme;
 pub(crate) mod error;
+pub(crate) mod jump_list;

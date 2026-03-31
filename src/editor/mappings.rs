@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-
 use crate::auto_pairs::{delete_pair, insert_pair_close};
+use crate::core::jump_list::{JumpEntry, JUMP_LINE_THRESHOLD};
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
 use crate::core::selection::Selection;
@@ -13,6 +13,24 @@ use crate::ops::selection_cmd::select_matches_within;
 
 use super::keymap::{KeymapCommand, WalkResult};
 use super::{Editor, Mode, SearchDirection};
+
+/// Commands that always record a jump before executing.
+const JUMP_COMMANDS: &[&str] = &[
+    "goto-first-line",
+    "goto-last-line",
+    "search-next",
+    "search-prev",
+    "extend-search-next",
+    "extend-search-prev",
+    "page-down",
+    "page-up",
+    "extend-page-down",
+    "extend-page-up",
+];
+
+fn is_jump_command(name: &str) -> bool {
+    JUMP_COMMANDS.contains(&name)
+}
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -254,6 +272,15 @@ impl Editor {
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
+            // ── Jump list: capture pre-command state ─────────────────────────
+            let is_explicit_jump = is_jump_command(resolved);
+            let pre_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
+            let pre_sels = if is_explicit_jump || matches!(reg_cmd, MappableCommand::Motion { .. }) {
+                Some(self.doc.sels().clone())
+            } else {
+                None
+            };
+
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
                     // Motion functions take (buf, sels, count). count defaults to 1
@@ -269,6 +296,18 @@ impl Editor {
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     fun(self, count);
+                }
+            }
+
+            // ── Jump list: record if this was a jump ─────────────────────────
+            if let Some(sels) = pre_sels {
+                let post_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
+                let line_distance = pre_line.abs_diff(post_line);
+                if is_explicit_jump || line_distance > JUMP_LINE_THRESHOLD {
+                    self.jump_list.push(JumpEntry {
+                        selections: sels,
+                        primary_line: pre_line,
+                    });
                 }
             }
 
@@ -360,9 +399,12 @@ impl Editor {
             MiniBufferEvent::Confirm(pattern) => {
                 // Persist pattern in 's' register for future n/N.
                 self.registers.write(SEARCH_REGISTER, vec![pattern]);
-                // Keep the position that live search already moved us to;
-                // discard the pre-search snapshot.
-                self.search.pre_search_sels = None;
+                // Record the pre-search position in the jump list before
+                // discarding it — the search moved the cursor to the match.
+                if let Some(sels) = self.search.pre_search_sels.take() {
+                    let line = self.doc.buf().char_to_line(sels.primary().head);
+                    self.jump_list.push(JumpEntry { selections: sels, primary_line: line });
+                }
                 // search.regex stays alive for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
                 self.set_mode(Mode::Normal);
