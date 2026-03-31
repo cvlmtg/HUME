@@ -1686,25 +1686,25 @@ fn esc_in_normal_clears_search() {
     assert!(ed.search.matches.is_empty(), "search.matches should be cleared by Esc");
 }
 
-/// `:clearsearch` / `:cs` in Command mode clears the active search regex and its cached state.
+/// `:clear-search` / `:cs` in Command mode clears the active search regex and its cached state.
 #[test]
-fn command_clearsearch_clears_search() {
+fn command_clear_search_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
     assert!(ed.search.regex.is_some(), "pre-condition: search regex is set");
 
-    // :clearsearch
+    // :clear-search (canonical name)
     ed.handle_key(key(':'));
-    for ch in "clearsearch".chars() {
+    for ch in "clear-search".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
     ed.update_search_cache();
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.search.regex.is_none(), "search.regex should be cleared by :clearsearch");
-    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by :clearsearch");
-    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by :clearsearch");
+    assert!(ed.search.regex.is_none(), "search.regex should be cleared by :clear-search");
+    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by :clear-search");
+    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by :clear-search");
 
     // :cs shorthand also works
     let mut ed2 = editor_from("-[h]>ello hello\n").with_search_regex("hello");
