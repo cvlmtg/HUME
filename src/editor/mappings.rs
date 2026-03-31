@@ -454,6 +454,9 @@ impl Editor {
                 self.registers.write(SEARCH_REGISTER, vec![pattern]);
                 // Keep the selections that live preview already set.
                 self.pre_select_sels = None;
+                // Clear search highlights — they were just a preview tool.
+                // n/N can still repeat: search_jump recompiles from the register.
+                self.search.clear();
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
@@ -471,6 +474,7 @@ impl Editor {
         if let Some(sels) = self.pre_select_sels.take() {
             self.doc.set_selections(sels);
         }
+        self.search.set_regex(None);
         self.mode = Mode::Normal;
         self.minibuf = None;
     }
