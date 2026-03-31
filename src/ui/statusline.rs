@@ -8,20 +8,20 @@ use crate::core::buffer::Buffer;
 use crate::core::grapheme::grapheme_count;
 use crate::editor::{Editor, Mode};
 
-/// Fill an entire status-bar row with spaces in the base style.
+/// Fill an entire statusline row with spaces in the base style.
 ///
 /// All three bottom-row renderers do this as their first step to clear
 /// whatever was drawn in the previous frame.
 fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors, area: Rect, y: u16) {
     let blank = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, colors.status_bar);
+    screen_buf.set_string(area.x, y, &blank, colors.statusline);
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// A named element that can appear in a statusline section.
 ///
-/// Elements are the building blocks of the status bar. The mode indicator,
+/// Elements are the building blocks of the statusline. The mode indicator,
 /// separators, and data fields are all first-class element variants —
 /// there is no special chrome. You control the layout by choosing which
 /// elements appear in each section and in what order.
@@ -36,7 +36,7 @@ pub(crate) enum StatusElement {
     /// `status_extend`). The 5-char width includes leading and trailing spaces
     /// so it naturally fills a section without needing a separator.
     Mode,
-    /// A thin vertical bar `│` in the base status bar style.
+    /// A thin vertical bar `│` in the base statusline style.
     ///
     /// Place this explicitly between elements that need a visual divider.
     Separator,
@@ -62,14 +62,14 @@ pub(crate) enum StatusElement {
     SearchMatches,
 }
 
-/// Describes the content layout of the status bar's three sections.
+/// Describes the content layout of the statusline's three sections.
 ///
 /// Each section is a sequence of [`StatusElement`]s rendered in order. Adjacent
 /// elements within a section are joined with a boundary-aware spacing rule so
 /// that spacing feels natural without any element needing to hard-code its
 /// neighbours.
 ///
-/// The default config reproduces the built-in status bar layout exactly, so
+/// The default config reproduces the built-in statusline layout exactly, so
 /// the editor looks identical with no configuration:
 ///
 /// ```text
@@ -77,11 +77,11 @@ pub(crate) enum StatusElement {
 /// ```
 #[derive(Debug, Clone)]
 pub(crate) struct StatusLineConfig {
-    /// Elements rendered left-aligned at the start of the status bar row.
+    /// Elements rendered left-aligned at the start of the statusline row.
     pub left: Vec<StatusElement>,
     /// Elements centered between the left and right sections. Empty by default.
     pub center: Vec<StatusElement>,
-    /// Elements rendered right-aligned at the end of the status bar row.
+    /// Elements rendered right-aligned at the end of the statusline row.
     pub right: Vec<StatusElement>,
 }
 
@@ -98,9 +98,9 @@ impl Default for StatusLineConfig {
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Render the bottom row of the terminal: command line, status message, or
-/// status bar — whichever has the highest priority.
+/// statusline — whichever has the highest priority.
 ///
-/// Priority: command mini-buffer > transient status message > normal status bar.
+/// Priority: command mini-buffer > transient status message > normal statusline.
 pub(crate) fn render_bottom_row(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
@@ -112,7 +112,7 @@ pub(crate) fn render_bottom_row(
     } else if let Some(msg) = editor.status_msg.as_deref() {
         render_status_message(screen_buf, &editor.colors, area, y, msg);
     } else {
-        render_status_bar(screen_buf, editor, area, y);
+        render_statusline(screen_buf, editor, area, y);
     }
 }
 
@@ -120,7 +120,7 @@ pub(crate) fn render_bottom_row(
 
 /// Render the command-line mini-buffer on the bottom row.
 ///
-/// Fully replaces the status bar — no mode indicator, no segments. The prompt
+/// Fully replaces the statusline — no mode indicator, no segments. The prompt
 /// character (e.g. `:`) makes the mode self-evident. The terminal cursor
 /// is positioned after the input by the caller.
 fn render_command_line(
@@ -134,14 +134,14 @@ fn render_command_line(
 ) {
     let colors = &editor.colors;
 
-    // The command line fully replaces the status bar row — no section layout,
+    // The command line fully replaces the statusline row — no section layout,
     // no mode indicator. The prompt character makes the mode self-evident.
     fill_row(screen_buf, colors, area, y);
 
     // +1: 1-column left margin, matching the leading space of the mode indicator
-    // in the normal status bar so the text is visually aligned.
+    // in the normal statusline so the text is visually aligned.
     let cmd_str = format!("{prompt}{input}");
-    screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
+    screen_buf.set_string(area.x + 1, y, &cmd_str, colors.statusline);
 
     // Search match count: draw "[3/42]" right-aligned with a 1-col margin.
     // Shown only in Search mode — not in Command mode, which also uses this
@@ -150,14 +150,14 @@ fn render_command_line(
         let label = format!("[{current}/{total}]");
         let label_w = UnicodeWidthStr::width(label.as_str()) as u16;
         let count_x = area.right().saturating_sub(label_w + 1);
-        screen_buf.set_string(count_x, y, &label, colors.status_bar);
+        screen_buf.set_string(count_x, y, &label, colors.statusline);
     }
 
     // Visual block cursor: remove the REVERSED modifier from the cursor cell.
     //
-    // The status bar uses REVERSED (light bg on dark terminals). Patching with
+    // The statusline uses REVERSED (light bg on dark terminals). Patching with
     // `remove_modifier(REVERSED)` clears that bit, leaving terminal-default
-    // colors (dark bg) — a visible block against the light status bar row.
+    // colors (dark bg) — a visible block against the light statusline row.
     // We own the cursor rendering here rather than relying on the terminal
     // cursor, which draws in the terminal's own cursor color (often white,
     // invisible on a white/reversed background).
@@ -174,7 +174,7 @@ fn render_command_line(
 
 /// Render a transient status message on the bottom row.
 ///
-/// Uses the inverted status bar style so the message stands out. The message
+/// Uses the inverted statusline style so the message stands out. The message
 /// is cleared on the next keypress.
 fn render_status_message(
     screen_buf: &mut ScreenBuf,
@@ -184,10 +184,10 @@ fn render_status_message(
     msg: &str,
 ) {
     fill_row(screen_buf, colors, area, y);
-    screen_buf.set_string(area.x + 1, y, msg, colors.status_bar); // +1: left margin, see render_command_line
+    screen_buf.set_string(area.x + 1, y, msg, colors.statusline); // +1: left margin, see render_command_line
 }
 
-/// Render the one-row status bar at the bottom of the area.
+/// Render the one-row statusline at the bottom of the area.
 ///
 /// Content is driven by [`StatusLineConfig`], which lives on `Editor`. Each
 /// section (left, center, right) is a sequence of [`StatusElement`]s rendered
@@ -202,7 +202,7 @@ fn render_status_message(
 /// Narrow-terminal degradation:
 /// - Center is dropped if it would overlap left or right.
 /// - Right is dropped if it would overlap left.
-fn render_status_bar(
+fn render_statusline(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
     area: Rect,
@@ -211,7 +211,7 @@ fn render_status_bar(
     let colors = &editor.colors;
     let config = &editor.statusline_config;
 
-    // Fill the entire row with the base status bar style first.
+    // Fill the entire row with the base statusline style first.
     fill_row(screen_buf, colors, area, y);
 
     // Render each section into a sequence of styled spans.
@@ -275,26 +275,26 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
             };
             (label.to_string(), style)
         }
-        StatusElement::Separator => ("│".to_string(), colors.status_bar),
+        StatusElement::Separator => ("│".to_string(), colors.statusline),
         StatusElement::FileName => {
             let name = editor.file_path.as_deref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("[scratch]");
-            (name.to_string(), colors.status_bar)
+            (name.to_string(), colors.statusline)
         }
         StatusElement::Position => {
             let buf = editor.doc.buf();
             let cursor_head = editor.doc.sels().primary().head;
             let cursor_line = buf.char_to_line(cursor_head);
             let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
-            (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.status_bar)
+            (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.statusline)
         }
         StatusElement::KittyProtocol => {
             if editor.kitty_enabled {
-                ("🐱".to_string(), colors.status_bar)
+                ("🐱".to_string(), colors.statusline)
             } else {
-                (String::new(), colors.status_bar)
+                (String::new(), colors.statusline)
             }
         }
         StatusElement::Selections => {
@@ -302,23 +302,23 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
             // Only show the count when there is more than one selection —
             // the single-cursor case is the default and needs no annotation.
             if n > 1 {
-                (format!("{n} sels"), colors.status_bar)
+                (format!("{n} sels"), colors.statusline)
             } else {
-                (String::new(), colors.status_bar)
+                (String::new(), colors.statusline)
             }
         }
         StatusElement::DirtyIndicator => {
             if editor.doc.is_dirty() {
-                ("[+]".to_string(), colors.status_bar)
+                ("[+]".to_string(), colors.statusline)
             } else {
-                (String::new(), colors.status_bar)
+                (String::new(), colors.statusline)
             }
         }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.search.match_count() {
-                (format!("[{current}/{total}]"), colors.status_bar)
+                (format!("[{current}/{total}]"), colors.statusline)
             } else {
-                (String::new(), colors.status_bar)
+                (String::new(), colors.statusline)
             }
         }
     }
@@ -345,7 +345,7 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
 
             if !a_ends_space && !b_starts_space {
                 // Neither boundary is a space — insert a gap span.
-                spans.push((" ".to_string(), editor.colors.status_bar));
+                spans.push((" ".to_string(), editor.colors.statusline));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
                 // Both boundaries are spaces — trim exactly one leading space

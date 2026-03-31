@@ -61,10 +61,10 @@ pub(crate) struct EditorColors {
     /// The `~` drawn on rows past the end of the buffer.
     pub tilde: Style,
 
-    // ── Status bar ────────────────────────────────────────────────────────────
+    // ── Statusline ────────────────────────────────────────────────────────────
 
-    /// Base style for the entire status bar row (inverted video fill).
-    pub status_bar: Style,
+    /// Base style for the entire statusline row (inverted video fill).
+    pub statusline: Style,
 
     /// Mode label in Normal mode (`NOR`).
     pub status_normal: Style,
@@ -101,7 +101,7 @@ impl EditorColors {
                 .bg(Color::Rgb(35, 35, 45)),
             gutter: Style::new().fg(Color::DarkGray),
             tilde: Style::new().fg(Color::DarkGray),
-            status_bar: reversed,
+            statusline: reversed,
             status_normal: reversed,
             status_insert: reversed.fg(Color::Cyan),
             status_extend: reversed.fg(Color::Yellow),

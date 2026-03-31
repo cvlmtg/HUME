@@ -71,7 +71,7 @@ pub(super) enum WalkResult {
     Leaf(KeymapCommand),
     /// At an interior trie node — more keys are needed.
     /// The `name` field names this node (e.g. `"match"`, `"goto"`) and will
-    /// be shown in the status bar while the user completes the sequence.
+    /// be shown in the statusline while the user completes the sequence.
     #[allow(dead_code)]
     Interior { name: &'static str },
     /// The last key of the sequence matches a wait-char binding. The caller
@@ -90,7 +90,7 @@ pub(super) enum WalkResult {
 /// command. The trie is built once at startup and never mutated during editing
 /// (the Steel config layer will support user overrides).
 pub(super) struct KeyTrie {
-    /// Human-readable name shown in the status bar when the user is mid-sequence
+    /// Human-readable name shown in the statusline when the user is mid-sequence
     /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).
     pub(super) name: &'static str,
     map: HashMap<KeyEvent, KeyTrieNode>,
