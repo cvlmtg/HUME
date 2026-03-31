@@ -135,6 +135,9 @@ pub(crate) struct SearchState {
     /// Cached `(current_1based, total)` derived from `matches` and the
     /// primary cursor position. `None` when `regex` is `None`.
     match_count: Option<(usize, usize)>,
+    /// `true` when the last `n`/`N` jump wrapped around the buffer boundary.
+    /// Read by the `SearchMatches` statusline element to show a `W` prefix.
+    wrapped: bool,
 
     // ── Cache-invalidation keys ───────────────────────────────────────────────
     // Stored so `update_search_cache` can skip recomputation when nothing changed.
@@ -159,6 +162,7 @@ impl Default for SearchState {
             regex: None,
             matches: Vec::new(),
             match_count: None,
+            wrapped: false,
             // Sentinel values: usize::MAX can never be a real revision or cursor
             // position, so the first call to update_search_cache always recomputes.
             cache_revision: RevisionId(usize::MAX),
@@ -173,6 +177,7 @@ impl SearchState {
     /// last-used direction.
     pub fn clear(&mut self) {
         self.pre_search_sels = None;
+        self.wrapped = false;
         self.set_regex(None);
     }
 
@@ -186,6 +191,7 @@ impl SearchState {
         self.regex = regex;
         self.matches.clear();
         self.match_count = None;
+        self.wrapped = false;
         self.cache_revision = RevisionId(usize::MAX);
         self.cache_head = usize::MAX;
     }
@@ -196,6 +202,10 @@ impl SearchState {
 
     pub(crate) fn match_count(&self) -> Option<(usize, usize)> {
         self.match_count
+    }
+
+    pub(crate) fn wrapped(&self) -> bool {
+        self.wrapped
     }
 }
 
