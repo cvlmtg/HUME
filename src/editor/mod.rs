@@ -186,10 +186,6 @@ impl SearchState {
         self.cache_head = usize::MAX;
     }
 
-    pub(crate) fn regex(&self) -> Option<&regex_cursor::engines::meta::Regex> {
-        self.regex.as_ref()
-    }
-
     pub(crate) fn matches(&self) -> &[(usize, usize)] {
         &self.matches
     }
