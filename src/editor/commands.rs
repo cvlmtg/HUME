@@ -22,8 +22,10 @@ use crate::ops::motion::{
     find_char_backward, find_char_forward, MotionMode,
 };
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
-use crate::ops::search::{compile_search_regex, find_match_from_cache, find_next_match};
+use crate::ops::search::{compile_search_regex, escape_regex, find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
+use crate::ops::text_object::inner_word_impl;
+use crate::helpers::is_word_boundary;
 
 use super::registry::MappableCommand;
 use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
@@ -462,6 +464,62 @@ pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize) {
 }
 pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
     search_jump(ed, count, SearchDirection::Backward, true);
+}
+
+// ── Select within (s) ────────────────────────────────────────────────────────
+
+/// Enter Select mode (`s`).
+///
+/// Snapshots the current selections for `Esc`-restore, then opens the
+/// mini-buffer with the `s` prompt. The user types a regex; all matches
+/// within the current selections become new selections (live preview).
+pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
+    ed.pre_select_sels = Some(ed.doc.sels().clone());
+    ed.set_mode(Mode::Select);
+    ed.minibuf = Some(MiniBuffer { prompt: 's', input: String::new(), cursor: 0 });
+}
+
+// ── Use selection as search (*) ──────────────────────────────────────────────
+
+/// Use the primary selection text as the search pattern (`*`).
+///
+/// If the primary selection is a cursor (1-char), expands to the word under
+/// the cursor first (same as Helix). The escaped text is compiled as a search
+/// regex, stored in the `'s'` register, and search highlights appear immediately.
+pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
+    let buf = ed.doc.buf();
+    let primary = ed.doc.sels().primary();
+
+    // If cursor (1-char selection), expand to inner word first.
+    let (text, new_sel): (String, Option<Selection>) = if primary.is_cursor() {
+        let Some((start, end)) = inner_word_impl(buf, primary.head, is_word_boundary) else {
+            return; // cursor on structural newline or similar — nothing to do
+        };
+        let word_text = buf.slice(start..end + 1).to_string();
+        (word_text, Some(Selection::new(start, end)))
+    } else {
+        let text = buf.slice(primary.start()..primary.end() + 1).to_string();
+        (text, None)
+    };
+
+    if text.is_empty() {
+        return;
+    }
+
+    // Update the primary selection to cover the word (for cursor expansion).
+    if let Some(sel) = new_sel {
+        ed.set_primary_selection(sel);
+    }
+
+    let escaped = escape_regex(&text);
+    let Some(regex) = compile_search_regex(&escaped) else {
+        return;
+    };
+
+    // Store in search register and set as active search.
+    ed.registers.write(SEARCH_REGISTER, vec![escaped]);
+    ed.search.direction = SearchDirection::Forward;
+    ed.search.set_regex(Some(regex));
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────

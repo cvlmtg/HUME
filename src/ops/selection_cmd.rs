@@ -1,7 +1,10 @@
+use regex_cursor::engines::meta::Regex;
+
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::core::selection::{Selection, SelectionSet};
+use crate::ops::search::find_matches_in_range;
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -131,6 +134,53 @@ pub(crate) fn cmd_split_selection_on_newlines(
     new_set.debug_assert_valid(buf);
     new_set
 }
+
+// ── Select matches within ────────────────────────────────────────────────────
+
+/// Replace each selection with the regex matches found within it.
+///
+/// For every selection in `sels`, finds all non-overlapping matches of `regex`
+/// bounded to that selection's range. Each match becomes a new forward
+/// `Selection`. The new primary is the first match within the original primary
+/// selection's range.
+///
+/// Returns `None` when no matches are found in any selection — the caller
+/// should keep the original selections unchanged.
+pub(crate) fn select_matches_within(
+    buf: &Buffer,
+    sels: &SelectionSet,
+    regex: &Regex,
+) -> Option<SelectionSet> {
+    let primary_idx = sels.primary_index();
+    let mut new_sels: Vec<Selection> = Vec::new();
+    let mut new_primary = 0;
+
+    for (i, sel) in sels.iter_sorted().enumerate() {
+        let piece_start = new_sels.len();
+        let matches = find_matches_in_range(buf, regex, sel.start(), sel.end());
+
+        for (s, e) in matches {
+            new_sels.push(Selection::new(s, e));
+        }
+
+        // Primary = first match within the original primary selection.
+        if i == primary_idx && piece_start < new_sels.len() {
+            new_primary = piece_start;
+        }
+    }
+
+    if new_sels.is_empty() {
+        return None;
+    }
+
+    // Matches within non-overlapping selections can't overlap each other,
+    // so no merge is needed.
+    let new_set = SelectionSet::from_vec(new_sels, new_primary);
+    new_set.debug_assert_valid(buf);
+    Some(new_set)
+}
+
+// ── Trim whitespace ──────────────────────────────────────────────────────────
 
 /// Trim leading and trailing whitespace from every selection's range.
 ///
@@ -837,5 +887,48 @@ mod tests {
             |(buf, sels)| cmd_split_selection_on_newlines(&buf, sels),
             "-[\n]>"
         );
+    }
+
+    // ── select_matches_within ─────────────────────────────────────────────
+
+    #[test]
+    fn select_matches_basic() {
+        // Select "ab" within a selection that spans "aababab".
+        let (buf, sels) = parse_state("-[aababab]>\n");
+        let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
+        let result = select_matches_within(&buf, &sels, &regex).unwrap();
+        // Expect 3 selections: (1,2), (3,4), (5,6)
+        assert_eq!(result.len(), 3);
+        assert_eq!((result.primary().anchor, result.primary().head), (1, 2));
+    }
+
+    #[test]
+    fn select_matches_no_hits_returns_none() {
+        let (buf, sels) = parse_state("-[hello]>\n");
+        let regex = regex_cursor::engines::meta::Regex::new("xyz").unwrap();
+        assert!(select_matches_within(&buf, &sels, &regex).is_none());
+    }
+
+    #[test]
+    fn select_matches_bounded_to_selection() {
+        // Only matches within the selection range should be found.
+        // "ab" appears at (0,1) and (4,5) in "abcdab\n", but selection
+        // covers only chars 2..3 ("cd") — no matches.
+        let buf = Buffer::from("abcdab\n");
+        let sels = SelectionSet::single(Selection::new(2, 3));
+        let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
+        assert!(select_matches_within(&buf, &sels, &regex).is_none());
+    }
+
+    #[test]
+    fn select_matches_multiple_selections() {
+        // Two selections, each containing one "ab".
+        let buf = Buffer::from("ab cd ab\n");
+        let sel0 = Selection::new(0, 1); // "ab"
+        let sel1 = Selection::new(6, 7); // "ab"
+        let sels = SelectionSet::from_vec(vec![sel0, sel1], 0);
+        let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
+        let result = select_matches_within(&buf, &sels, &regex).unwrap();
+        assert_eq!(result.len(), 2);
     }
 }

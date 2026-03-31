@@ -9,6 +9,7 @@ use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{compile_search_regex, find_next_match};
+use crate::ops::selection_cmd::select_matches_within;
 
 use super::keymap::{KeymapCommand, WalkResult};
 use super::{Editor, Mode, SearchDirection};
@@ -24,6 +25,7 @@ impl Editor {
             Mode::Insert => self.handle_insert(key),
             Mode::Command => self.handle_command(key),
             Mode::Search => self.handle_search(key),
+            Mode::Select => self.handle_select(key),
         }
     }
 
@@ -422,6 +424,82 @@ impl Editor {
             }
         }
 
+        self.search.set_regex(Some(regex));
+    }
+
+    // ── Select mode (s) ────────────────────────────────────────────────────────
+
+    fn handle_select(&mut self, key: KeyEvent) {
+        use super::MiniBufferEvent;
+        let event = match self.minibuf.as_mut() {
+            Some(mb) => mb.handle_key(key),
+            None => return,
+        };
+        match event {
+            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
+            MiniBufferEvent::Confirm(pattern) => {
+                // Persist pattern in 's' register (same as search confirm).
+                self.registers.write(SEARCH_REGISTER, vec![pattern]);
+                // Keep the selections that live preview already set.
+                self.pre_select_sels = None;
+                self.set_mode(Mode::Normal);
+                self.minibuf = None;
+            }
+            MiniBufferEvent::EmptiedByBackspace => {
+                // Restore original selections when pattern is fully erased.
+                if let Some(sels) = self.pre_select_sels.clone() {
+                    self.doc.set_selections(sels);
+                }
+            }
+            MiniBufferEvent::Edited => self.update_live_select(),
+            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
+        }
+    }
+
+    /// Cancel select mode: restore original selections, return to Normal.
+    fn cancel_select(&mut self) {
+        if let Some(sels) = self.pre_select_sels.take() {
+            self.doc.set_selections(sels);
+        }
+        self.mode = Mode::Normal;
+        self.minibuf = None;
+    }
+
+    /// Recompile the regex and replace selections with matches within the
+    /// original selections. Called on every keystroke in Select mode.
+    fn update_live_select(&mut self) {
+        let pattern = match self.minibuf.as_ref() {
+            Some(mb) if !mb.input.is_empty() => mb.input.clone(),
+            _ => return,
+        };
+
+        let Some(regex) = compile_search_regex(&pattern) else {
+            // Invalid regex in progress — restore originals.
+            if let Some(sels) = self.pre_select_sels.clone() {
+                self.doc.set_selections(sels);
+            }
+            return;
+        };
+
+        // Always match against the original selections, not the current
+        // (possibly already-replaced) ones.
+        let sels = match &self.pre_select_sels {
+            Some(s) => s,
+            None => return,
+        };
+
+        match select_matches_within(self.doc.buf(), sels, &regex) {
+            Some(new_sels) => self.doc.set_selections(new_sels),
+            None => {
+                // No matches — restore originals so the user sees their
+                // original selections (not an empty/stale state).
+                if let Some(s) = self.pre_select_sels.clone() {
+                    self.doc.set_selections(s);
+                }
+            }
+        }
+
+        // Also set the search regex so highlights appear in the renderer.
         self.search.set_regex(Some(regex));
     }
 

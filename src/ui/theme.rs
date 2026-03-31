@@ -80,6 +80,9 @@ pub(crate) struct EditorColors {
 
     /// Mode label in Command mode (`CMD`). Green distinguishes it from Search.
     pub status_command: Style,
+
+    /// Mode label in Select mode (`SEL`). Blue distinguishes it from Search.
+    pub status_select: Style,
 }
 
 impl EditorColors {
@@ -110,6 +113,7 @@ impl EditorColors {
             status_extend: reversed.fg(Color::Yellow),
             status_search: reversed.fg(Color::Magenta),
             status_command: reversed.fg(Color::Green),
+            status_select: reversed.fg(Color::Blue),
         }
     }
 }

@@ -132,7 +132,7 @@ pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet) -> Select
 /// Scans left and right from `pos` while adjacent chars share the same
 /// "class" (no boundary crossing). Whatever class the char at `pos` belongs
 /// to defines the selected run — including whitespace runs and EOL.
-fn inner_word_impl(
+pub(crate) fn inner_word_impl(
     buf: &Buffer,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
