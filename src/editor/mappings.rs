@@ -454,7 +454,7 @@ impl Editor {
                 self.registers.write(SEARCH_REGISTER, vec![pattern]);
                 // Keep the selections that live preview already set.
                 self.pre_select_sels = None;
-                // Clear search highlights — they were just a preview tool.
+                // Clear any pre-existing search highlights.
                 // n/N can still repeat: search_jump recompiles from the register.
                 self.search.clear();
                 self.set_mode(Mode::Normal);
@@ -503,9 +503,6 @@ impl Editor {
             Some(new_sels) => self.doc.set_selections(new_sels),
             None => self.restore_select_snapshot(),
         }
-
-        // Also set the search regex so highlights appear in the renderer.
-        self.search.set_regex(Some(regex));
     }
 
     // ── Command mode ──────────────────────────────────────────────────────────
