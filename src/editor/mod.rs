@@ -70,17 +70,17 @@ pub(super) struct RepeatableAction {
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum FindKind {
-    /// `f`/`F`: cursor lands ON the found character.
+    /// `find-forward` / `find-backward`: cursor lands ON the found character.
     Inclusive,
-    /// `t`/`T`: cursor lands one grapheme before (forward) or after (backward) it.
+    /// `till-forward` / `till-backward`: cursor lands one grapheme before (forward) or after (backward) it.
     Exclusive,
 }
 
-/// The character and kind stored by the last f/t/F/T motion.
+/// The character and kind stored by the last find/till motion.
 ///
-/// Direction is NOT stored — the repeat keys `=` (forward) and `-` (backward)
+/// Direction is NOT stored — `repeat-find-forward` and `repeat-find-backward`
 /// use absolute direction, so re-searching always means "next on the right" or
-/// "previous on the left" regardless of whether the original motion was f or F.
+/// "previous on the left" regardless of the original motion's direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FindChar {
     pub ch: char,
@@ -91,11 +91,12 @@ pub(super) struct FindChar {
 
 /// The current editing mode.
 ///
-/// Starts as `Normal`. `Insert` is entered via `i`/`a` and exited via `Escape`.
-/// `Command` is entered via `:` and exited via `Enter` (execute) or `Esc` (cancel).
-/// `Search` is entered via `/` (forward) or `?` (backward); live highlights update
+/// Starts as `Normal`. `Insert` is entered via insert commands (`insert-before`,
+/// `insert-after`, etc.) and exited via `exit-insert`.
+/// `Command` is entered via `command-mode` and exited via `Enter` (execute) or `Esc` (cancel).
+/// `Search` is entered via `search-forward` / `search-backward`; live highlights update
 /// on every keystroke; `Enter` confirms, `Esc` restores the pre-search position.
-/// `Select` is entered via `s`; user types a regex and all matches within the
+/// `Select` is entered via `select-within`; user types a regex and all matches within the
 /// current selections become new selections (multi-cursor). Live preview updates
 /// on each keystroke; `Enter` confirms, `Esc` restores original selections.
 /// The keymap is completely different in each mode — `handle_key` dispatches
@@ -111,7 +112,7 @@ pub(crate) enum Mode {
 
 // ── Search state ──────────────────────────────────────────────────────────────
 
-/// Direction for `/`/`?` search and `n`/`N` repeat.
+/// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SearchDirection {
     Forward,
@@ -129,7 +130,7 @@ pub(crate) struct SearchState {
     /// Restored on cancel; discarded on confirm.
     pub pre_search_sels: Option<SelectionSet>,
     /// Compiled regex from the last confirmed (or in-progress) search pattern.
-    /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
+    /// `None` until a valid pattern is typed. Reused by `search-next`/`search-prev` without recompiling.
     /// Mutate only through [`set_regex`] to keep the match cache coherent.
     regex: Option<regex_cursor::engines::meta::Regex>,
     /// All non-overlapping matches of `regex` in the current buffer,
@@ -139,7 +140,7 @@ pub(crate) struct SearchState {
     /// Cached `(current_1based, total)` derived from `matches` and the
     /// primary cursor position. `None` when `regex` is `None`.
     match_count: Option<(usize, usize)>,
-    /// `true` when the last `n`/`N` jump wrapped around the buffer boundary.
+    /// `true` when the last `search-next`/`search-prev` jump wrapped around the buffer boundary.
     /// Read by the `SearchMatches` statusline element to show a `W` prefix.
     wrapped: bool,
 
@@ -177,8 +178,8 @@ impl Default for SearchState {
 
 impl SearchState {
     /// Clear the active search — drops the regex and flushes the highlight cache.
-    /// Direction is preserved so a future `n`/`N` or `/`/`?` still knows the
-    /// last-used direction.
+    /// Direction is preserved so a future `search-next`/`search-prev` or
+    /// `search-forward`/`search-backward` still knows the last-used direction.
     pub fn clear(&mut self) {
         self.pre_search_sels = None;
         self.wrapped = false;
@@ -221,7 +222,7 @@ pub(crate) struct Editor {
     pub(crate) file_path: Option<PathBuf>,
     pub(crate) mode: Mode,
     /// When `true`, all motions extend the current selection rather than moving it.
-    /// Toggled by `e` in Normal mode; cleared on entering Insert mode or pressing Esc.
+    /// Toggled by `toggle-extend`; cleared on entering Insert mode or `collapse-and-exit-extend`.
     pub(crate) extend: bool,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     ///
@@ -277,9 +278,9 @@ pub(crate) struct Editor {
     /// Initialized with sensible defaults. Configurable globally or per language
     /// via the Steel scripting layer.
     pub(super) auto_pairs: AutoPairsConfig,
-    /// The character and kind (inclusive/exclusive) from the last f/t/F/T motion.
+    /// The character and kind (inclusive/exclusive) from the last find/till motion.
     ///
-    /// Used by the repeat keys: `=` repeats the search forward, `-` backward.
+    /// Used by `repeat-find-forward` / `repeat-find-backward`.
     /// `None` until the user performs a find/till motion.
     pub(super) last_find: Option<FindChar>,
 
@@ -287,13 +288,13 @@ pub(crate) struct Editor {
     pub(super) search: SearchState,
 
     // ── Select (s) ───────────────────────────────────────────────────────────
-    /// Snapshot of selections taken when entering Select mode (`s`).
+    /// Snapshot of selections taken when entering Select mode (`select-within`).
     /// Restored on cancel; discarded on confirm.
     pub(super) pre_select_sels: Option<SelectionSet>,
 
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Navigable history of cursor positions before large movements.
-    /// `Ctrl-o` moves backward; `Ctrl-i` moves forward.
+    /// `jump-backward` / `jump-forward` traverse the list.
     pub(super) jump_list: crate::core::jump_list::JumpList,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///

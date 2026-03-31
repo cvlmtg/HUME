@@ -1912,12 +1912,12 @@ fn goto_first_line_records_jump() {
     ed.handle_key(key('g'));
     assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 0);
 
-    // Ctrl-o should restore the pre-jump position.
+    // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
 
-/// `ge` (goto last line) records a jump.
+/// `ge` (goto-last-line) records a jump.
 #[test]
 fn goto_last_line_records_jump() {
     let mut ed = jump_editor(5);
@@ -1927,11 +1927,12 @@ fn goto_last_line_records_jump() {
     ed.handle_key(key('e'));
     assert_ne!(state(&ed), before); // moved somewhere else
 
+    // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
 
-/// Full round-trip: jump → Ctrl-o → Ctrl-i.
+/// Full round-trip: jump → jump-backward → jump-forward.
 #[test]
 fn jump_backward_then_forward() {
     let mut ed = jump_editor(10);
@@ -1962,7 +1963,7 @@ fn small_motion_does_not_record_jump() {
     let after = state(&ed);
     assert_ne!(after, before);
 
-    // Ctrl-o should NOT go back — nothing was recorded.
+    // jump-backward should NOT go back — nothing was recorded.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), after);
 }
@@ -1999,7 +2000,7 @@ fn search_confirm_records_jump() {
     assert_eq!(ed.mode, Mode::Normal);
     assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 15);
 
-    // Ctrl-o should return to line 0.
+    // jump-backward should return to line 0.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
@@ -2018,7 +2019,7 @@ fn search_cancel_does_not_record_jump() {
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), before);
 
-    // Ctrl-o should NOT go anywhere — nothing recorded.
+    // jump-backward should NOT go anywhere — nothing recorded.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
@@ -2042,13 +2043,13 @@ fn search_next_records_jump() {
     let after_n = state(&ed);
     assert_ne!(after_n, after_search);
 
-    // Ctrl-o should go back to the position before `n`.
+    // jump-backward should go back to the position before search-next.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), after_search);
 }
 
-/// When `n` lands on the same line as the previous match, Ctrl-i must still
-/// return to the exact pre-Ctrl-o position.
+/// When search-next lands on the same line as the previous match, jump-forward
+/// must still return to the exact pre-jump-backward position.
 #[test]
 fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
@@ -2081,16 +2082,16 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     let second_match = state(&ed);
     assert_ne!(first_match, second_match);
 
-    // Ctrl-o should go back to first match.
+    // jump-backward should go back to first match.
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(state(&ed), first_match, "Ctrl-o should return to first match");
+    assert_eq!(state(&ed), first_match, "jump-backward should return to first match");
 
-    // Ctrl-i MUST return to the second match (where we were before Ctrl-o).
+    // jump-forward MUST return to the second match (the pre-jump-backward position).
     ed.handle_key(key_ctrl('i'));
-    assert_eq!(state(&ed), second_match, "Ctrl-i should return to second match");
+    assert_eq!(state(&ed), second_match, "jump-forward should return to second match");
 }
 
-/// Search + n + n + Ctrl-o + Ctrl-i round-trip, all matches on different lines.
+/// search-next + jump-backward + jump-forward round-trip, all matches on different lines.
 #[test]
 fn search_n_ctrl_o_ctrl_i_different_lines() {
     let mut ed = jump_editor(0);
@@ -2108,11 +2109,11 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
     ed.handle_key(key('n'));
     let state_after_n2 = state(&ed);
 
-    // Ctrl-o goes back.
+    // jump-backward goes back.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), state_after_n1);
 
-    // Ctrl-i goes forward.
+    // jump-forward goes forward.
     ed.handle_key(key_ctrl('i'));
     assert_eq!(state(&ed), state_after_n2);
 }

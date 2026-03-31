@@ -322,9 +322,9 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
-/// Enter forward search mode (`/`).
+/// Enter forward search mode.
 ///
-/// Snapshots the current selections for `Esc`-restore, then opens the
+/// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `/` prompt.
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
@@ -333,7 +333,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
     ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
 }
 
-/// Enter backward search mode (`?`).
+/// Enter backward search mode.
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search.direction = SearchDirection::Backward;
@@ -361,7 +361,7 @@ pub(super) fn search_sel(
     }
 }
 
-/// Shared body for `n` / `N` / extend variants.
+/// Shared body for `search-next` / `search-prev` / extend variants.
 ///
 /// Reads the cached `search_regex` (compiled during the search session), or
 /// recompiles from the `'s'` register if the cache is empty. Repeats `count`
@@ -445,7 +445,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 
 /// Clear the active search regex and dismiss all match highlights.
 ///
-/// Bound to `Esc` in Normal mode and invocable as `:clear-search` / `:cs` in Command mode.
+/// Also invocable as `:clear-search` / `:cs` in command mode.
 pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
     ed.search.clear();
     // update_search_cache() is called by the event loop after handle_key returns,
@@ -468,9 +468,9 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 
 // ── Select within (s) ────────────────────────────────────────────────────────
 
-/// Enter Select mode (`s`).
+/// Enter Select mode.
 ///
-/// Snapshots the current selections for `Esc`-restore, then opens the
+/// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `s` prompt. The user types a regex; all matches
 /// within the current selections become new selections (live preview).
 pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
@@ -485,7 +485,7 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
 
 // ── Use selection as search (*) ──────────────────────────────────────────────
 
-/// Use the primary selection text as the search pattern (`*`).
+/// Use the primary selection text as the search pattern.
 ///
 /// If the primary selection is a cursor (1-char), expands to the word under
 /// the cursor first (same as Helix). The escaped text is compiled as a search
