@@ -103,17 +103,7 @@ pub(crate) fn find_next_match(
 /// Used by the renderer to build the `HighlightSet` for search-match
 /// highlighting every frame.
 pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize)> {
-    let cursor = RopeyCursor::new(buf.full_slice());
-    let input = Input::new(cursor);
-    regex
-        .find_iter(input)
-        .filter(|m| m.start() < m.end()) // skip zero-width matches
-        .map(|m| {
-            let start = buf.byte_to_char(m.start());
-            let end_excl = buf.byte_to_char(m.end());
-            (start, end_excl - 1)
-        })
-        .collect()
+    find_matches_in_range(buf, regex, 0, buf.len_chars() - 1)
 }
 
 // ── find_matches_in_range ─────────────────────────────────────────────────────
@@ -123,8 +113,6 @@ pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize
 /// Only matches that fall entirely within `[start_char, end_char]` (inclusive)
 /// are returned. Results are `(start_char, end_char_inclusive)` pairs in
 /// document order. Zero-width matches are skipped.
-///
-/// Used by `select_matches_within` to find matches bounded to each selection.
 pub(crate) fn find_matches_in_range(
     buf: &Buffer,
     regex: &Regex,
