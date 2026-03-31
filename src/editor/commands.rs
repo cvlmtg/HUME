@@ -414,7 +414,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
         };
         match result {
             Some((start, end_incl, wrapped)) => {
-                any_wrapped = wrapped; // track only the final jump's wrap state
+                any_wrapped |= wrapped;
                 last_match = Some((start, end_incl));
                 from_char = match direction {
                     SearchDirection::Forward => next_grapheme_boundary(ed.doc.buf(), end_incl),
@@ -431,9 +431,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 
     match last_match {
         Some((start, end_incl)) => {
-            if any_wrapped {
-                ed.status_msg = Some("search wrapped".into());
-            }
+            ed.search.wrapped = any_wrapped;
             let new_sel = search_sel(start, end_incl, anchor, direction);
             ed.set_primary_selection(new_sel);
         }

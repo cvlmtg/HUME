@@ -292,7 +292,8 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
         }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.search.match_count() {
-                (format!("[{current}/{total}]"), colors.statusline)
+                let w = if editor.search.wrapped() { "W " } else { "" };
+                (format!("{w}[{current}/{total}]"), colors.statusline)
             } else {
                 (String::new(), colors.statusline)
             }
