@@ -157,7 +157,7 @@ pub(crate) fn select_matches_within(
 
     for (i, sel) in sels.iter_sorted().enumerate() {
         let piece_start = new_sels.len();
-        let matches = find_matches_in_range(buf, regex, sel.start(), sel.end());
+        let matches = find_matches_in_range(buf, regex, sel.start(), sel.end_inclusive(buf));
 
         for (s, e) in matches {
             new_sels.push(Selection::new(s, e));
@@ -930,5 +930,42 @@ mod tests {
         let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
         assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn select_matches_backward_selection() {
+        // Backward selection (anchor > head) should work identically.
+        let buf = Buffer::from("aababab\n");
+        let sels = SelectionSet::single(Selection::new(6, 0)); // backward
+        let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
+        let result = select_matches_within(&buf, &sels, &regex).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!((result.primary().anchor, result.primary().head), (1, 2));
+    }
+
+    #[test]
+    fn select_matches_single_char_match() {
+        // Single-char regex matches produce cursor-sized selections.
+        let (buf, sels) = parse_state("-[abc]>\n");
+        let regex = regex_cursor::engines::meta::Regex::new("b").unwrap();
+        let result = select_matches_within(&buf, &sels, &regex).unwrap();
+        assert_eq!(result.len(), 1);
+        let sel = result.primary();
+        assert_eq!(sel.anchor, 1);
+        assert_eq!(sel.head, 1);
+        assert!(sel.is_cursor());
+    }
+
+    #[test]
+    fn select_matches_combining_grapheme() {
+        // "café\n" where 'é' is e + U+0301 (2 codepoints at chars 3,4).
+        // Selection covers the whole word. Matching "é" should produce a
+        // selection spanning both codepoints (3,4).
+        let buf = Buffer::from("caf\u{0065}\u{0301}\n");
+        let sels = SelectionSet::single(Selection::new(0, 4));
+        let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
+        let result = select_matches_within(&buf, &sels, &regex).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!((result.primary().anchor, result.primary().head), (3, 4));
     }
 }

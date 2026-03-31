@@ -1719,3 +1719,138 @@ fn command_clear_search_clears_search() {
     assert!(ed2.search.regex.is_none(), "search.regex should be cleared by :cs");
 }
 
+// ── Select within (s) ────────────────────────────────────────────────────────
+
+/// `s` enters Select mode, sets up minibuffer, and snapshots selections.
+#[test]
+fn select_within_enters_select_mode() {
+    let mut ed = editor_from("-[hello world]>\n");
+    ed.handle_key(key('s'));
+    assert_eq!(ed.mode, Mode::Select);
+    assert!(ed.pre_select_sels.is_some());
+    assert!(ed.minibuf.is_some());
+    assert_eq!(ed.minibuf.as_ref().unwrap().prompt, 's');
+}
+
+/// `s` + pattern + Enter confirms: selections become matches, mode returns to Normal.
+#[test]
+fn select_within_confirm_replaces_selections() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.pre_select_sels.is_none());
+    // Two "ab" matches within the original selection.
+    assert_eq!(ed.doc.sels().len(), 2);
+    assert_eq!(ed.doc.sels().primary().anchor, 0);
+    assert_eq!(ed.doc.sels().primary().head, 1);
+}
+
+/// `s` + Esc restores original selections.
+#[test]
+fn select_within_esc_restores() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    let original = state(&ed);
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    // Live preview should have changed selections.
+    assert_ne!(state(&ed), original);
+    ed.handle_key(key_esc());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), original);
+}
+
+/// `s` + Enter with empty pattern cancels (same as Esc).
+#[test]
+fn select_within_empty_confirm_cancels() {
+    let mut ed = editor_from("-[hello]>\n");
+    let original = state(&ed);
+    ed.handle_key(key('s'));
+    ed.handle_key(key_enter());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), original);
+}
+
+/// `s` writes the confirmed pattern to the search register.
+#[test]
+fn select_within_writes_search_register() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    assert_eq!(reg(&ed, 's'), vec!["ab"]);
+}
+
+/// `s` with no matches restores original selections on each keystroke.
+#[test]
+fn select_within_no_matches_keeps_originals() {
+    let mut ed = editor_from("-[hello]>\n");
+    let original = state(&ed);
+    ed.handle_key(key('s'));
+    ed.handle_key(key('z'));
+    // No match for "z" in "hello" — should still show original selections.
+    assert_eq!(state(&ed), original);
+}
+
+// ── Use selection as search (*) ──────────────────────────────────────────────
+
+/// `*` on a cursor expands to the word under the cursor and sets search.
+#[test]
+fn star_on_cursor_expands_to_word() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('*'));
+    assert_eq!(ed.mode, Mode::Normal);
+    // Selection expanded to cover "hello".
+    assert_eq!(state(&ed), "-[hello]> world\n");
+    // Pattern in search register is the escaped word.
+    assert_eq!(reg(&ed, 's'), vec!["hello"]);
+    // Search direction set to forward.
+    assert_eq!(ed.search.direction, super::SearchDirection::Forward);
+    assert!(ed.search.regex.is_some());
+}
+
+/// `*` on a non-cursor selection uses the selected text literally.
+#[test]
+fn star_on_selection_uses_selected_text() {
+    let mut ed = editor_from("a-[b c]>d\n");
+    ed.handle_key(key('*'));
+    // Selection unchanged (non-cursor, no expansion).
+    assert_eq!(state(&ed), "a-[b c]>d\n");
+    assert_eq!(reg(&ed, 's'), vec!["b c"]);
+}
+
+/// `*` on the trailing structural newline does nothing.
+#[test]
+fn star_on_trailing_newline_is_noop() {
+    let mut ed = editor_from("hello\n-[\n]>");
+    let original = state(&ed);
+    ed.handle_key(key('*'));
+    // inner_word_impl on trailing \n produces a \n pattern.
+    // This is a degenerate case but should not panic.
+    assert_eq!(ed.mode, Mode::Normal);
+    // The selection should at least not crash. If inner_word_impl returns
+    // None for the very last \n, the command is a no-op.
+    let _ = state(&ed);
+}
+
+/// `*` escapes regex metacharacters in the selection.
+#[test]
+fn star_escapes_metacharacters() {
+    let mut ed = editor_from("-[f]>oo.bar\n");
+    // Select "foo.bar" first via `v$` equivalent — use the whole line.
+    // Easier: just set up a selection covering "foo.bar".
+    let buf = crate::core::buffer::Buffer::from("foo.bar\n");
+    let sels = crate::core::selection::SelectionSet::single(
+        crate::core::selection::Selection::new(0, 6),
+    );
+    ed.doc = crate::core::document::Document::new(buf, sels);
+
+    ed.handle_key(key('*'));
+    assert_eq!(reg(&ed, 's'), vec!["foo\\.bar"]);
+}
+

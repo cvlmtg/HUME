@@ -498,7 +498,7 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
         let word_text = buf.slice(start..end + 1).to_string();
         (word_text, Some(Selection::new(start, end)))
     } else {
-        let text = buf.slice(primary.start()..primary.end() + 1).to_string();
+        let text = buf.slice(primary.start()..primary.end_inclusive(buf) + 1).to_string();
         (text, None)
     };
 
