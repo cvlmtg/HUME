@@ -60,6 +60,12 @@ pub(crate) enum StatusElement {
     /// cursor head. Shows `0` when the cursor is between matches (e.g. the live
     /// search has no hit yet).
     SearchMatches,
+    /// The mini-buffer input field: prompt character followed by typed text.
+    ///
+    /// Rendered only when `editor.minibuf` is `Some`. Produces the prompt
+    /// character followed by the input text. The block cursor within the
+    /// input is applied as a post-render patch in [`render_statusline`].
+    MiniBuf,
 }
 
 /// Describes the content layout of the statusline's three sections.
@@ -97,80 +103,25 @@ impl Default for StatusLineConfig {
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-/// Render the bottom row of the terminal: command line, status message, or
-/// statusline — whichever has the highest priority.
+/// Render the bottom row of the terminal: status message or statusline.
 ///
-/// Priority: command mini-buffer > transient status message > normal statusline.
+/// When a mini-buffer is active, the statusline uses a hardcoded layout with a
+/// [`StatusElement::MiniBuf`] element instead of the user's normal config.
+/// Transient status messages are shown only when the mini-buffer is inactive.
 pub(crate) fn render_bottom_row(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
     area: Rect,
     y: u16,
 ) {
-    if let Some(mb) = &editor.minibuf {
-        render_command_line(screen_buf, editor, area, y, mb.prompt, &mb.input, mb.cursor);
-    } else if let Some(msg) = editor.status_msg.as_deref() {
-        render_status_message(screen_buf, &editor.colors, area, y, msg);
+    if editor.minibuf.is_none() && editor.status_msg.is_some() {
+        render_status_message(screen_buf, &editor.colors, area, y, editor.status_msg.as_deref().unwrap());
     } else {
         render_statusline(screen_buf, editor, area, y);
     }
 }
 
 // ── Renderers ─────────────────────────────────────────────────────────────────
-
-/// Render the command-line mini-buffer on the bottom row.
-///
-/// Fully replaces the statusline — no mode indicator, no segments. The prompt
-/// character (e.g. `:`) makes the mode self-evident. The terminal cursor
-/// is positioned after the input by the caller.
-fn render_command_line(
-    screen_buf: &mut ScreenBuf,
-    editor: &Editor,
-    area: Rect,
-    y: u16,
-    prompt: char,
-    input: &str,
-    cursor: usize,
-) {
-    let colors = &editor.colors;
-
-    // The command line fully replaces the statusline row — no section layout,
-    // no mode indicator. The prompt character makes the mode self-evident.
-    fill_row(screen_buf, colors, area, y);
-
-    // +1: 1-column left margin, matching the leading space of the mode indicator
-    // in the normal statusline so the text is visually aligned.
-    let cmd_str = format!("{prompt}{input}");
-    screen_buf.set_string(area.x + 1, y, &cmd_str, colors.statusline);
-
-    // Search match count: draw "[3/42]" right-aligned with a 1-col margin.
-    // Shown only in Search mode — not in Command mode, which also uses this
-    // renderer but has no business displaying a leftover search count.
-    if editor.mode == Mode::Search && let Some((current, total)) = editor.search.match_count() {
-        let label = format!("[{current}/{total}]");
-        let label_w = UnicodeWidthStr::width(label.as_str()) as u16;
-        let count_x = area.right().saturating_sub(label_w + 1);
-        screen_buf.set_string(count_x, y, &label, colors.statusline);
-    }
-
-    // Visual block cursor: remove the REVERSED modifier from the cursor cell.
-    //
-    // The statusline uses REVERSED (light bg on dark terminals). Patching with
-    // `remove_modifier(REVERSED)` clears that bit, leaving terminal-default
-    // colors (dark bg) — a visible block against the light statusline row.
-    // We own the cursor rendering here rather than relying on the terminal
-    // cursor, which draws in the terminal's own cursor color (often white,
-    // invisible on a white/reversed background).
-    //
-    // col 0 = left margin space, col 1 = prompt char, col 2+ = input text.
-    let cursor_x = area.x + 1 + 1 + UnicodeWidthStr::width(&input[..cursor]) as u16;
-    if cursor_x < area.right() {
-        // The grapheme under the cursor, or a space when the cursor is past the end.
-        let ch = input[cursor..].graphemes(true).next().unwrap_or(" ");
-        let cursor_style = Style::new().remove_modifier(Modifier::REVERSED);
-        screen_buf.set_string(cursor_x, y, ch, cursor_style);
-    }
-}
 
 /// Render a transient status message on the bottom row.
 ///
@@ -209,15 +160,30 @@ fn render_statusline(
     y: u16,
 ) {
     let colors = &editor.colors;
-    let config = &editor.statusline_config;
+
+    // When a mini-buffer is active, swap to a hardcoded layout that shows the
+    // mode pill + input field on the left, while preserving the user's right
+    // section (which may include SearchMatches, Position, etc.).
+    let minibuf_config;
+    let config = if editor.minibuf.is_some() {
+        minibuf_config = StatusLineConfig {
+            left: vec![StatusElement::Mode, StatusElement::Separator, StatusElement::MiniBuf],
+            center: vec![],
+            right: editor.statusline_config.right.clone(),
+        };
+        &minibuf_config
+    } else {
+        &editor.statusline_config
+    };
 
     // Fill the entire row with the base statusline style first.
     fill_row(screen_buf, colors, area, y);
 
     // Render each section into a sequence of styled spans.
-    let left_spans = render_section(&config.left, editor);
-    let center_spans = render_section(&config.center, editor);
-    let right_spans = render_section(&config.right, editor);
+    // render_section also returns the x-offset where MiniBuf starts (if present).
+    let (left_spans, minibuf_offset) = render_section(&config.left, editor);
+    let (center_spans, _) = render_section(&config.center, editor);
+    let (right_spans, _) = render_section(&config.right, editor);
 
     let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);
@@ -248,6 +214,29 @@ fn render_statusline(
     if center_fits {
         draw_section(screen_buf, &center_spans, center_x, y);
     }
+
+    // MiniBuf cursor: patch the cell at the cursor position to show a visible
+    // block against the reversed statusline background.
+    //
+    // remove_modifier(REVERSED) clears the reversed bit, leaving terminal-default
+    // colors (dark bg on dark terminals) — a visible block against the light
+    // statusline row. We own cursor rendering here rather than relying on the
+    // terminal cursor, which draws in its own color (often invisible on reversed).
+    if let Some(mb) = &editor.minibuf {
+        if let Some(mb_offset) = minibuf_offset {
+            // mb_offset is the display-column offset of the MiniBuf span within
+            // the left section. The MiniBuf text is "{prompt}{input}", so the
+            // edit cursor is at: prompt_width + width(input[..cursor]).
+            let prompt_w = UnicodeWidthStr::width(mb.prompt.encode_utf8(&mut [0; 4]) as &str) as u16;
+            let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
+            let cursor_x = left_x + mb_offset + prompt_w + input_before_cursor;
+            if cursor_x < area.right() {
+                let ch = mb.input[mb.cursor..].graphemes(true).next().unwrap_or(" ");
+                let cursor_style = Style::new().remove_modifier(Modifier::REVERSED);
+                screen_buf.set_string(cursor_x, y, ch, cursor_style);
+            }
+        }
+    }
 }
 
 // ── Element rendering ─────────────────────────────────────────────────────────
@@ -267,11 +256,8 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
                 (Mode::Normal, true)  => (" EXT ", colors.status_extend),
                 (Mode::Normal, false) => (" NOR ", colors.status_normal),
                 (Mode::Insert, _)     => (" INS ", colors.status_insert),
-                // Search mode normally renders the mini-buffer via render_command_line,
-                // but this arm is a fallback for the edge case where minibuf is None.
                 (Mode::Search, _)     => (" SRC ", colors.status_search),
-                // Command mode always has minibuf=Some, so render_command_line fires first.
-                (Mode::Command, _)    => unreachable!("render_command_line handles Command mode"),
+                (Mode::Command, _)    => (" CMD ", colors.status_command),
             };
             (label.to_string(), style)
         }
@@ -321,21 +307,40 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
                 (String::new(), colors.statusline)
             }
         }
+        StatusElement::MiniBuf => {
+            match &editor.minibuf {
+                Some(mb) => {
+                    let text = format!("{}{}", mb.prompt, mb.input);
+                    (text, colors.statusline)
+                }
+                None => (String::new(), colors.statusline),
+            }
+        }
     }
 }
 
 /// Render a section's elements into a sequence of styled spans ready for drawing.
 ///
+/// Returns the spans and, if a [`StatusElement::MiniBuf`] was present, the
+/// display-column offset where it starts within the section. This offset is
+/// used by the caller to position the visual block cursor.
+///
 /// Skips empty elements (e.g. [`StatusElement::Selections`] in single-cursor
 /// mode) and applies the boundary-aware spacing rule between adjacent spans.
-fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, Style)> {
+fn render_section(elements: &[StatusElement], editor: &Editor) -> (Vec<(String, Style)>, Option<u16>) {
     // Each element produces at most 2 spans (the element + a possible gap span).
     let mut spans: Vec<(String, Style)> = Vec::with_capacity(elements.len() * 2);
+    let mut minibuf_offset: Option<u16> = None;
 
     for &seg in elements {
         let (text, style) = render_element(seg, editor);
         if text.is_empty() {
             continue;
+        }
+
+        // Record the offset before adding this element's spans.
+        if seg == StatusElement::MiniBuf {
+            minibuf_offset = Some(section_width(&spans));
         }
 
         if let Some((prev_text, _)) = spans.last() {
@@ -345,6 +350,10 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
 
             if !a_ends_space && !b_starts_space {
                 // Neither boundary is a space — insert a gap span.
+                if seg == StatusElement::MiniBuf {
+                    // Account for the gap span in the offset.
+                    minibuf_offset = Some(minibuf_offset.unwrap() + 1);
+                }
                 spans.push((" ".to_string(), editor.colors.statusline));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
@@ -365,7 +374,7 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
         }
     }
 
-    spans
+    (spans, minibuf_offset)
 }
 
 // ── Drawing helpers ───────────────────────────────────────────────────────────

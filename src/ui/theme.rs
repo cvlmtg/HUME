@@ -77,6 +77,9 @@ pub(crate) struct EditorColors {
 
     /// Mode label in Search mode (`SRC`). Magenta makes the prompt visually distinct.
     pub status_search: Style,
+
+    /// Mode label in Command mode (`CMD`). Green distinguishes it from Search.
+    pub status_command: Style,
 }
 
 impl EditorColors {
@@ -106,6 +109,7 @@ impl EditorColors {
             status_insert: reversed.fg(Color::Cyan),
             status_extend: reversed.fg(Color::Yellow),
             status_search: reversed.fg(Color::Magenta),
+            status_command: reversed.fg(Color::Green),
         }
     }
 }
