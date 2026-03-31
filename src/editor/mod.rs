@@ -10,6 +10,7 @@ use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
 use crate::core::document::Document;
 use crate::io::FileMeta;
+use crate::core::history::RevisionId;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ui::renderer::{cursor_style, render};
@@ -97,13 +98,79 @@ pub(crate) enum SearchDirection {
     Backward,
 }
 
-impl SearchDirection {
-    /// Return the opposite direction. `N` uses this to flip the last search direction.
-    pub(crate) fn flip(self) -> Self {
-        match self {
-            Self::Forward => Self::Backward,
-            Self::Backward => Self::Forward,
+
+/// All search-related state, grouped to keep the "is a search active?" invariant
+/// in one place instead of scattered across five independent `Editor` fields.
+pub(crate) struct SearchState {
+    /// Direction of the current or last search. Set when entering Search mode;
+    /// persists after confirming so live search knows which way to go.
+    pub direction: SearchDirection,
+    /// Snapshot of selections taken when entering Search mode.
+    /// Restored on cancel; discarded on confirm.
+    pub pre_search_sels: Option<SelectionSet>,
+    /// Compiled regex from the last confirmed (or in-progress) search pattern.
+    /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
+    pub regex: Option<regex_cursor::engines::meta::Regex>,
+    /// All non-overlapping matches of `regex` in the current buffer,
+    /// as `(start_char, end_char_inclusive)` pairs in document order.
+    /// Kept up to date by `update_search_cache`; empty when `regex` is `None`.
+    pub matches: Vec<(usize, usize)>,
+    /// Cached `(current_1based, total)` derived from `matches` and the
+    /// primary cursor position. `None` when `regex` is `None`.
+    pub match_count: Option<(usize, usize)>,
+
+    // ── Cache-invalidation keys ───────────────────────────────────────────────
+    // Stored so `update_search_cache` can skip recomputation when nothing changed.
+    // Both start as sentinel values that never match real state, forcing a full
+    // recompute on the very first call.
+
+    /// Buffer revision when `matches` was last computed. Changes on any edit,
+    /// undo, or redo. When this differs from `doc.revision_id()`, `matches`
+    /// must be recomputed.
+    cache_revision: RevisionId,
+    /// Primary cursor head position when `match_count` was last computed.
+    /// When this differs from the current head, `match_count` must be recomputed
+    /// (but `matches` can be reused if the revision hasn't changed).
+    cache_head: usize,
+}
+
+impl Default for SearchState {
+    fn default() -> Self {
+        Self {
+            direction: SearchDirection::Forward,
+            pre_search_sels: None,
+            regex: None,
+            matches: Vec::new(),
+            match_count: None,
+            // Sentinel values: usize::MAX can never be a real revision or cursor
+            // position, so the first call to update_search_cache always recomputes.
+            cache_revision: RevisionId(usize::MAX),
+            cache_head: usize::MAX,
         }
+    }
+}
+
+impl SearchState {
+    /// Clear the active search — drops the regex and flushes the highlight cache.
+    /// Direction is preserved so a future `n`/`N` or `/`/`?` still knows the
+    /// last-used direction.
+    pub fn clear(&mut self) {
+        self.pre_search_sels = None;
+        self.set_regex(None);
+    }
+
+    /// Replace the regex, invalidating the match-list cache.
+    ///
+    /// Always call this instead of writing `self.regex = …` directly so that
+    /// `update_search_cache` knows the match list must be recomputed even when
+    /// the buffer revision hasn't changed (e.g. a new character was typed in
+    /// the search prompt).
+    pub fn set_regex(&mut self, regex: Option<regex_cursor::engines::meta::Regex>) {
+        self.regex = regex;
+        self.matches.clear();
+        self.match_count = None;
+        self.cache_revision = RevisionId(usize::MAX);
+        self.cache_head = usize::MAX;
     }
 }
 
@@ -120,6 +187,98 @@ pub(crate) struct MiniBuffer {
     pub input: String,
     /// Byte offset of the edit cursor within `input`. Always on a UTF-8 char boundary.
     pub cursor: usize,
+}
+
+/// Outcome of feeding one key to [`MiniBuffer::handle_key`].
+///
+/// Callers match on this to perform the mode-specific follow-up action
+/// (e.g. search confirmation vs. command execution on `Confirm`).
+pub(super) enum MiniBufferEvent {
+    /// Esc or Ctrl+C — caller should cancel/close the mini-buffer.
+    Cancel,
+    /// Enter with non-empty input — `String` is the confirmed text.
+    Confirm(String),
+    /// Enter with empty input — treat as cancel.
+    ConfirmEmpty,
+    /// Input changed (char typed or deleted), input is now non-empty.
+    Edited,
+    /// Backspace made the input empty (search keeps the buffer open but resets position).
+    EmptiedByBackspace,
+    /// Cursor moved left/right; content unchanged.
+    CursorMoved,
+    /// Key was not handled (e.g. unrecognised control sequence).
+    Ignored,
+}
+
+impl MiniBuffer {
+    /// Handle a single key event for standard mini-buffer editing.
+    ///
+    /// Covers: cancel (Esc/Ctrl+C), confirm (Enter), char insertion, grapheme-aware
+    /// backspace, and left/right cursor movement. Returns a [`MiniBufferEvent`]
+    /// describing the outcome so the caller can apply mode-specific logic.
+    pub(super) fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> MiniBufferEvent {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        match key.code {
+            KeyCode::Esc => MiniBufferEvent::Cancel,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                MiniBufferEvent::Cancel
+            }
+            KeyCode::Enter => {
+                if self.input.is_empty() {
+                    MiniBufferEvent::ConfirmEmpty
+                } else {
+                    MiniBufferEvent::Confirm(self.input.clone())
+                }
+            }
+            KeyCode::Backspace => {
+                if self.cursor == 0 {
+                    MiniBufferEvent::EmptiedByBackspace
+                } else {
+                    let prev = minibuf_prev_grapheme(&self.input, self.cursor);
+                    self.input.drain(prev..self.cursor);
+                    self.cursor = prev;
+                    if self.input.is_empty() {
+                        MiniBufferEvent::EmptiedByBackspace
+                    } else {
+                        MiniBufferEvent::Edited
+                    }
+                }
+            }
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.insert(self.cursor, ch);
+                self.cursor += ch.len_utf8();
+                MiniBufferEvent::Edited
+            }
+            KeyCode::Left => {
+                self.cursor = minibuf_prev_grapheme(&self.input, self.cursor);
+                MiniBufferEvent::CursorMoved
+            }
+            KeyCode::Right => {
+                self.cursor = minibuf_next_grapheme(&self.input, self.cursor);
+                MiniBufferEvent::CursorMoved
+            }
+            _ => MiniBufferEvent::Ignored,
+        }
+    }
+}
+
+// ── Mini-buffer grapheme helpers ─────────────────────────────────────────────
+
+/// Return the byte offset of the grapheme cluster that ends at `cursor`.
+///
+/// If `cursor` is already at 0 (start of string), returns 0.
+pub(super) fn minibuf_prev_grapheme(s: &str, cursor: usize) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    s[..cursor].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0)
+}
+
+/// Return the byte offset immediately after the grapheme cluster that starts at `cursor`.
+///
+/// If `cursor` is at or past the end of the string, returns `s.len()`.
+pub(super) fn minibuf_next_grapheme(s: &str, cursor: usize) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    s[cursor..].grapheme_indices(true).next().map(|(_, g)| cursor + g.len()).unwrap_or(s.len())
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -192,25 +351,8 @@ pub(crate) struct Editor {
     /// `None` until the user performs a find/till motion.
     pub(super) last_find: Option<FindChar>,
 
-    // ── Search fields ─────────────────────────────────────────────────────────
-
-    /// Direction of the current or last search. Set when entering Search mode;
-    /// persists after confirming so `n`/`N` know which direction to repeat.
-    pub(super) search_direction: SearchDirection,
-    /// Snapshot of selections taken when entering Search mode.
-    /// Restored on `Esc`; discarded on `Enter` (confirmed search).
-    pub(super) pre_search_sels: Option<SelectionSet>,
-    /// Compiled regex from the last confirmed (or in-progress) search pattern.
-    /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
-    pub(super) search_regex: Option<regex_cursor::engines::meta::Regex>,
-    /// All non-overlapping matches of `search_regex` in the current buffer,
-    /// as `(start_char, end_char_inclusive)` pairs in document order.
-    /// Recomputed by `update_search_cache` after each keypress; empty when
-    /// `search_regex` is `None`.
-    pub(super) search_matches: Vec<(usize, usize)>,
-    /// Cached `(current_1based, total)` derived from `search_matches` and the
-    /// primary cursor position. `None` when `search_regex` is `None`.
-    pub(super) search_match_count: Option<(usize, usize)>,
+    // ── Search ────────────────────────────────────────────────────────────────
+    pub(super) search: SearchState,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -297,11 +439,7 @@ impl Editor {
             insert_recording: None,
             explicit_count: false,
             replaying: false,
-            search_direction: SearchDirection::Forward,
-            pre_search_sels: None,
-            search_regex: None,
-            search_matches: Vec::new(),
-            search_match_count: None,
+            search: SearchState::default(),
         })
     }
 
@@ -374,14 +512,28 @@ impl Editor {
     /// pre-computed values and does zero regex work.
     /// Skipped when no search is active and the cache is already clear.
     pub(super) fn update_search_cache(&mut self) {
-        if let Some(regex) = &self.search_regex {
-            self.search_matches = find_all_matches(self.doc.buf(), regex);
-            let head = self.doc.sels().primary().head;
-            self.search_match_count = Some(search_match_info(&self.search_matches, head));
-        } else if !self.search_matches.is_empty() || self.search_match_count.is_some() {
-            // search_regex was just cleared — flush the stale cache.
-            self.search_matches.clear();
-            self.search_match_count = None;
+        let Some(regex) = self.search.regex.clone() else {
+            // No active search. The cache was already zeroed by clear() or was
+            // never populated; nothing to do.
+            return;
+        };
+
+        let revision = self.doc.revision_id();
+        let head = self.doc.sels().primary().head;
+
+        // Recompute the full match list only when the buffer content changed.
+        if revision != self.search.cache_revision {
+            self.search.matches = find_all_matches(self.doc.buf(), &regex);
+            self.search.cache_revision = revision;
+            // Head may not have changed, but match_count depends on the (now
+            // stale) match list, so force it to recompute below.
+            self.search.cache_head = usize::MAX;
+        }
+
+        // Recompute the current/total count only when the cursor moved.
+        if head != self.search.cache_head {
+            self.search.match_count = Some(search_match_info(&self.search.matches, head));
+            self.search.cache_head = head;
         }
     }
 
@@ -413,15 +565,15 @@ impl Editor {
                     action.insert_keys = keys;
                 }
             }
-            // Other transitions (e.g. Normal → Command) do not affect undo groups.
-            // Clear any stale insert_recording defensively — it should never be
-            // Some here in normal usage, but belt-and-suspenders prevents a
-            // half-recorded session from leaking into the next insert entry.
+            // Other transitions (e.g. Normal → Command, Search → Normal) do not
+            // affect undo groups. Clear any stale insert_recording defensively —
+            // it should never be Some here in normal usage, but belt-and-suspenders
+            // prevents a half-recorded session from leaking into the next insert entry.
             //
-            // Note: Search → Normal is handled directly in `handle_search` (confirm)
-            // and `cancel_search` (cancel) rather than here, because the two paths
-            // need different cleanup (confirm keeps `search_regex` for `n`/`N`;
-            // cancel clears it). Centralising them here would require a parameter.
+            // Search-specific cleanup (restoring pre_search_sels, preserving or
+            // clearing search.regex) is the caller's responsibility: `cancel_search`
+            // clears the regex, while the confirm path in `handle_search` keeps it
+            // alive for `n`/`N`. Both then call set_mode(Normal) through this arm.
             _ => {
                 self.insert_recording = None;
             }
@@ -480,11 +632,7 @@ impl Editor {
             insert_recording: None,
             explicit_count: false,
             replaying: false,
-            search_direction: SearchDirection::Forward,
-            pre_search_sels: None,
-            search_regex: None,
-            search_matches: Vec::new(),
-            search_match_count: None,
+            search: SearchState::default(),
         }
     }
 
@@ -501,7 +649,7 @@ impl Editor {
         self
     }
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
-        self.search_regex = regex_cursor::engines::meta::Regex::new(pattern).ok();
+        self.search.set_regex(regex_cursor::engines::meta::Regex::new(pattern).ok());
         self.update_search_cache();
         self
     }

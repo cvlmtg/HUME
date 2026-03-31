@@ -322,16 +322,16 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 /// Snapshots the current selections for `Esc`-restore, then opens the
 /// mini-buffer with the `/` prompt.
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
-    ed.pre_search_sels = Some(ed.doc.sels().clone());
-    ed.search_direction = SearchDirection::Forward;
+    ed.search.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search.direction = SearchDirection::Forward;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
 }
 
 /// Enter backward search mode (`?`).
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
-    ed.pre_search_sels = Some(ed.doc.sels().clone());
-    ed.search_direction = SearchDirection::Backward;
+    ed.search.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search.direction = SearchDirection::Backward;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new(), cursor: 0 });
 }
@@ -363,27 +363,23 @@ pub(super) fn search_sel(
 /// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
 /// selection depending on `extend`.
 fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend: bool) {
-    // Try the cached regex first; fall back to the 's' register.
-    let regex: Regex = match ed.search_regex.clone() {
-        Some(r) => r,
-        None => {
-            let pattern = ed
-                .registers
-                .read(SEARCH_REGISTER)
-                .and_then(|r| r.values().first().cloned())
-                .unwrap_or_default();
-            if pattern.is_empty() {
-                return;
-            }
-            match Regex::new(&pattern) {
-                Ok(r) => {
-                    ed.search_regex = Some(r.clone());
-                    r
-                }
-                Err(_) => return,
-            }
+    // Ensure search.regex is populated — compile from the 's' register if needed.
+    if ed.search.regex.is_none() {
+        let pattern = ed
+            .registers
+            .read(SEARCH_REGISTER)
+            .and_then(|r| r.values().first().cloned())
+            .unwrap_or_default();
+        if pattern.is_empty() {
+            return;
         }
-    };
+        match Regex::new(&pattern) {
+            Ok(r) => ed.search.set_regex(Some(r)),
+            Err(_) => return,
+        }
+    }
+    // Invariant: the block above guarantees `search.regex` is `Some` here.
+    let regex = ed.search.regex.as_ref().unwrap();
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
@@ -439,9 +435,10 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 ///
 /// Bound to `Esc` in Normal mode and invocable as `:clearsearch` / `:cs` in Command mode.
 pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
-    ed.search_regex = None;
+    ed.search.clear();
     // update_search_cache() is called by the event loop after handle_key returns,
-    // so the cache (search_matches, search_match_count) is flushed before the next render.
+    // but search.clear() already zeroes the cache fields directly, so the render
+    // path sees a clean state immediately regardless of event-loop ordering.
 }
 
 pub(super) fn cmd_search_next(ed: &mut Editor, count: usize) {

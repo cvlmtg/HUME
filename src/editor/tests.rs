@@ -45,11 +45,7 @@ fn editor_from(input: &str) -> Editor {
         insert_recording: None,
         explicit_count: false,
         replaying: false,
-        search_direction: super::SearchDirection::Forward,
-        pre_search_sels: None,
-        search_regex: None,
-        search_matches: Vec::new(),
-        search_match_count: None,
+        search: super::SearchState::default(),
     }
 }
 
@@ -1697,15 +1693,15 @@ fn extend_search_next_extends_selection() {
 fn esc_in_normal_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search_regex.is_some(), "pre-condition: search regex is set");
-    assert!(ed.search_match_count.is_some(), "pre-condition: cache is populated");
+    assert!(ed.search.regex.is_some(), "pre-condition: search regex is set");
+    assert!(ed.search.match_count.is_some(), "pre-condition: cache is populated");
 
     ed.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     ed.update_search_cache();
 
-    assert!(ed.search_regex.is_none(), "search_regex should be cleared by Esc");
-    assert!(ed.search_match_count.is_none(), "search_match_count should be cleared by Esc");
-    assert!(ed.search_matches.is_empty(), "search_matches should be cleared by Esc");
+    assert!(ed.search.regex.is_none(), "search.regex should be cleared by Esc");
+    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by Esc");
+    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by Esc");
 }
 
 /// `:clearsearch` / `:cs` in Command mode clears the active search regex and its cached state.
@@ -1713,7 +1709,7 @@ fn esc_in_normal_clears_search() {
 fn command_clearsearch_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search_regex.is_some(), "pre-condition: search regex is set");
+    assert!(ed.search.regex.is_some(), "pre-condition: search regex is set");
 
     // :clearsearch
     ed.handle_key(key(':'));
@@ -1724,9 +1720,9 @@ fn command_clearsearch_clears_search() {
     ed.update_search_cache();
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.search_regex.is_none(), "search_regex should be cleared by :clearsearch");
-    assert!(ed.search_match_count.is_none(), "search_match_count should be cleared by :clearsearch");
-    assert!(ed.search_matches.is_empty(), "search_matches should be cleared by :clearsearch");
+    assert!(ed.search.regex.is_none(), "search.regex should be cleared by :clearsearch");
+    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by :clearsearch");
+    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by :clearsearch");
 
     // :cs shorthand also works
     let mut ed2 = editor_from("-[h]>ello hello\n").with_search_regex("hello");
@@ -1737,6 +1733,6 @@ fn command_clearsearch_clears_search() {
     ed2.handle_key(key_enter());
     ed2.update_search_cache();
 
-    assert!(ed2.search_regex.is_none(), "search_regex should be cleared by :cs");
+    assert!(ed2.search.regex.is_none(), "search.regex should be cleared by :cs");
 }
 
