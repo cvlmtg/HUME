@@ -96,9 +96,18 @@ pub(crate) struct StatusLineConfig {
 impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {
-            left: vec![StatusElement::Mode, StatusElement::Separator, StatusElement::FileName, StatusElement::DirtyIndicator],
+            left: vec![
+                StatusElement::Mode,
+                StatusElement::Separator,
+                StatusElement::FileName,
+                StatusElement::DirtyIndicator
+            ],
             center: vec![],
-            right: vec![StatusElement::KittyProtocol, StatusElement::SearchMatches, StatusElement::Position],
+            right: vec![
+                StatusElement::SearchMatches,
+                StatusElement::Position,
+                StatusElement::KittyProtocol
+            ],
         }
     }
 }
