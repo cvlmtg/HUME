@@ -475,7 +475,7 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 /// within the current selections become new selections (live preview).
 pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
     // Nothing meaningful to search within a single-char selection.
-    if ed.doc.sels().iter_sorted().all(|s| s.anchor == s.head) {
+    if ed.doc.sels().iter_sorted().all(Selection::is_cursor) {
         return;
     }
     ed.pre_select_sels = Some(ed.doc.sels().clone());

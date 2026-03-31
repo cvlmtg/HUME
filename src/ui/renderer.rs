@@ -929,7 +929,7 @@ mod tests {
     }
 
     #[test]
-    fn statusline_join_both_space_trims_duplicate() {
+    fn statusline_join_identical_elements_inserts_gap() {
         // Two Modes: "NOR" + "NOR". Neither has spaces, so rule (a) inserts
         // a gap between them. pad_left adds the leading space.
         let doc = doc_at("\n", 0);
