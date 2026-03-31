@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use regex_cursor::engines::meta::Regex;
+
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use super::commands::{cmd_clear_search, search_sel};
@@ -8,7 +8,7 @@ use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
 use crate::ops::register::SEARCH_REGISTER;
-use crate::ops::search::find_next_match;
+use crate::ops::search::{compile_search_regex, find_next_match};
 
 use super::keymap::{KeymapCommand, WalkResult};
 use super::{Editor, Mode, SearchDirection};
@@ -382,13 +382,10 @@ impl Editor {
             _ => return,
         };
 
-        let regex = match Regex::new(&pattern) {
-            Ok(r) => r,
-            Err(_) => {
-                // Invalid regex in progress — don't move; just clear cached regex.
-                self.search.set_regex(None);
-                return;
-            }
+        let Some(regex) = compile_search_regex(&pattern) else {
+            // Invalid regex in progress — don't move; just clear cached regex.
+            self.search.set_regex(None);
+            return;
         };
 
         let direction = self.search.direction;

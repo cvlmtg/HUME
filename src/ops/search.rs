@@ -16,6 +16,26 @@ use regex_cursor::{engines::meta::Regex, Input, RopeyCursor};
 use crate::core::buffer::Buffer;
 use crate::editor::SearchDirection;
 
+// ── compile_search_regex ──────────────────────────────────────────────────────
+
+/// Compile a search pattern with **smart case**: all-lowercase patterns become
+/// case-insensitive; patterns containing any uppercase character stay
+/// case-sensitive.
+///
+/// The user can always override with explicit inline flags (`(?i)` to force
+/// insensitive, `(?-i)` to force sensitive on a lowercase pattern).
+pub(crate) fn compile_search_regex(pattern: &str) -> Option<Regex> {
+    let effective;
+    let pat = if pattern.chars().any(|c| c.is_uppercase()) {
+        pattern
+    } else {
+        // Prepend (?i) — an explicit (?-i) later in the pattern will override.
+        effective = format!("(?i){pattern}");
+        &effective
+    };
+    Regex::new(pat).ok()
+}
+
 // ── find_next_match ───────────────────────────────────────────────────────────
 
 /// Find the next regex match in `buf`, starting from char offset `from_char`.
@@ -234,6 +254,35 @@ mod tests {
 
     fn buf(text: &str) -> Buffer {
         Buffer::from(text)
+    }
+
+    // ── compile_search_regex (smart case) ──────────────────────────────────────
+
+    #[test]
+    fn smart_case_lowercase_is_insensitive() {
+        let r = compile_search_regex("hello").expect("valid pattern");
+        let b = buf("Hello HELLO hello\n");
+        let matches = find_all_matches(&b, &r);
+        assert_eq!(matches.len(), 3);
+    }
+
+    #[test]
+    fn smart_case_uppercase_is_sensitive() {
+        let r = compile_search_regex("Hello").expect("valid pattern");
+        let b = buf("Hello HELLO hello\n");
+        let matches = find_all_matches(&b, &r);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0], (0, 4));
+    }
+
+    #[test]
+    fn smart_case_override_force_sensitive() {
+        // Explicit (?-i) on a lowercase pattern forces case-sensitive.
+        let r = compile_search_regex("(?-i)hello").expect("valid pattern");
+        let b = buf("Hello HELLO hello\n");
+        let matches = find_all_matches(&b, &r);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0], (12, 16));
     }
 
     // ── find_all_matches ──────────────────────────────────────────────────────
