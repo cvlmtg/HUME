@@ -19,26 +19,26 @@ fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors,
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-/// A named element that can appear in a statusline slot.
+/// A named element that can appear in a statusline section.
 ///
-/// Segments are the building blocks of the status bar. The mode pill,
-/// separators, and data fields are all first-class segment variants —
+/// Elements are the building blocks of the status bar. The mode pill,
+/// separators, and data fields are all first-class element variants —
 /// there is no special chrome. You control the layout by choosing which
-/// segments appear in each slot and in what order.
+/// elements appear in each section and in what order.
 ///
 /// The Steel scripting layer constructs [`StatusLineConfig`] values at
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatusSegment {
+pub(crate) enum StatusElement {
     /// The mode pill: `" NOR "`, `" INS "`, or `" EXT "`.
     ///
     /// Rendered with the per-mode color (`status_normal`, `status_insert`,
     /// `status_extend`). The 5-char width includes leading and trailing spaces
-    /// so it naturally fills a slot without needing a separator.
+    /// so it naturally fills a section without needing a separator.
     ModePill,
     /// A thin vertical bar `│` in the base status bar style.
     ///
-    /// Place this explicitly between segments that need a visual divider.
+    /// Place this explicitly between elements that need a visual divider.
     Separator,
     /// The file's basename, or `"[scratch]"` for unnamed buffers.
     FileName,
@@ -62,11 +62,11 @@ pub(crate) enum StatusSegment {
     SearchMatches,
 }
 
-/// Describes the content layout of the status bar's three horizontal slots.
+/// Describes the content layout of the status bar's three sections.
 ///
-/// Each slot is a sequence of [`StatusSegment`]s rendered in order. Adjacent
-/// segments within a slot are joined with a boundary-aware spacing rule so
-/// that spacing feels natural without any segment needing to hard-code its
+/// Each section is a sequence of [`StatusElement`]s rendered in order. Adjacent
+/// elements within a section are joined with a boundary-aware spacing rule so
+/// that spacing feels natural without any element needing to hard-code its
 /// neighbours.
 ///
 /// The default config reproduces the built-in status bar layout exactly, so
@@ -77,20 +77,20 @@ pub(crate) enum StatusSegment {
 /// ```
 #[derive(Debug, Clone)]
 pub(crate) struct StatusLineConfig {
-    /// Segments rendered left-aligned at the start of the status bar row.
-    pub left: Vec<StatusSegment>,
-    /// Segments centered between the left and right slot ends. Empty by default.
-    pub center: Vec<StatusSegment>,
-    /// Segments rendered right-aligned at the end of the status bar row.
-    pub right: Vec<StatusSegment>,
+    /// Elements rendered left-aligned at the start of the status bar row.
+    pub left: Vec<StatusElement>,
+    /// Elements centered between the left and right sections. Empty by default.
+    pub center: Vec<StatusElement>,
+    /// Elements rendered right-aligned at the end of the status bar row.
+    pub right: Vec<StatusElement>,
 }
 
 impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {
-            left: vec![StatusSegment::ModePill, StatusSegment::Separator, StatusSegment::FileName, StatusSegment::DirtyIndicator],
+            left: vec![StatusElement::ModePill, StatusElement::Separator, StatusElement::FileName, StatusElement::DirtyIndicator],
             center: vec![],
-            right: vec![StatusSegment::KittyProtocol, StatusSegment::SearchMatches, StatusSegment::Position],
+            right: vec![StatusElement::KittyProtocol, StatusElement::SearchMatches, StatusElement::Position],
         }
     }
 }
@@ -134,7 +134,7 @@ fn render_command_line(
 ) {
     let colors = &editor.colors;
 
-    // The command line fully replaces the status bar row — no segment layout,
+    // The command line fully replaces the status bar row — no section layout,
     // no mode pill. The prompt character makes the mode self-evident.
     fill_row(screen_buf, colors, area, y);
 
@@ -189,14 +189,14 @@ fn render_status_message(
 
 /// Render the one-row status bar at the bottom of the area.
 ///
-/// Content is driven by [`StatusLineConfig`], which lives on `Editor`. Each slot
-/// (left, center, right) is a sequence of [`StatusSegment`]s that are rendered
+/// Content is driven by [`StatusLineConfig`], which lives on `Editor`. Each
+/// section (left, center, right) is a sequence of [`StatusElement`]s rendered
 /// into styled spans and placed at the appropriate edge of the row.
 ///
-/// Segments within a slot are joined with a boundary-aware spacing rule:
+/// Elements within a section are joined with a boundary-aware spacing rule:
 /// - Neither boundary is a space → a single space is inserted between them.
 /// - Exactly one boundary is a space → concatenated directly.
-/// - Both boundaries are spaces → the new segment's leading space is trimmed
+/// - Both boundaries are spaces → the new element's leading space is trimmed
 ///   so there is exactly one space between the two.
 ///
 /// Narrow-terminal degradation:
@@ -214,24 +214,24 @@ fn render_status_bar(
     // Fill the entire row with the base status bar style first.
     fill_row(screen_buf, colors, area, y);
 
-    // Render each slot into a sequence of styled spans.
-    let left_spans = render_slot(&config.left, editor);
-    let center_spans = render_slot(&config.center, editor);
-    let right_spans = render_slot(&config.right, editor);
+    // Render each section into a sequence of styled spans.
+    let left_spans = render_section(&config.left, editor);
+    let center_spans = render_section(&config.center, editor);
+    let right_spans = render_section(&config.right, editor);
 
-    let left_w = slot_width(&left_spans);
-    let center_w = slot_width(&center_spans);
-    let right_w = slot_width(&right_spans);
+    let left_w = section_width(&left_spans);
+    let center_w = section_width(&center_spans);
+    let right_w = section_width(&right_spans);
 
-    // Left slot: starts at the left edge.
+    // Left section: starts at the left edge.
     let left_x = area.x;
     let left_end = left_x + left_w;
 
-    // Right slot: 1 space of right margin.
+    // Right section: 1 space of right margin.
     let right_x = area.right().saturating_sub(right_w + 1);
     let right_fits = right_x >= left_end;
 
-    // Center slot: centered in the gap between left and right.
+    // Center section: centered in the gap between left and right.
     let right_fence = if right_fits { right_x } else { area.right() };
     let gap = right_fence.saturating_sub(left_end);
     let center_x = left_end + gap / 2 - center_w / 2;
@@ -240,27 +240,27 @@ fn render_status_bar(
         && center_x >= left_end
         && center_x + center_w <= right_fence;
 
-    // Draw slots.
-    draw_slot(screen_buf, &left_spans, left_x, y);
+    // Draw sections.
+    draw_section(screen_buf, &left_spans, left_x, y);
     if right_fits {
-        draw_slot(screen_buf, &right_spans, right_x, y);
+        draw_section(screen_buf, &right_spans, right_x, y);
     }
     if center_fits {
-        draw_slot(screen_buf, &center_spans, center_x, y);
+        draw_section(screen_buf, &center_spans, center_x, y);
     }
 }
 
-// ── Segment rendering ─────────────────────────────────────────────────────────
+// ── Element rendering ─────────────────────────────────────────────────────────
 
-/// Render a single segment into its text and style.
+/// Render a single element into its text and style.
 ///
-/// Returns `(String::new(), _)` for segments that have nothing to show in the
-/// current context (e.g. [`StatusSegment::Selections`] when only one selection
+/// Returns `(String::new(), _)` for elements that have nothing to show in the
+/// current context (e.g. [`StatusElement::Selections`] when only one selection
 /// is active). The caller skips zero-width spans.
-fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
+fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
     let colors = &editor.colors;
     match seg {
-        StatusSegment::ModePill => {
+        StatusElement::ModePill => {
             // The mode pill includes a leading and trailing space so its
             // neighbors don't need to add their own padding.
             let (label, style) = match (editor.mode, editor.extend) {
@@ -275,29 +275,29 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
             };
             (label.to_string(), style)
         }
-        StatusSegment::Separator => ("│".to_string(), colors.status_bar),
-        StatusSegment::FileName => {
+        StatusElement::Separator => ("│".to_string(), colors.status_bar),
+        StatusElement::FileName => {
             let name = editor.file_path.as_deref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("[scratch]");
             (name.to_string(), colors.status_bar)
         }
-        StatusSegment::Position => {
+        StatusElement::Position => {
             let buf = editor.doc.buf();
             let cursor_head = editor.doc.sels().primary().head;
             let cursor_line = buf.char_to_line(cursor_head);
             let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
             (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.status_bar)
         }
-        StatusSegment::KittyProtocol => {
+        StatusElement::KittyProtocol => {
             if editor.kitty_enabled {
                 ("🐱".to_string(), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
             }
         }
-        StatusSegment::Selections => {
+        StatusElement::Selections => {
             let n = editor.doc.sels().len();
             // Only show the count when there is more than one selection —
             // the single-cursor case is the default and needs no annotation.
@@ -307,14 +307,14 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
                 (String::new(), colors.status_bar)
             }
         }
-        StatusSegment::DirtyIndicator => {
+        StatusElement::DirtyIndicator => {
             if editor.doc.is_dirty() {
                 ("[+]".to_string(), colors.status_bar)
             } else {
                 (String::new(), colors.status_bar)
             }
         }
-        StatusSegment::SearchMatches => {
+        StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.search.match_count() {
                 (format!("[{current}/{total}]"), colors.status_bar)
             } else {
@@ -324,22 +324,22 @@ fn render_segment(seg: StatusSegment, editor: &Editor) -> (String, Style) {
     }
 }
 
-/// Render a slot's segments into a sequence of styled spans ready for drawing.
+/// Render a section's elements into a sequence of styled spans ready for drawing.
 ///
-/// Skips empty segments (e.g. [`StatusSegment::Selections`] in single-cursor
+/// Skips empty elements (e.g. [`StatusElement::Selections`] in single-cursor
 /// mode) and applies the boundary-aware spacing rule between adjacent spans.
-fn render_slot(segments: &[StatusSegment], editor: &Editor) -> Vec<(String, Style)> {
-    // Each segment produces at most 2 spans (the segment + a possible gap span).
-    let mut spans: Vec<(String, Style)> = Vec::with_capacity(segments.len() * 2);
+fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, Style)> {
+    // Each element produces at most 2 spans (the element + a possible gap span).
+    let mut spans: Vec<(String, Style)> = Vec::with_capacity(elements.len() * 2);
 
-    for &seg in segments {
-        let (text, style) = render_segment(seg, editor);
+    for &seg in elements {
+        let (text, style) = render_element(seg, editor);
         if text.is_empty() {
             continue;
         }
 
         if let Some((prev_text, _)) = spans.last() {
-            // Boundary-aware spacing between adjacent segments:
+            // Boundary-aware spacing between adjacent elements:
             let a_ends_space = prev_text.ends_with(' ');
             let b_starts_space = text.starts_with(' ');
 
@@ -349,10 +349,10 @@ fn render_slot(segments: &[StatusSegment], editor: &Editor) -> Vec<(String, Styl
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
                 // Both boundaries are spaces — trim exactly one leading space
-                // from the incoming segment so there is exactly one space
+                // from the incoming element so there is exactly one space
                 // between them, not two. We use strip_prefix (not
                 // trim_start_matches) to remove at most one space so that
-                // segments intentionally padded with multiple leading spaces
+                // elements intentionally padded with multiple leading spaces
                 // keep their extra indent.
                 let trimmed = text.strip_prefix(' ').unwrap_or(&text);
                 spans.push((trimmed.to_string(), style));
@@ -370,13 +370,13 @@ fn render_slot(segments: &[StatusSegment], editor: &Editor) -> Vec<(String, Styl
 
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
-/// Total display-column width of a rendered slot.
-fn slot_width(spans: &[(String, Style)]) -> u16 {
+/// Total display-column width of a rendered section.
+fn section_width(spans: &[(String, Style)]) -> u16 {
     spans.iter().map(|(t, _)| UnicodeWidthStr::width(t.as_str()) as u16).sum()
 }
 
-/// Draw a slot's spans left-to-right starting at `x`.
-fn draw_slot(screen_buf: &mut ScreenBuf, spans: &[(String, Style)], mut x: u16, y: u16) {
+/// Draw a section's spans left-to-right starting at `x`.
+fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(String, Style)], mut x: u16, y: u16) {
     for (text, style) in spans {
         screen_buf.set_string(x, y, text, *style);
         x += UnicodeWidthStr::width(text.as_str()) as u16;
