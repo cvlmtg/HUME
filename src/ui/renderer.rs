@@ -893,19 +893,19 @@ mod tests {
 
     #[test]
     fn statusline_join_one_space_boundary_joins_directly() {
-        // ModePill ends with ' ' (space), FileName starts with '[' (non-space).
+        // Mode ends with ' ' (space), FileName starts with '[' (non-space).
         // Rule (b): exactly one boundary has a space, so segments join directly —
         // no extra space is inserted and no space is trimmed.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
-            left: vec![StatusElement::ModePill, StatusElement::FileName],
+            left: vec![StatusElement::Mode, StatusElement::FileName],
             center: vec![],
             right: vec![],
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
         let out = render_to_string(&editor, 20, 2);
-        // ModePill's trailing space serves as the single separator — no double space.
+        // Mode's trailing space serves as the single separator — no double space.
         insta::assert_snapshot!(out, @r"
           1
          NOR [scratch]");
@@ -913,13 +913,13 @@ mod tests {
 
     #[test]
     fn statusline_join_both_space_trims_duplicate() {
-        // Two ModePills: first ends ' ', second starts ' '.
+        // Two Modes: first ends ' ', second starts ' '.
         // Rule (c): leading space of the second pill is trimmed so there is
         // exactly one space between them, not two.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
-            left: vec![StatusElement::ModePill, StatusElement::ModePill],
+            left: vec![StatusElement::Mode, StatusElement::Mode],
             center: vec![],
             right: vec![],
         };

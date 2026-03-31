@@ -21,7 +21,7 @@ fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors,
 
 /// A named element that can appear in a statusline section.
 ///
-/// Elements are the building blocks of the status bar. The mode pill,
+/// Elements are the building blocks of the status bar. The mode indicator,
 /// separators, and data fields are all first-class element variants —
 /// there is no special chrome. You control the layout by choosing which
 /// elements appear in each section and in what order.
@@ -30,12 +30,12 @@ fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors,
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusElement {
-    /// The mode pill: `" NOR "`, `" INS "`, or `" EXT "`.
+    /// The mode indicator: `" NOR "`, `" INS "`, or `" EXT "`.
     ///
     /// Rendered with the per-mode color (`status_normal`, `status_insert`,
     /// `status_extend`). The 5-char width includes leading and trailing spaces
     /// so it naturally fills a section without needing a separator.
-    ModePill,
+    Mode,
     /// A thin vertical bar `│` in the base status bar style.
     ///
     /// Place this explicitly between elements that need a visual divider.
@@ -88,7 +88,7 @@ pub(crate) struct StatusLineConfig {
 impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {
-            left: vec![StatusElement::ModePill, StatusElement::Separator, StatusElement::FileName, StatusElement::DirtyIndicator],
+            left: vec![StatusElement::Mode, StatusElement::Separator, StatusElement::FileName, StatusElement::DirtyIndicator],
             center: vec![],
             right: vec![StatusElement::KittyProtocol, StatusElement::SearchMatches, StatusElement::Position],
         }
@@ -120,7 +120,7 @@ pub(crate) fn render_bottom_row(
 
 /// Render the command-line mini-buffer on the bottom row.
 ///
-/// Fully replaces the status bar — no mode pill, no segments. The prompt
+/// Fully replaces the status bar — no mode indicator, no segments. The prompt
 /// character (e.g. `:`) makes the mode self-evident. The terminal cursor
 /// is positioned after the input by the caller.
 fn render_command_line(
@@ -135,10 +135,10 @@ fn render_command_line(
     let colors = &editor.colors;
 
     // The command line fully replaces the status bar row — no section layout,
-    // no mode pill. The prompt character makes the mode self-evident.
+    // no mode indicator. The prompt character makes the mode self-evident.
     fill_row(screen_buf, colors, area, y);
 
-    // +1: 1-column left margin, matching the leading space of the mode pill
+    // +1: 1-column left margin, matching the leading space of the mode indicator
     // in the normal status bar so the text is visually aligned.
     let cmd_str = format!("{prompt}{input}");
     screen_buf.set_string(area.x + 1, y, &cmd_str, colors.status_bar);
@@ -260,8 +260,8 @@ fn render_status_bar(
 fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
     let colors = &editor.colors;
     match seg {
-        StatusElement::ModePill => {
-            // The mode pill includes a leading and trailing space so its
+        StatusElement::Mode => {
+            // The mode indicator includes a leading and trailing space so its
             // neighbors don't need to add their own padding.
             let (label, style) = match (editor.mode, editor.extend) {
                 (Mode::Normal, true)  => (" EXT ", colors.status_extend),

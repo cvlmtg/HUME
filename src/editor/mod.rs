@@ -347,7 +347,7 @@ pub(crate) struct Editor {
     pub(super) file_meta: Option<FileMeta>,
     /// Status bar layout configuration.
     ///
-    /// Initialized with [`StatusLineConfig::default`] (mode pill + separator +
+    /// Initialized with [`StatusLineConfig::default`] (mode indicator + separator +
     /// filename on the left, position on the right). Configurable via the
     /// Steel scripting layer.
     pub(crate) statusline_config: StatusLineConfig,
