@@ -1570,7 +1570,7 @@ fn search_n_repeats_forward() {
 
 /// `n` always goes forward and `N` always goes backward regardless of how the search was initiated.
 #[test]
-fn search_N_repeats_backward() {
+fn search_n_repeats_backward() {
     let mut ed = editor_from("-[a]>b ab ab\n");
 
     ed.handle_key(key('/'));
