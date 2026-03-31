@@ -46,6 +46,7 @@ fn editor_from(input: &str) -> Editor {
         explicit_count: false,
         search: super::SearchState::default(),
         pre_select_sels: None,
+        jump_list: crate::core::jump_list::JumpList::new(),
     }
 }
 
@@ -1872,5 +1873,247 @@ fn star_escapes_metacharacters() {
 
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec!["foo\\.bar"]);
+}
+
+// ── Jump list ────────────────────────────────────────────────────────────────
+
+/// Build a 20-line buffer with the cursor on a given line for jump list tests.
+fn jump_editor(cursor_line: usize) -> Editor {
+    // 20 lines: "line 0\n", "line 1\n", ..., "line 19\n"
+    let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
+    let buf = crate::core::buffer::Buffer::from(text.as_str());
+    // Place cursor at the start of the requested line.
+    let pos = buf.line_to_char(cursor_line);
+    let sels = crate::core::selection::SelectionSet::single(
+        crate::core::selection::Selection::cursor(pos),
+    );
+    let view = ViewState {
+        scroll_offset: 0,
+        height: 24,
+        width: 80,
+        gutter_width: compute_gutter_width(buf.len_lines()),
+        line_number_style: LineNumberStyle::Hybrid,
+    };
+    let doc = crate::core::document::Document::new(buf, sels);
+    let mut ed = Editor::for_testing(doc, view);
+    // Ensure we start in Normal mode.
+    ed.mode = Mode::Normal;
+    ed
+}
+
+/// `gg` from the middle of the file records the pre-jump position.
+#[test]
+fn goto_first_line_records_jump() {
+    let mut ed = jump_editor(10);
+    let before = state(&ed);
+
+    // `gg` — goto first line.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 0);
+
+    // Ctrl-o should restore the pre-jump position.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// `ge` (goto last line) records a jump.
+#[test]
+fn goto_last_line_records_jump() {
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+
+    ed.handle_key(key('g'));
+    ed.handle_key(key('e'));
+    assert_ne!(state(&ed), before); // moved somewhere else
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// Full round-trip: jump → Ctrl-o → Ctrl-i.
+#[test]
+fn jump_backward_then_forward() {
+    let mut ed = jump_editor(10);
+
+    // Jump to first line.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    // Back to original position.
+    ed.handle_key(key_ctrl('o'));
+    assert_ne!(state(&ed), at_top);
+
+    // Forward returns to top.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(state(&ed), at_top);
+}
+
+/// A small motion (e.g. `2j`) does NOT record a jump.
+#[test]
+fn small_motion_does_not_record_jump() {
+    let mut ed = jump_editor(10);
+    let before = state(&ed);
+
+    // Move down 2 lines — below the threshold.
+    ed.handle_key(key('2'));
+    ed.handle_key(key('j'));
+    let after = state(&ed);
+    assert_ne!(after, before);
+
+    // Ctrl-o should NOT go back — nothing was recorded.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), after);
+}
+
+/// A large motion (e.g. `10j`) records a jump via the line-distance threshold.
+#[test]
+fn large_motion_records_jump() {
+    let mut ed = jump_editor(0);
+    let before = state(&ed);
+
+    // Move down 10 lines — exceeds the threshold of 5.
+    // Type "10j" as separate key presses.
+    ed.handle_key(key('1'));
+    ed.handle_key(key('0'));
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 10);
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// Search confirm records a jump; search cancel does not.
+#[test]
+fn search_confirm_records_jump() {
+    let mut ed = jump_editor(0);
+    let before = state(&ed);
+
+    // Search for "line 15".
+    ed.handle_key(key('/'));
+    for ch in "line 15".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 15);
+
+    // Ctrl-o should return to line 0.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// Search cancel (Esc) does NOT record a jump.
+#[test]
+fn search_cancel_does_not_record_jump() {
+    let mut ed = jump_editor(0);
+    let before = state(&ed);
+
+    ed.handle_key(key('/'));
+    for ch in "line 15".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Cancel — restores position.
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), before);
+
+    // Ctrl-o should NOT go anywhere — nothing recorded.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// `n` (search-next) records a jump.
+#[test]
+fn search_next_records_jump() {
+    let mut ed = jump_editor(0);
+
+    // Set up a search pattern first.
+    ed.handle_key(key('/'));
+    for ch in "line".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    // Now on line 1 (first match after line 0 which is also "line 0").
+    let after_search = state(&ed);
+
+    // Press `n` to go to next match.
+    ed.handle_key(key('n'));
+    let after_n = state(&ed);
+    assert_ne!(after_n, after_search);
+
+    // Ctrl-o should go back to the position before `n`.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), after_search);
+}
+
+/// When `n` lands on the same line as the previous match, Ctrl-i must still
+/// return to the exact pre-Ctrl-o position.
+#[test]
+fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
+    // Two "editor" matches on the same line.
+    let text = "the editor and the editor\nother line\n";
+    let buf = crate::core::buffer::Buffer::from(text);
+    let sels = crate::core::selection::SelectionSet::single(
+        crate::core::selection::Selection::cursor(0),
+    );
+    let view = ViewState {
+        scroll_offset: 0,
+        height: 24,
+        width: 80,
+        gutter_width: compute_gutter_width(buf.len_lines()),
+        line_number_style: LineNumberStyle::Hybrid,
+    };
+    let doc = crate::core::document::Document::new(buf, sels);
+    let mut ed = Editor::for_testing(doc, view);
+    ed.kitty_enabled = true;
+
+    // Search "editor" — lands on first match.
+    ed.handle_key(key('/'));
+    for ch in "editor".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    let first_match = state(&ed);
+
+    // `n` — lands on second "editor" on the SAME line.
+    ed.handle_key(key('n'));
+    let second_match = state(&ed);
+    assert_ne!(first_match, second_match);
+
+    // Ctrl-o should go back to first match.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), first_match, "Ctrl-o should return to first match");
+
+    // Ctrl-i MUST return to the second match (where we were before Ctrl-o).
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(state(&ed), second_match, "Ctrl-i should return to second match");
+}
+
+/// Search + n + n + Ctrl-o + Ctrl-i round-trip, all matches on different lines.
+#[test]
+fn search_n_ctrl_o_ctrl_i_different_lines() {
+    let mut ed = jump_editor(0);
+
+    // Search "line 1" — matches lines 1, 10, 11, 12, ...
+    ed.handle_key(key('/'));
+    for ch in "line 1".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    // `n` twice to advance through matches on different lines.
+    ed.handle_key(key('n'));
+    let state_after_n1 = state(&ed);
+    ed.handle_key(key('n'));
+    let state_after_n2 = state(&ed);
+
+    // Ctrl-o goes back.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), state_after_n1);
+
+    // Ctrl-i goes forward.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(state(&ed), state_after_n2);
 }
 

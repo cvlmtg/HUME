@@ -290,6 +290,11 @@ pub(crate) struct Editor {
     /// Snapshot of selections taken when entering Select mode (`s`).
     /// Restored on cancel; discarded on confirm.
     pub(super) pre_select_sels: Option<SelectionSet>,
+
+    // ── Jump list ────────────────────────────────────────────────────────────
+    /// Navigable history of cursor positions before large movements.
+    /// `Ctrl-o` moves backward; `Ctrl-i` moves forward.
+    pub(super) jump_list: crate::core::jump_list::JumpList,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -369,6 +374,7 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
+            jump_list: crate::core::jump_list::JumpList::new(),
         })
     }
 
@@ -562,6 +568,7 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
+            jump_list: crate::core::jump_list::JumpList::new(),
         }
     }
 

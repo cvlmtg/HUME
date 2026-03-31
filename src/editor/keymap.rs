@@ -365,6 +365,14 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(PageDown), cmd!("page-down", "extend-page-down"));
     t.bind_leaf(key!(PageUp),   cmd!("page-up",   "extend-page-up"));
 
+    // ── Jump list ────────────────────────────────────────────────────────────
+    t.bind_leaf(key!(Ctrl + 'o'), cmd!("jump-backward"));
+    // Ctrl-i is traditionally Tab (0x09). Even with kitty keyboard protocol,
+    // some terminals still report Ctrl-i as Tab rather than Char('i')+CONTROL.
+    // Bind both so jump-forward works everywhere.
+    t.bind_leaf(key!(Ctrl + 'i'), cmd!("jump-forward"));
+    t.bind_leaf(key!(Tab), cmd!("jump-forward"));
+
     // ── Selection manipulation ────────────────────────────────────────────────
     t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));
     t.bind_leaf(key!(','), cmd!("keep-primary-selection"));
@@ -697,6 +705,7 @@ mod tests {
             key!('f'), key!('t'), key!('F'), key!('T'), key!('r'),
             key!('e'), key!(';'), key!(','),
             key!(Ctrl + 'c'), key!(Ctrl + 'r'), key!(Ctrl + 'x'),
+            key!(Ctrl + 'o'), key!(Ctrl + 'i'), key!(Tab),
         ];
         for k in must_be_bound {
             assert!(
