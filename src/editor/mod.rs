@@ -27,7 +27,19 @@ mod commands;
 mod keymap;
 mod mappings;
 
-// ── Dot-repeat state ─────────────────────────────────────────────────────────
+// ── Dot-repeat / insert-session state ────────────────────────────────────────
+
+/// State for an active insert session (entered via a repeatable command).
+///
+/// Tracks keystrokes for dot-repeat recording. Created by
+/// [`Editor::begin_insert_session`] and consumed by [`Editor::end_insert_session`].
+///
+/// `None` on the editor when there is no active session — including during
+/// replay, where the replay path pre-opens the edit group to signal
+/// [`begin_insert_session`] that recording should be suppressed.
+pub(super) struct InsertSession {
+    keystrokes: Vec<KeyEvent>,
+}
 
 /// A recorded editing action that can be replayed by `.`.
 ///
@@ -378,25 +390,17 @@ pub(crate) struct Editor {
     /// The last repeatable editing action, available for replay via `.`.
     /// `None` until the user performs a repeatable command.
     pub(super) last_action: Option<RepeatableAction>,
-    /// Insert-mode keystroke buffer, active while recording an insert session.
-    ///
-    /// `Some` between entering Insert mode (via a repeatable command) and
-    /// returning to Normal mode. Text-input keys (Char, Enter, Backspace, Delete)
-    /// are pushed here so they can be replayed by `.`. Navigation keys (arrows,
-    /// Esc) are not recorded — consistent with Vim's repeat semantics.
-    /// `None` at all other times.
-    pub(super) insert_recording: Option<Vec<KeyEvent>>,
+    /// Active insert session, present between [`begin_insert_session`] and
+    /// [`end_insert_session`]. Keystroke recording for dot-repeat lives here.
+    /// `None` at all other times — including during replay, where the replay
+    /// path pre-opens the edit group to suppress session creation.
+    pub(super) insert_session: Option<InsertSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
     ///
     /// Set in `handle_normal` when `self.count` is `Some` before being consumed.
     /// Read by `cmd_repeat` to decide whether to use the new count or reuse the
     /// original action's count. Cleared after every dispatch.
     pub(super) explicit_count: bool,
-    /// `true` while `cmd_repeat` is re-executing a recorded action.
-    ///
-    /// Prevents the replayed command from overwriting `last_action` and prevents
-    /// `set_mode` from opening a new `insert_recording` during replay.
-    pub(super) replaying: bool,
 }
 
 impl Editor {
@@ -449,9 +453,8 @@ impl Editor {
             last_find: None,
             kitty_enabled: false,
             last_action: None,
-            insert_recording: None,
+            insert_session: None,
             explicit_count: false,
-            replaying: false,
             search: SearchState::default(),
         })
     }
@@ -552,46 +555,46 @@ impl Editor {
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
+    ///
+    /// For Insert mode entry and exit use [`begin_insert_session`] and
+    /// [`end_insert_session`] instead — they manage the undo group and
+    /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: Mode) {
-        match (self.mode, mode) {
-            (Mode::Normal, Mode::Insert) => {
-                self.extend = false;
-                // Only open a new group if one isn't already open. `c` and
-                // `open-line-*` open the group themselves (folding structural
-                // edits in) before calling set_mode.
-                if !self.doc.is_group_open() {
-                    self.doc.begin_edit_group();
-                }
-                // Start recording insert keystrokes for `.` repeat, but skip
-                // this during replay (we're feeding recorded keys, not new ones).
-                if !self.replaying {
-                    self.insert_recording = Some(Vec::new());
-                }
-            }
-            (Mode::Insert, Mode::Normal) => {
-                // Leaving Insert: commit all accumulated edits as one undo step.
-                self.doc.commit_edit_group();
-                // Finalize the insert recording into last_action (if both exist).
-                if let (Some(keys), Some(action)) =
-                    (self.insert_recording.take(), self.last_action.as_mut())
-                {
-                    action.insert_keys = keys;
-                }
-            }
-            // Other transitions (e.g. Normal → Command, Search → Normal) do not
-            // affect undo groups. Clear any stale insert_recording defensively —
-            // it should never be Some here in normal usage, but belt-and-suspenders
-            // prevents a half-recorded session from leaking into the next insert entry.
-            //
-            // Search-specific cleanup (restoring pre_search_sels, preserving or
-            // clearing search.regex) is the caller's responsibility: `cancel_search`
-            // clears the regex, while the confirm path in `handle_search` keeps it
-            // alive for `n`/`N`. Both then call set_mode(Normal) through this arm.
-            _ => {
-                self.insert_recording = None;
-            }
-        }
         self.mode = mode;
+    }
+
+    /// Enter Insert mode as a repeatable insert action.
+    ///
+    /// Opens a new undo edit group and starts keystroke recording for
+    /// dot-repeat, then sets the mode to Insert.
+    ///
+    /// **Replay signal**: if an edit group is already open when this is called,
+    /// recording is suppressed but the mode change still happens. The replay
+    /// path in [`cmd_repeat`] pre-opens the group before re-executing the
+    /// original command, so that the re-executed command's call here becomes a
+    /// no-op for undo/repeat purposes — only the cursor motion takes effect.
+    pub(super) fn begin_insert_session(&mut self) {
+        self.extend = false;
+        if !self.doc.is_group_open() {
+            self.doc.begin_edit_group();
+            self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
+        }
+        self.mode = Mode::Insert;
+    }
+
+    /// Exit Insert mode and finalise the undo/repeat state.
+    ///
+    /// Commits the open edit group (creating one undo step for the whole
+    /// insert session) and moves the recorded keystrokes into `last_action`
+    /// for dot-repeat, then sets the mode to Normal.
+    pub(super) fn end_insert_session(&mut self) {
+        self.doc.commit_edit_group();
+        if let (Some(session), Some(action)) =
+            (self.insert_session.take(), self.last_action.as_mut())
+        {
+            action.insert_keys = session.keystrokes;
+        }
+        self.mode = Mode::Normal;
     }
 
     /// Apply a motion command and store the resulting selection.
@@ -642,9 +645,8 @@ impl Editor {
             last_find: None,
             kitty_enabled: false,
             last_action: None,
-            insert_recording: None,
+            insert_session: None,
             explicit_count: false,
-            replaying: false,
             search: SearchState::default(),
         }
     }

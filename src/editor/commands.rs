@@ -32,44 +32,43 @@ use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 
 pub(super) fn cmd_insert_before(ed: &mut Editor, _count: usize) {
     ed.apply_motion(|_b, sels| sels.map(|s| Selection::cursor(s.start())));
-    ed.set_mode(Mode::Insert);
+    ed.begin_insert_session();
 }
 
 pub(super) fn cmd_insert_after(ed: &mut Editor, _count: usize) {
     ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
-    ed.set_mode(Mode::Insert);
+    ed.begin_insert_session();
 }
 
 pub(super) fn cmd_insert_at_line_start(ed: &mut Editor, _count: usize) {
     ed.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
-    ed.set_mode(Mode::Insert);
+    ed.begin_insert_session();
 }
 
 pub(super) fn cmd_insert_at_line_end(ed: &mut Editor, _count: usize) {
     ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
     ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
-    ed.set_mode(Mode::Insert);
+    ed.begin_insert_session();
 }
 
 /// Open a new line below the cursor and enter insert mode.
 ///
-/// The edit group is opened here so the structural `\n` and everything typed
-/// before Esc form one undo step — the same pattern as `cmd_change`.
+/// `begin_insert_session` opens the edit group so the structural `\n` and
+/// everything typed before Esc form one undo step — the same pattern as
+/// `cmd_change`.
 pub(super) fn cmd_open_line_below(ed: &mut Editor, _count: usize) {
-    ed.doc.begin_edit_group();
+    ed.begin_insert_session();
     ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
     ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
     ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-    ed.set_mode(Mode::Insert);
 }
 
 /// Open a new line above the cursor and enter insert mode.
 pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize) {
-    ed.doc.begin_edit_group();
+    ed.begin_insert_session();
     ed.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
     ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
     ed.apply_motion(|b, s| cmd_move_left(b, s, 1));
-    ed.set_mode(Mode::Insert);
 }
 
 pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize) {
@@ -78,7 +77,7 @@ pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize) {
 }
 
 pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize) {
-    ed.set_mode(Mode::Normal);
+    ed.end_insert_session();
 }
 
 // ── Edit composites ───────────────────────────────────────────────────────────
@@ -92,14 +91,13 @@ pub(super) fn cmd_delete(ed: &mut Editor, _count: usize) {
 
 /// Yank, delete, then enter insert mode — all in one undo group.
 ///
-/// The group is opened here so the delete is folded in; `set_mode(Insert)`
-/// sees the group is already open and skips its own `begin_edit_group`.
+/// `begin_insert_session` opens the group so the delete and everything typed
+/// before Esc form one undo step.
 pub(super) fn cmd_change(ed: &mut Editor, _count: usize) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
-    ed.doc.begin_edit_group();
+    ed.begin_insert_session();
     ed.doc.apply_edit_grouped(delete_selection);
     ed.registers.write(DEFAULT_REGISTER, yanked);
-    ed.set_mode(Mode::Insert);
 }
 
 /// Yank selections into the default register without deleting.
@@ -249,7 +247,7 @@ pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
 /// overrides the original; otherwise the original count is reused. This mirrors
 /// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
 pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
-    let Some(action) = ed.last_action.clone() else { return };
+    let Some(action) = ed.last_action.take() else { return };
 
     // Prefer an explicit user count; fall back to the count from the original action.
     let effective_count = if ed.explicit_count { count } else { action.count };
@@ -257,16 +255,12 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     // Restore the char arg so wait-char commands (replace, find/till) work.
     ed.pending_char = action.char_arg;
 
-    // Guard against re-recording: take last_action so the replayed command
-    // doesn't overwrite it, then restore it afterwards.
-    //
-    // Note: a RAII guard for `replaying` is not possible here without unsafe —
-    // holding `&mut ed.replaying` across calls that take `&mut ed` violates the
-    // borrow checker. A panic in this path would crash the editor regardless
-    // (raw mode is left active, making recovery moot), so manual save/restore
-    // is the right approach.
-    ed.last_action = None;
-    ed.replaying = true;
+    // Pre-open the edit group before re-executing. This is the replay signal:
+    // `begin_insert_session` checks `is_group_open()` and suppresses both the
+    // redundant `begin_edit_group` call and keystroke recording when the group
+    // is already open. For non-insert commands the group stays empty and the
+    // commit below is a no-op.
+    ed.doc.begin_edit_group();
 
     // Re-execute the original command through the normal dispatch path.
     let cmd = super::keymap::KeymapCommand { name: action.command, extend_name: None };
@@ -278,14 +272,23 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
         ed.handle_insert(*key);
     }
 
-    // If the command left us in Insert mode (e.g. `change`, `insert-before`),
-    // exit back to Normal — the edit group is committed in set_mode.
+    // Close the insert session / edit group:
+    // - For insert commands: `end_insert_session` commits the group (delete +
+    //   typed text as one undo step). `insert_session` is `None` here (replay
+    //   suppressed it), so no keystrokes are moved into `last_action`.
+    // - For non-insert commands: the group is empty (no `apply_edit_grouped`
+    //   calls), so `commit_edit_group` is a no-op and the command's own
+    //   `apply_edit` revision stands alone in history.
     if ed.mode == super::Mode::Insert {
-        ed.set_mode(super::Mode::Normal);
+        ed.end_insert_session();
+    } else {
+        ed.doc.commit_edit_group();
     }
 
-    // Restore the action so `.` can be pressed again.
-    ed.replaying = false;
+    // Restore the original action so `.` can be pressed again.
+    // `execute_keymap_command` may have overwritten `last_action` during
+    // replay; this final assignment ensures the stored action is always the
+    // one the user actually performed.
     ed.last_action = Some(action);
 }
 
