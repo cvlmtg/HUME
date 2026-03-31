@@ -331,6 +331,22 @@ impl Editor {
         self.doc.set_selections(new_sels);
     }
 
+    // ── Snapshot restore helpers ────────────────────────────────────────────────
+
+    /// Restore selections from the search-mode snapshot without consuming it.
+    fn restore_search_snapshot(&mut self) {
+        if let Some(ref sels) = self.search.pre_search_sels {
+            self.doc.set_selections(sels.clone());
+        }
+    }
+
+    /// Restore selections from the select-mode snapshot without consuming it.
+    fn restore_select_snapshot(&mut self) {
+        if let Some(ref sels) = self.pre_select_sels {
+            self.doc.set_selections(sels.clone());
+        }
+    }
+
     // ── Search mode ───────────────────────────────────────────────────────────
 
     fn handle_search(&mut self, key: KeyEvent) {
@@ -354,9 +370,7 @@ impl Editor {
             }
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore position when pattern is fully erased, but stay in Search mode.
-                if let Some(sels) = self.search.pre_search_sels.clone() {
-                    self.doc.set_selections(sels);
-                }
+                self.restore_search_snapshot();
                 self.search.set_regex(None);
             }
             MiniBufferEvent::Edited => self.update_live_search(),
@@ -418,9 +432,7 @@ impl Editor {
             }
             None => {
                 // No match — restore position to pre-search.
-                if let Some(sels) = self.search.pre_search_sels.clone() {
-                    self.doc.set_selections(sels);
-                }
+                self.restore_search_snapshot();
             }
         }
 
@@ -447,9 +459,7 @@ impl Editor {
             }
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore original selections when pattern is fully erased.
-                if let Some(sels) = self.pre_select_sels.clone() {
-                    self.doc.set_selections(sels);
-                }
+                self.restore_select_snapshot();
             }
             MiniBufferEvent::Edited => self.update_live_select(),
             MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
@@ -475,28 +485,19 @@ impl Editor {
 
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — restore originals.
-            if let Some(sels) = self.pre_select_sels.clone() {
-                self.doc.set_selections(sels);
-            }
+            self.restore_select_snapshot();
             return;
         };
 
-        // Always match against the original selections, not the current
-        // (possibly already-replaced) ones.
-        let sels = match &self.pre_select_sels {
-            Some(s) => s,
-            None => return,
-        };
+        // Compute matches in a limited scope so the borrow on
+        // pre_select_sels is released before we need to restore.
+        let result = self.pre_select_sels.as_ref().and_then(|sels| {
+            select_matches_within(self.doc.buf(), sels, &regex)
+        });
 
-        match select_matches_within(self.doc.buf(), sels, &regex) {
+        match result {
             Some(new_sels) => self.doc.set_selections(new_sels),
-            None => {
-                // No matches — restore originals so the user sees their
-                // original selections (not an empty/stale state).
-                if let Some(s) = self.pre_select_sels.clone() {
-                    self.doc.set_selections(s);
-                }
-            }
+            None => self.restore_select_snapshot(),
         }
 
         // Also set the search regex so highlights appear in the renderer.
