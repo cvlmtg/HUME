@@ -11,7 +11,7 @@
 //! The `count` parameter is the user's numeric prefix (default 1). Commands
 //! that don't use a count accept it and ignore it (`_count`).
 
-use regex_cursor::engines::meta::Regex;
+
 
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::next_grapheme_boundary;
@@ -22,7 +22,7 @@ use crate::ops::motion::{
     find_char_backward, find_char_forward, MotionMode,
 };
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
-use crate::ops::search::{find_match_from_cache, find_next_match};
+use crate::ops::search::{compile_search_regex, find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
 use super::registry::MappableCommand;
@@ -376,9 +376,9 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
         if pattern.is_empty() {
             return;
         }
-        match Regex::new(&pattern) {
-            Ok(r) => ed.search.set_regex(Some(r)),
-            Err(_) => return,
+        match compile_search_regex(&pattern) {
+            Some(r) => ed.search.set_regex(Some(r)),
+            None => return,
         }
     }
     let Some(regex) = &ed.search.regex else { return };
