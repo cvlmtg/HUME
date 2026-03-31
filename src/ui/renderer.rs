@@ -40,8 +40,8 @@ pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
 
 /// Render the current editor state into a ratatui screen buffer.
 ///
-/// `area` is the full terminal area (including the status bar row).
-/// The renderer splits it via [`layout`] into gutter, content, and status bar.
+/// `area` is the full terminal area (including the statusline row).
+/// The renderer splits it via [`layout`] into gutter, content, and statusline.
 ///
 /// Highlights (bracket match, future search hits) are computed internally from
 /// `editor` state — ephemeral per-frame values, not part of the public API.
@@ -75,10 +75,10 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         }
     }
 
-    // ── Bottom row (status bar / command line / status message) ───────────────
+    // ── Bottom row (statusline / command line / status message) ───────────────
 
-    if lay.status_bar.y < area.bottom() {
-        render_bottom_row(screen_buf, editor, area, lay.status_bar.y);
+    if lay.statusline.y < area.bottom() {
+        render_bottom_row(screen_buf, editor, area, lay.statusline.y);
     }
 
     CursorState { pos: compute_cursor_pos(editor) }
@@ -89,10 +89,10 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
 struct Layout {
     gutter: Rect,
     content: Rect,
-    status_bar: Rect,
+    statusline: Rect,
 }
 
-/// Divide the terminal area into gutter, content, and status bar regions.
+/// Divide the terminal area into gutter, content, and statusline regions.
 ///
 /// Spatial relationships are explicit here rather than scattered across
 /// individual render functions. When splits/panes arrive, each pane gets its
@@ -106,8 +106,8 @@ fn layout(area: Rect, gutter_width: u16) -> Layout {
         area.width.saturating_sub(gutter_width),
         content_height,
     );
-    let status_bar = Rect::new(area.x, area.y + content_height, area.width, 1);
-    Layout { gutter, content, status_bar }
+    let statusline = Rect::new(area.x, area.y + content_height, area.width, 1);
+    Layout { gutter, content, statusline }
 }
 
 // ── Highlights ────────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
         Mode::Normal => None,
         Mode::Insert => cursor_screen_pos(editor),
         // Command/Search use a visual block cursor rendered directly onto the
-        // status-bar cell (see render_command_line). No terminal cursor needed.
+        // statusline cell (see render_command_line). No terminal cursor needed.
         Mode::Command | Mode::Search => None,
     }
 }
@@ -365,9 +365,9 @@ fn render_content(
 ///
 /// Creates a temporary ratatui buffer of `width × height`, calls [`render`],
 /// and serialises it row by row. Each row is right-trimmed so snapshots stay
-/// compact. The status bar row is included as the last line.
+/// compact. The statusline row is included as the last line.
 ///
-/// `height` must be `view.height + 1` (content rows + status bar).
+/// `height` must be `view.height + 1` (content rows + statusline).
 #[cfg(test)]
 pub(crate) fn render_to_string(editor: &Editor, width: u16, height: u16) -> String {
     let area = Rect::new(0, 0, width, height);
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn render_status_bar_with_file_path() {
+    fn render_statusline_with_file_path() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v)
@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn command_mode_cursor_position() {
-        // Command mode uses a visual block cursor on the status-bar cell.
+        // Command mode uses a visual block cursor on the statusline cell.
         // The terminal cursor is hidden (None); the cell at the cursor position
         // must have REVERSED cleared so it appears as normal video (dark bg).
         use ratatui::layout::Rect;
@@ -934,7 +934,7 @@ mod tests {
     // ── Search match count ────────────────────────────────────────────────────
 
     #[test]
-    fn search_match_count_in_status_bar() {
+    fn search_match_count_in_statusline() {
         // "hello world hello\n" — cursor on the first 'h' (char 0).
         // Searching "hello" yields 2 matches; cursor is on match 1.
         let doc = doc_at("hello world hello\n", 0);
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn search_match_count_in_search_mode_minibuf() {
-        // In Search mode the mini-buffer replaces the status bar.
+        // In Search mode the mini-buffer replaces the statusline.
         // The match count should appear right-aligned on the command line row.
         let doc = doc_at("hello world hello\n", 0);
         let v = view(&doc, 30, 2, LineNumberStyle::Absolute);

@@ -338,7 +338,7 @@ pub(crate) struct Editor {
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
     pub(crate) minibuf: Option<MiniBuffer>,
-    /// Transient one-line message shown in the status bar after an action
+    /// Transient one-line message shown in the statusline after an action
     /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
     pub(crate) status_msg: Option<String>,
     /// Metadata captured from the file at open time (permissions, ownership,
@@ -469,7 +469,7 @@ impl Editor {
             // ── 1 & 2. Sync dimensions ────────────────────────────────────────
             let size = term.size()?;
             self.view.width = size.width as usize;
-            // Reserve one row for the status bar.
+            // Reserve one row for the statusline.
             self.view.height = (size.height as usize).saturating_sub(1);
             self.view.gutter_width = compute_gutter_width(self.doc.buf().len_lines());
 

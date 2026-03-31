@@ -153,7 +153,7 @@ pub(crate) struct SelectionSet {
     /// cardinality due to cache locality.
     selections: Vec<Selection>,
 
-    /// Index of the "primary" selection — the one displayed in the status bar
+    /// Index of the "primary" selection — the one displayed in the statusline
     /// and used for operations that act on a single selection (e.g.,
     /// `cmd_keep_primary_selection`).
     primary: usize,

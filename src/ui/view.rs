@@ -41,7 +41,7 @@ pub(crate) struct ViewState {
 
     /// Number of rows available for document content.
     ///
-    /// This is the terminal height minus the status bar (1 row). The renderer
+    /// This is the terminal height minus the statusline (1 row). The renderer
     /// only draws document lines into this many rows.
     pub height: usize,
 
