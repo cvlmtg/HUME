@@ -121,6 +121,59 @@ pub(crate) fn search_match_info(matches: &[(usize, usize)], cursor_head: usize) 
     (current, total)
 }
 
+// ── find_match_from_cache ─────────────────────────────────────────────────────
+
+/// Find the next match relative to `from_char` by binary-searching a
+/// pre-computed, sorted match list rather than re-scanning the buffer.
+///
+/// This is O(log M) where M is the number of matches, vs O(buffer_size) for
+/// the regex-scan path. Use this on the `n`/`N` hot path when the cache is
+/// populated; fall back to [`find_next_match`] during live search when the
+/// cache may not yet reflect the current regex.
+///
+/// # Direction
+///
+/// - **Forward**: first match whose `start ≥ from_char`. Wraps to `matches[0]`
+///   if none is found at or after `from_char`.
+/// - **Backward**: last match whose `start < from_char`. Wraps to
+///   `matches.last()` if none is found before `from_char`.
+///
+/// Returns `None` only when `matches` is empty.
+/// Returns `Some((start_char, end_char_inclusive, wrapped))` otherwise.
+pub(crate) fn find_match_from_cache(
+    matches: &[(usize, usize)],
+    from_char: usize,
+    direction: SearchDirection,
+) -> Option<(usize, usize, bool)> {
+    if matches.is_empty() {
+        return None;
+    }
+    match direction {
+        SearchDirection::Forward => {
+            // First match with start >= from_char.
+            let idx = matches.partition_point(|&(s, _)| s < from_char);
+            if let Some(&(s, e)) = matches.get(idx) {
+                Some((s, e, false))
+            } else {
+                // Wrap: take the very first match in the buffer.
+                let &(s, e) = matches.first().unwrap(); // non-empty guard above
+                Some((s, e, true))
+            }
+        }
+        SearchDirection::Backward => {
+            // Last match with start < from_char.
+            let idx = matches.partition_point(|&(s, _)| s < from_char);
+            if let Some(&(s, e)) = idx.checked_sub(1).and_then(|i| matches.get(i)) {
+                Some((s, e, false))
+            } else {
+                // Wrap: take the very last match in the buffer.
+                let &(s, e) = matches.last().unwrap(); // non-empty guard above
+                Some((s, e, true))
+            }
+        }
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Find the first non-zero-width match in `byte_range`, returning
@@ -352,5 +405,91 @@ mod tests {
         let (s, e, _) = find_next_match(&b, &re("bon"), 0, SearchDirection::Forward).unwrap();
         // "b" is at char 3, "bon" spans chars 3..5 inclusive
         assert_eq!((s, e), (3, 5));
+    }
+
+    // ── find_match_from_cache ─────────────────────────────────────────────────
+
+    // Matches used in the cache tests: three "ab" spans at (1,2), (3,4), (5,6).
+    const CACHE: &[(usize, usize)] = &[(1, 2), (3, 4), (5, 6)];
+
+    #[test]
+    fn cache_empty_returns_none() {
+        assert!(find_match_from_cache(&[], 0, SearchDirection::Forward).is_none());
+        assert!(find_match_from_cache(&[], 0, SearchDirection::Backward).is_none());
+    }
+
+    #[test]
+    fn cache_forward_first_match() {
+        // from_char=0 → first match at (1,2), no wrap.
+        let (s, e, w) = find_match_from_cache(CACHE, 0, SearchDirection::Forward).unwrap();
+        assert_eq!((s, e), (1, 2));
+        assert!(!w);
+    }
+
+    #[test]
+    fn cache_forward_exact_start() {
+        // from_char exactly on a match start → that match is returned.
+        let (s, e, w) = find_match_from_cache(CACHE, 3, SearchDirection::Forward).unwrap();
+        assert_eq!((s, e), (3, 4));
+        assert!(!w);
+    }
+
+    #[test]
+    fn cache_forward_between_matches() {
+        // from_char=2 (gap between first and second match) → second match (3,4).
+        let (s, e, w) = find_match_from_cache(CACHE, 2, SearchDirection::Forward).unwrap();
+        assert_eq!((s, e), (3, 4));
+        assert!(!w);
+    }
+
+    #[test]
+    fn cache_forward_wraps() {
+        // from_char past last match start → wrap to first match.
+        let (s, e, w) = find_match_from_cache(CACHE, 6, SearchDirection::Forward).unwrap();
+        assert_eq!((s, e), (1, 2));
+        assert!(w);
+    }
+
+    #[test]
+    fn cache_backward_last_before_cursor() {
+        // from_char=5 → last match with start < 5 is (3,4).
+        let (s, e, w) = find_match_from_cache(CACHE, 5, SearchDirection::Backward).unwrap();
+        assert_eq!((s, e), (3, 4));
+        assert!(!w);
+    }
+
+    #[test]
+    fn cache_backward_exact_start_excluded() {
+        // Backward uses start < from_char (strict), so from_char=3 excludes (3,4)
+        // and returns the previous match (1,2).
+        let (s, e, w) = find_match_from_cache(CACHE, 3, SearchDirection::Backward).unwrap();
+        assert_eq!((s, e), (1, 2));
+        assert!(!w);
+    }
+
+    #[test]
+    fn cache_backward_wraps() {
+        // from_char=0 → no match before 0, wrap to last match (5,6).
+        let (s, e, w) = find_match_from_cache(CACHE, 0, SearchDirection::Backward).unwrap();
+        assert_eq!((s, e), (5, 6));
+        assert!(w);
+    }
+
+    #[test]
+    fn cache_single_match_forward_wrap() {
+        let single = &[(4usize, 7usize)];
+        // from_char past the only match → wrap to it.
+        let (s, e, w) = find_match_from_cache(single, 8, SearchDirection::Forward).unwrap();
+        assert_eq!((s, e), (4, 7));
+        assert!(w);
+    }
+
+    #[test]
+    fn cache_single_match_backward_wrap() {
+        let single = &[(4usize, 7usize)];
+        // from_char before the only match → wrap to it.
+        let (s, e, w) = find_match_from_cache(single, 2, SearchDirection::Backward).unwrap();
+        assert_eq!((s, e), (4, 7));
+        assert!(w);
     }
 }

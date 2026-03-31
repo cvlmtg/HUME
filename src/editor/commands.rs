@@ -22,7 +22,7 @@ use crate::ops::motion::{
     find_char_backward, find_char_forward, MotionMode,
 };
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
-use crate::ops::search::find_next_match;
+use crate::ops::search::{find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
 use super::registry::MappableCommand;
@@ -395,12 +395,22 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 
     // Jump `count` times, advancing `from_char` after each match so that
     // `3n` really does land on the 3rd match from the current position.
+    //
+    // When the match cache is populated we binary-search it (O(log M) per
+    // jump). When it is empty — e.g. the very first `n` after startup before
+    // the cache is warmed — we fall back to the O(buffer) regex-scan path.
     let count = count.max(1);
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
+    let use_cache = !ed.search.matches.is_empty();
 
     for _ in 0..count {
-        match find_next_match(ed.doc.buf(), &regex, from_char, direction) {
+        let result = if use_cache {
+            find_match_from_cache(&ed.search.matches, from_char, direction)
+        } else {
+            find_next_match(ed.doc.buf(), regex, from_char, direction)
+        };
+        match result {
             Some((start, end_incl, wrapped)) => {
                 any_wrapped = wrapped; // track only the final jump's wrap state
                 last_match = Some((start, end_incl));
