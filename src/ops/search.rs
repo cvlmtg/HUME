@@ -621,11 +621,19 @@ mod tests {
 
     #[test]
     fn range_matches_full_buffer() {
-        // Full buffer range should behave like find_all_matches.
+        // Full buffer range returns all matches.
         let b = buf("aababab\n");
-        let all = find_all_matches(&b, &re("ab"));
         let ranged = find_matches_in_range(&b, &re("ab"), 0, 7);
-        assert_eq!(all, ranged);
+        assert_eq!(ranged, vec![(1, 2), (3, 4), (5, 6)]);
+    }
+
+    #[test]
+    fn range_matches_with_combining_graphemes() {
+        // "café\n" — 'é' is e + U+0301 (2 codepoints, chars 3 and 4).
+        // Searching for "é" within the full range should find it.
+        let b = buf("caf\u{0065}\u{0301}\n");
+        let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), 0, 5);
+        assert_eq!(matches, vec![(3, 4)]);
     }
 
     // ── escape_regex ─────────────────────────────────────────────────────────
