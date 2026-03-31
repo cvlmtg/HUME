@@ -20,7 +20,7 @@ pub(crate) struct MiniBuffer {
 ///
 /// Callers match on this to perform the mode-specific follow-up action
 /// (e.g. search confirmation vs. command execution on `Confirm`).
-pub(crate) enum MiniBufferEvent {
+pub(super) enum MiniBufferEvent {
     /// Esc or Ctrl+C — caller should cancel/close the mini-buffer.
     Cancel,
     /// Enter with non-empty input — `String` is the confirmed text.
@@ -43,7 +43,7 @@ impl MiniBuffer {
     /// Covers: cancel (Esc/Ctrl+C), confirm (Enter), char insertion, grapheme-aware
     /// backspace, and left/right cursor movement. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
-    pub(crate) fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> MiniBufferEvent {
+    pub(super) fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> MiniBufferEvent {
         use crossterm::event::{KeyCode, KeyModifiers};
 
         match key.code {
