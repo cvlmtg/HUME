@@ -445,7 +445,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 
 /// Clear the active search regex and dismiss all match highlights.
 ///
-/// Bound to `Esc` in Normal mode and invocable as `:clearsearch` / `:cs` in Command mode.
+/// Bound to `Esc` in Normal mode and invocable as `:clear-search` / `:cs` in Command mode.
 pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
     ed.search.clear();
     // update_search_cache() is called by the event loop after handle_key returns,
@@ -470,4 +470,158 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 
 pub(super) fn cmd_quit(ed: &mut Editor, _count: usize) {
     ed.should_quit = true;
+}
+
+// ── Typed commands (command-mode `:` dispatch) ───────────────────────────────
+//
+// Each typed command has a canonical name and zero or more short aliases.
+// Follows the Helix model: no prefix matching, exact match on name or alias.
+// Tab-completion (future) will filter by prefix for discoverability.
+
+/// A command-mode (`:`) command with a canonical name and optional short aliases.
+pub(super) struct TypedCommand {
+    /// Canonical name, e.g. `"write"`.
+    pub name: &'static str,
+    /// Short aliases, e.g. `&["w"]`. Empty slice for commands with no alias.
+    pub aliases: &'static [&'static str],
+    /// One-line description shown in help/completion (unused until tab-completion is built).
+    #[allow(dead_code)]
+    pub doc: &'static str,
+    /// The function to execute. Receives the editor, an optional argument
+    /// (e.g. file path for `:w`), and whether `!` was appended.
+    pub fun: fn(&mut Editor, Option<&str>, bool),
+}
+
+/// Static table of all typed commands.
+pub(super) static TYPED_COMMANDS: &[TypedCommand] = &[
+    TypedCommand {
+        name: "quit",
+        aliases: &["q"],
+        doc: "Close the editor",
+        fun: typed_quit,
+    },
+    TypedCommand {
+        name: "write",
+        aliases: &["w"],
+        doc: "Write changes to disk",
+        fun: typed_write,
+    },
+    TypedCommand {
+        name: "write-quit",
+        aliases: &["wq"],
+        doc: "Write changes and quit",
+        fun: typed_write_quit,
+    },
+    TypedCommand {
+        name: "clear-search",
+        aliases: &["cs"],
+        doc: "Clear search highlights",
+        fun: typed_clear_search,
+    },
+];
+
+/// Look up a typed command by exact name or alias.
+pub(super) fn find_typed_command(name: &str) -> Option<&'static TypedCommand> {
+    TYPED_COMMANDS.iter().find(|tc| tc.name == name || tc.aliases.contains(&name))
+}
+
+// ── Typed command implementations ────────────────────────────────────────────
+
+fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) {
+    if !force && ed.doc.is_dirty() {
+        ed.status_msg = Some("Unsaved changes (add ! to override)".into());
+    } else {
+        ed.should_quit = true;
+    }
+}
+
+fn typed_write(ed: &mut Editor, arg: Option<&str>, force: bool) {
+    if force {
+        ed.status_msg = Some("Error: w! is not supported".into());
+    } else {
+        write_file(ed, arg);
+    }
+}
+
+fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) {
+    // force applies to the quit part: quit even if the write fails.
+    if write_file(ed, arg) || force {
+        ed.should_quit = true;
+    }
+}
+
+fn typed_clear_search(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
+    cmd_clear_search(ed, 0);
+}
+
+/// Serialize the buffer and write it to disk.
+///
+/// If `arg` is `Some(path)`, performs a save-as: writes to the specified
+/// path and updates `ed.file_path` / `ed.file_meta` so that subsequent
+/// `:w` (no argument) targets the same path.
+///
+/// If `arg` is `None`, writes to the current file. Errors with
+/// "no file name" if the buffer is a scratch buffer with no path.
+///
+/// On success, calls `ed.doc.mark_saved()` and sets a status message.
+/// Returns `true` on success, `false` on any error.
+fn write_file(ed: &mut Editor, arg: Option<&str>) -> bool {
+    let (content, line_count) = {
+        let buf = ed.doc.buf();
+        // The rope is always stored LF-normalized; restore CRLF for files that
+        // originally used it so we don't silently change line endings on save.
+        let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
+            buf.to_string().replace('\n', "\r\n")
+        } else {
+            buf.to_string()
+        };
+        // The buffer always ends with a structural '\n', so len_lines() returns
+        // one more than the number of visible lines (ropey counts the empty
+        // string after the final newline as an extra line).
+        let line_count = buf.len_lines().saturating_sub(1);
+        (content, line_count)
+    };
+
+    if let Some(path_str) = arg {
+        // Save-as: write to the specified path.
+        let path = std::path::Path::new(path_str);
+        // Try to preserve existing file's permissions; if the file doesn't
+        // exist yet, write_file_new creates it with default permissions.
+        let result = match crate::io::read_file_meta(path) {
+            Ok(meta) => crate::io::write_file_atomic(&content, &meta).map(|()| meta),
+            Err(_)   => crate::io::write_file_new(&content, path),
+        };
+        match result {
+            Ok(meta) => {
+                // Store the canonicalized path so file_path and file_meta.resolved_path
+                // always agree, even when the user supplied a relative or symlink path.
+                ed.file_path = Some(meta.resolved_path.clone());
+                ed.file_meta = Some(meta);
+                ed.doc.mark_saved();
+                ed.status_msg = Some(format!("Written {line_count} lines"));
+                true
+            }
+            Err(e) => {
+                ed.status_msg = Some(format!("Error: {e}"));
+                false
+            }
+        }
+    } else {
+        // Write to the current file.
+        let Some(meta) = ed.file_meta.as_ref() else {
+            ed.status_msg = Some("Error: no file name".into());
+            return false;
+        };
+        match crate::io::write_file_atomic(&content, meta) {
+            Ok(()) => {
+                ed.doc.mark_saved();
+                ed.status_msg = Some(format!("Written {line_count} lines"));
+                true
+            }
+            Err(e) => {
+                ed.status_msg = Some(format!("Error: {e}"));
+                false
+            }
+        }
+    }
 }

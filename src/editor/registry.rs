@@ -386,7 +386,7 @@ impl CommandRegistry {
         editor_cmd!("search-prev",           "Jump to the previous search match (`N`).",                cmd_search_prev);
         editor_cmd!("extend-search-next",    "Extend selection to the next search match.",              cmd_extend_search_next);
         editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
-        editor_cmd!("clear-search",          "Clear search highlights (`:clearsearch` / `:cs`).",       cmd_clear_search);
+        editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
 
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);

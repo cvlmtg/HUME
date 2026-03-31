@@ -472,113 +472,15 @@ impl Editor {
             None => (input.as_str(), None),
         };
 
-        // Parse trailing `!` once so all command arms can opt in to force semantics.
-        // Commands that don't support `!` explicitly reject it with an error.
+        // Parse trailing `!` once so commands can opt in to force semantics.
         let (cmd, force) = match cmd_raw.strip_suffix('!') {
             Some(base) => (base, true),
             None => (cmd_raw, false),
         };
 
-        match cmd {
-            "q" | "quit" => {
-                if !force && self.doc.is_dirty() {
-                    self.status_msg = Some("Unsaved changes (add ! to override)".into());
-                } else {
-                    self.should_quit = true;
-                }
-            }
-            "w" | "write" => {
-                // No read-only file semantics yet, so :w! has no defined meaning.
-                if force {
-                    self.status_msg = Some("Error: w! is not supported".into());
-                } else {
-                    self.write_file_cmd(arg);
-                }
-            }
-            "wq" => {
-                // force applies to the quit part: quit even if the write fails.
-                if self.write_file_cmd(arg) || force {
-                    self.should_quit = true;
-                }
-            }
-            "clearsearch" | "cs" => {
-                cmd_clear_search(self, 0);
-            }
-            other => {
-                self.status_msg = Some(format!("Unknown command: {other}"));
-            }
-        }
-    }
-
-    /// Serialize the buffer and write it to disk.
-    ///
-    /// If `arg` is `Some(path)`, performs a save-as: writes to the specified
-    /// path and updates `self.file_path` / `self.file_meta` so that subsequent
-    /// `:w` (no argument) targets the same path.
-    ///
-    /// If `arg` is `None`, writes to the current file. Errors with
-    /// "no file name" if the buffer is a scratch buffer with no path.
-    ///
-    /// On success, calls `self.doc.mark_saved()` and sets a status message.
-    /// Returns `true` on success, `false` on any error.
-    fn write_file_cmd(&mut self, arg: Option<&str>) -> bool {
-        let (content, line_count) = {
-            let buf = self.doc.buf();
-            // The rope is always stored LF-normalized; restore CRLF for files that
-            // originally used it so we don't silently change line endings on save.
-            let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
-                buf.to_string().replace('\n', "\r\n")
-            } else {
-                buf.to_string()
-            };
-            // The buffer always ends with a structural '\n', so len_lines() returns
-            // one more than the number of visible lines (ropey counts the empty
-            // string after the final newline as an extra line).
-            let line_count = buf.len_lines().saturating_sub(1);
-            (content, line_count)
-        }; // buf borrow released here
-
-        if let Some(path_str) = arg {
-            // Save-as: write to the specified path.
-            let path = std::path::Path::new(path_str);
-            // Try to preserve existing file's permissions; if the file doesn't
-            // exist yet, write_file_new creates it with default permissions.
-            let result = match crate::io::read_file_meta(path) {
-                Ok(meta) => crate::io::write_file_atomic(&content, &meta).map(|()| meta),
-                Err(_)   => crate::io::write_file_new(&content, path),
-            };
-            match result {
-                Ok(meta) => {
-                    // Store the canonicalized path so file_path and file_meta.resolved_path
-                    // always agree, even when the user supplied a relative or symlink path.
-                    self.file_path = Some(meta.resolved_path.clone());
-                    self.file_meta = Some(meta);
-                    self.doc.mark_saved();
-                    self.status_msg = Some(format!("Written {line_count} lines"));
-                    true
-                }
-                Err(e) => {
-                    self.status_msg = Some(format!("Error: {e}"));
-                    false
-                }
-            }
-        } else {
-            // Write to the current file.
-            let Some(meta) = self.file_meta.as_ref() else {
-                self.status_msg = Some("Error: no file name".into());
-                return false;
-            };
-            match crate::io::write_file_atomic(&content, meta) {
-                Ok(()) => {
-                    self.doc.mark_saved();
-                    self.status_msg = Some(format!("Written {line_count} lines"));
-                    true
-                }
-                Err(e) => {
-                    self.status_msg = Some(format!("Error: {e}"));
-                    false
-                }
-            }
+        match super::commands::find_typed_command(cmd) {
+            Some(tc) => (tc.fun)(self, arg, force),
+            None => { self.status_msg = Some(format!("Unknown command: {cmd}")); }
         }
     }
 }
