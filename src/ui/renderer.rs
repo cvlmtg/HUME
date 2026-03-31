@@ -394,7 +394,7 @@ mod tests {
     use crate::core::document::Document;
     use crate::editor::{Editor, Mode};
     use crate::core::selection::{Selection, SelectionSet};
-    use crate::ui::statusline::{StatusLineConfig, StatusSegment};
+    use crate::ui::statusline::{StatusLineConfig, StatusElement};
     use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -879,7 +879,7 @@ mod tests {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
-            left: vec![StatusSegment::Separator, StatusSegment::FileName],
+            left: vec![StatusElement::Separator, StatusElement::FileName],
             center: vec![],
             right: vec![],
         };
@@ -899,7 +899,7 @@ mod tests {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
-            left: vec![StatusSegment::ModePill, StatusSegment::FileName],
+            left: vec![StatusElement::ModePill, StatusElement::FileName],
             center: vec![],
             right: vec![],
         };
@@ -919,7 +919,7 @@ mod tests {
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
-            left: vec![StatusSegment::ModePill, StatusSegment::ModePill],
+            left: vec![StatusElement::ModePill, StatusElement::ModePill],
             center: vec![],
             right: vec![],
         };
