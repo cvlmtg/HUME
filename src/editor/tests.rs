@@ -1721,6 +1721,15 @@ fn command_clear_search_clears_search() {
 
 // ── Select within (s) ────────────────────────────────────────────────────────
 
+/// `s` is a noop when all selections are collapsed (anchor == head).
+#[test]
+fn select_within_noop_when_collapsed() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('s'));
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+}
+
 /// `s` enters Select mode, sets up minibuffer, and snapshots selections.
 #[test]
 fn select_within_enters_select_mode() {
