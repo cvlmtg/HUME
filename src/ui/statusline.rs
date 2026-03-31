@@ -257,6 +257,7 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
                 (Mode::Insert, _)     => (" INS ", colors.status_insert),
                 (Mode::Search, _)     => (" SRC ", colors.status_search),
                 (Mode::Command, _)    => (" CMD ", colors.status_command),
+                (Mode::Select, _)     => (" SEL ", colors.status_select),
             };
             (label.to_string(), style)
         }

@@ -34,7 +34,7 @@ pub(crate) struct CursorState {
 pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
     match mode {
         Mode::Normal => SetCursorStyle::SteadyBlock,
-        Mode::Insert | Mode::Command | Mode::Search => SetCursorStyle::SteadyBar,
+        Mode::Insert | Mode::Command | Mode::Search | Mode::Select => SetCursorStyle::SteadyBar,
     }
 }
 
@@ -171,7 +171,7 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
         // Command/Search use a visual block cursor rendered directly onto the
         // statusline cell (see MiniBuf cursor patch in render_statusline).
         // No terminal cursor needed.
-        Mode::Command | Mode::Search => None,
+        Mode::Command | Mode::Search | Mode::Select => None,
     }
 }
 

@@ -116,6 +116,60 @@ pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize
         .collect()
 }
 
+// ── find_matches_in_range ─────────────────────────────────────────────────────
+
+/// Return all non-overlapping regex matches within a char range of `buf`.
+///
+/// Only matches that fall entirely within `[start_char, end_char]` (inclusive)
+/// are returned. Results are `(start_char, end_char_inclusive)` pairs in
+/// document order. Zero-width matches are skipped.
+///
+/// Used by `select_matches_within` to find matches bounded to each selection.
+pub(crate) fn find_matches_in_range(
+    buf: &Buffer,
+    regex: &Regex,
+    start_char: usize,
+    end_char: usize, // inclusive
+) -> Vec<(usize, usize)> {
+    let start_byte = buf.char_to_byte(start_char);
+    // end_char is inclusive — we need the byte *after* the last char in range.
+    let end_byte = buf.char_to_byte(end_char + 1);
+
+    let cursor = RopeyCursor::new(buf.full_slice());
+    let mut input = Input::new(cursor);
+    input.set_range(start_byte..end_byte);
+
+    regex
+        .find_iter(input)
+        .filter(|m| m.start() < m.end()) // skip zero-width matches
+        .map(|m| {
+            let s = buf.byte_to_char(m.start());
+            let e = buf.byte_to_char(m.end()) - 1;
+            (s, e)
+        })
+        .collect()
+}
+
+// ── escape_regex ─────────────────────────────────────────────────────────────
+
+/// Escape regex metacharacters so the string matches literally.
+///
+/// Used by `*` (use-selection-as-search) to turn arbitrary selected text
+/// into a pattern that matches exactly that text.
+pub(crate) fn escape_regex(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len() * 2);
+    for c in s.chars() {
+        if matches!(
+            c,
+            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
+}
+
 // ── search_match_info ─────────────────────────────────────────────────────────
 
 /// Return `(current_1based, total)` for a pre-computed match list.
@@ -540,5 +594,80 @@ mod tests {
         let (s, e, w) = find_match_from_cache(single, 2, SearchDirection::Backward).unwrap();
         assert_eq!((s, e), (4, 7));
         assert!(w);
+    }
+
+    // ── find_matches_in_range ────────────────────────────────────────────────
+
+    #[test]
+    fn range_matches_bounded() {
+        // "ab" at (1,2), (3,4), (5,6) in "aababab\n". Range 3..6 should
+        // return the two matches that fall entirely within it.
+        let b = buf("aababab\n");
+        let matches = find_matches_in_range(&b, &re("ab"), 3, 6);
+        assert_eq!(matches, vec![(3, 4), (5, 6)]);
+    }
+
+    #[test]
+    fn range_matches_at_boundaries() {
+        // Range exactly covering one match.
+        let b = buf("aababab\n");
+        let matches = find_matches_in_range(&b, &re("ab"), 1, 2);
+        assert_eq!(matches, vec![(1, 2)]);
+    }
+
+    #[test]
+    fn range_matches_excludes_partial() {
+        // Range 0..1 doesn't fully contain "ab" at (1,2) — only the 'a' at 1.
+        // The regex engine with set_range won't match across the boundary.
+        let b = buf("aababab\n");
+        let matches = find_matches_in_range(&b, &re("ab"), 0, 0);
+        assert_eq!(matches, vec![]);
+    }
+
+    #[test]
+    fn range_matches_no_hits() {
+        let b = buf("hello world\n");
+        let matches = find_matches_in_range(&b, &re("xyz"), 0, 10);
+        assert_eq!(matches, vec![]);
+    }
+
+    #[test]
+    fn range_matches_full_buffer() {
+        // Full buffer range should behave like find_all_matches.
+        let b = buf("aababab\n");
+        let all = find_all_matches(&b, &re("ab"));
+        let ranged = find_matches_in_range(&b, &re("ab"), 0, 7);
+        assert_eq!(all, ranged);
+    }
+
+    // ── escape_regex ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn escape_regex_plain() {
+        assert_eq!(escape_regex("hello"), "hello");
+    }
+
+    #[test]
+    fn escape_regex_metacharacters() {
+        assert_eq!(escape_regex("a.b*c?"), "a\\.b\\*c\\?");
+        assert_eq!(escape_regex("[foo]"), "\\[foo\\]");
+        assert_eq!(escape_regex("(a|b)"), "\\(a\\|b\\)");
+    }
+
+    #[test]
+    fn escape_regex_backslash() {
+        assert_eq!(escape_regex("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn escape_regex_roundtrip() {
+        // Escaped pattern should match the original text literally.
+        let text = "foo.bar*baz";
+        let pattern = escape_regex(text);
+        let r = re(&pattern);
+        let b = buf(&format!("{text}\n"));
+        let matches = find_all_matches(&b, &r);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0], (0, text.len() - 1));
     }
 }

@@ -45,6 +45,7 @@ fn editor_from(input: &str) -> Editor {
         insert_session: None,
         explicit_count: false,
         search: super::SearchState::default(),
+        pre_select_sels: None,
     }
 }
 

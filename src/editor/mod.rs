@@ -95,6 +95,9 @@ pub(super) struct FindChar {
 /// `Command` is entered via `:` and exited via `Enter` (execute) or `Esc` (cancel).
 /// `Search` is entered via `/` (forward) or `?` (backward); live highlights update
 /// on every keystroke; `Enter` confirms, `Esc` restores the pre-search position.
+/// `Select` is entered via `s`; user types a regex and all matches within the
+/// current selections become new selections (multi-cursor). Live preview updates
+/// on each keystroke; `Enter` confirms, `Esc` restores original selections.
 /// The keymap is completely different in each mode — `handle_key` dispatches
 /// to the appropriate handler accordingly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +106,7 @@ pub(crate) enum Mode {
     Insert,
     Command,
     Search,
+    Select,
 }
 
 // ── Search state ──────────────────────────────────────────────────────────────
@@ -281,6 +285,11 @@ pub(crate) struct Editor {
 
     // ── Search ────────────────────────────────────────────────────────────────
     pub(super) search: SearchState,
+
+    // ── Select (s) ───────────────────────────────────────────────────────────
+    /// Snapshot of selections taken when entering Select mode (`s`).
+    /// Restored on cancel; discarded on confirm.
+    pub(super) pre_select_sels: Option<SelectionSet>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -359,6 +368,7 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
+            pre_select_sels: None,
         })
     }
 
@@ -551,6 +561,7 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
+            pre_select_sels: None,
         }
     }
 

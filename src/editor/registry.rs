@@ -388,6 +388,10 @@ impl CommandRegistry {
         editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
         editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
 
+        // ── Editor commands — select ─────────────────────────────────────────
+        editor_cmd!("select-within",          "Select regex matches within selections (`s`).",           cmd_select_within);
+        editor_cmd!("use-selection-as-search", "Use primary selection as search pattern (`*`).",         cmd_use_selection_as_search);
+
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
     }
@@ -417,11 +421,12 @@ mod tests {
     ///    1 replace editor command
     ///    1 repeat-last-action editor command
     ///    7 search editor commands (search-forward/backward, search-next/prev, extend variants, clear-search)
+    ///    2 select editor commands (select-within, use-selection-as-search)
     ///    4 page-scroll editor commands
     ///    1 quit editor command
     ///   ──
-    ///  134 total
-    const EXPECTED_COMMAND_COUNT: usize = 134;
+    ///  136 total
+    const EXPECTED_COMMAND_COUNT: usize = 136;
 
     #[test]
     fn registry_has_expected_count() {

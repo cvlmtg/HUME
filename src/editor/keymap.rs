@@ -415,6 +415,8 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('?'), cmd!("search-backward"));
     t.bind_leaf(key!('n'), cmd!("search-next", "extend-search-next"));
     t.bind_leaf(key!('N'), cmd!("search-prev", "extend-search-prev"));
+    t.bind_leaf(key!('s'), cmd!("select-within"));
+    t.bind_leaf(key!('*'), cmd!("use-selection-as-search"));
 
     // ── Goto prefix ───────────────────────────────────────────────────────────
     // `g` → second key (goto commands, 2-key sequence).
