@@ -133,7 +133,7 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
     let mut hl = HighlightSet::new();
 
     // ── Search match highlights ───────────────────────────────────────────────
-    for &(start, end_incl) in &editor.search.matches {
+    for &(start, end_incl) in editor.search.matches() {
         hl.push(start, end_incl, editor.colors.search_match);
     }
 

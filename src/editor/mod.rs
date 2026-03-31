@@ -110,14 +110,15 @@ pub(crate) struct SearchState {
     pub pre_search_sels: Option<SelectionSet>,
     /// Compiled regex from the last confirmed (or in-progress) search pattern.
     /// `None` until a valid pattern is typed. Reused by `n`/`N` without recompiling.
-    pub regex: Option<regex_cursor::engines::meta::Regex>,
+    /// Mutate only through [`set_regex`] to keep the match cache coherent.
+    regex: Option<regex_cursor::engines::meta::Regex>,
     /// All non-overlapping matches of `regex` in the current buffer,
     /// as `(start_char, end_char_inclusive)` pairs in document order.
     /// Kept up to date by `update_search_cache`; empty when `regex` is `None`.
-    pub matches: Vec<(usize, usize)>,
+    matches: Vec<(usize, usize)>,
     /// Cached `(current_1based, total)` derived from `matches` and the
     /// primary cursor position. `None` when `regex` is `None`.
-    pub match_count: Option<(usize, usize)>,
+    match_count: Option<(usize, usize)>,
 
     // ── Cache-invalidation keys ───────────────────────────────────────────────
     // Stored so `update_search_cache` can skip recomputation when nothing changed.
@@ -171,6 +172,18 @@ impl SearchState {
         self.match_count = None;
         self.cache_revision = RevisionId(usize::MAX);
         self.cache_head = usize::MAX;
+    }
+
+    pub(crate) fn regex(&self) -> Option<&regex_cursor::engines::meta::Regex> {
+        self.regex.as_ref()
+    }
+
+    pub(crate) fn matches(&self) -> &[(usize, usize)] {
+        &self.matches
+    }
+
+    pub(crate) fn match_count(&self) -> Option<(usize, usize)> {
+        self.match_count
     }
 }
 

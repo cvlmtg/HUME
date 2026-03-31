@@ -440,19 +440,12 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
-            MiniBufferEvent::Confirm(_) => {
+            MiniBufferEvent::Confirm(_) | MiniBufferEvent::ConfirmEmpty => {
                 self.execute_command();
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
-            MiniBufferEvent::ConfirmEmpty => {
-                // Empty Enter also executes (execute_command handles empty input gracefully).
-                self.execute_command();
-                self.set_mode(Mode::Normal);
-                self.minibuf = None;
-            }
-            // Backspace at column 0 (EmptiedByBackspace from an empty buffer) cancels
-            // (Kakoune behaviour). If it just emptied the input, also cancel.
+            // Backspace at column 0 or on the last character cancels (Kakoune behaviour).
             MiniBufferEvent::EmptiedByBackspace => {
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;

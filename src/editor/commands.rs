@@ -378,8 +378,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
             Err(_) => return,
         }
     }
-    // Invariant: the block above guarantees `search.regex` is `Some` here.
-    let regex = ed.search.regex.as_ref().unwrap();
+    let Some(regex) = &ed.search.regex else { return };
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
