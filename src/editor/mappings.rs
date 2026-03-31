@@ -474,7 +474,7 @@ impl Editor {
         if let Some(sels) = self.pre_select_sels.take() {
             self.doc.set_selections(sels);
         }
-        self.search.set_regex(None);
+        self.search.clear();
         self.mode = Mode::Normal;
         self.minibuf = None;
     }
