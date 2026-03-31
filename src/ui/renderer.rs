@@ -169,7 +169,8 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
         Mode::Normal => None,
         Mode::Insert => cursor_screen_pos(editor),
         // Command/Search use a visual block cursor rendered directly onto the
-        // statusline cell (see render_command_line). No terminal cursor needed.
+        // statusline cell (see MiniBuf cursor patch in render_statusline).
+        // No terminal cursor needed.
         Mode::Command | Mode::Search => None,
     }
 }
@@ -813,7 +814,8 @@ mod tests {
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        // ":set" with cursor at end → cursor cell at col 5, row 2.
+        // " CMD │ :set" with cursor at end → cursor cell at col 11, row 2.
+        // Layout: " CMD " (5) + "│" (1) + " " gap (1) + ":set" (4) = 11
         let editor = editor_for(doc, v)
             .with_mode(Mode::Command)
             .with_minibuf(':', "set");
@@ -821,13 +823,14 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((5, 2)).unwrap();
+        let cell = screen.cell((11, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
     #[test]
     fn command_mode_cursor_empty_input() {
-        // With empty input the cursor cell is at col 2 (right after the prompt).
+        // With empty input the cursor cell is at col 8 (right after the prompt).
+        // Layout: " CMD " (5) + "│" (1) + " " gap (1) + ":" (1) = 8
         use ratatui::layout::Rect;
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
@@ -839,7 +842,7 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((2, 2)).unwrap();
+        let cell = screen.cell((8, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
@@ -963,8 +966,8 @@ mod tests {
 
     #[test]
     fn search_match_count_in_search_mode_minibuf() {
-        // In Search mode the mini-buffer replaces the statusline.
-        // The match count should appear right-aligned on the command line row.
+        // In Search mode the statusline shows the MiniBuf element on the left
+        // and the user's right section (including SearchMatches) on the right.
         let doc = doc_at("hello world hello\n", 0);
         let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v)
@@ -975,7 +978,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hello world hello
         ~
-         /hello                 [1/2]");
+         SRC │ /hello       [1/2] 1:1");
     }
 
     #[test]
@@ -992,9 +995,10 @@ mod tests {
     }
 
     #[test]
-    fn search_match_count_absent_in_command_mode() {
-        // After confirming a search, entering Command mode must NOT show the
-        // match count on the command line — that would be confusing.
+    fn search_match_count_shown_in_command_mode() {
+        // After confirming a search, entering Command mode shows the match
+        // count in the right section — it's part of the user's statusline
+        // config and applies uniformly across all modes.
         let doc = doc_at("hello world hello\n", 0);
         let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v)
@@ -1005,7 +1009,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hello world hello
         ~
-         :w");
+         CMD │ :w           [1/2] 1:1");
     }
 
     // ── Dirty indicator ───────────────────────────────────────────────────────
