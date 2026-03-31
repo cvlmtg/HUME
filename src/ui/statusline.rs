@@ -9,7 +9,7 @@ use crate::core::grapheme::grapheme_count;
 use crate::editor::{Editor, Mode};
 
 /// Hardcoded left section for Command/Search modes.
-const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::Mode, StatusElement::Separator, StatusElement::MiniBuf];
+const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 
 /// Fill an entire statusline row with spaces in the base style.
 ///
@@ -33,10 +33,10 @@ fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors,
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusElement {
-    /// The mode indicator: `" NOR "`, `" INS "`, `" EXT "`, `" CMD "`, or `" SRC "`.
+    /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, or `"SRC"`.
     ///
-    /// Rendered with the per-mode color. The 5-char width includes leading and
-    /// trailing spaces so it naturally fills a section without needing a separator.
+    /// Rendered with the per-mode color. Contains no padding — the renderer's
+    /// edge padding and inter-element spacing handle surrounding whitespace.
     Mode,
     /// A thin vertical bar `│` in the base statusline style.
     ///
@@ -81,7 +81,7 @@ pub(crate) enum StatusElement {
 /// the editor looks identical with no configuration:
 ///
 /// ```text
-///  NOR │ notes.txt              42:7
+/// 42:7 notes.txt              │ NOR
 /// ```
 #[derive(Debug, Clone)]
 pub(crate) struct StatusLineConfig {
@@ -97,16 +97,16 @@ impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {
             left: vec![
-                StatusElement::Mode,
-                StatusElement::Separator,
+                StatusElement::Position,
                 StatusElement::FileName,
-                StatusElement::DirtyIndicator
+                StatusElement::DirtyIndicator,
             ],
             center: vec![],
             right: vec![
                 StatusElement::SearchMatches,
-                StatusElement::Position,
-                StatusElement::KittyProtocol
+                StatusElement::KittyProtocol,
+                StatusElement::Separator,
+                StatusElement::Mode,
             ],
         }
     }
@@ -186,10 +186,13 @@ fn render_statusline(
     // Fill the entire row with the base statusline style first.
     fill_row(screen_buf, colors, area, y);
 
-    // Render each section into a sequence of styled spans.
-    let left_spans = render_section(left_elems, editor);
+    // Render each section into a sequence of styled spans, then pad the
+    // outer edges: one space before the first left element and one space
+    // after the last right element. This keeps individual elements free
+    // of edge-awareness — they only worry about inter-element spacing.
+    let left_spans = pad_left(render_section(left_elems, editor), colors);
     let center_spans = render_section(center_elems, editor);
-    let right_spans = render_section(right_elems, editor);
+    let right_spans = pad_right(render_section(right_elems, editor), colors);
 
     let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);
@@ -199,8 +202,8 @@ fn render_statusline(
     let left_x = area.x;
     let left_end = left_x + left_w;
 
-    // Right section: 1 space of right margin.
-    let right_x = area.right().saturating_sub(right_w + 1);
+    // Right section: padding is already included in the spans.
+    let right_x = area.right().saturating_sub(right_w);
     let right_fits = right_x >= left_end;
 
     // Center section: centered in the gap between left and right.
@@ -227,7 +230,8 @@ fn render_statusline(
     // This workaround goes away once the theme uses explicit bg colors.
     if let Some(mb) = &editor.minibuf {
         let mb_offset = last_span_offset(&left_spans);
-        let prompt_w = mb.prompt.width().unwrap_or(0) as u16;
+        // +1 for the trailing space between prompt and input text.
+        let prompt_w = 1 + mb.prompt.width().unwrap_or(0) as u16;
         let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
         let cursor_x = left_x + mb_offset + prompt_w + input_before_cursor;
         if cursor_x < area.right() {
@@ -249,15 +253,13 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
     let colors = &editor.colors;
     match seg {
         StatusElement::Mode => {
-            // The mode indicator includes a leading and trailing space so its
-            // neighbors don't need to add their own padding.
             let (label, style) = match (editor.mode, editor.extend) {
-                (Mode::Normal, true)  => (" EXT ", colors.status_extend),
-                (Mode::Normal, false) => (" NOR ", colors.status_normal),
-                (Mode::Insert, _)     => (" INS ", colors.status_insert),
-                (Mode::Search, _)     => (" SRC ", colors.status_search),
-                (Mode::Command, _)    => (" CMD ", colors.status_command),
-                (Mode::Select, _)     => (" SEL ", colors.status_select),
+                (Mode::Normal, true)  => ("EXT", colors.status_extend),
+                (Mode::Normal, false) => ("NOR", colors.status_normal),
+                (Mode::Insert, _)     => ("INS", colors.status_insert),
+                (Mode::Search, _)     => ("SRC", colors.status_search),
+                (Mode::Command, _)    => ("CMD", colors.status_command),
+                (Mode::Select, _)     => ("SEL", colors.status_select),
             };
             (label.to_string(), style)
         }
@@ -302,16 +304,21 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
         }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.search.match_count() {
-                let w = if editor.search.wrapped() { "W " } else { "" };
-                (format!("{w}[{current}/{total}]"), colors.statusline)
+                if total == 0 {
+                    (String::new(), colors.statusline)
+                } else {
+                    let w = if editor.search.wrapped() { "W " } else { "" };
+                    (format!("{w}[{current}/{total}]"), colors.statusline)
+                }
             } else {
                 (String::new(), colors.statusline)
             }
         }
         StatusElement::MiniBuf => {
             if let Some(mb) = &editor.minibuf {
-                let mut text = String::with_capacity(1 + mb.input.len());
+                let mut text = String::with_capacity(2 + mb.input.len());
                 text.push(mb.prompt);
+                text.push(' ');
                 text.push_str(&mb.input);
                 (text, colors.statusline)
             } else {
@@ -362,6 +369,36 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
         }
     }
 
+    spans
+}
+
+// ── Edge padding ─────────────────────────────────────────────────────────────
+
+/// Prepend a 1-space padding span to the left section.
+///
+/// This gives every left section a consistent left margin without requiring
+/// individual elements to be edge-aware.
+fn pad_left(
+    mut spans: Vec<(String, Style)>,
+    colors: &crate::ui::theme::EditorColors,
+) -> Vec<(String, Style)> {
+    if !spans.is_empty() {
+        spans.insert(0, (" ".to_string(), colors.statusline));
+    }
+    spans
+}
+
+/// Append a 1-space padding span to the right section.
+///
+/// Mirrors [`pad_left`] for the trailing edge, replacing the old hardcoded
+/// `+1` right-margin offset in the placement arithmetic.
+fn pad_right(
+    mut spans: Vec<(String, Style)>,
+    colors: &crate::ui::theme::EditorColors,
+) -> Vec<(String, Style)> {
+    if !spans.is_empty() {
+        spans.push((" ".to_string(), colors.statusline));
+    }
     spans
 }
 

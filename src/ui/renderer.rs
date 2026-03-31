@@ -431,11 +431,12 @@ mod tests {
         let doc = doc_at("hello\nworld\n", 0);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 4);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello
           2 world
         ~
-         NOR │ [scratch]1:1");
+         1:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -444,11 +445,12 @@ mod tests {
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 4);
         // Empty buffer has one visible line (the structural \n) with no content.
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1
         ~
         ~
-         NOR │ [scratch]1:1");
+         1:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -457,11 +459,12 @@ mod tests {
         let doc = doc_at("hello\nworld\n", 6);
         let v = view(&doc, 20, 3, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 4);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello
           2 world
         ~
-         NOR │ [scratch]2:1");
+         2:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -471,10 +474,11 @@ mod tests {
         let editor = editor_for(doc, v)
             .with_file_path(std::path::PathBuf::from("/home/user/notes.txt"));
         let out = render_to_string(&editor, 20, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hi
         ~
-         NOR │ notes.txt1:1");
+         1:1 notes.txt│ NOR
+        ");
     }
 
     #[test]
@@ -482,12 +486,13 @@ mod tests {
         let doc = doc_at("a\nb\nc\n", 0);
         let v = view(&doc, 20, 4, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 5);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 a
           2 b
           3 c
         ~
-         NOR │ [scratch]1:1");
+         1:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -496,12 +501,13 @@ mod tests {
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Relative);
         let out = render_to_string(&editor_for(doc, v), 20, 5);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 a
           0 b
           1 c
         ~
-         NOR │ [scratch]2:1");
+         2:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -510,12 +516,13 @@ mod tests {
         let doc = doc_at("a\nb\nc\n", 2); // char 2 = start of "b\n"
         let v = view(&doc, 20, 4, LineNumberStyle::Hybrid);
         let out = render_to_string(&editor_for(doc, v), 20, 5);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 a
           2 b
           1 c
         ~
-         NOR │ [scratch]2:1");
+         2:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -524,13 +531,14 @@ mod tests {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 5, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 6);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hi
         ~
         ~
         ~
         ~
-         NOR │ [scratch]1:1");
+         1:1 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -542,10 +550,11 @@ mod tests {
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let out = render_to_string(&editor_for(doc, v), 20, 3);
         // Position should show 1:5 (4 graphemes before cursor, so col 5).
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 café
         ~
-         NOR │ [scratch]1:5");
+         1:5 [scratch]│ NOR
+        ");
     }
 
     #[test]
@@ -787,10 +796,11 @@ mod tests {
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
         let out = render_to_string(&editor, 20, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hi
         ~
-         INS │ [scratch]1:1");
+         1:1 [scratch]│ INS
+        ");
     }
 
     #[test]
@@ -799,10 +809,11 @@ mod tests {
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_extend(true);
         let out = render_to_string(&editor, 20, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hi
         ~
-         EXT │ [scratch]1:1");
+         1:1 [scratch]│ EXT
+        ");
     }
 
     #[test]
@@ -814,8 +825,8 @@ mod tests {
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        // " CMD │ :set" with cursor at end → cursor cell at col 11, row 2.
-        // Layout: " CMD " (5) + "│" (1) + " " gap (1) + ":set" (4) = 11
+        // " : set" with cursor at end → cursor cell at col 6, row 2.
+        // Layout: " " pad (1) + ":" (1) + " " (1) + "set" (3) = 6
         let editor = editor_for(doc, v)
             .with_mode(Mode::Command)
             .with_minibuf(':', "set");
@@ -823,14 +834,14 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((11, 2)).unwrap();
+        let cell = screen.cell((6, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
     #[test]
     fn command_mode_cursor_empty_input() {
-        // With empty input the cursor cell is at col 8 (right after the prompt).
-        // Layout: " CMD " (5) + "│" (1) + " " gap (1) + ":" (1) = 8
+        // With empty input the cursor cell is at col 3 (after prompt + space).
+        // Layout: " " pad (1) + ":" (1) + " " (1) = 3
         use ratatui::layout::Rect;
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
@@ -842,7 +853,7 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((8, 2)).unwrap();
+        let cell = screen.cell((3, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
@@ -889,16 +900,19 @@ mod tests {
         let editor = editor_for(doc, v).with_statusline_config(config);
         let out = render_to_string(&editor, 20, 2);
         // The gap span produces exactly one space between │ and [scratch].
-        insta::assert_snapshot!(out, @r"
-          1
-        │ [scratch]");
+        insta::assert_snapshot!(out, @"
+         1
+        │ [scratch]
+        ");
     }
 
     #[test]
     fn statusline_join_one_space_boundary_joins_directly() {
-        // Mode ends with ' ' (space), FileName starts with '[' (non-space).
-        // Rule (b): exactly one boundary has a space, so segments join directly —
-        // no extra space is inserted and no space is trimmed.
+        // pad_left inserts a " " span, then Mode ("NOR") starts with a
+        // non-space. The pad ends with ' ', Mode starts with 'N' → rule (b):
+        // exactly one boundary has a space, so they join directly.
+        // Then Mode ends with 'R', FileName starts with '[' → rule (a):
+        // a gap span is inserted.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
@@ -908,7 +922,7 @@ mod tests {
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
         let out = render_to_string(&editor, 20, 2);
-        // Mode's trailing space serves as the single separator — no double space.
+        // " " pad + "NOR" + " " gap + "[scratch]"
         insta::assert_snapshot!(out, @r"
           1
          NOR [scratch]");
@@ -916,9 +930,8 @@ mod tests {
 
     #[test]
     fn statusline_join_both_space_trims_duplicate() {
-        // Two Modes: first ends ' ', second starts ' '.
-        // Rule (c): leading space of the second pill is trimmed so there is
-        // exactly one space between them, not two.
+        // Two Modes: "NOR" + "NOR". Neither has spaces, so rule (a) inserts
+        // a gap between them. pad_left adds the leading space.
         let doc = doc_at("\n", 0);
         let v = view(&doc, 20, 1, LineNumberStyle::Absolute);
         let config = StatusLineConfig {
@@ -928,7 +941,7 @@ mod tests {
         };
         let editor = editor_for(doc, v).with_statusline_config(config);
         let out = render_to_string(&editor, 20, 2);
-        // " NOR " + trim(" NOR ") = " NOR NOR " — one space between, not two.
+        // " " pad + "NOR" + " " gap + "NOR"
         insta::assert_snapshot!(out, @r"
           1
          NOR NOR");
@@ -944,10 +957,11 @@ mod tests {
         let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_search_regex("hello");
         let out = render_to_string(&editor, 30, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         NOR │ [scratch]    [1/2] 1:1");
+         1:1 [scratch]    [1/2] │ NOR
+        ");
     }
 
     #[test]
@@ -958,10 +972,11 @@ mod tests {
         let v = view(&doc, 30, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_search_regex("hello");
         let out = render_to_string(&editor, 30, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         NOR │ [scratch]    [0/2] 1:6");
+         1:6 [scratch]    [0/2] │ NOR
+        ");
     }
 
     #[test]
@@ -975,10 +990,11 @@ mod tests {
             .with_minibuf('/', "hello")
             .with_search_regex("hello");
         let out = render_to_string(&editor, 30, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         SRC │ /hello       [1/2] 1:1");
+         / hello          [1/2] │ SRC
+        ");
     }
 
     #[test]
@@ -988,10 +1004,11 @@ mod tests {
         let v = view(&doc, 25, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let out = render_to_string(&editor, 25, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello
         ~
-         NOR │ [scratch]     1:1");
+         1:1 [scratch]     │ NOR
+        ");
     }
 
     #[test]
@@ -1006,10 +1023,11 @@ mod tests {
             .with_mode(Mode::Command)
             .with_minibuf(':', "w");
         let out = render_to_string(&editor, 30, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         CMD │ :w           [1/2] 1:1");
+         : w              [1/2] │ CMD
+        ");
     }
 
     // ── Dirty indicator ───────────────────────────────────────────────────────
@@ -1023,10 +1041,11 @@ mod tests {
         let editor = editor_for(doc, v)
             .with_file_path(std::path::PathBuf::from("/tmp/notes.txt"));
         let out = render_to_string(&editor, 25, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 xhello
         ~
-         NOR │ notes.txt [+] 1:2");
+         1:2 notes.txt [+] │ NOR
+        ");
     }
 
     #[test]
@@ -1036,9 +1055,10 @@ mod tests {
         let editor = editor_for(doc, v)
             .with_file_path(std::path::PathBuf::from("/tmp/notes.txt"));
         let out = render_to_string(&editor, 25, 3);
-        insta::assert_snapshot!(out, @r"
+        insta::assert_snapshot!(out, @"
           1 hello
         ~
-         NOR │ notes.txt     1:1");
+         1:1 notes.txt     │ NOR
+        ");
     }
 }
