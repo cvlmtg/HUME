@@ -280,6 +280,14 @@ impl Document {
     }
 
     /// True if an edit group is currently open.
+    /// The current revision in the undo history.
+    ///
+    /// Changes every time the buffer content changes (edits, undo, redo).
+    /// Useful for cache-invalidation checks without diffing the buffer.
+    pub(crate) fn revision_id(&self) -> RevisionId {
+        self.history.current_id()
+    }
+
     pub(crate) fn is_group_open(&self) -> bool {
         self.group.is_some()
     }

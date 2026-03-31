@@ -1,6 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use regex_cursor::engines::meta::Regex;
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use super::commands::{cmd_clear_search, search_sel};
@@ -332,87 +331,42 @@ impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────
 
     fn handle_search(&mut self, key: KeyEvent) {
-        match key.code {
-            // ── Cancel ────────────────────────────────────────────────────────
-            // Restore the pre-search selections, clear all search state, and
-            // return to Normal mode.
-            KeyCode::Esc => self.cancel_search(),
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.cancel_search();
+        use super::MiniBufferEvent;
+        let event = match self.minibuf.as_mut() {
+            Some(mb) => mb.handle_key(key),
+            None => return,
+        };
+        match event {
+            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_search(),
+            MiniBufferEvent::Confirm(pattern) => {
+                // Persist pattern in 's' register for future n/N.
+                self.registers.write(SEARCH_REGISTER, vec![pattern]);
+                // Keep the position that live search already moved us to;
+                // discard the pre-search snapshot.
+                self.search.pre_search_sels = None;
+                // search.regex stays alive for immediate n/N without recompile.
+                // set_mode does not touch search state, so it is safe to call here.
+                self.set_mode(Mode::Normal);
+                self.minibuf = None;
             }
-
-            // ── Confirm ───────────────────────────────────────────────────────
-            // Write the pattern to the 's' register, keep the found position,
-            // and return to Normal mode.
-            KeyCode::Enter => {
-                let pattern = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
-                if pattern.is_empty() {
-                    // Empty Enter acts like Esc.
-                    self.cancel_search();
-                } else {
-                    // Persist pattern in 's' register for future n/N.
-                    self.registers.write(SEARCH_REGISTER, vec![pattern]);
-                    // Keep the position that live search already moved us to;
-                    // discard the pre-search snapshot.
-                    self.pre_search_sels = None;
-                    // Keep search_regex alive for immediate n/N without recompile.
-                    // set_mode(Normal) would clear it via the Search→Normal arm, so
-                    // we transition manually to preserve it.
-                    self.mode = Mode::Normal;
-                    self.minibuf = None;
+            MiniBufferEvent::EmptiedByBackspace => {
+                // Restore position when pattern is fully erased, but stay in Search mode.
+                if let Some(sels) = self.search.pre_search_sels.clone() {
+                    self.doc.set_selections(sels);
                 }
+                self.search.set_regex(None);
             }
-
-            // ── Edit input ────────────────────────────────────────────────────
-            KeyCode::Backspace => {
-                let is_now_empty = self.minibuf.as_mut().map_or(false, |mb| {
-                    if mb.cursor > 0 {
-                        let prev = prev_grapheme_byte(&mb.input, mb.cursor);
-                        mb.input.drain(prev..mb.cursor);
-                        mb.cursor = prev;
-                    }
-                    mb.input.is_empty()
-                });
-                if is_now_empty {
-                    // Restore position when pattern is fully erased, but stay in search.
-                    if let Some(sels) = self.pre_search_sels.clone() {
-                        self.doc.set_selections(sels);
-                    }
-                    self.search_regex = None;
-                } else {
-                    self.update_live_search();
-                }
-            }
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.input.insert(mb.cursor, ch);
-                    mb.cursor += ch.len_utf8();
-                }
-                self.update_live_search();
-            }
-
-            // ── Cursor movement ───────────────────────────────────────────────
-            KeyCode::Left => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.cursor = prev_grapheme_byte(&mb.input, mb.cursor);
-                }
-            }
-            KeyCode::Right => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.cursor = next_grapheme_byte(&mb.input, mb.cursor);
-                }
-            }
-
-            _ => {}
+            MiniBufferEvent::Edited => self.update_live_search(),
+            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
         }
     }
 
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
-        if let Some(sels) = self.pre_search_sels.take() {
+        if let Some(sels) = self.search.pre_search_sels.take() {
             self.doc.set_selections(sels);
         }
-        self.search_regex = None;
+        self.search.clear();
         self.mode = Mode::Normal;
         self.minibuf = None;
     }
@@ -431,16 +385,16 @@ impl Editor {
             Ok(r) => r,
             Err(_) => {
                 // Invalid regex in progress — don't move; just clear cached regex.
-                self.search_regex = None;
+                self.search.set_regex(None);
                 return;
             }
         };
 
-        let direction = self.search_direction;
+        let direction = self.search.direction;
 
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
-        let from_char = match &self.pre_search_sels {
+        let from_char = match &self.search.pre_search_sels {
             Some(sels) => {
                 let buf = self.doc.buf();
                 let primary = sels.primary();
@@ -456,7 +410,7 @@ impl Editor {
             Some((start, end_incl, _wrapped)) => {
                 let anchor = if self.extend {
                     // Extend from the original anchor.
-                    Some(self.pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
+                    Some(self.search.pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
                 } else {
                     None
                 };
@@ -464,71 +418,46 @@ impl Editor {
             }
             None => {
                 // No match — restore position to pre-search.
-                if let Some(sels) = self.pre_search_sels.clone() {
+                if let Some(sels) = self.search.pre_search_sels.clone() {
                     self.doc.set_selections(sels);
                 }
             }
         }
 
-        self.search_regex = Some(regex);
+        self.search.set_regex(Some(regex));
     }
 
     // ── Command mode ──────────────────────────────────────────────────────────
 
     fn handle_command(&mut self, key: KeyEvent) {
-        match key.code {
-            // ── Cancel ────────────────────────────────────────────────────────
-            KeyCode::Esc => {
+        use super::MiniBufferEvent;
+        let event = match self.minibuf.as_mut() {
+            Some(mb) => mb.handle_key(key),
+            None => return,
+        };
+        match event {
+            MiniBufferEvent::Cancel => {
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
-            // Ctrl+C acts as Esc in all modes (Vim convention).
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.set_mode(Mode::Normal);
-                self.minibuf = None;
-            }
-
-            // ── Execute ───────────────────────────────────────────────────────
-            KeyCode::Enter => {
+            MiniBufferEvent::Confirm(_) => {
                 self.execute_command();
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
-
-            // ── Edit input ────────────────────────────────────────────────────
-            KeyCode::Backspace => {
-                if let Some(mb) = &mut self.minibuf {
-                    if mb.cursor == 0 {
-                        // Backspace on empty / at start cancels (Kakoune behaviour).
-                        self.set_mode(Mode::Normal);
-                        self.minibuf = None;
-                    } else {
-                        let prev = prev_grapheme_byte(&mb.input, mb.cursor);
-                        mb.input.drain(prev..mb.cursor);
-                        mb.cursor = prev;
-                    }
-                }
+            MiniBufferEvent::ConfirmEmpty => {
+                // Empty Enter also executes (execute_command handles empty input gracefully).
+                self.execute_command();
+                self.set_mode(Mode::Normal);
+                self.minibuf = None;
             }
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.input.insert(mb.cursor, ch);
-                    mb.cursor += ch.len_utf8();
-                }
+            // Backspace at column 0 (EmptiedByBackspace from an empty buffer) cancels
+            // (Kakoune behaviour). If it just emptied the input, also cancel.
+            MiniBufferEvent::EmptiedByBackspace => {
+                self.set_mode(Mode::Normal);
+                self.minibuf = None;
             }
-
-            // ── Cursor movement ───────────────────────────────────────────────
-            KeyCode::Left => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.cursor = prev_grapheme_byte(&mb.input, mb.cursor);
-                }
-            }
-            KeyCode::Right => {
-                if let Some(mb) = &mut self.minibuf {
-                    mb.cursor = next_grapheme_byte(&mb.input, mb.cursor);
-                }
-            }
-
-            _ => {}
+            MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
         }
     }
 
@@ -660,21 +589,3 @@ impl Editor {
     }
 }
 
-// ── Mini-buffer grapheme helpers ──────────────────────────────────────────────
-
-/// Return the byte offset of the grapheme cluster that ends at `cursor`.
-///
-/// If `cursor` is already at 0 (start of string), returns 0.
-fn prev_grapheme_byte(s: &str, cursor: usize) -> usize {
-    // Walk graphemes in the slice before the cursor; the last one's start index
-    // is where the cursor should move to.
-    s[..cursor].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0)
-}
-
-/// Return the byte offset immediately after the grapheme cluster that starts at `cursor`.
-///
-/// If `cursor` is at or past the end of the string, returns `s.len()`.
-fn next_grapheme_byte(s: &str, cursor: usize) -> usize {
-    // The slice `s[cursor..]` starts at the cursor; take the first grapheme's length.
-    s[cursor..].grapheme_indices(true).next().map(|(_, g)| cursor + g.len()).unwrap_or(s.len())
-}
