@@ -179,8 +179,8 @@ impl Editor {
         // ── Dot-repeat recording ──────────────────────────────────────────────
         // Trie-matched keys (Esc, arrows) returned early above, so everything
         // reaching here is a text-modifying key — safe to record for replay.
-        if let Some(ref mut rec) = self.insert_recording {
-            rec.push(key);
+        if let Some(ref mut session) = self.insert_session {
+            session.keystrokes.push(key);
         }
 
         // ── Character input ───────────────────────────────────────────────────
@@ -271,9 +271,10 @@ impl Editor {
             }
 
             // Record repeatable actions for `.` replay.
-            // Skip during replay (would overwrite last_action) and for
-            // non-repeatable commands (motions, selections, undo, etc.).
-            if !self.replaying && reg_cmd.is_repeatable() {
+            // Skips non-repeatable commands (motions, selections, undo, etc.).
+            // During replay `cmd_repeat` restores `last_action` after the fact,
+            // so any transient overwrite here is harmless.
+            if reg_cmd.is_repeatable() {
                 self.last_action = Some(super::RepeatableAction {
                     command: resolved,
                     count,
