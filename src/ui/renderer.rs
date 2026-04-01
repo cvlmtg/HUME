@@ -7,12 +7,13 @@ use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::core::grapheme::display_col_in_line;
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
 use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
-use crate::ui::statusline::{grapheme_col_in_line, render_bottom_row};
+use crate::ui::statusline::render_bottom_row;
 use crate::ui::theme::EditorColors;
 use crate::ui::view::LineNumberStyle;
 
@@ -176,6 +177,10 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
 }
 
 /// Map the primary cursor to screen (col, row), or `None` if scrolled out.
+///
+/// Uses display-width columns (not grapheme count) so that CJK double-width
+/// characters are positioned correctly. Subtracts `col_offset` to account for
+/// horizontal scrolling.
 fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
     let buf = editor.doc.buf();
     let view = &editor.view;
@@ -185,8 +190,13 @@ fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
     if screen_row >= view.height {
         return None;
     }
-    let col = grapheme_col_in_line(buf, cursor_line, head);
-    Some(((view.gutter_width + col) as u16, screen_row as u16))
+    let display_col = display_col_in_line(buf, cursor_line, head);
+    let screen_col = display_col.checked_sub(view.col_offset)?;
+    let content_width = view.width.saturating_sub(view.gutter_width);
+    if screen_col >= content_width {
+        return None;
+    }
+    Some(((view.gutter_width + screen_col) as u16, screen_row as u16))
 }
 
 // ── Gutter ────────────────────────────────────────────────────────────────────
@@ -323,25 +333,52 @@ fn render_content(
     // common case for typical line lengths), falling back to an owned String
     // only when the line spans multiple rope chunks.
     let content_cow: Cow<str> = dl.content.into();
-    let mut col: u16 = 0;
     let mut char_pos = char_offset;
 
     // Show selections in Normal and Search mode; suppress in Insert (bar cursor does the job).
     let show_sels = mode != Mode::Insert;
 
+    // `display_col` tracks the absolute display column from the start of the
+    // line (before horizontal scrolling). `col_offset` is how many display
+    // columns have been scrolled off the left edge. Only graphemes whose
+    // display_col falls within [col_offset, col_offset + width) are rendered.
+    let col_offset = editor.view.col_offset;
+    let mut display_col: usize = 0;
+
     for grapheme in content_cow.graphemes(true) {
         let gw = UnicodeWidthStr::width(grapheme) as u16;
         // Combining marks have display width 0 — advance at least 1 col so
         // they don't stack on the gutter edge.
-        let advance = gw.max(1);
+        let advance = gw.max(1) as usize;
 
-        if col + advance > width {
+        // Grapheme is entirely before the visible window — skip it.
+        if display_col + advance <= col_offset {
+            display_col += advance;
+            char_pos += grapheme.chars().count();
+            continue;
+        }
+
+        // A wide character (e.g. CJK) might straddle the left edge: its
+        // first column is before col_offset but its second column is visible.
+        // Render a placeholder space so the partial char appears as a gap
+        // rather than being silently swallowed.
+        if display_col < col_offset {
+            let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
+            screen_buf.set_string(x, y, " ", style);
+            display_col += advance;
+            char_pos += grapheme.chars().count();
+            continue;
+        }
+
+        let screen_col = (display_col - col_offset) as u16;
+
+        if screen_col + gw.max(1) > width {
             break; // clip at right edge
         }
 
         let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
-        screen_buf.set_string(x + col, y, grapheme, style);
-        col += advance;
+        screen_buf.set_string(x + screen_col, y, grapheme, style);
+        display_col += advance;
         char_pos += grapheme.chars().count();
     }
 
@@ -354,9 +391,10 @@ fn render_content(
         char_pos >= s.start() && char_pos <= s.end()
     });
 
-    if (eol_is_head || eol_is_selected) && col < width {
+    let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
+    if (eol_is_head || eol_is_selected) && eol_screen_col < width {
         let style = if eol_is_head { colors.cursor_head } else { colors.selection };
-        screen_buf.set_string(x + col, y, " ", style);
+        screen_buf.set_string(x + eol_screen_col, y, " ", style);
     }
 }
 
@@ -416,6 +454,7 @@ mod tests {
             width,
             gutter_width: compute_gutter_width(buf.len_lines()),
             line_number_style: style,
+            col_offset: 0,
         }
     }
 
@@ -578,6 +617,7 @@ mod tests {
             width: 15,
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
+            col_offset: 0,
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 5);
@@ -611,6 +651,7 @@ mod tests {
             width: 20,
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
+            col_offset: 0,
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 20, 3);
@@ -646,7 +687,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -669,7 +710,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
@@ -696,7 +737,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -727,7 +768,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -753,7 +794,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -777,7 +818,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 10, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -867,7 +908,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);

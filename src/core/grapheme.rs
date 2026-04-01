@@ -1,4 +1,7 @@
-use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+use std::borrow::Cow;
+
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
+use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
 
@@ -182,6 +185,55 @@ pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> 
             Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
         }
     }
+}
+
+/// Display width (in terminal columns) of the grapheme clusters in
+/// `buf[from_char..to_char)`.
+///
+/// Unlike [`grapheme_count`], which counts each grapheme as 1 regardless of its
+/// visual width, this function sums the *display width* of each cluster using
+/// `unicode-width`. CJK ideographs occupy 2 columns, combining marks occupy 0,
+/// and most other characters occupy 1. Combining-mark clusters whose total
+/// width is 0 are counted as 1 column, matching the renderer's `advance.max(1)`
+/// logic (so they don't stack invisibly at the gutter edge).
+///
+/// This is the right unit for horizontal scrolling: the viewport offset and
+/// cursor screen column must agree on how many terminal columns each grapheme
+/// consumes.
+pub(crate) fn display_col_width(buf: &Buffer, from_char: usize, to_char: usize) -> usize {
+    let to_char = to_char.max(from_char);
+    if from_char == to_char {
+        return 0;
+    }
+
+    // Borrow the slice as &str when contiguous (typical for single lines),
+    // falling back to an owned String only when the range spans rope chunks.
+    // This matches the pattern used by the renderer's render_content().
+    let slice = buf.slice(from_char..to_char);
+    let cow: Cow<str> = slice.into();
+
+    cow.graphemes(true)
+        .map(|g| {
+            let w = UnicodeWidthStr::width(g);
+            // Combining marks have width 0 — count at least 1 so they occupy a
+            // cell, consistent with the renderer.
+            w.max(1)
+        })
+        .sum()
+}
+
+/// Display column of `char_pos` within line `line_idx`.
+///
+/// Returns the total display width (terminal columns) of the graphemes from the
+/// start of the line up to (but not including) `char_pos`. This is the screen
+/// column where the character at `char_pos` would be drawn if the line started
+/// at the left edge.
+///
+/// Compare with [`crate::ui::statusline::grapheme_col_in_line`], which counts
+/// *grapheme clusters* (logical column — how many `→` presses). This function
+/// counts *display columns* (visual column — how many terminal cells).
+pub(crate) fn display_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
+    display_col_width(buf, buf.line_to_char(line_idx), char_pos)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -410,6 +462,75 @@ mod tests {
         let buf = Buffer::from("hi\n");
         assert_eq!(buf.len_chars(), 3);
         assert_eq!(grapheme_count(&buf, 0, 3), 3);
+    }
+
+    // ── display_col_width ──────────────────────────────────────────────────────
+
+    #[test]
+    fn display_col_width_ascii() {
+        let buf = Buffer::from("hello\n");
+        assert_eq!(display_col_width(&buf, 0, 5), 5);
+    }
+
+    #[test]
+    fn display_col_width_empty_range() {
+        let buf = Buffer::from("hello\n");
+        assert_eq!(display_col_width(&buf, 2, 2), 0);
+    }
+
+    #[test]
+    fn display_col_width_cjk() {
+        // CJK ideographs are double-width: "世界" = 2 chars, 4 display columns.
+        let buf = Buffer::from("世界\n");
+        assert_eq!(display_col_width(&buf, 0, 2), 4);
+    }
+
+    #[test]
+    fn display_col_width_mixed_ascii_cjk() {
+        // "a世b" = 3 chars: 'a' (1 col) + '世' (2 cols) + 'b' (1 col) = 4 cols.
+        let buf = Buffer::from("a世b\n");
+        assert_eq!(display_col_width(&buf, 0, 3), 4);
+    }
+
+    #[test]
+    fn display_col_width_combining_mark() {
+        // "é" as e + combining acute = 2 chars, 1 grapheme cluster.
+        // Combining marks have display width 0 but the cluster is clamped to
+        // min 1, so the total is 1 display column.
+        let buf = Buffer::from("e\u{0301}\n");
+        assert_eq!(display_col_width(&buf, 0, 2), 1);
+    }
+
+    #[test]
+    fn display_col_width_zwj_emoji() {
+        // 👨‍👩‍👧 = 5 codepoints, 1 grapheme cluster, typically 2 display columns
+        // on modern terminals. unicode-width reports 2 for this cluster.
+        let buf = Buffer::from("👨‍👩‍👧\n");
+        let w = display_col_width(&buf, 0, 5);
+        // ZWJ emoji width varies by unicode-width version; accept 1 or 2.
+        assert!(w >= 1 && w <= 2, "expected 1..=2, got {w}");
+    }
+
+    #[test]
+    fn display_col_width_reversed_range() {
+        let buf = Buffer::from("hello\n");
+        assert_eq!(display_col_width(&buf, 3, 1), 0);
+    }
+
+    #[test]
+    fn display_col_in_line_basic() {
+        // "hello\nworld\n" — cursor at char 8 ("r") on line 1.
+        // Line 1 starts at char 6 ("world"), so column = width of "wo" = 2.
+        let buf = Buffer::from("hello\nworld\n");
+        assert_eq!(display_col_in_line(&buf, 1, 8), 2);
+    }
+
+    #[test]
+    fn display_col_in_line_with_cjk() {
+        // "世界abc\n" — cursor at char 3 ("b"), line 0.
+        // Width of "世界a" = 2 + 2 + 1 = 5 display columns.
+        let buf = Buffer::from("世界abc\n");
+        assert_eq!(display_col_in_line(&buf, 0, 3), 5);
     }
 
     // ── Invariant enforcement ─────────────────────────────────────────────────
