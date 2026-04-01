@@ -468,9 +468,22 @@ pub(crate) fn replace_selections(
     sels: SelectionSet,
     ch: char,
 ) -> (Buffer, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let sel_start = sel.start();
         let sel_end   = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
+
+        // Smart replace: when replacing a single character (cursor selection)
+        // and the replacement is a pair character, resolve open/close based on
+        // what's currently under the cursor.  See `surround::smart_replace_char`.
+        let effective_ch = if sel.is_cursor() {
+            if let Some(current) = buf.char_at(sel_start) {
+                crate::ops::surround::smart_replace_char(ch, current, i)
+            } else {
+                ch
+            }
+        } else {
+            ch
+        };
 
         // Retain everything up to this selection (handles the gap from the
         // previous selection or the buffer start). Record the start position
@@ -496,7 +509,7 @@ pub(crate) fn replace_selections(
                 // landing exactly at the next grapheme start — so the builder stays
                 // in sync without additional retain calls between graphemes.
                 b.delete(next - pos);
-                b.insert_char(ch);
+                b.insert_char(effective_ch);
             }
             // Track the last position processed (whether replaced or retained)
             // so the reconstructed selection covers the full original range.
@@ -1386,6 +1399,78 @@ mod tests {
             "-[hello\n]>",
             |(buf, sels)| replace_selections(buf, sels, 'x'),
             "-[xxxxx\n]>"
+        );
+    }
+
+    // ── Smart replace (pair-aware) ───────────────────────────────────────────
+
+    #[test]
+    fn smart_replace_opening_bracket_to_opening() {
+        // Two cursors on `(` and `)`, replace with `[` → `[` and `]`.
+        assert_state!(
+            "-[(]>hello-[)]>\n",
+            |(buf, sels)| replace_selections(buf, sels, '['),
+            "-[[]>hello-[]]>\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_asym_to_sym() {
+        // `(` and `)` replaced with `"` → both become `"`.
+        assert_state!(
+            "-[(]>hello-[)]>\n",
+            |(buf, sels)| replace_selections(buf, sels, '"'),
+            "-[\"]>hello-[\"]>\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_sym_to_asym_uses_index() {
+        // Two cursors on `"` and `"`, replace with `(` → `(` and `)`.
+        assert_state!(
+            "-[\"]>hello-[\"]>\n",
+            |(buf, sels)| replace_selections(buf, sels, '('),
+            "-[(]>hello-[)]>\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_sym_to_sym() {
+        // Two cursors on `"` and `"`, replace with `'` → both `'`.
+        assert_state!(
+            "-[\"]>hello-[\"]>\n",
+            |(buf, sels)| replace_selections(buf, sels, '\''),
+            "-[']>hello-[']>\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_non_delimiter_is_literal() {
+        // Cursor on `x`, replace with `[` → literal `[` (no smart logic).
+        assert_state!(
+            "-[x]>hello\n",
+            |(buf, sels)| replace_selections(buf, sels, '['),
+            "-[[]>hello\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_range_selection_no_smart_logic() {
+        // Range selection (not a cursor) — all chars become `[`, no smart logic.
+        assert_state!(
+            "-[(he]>llo)\n",
+            |(buf, sels)| replace_selections(buf, sels, '['),
+            "-[[[[]>llo)\n"
+        );
+    }
+
+    #[test]
+    fn smart_replace_non_pair_replacement_is_literal() {
+        // Replacement is not a pair char — always literal, even on delimiters.
+        assert_state!(
+            "-[(]>hello-[)]>\n",
+            |(buf, sels)| replace_selections(buf, sels, 'x'),
+            "-[x]>hello-[x]>\n"
         );
     }
 }

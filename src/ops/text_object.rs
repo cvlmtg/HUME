@@ -421,7 +421,7 @@ bracket_cmds!(cmd_inner_angle, cmd_around_angle, cmd_extend_inner_angle, cmd_ext
 /// closing quotes. Returns the pair that contains `pos`.
 ///
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.
-fn find_quote_pair(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)> {
+pub(crate) fn find_quote_pair(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
     let line_start = buf.line_to_char(line);
     let line_end = line_end_exclusive(buf, line);

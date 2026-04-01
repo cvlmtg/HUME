@@ -275,9 +275,33 @@ fn build_text_object_trie() -> KeyTrie {
         }
     }
 
+    // ── Surround sub-trie ────────────────────────────────────────────────
+    // `ms` + char selects the surrounding delimiters as two cursor
+    // selections, enabling select-then-act composition (e.g. `ms(` → `d`
+    // to delete parens, `ms(` → `r[` to replace with brackets).
+    #[rustfmt::skip]
+    let surround_objects: &[(&[char], &str)] = &[
+        (&['(', ')'], "surround-paren"),
+        (&['[', ']'], "surround-bracket"),
+        (&['{', '}'], "surround-brace"),
+        (&['<', '>'], "surround-angle"),
+        (&['"'],      "surround-double-quote"),
+        (&['\''],     "surround-single-quote"),
+        (&['`'],      "surround-backtick"),
+    ];
+
+    let mut surround_trie = KeyTrie::new("surround");
+    for (chars, name) in surround_objects {
+        for &ch in *chars {
+            let k = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
+            surround_trie.bind_leaf(k, cmd!(name));
+        }
+    }
+
     let mut match_trie = KeyTrie::new("match");
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
+    match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie
 }
 
@@ -574,6 +598,42 @@ mod tests {
             panic!("expected Cmd leaf");
         };
         assert_eq!(name, "around-paren");
+    }
+
+    #[test]
+    fn surround_trie_interior() {
+        let trie = default_normal_keymap();
+        // `m`, `s` → Interior at the surround node.
+        assert!(matches!(
+            trie.walk(&[key!('m'), key!('s')]),
+            WalkResult::Interior { name: "surround" }
+        ));
+    }
+
+    #[test]
+    fn surround_trie_leaf() {
+        let trie = default_normal_keymap();
+
+        // surround-paren via `(`
+        let result = trie.walk(&[key!('m'), key!('s'), key!('(')]);
+        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
+            panic!("expected Cmd leaf");
+        };
+        assert_eq!(name, "surround-paren");
+
+        // surround-paren via `)` (same command)
+        let result = trie.walk(&[key!('m'), key!('s'), key!(')')]);
+        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
+            panic!("expected Cmd leaf");
+        };
+        assert_eq!(name, "surround-paren");
+
+        // surround-double-quote
+        let result = trie.walk(&[key!('m'), key!('s'), key!('"')]);
+        let WalkResult::Leaf(KeymapCommand { name, .. }) = result else {
+            panic!("expected Cmd leaf");
+        };
+        assert_eq!(name, "surround-double-quote");
     }
 
     #[test]
