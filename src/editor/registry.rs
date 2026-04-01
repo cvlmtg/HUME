@@ -52,7 +52,8 @@ use crate::core::selection::SelectionSet;
 use crate::ops::selection_cmd::{
     cmd_collapse_selection, cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line,
     cmd_cycle_primary_backward, cmd_cycle_primary_forward, cmd_flip_selections,
-    cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_split_selection_on_newlines,
+    cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
+    cmd_split_selection_on_newlines,
     cmd_trim_selection_whitespace,
 };
 use crate::ops::text_object::{
@@ -307,6 +308,7 @@ impl CommandRegistry {
         selection!("collapse-selection", "Collapse each selection to a single cursor at the head.", cmd_collapse_selection);
         selection!("flip-selections", "Swap anchor and head for each selection.", cmd_flip_selections);
         selection!("keep-primary-selection", "Remove all selections except the primary.", cmd_keep_primary_selection);
+        selection!("select-all", "Select the entire buffer.", cmd_select_all);
         selection!("remove-primary-selection", "Remove the primary selection, promoting the next.", cmd_remove_primary_selection);
         selection!("cycle-primary-forward", "Cycle the primary selection forward.", cmd_cycle_primary_forward);
         selection!("cycle-primary-backward", "Cycle the primary selection backward.", cmd_cycle_primary_backward);
@@ -422,6 +424,12 @@ impl CommandRegistry {
         editor_cmd!("extend-page-down", "Extend selections down by one viewport height.", cmd_extend_page_down);
         editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",   cmd_extend_page_up);
 
+        // ── Editor commands — half-page scroll ────────────────────────────
+        editor_cmd!("half-page-down", "Scroll down by half a viewport height.",            cmd_half_page_down, extend: "extend-half-page-down");
+        editor_cmd!("half-page-up",   "Scroll up by half a viewport height.",              cmd_half_page_up,   extend: "extend-half-page-up");
+        editor_cmd!("extend-half-page-down", "Extend selections down by half a viewport height.", cmd_extend_half_page_down);
+        editor_cmd!("extend-half-page-up",   "Extend selections up by half a viewport height.",   cmd_extend_half_page_up);
+
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
         editor_cmd!("repeat-last-action", "Repeat the last editing action.", cmd_repeat);
@@ -479,7 +487,7 @@ mod tests {
     ///    1 quit editor command
     ///   ──
     ///  138 total
-    const EXPECTED_COMMAND_COUNT: usize = 138;
+    const EXPECTED_COMMAND_COUNT: usize = 143;
 
     #[test]
     fn registry_has_expected_count() {
@@ -545,7 +553,7 @@ mod tests {
     ///    1 special (open-line-below → flip-selections)
     ///   ──
     ///   50 total
-    const EXPECTED_EXTEND_PAIR_COUNT: usize = 50;
+    const EXPECTED_EXTEND_PAIR_COUNT: usize = 52;
 
     #[test]
     fn registry_extend_pair_count() {

@@ -356,6 +356,8 @@ fn default_normal_keymap() -> KeyTrie {
     // raw motion count. Extend duality is expressed in the normal way.
     t.bind_leaf(key!(PageDown), cmd!("page-down"));
     t.bind_leaf(key!(PageUp),   cmd!("page-up"));
+    t.bind_leaf(key!(Ctrl + 'd'), cmd!("half-page-down"));
+    t.bind_leaf(key!(Ctrl + 'u'), cmd!("half-page-up"));
 
     // ── Jump list ────────────────────────────────────────────────────────────
     t.bind_leaf(key!(Ctrl + 'o'), cmd!("jump-backward"));
@@ -364,6 +366,9 @@ fn default_normal_keymap() -> KeyTrie {
     // Bind both so jump-forward works everywhere.
     t.bind_leaf(key!(Ctrl + 'i'), cmd!("jump-forward"));
     t.bind_leaf(key!(Tab), cmd!("jump-forward"));
+
+    // ── Whole-buffer selection ────────────────────────────────────────────────
+    t.bind_leaf(key!('%'), cmd!("select-all"));
 
     // ── Selection manipulation ────────────────────────────────────────────────
     t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));

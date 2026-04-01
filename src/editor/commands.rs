@@ -321,6 +321,32 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
     page_scroll(ed, "extend-up");
 }
 
+// ── Half-page scroll ─────────────────────────────────────────────────────────
+//
+// Like page scroll but uses `view.height / 2` as the move count.
+
+/// Shared implementation for the four half-page-scroll commands.
+fn half_page_scroll(ed: &mut Editor, motion_name: &str) {
+    let half = (ed.view.height / 2).max(1);
+    let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
+        unreachable!("half_page_scroll: motion '{}' not in registry", motion_name);
+    };
+    ed.apply_motion(|b, s| fun(b, s, half));
+}
+
+pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize) {
+    half_page_scroll(ed, "move-down");
+}
+pub(super) fn cmd_extend_half_page_down(ed: &mut Editor, _count: usize) {
+    half_page_scroll(ed, "extend-down");
+}
+pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize) {
+    half_page_scroll(ed, "move-up");
+}
+pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize) {
+    half_page_scroll(ed, "extend-up");
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 
 /// Enter forward search mode.
