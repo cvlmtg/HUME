@@ -399,8 +399,9 @@ impl Editor {
             self.view.gutter_width = compute_gutter_width(self.doc.buf().len_lines());
 
             // ── 3. Scroll ─────────────────────────────────────────────────────
-            self.view.ensure_cursor_visible(self.doc.buf(), self.doc.sels());
-            self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels());
+            let cursor_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
+            self.view.ensure_cursor_visible(cursor_line);
+            self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels(), cursor_line);
 
             // ── 4. Render ─────────────────────────────────────────────────────
             // All mutations are done above. Rust allows a shared reborrow of
