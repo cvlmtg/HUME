@@ -1,4 +1,5 @@
 use crate::core::buffer::Buffer;
+use crate::core::grapheme::display_col_in_line;
 use crate::ui::display_line::DisplayLine;
 use crate::helpers::line_end_exclusive;
 use crate::core::selection::SelectionSet;
@@ -7,6 +8,10 @@ use crate::core::selection::SelectionSet;
 /// viewport before scrolling. 3 lines gives a comfortable look-ahead without
 /// being overly aggressive.
 const SCROLL_MARGIN: usize = 3;
+
+/// Horizontal scroll margin — columns of look-ahead kept between the cursor
+/// and the left/right edges of the content area before scrolling kicks in.
+const SCROLL_MARGIN_H: usize = 5;
 
 /// How line numbers are displayed in the gutter.
 ///
@@ -56,6 +61,13 @@ pub(crate) struct ViewState {
 
     /// How line numbers are rendered in the gutter.
     pub line_number_style: LineNumberStyle,
+
+    /// Number of display columns scrolled horizontally (0 = no horizontal scroll).
+    ///
+    /// Measured in display columns (terminal cells), not grapheme clusters, so
+    /// that CJK double-width characters are accounted for correctly. Updated by
+    /// [`ensure_cursor_visible_horizontal`](Self::ensure_cursor_visible_horizontal).
+    pub col_offset: usize,
 }
 
 /// Compute the line-number gutter width for a buffer with `total_lines` lines.
@@ -141,6 +153,31 @@ impl ViewState {
             self.scroll_offset = cursor_line.saturating_sub(self.height - margin - 1);
         }
     }
+
+    /// Adjust `col_offset` so the primary cursor's display column stays visible.
+    ///
+    /// Mirrors [`ensure_cursor_visible`] for the horizontal axis. The cursor's
+    /// display column (in terminal cells) is kept at least [`SCROLL_MARGIN_H`]
+    /// columns from the left and right edges of the content area.
+    pub(crate) fn ensure_cursor_visible_horizontal(&mut self, buf: &Buffer, sels: &SelectionSet) {
+        let head = sels.primary().head;
+        let cursor_line = buf.char_to_line(head);
+        let cursor_col = display_col_in_line(buf, cursor_line, head);
+        let content_width = self.width.saturating_sub(self.gutter_width);
+        if content_width == 0 {
+            return;
+        }
+
+        let margin = SCROLL_MARGIN_H.min(content_width / 2);
+
+        if cursor_col < self.col_offset + margin {
+            // Cursor is near (or past) the left edge — scroll left.
+            self.col_offset = cursor_col.saturating_sub(margin);
+        } else if cursor_col >= self.col_offset + content_width - margin {
+            // Cursor is near (or past) the right edge — scroll right.
+            self.col_offset = cursor_col.saturating_sub(content_width - margin - 1);
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -158,6 +195,7 @@ mod tests {
             width: 80,
             gutter_width: compute_gutter_width(buf.len_lines()),
             line_number_style: LineNumberStyle::Absolute,
+            col_offset: 0,
         }
     }
 
@@ -322,5 +360,89 @@ mod tests {
         let sels = cursor_at(0, &buf);
         v.ensure_cursor_visible(&buf, &sels);
         assert_eq!(v.scroll_offset, 0);
+    }
+
+    // ── ensure_cursor_visible_horizontal ──────────────────────────────────────
+
+    /// Build a ViewState with explicit width and gutter for horizontal tests.
+    fn hview(width: usize, gutter_width: usize) -> ViewState {
+        ViewState {
+            scroll_offset: 0,
+            height: 10,
+            width,
+            gutter_width,
+            line_number_style: LineNumberStyle::Absolute,
+            col_offset: 0,
+        }
+    }
+
+    /// Place cursor at a specific char position on line 0.
+    fn cursor_at_char(pos: usize) -> SelectionSet {
+        SelectionSet::single(Selection::cursor(pos))
+    }
+
+    #[test]
+    fn horizontal_no_scroll_needed() {
+        // 20-char line, width 80, gutter 4 → content_width 76.
+        // Cursor at col 10 — well within viewport.
+        let buf = Buffer::from("abcdefghijklmnopqrst\n");
+        let mut v = hview(80, 4);
+        let sels = cursor_at_char(10);
+        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        assert_eq!(v.col_offset, 0);
+    }
+
+    #[test]
+    fn horizontal_scroll_right() {
+        // Content width = 20 - 4 = 16, margin = 5.
+        // Cursor at char 18 → display col 18.
+        // 18 >= 0 + 16 - 5 = 11, so scroll right.
+        // col_offset = 18 - (16 - 5 - 1) = 18 - 10 = 8.
+        let buf = Buffer::from("abcdefghijklmnopqrstuvwxyz\n");
+        let mut v = hview(20, 4);
+        let sels = cursor_at_char(18);
+        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        assert_eq!(v.col_offset, 8);
+    }
+
+    #[test]
+    fn horizontal_scroll_left() {
+        // Content width = 20 - 4 = 16, margin = 5.
+        // Start scrolled right (col_offset = 10), cursor at char 12 → col 12.
+        // 12 < 10 + 5 = 15, so scroll left.
+        // col_offset = 12 - 5 = 7.
+        let buf = Buffer::from("abcdefghijklmnopqrstuvwxyz\n");
+        let mut v = hview(20, 4);
+        v.col_offset = 10;
+        let sels = cursor_at_char(12);
+        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        assert_eq!(v.col_offset, 7);
+    }
+
+    #[test]
+    fn horizontal_scroll_resets_near_start() {
+        // Cursor at char 2 → col 2. col_offset was 5.
+        // 2 < 5 + 5 = 10, so scroll left.
+        // col_offset = 2 - 5 = saturating_sub → 0.
+        let buf = Buffer::from("abcdefghijklmnopqrstuvwxyz\n");
+        let mut v = hview(20, 4);
+        v.col_offset = 5;
+        let sels = cursor_at_char(2);
+        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        assert_eq!(v.col_offset, 0);
+    }
+
+    #[test]
+    fn horizontal_scroll_with_cjk() {
+        // "世界世界世界世界世界" = 10 CJK chars, 20 display columns.
+        // Content width = 20 - 4 = 16, margin = 5.
+        // Cursor at char 8 → display col = 8 * 2 = 16.
+        // 16 >= 0 + 16 - 5 = 11, so scroll right.
+        // col_offset = 16 - (16 - 5 - 1) = 16 - 10 = 6.
+        let buf = Buffer::from("世界世界世界世界世界\n");
+        let mut v = hview(20, 4);
+        let sels = cursor_at_char(8);
+        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        assert_eq!(v.col_offset, 6);
     }
 }

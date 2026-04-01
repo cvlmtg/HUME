@@ -346,6 +346,7 @@ impl Editor {
             width: 80,
             gutter_width: compute_gutter_width(doc.buf().len_lines()),
             line_number_style: LineNumberStyle::Hybrid,
+            col_offset: 0,
         };
 
         Ok(Self {
@@ -399,6 +400,7 @@ impl Editor {
 
             // ── 3. Scroll ─────────────────────────────────────────────────────
             self.view.ensure_cursor_visible(self.doc.buf(), self.doc.sels());
+            self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels());
 
             // ── 4. Render ─────────────────────────────────────────────────────
             // All mutations are done above. Rust allows a shared reborrow of
