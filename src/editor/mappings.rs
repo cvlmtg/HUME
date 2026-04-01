@@ -123,44 +123,53 @@ impl Editor {
         // just CONTROL, and stripping CONTROL gives us the correct bare key.
         // This is layout-independent: the terminal knows the real keyboard layout.
 
-        let (lookup_key, ctrl_extend) =
+        // Trie walk + Ctrl normalisation in one pass.
+        //
+        // For Ctrl keys at the trie root, walk once to check for an explicit
+        // binding. If found, reuse that result directly (no second walk).
+        // If NoMatch, strip CONTROL and re-walk only on kitty terminals.
+        let (result, ctrl_extend) =
             if key.modifiers.contains(KeyModifiers::CONTROL) && self.pending_keys.is_empty() {
-                // Fast-check: does an explicit Ctrl binding exist?
-                let ctrl_result = self.keymap.normal.walk(&[key]);
-                if matches!(ctrl_result, WalkResult::NoMatch) {
-                    if self.kitty_enabled {
-                        // Kitty mode: strip CONTROL, dispatch as extend.
+                match self.keymap.normal.walk(&[key]) {
+                    WalkResult::NoMatch if self.kitty_enabled => {
+                        // Kitty mode: strip CONTROL, re-walk as extend.
                         let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
-                        (bare, true)
-                    } else {
-                        // Legacy mode: no-op — don't strip CONTROL.
-                        return;
+                        self.pending_keys.push(bare);
+                        (self.keymap.normal.walk(&self.pending_keys), true)
                     }
-                } else {
-                    (key, false)
+                    WalkResult::NoMatch => return, // Legacy: no-op.
+                    matched => (matched, false),   // Explicit Ctrl binding — reuse.
                 }
             } else {
-                (key, false)
+                self.pending_keys.push(key);
+                (self.keymap.normal.walk(&self.pending_keys), false)
             };
-
-        self.pending_keys.push(lookup_key);
-        let result = self.keymap.normal.walk(&self.pending_keys);
 
         // Compute the effective extend flag: sticky extend OR kitty one-shot.
         // Passed as a parameter — no temporary editor state mutation.
         let extend = self.extend || ctrl_extend;
 
-        match result {
-            WalkResult::Leaf(cmd) => {
-                self.pending_keys.clear();
-                // Ctrl+key one-shot extend: only dispatch if the command
-                // actually has an extend variant. Prevents e.g. Ctrl+u from
-                // running "undo" (which has no extend variant and is not a
-                // motion that should be one-shot-extended).
-                if ctrl_extend && self.registry.extend_variant(cmd.name).is_none() {
+        // Ctrl one-shot extend guard: only dispatch if the command has an
+        // extend variant. Prevents e.g. Ctrl+u from running "undo" (which
+        // has no extend variant and is not a motion).
+        if ctrl_extend {
+            let name = match &result {
+                WalkResult::Leaf(cmd) => Some(cmd.name),
+                WalkResult::WaitChar(wc) => Some(wc.cmd_name),
+                _ => None,
+            };
+            if let Some(n) = name {
+                if self.registry.extend_variant(n).is_none() {
+                    self.pending_keys.clear();
                     self.count = None;
                     return;
                 }
+            }
+        }
+
+        match result {
+            WalkResult::Leaf(cmd) => {
+                self.pending_keys.clear();
                 let raw_count = self.count.take();
                 self.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
@@ -169,14 +178,8 @@ impl Editor {
             }
             WalkResult::WaitChar(mut wc) => {
                 self.pending_keys.clear();
-                // Ctrl+key one-shot extend: only accept if the command has an
-                // extend variant (same guard as the Leaf arm above).
-                if ctrl_extend && self.registry.extend_variant(wc.cmd_name).is_none() {
-                    self.count = None;
-                    return;
-                }
-                // Carry ctrl_extend into the WaitCharPending so it's
-                // available at char-consumption time.
+                // Carry ctrl_extend into WaitCharPending so extend resolution
+                // happens at char-consumption time.
                 wc.ctrl_extend = ctrl_extend;
                 self.wait_char = Some(wc);
             }
