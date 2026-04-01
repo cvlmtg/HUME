@@ -75,13 +75,6 @@ fn key_ctrl(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
 }
 
-/// Simulate a Ctrl+Shift+char event as crossterm reports it with kitty
-/// protocol and REPORT_ALTERNATE_KEYS: the shifted character with just
-/// CONTROL (crossterm replaces the base keycode with the alternate and
-/// strips SHIFT).
-fn key_ctrl_shifted(ch: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
-}
 
 fn key_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
@@ -1321,7 +1314,7 @@ fn kitty_ctrl_u_is_noop() {
 #[test]
 fn kitty_ctrl_close_brace_extends_next_paragraph() {
     let mut ed = editor_from_kitty("-[h]>ello\n\nworld\n");
-    ed.handle_key(key_ctrl_shifted('}'));
+    ed.handle_key(key_ctrl('}'));
     // extend-next-paragraph: anchor stays at 0, head moves to 'w' in "world".
     assert_eq!(state(&ed), "-[hello\n\nw]>orld\n");
 }
@@ -1330,13 +1323,12 @@ fn kitty_ctrl_close_brace_extends_next_paragraph() {
 #[test]
 fn kitty_ctrl_dollar_extends_line_end() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    ed.handle_key(key_ctrl_shifted('$'));
+    ed.handle_key(key_ctrl('$'));
     // goto-line-end extend variant: anchor stays, head moves to last char on line.
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
 /// Ctrl+0 extends to start of line (kitty mode).
-/// '0' is not a shifted char, so no shift mapping is needed — just plain Ctrl.
 #[test]
 fn kitty_ctrl_0_extends_line_start() {
     let mut ed = editor_from_kitty("hello -[w]>orld\n");

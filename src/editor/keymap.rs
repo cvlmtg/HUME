@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn motion_binding_stores_base_name() {
+    fn w_maps_to_select_next_word() {
         let trie = default_normal_keymap();
         let WalkResult::Leaf(cmd) = trie.walk(&[key!('w')]) else {
             panic!("expected Cmd leaf");
@@ -598,7 +598,7 @@ mod tests {
     }
 
     #[test]
-    fn plain_cmd_has_base_name() {
+    fn comma_maps_to_keep_primary_selection() {
         let trie = default_normal_keymap();
         let WalkResult::Leaf(cmd) = trie.walk(&[key!(',')]) else {
             panic!("expected Cmd leaf");
@@ -662,12 +662,12 @@ mod tests {
             trie.walk(&[key!(Ctrl + 'c')]),
             WalkResult::Leaf(KeymapCommand { name: "quit", .. })
         ));
-        // Ctrl+r → redo (explicit binding, not a stripped Ctrl)
+        // Ctrl+r → redo (explicit binding, not kitty one-shot extend)
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'r')]),
             WalkResult::Leaf(KeymapCommand { name: "redo", .. })
         ));
-        // Ctrl+x → extend-select-line (not stripped like motion Ctrl keys)
+        // Ctrl+x → extend-select-line (explicit binding, not kitty one-shot extend)
         assert!(matches!(
             trie.walk(&[key!(Ctrl + 'x')]),
             WalkResult::Leaf(KeymapCommand { name: "extend-select-line", .. })
@@ -675,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn no_duplicate_normal_bindings() {
+    fn essential_keys_are_bound() {
         let trie = default_normal_keymap();
         // Spot-check a set of keys that would be ambiguous if duplicated.
         let must_be_bound = [
