@@ -72,7 +72,7 @@ HUME requires **true color (24-bit)** and **synchronized output**. The **kitty k
 | **WezTerm** | macOS, Linux, Win | yes | yes | yes | Excellent cross-platform option |
 | **Alacritty** | macOS, Linux, Win | yes | yes (0.15+) | yes | GPU-accelerated, minimal |
 | **foot** | Linux (Wayland) | yes | yes | yes | Lightweight Wayland-native |
-| **iTerm2** | macOS | yes | **no** (CSI u variant) | yes | Most popular macOS terminal — no kitty protocol |
+| **iTerm2** | macOS | yes | yes (3.5+) | yes | Most popular macOS terminal |
 | **Windows Terminal** | Windows | yes | partial | yes | Default Windows terminal |
 | **Terminal.app** | macOS | yes (Ventura+) | no | no | Apple's built-in — limited |
 | **GNOME Terminal** | Linux | yes | no | yes | Common Linux default |
