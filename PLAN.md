@@ -99,23 +99,32 @@ Theme: replace hardcoded key dispatch with a proper command registry and keymap 
 - [x] **Jump list**: Vec+cursor of cursor positions; record on search jumps, goto, and motions > 5 lines; `Ctrl-o` / `Ctrl-i` (`Tab`) navigate.
 - [x] **Surround operations** (`ms` + smart `r`): `ms` + char selects the surrounding delimiters as two cursor selections (e.g. `ms(` places cursors on `(` and `)`), enabling select-then-act composition: `ms(` → `d` deletes parens, `ms(` → `r[` replaces `()` with `[]`, `ms(` → `c` enters insert with two cursors. No separate `md`/`mr` — standard commands compose naturally. Smart `r`: when replacing cursor selections with a pair character, resolves open/close based on the char being replaced (opening→opening, closing→closing; symmetric delimiters use selection index as tiebreaker). "Add surround" is already covered by auto-pairs wrapping in insert mode.
 
+### M5 — Scripting foundation + polish
+
+Theme: embed the Steel scripting engine and land the most impactful editing polish features. Tree-sitter is deferred to M6.
+
+- [ ] **Whitespace rendering**: configurable visual indicators for spaces, tabs, trailing whitespace. `WhitespaceShow` enum (`None`/`Trailing`/`All`), custom indicator characters, dimmed style. Pure renderer change.
+- [ ] **Keyboard macros**: register-based recording and replay. `qq` starts/stops recording into register `q`; `Q` replays from `q`. `q3` records into register `3`, `Q3` replays from `3`. `RegisterContent` enum (`Text`/`Keys`) — registers hold text or keystrokes, last write wins. Count prefix on replay (`3Qq`). Status bar shows `[recording @q]`. `replaying_macro` flag suppresses nested recording.
+- [ ] **Soft wrap**: long lines wrap to the next display row. `DisplayLine` gains `is_continuation: bool`. `display_lines()` splits lines exceeding `content_width` into multiple display rows. `scroll_offset` stays buffer-line based. `col_offset` forced to 0 when wrapping. `j/k` remain buffer-line motions (display-line motions deferred). Continuation rows show wrap indicator in gutter.
+- [ ] **Mouse support**: click to position cursor, drag to select, scroll wheel. `EnableMouseCapture` via crossterm. Core challenge: `screen_to_buffer_pos` mapping (screen column → grapheme walk → buffer char offset). Handles CJK double-width and soft-wrapped continuation lines. `mouse_anchor` on `Editor` for drag selection.
+- [ ] **Steel scripting engine + plugin API**: embed `steel-core`. `ScriptEngine` wrapper with `Option` extraction pattern (Helix-style ownership). API: `keymap-bind!`/`keymap-unbind!` for keymap overrides, `define-command!` for Steel-implemented commands, `set-option!` for configuration. Config loaded from `$XDG_CONFIG_HOME/hume/init.scm` at startup. Missing config → silent. Parse error → defaults + warning. Invalid entries → skip + warn. `CommandRegistry` gains `steel_commands` map and mutable registration API. `KeymapCommand.name` changes to `Cow<'static, str>` for runtime names. `jump: bool` field on `MappableCommand` replaces `JUMP_COMMANDS` const.
+- [ ] **Configuration via Steel**: keymap overrides, whitespace/soft-wrap/line-number options, theme color overrides. Additive layer — user config specifies only overrides, defaults always work.
+- [ ] **Configurable status line**: expose `StatusLineConfig` to Steel — left/center/right section lists accept element names (keywords) or arbitrary Steel functions `(fn [ctx] string)`. Built-in elements already implemented: `Mode`, `FileName`, `Position`, `Separator`, `DirtyIndicator`, `SearchMatches`, `KittyProtocol`, `Selections`, `MiniBuf`, `MacroRecording`. Future elements: `file-path`, `position-percentage`, `file-encoding`, `file-line-ending`, `file-type`, `diagnostics`, `version-control`, `register`, `spacer`.
+- [ ] **Helix-compat surround plugin** (Steel): `md` + char deletes surround, `mr` + old + new replaces surround. Implemented as a bundled Steel plugin that composes existing commands (`select-surround` → `delete` / `replace`). Serves as the first real proof-of-concept for the scripting engine and validates that the plugin API is expressive enough for command composition.
+
+### M6 — Syntax awareness (planned)
+
+- **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
+- **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable).
+
 ### Future milestones
-- **Macros**: depends on command registry (M4) + `InsertTransaction` recording (M4). Straightforward once M4 is done.
 - **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
-- **Steel scripting engine + plugin API**: needs command registry (M4) to expose commands to Steel. Includes `History` read-only accessors + `goto_revision` for undotree plugins.
-- **Configuration via Steel**: depends on Steel engine
-- **Configurable status line**: expose `StatusLineConfig` to Steel — left/center/right section lists accept element names (keywords) or arbitrary Steel functions `(fn [ctx] string)`. Built-in elements already implemented: `Mode`, `FileName`, `Position`, `Separator`, `DirtyIndicator`, `SearchMatches`, `KittyProtocol`, `Selections`, `MiniBuf`. Future elements: `file-path`, `position-percentage`, `file-encoding`, `file-line-ending`, `file-type`, `diagnostics`, `version-control`, `register`, `spacer`. Depends on Steel scripting engine.
-- **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer. Own milestone: "Syntax awareness."
-- **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable). Depends on tree-sitter.
 - **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
 - **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
-- Soft wrap (option to wrap long lines vs horizontal scroll)
 - Code folding (tree-sitter powered collapse/expand)
-- Mouse support (click to position cursor, scroll, basic selection)
-- Git gutter signs (added/modified/deleted line indicators)
-- Whitespace rendering (show tabs, trailing spaces, etc.)
+- Git gutter signs (plugin candidate — keep out of core, implement via Steel once scripting lands)
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
