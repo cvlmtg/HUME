@@ -690,10 +690,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> bool {
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
 pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize) {
-    let current = crate::core::jump_list::JumpEntry {
-        selections: ed.doc.sels().clone(),
-        primary_line: ed.doc.buf().char_to_line(ed.doc.sels().primary().head),
-    };
+    let current = crate::core::jump_list::JumpEntry::new(ed.doc.sels().clone(), ed.doc.buf());
     if let Some(entry) = ed.jump_list.backward(current) {
         let sels = entry.selections.clone();
         ed.doc.set_selections(sels);

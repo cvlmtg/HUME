@@ -288,10 +288,12 @@ impl Editor {
             let char_arg = self.pending_char;
 
             // ── Jump list: capture pre-command state ─────────────────────────
+            // Only motions and explicit jump commands can produce a jump.
+            // Skip char_to_line + clone for edits and editor commands.
             let is_explicit_jump = is_jump_command(resolved);
-            let pre_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
-            let pre_sels = if is_explicit_jump || matches!(reg_cmd, MappableCommand::Motion { .. }) {
-                Some(self.doc.sels().clone())
+            let pre_jump = if is_explicit_jump || matches!(reg_cmd, MappableCommand::Motion { .. }) {
+                let line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
+                Some((self.doc.sels().clone(), line))
             } else {
                 None
             };
@@ -315,14 +317,10 @@ impl Editor {
             }
 
             // ── Jump list: record if this was a jump ─────────────────────────
-            if let Some(sels) = pre_sels {
+            if let Some((pre_sels, pre_line)) = pre_jump {
                 let post_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
-                let line_distance = pre_line.abs_diff(post_line);
-                if is_explicit_jump || line_distance > JUMP_LINE_THRESHOLD {
-                    self.jump_list.push(JumpEntry {
-                        selections: sels,
-                        primary_line: pre_line,
-                    });
+                if is_explicit_jump || pre_line.abs_diff(post_line) > JUMP_LINE_THRESHOLD {
+                    self.jump_list.push(JumpEntry { selections: pre_sels, primary_line: pre_line });
                 }
             }
 
@@ -417,8 +415,7 @@ impl Editor {
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 if let Some(sels) = self.search.pre_search_sels.take() {
-                    let line = self.doc.buf().char_to_line(sels.primary().head);
-                    self.jump_list.push(JumpEntry { selections: sels, primary_line: line });
+                    self.jump_list.push(JumpEntry::new(sels, self.doc.buf()));
                 }
                 // search.regex stays alive for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
