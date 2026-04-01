@@ -12,9 +12,10 @@
 //! # Extend-mode pairing
 //!
 //! The registry is the single source of truth for extend-variant relationships.
-//! Each motion/selection command can be linked to an extend variant via
-//! [`CommandRegistry::link_extend`]. When extend mode is active, the dispatcher
-//! resolves the extend variant automatically — the keymap stores only base
+//! Each command declares its extend variant inline at registration time via an
+//! `extend: "variant-name"` argument on the registration macro. When extend
+//! mode is active, the dispatcher resolves the extend variant automatically
+//! via [`CommandRegistry::extend_variant`] — the keymap stores only base
 //! command names.
 //!
 //! # Command variants
@@ -155,10 +156,10 @@ impl MappableCommand {
 /// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
 /// dispatch time to obtain the actual function pointer.
 ///
-/// Also owns the extend-variant map: each base command can be linked to an
-/// extend variant via [`link_extend`](Self::link_extend). The dispatcher
-/// calls [`extend_variant`](Self::extend_variant) to resolve the correct
-/// command when extend mode is active.
+/// Also owns the extend-variant map: each base command can declare its
+/// extend variant at registration time via `extend: "variant-name"`. The
+/// dispatcher calls [`extend_variant`](Self::extend_variant) to resolve
+/// the correct command when extend mode is active.
 pub(crate) struct CommandRegistry {
     commands: HashMap<&'static str, MappableCommand>,
     /// Maps a base command name to its extend variant.

@@ -8,14 +8,16 @@ extending the editor safely.
 
 | File | Role | Knows about keys? | Knows about `&mut Editor`? |
 |---|---|---|---|
-| `registry.rs` | Name → function pointer | No | No |
+| `registry.rs` | Name → function pointer + extend pairing | No | No |
 | `commands.rs` | Editor-level command implementations | No | Yes (via `&mut Editor` param) |
 | `keymap.rs` | Key sequence → command name | Yes | No |
 | `mappings.rs` | Resolve name, call function | No | Yes (`&mut self`) |
 
-**`registry.rs`** is the command registry. Every user-facing operation is a
-named `MappableCommand` — a function pointer wrapped with a `&'static str` name.
-Four variants exist:
+## Layer 1: Command Registry (`registry.rs`)
+
+The registry is the single source of truth for what commands exist and how they
+relate to each other. Every user-facing operation is a named `MappableCommand`
+— a function pointer wrapped with a `&'static str` name. Four variants exist:
 
 ```rust
 enum MappableCommand {
@@ -30,64 +32,146 @@ The first three are pure functions — they take buffer/selections and return ne
 ones. `EditorCmd` takes `&mut Editor` for composite operations that need mode
 changes, registers, undo groups, or parameterized motions.
 
-**`commands.rs`** holds the 35 `EditorCmd` implementations as free functions:
+### Extend-variant pairing
+
+The registry also stores an **extend map**: a mapping from base command names
+to their extend variants. Each command declares its extend variant at
+registration time via an `extend:` argument on the registration macro:
+
+```rust
+motion!("move-left", "Move cursors one grapheme to the left.", cmd_move_left, extend: "extend-left");
+motion!("extend-left", "Extend selections one grapheme to the left.", cmd_extend_left);
+
+editor_cmd!("open-line-below", "...", cmd_open_line_below, repeatable, extend: "flip-selections");
+```
+
+This inserts `"move-left" → "extend-left"` into the extend map. Commands
+without an `extend:` argument have no extend variant.
+
+### Extend variants are independent commands
+
+Every extend variant (e.g. `"extend-left"`, `"extend-select-line"`) is
+registered as a standalone command in the registry — it has its own name, its
+own function pointer, and can be looked up or invoked like any other command.
+The extend map only records the *pairing* between a base command and its extend
+counterpart; it does not make extend variants second-class.
+
+This means extend variants can be **bound to any key independently**:
+
+- A user can bind `Ctrl+x` → `"extend-select-line"` in their keymap — this
+  works on any terminal, kitty or legacy, because the trie resolves the name
+  directly without going through extend-mode resolution.
+- Internal code can look up extend variants by name (e.g. `page_scroll` looks
+  up `"extend-down"` directly in the registry).
+- The automatic extend resolution (sticky extend mode, Ctrl one-shot extend) is
+  a *convenience* — it lets the user press `e` then `l` instead of binding a
+  separate key for every extend variant. But it's not the only way to invoke
+  them.
+
+## Layer 2: Editor Commands (`commands.rs`)
+
+This file holds ~35 `EditorCmd` implementations as free functions:
 `cmd_change`, `cmd_find_forward`, `cmd_open_line_below`, etc. Each is a
 `fn(&mut Editor, usize)` registered by name in the registry. This parallels
 how `ops/motion.rs` holds pure motion functions.
 
-**`keymap.rs`** is the key binding table. A trie maps key sequences to command
-names via `KeymapCommand`:
+## Layer 3: Keymap (`keymap.rs`)
+
+The keymap is a trie that maps key sequences to command names. Each binding
+resolves to a `KeymapCommand`:
 
 ```rust
 struct KeymapCommand {
     name: &'static str,
-    extend_name: Option<&'static str>,
 }
 ```
 
-The keymap stores *names*, not function pointers. This is what the Steel
-scripting layer will rewrite to support user keymaps — and it can do so without
-touching any execution logic.
+The keymap stores *names*, not function pointers, and not extend variants.
+This is what the Steel scripting layer will rewrite to support user keymaps —
+and it can do so without touching any execution logic. A user remap is just
+`key → command-name`.
 
-**`mappings.rs`** is the glue. `execute_keymap_command` takes a name, looks it
-up in the registry, and calls the function pointer:
+Three types of trie nodes exist:
+
+- **Leaf**: a complete binding → dispatch the command name.
+- **Interior**: more keys needed (e.g. `m` → `i` → `w` for inner-word).
+- **WaitChar**: the next keypress is consumed as a character argument (f/t/F/T/r).
+
+The `cmd!` and `wait_char!` macros construct bindings:
+
+```rust
+t.bind_leaf(key!('h'), cmd!("move-left"));
+t.bind(key!('f'), wait_char!("find-forward"));
+```
+
+## Layer 4: Dispatch (`mappings.rs`)
+
+`mappings.rs` is the glue. `execute_keymap_command` takes a command name, an
+`extend: bool` flag, and a count. It resolves the extend variant if needed,
+looks up the command in the registry, and calls the function pointer:
 
 ```
 keypress
-  → keymap.rs  trie walk  →  KeymapCommand { name: "move-right", extend_name: Some("extend-right") }
-  → mappings.rs            →  registry.get("move-right")  (or "extend-right" if extend mode is on)
-  → registry.rs            →  MappableCommand::Motion { fun: cmd_move_right }
+  → keymap.rs  trie walk  →  KeymapCommand { name: "move-right" }
+  → mappings.rs            →  if extend: registry.extend_variant("move-right") → "extend-right"
+  → registry.rs            →  registry.get("extend-right") → MappableCommand::Motion { fun }
   → mappings.rs            →  fun(buf, sels, count)
 ```
 
-## Extend-mode duality
+### Extend-mode resolution
 
-Many Normal mode keys do different things depending on whether extend mode is
-active. Instead of doubling the keymap, each binding can carry an
-`extend_name`:
+When extend mode is active (`self.extend == true`), the dispatcher passes
+`extend: true` to `execute_keymap_command`. The function resolves the extend
+variant via the registry:
 
 ```rust
-// h = move-left normally, extend-left in extend mode
-cmd!("move-left", "extend-left")
-
-// d = delete always (no extend variant)
-cmd!("delete")
+let resolved = if extend {
+    self.registry.extend_variant(name).unwrap_or(name)
+} else {
+    name
+};
 ```
 
-Resolution happens at dispatch time in `mappings.rs`. The keymap itself is
-unaware of extend mode — it just stores two names.
+If the command has no extend variant, the base command runs unchanged. This
+means commands like `"delete"` or `"undo"` behave the same regardless of
+extend mode.
 
-For `WaitChar` commands (f/t/F/T/r), extend resolution is deferred further:
-it happens when the *character argument* arrives, not when the trigger key is
-pressed. This is because extend mode could toggle between the two keypresses.
+### Ctrl+key one-shot extend (kitty keyboard protocol)
 
-## WaitChar: parameterized commands
+When the kitty keyboard protocol is enabled, `Ctrl+motion` acts as one-shot
+extend. The dispatch flow:
+
+1. Look up the full key (with modifiers) in the trie.
+   - Match found → dispatch it (explicit Ctrl bindings like Ctrl+c always work).
+   - No match, and Ctrl is pressed:
+     - **Kitty disabled** → no-op (legacy terminals can't reliably distinguish
+       Ctrl+letter from control codes).
+     - **Kitty enabled** → strip Ctrl, look up bare key in trie:
+       - No match → no-op.
+       - Match found → check if the command has an extend variant in the registry:
+         - No extend variant → no-op (e.g. Ctrl+u won't run undo).
+         - Has extend variant → dispatch with `extend=true`.
+
+**Shifted characters and `REPORT_ALTERNATE_KEYS`**: without this flag, the
+kitty protocol sends the base codepoint plus modifier flags — Ctrl+} would
+arrive as `Char(']')` with `SHIFT | CONTROL`, and stripping Ctrl would leave
+`]` which doesn't match the trie binding for `}`. To avoid a hardcoded
+keyboard-layout shift map, we enable `REPORT_ALTERNATE_KEYS` in the kitty
+protocol flags at startup. This makes the terminal send the shifted character
+as an alternate key; crossterm replaces the base keycode with the alternate and
+strips SHIFT. So Ctrl+} arrives as `Char('}')` with just `CONTROL` — stripping
+Ctrl gives us the correct bare key, and it works on any keyboard layout.
+
+The `extend` flag is passed as a **parameter** to `execute_keymap_command` — no
+temporary editor state mutation.
+
+### WaitChar: parameterized commands
 
 Some commands need a character argument: `f` (find), `t` (till), `r` (replace).
 The trie stores these as `WaitChar` nodes:
 
 ```rust
-wait_char!("find-forward", "extend-find-forward")
+wait_char!("find-forward")
 ```
 
 When the trie walk hits a `WaitChar` node, `mappings.rs` stores the pending
@@ -95,6 +179,10 @@ command in `Editor.wait_char`. The *next* keypress is consumed as the character
 argument, stored in `Editor.pending_char`, and the command is dispatched. The
 command function (e.g. `cmd_find_forward` in `commands.rs`) reads the character
 via `ed.pending_char.take()`.
+
+Extend resolution for wait-char commands happens at **char-consumption time**
+(not when the trigger key is pressed), since extend mode could toggle between
+the two keypresses.
 
 ## Commands are mode-agnostic
 
