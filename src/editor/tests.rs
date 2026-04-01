@@ -75,6 +75,14 @@ fn key_ctrl(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
 }
 
+/// Simulate a Ctrl+Shift+char event as crossterm reports it with kitty
+/// protocol and REPORT_ALTERNATE_KEYS: the shifted character with just
+/// CONTROL (crossterm replaces the base keycode with the alternate and
+/// strips SHIFT).
+fn key_ctrl_shifted(ch: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
+}
+
 fn key_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
 }
@@ -1275,26 +1283,79 @@ fn kitty_ctrl_b_extends_prev_word() {
     assert_eq!(state(&ed), "-[hello w]>orld\n");
 }
 
-/// Without kitty, Ctrl+h (Char('h')+CONTROL) falls through to the bare 'h'
-/// arm and MOVES the cursor rather than extending the selection.
-/// In real legacy terminals Ctrl+h arrives as KeyCode::Backspace (a different
-/// keycode), so this test covers the kitty_enabled guard specifically.
+/// Without kitty, Ctrl+h is a no-op — legacy terminals can't reliably
+/// distinguish Ctrl+letter from control codes, so implicit Ctrl+motion
+/// is suppressed entirely.
 #[test]
-fn legacy_ctrl_h_moves_not_extends() {
+fn legacy_ctrl_h_is_noop() {
     let mut ed = editor_from("-[hello]>world\n");
     ed.handle_key(key_ctrl('h'));
-    // bare 'h' arm: move_left from head=4 → cursor at 3 ('l')
-    assert_eq!(state(&ed), "hel-[l]>oworld\n");
+    assert_eq!(state(&ed), "-[hello]>world\n");
 }
 
-/// Without kitty, Ctrl+w (Char('w')+CONTROL) falls through to the bare 'w'
-/// arm and SELECTS the next word rather than extending the current selection.
+/// Without kitty, Ctrl+w is a no-op (same rationale as Ctrl+h above).
 #[test]
-fn legacy_ctrl_w_selects_not_extends() {
+fn legacy_ctrl_w_is_noop() {
     let mut ed = editor_from("-[hello]> world foo\n");
     ed.handle_key(key_ctrl('w'));
-    // bare 'w' arm: select_next_word from head=4 → selects "world" (6,10)
-    assert_eq!(state(&ed), "hello -[world]> foo\n");
+    assert_eq!(state(&ed), "-[hello]> world foo\n");
+}
+
+/// Ctrl+u must be a no-op in kitty mode: 'u' maps to "undo" which has no
+/// extend variant, so the one-shot extend guard should suppress it.
+#[test]
+fn kitty_ctrl_u_is_noop() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    // Make an edit so undo would have something to revert.
+    ed.handle_key(key('d'));
+    assert_eq!(ed.doc.buf().to_string(), "ello\n");
+    // Ctrl+u should NOT run undo — it's a no-op because "undo" has no extend variant.
+    ed.handle_key(key_ctrl('u'));
+    assert_eq!(ed.doc.buf().to_string(), "ello\n", "Ctrl+u should be a no-op in kitty mode");
+}
+
+/// Ctrl+} extends to the next paragraph (kitty mode).
+///
+/// With REPORT_ALTERNATE_KEYS, crossterm delivers the shifted character
+/// directly: Ctrl+} arrives as Char('}') with CONTROL (no SHIFT).
+#[test]
+fn kitty_ctrl_close_brace_extends_next_paragraph() {
+    let mut ed = editor_from_kitty("-[h]>ello\n\nworld\n");
+    ed.handle_key(key_ctrl_shifted('}'));
+    // extend-next-paragraph: anchor stays at 0, head moves to 'w' in "world".
+    assert_eq!(state(&ed), "-[hello\n\nw]>orld\n");
+}
+
+/// Ctrl+$ extends to end of line (kitty mode).
+#[test]
+fn kitty_ctrl_dollar_extends_line_end() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    ed.handle_key(key_ctrl_shifted('$'));
+    // goto-line-end extend variant: anchor stays, head moves to last char on line.
+    assert_eq!(state(&ed), "-[hello world]>\n");
+}
+
+/// Ctrl+0 extends to start of line (kitty mode).
+/// '0' is not a shifted char, so no shift mapping is needed — just plain Ctrl.
+#[test]
+fn kitty_ctrl_0_extends_line_start() {
+    let mut ed = editor_from_kitty("hello -[w]>orld\n");
+    ed.handle_key(key_ctrl('0'));
+    // goto-line-start extend variant: head moves to col 0.
+    assert_eq!(state(&ed), "<[hello w]-orld\n");
+}
+
+/// Ctrl+U (redo) must also be a no-op in kitty mode.
+#[test]
+fn kitty_ctrl_shift_u_is_noop() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    ed.handle_key(key('d'));
+    assert_eq!(ed.doc.buf().to_string(), "ello\n");
+    ed.handle_key(key('u'));    // regular undo
+    assert_eq!(ed.doc.buf().to_string(), "hello\n");
+    // Ctrl+U should NOT run redo.
+    ed.handle_key(key_ctrl('U'));
+    assert_eq!(ed.doc.buf().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
 }
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────

@@ -9,14 +9,22 @@
 //! *names*; the registry resolves those names to `MappableCommand` values at
 //! dispatch time inside `execute_keymap_command` (`editor/mappings.rs`).
 //!
-//! Four command variants exist:
+//! # Extend-mode pairing
+//!
+//! The registry is the single source of truth for extend-variant relationships.
+//! Each motion/selection command can be linked to an extend variant via
+//! [`CommandRegistry::link_extend`]. When extend mode is active, the dispatcher
+//! resolves the extend variant automatically — the keymap stores only base
+//! command names.
+//!
+//! # Command variants
 //!
 //! 1. **Motion** — pure `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
 //! 2. **Selection** — pure `fn(&Buffer, SelectionSet) -> SelectionSet`
 //! 3. **Edit** — pure `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
 //! 4. **EditorCmd** — `fn(&mut Editor, usize)` for composite/side-effectful
 //!    operations (mode changes, registers, undo groups, parameterized motions).
-//!    Implemented in `editor/editor_cmd.rs`; stored and dispatched as a
+//!    Implemented in `editor/commands.rs`; stored and dispatched as a
 //!    function pointer exactly like the other variants.
 //!
 //! Typed commands entered via `:` (`:w`, `:q`, etc.) are a separate system in
@@ -145,9 +153,21 @@ impl MappableCommand {
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
 /// The keymap trie (`editor/keymap.rs`) stores command names as `&'static str`;
 /// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
-/// dispatch time to obtain the actual function pointer or dispatch EditorCmds.
+/// dispatch time to obtain the actual function pointer.
+///
+/// Also owns the extend-variant map: each base command can be linked to an
+/// extend variant via [`link_extend`](Self::link_extend). The dispatcher
+/// calls [`extend_variant`](Self::extend_variant) to resolve the correct
+/// command when extend mode is active.
 pub(crate) struct CommandRegistry {
     commands: HashMap<&'static str, MappableCommand>,
+    /// Maps a base command name to its extend variant.
+    ///
+    /// When extend mode is active, the dispatcher looks up the base command
+    /// here and dispatches the extend variant instead. This is the single
+    /// source of truth for extend pairing — the keymap stores only base
+    /// command names.
+    extend_map: HashMap<&'static str, &'static str>,
 }
 
 impl CommandRegistry {
@@ -155,6 +175,7 @@ impl CommandRegistry {
     pub(crate) fn with_defaults() -> Self {
         let mut reg = Self {
             commands: HashMap::new(),
+            extend_map: HashMap::new(),
         };
         reg.register_defaults();
         reg
@@ -181,14 +202,29 @@ impl CommandRegistry {
         self.commands.len()
     }
 
+    /// Look up the extend variant for a command, if one exists.
+    pub(crate) fn extend_variant(&self, name: &str) -> Option<&'static str> {
+        self.extend_map.get(name).copied()
+    }
+
     fn register_defaults(&mut self) {
         // Local macros to cut down on struct-literal boilerplate.
+        // The optional `extend: "name"` trailing argument links this command to
+        // its extend variant in the extend_map (single source of truth).
         macro_rules! motion {
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
+                self.register(MappableCommand::Motion { name: $name, fun: $fun });
+                self.extend_map.insert($name, $ext);
+            }};
             ($name:literal, $doc:literal, $fun:expr) => {
                 self.register(MappableCommand::Motion { name: $name, fun: $fun })
             };
         }
         macro_rules! selection {
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
+                self.register(MappableCommand::Selection { name: $name, fun: $fun });
+                self.extend_map.insert($name, $ext);
+            }};
             ($name:literal, $doc:literal, $fun:expr) => {
                 self.register(MappableCommand::Selection { name: $name, fun: $fun })
             };
@@ -202,59 +238,67 @@ impl CommandRegistry {
             };
         }
         macro_rules! editor_cmd {
-            ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false })
-            };
+            ($name:literal, $doc:literal, $fun:expr, repeatable, extend: $ext:literal) => {{
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: true });
+                self.extend_map.insert($name, $ext);
+            }};
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false });
+                self.extend_map.insert($name, $ext);
+            }};
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
                 self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: true })
+            };
+            ($name:literal, $doc:literal, $fun:expr) => {
+                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false })
             };
         }
 
         // ── Character motions ─────────────────────────────────────────────────
-        motion!("move-right", "Move cursors one grapheme to the right.", cmd_move_right);
-        motion!("move-left", "Move cursors one grapheme to the left.", cmd_move_left);
-        motion!("move-down", "Move cursors down one line.", cmd_move_down);
-        motion!("move-up", "Move cursors up one line.", cmd_move_up);
+        motion!("move-right", "Move cursors one grapheme to the right.", cmd_move_right, extend: "extend-right");
+        motion!("move-left",  "Move cursors one grapheme to the left.",  cmd_move_left,  extend: "extend-left");
+        motion!("move-down",  "Move cursors down one line.",             cmd_move_down,  extend: "extend-down");
+        motion!("move-up",    "Move cursors up one line.",               cmd_move_up,    extend: "extend-up");
         motion!("extend-right", "Extend selections one grapheme to the right.", cmd_extend_right);
-        motion!("extend-left", "Extend selections one grapheme to the left.", cmd_extend_left);
-        motion!("extend-down", "Extend selections down one line.", cmd_extend_down);
-        motion!("extend-up", "Extend selections up one line.", cmd_extend_up);
+        motion!("extend-left",  "Extend selections one grapheme to the left.",  cmd_extend_left);
+        motion!("extend-down",  "Extend selections down one line.",             cmd_extend_down);
+        motion!("extend-up",    "Extend selections up one line.",               cmd_extend_up);
 
         // ── Buffer-level goto motions ─────────────────────────────────────────
-        motion!("goto-first-line", "Move cursors to the first character of the buffer.", cmd_goto_first_line);
-        motion!("goto-last-line",  "Move cursors to the first character of the last line.", cmd_goto_last_line);
-        motion!("extend-first-line", "Extend selections to the first character of the buffer.", cmd_extend_first_line);
+        motion!("goto-first-line", "Move cursors to the first character of the buffer.",     cmd_goto_first_line, extend: "extend-first-line");
+        motion!("goto-last-line",  "Move cursors to the first character of the last line.",  cmd_goto_last_line,  extend: "extend-last-line");
+        motion!("extend-first-line", "Extend selections to the first character of the buffer.",    cmd_extend_first_line);
         motion!("extend-last-line",  "Extend selections to the first character of the last line.", cmd_extend_last_line);
 
         // ── Line-position motions ─────────────────────────────────────────────
-        motion!("goto-line-start", "Move cursors to the start of the line.", cmd_goto_line_start);
-        motion!("goto-line-end", "Move cursors to the last character on the line.", cmd_goto_line_end);
-        motion!("goto-first-nonblank", "Move cursors to the first non-blank character on the line.", cmd_goto_first_nonblank);
-        motion!("extend-line-start", "Extend selections to the start of the line.", cmd_extend_line_start);
-        motion!("extend-line-end", "Extend selections to the last character on the line.", cmd_extend_line_end);
-        motion!("extend-first-nonblank", "Extend selections to the first non-blank character on the line.", cmd_extend_first_nonblank);
+        motion!("goto-line-start",    "Move cursors to the start of the line.",                        cmd_goto_line_start,    extend: "extend-line-start");
+        motion!("goto-line-end",      "Move cursors to the last character on the line.",               cmd_goto_line_end,      extend: "extend-line-end");
+        motion!("goto-first-nonblank","Move cursors to the first non-blank character on the line.",    cmd_goto_first_nonblank,extend: "extend-first-nonblank");
+        motion!("extend-line-start",      "Extend selections to the start of the line.",                       cmd_extend_line_start);
+        motion!("extend-line-end",        "Extend selections to the last character on the line.",               cmd_extend_line_end);
+        motion!("extend-first-nonblank",  "Extend selections to the first non-blank character on the line.",   cmd_extend_first_nonblank);
 
         // ── Word motions ──────────────────────────────────────────────────────
-        motion!("select-next-word", "Select the next word.", cmd_select_next_word);
-        motion!("select-next-WORD", "Select the next WORD (whitespace-delimited).", cmd_select_next_WORD);
-        motion!("select-prev-word", "Select the previous word.", cmd_select_prev_word);
-        motion!("select-prev-WORD", "Select the previous WORD (whitespace-delimited).", cmd_select_prev_WORD);
-        motion!("extend-select-next-word", "Extend selection to encompass the next word.", cmd_extend_select_next_word);
-        motion!("extend-select-next-WORD", "Extend selection to encompass the next WORD.", cmd_extend_select_next_WORD);
+        motion!("select-next-word", "Select the next word.",                          cmd_select_next_word, extend: "extend-select-next-word");
+        motion!("select-next-WORD", "Select the next WORD (whitespace-delimited).",   cmd_select_next_WORD, extend: "extend-select-next-WORD");
+        motion!("select-prev-word", "Select the previous word.",                      cmd_select_prev_word, extend: "extend-select-prev-word");
+        motion!("select-prev-WORD", "Select the previous WORD (whitespace-delimited).",cmd_select_prev_WORD,extend: "extend-select-prev-WORD");
+        motion!("extend-select-next-word", "Extend selection to encompass the next word.",     cmd_extend_select_next_word);
+        motion!("extend-select-next-WORD", "Extend selection to encompass the next WORD.",     cmd_extend_select_next_WORD);
         motion!("extend-select-prev-word", "Extend selection to encompass the previous word.", cmd_extend_select_prev_word);
         motion!("extend-select-prev-WORD", "Extend selection to encompass the previous WORD.", cmd_extend_select_prev_WORD);
 
         // ── Paragraph motions ─────────────────────────────────────────────────
-        motion!("next-paragraph", "Move cursors to the start of the next paragraph.", cmd_next_paragraph);
-        motion!("prev-paragraph", "Move cursors to the start of the previous paragraph.", cmd_prev_paragraph);
-        motion!("extend-next-paragraph", "Extend selections to the start of the next paragraph.", cmd_extend_next_paragraph);
+        motion!("next-paragraph", "Move cursors to the start of the next paragraph.",     cmd_next_paragraph, extend: "extend-next-paragraph");
+        motion!("prev-paragraph", "Move cursors to the start of the previous paragraph.", cmd_prev_paragraph, extend: "extend-prev-paragraph");
+        motion!("extend-next-paragraph", "Extend selections to the start of the next paragraph.",     cmd_extend_next_paragraph);
         motion!("extend-prev-paragraph", "Extend selections to the start of the previous paragraph.", cmd_extend_prev_paragraph);
 
         // ── Line selection ────────────────────────────────────────────────────
-        selection!("select-line", "Select the full current line (forward).", cmd_select_line);
-        selection!("select-line-backward", "Select the full current line (backward).", cmd_select_line_backward);
-        selection!("extend-select-line", "Grow selection to cover the current line (extend mode).", cmd_extend_select_line);
-        selection!("extend-select-line-backward", "Grow selection upward to cover the current line.", cmd_extend_select_line_backward);
+        selection!("select-line",          "Select the full current line (forward).",              cmd_select_line,          extend: "extend-select-line");
+        selection!("select-line-backward", "Select the full current line (backward).",             cmd_select_line_backward, extend: "extend-select-line-backward");
+        selection!("extend-select-line",          "Grow selection to cover the current line (extend mode).", cmd_extend_select_line);
+        selection!("extend-select-line-backward", "Grow selection upward to cover the current line.",       cmd_extend_select_line_backward);
 
         // ── Selection commands ────────────────────────────────────────────────
         selection!("collapse-selection", "Collapse each selection to a single cursor at the head.", cmd_collapse_selection);
@@ -269,58 +313,58 @@ impl CommandRegistry {
         selection!("copy-selection-on-prev-line", "Duplicate each selection on the line above.", cmd_copy_selection_on_prev_line);
 
         // ── Text objects — line ───────────────────────────────────────────────
-        selection!("inner-line", "Select inner line content (excluding the newline).", cmd_inner_line);
-        selection!("around-line", "Select the line including its newline.", cmd_around_line);
-        selection!("extend-inner-line", "Extend to inner line content.", cmd_extend_inner_line);
-        selection!("extend-around-line", "Extend to include the full line.", cmd_extend_around_line);
+        selection!("inner-line",  "Select inner line content (excluding the newline).", cmd_inner_line,  extend: "extend-inner-line");
+        selection!("around-line", "Select the line including its newline.",             cmd_around_line, extend: "extend-around-line");
+        selection!("extend-inner-line",  "Extend to inner line content.",     cmd_extend_inner_line);
+        selection!("extend-around-line", "Extend to include the full line.",  cmd_extend_around_line);
 
         // ── Text objects — word ───────────────────────────────────────────────
-        selection!("inner-word", "Select inner word.", cmd_inner_word);
-        selection!("around-word", "Select word plus surrounding whitespace.", cmd_around_word);
-        selection!("extend-inner-word", "Extend to inner word.", cmd_extend_inner_word);
-        selection!("extend-around-word", "Extend to word plus surrounding whitespace.", cmd_extend_around_word);
-        selection!("inner-WORD", "Select inner WORD (whitespace-delimited).", cmd_inner_WORD);
-        selection!("around-WORD", "Select WORD plus surrounding whitespace.", cmd_around_WORD);
-        selection!("extend-inner-WORD", "Extend to inner WORD.", cmd_extend_inner_WORD);
-        selection!("extend-around-WORD", "Extend to WORD plus surrounding whitespace.", cmd_extend_around_WORD);
+        selection!("inner-word",  "Select inner word.",                          cmd_inner_word,  extend: "extend-inner-word");
+        selection!("around-word", "Select word plus surrounding whitespace.",    cmd_around_word, extend: "extend-around-word");
+        selection!("extend-inner-word",  "Extend to inner word.",                          cmd_extend_inner_word);
+        selection!("extend-around-word", "Extend to word plus surrounding whitespace.",    cmd_extend_around_word);
+        selection!("inner-WORD",  "Select inner WORD (whitespace-delimited).",  cmd_inner_WORD,  extend: "extend-inner-WORD");
+        selection!("around-WORD", "Select WORD plus surrounding whitespace.",   cmd_around_WORD, extend: "extend-around-WORD");
+        selection!("extend-inner-WORD",  "Extend to inner WORD.",                          cmd_extend_inner_WORD);
+        selection!("extend-around-WORD", "Extend to WORD plus surrounding whitespace.",    cmd_extend_around_WORD);
 
         // ── Text objects — brackets ───────────────────────────────────────────
-        selection!("inner-paren", "Select content inside the nearest `()`.", cmd_inner_paren);
-        selection!("around-paren", "Select content including the nearest `()`.", cmd_around_paren);
-        selection!("extend-inner-paren", "Extend to content inside the nearest `()`.", cmd_extend_inner_paren);
+        selection!("inner-paren",   "Select content inside the nearest `()`.",    cmd_inner_paren,   extend: "extend-inner-paren");
+        selection!("around-paren",  "Select content including the nearest `()`.", cmd_around_paren,  extend: "extend-around-paren");
+        selection!("extend-inner-paren",  "Extend to content inside the nearest `()`.",    cmd_extend_inner_paren);
         selection!("extend-around-paren", "Extend to content including the nearest `()`.", cmd_extend_around_paren);
-        selection!("inner-bracket", "Select content inside the nearest `[]`.", cmd_inner_bracket);
-        selection!("around-bracket", "Select content including the nearest `[]`.", cmd_around_bracket);
-        selection!("extend-inner-bracket", "Extend to content inside the nearest `[]`.", cmd_extend_inner_bracket);
+        selection!("inner-bracket",   "Select content inside the nearest `[]`.",    cmd_inner_bracket,   extend: "extend-inner-bracket");
+        selection!("around-bracket",  "Select content including the nearest `[]`.", cmd_around_bracket,  extend: "extend-around-bracket");
+        selection!("extend-inner-bracket",  "Extend to content inside the nearest `[]`.",    cmd_extend_inner_bracket);
         selection!("extend-around-bracket", "Extend to content including the nearest `[]`.", cmd_extend_around_bracket);
-        selection!("inner-brace", "Select content inside the nearest `{}`.", cmd_inner_brace);
-        selection!("around-brace", "Select content including the nearest `{}`.", cmd_around_brace);
-        selection!("extend-inner-brace", "Extend to content inside the nearest `{}`.", cmd_extend_inner_brace);
+        selection!("inner-brace",   "Select content inside the nearest `{}`.",    cmd_inner_brace,   extend: "extend-inner-brace");
+        selection!("around-brace",  "Select content including the nearest `{}`.", cmd_around_brace,  extend: "extend-around-brace");
+        selection!("extend-inner-brace",  "Extend to content inside the nearest `{}`.",    cmd_extend_inner_brace);
         selection!("extend-around-brace", "Extend to content including the nearest `{}`.", cmd_extend_around_brace);
-        selection!("inner-angle", "Select content inside the nearest `<>`.", cmd_inner_angle);
-        selection!("around-angle", "Select content including the nearest `<>`.", cmd_around_angle);
-        selection!("extend-inner-angle", "Extend to content inside the nearest `<>`.", cmd_extend_inner_angle);
+        selection!("inner-angle",   "Select content inside the nearest `<>`.",    cmd_inner_angle,   extend: "extend-inner-angle");
+        selection!("around-angle",  "Select content including the nearest `<>`.", cmd_around_angle,  extend: "extend-around-angle");
+        selection!("extend-inner-angle",  "Extend to content inside the nearest `<>`.",    cmd_extend_inner_angle);
         selection!("extend-around-angle", "Extend to content including the nearest `<>`.", cmd_extend_around_angle);
 
         // ── Text objects — quotes ─────────────────────────────────────────────
-        selection!("inner-double-quote", "Select content inside the nearest `\"`.", cmd_inner_double_quote);
-        selection!("around-double-quote", "Select content including the nearest `\"`.", cmd_around_double_quote);
-        selection!("extend-inner-double-quote", "Extend to content inside the nearest `\"`.", cmd_extend_inner_double_quote);
+        selection!("inner-double-quote",  "Select content inside the nearest `\"`.",    cmd_inner_double_quote,  extend: "extend-inner-double-quote");
+        selection!("around-double-quote", "Select content including the nearest `\"`.", cmd_around_double_quote, extend: "extend-around-double-quote");
+        selection!("extend-inner-double-quote",  "Extend to content inside the nearest `\"`.",    cmd_extend_inner_double_quote);
         selection!("extend-around-double-quote", "Extend to content including the nearest `\"`.", cmd_extend_around_double_quote);
-        selection!("inner-single-quote", "Select content inside the nearest `'`.", cmd_inner_single_quote);
-        selection!("around-single-quote", "Select content including the nearest `'`.", cmd_around_single_quote);
-        selection!("extend-inner-single-quote", "Extend to content inside the nearest `'`.", cmd_extend_inner_single_quote);
+        selection!("inner-single-quote",  "Select content inside the nearest `'`.",    cmd_inner_single_quote,  extend: "extend-inner-single-quote");
+        selection!("around-single-quote", "Select content including the nearest `'`.", cmd_around_single_quote, extend: "extend-around-single-quote");
+        selection!("extend-inner-single-quote",  "Extend to content inside the nearest `'`.",    cmd_extend_inner_single_quote);
         selection!("extend-around-single-quote", "Extend to content including the nearest `'`.", cmd_extend_around_single_quote);
-        selection!("inner-backtick", "Select content inside the nearest backtick pair.", cmd_inner_backtick);
-        selection!("around-backtick", "Select content including the nearest backtick pair.", cmd_around_backtick);
-        selection!("extend-inner-backtick", "Extend to content inside the nearest backtick pair.", cmd_extend_inner_backtick);
+        selection!("inner-backtick",  "Select content inside the nearest backtick pair.",    cmd_inner_backtick,  extend: "extend-inner-backtick");
+        selection!("around-backtick", "Select content including the nearest backtick pair.", cmd_around_backtick, extend: "extend-around-backtick");
+        selection!("extend-inner-backtick",  "Extend to content inside the nearest backtick pair.",    cmd_extend_inner_backtick);
         selection!("extend-around-backtick", "Extend to content including the nearest backtick pair.", cmd_extend_around_backtick);
 
         // ── Text objects — arguments ──────────────────────────────────────────
-        selection!("inner-argument", "Select the argument at the cursor (trimmed).", cmd_inner_argument);
-        selection!("around-argument", "Select the argument and its separator comma.", cmd_around_argument);
-        selection!("extend-inner-argument", "Extend to the inner argument.", cmd_extend_inner_argument);
-        selection!("extend-around-argument", "Extend to include the argument and separator.", cmd_extend_around_argument);
+        selection!("inner-argument",  "Select the argument at the cursor (trimmed).",      cmd_inner_argument,  extend: "extend-inner-argument");
+        selection!("around-argument", "Select the argument and its separator comma.",       cmd_around_argument, extend: "extend-around-argument");
+        selection!("extend-inner-argument",  "Extend to the inner argument.",                     cmd_extend_inner_argument);
+        selection!("extend-around-argument", "Extend to include the argument and separator.",     cmd_extend_around_argument);
 
         // ── Edit commands ─────────────────────────────────────────────────────
         edit!("delete-char-forward", "Delete the character (or selection) under the cursor.", delete_char_forward);
@@ -330,12 +374,12 @@ impl CommandRegistry {
         use super::commands::*;
 
         // ── Editor commands — mode transitions ────────────────────────────────
-        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",                     cmd_insert_before,        repeatable);
-        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",                cmd_insert_after,         repeatable);
-        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",             cmd_insert_at_line_start, repeatable);
-        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",                     cmd_insert_at_line_end,   repeatable);
-        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",                     cmd_open_line_below,      repeatable);
-        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",                     cmd_open_line_above,      repeatable);
+        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",          cmd_insert_before,        repeatable);
+        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",     cmd_insert_after,         repeatable);
+        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",  cmd_insert_at_line_start, repeatable);
+        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",          cmd_insert_at_line_end,   repeatable);
+        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",          cmd_open_line_below,      repeatable, extend: "flip-selections");
+        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",          cmd_open_line_above,      repeatable);
         editor_cmd!("command-mode",         "Open the command-mode mini-buffer.",                                           cmd_command_mode);
         editor_cmd!("exit-insert",          "Return to normal mode from insert mode.",                                     cmd_exit_insert);
 
@@ -353,27 +397,27 @@ impl CommandRegistry {
         editor_cmd!("collapse-and-exit-extend", "Collapse each selection to its cursor and exit extend mode.",             cmd_collapse_and_exit_extend);
 
         // ── Editor commands — find / till (read pending_char) ─────────────────
-        editor_cmd!("find-forward",                "Find next occurrence of a character (inclusive, forward).",            cmd_find_forward);
-        editor_cmd!("extend-find-forward",         "Extend to next occurrence of a character (inclusive, forward).",       cmd_extend_find_forward);
-        editor_cmd!("find-backward",               "Find previous occurrence of a character (inclusive, backward).",       cmd_find_backward);
-        editor_cmd!("extend-find-backward",        "Extend to previous occurrence of a character (inclusive, backward).",  cmd_extend_find_backward);
-        editor_cmd!("till-forward",                "Move to just before next occurrence of a character (exclusive).",      cmd_till_forward);
-        editor_cmd!("extend-till-forward",         "Extend to just before next occurrence of a character (exclusive).",    cmd_extend_till_forward);
-        editor_cmd!("till-backward",               "Move to just after previous occurrence of a character (exclusive).",   cmd_till_backward);
-        editor_cmd!("extend-till-backward",        "Extend to just after previous occurrence of a character (exclusive).", cmd_extend_till_backward);
-        editor_cmd!("repeat-find-forward",         "Repeat the last find/till motion forward.",                            cmd_repeat_find_forward);
-        editor_cmd!("extend-repeat-find-forward",  "Extend: repeat the last find/till motion forward.",                   cmd_extend_repeat_find_forward);
-        editor_cmd!("repeat-find-backward",        "Repeat the last find/till motion backward.",                           cmd_repeat_find_backward);
-        editor_cmd!("extend-repeat-find-backward", "Extend: repeat the last find/till motion backward.",                  cmd_extend_repeat_find_backward);
+        editor_cmd!("find-forward",    "Find next occurrence of a character (inclusive, forward).",            cmd_find_forward,    extend: "extend-find-forward");
+        editor_cmd!("find-backward",   "Find previous occurrence of a character (inclusive, backward).",       cmd_find_backward,   extend: "extend-find-backward");
+        editor_cmd!("till-forward",    "Move to just before next occurrence of a character (exclusive).",      cmd_till_forward,    extend: "extend-till-forward");
+        editor_cmd!("till-backward",   "Move to just after previous occurrence of a character (exclusive).",   cmd_till_backward,   extend: "extend-till-backward");
+        editor_cmd!("extend-find-forward",   "Extend to next occurrence of a character (inclusive, forward).",       cmd_extend_find_forward);
+        editor_cmd!("extend-find-backward",  "Extend to previous occurrence of a character (inclusive, backward).",  cmd_extend_find_backward);
+        editor_cmd!("extend-till-forward",   "Extend to just before next occurrence of a character (exclusive).",    cmd_extend_till_forward);
+        editor_cmd!("extend-till-backward",  "Extend to just after previous occurrence of a character (exclusive).", cmd_extend_till_backward);
+        editor_cmd!("repeat-find-forward",          "Repeat the last find/till motion forward.",              cmd_repeat_find_forward,  extend: "extend-repeat-find-forward");
+        editor_cmd!("repeat-find-backward",         "Repeat the last find/till motion backward.",             cmd_repeat_find_backward, extend: "extend-repeat-find-backward");
+        editor_cmd!("extend-repeat-find-forward",   "Extend: repeat the last find/till motion forward.",     cmd_extend_repeat_find_forward);
+        editor_cmd!("extend-repeat-find-backward",  "Extend: repeat the last find/till motion backward.",    cmd_extend_repeat_find_backward);
 
         // ── Editor commands — replace (reads pending_char) ───────────────────
         editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace, repeatable);
 
         // ── Editor commands — page scroll ─────────────────────────────────────
-        editor_cmd!("page-down",        "Scroll down by one viewport height.",                 cmd_page_down);
-        editor_cmd!("extend-page-down", "Extend selections down by one viewport height.",      cmd_extend_page_down);
-        editor_cmd!("page-up",          "Scroll up by one viewport height.",                   cmd_page_up);
-        editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",        cmd_extend_page_up);
+        editor_cmd!("page-down", "Scroll down by one viewport height.",            cmd_page_down, extend: "extend-page-down");
+        editor_cmd!("page-up",  "Scroll up by one viewport height.",              cmd_page_up,   extend: "extend-page-up");
+        editor_cmd!("extend-page-down", "Extend selections down by one viewport height.", cmd_extend_page_down);
+        editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",   cmd_extend_page_up);
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
@@ -382,10 +426,10 @@ impl CommandRegistry {
         // ── Editor commands — search ──────────────────────────────────────────
         editor_cmd!("search-forward",        "Enter search mode (forward).",                            cmd_search_forward);
         editor_cmd!("search-backward",       "Enter search mode (backward).",                           cmd_search_backward);
-        editor_cmd!("search-next",           "Jump to the next search match.",                          cmd_search_next);
-        editor_cmd!("search-prev",           "Jump to the previous search match.",                      cmd_search_prev);
-        editor_cmd!("extend-search-next",    "Extend selection to the next search match.",              cmd_extend_search_next);
-        editor_cmd!("extend-search-prev",    "Extend selection to the previous search match.",          cmd_extend_search_prev);
+        editor_cmd!("search-next", "Jump to the next search match.",             cmd_search_next, extend: "extend-search-next");
+        editor_cmd!("search-prev", "Jump to the previous search match.",       cmd_search_prev, extend: "extend-search-prev");
+        editor_cmd!("extend-search-next", "Extend selection to the next search match.",     cmd_extend_search_next);
+        editor_cmd!("extend-search-prev", "Extend selection to the previous search match.", cmd_extend_search_prev);
         editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
 
         // ── Editor commands — select ─────────────────────────────────────────
@@ -399,6 +443,7 @@ impl CommandRegistry {
         // ── Editor commands — misc ────────────────────────────────────────────
         editor_cmd!("quit", "Quit the editor.", cmd_quit);
     }
+
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -479,6 +524,60 @@ mod tests {
         let reg = CommandRegistry::with_defaults();
         assert!(reg.get("does-not-exist").is_none());
         assert!(reg.get("nonexistent-command").is_none());
+    }
+
+    /// Expected number of base → extend pairs registered by `register_extend_pairs`.
+    ///
+    /// Count breakdown:
+    ///    4 character motions (left/right/up/down)
+    ///    2 buffer-level goto (first/last line)
+    ///    3 line-position motions (start/end/first-nonblank)
+    ///    4 word motions (next/prev × word/WORD)
+    ///    2 paragraph motions
+    ///    2 line selection (forward/backward)
+    ///   22 text objects (11 objects × inner/around)
+    ///    6 find/till (forward/backward × find/till + repeat forward/backward)
+    ///    2 page scroll (down/up)
+    ///    2 search (next/prev)
+    ///    1 special (open-line-below → flip-selections)
+    ///   ──
+    ///   50 total
+    const EXPECTED_EXTEND_PAIR_COUNT: usize = 50;
+
+    #[test]
+    fn registry_extend_pair_count() {
+        let reg = CommandRegistry::with_defaults();
+        assert_eq!(
+            reg.extend_map.len(),
+            EXPECTED_EXTEND_PAIR_COUNT,
+            "extend pair count mismatch — update EXPECTED_EXTEND_PAIR_COUNT after adding/removing pairs"
+        );
+    }
+
+    #[test]
+    fn registry_extend_pairs_are_valid() {
+        let reg = CommandRegistry::with_defaults();
+        for (&base, &extend) in &reg.extend_map {
+            assert!(
+                reg.commands.contains_key(base),
+                "extend pair: base command '{base}' not in registry"
+            );
+            assert!(
+                reg.commands.contains_key(extend),
+                "extend pair: extend command '{extend}' not in registry"
+            );
+        }
+    }
+
+    #[test]
+    fn extend_variant_lookup() {
+        let reg = CommandRegistry::with_defaults();
+        assert_eq!(reg.extend_variant("move-left"), Some("extend-left"));
+        assert_eq!(reg.extend_variant("select-next-word"), Some("extend-select-next-word"));
+        assert_eq!(reg.extend_variant("open-line-below"), Some("flip-selections"));
+        assert_eq!(reg.extend_variant("delete"), None);
+        assert_eq!(reg.extend_variant("undo"), None);
+        assert_eq!(reg.extend_variant("insert-before"), None);
     }
 
     #[test]
