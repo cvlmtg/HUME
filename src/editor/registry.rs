@@ -486,6 +486,7 @@ mod tests {
     ///    4 line-selection motions (no count)
     ///   10 selection commands
     ///   44 text objects (4 line + 8 word + 16 bracket + 12 quote + 4 argument)
+    ///    7 surround selection commands
     ///    3 edit commands
     ///    8 mode-transition editor commands
     ///    7 edit-composite editor commands
@@ -497,9 +498,9 @@ mod tests {
     ///    2 select editor commands (select-within, use-selection-as-search)
     ///    4 page-scroll editor commands
     ///    2 jump-list editor commands
+    ///    5 insert editor commands (insert-at-line-start/end, open-line-above/below, exit-insert)
     ///    1 quit editor command
-    ///   ──
-    ///  138 total
+    ///
     const EXPECTED_COMMAND_COUNT: usize = 150;
 
     #[test]

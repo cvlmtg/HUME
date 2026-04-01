@@ -254,6 +254,28 @@ mod tests {
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }
 
+    #[test]
+    fn surround_with_range_selection_uses_head() {
+        // (hello) — range selection spanning 'ell' (anchor=2, head=4).
+        // find_bracket_pair searches from head (pos 4), finds the enclosing ().
+        let buf = Buffer::from("(hello)\n");
+        let sels = SelectionSet::single(Selection::new(2, 4));
+        let result = cmd_surround_paren(&buf, sels);
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        assert_eq!(pairs, vec![(0, 0), (6, 6)]);
+    }
+
+    #[test]
+    fn surround_with_backward_range_selection() {
+        // (hello) — backward selection (anchor=4, head=2).
+        // head is at pos 2, still inside the parens.
+        let buf = Buffer::from("(hello)\n");
+        let sels = SelectionSet::single(Selection::new(4, 2));
+        let result = cmd_surround_paren(&buf, sels);
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        assert_eq!(pairs, vec![(0, 0), (6, 6)]);
+    }
+
     // ── Pair lookup helpers ──────────────────────────────────────────────────
 
     #[test]
