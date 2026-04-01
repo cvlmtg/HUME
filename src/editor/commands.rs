@@ -507,7 +507,7 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
     }
     ed.pre_select_sels = Some(ed.doc.sels().clone());
     ed.set_mode(Mode::Select);
-    ed.minibuf = Some(MiniBuffer { prompt: 's', input: String::new(), cursor: 0 });
+    ed.minibuf = Some(MiniBuffer { prompt: '⫽', input: String::new(), cursor: 0 });
 }
 
 // ── Use selection as search (*) ──────────────────────────────────────────────

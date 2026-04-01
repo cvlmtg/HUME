@@ -229,8 +229,7 @@ fn render_statusline(
     // This workaround goes away once the theme uses explicit bg colors.
     if let Some(mb) = &editor.minibuf {
         let mb_offset = last_span_offset(&left_spans);
-        // +1 for the trailing space between prompt and input text.
-        let prompt_w = 1 + mb.prompt.width().unwrap_or(0) as u16;
+        let prompt_w = mb.prompt.width().unwrap_or(0) as u16;
         let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
         let cursor_x = left_x + mb_offset + prompt_w + input_before_cursor;
         if cursor_x < area.right() {
@@ -317,7 +316,6 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
             if let Some(mb) = &editor.minibuf {
                 let mut text = String::with_capacity(2 + mb.input.len());
                 text.push(mb.prompt);
-                text.push(' ');
                 text.push_str(&mb.input);
                 (text, colors.statusline)
             } else {

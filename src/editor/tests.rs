@@ -1793,7 +1793,7 @@ fn select_within_enters_select_mode() {
     assert_eq!(ed.mode, Mode::Select);
     assert!(ed.pre_select_sels.is_some());
     assert!(ed.minibuf.is_some());
-    assert_eq!(ed.minibuf.as_ref().unwrap().prompt, 's');
+    assert_eq!(ed.minibuf.as_ref().unwrap().prompt, '⫽');
 }
 
 /// `s` + pattern + Enter confirms: selections become matches, mode returns to Normal.
