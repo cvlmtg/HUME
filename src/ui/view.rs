@@ -141,8 +141,11 @@ impl ViewState {
     /// Maintains a margin of [`SCROLL_MARGIN`] lines between the cursor and
     /// the top/bottom edges of the viewport. If the viewport is very short
     /// the margin is halved to avoid thrashing.
-    pub(crate) fn ensure_cursor_visible(&mut self, buf: &Buffer, sels: &SelectionSet) {
-        let cursor_line = buf.char_to_line(sels.primary().head);
+    ///
+    /// The caller provides `cursor_line` (the 0-based buffer line of the
+    /// primary cursor) so that the event loop can compute it once and share
+    /// it with [`ensure_cursor_visible_horizontal`].
+    pub(crate) fn ensure_cursor_visible(&mut self, cursor_line: usize) {
         let margin = SCROLL_MARGIN.min(self.height / 2);
 
         if cursor_line < self.scroll_offset + margin {
@@ -159,9 +162,8 @@ impl ViewState {
     /// Mirrors [`ensure_cursor_visible`] for the horizontal axis. The cursor's
     /// display column (in terminal cells) is kept at least [`SCROLL_MARGIN_H`]
     /// columns from the left and right edges of the content area.
-    pub(crate) fn ensure_cursor_visible_horizontal(&mut self, buf: &Buffer, sels: &SelectionSet) {
+    pub(crate) fn ensure_cursor_visible_horizontal(&mut self, buf: &Buffer, sels: &SelectionSet, cursor_line: usize) {
         let head = sels.primary().head;
-        let cursor_line = buf.char_to_line(head);
         let cursor_col = display_col_in_line(buf, cursor_line, head);
         let content_width = self.width.saturating_sub(self.gutter_width);
         if content_width == 0 {
@@ -314,17 +316,11 @@ mod tests {
 
     // ── ensure_cursor_visible ─────────────────────────────────────────────────
 
-    fn cursor_at(line: usize, buf: &Buffer) -> SelectionSet {
-        let pos = buf.line_to_char(line);
-        SelectionSet::single(Selection::cursor(pos))
-    }
-
     #[test]
     fn cursor_visible_no_scroll_needed() {
         let buf = Buffer::from("a\nb\nc\nd\ne\n");
         let mut v = view(0, 10, &buf);
-        let sels = cursor_at(2, &buf);
-        v.ensure_cursor_visible(&buf, &sels);
+        v.ensure_cursor_visible(2);
         assert_eq!(v.scroll_offset, 0); // cursor is well within viewport
     }
 
@@ -333,12 +329,10 @@ mod tests {
         let buf = Buffer::from("a\nb\nc\nd\ne\nf\ng\nh\n");
         // Viewport shows lines 0..5, cursor is on line 7 (below).
         let mut v = view(0, 5, &buf);
-        let sels = cursor_at(7, &buf);
-        v.ensure_cursor_visible(&buf, &sels);
+        v.ensure_cursor_visible(7);
         // After scroll the cursor should be within viewport with margin.
-        let cursor_line = 7;
-        assert!(cursor_line >= v.scroll_offset);
-        assert!(cursor_line < v.scroll_offset + v.height);
+        assert!(7 >= v.scroll_offset);
+        assert!(7 < v.scroll_offset + v.height);
     }
 
     #[test]
@@ -346,19 +340,16 @@ mod tests {
         let buf = Buffer::from("a\nb\nc\nd\ne\nf\ng\nh\n");
         // Viewport starts at line 5, cursor is on line 1 (above).
         let mut v = view(5, 5, &buf);
-        let sels = cursor_at(1, &buf);
-        v.ensure_cursor_visible(&buf, &sels);
-        let cursor_line = 1;
-        assert!(cursor_line >= v.scroll_offset);
-        assert!(cursor_line < v.scroll_offset + v.height);
+        v.ensure_cursor_visible(1);
+        assert!(1 >= v.scroll_offset);
+        assert!(1 < v.scroll_offset + v.height);
     }
 
     #[test]
     fn cursor_at_top_of_buffer_scroll_offset_is_zero() {
         let buf = Buffer::from("a\nb\nc\n");
         let mut v = view(2, 5, &buf); // scrolled down
-        let sels = cursor_at(0, &buf);
-        v.ensure_cursor_visible(&buf, &sels);
+        v.ensure_cursor_visible(0);
         assert_eq!(v.scroll_offset, 0);
     }
 
@@ -388,7 +379,7 @@ mod tests {
         let buf = Buffer::from("abcdefghijklmnopqrst\n");
         let mut v = hview(80, 4);
         let sels = cursor_at_char(10);
-        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        v.ensure_cursor_visible_horizontal(&buf, &sels, 0);
         assert_eq!(v.col_offset, 0);
     }
 
@@ -401,7 +392,7 @@ mod tests {
         let buf = Buffer::from("abcdefghijklmnopqrstuvwxyz\n");
         let mut v = hview(20, 4);
         let sels = cursor_at_char(18);
-        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        v.ensure_cursor_visible_horizontal(&buf, &sels, 0);
         assert_eq!(v.col_offset, 8);
     }
 
@@ -415,7 +406,7 @@ mod tests {
         let mut v = hview(20, 4);
         v.col_offset = 10;
         let sels = cursor_at_char(12);
-        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        v.ensure_cursor_visible_horizontal(&buf, &sels, 0);
         assert_eq!(v.col_offset, 7);
     }
 
@@ -428,7 +419,7 @@ mod tests {
         let mut v = hview(20, 4);
         v.col_offset = 5;
         let sels = cursor_at_char(2);
-        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        v.ensure_cursor_visible_horizontal(&buf, &sels, 0);
         assert_eq!(v.col_offset, 0);
     }
 
@@ -442,7 +433,7 @@ mod tests {
         let buf = Buffer::from("世界世界世界世界世界\n");
         let mut v = hview(20, 4);
         let sels = cursor_at_char(8);
-        v.ensure_cursor_visible_horizontal(&buf, &sels);
+        v.ensure_cursor_visible_horizontal(&buf, &sels, 0);
         assert_eq!(v.col_offset, 6);
     }
 }
