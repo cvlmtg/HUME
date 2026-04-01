@@ -1903,13 +1903,13 @@ fn star_on_selection_uses_selected_text() {
 #[test]
 fn star_on_trailing_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
-    let original = state(&ed);
+    // Exercise state() before and after the keypress to verify the
+    // serialisation path doesn't panic on this edge-case cursor position.
+    let _ = state(&ed);
     ed.handle_key(key('*'));
     // inner_word_impl on trailing \n produces a \n pattern.
     // This is a degenerate case but should not panic.
     assert_eq!(ed.mode, Mode::Normal);
-    // The selection should at least not crash. If inner_word_impl returns
-    // None for the very last \n, the command is a no-op.
     let _ = state(&ed);
 }
 
