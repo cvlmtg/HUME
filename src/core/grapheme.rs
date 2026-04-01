@@ -222,6 +222,15 @@ pub(crate) fn display_col_width(buf: &Buffer, from_char: usize, to_char: usize) 
         .sum()
 }
 
+/// 0-based grapheme column of `char_pos` within line `line_idx`.
+///
+/// This is a logical position (grapheme index), not a display column: wide
+/// characters count as one, not two. The value matches how many times the
+/// user pressed → to reach the cursor from the start of the line.
+pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
+    grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
+}
+
 /// Display column of `char_pos` within line `line_idx`.
 ///
 /// Returns the total display width (terminal columns) of the graphemes from the
@@ -229,7 +238,7 @@ pub(crate) fn display_col_width(buf: &Buffer, from_char: usize, to_char: usize) 
 /// column where the character at `char_pos` would be drawn if the line started
 /// at the left edge.
 ///
-/// Compare with [`crate::ui::statusline::grapheme_col_in_line`], which counts
+/// Compare with [`grapheme_col_in_line`], which counts
 /// *grapheme clusters* (logical column — how many `→` presses). This function
 /// counts *display columns* (visual column — how many terminal cells).
 pub(crate) fn display_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
