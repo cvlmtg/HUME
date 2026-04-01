@@ -338,10 +338,6 @@ fn render_content(
     // Show selections in Normal and Search mode; suppress in Insert (bar cursor does the job).
     let show_sels = mode != Mode::Insert;
 
-    // `display_col` tracks the absolute display column from the start of the
-    // line (before horizontal scrolling). `col_offset` is how many display
-    // columns have been scrolled off the left edge. Only graphemes whose
-    // display_col falls within [col_offset, col_offset + width) are rendered.
     let col_offset = editor.view.col_offset;
     let mut display_col: usize = 0;
 
@@ -351,7 +347,6 @@ fn render_content(
         // they don't stack on the gutter edge.
         let advance = gw.max(1) as usize;
 
-        // Grapheme is entirely before the visible window — skip it.
         if display_col + advance <= col_offset {
             display_col += advance;
             char_pos += grapheme.chars().count();
@@ -372,7 +367,7 @@ fn render_content(
 
         let screen_col = (display_col - col_offset) as u16;
 
-        if screen_col + gw.max(1) > width {
+        if screen_col + advance as u16 > width {
             break; // clip at right edge
         }
 

@@ -4,8 +4,7 @@ use ratatui::style::{Modifier, Style};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::core::buffer::Buffer;
-use crate::core::grapheme::grapheme_count;
+use crate::core::grapheme::grapheme_col_in_line;
 use crate::editor::{Editor, Mode};
 
 /// Hardcoded left section for Command/Search modes.
@@ -427,13 +426,3 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(String, Style)], mut x: u1
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// 0-based grapheme column of `char_pos` within line `line_idx`.
-///
-/// This is a logical position (grapheme index), not a display column: wide
-/// characters count as one, not two. The value matches how many times the
-/// user pressed → to reach the cursor from the start of the line.
-pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
-    grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
-}
