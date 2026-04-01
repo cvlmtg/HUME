@@ -11,7 +11,7 @@ use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
 
-use super::keymap::{KeymapCommand, WalkResult};
+use super::keymap::WalkResult;
 use super::{Editor, Mode, SearchDirection};
 
 /// Commands that always record a jump before executing.
@@ -31,6 +31,7 @@ const JUMP_COMMANDS: &[&str] = &[
 fn is_jump_command(name: &str) -> bool {
     JUMP_COMMANDS.contains(&name)
 }
+
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -58,15 +59,11 @@ impl Editor {
             if let KeyCode::Char(ch) = key.code {
                 let count = self.count.take().unwrap_or(1);
                 self.pending_char = Some(ch);
-                // Resolve extend duality at char-consumption time (not setup time),
-                // since extend mode could change between the trigger key and the char.
-                let name = if self.extend {
-                    wc.extend_name.unwrap_or(wc.cmd_name)
-                } else {
-                    wc.cmd_name
-                };
-                let cmd = KeymapCommand { name, extend_name: None };
-                self.execute_keymap_command(cmd, count);
+                // Extend resolution happens inside execute_keymap_command via the
+                // registry. Use self.extend (checked at char-consumption time) OR
+                // ctrl_extend (set when the wait-char was triggered via Ctrl+key).
+                let extend = self.extend || wc.ctrl_extend;
+                self.execute_keymap_command(wc.cmd_name, count, extend);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -84,9 +81,10 @@ impl Editor {
         }
 
         // ── Count prefix accumulation ─────────────────────────────────────────
-        // Only accumulate when we're at the trie root (no pending sequence).
+        // Only accumulate when we're at the trie root (no pending sequence)
+        // and no modifiers are held (Ctrl+4 is not a count digit).
         // `0` without an existing count is the goto-line-start binding, not a digit.
-        if self.pending_keys.is_empty() {
+        if self.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
             match key.code {
                 KeyCode::Char(d @ '1'..='9') => {
                     let n = self.count.unwrap_or(0) * 10 + (d as usize - '0' as usize);
@@ -103,30 +101,41 @@ impl Editor {
 
         // ── Ctrl-key normalisation ────────────────────────────────────────────
         //
-        // Three categories of CONTROL keys:
+        // Two categories of CONTROL keys:
         //
         // 1. Explicit Ctrl bindings (Ctrl+c, Ctrl+r, Ctrl+,, Ctrl+x, Ctrl+X):
         //    Have a dedicated trie entry. Used as-is regardless of kitty mode.
         //
-        // 2. Kitty one-shot extend (Ctrl+h/j/k/l/w/b and similar motion keys):
-        //    No explicit trie binding. Normalised by stripping CONTROL and
-        //    temporarily setting extend=true. Only triggers the one-shot extend
-        //    when kitty_enabled is true (otherwise strips CONTROL but leaves
-        //    extend unchanged, preserving legacy "Ctrl+motion = bare motion"
-        //    behaviour on real terminals).
+        // 2. Implicit Ctrl+motion (Ctrl+h/j/k/l/w/b and similar motion keys):
+        //    No explicit trie binding. With kitty keyboard protocol enabled,
+        //    these become one-shot extend: strip CONTROL, look up the bare key,
+        //    and dispatch with extend=true (if the command has an extend variant).
+        //    Without kitty, these are a no-op — legacy terminals can't
+        //    distinguish Ctrl+letter from control codes reliably, so silently
+        //    running the bare motion would be surprising.
         //
         // Detection: try the key as-is in the trie first. If NoMatch and the key
-        // had CONTROL, strip CONTROL and retry; set one_shot_extend=kitty_enabled.
+        // had CONTROL, strip CONTROL and retry only if kitty is enabled.
+        //
+        // REPORT_ALTERNATE_KEYS (enabled at init) makes the terminal send the
+        // shifted character directly — crossterm replaces the base keycode with
+        // the alternate and strips SHIFT. So Ctrl+} arrives as Char('}') with
+        // just CONTROL, and stripping CONTROL gives us the correct bare key.
+        // This is layout-independent: the terminal knows the real keyboard layout.
 
-        let (lookup_key, one_shot_extend) =
+        let (lookup_key, ctrl_extend) =
             if key.modifiers.contains(KeyModifiers::CONTROL) && self.pending_keys.is_empty() {
                 // Fast-check: does an explicit Ctrl binding exist?
                 let ctrl_result = self.keymap.normal.walk(&[key]);
                 if matches!(ctrl_result, WalkResult::NoMatch) {
-                    // No explicit Ctrl binding — strip CONTROL and dispatch as bare key.
-                    let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
-                    let one_shot = self.kitty_enabled; // only extend in kitty mode
-                    (bare, one_shot)
+                    if self.kitty_enabled {
+                        // Kitty mode: strip CONTROL, dispatch as extend.
+                        let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
+                        (bare, true)
+                    } else {
+                        // Legacy mode: no-op — don't strip CONTROL.
+                        return;
+                    }
                 } else {
                     (key, false)
                 }
@@ -134,46 +143,49 @@ impl Editor {
                 (key, false)
             };
 
-        // Temporarily activate extend for kitty one-shot.
-        let saved_extend = self.extend;
-        if one_shot_extend {
-            self.extend = true;
-        }
-
         self.pending_keys.push(lookup_key);
         let result = self.keymap.normal.walk(&self.pending_keys);
+
+        // Compute the effective extend flag: sticky extend OR kitty one-shot.
+        // Passed as a parameter — no temporary editor state mutation.
+        let extend = self.extend || ctrl_extend;
 
         match result {
             WalkResult::Leaf(cmd) => {
                 self.pending_keys.clear();
+                // Ctrl+key one-shot extend: only dispatch if the command
+                // actually has an extend variant. Prevents e.g. Ctrl+u from
+                // running "undo" (which has no extend variant and is not a
+                // motion that should be one-shot-extended).
+                if ctrl_extend && self.registry.extend_variant(cmd.name).is_none() {
+                    self.count = None;
+                    return;
+                }
                 let raw_count = self.count.take();
                 self.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
-                self.execute_keymap_command(cmd, count);
+                self.execute_keymap_command(cmd.name, count, extend);
                 self.explicit_count = false;
-                if one_shot_extend {
-                    self.extend = saved_extend;
-                }
             }
-            WalkResult::WaitChar(wc) => {
+            WalkResult::WaitChar(mut wc) => {
                 self.pending_keys.clear();
-                self.wait_char = Some(wc);
-                if one_shot_extend {
-                    self.extend = saved_extend;
+                // Ctrl+key one-shot extend: only accept if the command has an
+                // extend variant (same guard as the Leaf arm above).
+                if ctrl_extend && self.registry.extend_variant(wc.cmd_name).is_none() {
+                    self.count = None;
+                    return;
                 }
+                // Carry ctrl_extend into the WaitCharPending so it's
+                // available at char-consumption time.
+                wc.ctrl_extend = ctrl_extend;
+                self.wait_char = Some(wc);
             }
             WalkResult::Interior { .. } => {
                 // More keys needed. pending_keys stays populated.
-                if one_shot_extend {
-                    self.extend = saved_extend;
-                }
             }
             WalkResult::NoMatch => {
                 self.pending_keys.clear();
                 self.count = None;
-                if one_shot_extend {
-                    self.extend = saved_extend;
-                }
             }
         }
     }
@@ -187,7 +199,7 @@ impl Editor {
         let trie_result = self.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                self.execute_keymap_command(cmd, 1);
+                self.execute_keymap_command(cmd.name, 1, false);
                 return;
             }
             WalkResult::NoMatch => {}
@@ -252,20 +264,20 @@ impl Editor {
 
     // ── Command execution ─────────────────────────────────────────────────────
 
-    /// Execute a keymap command with the given count.
+    /// Execute a named command with the given count and extend flag.
     ///
-    /// Resolves extend-mode duality, then dispatches through the
-    /// [`CommandRegistry`]. `EditorCmd` variants are dispatched to
-    /// [`dispatch_editor_cmd`].
+    /// When `extend` is true, looks up the extend variant in the registry
+    /// and dispatches that instead. Falls back to the base command if no
+    /// extend variant exists.
     ///
     /// [`CommandRegistry`]: super::registry::CommandRegistry
-    pub(super) fn execute_keymap_command(&mut self, cmd: KeymapCommand, count: usize) {
-        // Resolve extend-mode duality: when extend is active, prefer extend_name.
-        // (For WaitChar commands this is already resolved before calling here.)
-        let resolved = if self.extend {
-            cmd.extend_name.unwrap_or(cmd.name)
+    pub(super) fn execute_keymap_command(&mut self, name: &'static str, count: usize, extend: bool) {
+        // Resolve extend-mode duality via the registry. When extend is active,
+        // use the extend variant if one exists; otherwise fall back to the base.
+        let resolved = if extend {
+            self.registry.extend_variant(name).unwrap_or(name)
         } else {
-            cmd.name
+            name
         };
 
         if let Some(reg_cmd) = self.registry.get(resolved).cloned() {

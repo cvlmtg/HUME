@@ -29,11 +29,19 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
 
     let kitty_enabled = crate::os::probe_kitty_support().unwrap_or(false);
     if kitty_enabled {
+        // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars
+        // (e.g. Ctrl+}) arrive with the correct keycode instead of the base
+        // key plus SHIFT. See docs/learning/command-keymap-dispatch.md.
+        //
+        // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
+        // support REPORT_ALTERNATE_KEYS — Ctrl+shifted-char one-shot extend
+        // may not work on that version.
         execute!(
             out,
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
             )
         )?;
     }

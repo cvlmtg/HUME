@@ -17,16 +17,19 @@
 //!
 //! # Extend-mode duality
 //!
-//! Every motion/text-object binding stores a `name` (normal) and an optional
-//! `extend_name`. When extend mode is active the dispatcher resolves the extend
-//! variant automatically — no binding duplication needed.
+//! The keymap stores only base command names. Extend-variant pairing lives in
+//! the [`CommandRegistry`] — when extend mode is active, the dispatcher
+//! resolves the extend variant automatically via
+//! [`CommandRegistry::extend_variant`].
+//!
+//! [`CommandRegistry`]: super::registry::CommandRegistry
 //!
 //! # Wait-char bindings
 //!
 //! Keys like f/t/F/T/r produce a [`WaitCharPending`] that stores the command
-//! name to dispatch and an optional extend-mode variant. When the next character
-//! arrives, the dispatcher stores it in `Editor.pending_char` and dispatches
-//! the named command. Extend-mode resolution happens at char-consumption time.
+//! name to dispatch. When the next character arrives, the dispatcher stores it
+//! in `Editor.pending_char` and dispatches the named command. Extend-mode
+//! resolution happens at char-consumption time via the registry.
 
 use std::collections::HashMap;
 
@@ -37,12 +40,15 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// State stored on the editor after a wait-char key (f/t/F/T/r).
 ///
 /// On the next keypress the dispatcher stores the character in
-/// `Editor.pending_char` and dispatches `cmd_name` (or `extend_name` when
-/// extend mode is active).
+/// `Editor.pending_char` and dispatches `cmd_name`. Extend-mode resolution
+/// happens at char-consumption time via the registry.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WaitCharPending {
     pub cmd_name: &'static str,
-    pub extend_name: Option<&'static str>,
+    /// Set to `true` when this wait-char was triggered via Ctrl+key (kitty
+    /// protocol). The dispatcher uses this to force extend resolution at
+    /// char-consumption time.
+    pub ctrl_extend: bool,
 }
 
 // ── KeymapCommand ─────────────────────────────────────────────────────────────
@@ -50,17 +56,14 @@ pub(crate) struct WaitCharPending {
 /// What a key binding resolves to after trie lookup.
 ///
 /// Every binding — including composite editor operations — is expressed as
-/// a `Cmd` referencing a name in the [`CommandRegistry`]. There is no parallel
-/// `Action` escape hatch.
+/// a command name referencing an entry in the [`CommandRegistry`]. Extend-mode
+/// pairing is stored in the registry, not here.
 ///
 /// [`CommandRegistry`]: super::registry::CommandRegistry
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct KeymapCommand {
-    /// The command name to look up in the registry (normal mode).
+    /// The command name to look up in the registry.
     pub name: &'static str,
-    /// The command name to use instead when extend mode is active.
-    /// `None` means the same `name` is used regardless of extend state.
-    pub extend_name: Option<&'static str>,
 }
 
 // ── WalkResult ────────────────────────────────────────────────────────────────
@@ -180,29 +183,17 @@ impl Default for Keymap {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Construct a [`KeymapCommand`].
-///
-/// - `cmd!("name", "extend-name")` — with extend duality.
-/// - `cmd!("name")` — no extend variant (`extend_name` is `None`).
+/// Construct a [`KeymapCommand`] from a command name string.
 macro_rules! cmd {
-    ($name:expr, $extend:expr) => {
-        KeymapCommand { name: $name, extend_name: Some($extend) }
-    };
     ($name:expr) => {
-        KeymapCommand { name: $name, extend_name: None }
+        KeymapCommand { name: $name }
     };
 }
 
-/// Construct a wait-char trie node.
-///
-/// - `wait_char!("name", "extend-name")` — with extend duality.
-/// - `wait_char!("name")` — no extend variant.
+/// Construct a wait-char trie node from a command name string.
 macro_rules! wait_char {
-    ($cmd_name:expr, $extend:expr) => {
-        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, extend_name: Some($extend) })
-    };
     ($cmd_name:expr) => {
-        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, extend_name: None })
+        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, ctrl_extend: false })
     };
 }
 
@@ -251,35 +242,36 @@ macro_rules! key {
 ///           └─ …
 /// ```
 fn build_text_object_trie() -> KeyTrie {
-    // Table: (object char, inner name, extend-inner name, around name, extend-around name)
+    // Table: (object chars, inner name, around name).
+    // Extend-variant pairing lives in the registry, not here.
     #[rustfmt::skip]
-    let objects: &[(&[char], &str, &str, &str, &str)] = &[
+    let objects: &[(&[char], &str, &str)] = &[
         // ── Word / WORD ───────────────────────────────────────────────────
-        (&['w'],             "inner-word",         "extend-inner-word",         "around-word",         "extend-around-word"),
-        (&['W'],             "inner-WORD",         "extend-inner-WORD",         "around-WORD",         "extend-around-WORD"),
+        (&['w'],             "inner-word",         "around-word"),
+        (&['W'],             "inner-WORD",         "around-WORD"),
         // ── Brackets ─────────────────────────────────────────────────────
-        (&['(', ')'],        "inner-paren",        "extend-inner-paren",        "around-paren",        "extend-around-paren"),
-        (&['[', ']'],        "inner-bracket",      "extend-inner-bracket",      "around-bracket",      "extend-around-bracket"),
-        (&['{', '}'],        "inner-brace",        "extend-inner-brace",        "around-brace",        "extend-around-brace"),
-        (&['<', '>'],        "inner-angle",        "extend-inner-angle",        "around-angle",        "extend-around-angle"),
+        (&['(', ')'],        "inner-paren",        "around-paren"),
+        (&['[', ']'],        "inner-bracket",      "around-bracket"),
+        (&['{', '}'],        "inner-brace",        "around-brace"),
+        (&['<', '>'],        "inner-angle",        "around-angle"),
         // ── Quotes ───────────────────────────────────────────────────────
-        (&['"'],             "inner-double-quote", "extend-inner-double-quote", "around-double-quote", "extend-around-double-quote"),
-        (&['\''],            "inner-single-quote", "extend-inner-single-quote", "around-single-quote", "extend-around-single-quote"),
-        (&['`'],             "inner-backtick",     "extend-inner-backtick",     "around-backtick",     "extend-around-backtick"),
+        (&['"'],             "inner-double-quote", "around-double-quote"),
+        (&['\''],            "inner-single-quote", "around-single-quote"),
+        (&['`'],             "inner-backtick",     "around-backtick"),
         // ── Arguments ────────────────────────────────────────────────────
-        (&['a'],             "inner-argument",     "extend-inner-argument",     "around-argument",     "extend-around-argument"),
+        (&['a'],             "inner-argument",     "around-argument"),
         // ── Line ─────────────────────────────────────────────────────────
-        (&['l'],             "inner-line",         "extend-inner-line",         "around-line",         "extend-around-line"),
+        (&['l'],             "inner-line",         "around-line"),
     ];
 
     let mut inner_trie = KeyTrie::new("inner");
     let mut around_trie = KeyTrie::new("around");
 
-    for (chars, inner_name, ext_inner_name, around_name, ext_around_name) in objects {
+    for (chars, inner_name, around_name) in objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
-            inner_trie.bind_leaf(k, cmd!(inner_name, ext_inner_name));
-            around_trie.bind_leaf(k, cmd!(around_name, ext_around_name));
+            inner_trie.bind_leaf(k, cmd!(inner_name));
+            around_trie.bind_leaf(k, cmd!(around_name));
         }
     }
 
@@ -302,11 +294,11 @@ fn build_text_object_trie() -> KeyTrie {
 /// ```
 fn build_goto_trie() -> KeyTrie {
     let mut t = KeyTrie::new("goto");
-    t.bind_leaf(key!('g'), cmd!("goto-first-line",     "extend-first-line"));
-    t.bind_leaf(key!('e'), cmd!("goto-last-line",      "extend-last-line"));
-    t.bind_leaf(key!('h'), cmd!("goto-line-start",     "extend-line-start"));
-    t.bind_leaf(key!('l'), cmd!("goto-line-end",       "extend-line-end"));
-    t.bind_leaf(key!('s'), cmd!("goto-first-nonblank", "extend-first-nonblank"));
+    t.bind_leaf(key!('g'), cmd!("goto-first-line"));
+    t.bind_leaf(key!('e'), cmd!("goto-last-line"));
+    t.bind_leaf(key!('h'), cmd!("goto-line-start"));
+    t.bind_leaf(key!('l'), cmd!("goto-line-end"));
+    t.bind_leaf(key!('s'), cmd!("goto-first-nonblank"));
     t
 }
 
@@ -316,43 +308,43 @@ fn default_normal_keymap() -> KeyTrie {
     let mut t = KeyTrie::new("normal");
 
     // ── Basic motion ─────────────────────────────────────────────────────────
-    // Each motion binding stores both the normal and extend-mode variant name.
-    // The dispatcher resolves the right one at execution time.
-    t.bind_leaf(key!('h'),    cmd!("move-left",    "extend-left"));
-    t.bind_leaf(key!(Left),   cmd!("move-left",    "extend-left"));
-    t.bind_leaf(key!('l'),    cmd!("move-right",   "extend-right"));
-    t.bind_leaf(key!(Right),  cmd!("move-right",   "extend-right"));
-    t.bind_leaf(key!('j'),    cmd!("move-down",    "extend-down"));
-    t.bind_leaf(key!(Down),   cmd!("move-down",    "extend-down"));
-    t.bind_leaf(key!('k'),    cmd!("move-up",      "extend-up"));
-    t.bind_leaf(key!(Up),     cmd!("move-up",      "extend-up"));
+    // The keymap stores only the base command name. Extend-variant pairing
+    // lives in the registry — the dispatcher resolves it at execution time.
+    t.bind_leaf(key!('h'),    cmd!("move-left"));
+    t.bind_leaf(key!(Left),   cmd!("move-left"));
+    t.bind_leaf(key!('l'),    cmd!("move-right"));
+    t.bind_leaf(key!(Right),  cmd!("move-right"));
+    t.bind_leaf(key!('j'),    cmd!("move-down"));
+    t.bind_leaf(key!(Down),   cmd!("move-down"));
+    t.bind_leaf(key!('k'),    cmd!("move-up"));
+    t.bind_leaf(key!(Up),     cmd!("move-up"));
 
     // NOTE: Ctrl+h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
-    // The dispatcher normalises them: strips CONTROL and temporarily sets extend=true
-    // when kitty_enabled is true, OR strips CONTROL with no extend change when
-    // kitty_enabled is false (preserving legacy "Ctrl+motion = bare motion" behaviour).
+    // The dispatcher normalises them: strips CONTROL and passes extend=true to
+    // execute_keymap_command when kitty_enabled is true. Commands without an
+    // extend variant in the registry are suppressed (no-op).
     // See `handle_normal` in mappings.rs for the normalisation logic.
 
     // ── Word motion ───────────────────────────────────────────────────────────
-    t.bind_leaf(key!('w'), cmd!("select-next-word",  "extend-select-next-word"));
-    t.bind_leaf(key!('W'), cmd!("select-next-WORD",  "extend-select-next-WORD"));
-    t.bind_leaf(key!('b'), cmd!("select-prev-word",  "extend-select-prev-word"));
-    t.bind_leaf(key!('B'), cmd!("select-prev-WORD",  "extend-select-prev-WORD"));
+    t.bind_leaf(key!('w'), cmd!("select-next-word"));
+    t.bind_leaf(key!('W'), cmd!("select-next-WORD"));
+    t.bind_leaf(key!('b'), cmd!("select-prev-word"));
+    t.bind_leaf(key!('B'), cmd!("select-prev-WORD"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('0'),   cmd!("goto-line-start",    "extend-line-start"));
-    t.bind_leaf(key!(Home),  cmd!("goto-line-start",    "extend-line-start"));
-    t.bind_leaf(key!('$'),   cmd!("goto-line-end",      "extend-line-end"));
-    t.bind_leaf(key!(End),   cmd!("goto-line-end",      "extend-line-end"));
-    t.bind_leaf(key!('^'),   cmd!("goto-first-nonblank","extend-first-nonblank"));
+    t.bind_leaf(key!('0'),   cmd!("goto-line-start"));
+    t.bind_leaf(key!(Home),  cmd!("goto-line-start"));
+    t.bind_leaf(key!('$'),   cmd!("goto-line-end"));
+    t.bind_leaf(key!(End),   cmd!("goto-line-end"));
+    t.bind_leaf(key!('^'),   cmd!("goto-first-nonblank"));
 
     // ── Paragraph motion ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('{'), cmd!("prev-paragraph", "extend-prev-paragraph"));
-    t.bind_leaf(key!('}'), cmd!("next-paragraph", "extend-next-paragraph"));
+    t.bind_leaf(key!('{'), cmd!("prev-paragraph"));
+    t.bind_leaf(key!('}'), cmd!("next-paragraph"));
 
     // ── Line selection ────────────────────────────────────────────────────────
-    t.bind_leaf(key!('x'), cmd!("select-line",          "extend-select-line"));
-    t.bind_leaf(key!('X'), cmd!("select-line-backward", "extend-select-line-backward"));
+    t.bind_leaf(key!('x'), cmd!("select-line"));
+    t.bind_leaf(key!('X'), cmd!("select-line-backward"));
     // Ctrl+x/X extend the selection to cover additional lines — works in both
     // kitty and legacy mode (unlike the basic-motion Ctrl keys, these are not
     // kitty-only; they were explicitly gated on CONTROL in the old code).
@@ -362,8 +354,8 @@ fn default_normal_keymap() -> KeyTrie {
     // ── Page scroll ───────────────────────────────────────────────────────────
     // PageUp/PageDown use view.height as count — handled by EditorCmd, not a
     // raw motion count. Extend duality is expressed in the normal way.
-    t.bind_leaf(key!(PageDown), cmd!("page-down", "extend-page-down"));
-    t.bind_leaf(key!(PageUp),   cmd!("page-up",   "extend-page-up"));
+    t.bind_leaf(key!(PageDown), cmd!("page-down"));
+    t.bind_leaf(key!(PageUp),   cmd!("page-up"));
 
     // ── Jump list ────────────────────────────────────────────────────────────
     t.bind_leaf(key!(Ctrl + 'o'), cmd!("jump-backward"));
@@ -403,14 +395,14 @@ fn default_normal_keymap() -> KeyTrie {
     // ── Find / till character ─────────────────────────────────────────────────
     // Each key waits for the next character, then dispatches the named command.
     // Extend duality is resolved at char-consumption time.
-    t.bind(key!('f'), wait_char!("find-forward",  "extend-find-forward"));
-    t.bind(key!('F'), wait_char!("find-backward", "extend-find-backward"));
-    t.bind(key!('t'), wait_char!("till-forward",  "extend-till-forward"));
-    t.bind(key!('T'), wait_char!("till-backward", "extend-till-backward"));
+    t.bind(key!('f'), wait_char!("find-forward"));
+    t.bind(key!('F'), wait_char!("find-backward"));
+    t.bind(key!('t'), wait_char!("till-forward"));
+    t.bind(key!('T'), wait_char!("till-backward"));
 
     // Repeat last find in absolute direction.
-    t.bind_leaf(key!('='), cmd!("repeat-find-forward",  "extend-repeat-find-forward"));
-    t.bind_leaf(key!('-'), cmd!("repeat-find-backward", "extend-repeat-find-backward"));
+    t.bind_leaf(key!('='), cmd!("repeat-find-forward"));
+    t.bind_leaf(key!('-'), cmd!("repeat-find-backward"));
 
     // Repeat last editing action.
     t.bind_leaf(key!('.'), cmd!("repeat-last-action"));
@@ -421,8 +413,8 @@ fn default_normal_keymap() -> KeyTrie {
     // Both `n` and `N` have extend duality (keep anchor, move head).
     t.bind_leaf(key!('/'), cmd!("search-forward"));
     t.bind_leaf(key!('?'), cmd!("search-backward"));
-    t.bind_leaf(key!('n'), cmd!("search-next", "extend-search-next"));
-    t.bind_leaf(key!('N'), cmd!("search-prev", "extend-search-prev"));
+    t.bind_leaf(key!('n'), cmd!("search-next"));
+    t.bind_leaf(key!('N'), cmd!("search-prev"));
     t.bind_leaf(key!('s'), cmd!("select-within"));
     t.bind_leaf(key!('*'), cmd!("use-selection-as-search"));
 
@@ -441,8 +433,8 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('I'), cmd!("insert-at-line-start"));
     t.bind_leaf(key!('A'), cmd!("insert-at-line-end"));
     // `o` in normal mode: open line below.
-    // `o` in extend mode: flip selections (the extend-duality mechanism handles this).
-    t.bind_leaf(key!('o'), cmd!("open-line-below", "flip-selections"));
+    // `o` in extend mode: flip selections (extend pairing in the registry).
+    t.bind_leaf(key!('o'), cmd!("open-line-below"));
     t.bind_leaf(key!('O'), cmd!("open-line-above"));
 
     // Ctrl+c quits from normal mode.
@@ -523,23 +515,18 @@ mod tests {
 
         let WalkResult::WaitChar(wc) = trie.walk(&[key!('f')]) else { panic!("expected WaitChar") };
         assert_eq!(wc.cmd_name, "find-forward");
-        assert_eq!(wc.extend_name, Some("extend-find-forward"));
 
         let WalkResult::WaitChar(wc) = trie.walk(&[key!('t')]) else { panic!("expected WaitChar") };
         assert_eq!(wc.cmd_name, "till-forward");
-        assert_eq!(wc.extend_name, Some("extend-till-forward"));
 
         let WalkResult::WaitChar(wc) = trie.walk(&[key!('F')]) else { panic!("expected WaitChar") };
         assert_eq!(wc.cmd_name, "find-backward");
-        assert_eq!(wc.extend_name, Some("extend-find-backward"));
 
         let WalkResult::WaitChar(wc) = trie.walk(&[key!('T')]) else { panic!("expected WaitChar") };
         assert_eq!(wc.cmd_name, "till-backward");
-        assert_eq!(wc.extend_name, Some("extend-till-backward"));
 
         let WalkResult::WaitChar(wc) = trie.walk(&[key!('r')]) else { panic!("expected WaitChar") };
         assert_eq!(wc.cmd_name, "replace");
-        assert_eq!(wc.extend_name, None);
     }
 
     #[test]
@@ -565,11 +552,10 @@ mod tests {
 
         // inner-word
         let result = trie.walk(&[key!('m'), key!('i'), key!('w')]);
-        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = result else {
+        let WalkResult::Leaf(KeymapCommand { name }) = result else {
             panic!("expected Cmd leaf, got something else");
         };
         assert_eq!(name, "inner-word");
-        assert_eq!(extend_name, Some("extend-inner-word"));
 
         // around-paren (both `(` and `)` map to the same text object)
         let result = trie.walk(&[key!('m'), key!('a'), key!('(')]);
@@ -603,34 +589,30 @@ mod tests {
     }
 
     #[test]
-    fn extend_name_stored_on_motion() {
+    fn motion_binding_stores_base_name() {
         let trie = default_normal_keymap();
-        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!('w')]) else {
+        let WalkResult::Leaf(cmd) = trie.walk(&[key!('w')]) else {
             panic!("expected Cmd leaf");
         };
-        assert_eq!(name, "select-next-word");
-        assert_eq!(extend_name, Some("extend-select-next-word"));
+        assert_eq!(cmd.name, "select-next-word");
     }
 
     #[test]
-    fn plain_cmd_has_no_extend_name() {
+    fn plain_cmd_has_base_name() {
         let trie = default_normal_keymap();
-        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!(',')]) else {
+        let WalkResult::Leaf(cmd) = trie.walk(&[key!(',')]) else {
             panic!("expected Cmd leaf");
         };
-        assert_eq!(name, "keep-primary-selection");
-        assert_eq!(extend_name, None);
+        assert_eq!(cmd.name, "keep-primary-selection");
     }
 
     #[test]
-    fn o_has_extend_duality_for_flip() {
-        // `o` maps to open-line-below normally, flip-selections in extend mode.
+    fn o_maps_to_open_line_below() {
         let trie = default_normal_keymap();
-        let WalkResult::Leaf(KeymapCommand { name, extend_name }) = trie.walk(&[key!('o')]) else {
+        let WalkResult::Leaf(cmd) = trie.walk(&[key!('o')]) else {
             panic!("expected Cmd leaf");
         };
-        assert_eq!(name, "open-line-below");
-        assert_eq!(extend_name, Some("flip-selections"));
+        assert_eq!(cmd.name, "open-line-below");
     }
 
     // ── Insert keymap ─────────────────────────────────────────────────────────

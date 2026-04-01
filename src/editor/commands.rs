@@ -265,8 +265,9 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     ed.doc.begin_edit_group();
 
     // Re-execute the original command through the normal dispatch path.
-    let cmd = super::keymap::KeymapCommand { name: action.command, extend_name: None };
-    ed.execute_keymap_command(cmd, effective_count);
+    // extend=false because the replayed command was already resolved to its
+    // final form (the resolved name is what gets stored in RepeatableAction).
+    ed.execute_keymap_command(action.command, effective_count, false);
 
     // Feed recorded insert keystrokes through the normal insert handler.
     // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.
