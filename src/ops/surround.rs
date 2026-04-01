@@ -13,6 +13,10 @@ use crate::ops::text_object::{find_bracket_pair, find_quote_pair};
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
 /// All recognised delimiter pairs.  Asymmetric first, then symmetric.
+///
+/// Intentionally a superset of `AutoPairsConfig::default()`: angle brackets
+/// (`<>`) are useful for surround-select in markup, but shouldn't auto-close
+/// in insert mode where `<` is commonly a comparison operator.
 const PAIRS: &[(char, char)] = &[
     ('(', ')'),
     ('[', ']'),
@@ -23,23 +27,19 @@ const PAIRS: &[(char, char)] = &[
     ('`', '`'),
 ];
 
-/// Return the `(open, close)` pair that contains `ch` (either side).
-pub(crate) fn pair_for_char(ch: char) -> Option<(char, char)> {
+fn pair_for_char(ch: char) -> Option<(char, char)> {
     PAIRS.iter().find(|&&(o, c)| o == ch || c == ch).copied()
 }
 
-/// True if `ch` is the opening char of an asymmetric pair.
-pub(crate) fn is_opening(ch: char) -> bool {
+fn is_opening(ch: char) -> bool {
     PAIRS.iter().any(|&(o, c)| o != c && o == ch)
 }
 
-/// True if `ch` is the closing char of an asymmetric pair.
-pub(crate) fn is_closing(ch: char) -> bool {
+fn is_closing(ch: char) -> bool {
     PAIRS.iter().any(|&(o, c)| o != c && c == ch)
 }
 
-/// True if `ch` is a symmetric delimiter (same char opens and closes).
-pub(crate) fn is_symmetric(ch: char) -> bool {
+fn is_symmetric(ch: char) -> bool {
     PAIRS.iter().any(|&(o, c)| o == c && o == ch)
 }
 
@@ -77,33 +77,6 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 
 // ── Select surrounding delimiters ────────────────────────────────────────────
 
-/// Select the surrounding bracket pair as two cursor selections.
-///
-/// For each selection in `sels`, finds the enclosing `(open, close)` pair
-/// and replaces the selection with two cursors — one on the opening
-/// delimiter, one on the closing delimiter.  If no pair is found the
-/// selection is preserved unchanged (no-op, matching Helix behaviour).
-pub(crate) fn select_surround_bracket(
-    buf: &Buffer,
-    sels: SelectionSet,
-    open: char,
-    close: char,
-) -> SelectionSet {
-    select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, open, close))
-}
-
-/// Select the surrounding quote pair as two cursor selections.
-///
-/// Same semantics as [`select_surround_bracket`] but uses the
-/// line-bounded parity scan for symmetric delimiters.
-pub(crate) fn select_surround_quote(
-    buf: &Buffer,
-    sels: SelectionSet,
-    quote: char,
-) -> SelectionSet {
-    select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, quote))
-}
-
 /// Shared implementation: map each selection to two cursors on the pair
 /// endpoints, or preserve unchanged on no-match.
 fn select_surround(
@@ -112,21 +85,17 @@ fn select_surround(
     find_pair: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let primary_idx = sels.primary_index();
-    let mut new_sels = Vec::new();
+    let mut new_sels = Vec::with_capacity(sels.len() * 2);
     let mut new_primary = 0;
 
     for (i, sel) in sels.iter_sorted().enumerate() {
+        if i == primary_idx {
+            new_primary = new_sels.len();
+        }
         if let Some((open_pos, close_pos)) = find_pair(buf, sel.head) {
-            if i == primary_idx {
-                // Primary tracks the opening delimiter of the matched pair.
-                new_primary = new_sels.len();
-            }
             new_sels.push(Selection::cursor(open_pos));
             new_sels.push(Selection::cursor(close_pos));
         } else {
-            if i == primary_idx {
-                new_primary = new_sels.len();
-            }
             new_sels.push(*sel);
         }
     }
@@ -141,32 +110,28 @@ fn select_surround(
     result
 }
 
-// ── Macro for generating bracket surround commands ───────────────────────────
+// ── Generated surround commands ──────────────────────────────────────────────
 
-macro_rules! surround_bracket_cmds {
-    ($name:ident, $open:literal, $close:literal) => {
+macro_rules! surround_cmd {
+    ($name:ident, bracket, $open:literal, $close:literal) => {
         pub(crate) fn $name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            select_surround_bracket(buf, sels, $open, $close)
+            select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
+        }
+    };
+    ($name:ident, quote, $quote:literal) => {
+        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+            select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
 }
 
-surround_bracket_cmds!(cmd_surround_paren,   '(', ')');
-surround_bracket_cmds!(cmd_surround_bracket, '[', ']');
-surround_bracket_cmds!(cmd_surround_brace,   '{', '}');
-surround_bracket_cmds!(cmd_surround_angle,   '<', '>');
-
-macro_rules! surround_quote_cmds {
-    ($name:ident, $quote:literal) => {
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            select_surround_quote(buf, sels, $quote)
-        }
-    };
-}
-
-surround_quote_cmds!(cmd_surround_double_quote, '"');
-surround_quote_cmds!(cmd_surround_single_quote, '\'');
-surround_quote_cmds!(cmd_surround_backtick,     '`');
+surround_cmd!(cmd_surround_paren,        bracket, '(', ')');
+surround_cmd!(cmd_surround_bracket,      bracket, '[', ']');
+surround_cmd!(cmd_surround_brace,        bracket, '{', '}');
+surround_cmd!(cmd_surround_angle,        bracket, '<', '>');
+surround_cmd!(cmd_surround_double_quote, quote,   '"');
+surround_cmd!(cmd_surround_single_quote, quote,   '\'');
+surround_cmd!(cmd_surround_backtick,     quote,   '`');
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -323,46 +288,39 @@ mod tests {
 
     #[test]
     fn smart_replace_opening_to_opening() {
-        // ( → [ (current is opening, replacement is opening)
         assert_eq!(smart_replace_char('[', '(', 0), '[');
     }
 
     #[test]
     fn smart_replace_closing_to_closing() {
-        // ) → ] (current is closing, replacement resolves to closing)
         assert_eq!(smart_replace_char('[', ')', 1), ']');
     }
 
     #[test]
     fn smart_replace_asym_to_sym() {
-        // ( → " and ) → "  (asymmetric to symmetric — both become the same char)
         assert_eq!(smart_replace_char('"', '(', 0), '"');
         assert_eq!(smart_replace_char('"', ')', 1), '"');
     }
 
     #[test]
     fn smart_replace_sym_to_asym_uses_index() {
-        // " → ( for even index (opening), " → ) for odd index (closing)
         assert_eq!(smart_replace_char('(', '"', 0), '(');
         assert_eq!(smart_replace_char('(', '"', 1), ')');
     }
 
     #[test]
     fn smart_replace_sym_to_sym() {
-        // " → ' — symmetric to symmetric, both become '
         assert_eq!(smart_replace_char('\'', '"', 0), '\'');
         assert_eq!(smart_replace_char('\'', '"', 1), '\'');
     }
 
     #[test]
     fn smart_replace_non_delimiter_literal() {
-        // Current char is not a delimiter — replacement is literal.
         assert_eq!(smart_replace_char('[', 'x', 0), '[');
     }
 
     #[test]
     fn smart_replace_non_pair_replacement_literal() {
-        // Replacement char is not part of any pair — always literal.
         assert_eq!(smart_replace_char('x', '(', 0), 'x');
     }
 }
