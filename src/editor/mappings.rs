@@ -92,7 +92,7 @@ impl Editor {
                     return;
                 }
                 KeyCode::Char('0') if self.count.is_some() => {
-                    self.count = Some(self.count.unwrap() * 10);
+                    self.count = self.count.map(|c| c * 10);
                     return;
                 }
                 _ => {}
@@ -616,3 +616,41 @@ impl Editor {
     }
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Guard: every command whose name starts with a jump-related prefix must
+    /// appear in `JUMP_COMMANDS`. Catches silent omissions when new jump-worthy
+    /// commands are added to the registry.
+    #[test]
+    fn jump_commands_list_is_complete() {
+        let reg = super::super::registry::CommandRegistry::with_defaults();
+
+        // Prefixes that indicate a command should always record a jump.
+        let jump_prefixes = ["goto-first-line", "goto-last-line", "search-next", "search-prev",
+                             "extend-search-next", "extend-search-prev",
+                             "page-down", "page-up", "extend-page-down", "extend-page-up"];
+
+        for prefix in &jump_prefixes {
+            assert!(
+                reg.get(prefix).is_some(),
+                "JUMP_COMMANDS references '{prefix}' which is not in the registry"
+            );
+            assert!(
+                is_jump_command(prefix),
+                "'{prefix}' is registered but missing from JUMP_COMMANDS"
+            );
+        }
+
+        // Reverse check: every entry in JUMP_COMMANDS must exist in the registry.
+        for &name in JUMP_COMMANDS {
+            assert!(
+                reg.get(name).is_some(),
+                "JUMP_COMMANDS contains '{name}' which is not in the registry"
+            );
+        }
+    }
+}

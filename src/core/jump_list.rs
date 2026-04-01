@@ -240,6 +240,28 @@ mod tests {
     }
 
     #[test]
+    fn backward_after_returning_to_present() {
+        let mut jl = JumpList::new();
+        jl.push(entry(0, 0));
+
+        // Go backward, then forward back to the saved "present" entry.
+        jl.backward(entry(50, 10)).unwrap();
+        jl.forward().unwrap();
+
+        // Now backward again. Since cursor is at the last entry (the saved
+        // "present"), not past it, the new current position is NOT saved —
+        // matching Vim/Helix: the present is only captured when first entering
+        // the jump list from a fresh editing state.
+        let e = jl.backward(entry(80, 20)).unwrap();
+        assert_eq!(e.primary_line, 0, "traverses existing history without saving new position");
+
+        // Forward returns to the previously saved "present" (line 10).
+        let e = jl.forward().unwrap();
+        assert_eq!(e.primary_line, 10);
+        assert!(jl.forward().is_none());
+    }
+
+    #[test]
     fn backward_saves_current_position() {
         let mut jl = JumpList::new();
         jl.push(entry(0, 0));
