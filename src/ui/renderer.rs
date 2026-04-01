@@ -861,8 +861,8 @@ mod tests {
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        // " : set" with cursor at end → cursor cell at col 6, row 2.
-        // Layout: " " pad (1) + ":" (1) + " " (1) + "set" (3) = 6
+        // " :set" with cursor at end → cursor cell at col 5, row 2.
+        // Layout: " " pad (1) + ":" (1) + "set" (3) = 5
         let editor = editor_for(doc, v)
             .with_mode(Mode::Command)
             .with_minibuf(':', "set");
@@ -870,14 +870,14 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((6, 2)).unwrap();
+        let cell = screen.cell((5, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
     #[test]
     fn command_mode_cursor_empty_input() {
-        // With empty input the cursor cell is at col 3 (after prompt + space).
-        // Layout: " " pad (1) + ":" (1) + " " (1) = 3
+        // With empty input the cursor cell is at col 2 (after prompt).
+        // Layout: " " pad (1) + ":" (1) = 2
         use ratatui::layout::Rect;
         use ratatui::style::Modifier;
         let doc = doc_at("hi\n", 0);
@@ -889,7 +889,7 @@ mod tests {
         let mut screen = ScreenBuf::empty(area);
         let cursor = render(&editor, area, &mut screen);
         assert_eq!(cursor.pos, None, "command mode uses visual cursor; terminal cursor is hidden");
-        let cell = screen.cell((3, 2)).unwrap();
+        let cell = screen.cell((2, 2)).unwrap();
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED), "cursor cell must not be REVERSED");
     }
 
@@ -1029,7 +1029,7 @@ mod tests {
         insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         / hello          [1/2] │ SRC
+         /hello           [1/2] │ SRC
         ");
     }
 
@@ -1062,7 +1062,7 @@ mod tests {
         insta::assert_snapshot!(out, @"
           1 hello world hello
         ~
-         : w              [1/2] │ CMD
+         :w               [1/2] │ CMD
         ");
     }
 
