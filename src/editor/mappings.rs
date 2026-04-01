@@ -158,12 +158,12 @@ impl Editor {
                 WalkResult::WaitChar(wc) => Some(wc.cmd_name),
                 _ => None,
             };
-            if let Some(n) = name {
-                if self.registry.extend_variant(n).is_none() {
-                    self.pending_keys.clear();
-                    self.count = None;
-                    return;
-                }
+            if let Some(n) = name
+                && self.registry.extend_variant(n).is_none()
+            {
+                self.pending_keys.clear();
+                self.count = None;
+                return;
             }
         }
 
