@@ -56,6 +56,10 @@ use crate::ops::selection_cmd::{
     cmd_split_selection_on_newlines,
     cmd_trim_selection_whitespace,
 };
+use crate::ops::surround::{
+    cmd_surround_angle, cmd_surround_backtick, cmd_surround_brace, cmd_surround_bracket,
+    cmd_surround_double_quote, cmd_surround_paren, cmd_surround_single_quote,
+};
 use crate::ops::text_object::{
     cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
@@ -371,6 +375,15 @@ impl CommandRegistry {
         selection!("extend-inner-argument",  "Extend to the inner argument.",                     cmd_extend_inner_argument);
         selection!("extend-around-argument", "Extend to include the argument and separator.",     cmd_extend_around_argument);
 
+        // ── Surround selection ────────────────────────────────────────────
+        selection!("surround-paren",        "Select surrounding `()` delimiters.",    cmd_surround_paren);
+        selection!("surround-bracket",      "Select surrounding `[]` delimiters.",    cmd_surround_bracket);
+        selection!("surround-brace",        "Select surrounding `{}` delimiters.",    cmd_surround_brace);
+        selection!("surround-angle",        "Select surrounding `<>` delimiters.",    cmd_surround_angle);
+        selection!("surround-double-quote", "Select surrounding `\"` delimiters.",    cmd_surround_double_quote);
+        selection!("surround-single-quote", "Select surrounding `'` delimiters.",     cmd_surround_single_quote);
+        selection!("surround-backtick",     "Select surrounding backtick delimiters.",cmd_surround_backtick);
+
         // ── Edit commands ─────────────────────────────────────────────────────
         edit!("delete-char-forward", "Delete the character (or selection) under the cursor.", delete_char_forward);
         edit!("delete-char-backward", "Delete the character before each cursor.", delete_char_backward);
@@ -487,7 +500,7 @@ mod tests {
     ///    1 quit editor command
     ///   ──
     ///  138 total
-    const EXPECTED_COMMAND_COUNT: usize = 143;
+    const EXPECTED_COMMAND_COUNT: usize = 150;
 
     #[test]
     fn registry_has_expected_count() {
