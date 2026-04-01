@@ -32,6 +32,18 @@ pub(crate) fn cmd_flip_selections(buf: &Buffer, sels: SelectionSet) -> Selection
     new_sels
 }
 
+/// Select the entire buffer.
+///
+/// Replaces all selections with a single selection spanning from the first
+/// character to the last (the structural trailing `\n`). Head is placed at
+/// the end so the cursor sits at the bottom — consistent with Helix `%`.
+pub(crate) fn cmd_select_all(buf: &Buffer, _sels: SelectionSet) -> SelectionSet {
+    let end = buf.len_chars().saturating_sub(1);
+    let sels = SelectionSet::single(Selection::new(0, end));
+    sels.debug_assert_valid(buf);
+    sels
+}
+
 /// Keep only the primary selection; drop all others.
 ///
 /// The result is a single-selection set. This is a destructive reduction —
@@ -420,6 +432,37 @@ mod tests {
                 cmd_flip_selections(&buf, sels)
             },
             "-[hell]>o\n"
+        );
+    }
+
+    // ── cmd_select_all ─────────────────────────────────────────────────────
+
+    #[test]
+    fn select_all_spans_entire_buffer() {
+        // Cursor at 'e'; after select-all, anchor=0 head=last char ('\n').
+        assert_state!(
+            "h-[e]>llo\n",
+            |(buf, sels)| cmd_select_all(&buf, sels),
+            "-[hello\n]>"
+        );
+    }
+
+    #[test]
+    fn select_all_multi_line() {
+        assert_state!(
+            "foo\nb-[a]>r\nbaz\n",
+            |(buf, sels)| cmd_select_all(&buf, sels),
+            "-[foo\nbar\nbaz\n]>"
+        );
+    }
+
+    #[test]
+    fn select_all_empty_buffer() {
+        // Minimal buffer is just '\n'. select-all produces a cursor at 0.
+        assert_state!(
+            "-[\n]>",
+            |(buf, sels)| cmd_select_all(&buf, sels),
+            "-[\n]>"
         );
     }
 
