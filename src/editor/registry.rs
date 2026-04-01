@@ -210,6 +210,8 @@ impl CommandRegistry {
 
     fn register_defaults(&mut self) {
         // Local macros to cut down on struct-literal boilerplate.
+        // `$doc` is accepted but not yet stored — reserved for future `:help`
+        // and command-palette display.
         // The optional `extend: "name"` trailing argument links this command to
         // its extend variant in the extend_map (single source of truth).
         macro_rules! motion {
