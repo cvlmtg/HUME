@@ -6,10 +6,13 @@
 //! more than [`JUMP_LINE_THRESHOLD`] lines. The user navigates the history with
 //! `jump-backward` and `jump-forward`.
 //!
-//! Internally this is a `Vec<JumpEntry>` with a cursor index, capped at
+//! Internally this is a [`VecDeque<JumpEntry>`] with a cursor index, capped at
 //! [`JUMP_LIST_CAPACITY`]. When the user navigates backward and then makes a
 //! new jump, forward history is truncated — matching Vim/Helix semantics.
 
+use std::collections::VecDeque;
+
+use crate::core::buffer::Buffer;
 use crate::core::selection::SelectionSet;
 
 /// Maximum number of entries kept in the jump list.
@@ -28,6 +31,15 @@ pub(crate) struct JumpEntry {
     pub primary_line: usize,
 }
 
+impl JumpEntry {
+    /// Build a jump entry from the current selection state, deriving
+    /// `primary_line` from the buffer so callers don't have to.
+    pub(crate) fn new(selections: SelectionSet, buf: &Buffer) -> Self {
+        let primary_line = buf.char_to_line(selections.primary().head);
+        Self { selections, primary_line }
+    }
+}
+
 /// Navigable history of cursor positions before large movements.
 ///
 /// `cursor` indexes into `entries`. When `cursor == entries.len()`, the user
@@ -36,34 +48,31 @@ pub(crate) struct JumpEntry {
 /// any forward history (entries after cursor) before appending.
 #[derive(Debug)]
 pub(crate) struct JumpList {
-    entries: Vec<JumpEntry>,
+    entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
 }
 
 impl JumpList {
     pub(crate) fn new() -> Self {
-        Self { entries: Vec::new(), cursor: 0 }
+        Self { entries: VecDeque::new(), cursor: 0 }
     }
 
     /// Record a jump. Truncates forward history, deduplicates against the last
     /// entry by line number, and caps the list at [`JUMP_LIST_CAPACITY`].
     pub(crate) fn push(&mut self, entry: JumpEntry) {
-        // Truncate any forward history.
         self.entries.truncate(self.cursor);
 
         // Deduplicate: if the last entry is on the same line, replace it.
-        if let Some(last) = self.entries.last_mut().filter(|l| l.primary_line == entry.primary_line) {
+        if let Some(last) = self.entries.back_mut().filter(|l| l.primary_line == entry.primary_line) {
             *last = entry;
-            // cursor already == entries.len() after truncate
             return;
         }
 
-        self.entries.push(entry);
+        self.entries.push_back(entry);
 
-        // Cap at capacity by dropping the oldest entry.
         if self.entries.len() > JUMP_LIST_CAPACITY {
-            self.entries.remove(0);
+            self.entries.pop_front();
         }
 
         self.cursor = self.entries.len();
@@ -82,9 +91,7 @@ impl JumpList {
         // path must preserve the exact return point even if it's on the same
         // line as the last recorded jump (e.g., two search matches on one line).
         if self.cursor == self.entries.len() {
-            self.entries.push(current);
-            // Point at the saved entry; the decrement below skips past it to
-            // the most recent real jump.
+            self.entries.push_back(current);
             self.cursor = self.entries.len() - 1;
         }
 
@@ -110,7 +117,6 @@ impl JumpList {
     fn len(&self) -> usize {
         self.entries.len()
     }
-
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -121,6 +127,7 @@ mod tests {
     use crate::core::selection::{Selection, SelectionSet};
 
     /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
+    /// Bypasses `JumpEntry::new` since unit tests don't have a Buffer.
     fn entry(char_pos: usize, line: usize) -> JumpEntry {
         JumpEntry {
             selections: SelectionSet::single(Selection::cursor(char_pos)),
@@ -135,19 +142,16 @@ mod tests {
         jl.push(entry(10, 5));
         jl.push(entry(20, 10));
 
-        // Navigate backward through all three entries (passing a "current" for
-        // the first backward call).
         let current = entry(30, 15);
         let e = jl.backward(current).unwrap();
         assert_eq!(e.primary_line, 10);
 
-        let e = jl.backward(entry(0, 0)).unwrap(); // current ignored when not at present
+        let e = jl.backward(entry(0, 0)).unwrap();
         assert_eq!(e.primary_line, 5);
 
         let e = jl.backward(entry(0, 0)).unwrap();
         assert_eq!(e.primary_line, 0);
 
-        // Already at oldest — returns None.
         assert!(jl.backward(entry(0, 0)).is_none());
     }
 
@@ -159,17 +163,15 @@ mod tests {
         jl.push(entry(20, 10));
 
         let current = entry(30, 15);
-        jl.backward(current).unwrap(); // → line 10
-        jl.backward(entry(0, 0)).unwrap(); // → line 5
+        jl.backward(current).unwrap();
+        jl.backward(entry(0, 0)).unwrap();
 
         let e = jl.forward().unwrap();
         assert_eq!(e.primary_line, 10);
 
-        // Forward again returns the saved "current" (line 15).
         let e = jl.forward().unwrap();
         assert_eq!(e.primary_line, 15);
 
-        // Already at present — None.
         assert!(jl.forward().is_none());
     }
 
@@ -180,19 +182,14 @@ mod tests {
         jl.push(entry(10, 5));
         jl.push(entry(20, 10));
 
-        // Go backward two steps.
-        jl.backward(entry(30, 15)).unwrap(); // → line 10
-        jl.backward(entry(0, 0)).unwrap(); // → line 5
+        jl.backward(entry(30, 15)).unwrap();
+        jl.backward(entry(0, 0)).unwrap();
 
         // New jump from here — forward history (lines 10, 15) is discarded.
-        // After push: entries = [line0, line5, line25], cursor = 3.
         jl.push(entry(50, 25));
 
-        // Forward should be empty now.
         assert!(jl.forward().is_none());
 
-        // After truncation at cursor=1 and push(25): entries = [line0, line25].
-        // Backward from line 30 saves current, then returns line 25.
         let e = jl.backward(entry(60, 30)).unwrap();
         assert_eq!(e.primary_line, 25);
 
@@ -208,14 +205,11 @@ mod tests {
         for i in 0..=JUMP_LIST_CAPACITY {
             jl.push(entry(i * 10, i));
         }
-        // Should have exactly CAPACITY entries, oldest dropped.
         assert_eq!(jl.len(), JUMP_LIST_CAPACITY);
-        // Oldest remaining should be line 1 (line 0 was dropped).
-        // Navigate all the way back.
+
         let e = jl.backward(entry(9999, 9999)).unwrap();
         assert_eq!(e.primary_line, JUMP_LIST_CAPACITY);
 
-        // Keep going back to find the oldest.
         let mut oldest = e.primary_line;
         while let Some(e) = jl.backward(entry(0, 0)) {
             oldest = e.primary_line;
@@ -230,13 +224,11 @@ mod tests {
         jl.push(entry(3, 5)); // same line — replaces
         assert_eq!(jl.len(), 1);
 
-        // Push a different line, then check we can reach the deduped entry.
         jl.push(entry(20, 10));
         let e = jl.backward(entry(99, 99)).unwrap();
         assert_eq!(e.primary_line, 10);
         let e = jl.backward(entry(0, 0)).unwrap();
         assert_eq!(e.primary_line, 5);
-        // The stored entry should have the updated char_pos from the dedup.
         assert_eq!(e.selections.primary().head, 3);
     }
 
@@ -252,11 +244,9 @@ mod tests {
         let mut jl = JumpList::new();
         jl.push(entry(0, 0));
 
-        // First backward from "present" — saves current (line 10) then returns line 0.
         let e = jl.backward(entry(50, 10)).unwrap();
         assert_eq!(e.primary_line, 0);
 
-        // Forward returns the saved current position.
         let e = jl.forward().unwrap();
         assert_eq!(e.primary_line, 10);
     }
