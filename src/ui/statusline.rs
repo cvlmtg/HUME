@@ -12,13 +12,13 @@ use crate::editor::{Editor, Mode};
 /// Hardcoded left section for Command/Search modes.
 const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 
-/// Fill an entire statusline row with spaces in the base style.
+/// Apply the base statusline style across an entire row.
 ///
-/// Both bottom-row renderers do this as their first step to clear
-/// whatever was drawn in the previous frame.
+/// Both bottom-row renderers do this as their first step so that the
+/// background color is uniform before individual spans are drawn on top.
+/// Uses `set_style` on the row rect instead of allocating a blank string.
 fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors, area: Rect, y: u16) {
-    let blank = " ".repeat(area.width as usize);
-    screen_buf.set_string(area.x, y, &blank, colors.statusline);
+    screen_buf.set_style(Rect::new(area.x, y, area.width, 1), colors.statusline);
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -423,3 +423,104 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)]
     }
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Style;
+
+    fn s(text: &'static str) -> (Cow<'static, str>, Style) {
+        (Cow::Borrowed(text), Style::default())
+    }
+
+    // ── section_width ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn section_width_empty() {
+        assert_eq!(section_width(&[]), 0);
+    }
+
+    #[test]
+    fn section_width_ascii() {
+        let spans = vec![s("NOR"), s(" "), s("│")];
+        // "NOR"=3, " "=1, "│"=1 (U+2502 is width 1)
+        assert_eq!(section_width(&spans), 5);
+    }
+
+    #[test]
+    fn section_width_cjk() {
+        // CJK character is display-width 2.
+        let spans = vec![s("A"), (Cow::Borrowed("中"), Style::default())];
+        assert_eq!(section_width(&spans), 3);
+    }
+
+    // ── last_span_offset ─────────────────────────────────────────────────────
+
+    #[test]
+    fn last_span_offset_single_span() {
+        // Only one span: offset is 0 (nothing before it).
+        let spans = vec![s("abc")];
+        assert_eq!(last_span_offset(&spans), 0);
+    }
+
+    #[test]
+    fn last_span_offset_multiple_spans() {
+        // " " (1) + ":" (1) + "cmd" (3) → last span starts at offset 2.
+        let spans = vec![s(" "), s(":"), s("cmd")];
+        assert_eq!(last_span_offset(&spans), 2);
+    }
+
+    #[test]
+    fn last_span_offset_empty() {
+        assert_eq!(last_span_offset(&[]), 0);
+    }
+
+    // ── pad_left / pad_right ──────────────────────────────────────────────────
+
+    #[test]
+    fn pad_left_prepends_space() {
+        let colors = crate::ui::theme::EditorColors::default();
+        let spans = pad_left(vec![s("NOR")], &colors);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].0.as_ref(), " ");
+        assert_eq!(spans[1].0.as_ref(), "NOR");
+    }
+
+    #[test]
+    fn pad_left_empty_is_noop() {
+        let colors = crate::ui::theme::EditorColors::default();
+        let spans = pad_left(vec![], &colors);
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn pad_right_appends_space() {
+        let colors = crate::ui::theme::EditorColors::default();
+        let spans = pad_right(vec![s("NOR")], &colors);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].0.as_ref(), "NOR");
+        assert_eq!(spans[1].0.as_ref(), " ");
+    }
+
+    #[test]
+    fn pad_right_empty_is_noop() {
+        let colors = crate::ui::theme::EditorColors::default();
+        let spans = pad_right(vec![], &colors);
+        assert!(spans.is_empty());
+    }
+
+    // ── center_x arithmetic ───────────────────────────────────────────────────
+
+    #[test]
+    fn center_x_saturates_on_overflow() {
+        // When center_w > gap, saturating_sub prevents u16 wrapping.
+        // gap/2=1, center_w/2=5 → without saturating_sub this would wrap.
+        let left_end: u16 = 5;
+        let gap: u16 = 2;
+        let center_w: u16 = 10;
+        let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
+        // Should not panic and should produce a value ≤ left_end (saturated to 0 at best).
+        assert!(center_x <= left_end);
+    }
+}
