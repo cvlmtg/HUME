@@ -59,6 +59,30 @@ pub(crate) struct VisualRow {
     /// the renderer uses this as the starting `abs_col` for tab-stop alignment,
     /// which must be consistent across all segments of the same buffer line.
     pub col_offset_in_line: usize,
+
+    /// Leading display columns of indentation padding the renderer should emit
+    /// before drawing this row's content.
+    ///
+    /// Zero for the first (or only) segment of a buffer line. When
+    /// `indent_wrap` is enabled, continuation rows are indented to the buffer
+    /// line's own indent level (capped at `content_width / 3`), matching the
+    /// visual indent of the line's first row.
+    pub visual_indent: usize,
+}
+
+// ── LineSegment ───────────────────────────────────────────────────────────────
+
+/// One visual-row segment of a buffer line, as computed by the formatter.
+///
+/// This is an internal type used by [`DocumentFormatter`] to cache the segments
+/// for the current buffer line. It carries the full per-segment data — including
+/// [`visual_indent`] — that ultimately becomes [`VisualRow`] fields.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LineSegment {
+    pub char_start: usize,
+    pub char_end: usize,
+    pub col_offset_in_line: usize,
+    pub visual_indent: usize,
 }
 
 // ── DocumentFormatter ─────────────────────────────────────────────────────────
@@ -109,9 +133,9 @@ pub(crate) struct DocumentFormatter<'buf> {
     // ── Segment state ─────────────────────────────────────────────────────────
     /// Pre-computed segments for the current buffer line.
     ///
-    /// Each element is `(char_start, char_end, col_offset_in_line)`.
+    /// Each element is a [`LineSegment`] carrying the full per-row data.
     /// Re-computed on every buffer-line advance.
-    segments: Vec<(usize, usize, usize)>,
+    segments: Vec<LineSegment>,
     /// Index of the next segment to yield from `segments`.
     seg_idx: usize,
 
@@ -119,6 +143,10 @@ pub(crate) struct DocumentFormatter<'buf> {
     content_width: usize,
     tab_width: usize,
     soft_wrap: bool,
+    /// Break at word boundaries instead of at arbitrary character positions.
+    word_wrap: bool,
+    /// Indent continuation rows to match the buffer line's leading whitespace.
+    indent_wrap: bool,
 }
 
 impl<'buf> DocumentFormatter<'buf> {
@@ -135,7 +163,7 @@ impl<'buf> DocumentFormatter<'buf> {
 
         // Compute segments for the first buffer line so the iterator is ready
         // to yield immediately.
-        let segments = compute_segments_for_line(buf, first, content_width, view.tab_width, view.soft_wrap);
+        let segments = compute_segments_full(buf, first, content_width, view.tab_width, view.soft_wrap, view.word_wrap, view.indent_wrap);
 
         // scroll_sub_offset skips the first N wrapped sub-rows of the starting
         // buffer line (needed when a single line wraps to more rows than the
@@ -153,6 +181,8 @@ impl<'buf> DocumentFormatter<'buf> {
             content_width,
             tab_width: view.tab_width,
             soft_wrap: view.soft_wrap,
+            word_wrap: view.word_wrap,
+            indent_wrap: view.indent_wrap,
         }
     }
 
@@ -161,8 +191,10 @@ impl<'buf> DocumentFormatter<'buf> {
         self.line_idx += 1;
         self.seg_idx = 0;
         if self.line_idx < self.total_lines {
-            let new_segs =
-                compute_segments_for_line(self.buf, self.line_idx, self.content_width, self.tab_width, self.soft_wrap);
+            let new_segs = compute_segments_full(
+                self.buf, self.line_idx, self.content_width, self.tab_width,
+                self.soft_wrap, self.word_wrap, self.indent_wrap,
+            );
             self.segments.clear();
             self.segments.extend_from_slice(&new_segs);
         }
@@ -187,7 +219,7 @@ impl<'buf> Iterator for DocumentFormatter<'buf> {
             self.advance_line();
         }
 
-        let (char_start, char_end, col_offset_in_line) = self.segments[self.seg_idx];
+        let seg = self.segments[self.seg_idx];
         let is_last_segment = self.seg_idx + 1 == self.segments.len();
 
         let vrow = VisualRow {
@@ -195,9 +227,10 @@ impl<'buf> Iterator for DocumentFormatter<'buf> {
             line_number: if self.seg_idx == 0 { Some(self.line_idx + 1) } else { None },
             is_continuation: self.seg_idx > 0,
             is_last_segment,
-            char_start,
-            char_end,
-            col_offset_in_line,
+            char_start: seg.char_start,
+            char_end: seg.char_end,
+            col_offset_in_line: seg.col_offset_in_line,
+            visual_indent: seg.visual_indent,
         };
 
         self.visual_row += 1;
@@ -226,63 +259,173 @@ pub(crate) fn line_content_range(buf: &Buffer, line_idx: usize) -> (usize, usize
     (start, content_end)
 }
 
-/// Compute the wrapped segments for buffer line `line_idx`.
+/// Compute the display-column width of the leading whitespace on a buffer line.
 ///
-/// Returns `Vec<(char_start, char_end, col_offset_in_line)>` — one triple per
-/// visual row. `col_offset_in_line` is the absolute display column of
-/// `char_start` within the buffer line, for tab-stop alignment.
+/// Walks graphemes until the first non-whitespace character, accumulating
+/// display columns with tab-stop awareness. Returns 0 for lines that start
+/// with non-whitespace or are empty.
+fn compute_line_indent(
+    buf: &Buffer,
+    line_start: usize,
+    content_end: usize,
+    tab_width: usize,
+) -> usize {
+    if line_start >= content_end {
+        return 0;
+    }
+    let slice = buf.slice(line_start..content_end);
+    let cow: Cow<str> = slice.into();
+    let tab_width = tab_width.max(1);
+    let mut col = 0;
+    for grapheme in cow.graphemes(true) {
+        if !grapheme.chars().all(|c| c == ' ' || c == '\t') {
+            break;
+        }
+        col += grapheme_advance(grapheme, col, tab_width);
+    }
+    col
+}
+
+/// Compute the wrapped segments for buffer line `line_idx`, returning full
+/// per-segment metadata including `visual_indent`.
 ///
-/// When `soft_wrap` is `false` or `content_width` is 0, returns a single
-/// segment spanning the full content range without iterating graphemes.
-pub(crate) fn compute_segments_for_line(
+/// This is the canonical implementation. The public [`compute_segments_for_line`]
+/// function is a thin wrapper that strips `visual_indent` for callers (such as
+/// [`count_visual_rows`] and [`cursor_sub_row`]) that only need char boundaries.
+fn compute_segments_full(
     buf: &Buffer,
     line_idx: usize,
     content_width: usize,
     tab_width: usize,
     soft_wrap: bool,
-) -> Vec<(usize, usize, usize)> {
+    word_wrap: bool,
+    indent_wrap: bool,
+) -> Vec<LineSegment> {
     let (line_start, content_end) = line_content_range(buf, line_idx);
 
+    let no_seg = |vi: usize| vec![LineSegment { char_start: line_start, char_end: content_end, col_offset_in_line: 0, visual_indent: vi }];
+
     if !soft_wrap || content_width == 0 {
-        // No wrapping: single segment for the whole line.
-        return vec![(line_start, content_end, 0)];
+        return no_seg(0);
     }
-
     if line_start == content_end {
-        // Empty line: one empty segment.
-        return vec![(line_start, content_end, 0)];
+        return no_seg(0);
     }
 
-    // Walk grapheme clusters and break into segments whenever adding a grapheme
-    // would exceed `content_width`. This is the same algorithm as the old
-    // `wrap_line()`, extended to also track `col_offset_in_line` per segment.
+    // Indent level for this line, used when `indent_wrap` is on.
+    // Capped at content_width / 3 so continuation rows always have meaningful
+    // width even for very deeply-indented code.
+    let indent_col = if indent_wrap {
+        compute_line_indent(buf, line_start, content_end, tab_width).min(content_width / 3)
+    } else {
+        0
+    };
+
     let slice = buf.slice(line_start..content_end);
     let cow: Cow<str> = slice.into();
     let tab_width = tab_width.max(1);
     let content_width = content_width.max(1);
 
-    let mut segments: Vec<(usize, usize, usize)> = Vec::new();
+    let mut segments: Vec<LineSegment> = Vec::new();
     let mut seg_start = line_start;
-    // Absolute display column at the start of the current segment.
-    // Zero for the first segment; preserved across wrap breaks for tab-stop alignment.
+    /// Absolute display column at the start of the current segment (for
+    /// tab-stop alignment — constant within a segment, reset on each break).
     let mut seg_start_col: usize = 0;
-    // Display columns consumed in the current segment.
+    /// Display columns consumed within the current segment.
     let mut seg_col: usize = 0;
-    // Absolute display column from the buffer line start (for tab-stop math).
+    /// Absolute display column from the buffer line start (for tab-stop math).
     let mut abs_col: usize = 0;
     let mut char_pos = line_start;
+    let mut is_first_seg = true;
+
+    // Word-boundary state: track the start of the current word so we can break
+    // before it rather than mid-grapheme when `word_wrap` is enabled.
+    let mut last_word_start_char: usize = line_start;
+    let mut last_word_start_abs_col: usize = 0;
+    // We start as "in whitespace" so the first non-ws grapheme sets last_word_start.
+    let mut in_whitespace = true;
 
     for grapheme in cow.graphemes(true) {
         let advance = grapheme_advance(grapheme, abs_col, tab_width);
+        let is_ws = grapheme.chars().all(|c| c.is_whitespace());
 
-        // Would adding this grapheme exceed the segment width?
-        // The `seg_col > 0` guard prevents an infinite loop when a single
-        // grapheme is wider than the content area — it gets its own segment.
-        if seg_col + advance > content_width && seg_col > 0 {
-            segments.push((seg_start, char_pos, seg_start_col));
-            seg_start = char_pos;
-            seg_start_col = abs_col; // abs_col is not yet advanced for this grapheme
-            seg_col = 0;
+        // Track word start for word-boundary breaks.
+        if word_wrap {
+            if !is_ws && in_whitespace {
+                last_word_start_char = char_pos;
+                last_word_start_abs_col = abs_col;
+                in_whitespace = false;
+            } else if is_ws {
+                in_whitespace = true;
+            }
+        }
+
+        // Effective width for the current segment:
+        // first segment uses full content_width; continuation segments leave
+        // `indent_col` columns on the left for the visual indentation.
+        let eff_width = if is_first_seg { content_width } else { content_width.saturating_sub(indent_col) };
+
+        // Would adding this grapheme exceed the effective segment width?
+        // `seg_col > 0` prevents infinite loops when a single grapheme is wider
+        // than eff_width — it gets its own segment regardless.
+        if seg_col + advance > eff_width && seg_col > 0 {
+            let vi = if is_first_seg { 0 } else { indent_col };
+
+            if word_wrap && last_word_start_char > seg_start && !is_ws {
+                // ── Word break ────────────────────────────────────────────────
+                // End this segment just before the start of the current word.
+                segments.push(LineSegment {
+                    char_start: seg_start,
+                    char_end: last_word_start_char,
+                    col_offset_in_line: seg_start_col,
+                    visual_indent: vi,
+                });
+                seg_start = last_word_start_char;
+                seg_start_col = last_word_start_abs_col;
+                // Recalculate seg_col: columns occupied by the word so far
+                // (from word_start up to char_pos, not yet including this grapheme).
+                seg_col = abs_col - last_word_start_abs_col;
+                // Reset word tracking to the new segment's start.
+                last_word_start_char = seg_start;
+                last_word_start_abs_col = seg_start_col;
+                in_whitespace = false;
+                is_first_seg = false;
+
+                // Edge case: the word itself is wider than the continuation
+                // effective width → fall through to a character break.
+                let cont_eff = content_width.saturating_sub(indent_col);
+                if seg_col + advance > cont_eff && seg_col > 0 {
+                    segments.push(LineSegment {
+                        char_start: seg_start,
+                        char_end: char_pos,
+                        col_offset_in_line: seg_start_col,
+                        visual_indent: indent_col,
+                    });
+                    seg_start = char_pos;
+                    seg_start_col = abs_col;
+                    seg_col = 0;
+                    last_word_start_char = seg_start;
+                    last_word_start_abs_col = seg_start_col;
+                }
+            } else {
+                // ── Character break ───────────────────────────────────────────
+                segments.push(LineSegment {
+                    char_start: seg_start,
+                    char_end: char_pos,
+                    col_offset_in_line: seg_start_col,
+                    visual_indent: vi,
+                });
+                seg_start = char_pos;
+                seg_start_col = abs_col;
+                seg_col = 0;
+                is_first_seg = false;
+                if word_wrap {
+                    // Carry whitespace state into the new segment.
+                    in_whitespace = is_ws;
+                    last_word_start_char = seg_start;
+                    last_word_start_abs_col = seg_start_col;
+                }
+            }
         }
 
         seg_col += advance;
@@ -291,35 +434,76 @@ pub(crate) fn compute_segments_for_line(
     }
 
     // Final segment (always emitted — the loop above only pushes on overflow).
-    segments.push((seg_start, content_end, seg_start_col));
+    segments.push(LineSegment {
+        char_start: seg_start,
+        char_end: content_end,
+        col_offset_in_line: seg_start_col,
+        visual_indent: if is_first_seg { 0 } else { indent_col },
+    });
 
     segments
+}
+
+/// Compute the wrapped segments for buffer line `line_idx`.
+///
+/// Returns `Vec<(char_start, char_end, col_offset_in_line)>` — one triple per
+/// visual row. `col_offset_in_line` is the absolute display column of
+/// `char_start` within the buffer line, for tab-stop alignment.
+///
+/// When `soft_wrap` is `false` or `content_width` is 0, returns a single
+/// segment spanning the full content range without iterating graphemes.
+///
+/// See [`compute_segments_full`] for the internal version that also includes
+/// [`LineSegment::visual_indent`].
+pub(crate) fn compute_segments_for_line(
+    buf: &Buffer,
+    line_idx: usize,
+    content_width: usize,
+    tab_width: usize,
+    soft_wrap: bool,
+    word_wrap: bool,
+    indent_wrap: bool,
+) -> Vec<(usize, usize, usize)> {
+    compute_segments_full(buf, line_idx, content_width, tab_width, soft_wrap, word_wrap, indent_wrap)
+        .into_iter()
+        .map(|s| (s.char_start, s.char_end, s.col_offset_in_line))
+        .collect()
 }
 
 /// How many visual rows buffer line `line_idx` occupies when wrapped.
 ///
 /// Equivalent to `compute_segments_for_line(...).len()` but named clearly for
 /// call sites that only need the count.
+///
+/// `word_wrap` and `indent_wrap` must match the view settings so that the
+/// segment count matches what the renderer produces.
 pub(crate) fn count_visual_rows(
     buf: &Buffer,
     line_idx: usize,
     content_width: usize,
     tab_width: usize,
+    word_wrap: bool,
+    indent_wrap: bool,
 ) -> usize {
-    compute_segments_for_line(buf, line_idx, content_width, tab_width, true).len()
+    compute_segments_for_line(buf, line_idx, content_width, tab_width, true, word_wrap, indent_wrap).len()
 }
 
 /// Which wrapped sub-row of buffer line `line_idx` contains `cursor_char`.
 ///
 /// Returns 0 for the first (or only) row, 1 for the first continuation, etc.
+///
+/// `word_wrap` and `indent_wrap` must match the view settings so that the
+/// sub-row index agrees with what the renderer renders.
 pub(crate) fn cursor_sub_row(
     buf: &Buffer,
     line_idx: usize,
     cursor_char: usize,
     content_width: usize,
     tab_width: usize,
+    word_wrap: bool,
+    indent_wrap: bool,
 ) -> usize {
-    let segs = compute_segments_for_line(buf, line_idx, content_width, tab_width, true);
+    let segs = compute_segments_for_line(buf, line_idx, content_width, tab_width, true, word_wrap, indent_wrap);
     for (i, &(seg_start, seg_end, _)) in segs.iter().enumerate() {
         let is_last = i + 1 == segs.len();
         // The cursor is in this segment if it falls in [seg_start, seg_end),
@@ -357,7 +541,9 @@ pub(crate) fn cursor_visual_pos(
         if in_row {
             let line_idx = buf.char_to_line(vrow.char_start);
             let abs_col = display_col_in_line(buf, line_idx, cursor_char, view.tab_width);
-            let visual_col = abs_col.saturating_sub(vrow.col_offset_in_line);
+            // visual_col is the screen column within the content area:
+            // visual_indent accounts for the indent padding on continuation rows.
+            let visual_col = abs_col.saturating_sub(vrow.col_offset_in_line) + vrow.visual_indent;
             if visual_col >= view.content_width() {
                 return None; // cursor is beyond the right edge (horizontal scroll)
             }
@@ -399,6 +585,8 @@ mod tests {
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
             soft_wrap,
+            word_wrap: false,
+            indent_wrap: false,
         }
     }
 
@@ -428,7 +616,7 @@ mod tests {
     #[test]
     fn segments_short_line_no_wrap() {
         let buf = Buffer::from("hello\n");
-        let segs = compute_segments_for_line(&buf, 0, 10, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 10, 4, true, false, false);
         // "hello" = 5 cols, fits in 10 → one segment.
         assert_eq!(segs, vec![(0, 5, 0)]);
     }
@@ -436,14 +624,14 @@ mod tests {
     #[test]
     fn segments_exact_fit_no_wrap() {
         let buf = Buffer::from("abcde\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         assert_eq!(segs, vec![(0, 5, 0)]);
     }
 
     #[test]
     fn segments_one_char_overflow() {
         let buf = Buffer::from("abcdef\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         // "abcde" + "f"
         assert_eq!(segs, vec![(0, 5, 0), (5, 6, 5)]);
     }
@@ -451,14 +639,14 @@ mod tests {
     #[test]
     fn segments_multiple_wraps() {
         let buf = Buffer::from("abcdefghijklmno\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         assert_eq!(segs, vec![(0, 5, 0), (5, 10, 5), (10, 15, 10)]);
     }
 
     #[test]
     fn segments_empty_line() {
         let buf = Buffer::from("\n");
-        let segs = compute_segments_for_line(&buf, 0, 10, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 10, 4, true, false, false);
         // Empty line: one empty segment at (0, 0, 0).
         assert_eq!(segs, vec![(0, 0, 0)]);
     }
@@ -468,14 +656,14 @@ mod tests {
         // "abcd世": 4 + 2 = 6 cols. Width 5.
         // "abcd" fits (4). "世" needs 2 cols → 4+2=6 > 5 → new segment.
         let buf = Buffer::from("abcd世\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         assert_eq!(segs, vec![(0, 4, 0), (4, 5, 4)]);
     }
 
     #[test]
     fn segments_cjk_fits() {
         let buf = Buffer::from("ab世\n");
-        let segs = compute_segments_for_line(&buf, 0, 4, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 4, 4, true, false, false);
         assert_eq!(segs, vec![(0, 3, 0)]);
     }
 
@@ -484,7 +672,7 @@ mod tests {
         // "世界世界世" = 5 CJK chars = 10 cols. Width 4.
         // Row 1: "世界" (4), Row 2: "世界" (4), Row 3: "世" (2).
         let buf = Buffer::from("世界世界世\n");
-        let segs = compute_segments_for_line(&buf, 0, 4, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 4, 4, true, false, false);
         assert_eq!(segs, vec![(0, 2, 0), (2, 4, 4), (4, 5, 8)]);
     }
 
@@ -493,7 +681,7 @@ mod tests {
         // "\tabc" tab_width=4: tab at col 0 → 4 cols, 'a' at col 4. Width 5.
         // tab+a fits (5). 'b' at col 5 → 6 > 5 → wrap. Second: "bc".
         let buf = Buffer::from("\tabc\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         assert_eq!(segs, vec![(0, 2, 0), (2, 4, 5)]);
     }
 
@@ -501,7 +689,7 @@ mod tests {
     fn segments_tab_at_boundary() {
         // "ab\t" tab_width=4: 'a'=1,'b'=2, tab at col 2 → 2 cols → col 4. Width 4 → fits.
         let buf = Buffer::from("ab\t\n");
-        let segs = compute_segments_for_line(&buf, 0, 4, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 4, 4, true, false, false);
         assert_eq!(segs, vec![(0, 3, 0)]);
     }
 
@@ -510,7 +698,7 @@ mod tests {
         // "abc\t" tab_width=4: 'a','b','c' = 3 cols. Tab at col 3 → 1 col → col 4. Width 3.
         // 'a','b','c' fill width exactly (3). Tab at col 3 → advance 1 → 3+1=4 > 3 → wrap.
         let buf = Buffer::from("abc\t\n");
-        let segs = compute_segments_for_line(&buf, 0, 3, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 3, 4, true, false, false);
         assert_eq!(segs, vec![(0, 3, 0), (3, 4, 3)]);
     }
 
@@ -518,7 +706,7 @@ mod tests {
     fn segments_wide_char_wider_than_content() {
         // CJK (2 cols) in content_width=1: gets own segment (seg_col==0 guard).
         let buf = Buffer::from("世\n");
-        let segs = compute_segments_for_line(&buf, 0, 1, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 1, 4, true, false, false);
         assert_eq!(segs, vec![(0, 1, 0)]);
     }
 
@@ -527,7 +715,7 @@ mod tests {
         // "abcdefgh" with content_width=4: segs (0,4,0) and (4,8,4).
         // Second segment starts at abs_col 4.
         let buf = Buffer::from("abcdefgh\n");
-        let segs = compute_segments_for_line(&buf, 0, 4, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 4, 4, true, false, false);
         assert_eq!(segs[0].2, 0);  // first segment starts at col 0
         assert_eq!(segs[1].2, 4);  // second segment starts at col 4
     }
@@ -538,7 +726,7 @@ mod tests {
         // Total 8 cols. Width 5: first tab (4) fits. Second tab (4) → 4+4=8 > 5 → wrap.
         // Second segment starts at abs_col 4.
         let buf = Buffer::from("\t\t\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         assert_eq!(segs, vec![(0, 1, 0), (1, 2, 4)]);
         assert_eq!(segs[1].2, 4);
     }
@@ -547,7 +735,7 @@ mod tests {
     fn segments_soft_wrap_false_returns_single_segment() {
         // Even a very long line gets one segment when soft_wrap is off.
         let buf = Buffer::from("abcdefghijklmnopqrstuvwxyz\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, false);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, false, false, false);
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].0, 0);
         assert_eq!(segs[0].1, 26); // 'z' at index 25, content_end = 26 (pos of '\n')
@@ -723,14 +911,14 @@ mod tests {
     #[test]
     fn count_rows_short_line() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(count_visual_rows(&buf, 0, 80, 4), 1);
+        assert_eq!(count_visual_rows(&buf, 0, 80, 4, false, false), 1);
     }
 
     #[test]
     fn count_rows_wrapped() {
         let buf = Buffer::from("abcdefghijklmno\n");
         // 15 chars, width 5 → 3 rows.
-        assert_eq!(count_visual_rows(&buf, 0, 5, 4), 3);
+        assert_eq!(count_visual_rows(&buf, 0, 5, 4, false, false), 3);
     }
 
     // ── cursor_sub_row ────────────────────────────────────────────────────────
@@ -738,25 +926,25 @@ mod tests {
     #[test]
     fn sub_row_no_wrap() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4), 0);
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4, false, false), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4, false, false), 0);
     }
 
     #[test]
     fn sub_row_wrapped() {
         let buf = Buffer::from("abcdefghij\n");
         // Width 5 → segs: (0,5), (5,10).
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4), 0); // 'a'
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4), 0); // 'e'
-        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4), 1); // 'f'
-        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4), 1); // 'j'
+        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4, false, false), 0); // 'a'
+        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4, false, false), 0); // 'e'
+        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4, false, false), 1); // 'f'
+        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4, false, false), 1); // 'j'
     }
 
     #[test]
     fn sub_row_at_newline_is_last_segment() {
         let buf = Buffer::from("abcdefghij\n");
         // '\n' at position 10 belongs to the last segment.
-        assert_eq!(cursor_sub_row(&buf, 0, 10, 5, 4), 1);
+        assert_eq!(cursor_sub_row(&buf, 0, 10, 5, 4, false, false), 1);
     }
 
     // ── cursor_visual_pos ────────────────────────────────────────────────────
@@ -870,7 +1058,7 @@ mod tests {
         // Reproduce the key cases from the old wrap_line tests, using
         // compute_segments_for_line as the replacement.
         let buf = Buffer::from("abcdef\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true);
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
         // Old: wrap_line(&buf, 0, 6, 5, 4) == [(0,5),(5,6)]
         // New: (char_start, char_end, col_offset). char_end for last seg = content_end.
         assert_eq!(segs[0].0, 0);
@@ -916,5 +1104,105 @@ mod tests {
         assert_eq!(rows[1].char_end, 8);
         assert_eq!(rows[1].line_number, None);
         assert!(rows[1].is_continuation);
+    }
+
+    // ── Word-boundary wrapping ────────────────────────────────────────────────
+
+    #[test]
+    fn word_wrap_breaks_at_word_boundary() {
+        // "hello world\n" = 11 chars. Width 8: "hello wo" would be char-break, but
+        // word_wrap should break before "world" → "hello " (6 cols) + "world" (5 cols).
+        let buf = Buffer::from("hello world\n");
+        let segs = compute_segments_for_line(&buf, 0, 8, 4, true, true, false);
+        // Break before "world": segment 0 ends at char 6 (after the space).
+        // segment 1 starts at "world" (char 6).
+        assert_eq!(segs.len(), 2);
+        assert_eq!(segs[0], (0, 6, 0));   // "hello " — char 6 is 'w' of world
+        assert_eq!(segs[1].0, 6);          // starts at 'w'
+        assert_eq!(segs[1].1, 11);         // ends at '\n' position
+    }
+
+    #[test]
+    fn word_wrap_falls_back_to_char_break_for_long_word() {
+        // A single word longer than content_width: must char-break.
+        // "superlongword\n" = 13 chars. Width 5.
+        let buf = Buffer::from("superlongword\n");
+        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, true, false);
+        // No whitespace → character breaks just like non-word-wrap.
+        assert!(segs.len() >= 2, "long word must wrap");
+        assert_eq!(segs[0], (0, 5, 0));
+    }
+
+    #[test]
+    fn word_wrap_same_as_char_wrap_when_no_spaces() {
+        // Content without any spaces: word_wrap == char_wrap.
+        let buf = Buffer::from("abcdefghij\n");
+        let char_segs = compute_segments_for_line(&buf, 0, 4, 4, true, false, false);
+        let word_segs = compute_segments_for_line(&buf, 0, 4, 4, true, true, false);
+        assert_eq!(char_segs, word_segs);
+    }
+
+    #[test]
+    fn word_wrap_breaks_before_word_on_mid_word_overflow() {
+        // "abc def ghi\n" with width 8. Char-break would give "abc def " + "ghi".
+        // Word-break: "abc def " = 8 cols, then 'g' overflows → break before "ghi".
+        // With width 8: "abc def " fits (8). 'g' at col 8: overflow → word break before 'g'.
+        // last_word_start is 'g' (char 8). Segment: (0, 8, 0) for "abc def ", then (8, 11, 8).
+        let buf = Buffer::from("abc def ghi\n");
+        // width 9: "abc def g" (9) + "hi". Word break should break before "ghi" (at char 8 = 'g').
+        let segs = compute_segments_for_line(&buf, 0, 9, 4, true, true, false);
+        assert!(segs.len() >= 2);
+        // First segment ends at the start of "ghi" or at the space before it.
+        let second_start = segs[1].0;
+        // Regardless of trailing-space handling, second segment must start at or before 'g'.
+        assert!(second_start <= 8, "word break must happen at or before start of 'ghi'");
+        // And the content of segs[0] must NOT include 'h' (char 9) or 'i' (char 10).
+        assert!(segs[0].1 <= 9, "first segment must end before 'hi'");
+    }
+
+    // ── Indent-wrap ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn indent_wrap_visual_indent_on_continuation() {
+        // "    hello world foo\n" — 4-space indent. Width 12.
+        // indent_col = 4, capped at width/3 = 4. Continuation rows have visual_indent = 4.
+        let buf = Buffer::from("    hello world foo\n");
+        let segs = compute_segments_full(&buf, 0, 12, 4, true, false, true);
+        // First segment: visual_indent = 0 (it IS the first segment).
+        assert_eq!(segs[0].visual_indent, 0);
+        // Continuation segments: visual_indent = 4.
+        if segs.len() > 1 {
+            assert_eq!(segs[1].visual_indent, 4);
+        }
+    }
+
+    #[test]
+    fn indent_wrap_zero_for_non_indented_line() {
+        // "hello world\n" — no indent. All segments get visual_indent = 0.
+        let buf = Buffer::from("hello world\n");
+        let segs = compute_segments_full(&buf, 0, 5, 4, true, false, true);
+        for seg in &segs {
+            assert_eq!(seg.visual_indent, 0);
+        }
+    }
+
+    #[test]
+    fn indent_wrap_capped_at_third_of_width() {
+        // "            hello world\n" — 12-space indent. Width 10.
+        // indent_col = 12, cap = width/3 = 3. Continuation rows have visual_indent = 3.
+        let buf = Buffer::from("            hello world\n");
+        let segs = compute_segments_full(&buf, 0, 10, 4, true, false, true);
+        // Continuation rows should have visual_indent <= 10/3 = 3.
+        for seg in segs.iter().skip(1) {
+            assert!(seg.visual_indent <= 3, "indent capped at width/3");
+        }
+    }
+
+    #[test]
+    fn indent_wrap_first_segment_always_zero() {
+        // Even with deep indent, the first segment has visual_indent = 0.
+        let buf = Buffer::from("        indented line that wraps\n");
+        let segs = compute_segments_full(&buf, 0, 10, 4, true, false, true);
+        assert_eq!(segs[0].visual_indent, 0);
     }
 }
