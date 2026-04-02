@@ -406,11 +406,7 @@ impl Editor {
             // ── 3. Scroll ─────────────────────────────────────────────────────
             let cursor_char = self.doc.sels().primary().head;
             let cursor_line = self.doc.buf().char_to_line(cursor_char);
-            if self.view.soft_wrap {
-                self.view.ensure_cursor_visible_wrapped(self.doc.buf(), cursor_char);
-            } else {
-                self.view.ensure_cursor_visible(cursor_line);
-            }
+            self.view.ensure_cursor_visible(self.doc.buf(), cursor_char);
             self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels(), cursor_line);
 
             // ── 4. Render ─────────────────────────────────────────────────────

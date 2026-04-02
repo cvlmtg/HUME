@@ -5,6 +5,21 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
 
+/// Display-column advance for a single grapheme cluster.
+///
+/// Tabs expand to the next tab stop based on the current absolute column
+/// (`abs_col`). Combining marks (width 0) are counted as 1 column so they
+/// occupy a cell, consistent with how terminals render them.
+#[inline]
+pub(crate) fn grapheme_advance(grapheme: &str, abs_col: usize, tab_width: usize) -> usize {
+    if grapheme == "\t" {
+        let tw = tab_width.max(1);
+        tw - (abs_col % tw)
+    } else {
+        UnicodeWidthStr::width(grapheme).max(1)
+    }
+}
+
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`.
 ///
@@ -225,20 +240,9 @@ pub(crate) fn display_col_width(
     let slice = buf.slice(from_char..to_char);
     let cow: Cow<str> = slice.into();
 
-    // Track a running column to handle tab-stop alignment correctly.
     let mut col: usize = 0;
     for g in cow.graphemes(true) {
-        if g == "\t" {
-            // Expand to the next tab stop. tab_width of 0 is treated as 1
-            // to avoid division by zero.
-            let tw = tab_width.max(1);
-            col += tw - (col % tw);
-        } else {
-            let w = UnicodeWidthStr::width(g);
-            // Combining marks have width 0 — count at least 1 so they occupy
-            // a cell, consistent with the renderer.
-            col += w.max(1);
-        }
+        col += grapheme_advance(g, col, tab_width);
     }
     col
 }

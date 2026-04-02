@@ -5,9 +5,8 @@ use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
-use crate::core::grapheme::display_col_in_line;
+use crate::core::grapheme::{display_col_in_line, grapheme_advance};
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
@@ -83,12 +82,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         render_bottom_row(screen_buf, editor, area, lay.statusline.y);
     }
 
-    let cursor_pos = if editor.view.soft_wrap {
-        compute_cursor_pos_wrapped(editor, &display_lines)
-    } else {
-        compute_cursor_pos(editor)
-    };
-    CursorState { pos: cursor_pos }
+    CursorState { pos: compute_cursor_pos(editor, &display_lines) }
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -170,105 +164,64 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
 /// Compute the terminal cursor position for the current editor state.
 ///
 /// Returns `None` in Normal mode — the visual `cursor_head` cell acts as the
-/// cursor; the real terminal cursor should be hidden.
-fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
+/// cursor; the real terminal cursor should be hidden. In Insert mode, finds
+/// the cursor's screen position using either arithmetic (non-wrapped) or
+/// by scanning the pre-computed `display_lines` (soft-wrapped).
+fn compute_cursor_pos(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
     match editor.mode {
-        Mode::Normal => None,
-        Mode::Insert => cursor_screen_pos(editor),
-        // Command/Search use a visual block cursor rendered directly onto the
-        // statusline cell (see MiniBuf cursor patch in render_statusline).
-        // No terminal cursor needed.
-        Mode::Command | Mode::Search | Mode::Select => None,
+        Mode::Insert => cursor_screen_pos(editor, display_lines),
+        // Normal uses a visual block cell; Command/Search use a MiniBuf cursor.
+        Mode::Normal | Mode::Command | Mode::Search | Mode::Select => None,
     }
 }
 
 /// Map the primary cursor to screen (col, row), or `None` if scrolled out.
 ///
-/// Uses display-width columns (not grapheme count) so that CJK double-width
-/// characters are positioned correctly. Subtracts `col_offset` to account for
-/// horizontal scrolling.
-fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
-    let buf = editor.doc.buf();
-    let view = &editor.view;
-    let head = editor.doc.sels().primary().head;
-    let cursor_line = buf.char_to_line(head);
-    let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
-    if screen_row >= view.height {
-        return None;
-    }
-    let display_col = display_col_in_line(buf, cursor_line, head, view.tab_width);
-    let screen_col = display_col.checked_sub(view.col_offset)?;
-    let content_width = view.width.saturating_sub(view.gutter_width);
-    if screen_col >= content_width {
-        return None;
-    }
-    Some(((view.gutter_width + screen_col) as u16, screen_row as u16))
-}
-
-/// Compute cursor position for soft-wrapped display.
-///
-/// Same mode logic as [`compute_cursor_pos`] but finds the cursor's screen
-/// row by scanning the pre-computed display lines rather than using arithmetic.
-fn compute_cursor_pos_wrapped(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
-    match editor.mode {
-        Mode::Normal => None,
-        Mode::Insert => cursor_screen_pos_wrapped(editor, display_lines),
-        Mode::Command | Mode::Search | Mode::Select => None,
-    }
-}
-
-/// Map the primary cursor to screen (col, row) in soft-wrapped mode.
-///
-/// Iterates `display_lines` to find the display row containing the cursor's
-/// char position. The column is computed relative to the segment start
-/// (since `col_offset` is 0 in wrapped mode).
-fn cursor_screen_pos_wrapped(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
+/// In non-wrapped mode, the row is `cursor_line - scroll_offset` (arithmetic).
+/// In soft-wrapped mode, the row is found by scanning `display_lines` for the
+/// segment containing the cursor's char position.
+fn cursor_screen_pos(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
     let buf = editor.doc.buf();
     let view = &editor.view;
     let head = editor.doc.sels().primary().head;
 
-    for (row, dl) in display_lines.iter().enumerate() {
-        let Some(offset) = dl.char_offset else { continue };
-        let seg_len = dl.content.len_chars();
-        let seg_end = offset + seg_len;
+    if view.soft_wrap {
+        // Find the display row whose char range contains `head`.
+        for (row, dl) in display_lines.iter().enumerate() {
+            let Some(offset) = dl.char_offset else { continue };
+            let seg_end = offset + dl.content.len_chars();
 
-        // Cursor is in this segment if head ∈ [offset, seg_end).
-        // For the last segment of a buffer line, head == seg_end is the
-        // newline position — it belongs here too (EOL cursor).
-        let in_segment = if head >= offset {
-            if head < seg_end {
-                true
-            } else if head == seg_end {
-                // Only claim the EOL position if the *next* display line
-                // is NOT a continuation of the same buffer line (i.e. this
-                // is the last segment).
-                let next_is_continuation = display_lines
-                    .get(row + 1)
-                    .is_some_and(|next| next.is_continuation);
-                !next_is_continuation
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+            // head ∈ [offset, seg_end), or head == seg_end when this is
+            // the last segment of the buffer line (EOL cursor position).
+            let in_segment = head >= offset && head < seg_end
+                || (head == seg_end
+                    && !display_lines.get(row + 1).is_some_and(|n| n.is_continuation));
 
-        if in_segment {
-            // Compute display column relative to the segment start.
-            // Both calls share the same buffer line, so tab-stop alignment
-            // is consistent: col_of_head - col_of_seg_start.
-            let line = buf.char_to_line(offset);
-            let col_head = display_col_in_line(buf, line, head, view.tab_width);
-            let col_seg = display_col_in_line(buf, line, offset, view.tab_width);
-            let display_col = col_head - col_seg;
-            let content_width = view.content_width();
-            if display_col >= content_width {
-                return None;
+            if in_segment {
+                let line = buf.char_to_line(offset);
+                let col_head = display_col_in_line(buf, line, head, view.tab_width);
+                let col_seg = display_col_in_line(buf, line, offset, view.tab_width);
+                let display_col = col_head - col_seg;
+                if display_col >= view.content_width() {
+                    return None;
+                }
+                return Some(((view.gutter_width + display_col) as u16, row as u16));
             }
-            return Some(((view.gutter_width + display_col) as u16, row as u16));
         }
+        None
+    } else {
+        let cursor_line = buf.char_to_line(head);
+        let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
+        if screen_row >= view.height {
+            return None;
+        }
+        let display_col = display_col_in_line(buf, cursor_line, head, view.tab_width);
+        let screen_col = display_col.checked_sub(view.col_offset)?;
+        if screen_col >= view.content_width() {
+            return None;
+        }
+        Some(((view.gutter_width + screen_col) as u16, screen_row as u16))
     }
-    None
 }
 
 // ── Gutter ────────────────────────────────────────────────────────────────────
@@ -486,16 +439,7 @@ fn render_content(
 
     for grapheme in content_cow.graphemes(true) {
         let is_tab = grapheme == "\t";
-        let advance = if is_tab {
-            // Tab stops align to absolute column position within the buffer
-            // line, not the screen column — consistent across wrapped rows.
-            tab_width - (abs_col % tab_width)
-        } else {
-            let gw = UnicodeWidthStr::width(grapheme);
-            // Combining marks have display width 0 — advance at least 1 col so
-            // they don't stack on the gutter edge.
-            gw.max(1)
-        };
+        let advance = grapheme_advance(grapheme, abs_col, tab_width);
 
         if display_col + advance <= col_offset {
             display_col += advance;
