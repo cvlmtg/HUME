@@ -704,21 +704,7 @@ mod tests {
             0, // primary = first
         );
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState {
-            scroll_offset: 0,
-            height: 4,
-            width: 15,
-            gutter: GutterConfig::default(), cached_total_lines,
-            line_number_style: LineNumberStyle::Absolute,
-            col_offset: 0,
-            tab_width: 4,
-            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
-            soft_wrap: false,
-            word_wrap: false,
-            indent_wrap: false,
-            scroll_sub_offset: 0,
-        };
+        let v = view(&doc, 15, 4, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 5);
@@ -745,21 +731,7 @@ mod tests {
         let buf = Buffer::from("hello\n");
         let sels = SelectionSet::single(Selection::new(1, 3));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState {
-            scroll_offset: 0,
-            height: 2,
-            width: 20,
-            gutter: GutterConfig::default(), cached_total_lines,
-            line_number_style: LineNumberStyle::Absolute,
-            col_offset: 0,
-            tab_width: 4,
-            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
-            soft_wrap: false,
-            word_wrap: false,
-            indent_wrap: false,
-            scroll_sub_offset: 0,
-        };
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 20, 3);
@@ -794,8 +766,7 @@ mod tests {
         // anchor=0 ('a'), head=2 ('c'). Chars 0,1 are selection body; char 2 is cursor head.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
@@ -818,8 +789,7 @@ mod tests {
         // Cursor on 'a' (char 0). Line 0 is the cursor line.
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 3, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 4);
@@ -846,8 +816,7 @@ mod tests {
         // Selection from anchor=0 ('a') to head=2 ('c'). Cursor line = line 0.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
@@ -878,8 +847,7 @@ mod tests {
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
@@ -905,8 +873,7 @@ mod tests {
         // But ')' is also in the selection body (not the head), so selection wins.
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
@@ -930,8 +897,7 @@ mod tests {
         let buf = Buffer::from("()\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 10, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 10, 3);
@@ -1021,8 +987,7 @@ mod tests {
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
         let doc = Document::new(buf, sels);
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, word_wrap: false, indent_wrap: false, scroll_sub_offset: 0 };
+        let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
