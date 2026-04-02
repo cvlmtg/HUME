@@ -385,6 +385,9 @@ impl ViewState {
         }
 
         // ── Count display rows from scroll position to cursor ────────────────
+        // Capped at `height` rows: if the cursor is far below the viewport we
+        // don't need the exact count — just enough to know it exceeds the
+        // bottom margin. This keeps the scan O(height) instead of O(N).
         let mut display_row: usize = 0;
         for line_idx in self.scroll_offset..=cursor_line {
             let rows = count_wrapped_rows(buf, line_idx, content_width, self.tab_width);
@@ -398,27 +401,37 @@ impl ViewState {
                 break;
             }
             display_row += rows.saturating_sub(skip);
+            // Early exit: cursor is definitely below the viewport. Recomputing
+            // from the cursor end (below) is O(height), not O(distance).
+            if display_row >= self.height {
+                break;
+            }
         }
 
         // ── Cursor below the viewport ────────────────────────────────────────
         if display_row >= self.height.saturating_sub(margin) {
-            // Scroll down until cursor is at `height - margin - 1`.
+            // Walk backward from the cursor `target_row` rows to find the new
+            // scroll position. Symmetric to the above-viewport path, and always
+            // O(height) regardless of how far the cursor jumped (e.g. `ge`).
             let target_row = self.height.saturating_sub(margin).saturating_sub(1);
-            let overshoot = display_row - target_row;
-            let mut remaining = overshoot;
-            while remaining > 0 {
-                let rows = count_wrapped_rows(buf, self.scroll_offset, content_width, self.tab_width);
-                // scroll_sub_offset is always < rows (reset to 0 on every line
-                // advance), so this subtraction never wraps. saturating_sub
-                // guards against any future invariant violation.
-                let available = rows.saturating_sub(self.scroll_sub_offset);
-                if remaining < available {
-                    self.scroll_sub_offset += remaining;
-                    remaining = 0;
+            self.scroll_offset = cursor_line;
+            self.scroll_sub_offset = cursor_sub;
+            let mut rows_above = 0;
+            while rows_above < target_row {
+                if self.scroll_sub_offset > 0 {
+                    self.scroll_sub_offset -= 1;
+                    rows_above += 1;
+                } else if self.scroll_offset > 0 {
+                    self.scroll_offset -= 1;
+                    let rows = count_wrapped_rows(buf, self.scroll_offset, content_width, self.tab_width);
+                    if rows_above + rows > target_row {
+                        // Don't overshoot — start partway through this line.
+                        self.scroll_sub_offset = rows - (target_row - rows_above);
+                        break;
+                    }
+                    rows_above += rows;
                 } else {
-                    remaining -= available;
-                    self.scroll_offset += 1;
-                    self.scroll_sub_offset = 0;
+                    break; // top of file
                 }
             }
         }
@@ -987,26 +1000,12 @@ mod tests {
         let mut v = wrap_view(0, 4, 8, &buf);
         let cursor_char = buf.line_to_char(3); // start of line 3
         v.ensure_cursor_visible(&buf, cursor_char);
-        // Cursor (line 3, sub-row 0) should be near the bottom with margin.
-        // margin = min(SCROLL_MARGIN=3, height/2=2) = 2.
-        // Target row = height - margin - 1 = 4 - 2 - 1 = 1.
-        // Cursor display row from new scroll position should be ≤ 1.
-        assert!(v.scroll_offset > 0 || v.scroll_sub_offset > 0, "should have scrolled");
-        // After scrolling, cursor must be in view.
-        let cursor_line = buf.char_to_line(cursor_char);
-        let content_width = v.content_width();
-        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width);
-        let mut display_row = 0usize;
-        for line_idx in v.scroll_offset..=cursor_line {
-            let rows = count_wrapped_rows(&buf, line_idx, content_width, v.tab_width);
-            let skip = if line_idx == v.scroll_offset { v.scroll_sub_offset } else { 0 };
-            if line_idx == cursor_line {
-                display_row += cursor_sub.saturating_sub(skip);
-                break;
-            }
-            display_row += rows.saturating_sub(skip);
-        }
-        assert!(display_row < v.height, "cursor should be within viewport after scroll");
+        // margin = min(SCROLL_MARGIN=3, height/2=2) = 2
+        // target_row = 4 - 2 - 1 = 1
+        // Backward walk from (line 3, sub 0): step into line 2 (2 rows),
+        // 0 + 2 > 1, so scroll_sub_offset = 2 - (1 - 0) = 1.
+        assert_eq!(v.scroll_offset, 2);
+        assert_eq!(v.scroll_sub_offset, 1);
     }
 
     #[test]
