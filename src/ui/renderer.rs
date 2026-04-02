@@ -6,16 +6,15 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::core::grapheme::{display_col_in_line, grapheme_advance};
+use crate::core::grapheme::grapheme_advance;
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
-use crate::ui::display_line::DisplayLine;
+use crate::ui::formatter::{DocumentFormatter, VisualRow, cursor_visual_pos};
 use crate::ui::highlight::HighlightSet;
 use crate::ui::theme::EditorColors;
 use crate::ui::whitespace::WhitespaceShow;
 use crate::ui::statusline::render_bottom_row;
-use crate::ui::view::LineNumberStyle;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -53,27 +52,53 @@ pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
 /// This function is pure: it only writes to `screen_buf` and reads from its
 /// arguments. All terminal I/O is handled by the caller.
 pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) -> CursorState {
-    let lay = layout(area, editor.view.gutter_width as u16);
-    let highlights = compute_highlights(editor);
-
     let buf = editor.doc.buf();
-    let display_lines = editor.view.display_lines(buf);
+    let total_lines = buf.len_lines().saturating_sub(1);
+    let lay = layout(area, editor.view.gutter_width() as u16);
+    let highlights = compute_highlights(editor);
+    let cursor_line = buf.char_to_line(editor.doc.sels().primary().head);
 
-    // ── Content rows ──────────────────────────────────────────────────────────
+    // ── Content rows via DocumentFormatter ───────────────────────────────────
+    //
+    // The formatter is the single source of truth for row boundaries: it tells
+    // us exactly which chars appear on which visual row, accounting for soft-
+    // wrap, tabs, and (future) virtual lines. The renderer consumes these row
+    // descriptors and draws gutter + content for each.
 
-    for row in 0..editor.view.height {
-        let y = area.y + row as u16;
-        if y >= area.bottom() {
+    let mut last_rendered_row: Option<usize> = None;
+
+    for vrow in DocumentFormatter::new(buf, &editor.view) {
+        let y = area.y + vrow.row as u16;
+        if y >= lay.content.y + lay.content.height {
             break;
         }
 
-        if let Some(dl) = display_lines.get(row) {
-            render_gutter(screen_buf, editor, dl, lay.gutter.x, y);
-            render_content(screen_buf, editor, &highlights, dl, lay.content.x, y, lay.content.width);
-        } else {
-            // Past end of buffer — draw `~` in the gutter column.
-            screen_buf.set_string(area.x, y, "~", editor.colors.tilde);
+        // Gutter: delegate to composable column providers.
+        editor.view.gutter.render_row(
+            screen_buf,
+            &vrow,
+            editor.view.line_number_style,
+            cursor_line,
+            &editor.colors,
+            lay.gutter.x,
+            y,
+            total_lines,
+        );
+
+        // Content: grapheme walk with per-character style resolution.
+        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, lay.content.x, y, lay.content.width);
+
+        last_rendered_row = Some(vrow.row);
+    }
+
+    // ── Tilde rows past end of buffer ─────────────────────────────────────────
+    let first_empty = last_rendered_row.map_or(0, |r| r + 1);
+    for row in first_empty..editor.view.height {
+        let y = area.y + row as u16;
+        if y >= lay.content.y + lay.content.height {
+            break;
         }
+        screen_buf.set_string(area.x, y, "~", editor.colors.tilde);
     }
 
     // ── Bottom row (statusline / command line / status message) ───────────────
@@ -82,7 +107,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         render_bottom_row(screen_buf, editor, area, lay.statusline.y);
     }
 
-    CursorState { pos: compute_cursor_pos(editor, &display_lines) }
+    CursorState { pos: compute_cursor_pos(editor) }
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -163,112 +188,30 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
 
 /// Compute the terminal cursor position for the current editor state.
 ///
-/// Returns `None` in Normal mode — the visual `cursor_head` cell acts as the
-/// cursor; the real terminal cursor should be hidden. In Insert mode, finds
-/// the cursor's screen position using either arithmetic (non-wrapped) or
-/// by scanning the pre-computed `display_lines` (soft-wrapped).
-fn compute_cursor_pos(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
+/// In Normal mode returns `None` — the visual `cursor_head` cell acts as the
+/// cursor and the real terminal cursor is hidden. In Insert mode, delegates to
+/// [`cursor_visual_pos`] which scans the [`DocumentFormatter`] output.
+///
+/// Both rendering and cursor positioning consume the same formatter row
+/// boundaries, so they can never disagree about where a character is on screen.
+fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     match editor.mode {
-        Mode::Insert => cursor_screen_pos(editor, display_lines),
+        Mode::Insert => {
+            let buf = editor.doc.buf();
+            let head = editor.doc.sels().primary().head;
+            cursor_visual_pos(buf, &editor.view, head).map(|(col, row)| {
+                ((editor.view.gutter_width() + col) as u16, row as u16)
+            })
+        }
         // Normal uses a visual block cell; Command/Search use a MiniBuf cursor.
         Mode::Normal | Mode::Command | Mode::Search | Mode::Select => None,
     }
 }
 
-/// Map the primary cursor to screen (col, row), or `None` if scrolled out.
-///
-/// In non-wrapped mode, the row is `cursor_line - scroll_offset` (arithmetic).
-/// In soft-wrapped mode, the row is found by scanning `display_lines` for the
-/// segment containing the cursor's char position.
-fn cursor_screen_pos(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
-    let buf = editor.doc.buf();
-    let view = &editor.view;
-    let head = editor.doc.sels().primary().head;
-
-    if view.soft_wrap {
-        // Find the display row whose char range contains `head`.
-        for (row, dl) in display_lines.iter().enumerate() {
-            let Some(offset) = dl.char_offset else { continue };
-            let seg_end = offset + dl.content.len_chars();
-
-            // head ∈ [offset, seg_end), or head == seg_end when this is
-            // the last segment of the buffer line (EOL cursor position).
-            let in_segment = head >= offset && head < seg_end
-                || (head == seg_end
-                    && !display_lines.get(row + 1).is_some_and(|n| n.is_continuation));
-
-            if in_segment {
-                let line = buf.char_to_line(offset);
-                let col_head = display_col_in_line(buf, line, head, view.tab_width);
-                let col_seg = display_col_in_line(buf, line, offset, view.tab_width);
-                let display_col = col_head - col_seg;
-                if display_col >= view.content_width() {
-                    return None;
-                }
-                return Some(((view.gutter_width + display_col) as u16, row as u16));
-            }
-        }
-        None
-    } else {
-        let cursor_line = buf.char_to_line(head);
-        let screen_row = cursor_line.checked_sub(view.scroll_offset)?;
-        if screen_row >= view.height {
-            return None;
-        }
-        let display_col = display_col_in_line(buf, cursor_line, head, view.tab_width);
-        let screen_col = display_col.checked_sub(view.col_offset)?;
-        if screen_col >= view.content_width() {
-            return None;
-        }
-        Some(((view.gutter_width + screen_col) as u16, screen_row as u16))
-    }
-}
-
 // ── Gutter ────────────────────────────────────────────────────────────────────
-
-/// Render the line-number gutter cell for one display row.
-///
-/// The label (absolute or relative number) is right-aligned in
-/// `gutter_width - 1` columns, followed by one space separator.
-/// Non-cursor lines are dimmed; the cursor line keeps the default style
-/// so it stands out.
-fn render_gutter(
-    screen_buf: &mut ScreenBuf,
-    editor: &Editor,
-    dl: &DisplayLine<'_>,
-    x: u16,
-    y: u16,
-) {
-    // Soft-wrap continuation rows get a blank gutter — no line number,
-    // no indicator. The indentation of the wrapped text is enough visual cue.
-    if dl.is_continuation {
-        return;
-    }
-    // Virtual lines have no line number — nothing to render in the gutter.
-    let Some(line_number) = dl.line_number else { return };
-    let line_idx = line_number.saturating_sub(1); // 0-based
-
-    let cursor_line = editor.doc.buf().char_to_line(editor.doc.sels().primary().head);
-    let view = &editor.view;
-    let label = match view.line_number_style {
-        LineNumberStyle::Absolute => format!("{line_number}"),
-        LineNumberStyle::Relative => format!("{}", line_idx.abs_diff(cursor_line)),
-        LineNumberStyle::Hybrid => {
-            if line_idx == cursor_line {
-                format!("{line_number}")
-            } else {
-                format!("{}", line_idx.abs_diff(cursor_line))
-            }
-        }
-    };
-
-    // Right-align the label in `gutter_width - 1` columns, then one space.
-    let gutter_str = format!("{:>width$} ", label, width = view.gutter_width.saturating_sub(1));
-
-    let colors = &editor.colors;
-    let style = if line_idx == cursor_line { colors.gutter_cursor_line } else { colors.gutter };
-    screen_buf.set_string(x, y, &gutter_str, style);
-}
+// Gutter rendering is now handled by GutterConfig::render_row() in gutter.rs.
+// render_gutter() has been removed; render() calls editor.view.gutter.render_row()
+// directly for each VisualRow yielded by the DocumentFormatter.
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -338,72 +281,64 @@ fn should_show_ws(show: WhitespaceShow, char_pos: usize, trailing_start: usize) 
     }
 }
 
-/// Render the text content of one display line into the screen buffer.
+/// Render the text content of one visual row into the screen buffer.
 ///
 /// Iterates grapheme clusters (via `unicode-segmentation`) so that multi-byte
 /// characters and combining sequences are treated as single units. Display
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns. Style resolution is delegated to [`resolve_style`].
-fn render_content(
+///
+/// This replaces the old `render_content(dl: &DisplayLine)`. The key improvement
+/// is that `abs_col` (absolute display column within the buffer line) is taken
+/// directly from `vrow.col_offset_in_line` instead of being recomputed via
+/// `display_col_in_line()` — the formatter already computed it when determining
+/// wrap break points, so we get it for free.
+fn render_row_content(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
     highlights: &HighlightSet,
-    dl: &DisplayLine<'_>,
+    vrow: &VisualRow,
+    cursor_line: usize,
     x: u16,
     y: u16,
     width: u16,
 ) {
+    let buf = editor.doc.buf();
     let mode = editor.mode;
     let colors = &editor.colors;
     let sels = editor.doc.sels();
-    let cursor_line = editor.doc.buf().char_to_line(sels.primary().head);
-    let char_offset = dl.char_offset.unwrap_or(0);
+    let char_offset = vrow.char_start;
 
-    // line_end_excl = position of the stripped '\n' (one past the last content char).
-    let content_chars = dl.content.len_chars();
-    let line_end_excl = char_offset + content_chars;
+    // vrow.char_end is the exclusive end of content (= position of '\n' for the
+    // last segment; = first char of next segment for intermediate wrap rows).
+    let line_end_excl = vrow.char_end;
 
-    // Collect selections that overlap this display line once so the per-grapheme
-    // style checks can iterate a tiny local slice rather than re-filtering the
-    // full set each time. Selection is Copy (two usizes), and the count per line
-    // is typically 1, so this Vec rarely exceeds a single inline allocation.
+    // Collect selections that overlap this display row once, so the per-grapheme
+    // style check iterates a small local slice rather than the full set.
+    // Selection is Copy (two usizes), and count per row is typically 1.
     let sels_on_line: Vec<Selection> = sels
         .iter_sorted()
         .filter(|s| s.end() >= char_offset && s.start() <= line_end_excl)
         .copied()
         .collect();
 
-    if sels_on_line.is_empty() && dl.char_offset.is_none() {
-        return; // virtual line with no selection overlap — nothing to render
-    }
+    // Whether this row is the primary cursor's row. Used for cursor-line bg tint.
+    // Continuation rows share the buffer line of the first segment.
+    let is_cursor_line_row = buf.char_to_line(char_offset) == cursor_line;
 
-    // Whether this display line is the primary cursor's line. Used for the
-    // cursor-line background tint (lowest priority in the style chain).
-    // For continuation rows (line_number is None), check via char_offset:
-    // the cursor's buffer line matches if the segment's start char is on it.
-    let is_cursor_line_row = if let Some(ln) = dl.line_number {
-        ln.saturating_sub(1) == cursor_line
-    } else if dl.is_continuation {
-        dl.char_offset.is_some_and(|off| editor.doc.buf().char_to_line(off) == cursor_line)
-    } else {
-        false
-    };
-
-    // Pre-fill the content area with the cursor-line bg so empty space at the
-    // end of the line also gets the tint. Individual cells are overwritten below
-    // with higher-priority styles (selection, cursor head).
+    // Pre-fill the content area with cursor-line bg so empty space at the end
+    // of the row also gets the tint. Individual cells are overwritten below.
     if is_cursor_line_row {
-        // set_style paints the style onto existing cells without allocating.
         screen_buf.set_style(Rect::new(x, y, width, 1), colors.cursor_line);
     }
 
-    // Borrow the line content as &str when the rope slice is contiguous (the
-    // common case for typical line lengths), falling back to an owned String
-    // only when the line spans multiple rope chunks.
-    let content_cow: Cow<str> = dl.content.into();
+    // Borrow the row content as &str — zero-copy for contiguous rope slices
+    // (the common case), falling back to an owned String for multi-chunk lines.
+    let content_cow: Cow<str> = buf.slice(char_offset..vrow.char_end).into();
     let mut char_pos = char_offset;
 
-    // Show selections in Normal and Search mode; suppress in Insert (bar cursor does the job).
+    // Show selections in Normal and Search mode; suppress in Insert mode
+    // (the bar cursor handles visual feedback there).
     let show_sels = mode != Mode::Insert;
 
     let col_offset = editor.view.col_offset;
@@ -411,19 +346,13 @@ fn render_content(
     let ws_cfg = &editor.view.whitespace;
     let mut display_col: usize = 0;
 
-    // Absolute display column from the buffer line start — used for tab-stop
-    // alignment which must be consistent across wrapped segments. For the
-    // first segment (or non-wrapped lines) this equals `display_col`. For
-    // continuation segments it starts at the segment's offset within the line.
-    let mut abs_col: usize = if dl.is_continuation {
-        let line_idx = editor.doc.buf().char_to_line(char_offset);
-        display_col_in_line(editor.doc.buf(), line_idx, char_offset, tab_width)
-    } else {
-        0
-    };
+    // `abs_col` = absolute display column from the buffer line's first char.
+    // The formatter pre-computed this as `vrow.col_offset_in_line` — we get it
+    // for free instead of calling `display_col_in_line()` again.
+    let mut abs_col: usize = vrow.col_offset_in_line;
 
-    // Pre-scan for trailing whitespace boundary: char offset of the first
-    // trailing whitespace run (everything from here to EOL is trailing).
+    // Pre-scan for trailing whitespace boundary: the char offset of the first
+    // trailing whitespace run (everything from there to row-end is "trailing").
     let trailing_start: usize = {
         let mut last_non_ws = char_offset;
         let mut pos = char_offset;
@@ -450,11 +379,9 @@ fn render_content(
 
         // A wide character (e.g. CJK) or tab might straddle the left edge:
         // its first column is before col_offset but later columns are visible.
-        // Render placeholder spaces so the partial char appears as a gap
-        // rather than being silently swallowed.
+        // Render placeholder spaces so the partial char appears as a gap.
         if display_col < col_offset {
             let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
-            // Fill only the visible portion of the straddling grapheme.
             let visible = (display_col + advance).saturating_sub(col_offset);
             for i in 0..visible {
                 if i as u16 >= width { break; }
@@ -475,8 +402,8 @@ fn render_content(
         let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
 
         if is_tab {
-            // Tab: expand to `advance` columns. With indicator, the first
-            // cell gets the tab char; without, all cells are spaces.
+            // Tab: expand to `advance` columns. First cell gets the indicator
+            // character if enabled; remaining cells are spaces.
             let show_tab = should_show_ws(ws_cfg.render.tab, char_pos, trailing_start);
             let (first_ch, tab_style) = if show_tab {
                 (ws_cfg.chars.tab, compose_whitespace_style(style, colors))
@@ -505,11 +432,10 @@ fn render_content(
     }
 
     // After the loop, char_pos points to either the '\n' (for the last segment
-    // of a buffer line, or non-wrapped lines) or the start of the next wrapped
-    // segment. EOL rendering (newline indicator, cursor/selection past last
-    // glyph) only applies when we're actually at the newline.
-    let at_newline = editor.doc.buf().char_at(char_pos) == Some('\n')
-        || char_pos == editor.doc.buf().len_chars(); // last line, no trailing \n
+    // of a buffer line) or the first char of the next segment (for intermediate
+    // wrap rows). EOL rendering only applies to the last segment of each line.
+    let at_newline = vrow.is_last_segment
+        && (buf.char_at(char_pos) == Some('\n') || char_pos == buf.len_chars());
     let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
 
     if at_newline {
@@ -521,9 +447,9 @@ fn render_content(
             screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
         }
 
-        // If any selection's head or range reaches the newline position (cursor on
-        // the newline / empty line), draw a space with the appropriate style so the
-        // cursor is visible past the last glyph.
+        // If any selection's head or range reaches the newline position, draw a
+        // space with the selection/cursor style so the cursor is visible past
+        // the last glyph.
         let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
         let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
             char_pos >= s.start() && char_pos <= s.end()
@@ -572,7 +498,8 @@ mod tests {
     use crate::editor::{Editor, Mode};
     use crate::core::selection::{Selection, SelectionSet};
     use crate::ui::statusline::{StatusLineConfig, StatusElement};
-    use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
+    use crate::ui::gutter::GutterConfig;
+    use crate::ui::view::{LineNumberStyle, ViewState};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -585,12 +512,13 @@ mod tests {
 
     /// Build a ViewState for snapshot tests.
     fn view(doc: &Document, width: usize, height: usize, style: LineNumberStyle) -> ViewState {
-        let buf = doc.buf();
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
         ViewState {
             scroll_offset: 0,
             height,
             width,
-            gutter_width: compute_gutter_width(buf.len_lines()),
+            gutter: GutterConfig::default(),
+            cached_total_lines,
             line_number_style: style,
             col_offset: 0,
             tab_width: 4,
@@ -752,12 +680,12 @@ mod tests {
             0, // primary = first
         );
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
         let v = ViewState {
             scroll_offset: 0,
             height: 4,
             width: 15,
-            gutter_width: gw,
+            gutter: GutterConfig::default(), cached_total_lines,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,
@@ -766,6 +694,7 @@ mod tests {
             scroll_sub_offset: 0,
         };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 5);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -790,12 +719,12 @@ mod tests {
         let buf = Buffer::from("hello\n");
         let sels = SelectionSet::single(Selection::new(1, 3));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
         let v = ViewState {
             scroll_offset: 0,
             height: 2,
             width: 20,
-            gutter_width: gw,
+            gutter: GutterConfig::default(), cached_total_lines,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,
@@ -804,6 +733,7 @@ mod tests {
             scroll_sub_offset: 0,
         };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 20, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -836,9 +766,10 @@ mod tests {
         // anchor=0 ('a'), head=2 ('c'). Chars 0,1 are selection body; char 2 is cursor head.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -859,9 +790,10 @@ mod tests {
         // Cursor on 'a' (char 0). Line 0 is the cursor line.
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -886,9 +818,10 @@ mod tests {
         // Selection from anchor=0 ('a') to head=2 ('c'). Cursor line = line 0.
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -917,9 +850,10 @@ mod tests {
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -943,9 +877,10 @@ mod tests {
         // But ')' is also in the selection body (not the head), so selection wins.
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -967,9 +902,10 @@ mod tests {
         let buf = Buffer::from("()\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 10, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -1057,9 +993,10 @@ mod tests {
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
         let doc = Document::new(buf, sels);
-        let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter: GutterConfig::default(), cached_total_lines, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
+        let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
         render(&editor, area, &mut screen);
@@ -1471,7 +1408,7 @@ mod tests {
             scroll_offset: 0,
             height,
             width,
-            gutter_width: compute_gutter_width(buf.len_lines()),
+            gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,

@@ -1,12 +1,8 @@
-use std::borrow::Cow;
-
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::core::buffer::Buffer;
-use crate::core::grapheme::{display_col_in_line, grapheme_advance};
-use crate::ui::display_line::DisplayLine;
+use crate::core::grapheme::display_col_in_line;
+use crate::ui::formatter::{count_visual_rows, cursor_sub_row};
+use crate::ui::gutter::GutterConfig;
 use crate::ui::whitespace::WhitespaceConfig;
-use crate::helpers::line_end_exclusive;
 use crate::core::selection::SelectionSet;
 
 /// How many lines to keep between the cursor and the top/bottom edge of the
@@ -58,11 +54,19 @@ pub(crate) struct ViewState {
     /// Total terminal width in columns.
     pub width: usize,
 
-    /// Width of the line-number gutter in display columns.
+    /// Gutter column configuration.
     ///
-    /// Computed by [`compute_gutter_width`] and cached here so the renderer
-    /// and the viewport both use the same value without recomputing.
-    pub gutter_width: usize,
+    /// Describes which columns appear in the gutter (left of the content area)
+    /// and in what order. The total gutter width is derived from this via
+    /// [`gutter_width`](Self::gutter_width).
+    pub gutter: GutterConfig,
+
+    /// Cached real buffer line count: `buf.len_lines().saturating_sub(1)`.
+    ///
+    /// Updated at the top of every event-loop iteration (alongside the old
+    /// `gutter_width` field it replaces). Used by `gutter_width()` and
+    /// `content_width()` so those methods stay parameter-free.
+    pub cached_total_lines: usize,
 
     /// How line numbers are rendered in the gutter.
     pub line_number_style: LineNumberStyle,
@@ -95,225 +99,16 @@ pub(crate) struct ViewState {
     pub scroll_sub_offset: usize,
 }
 
-/// Compute the line-number gutter width for a buffer with `total_lines` lines.
-///
-/// The gutter renders line numbers as `"{number:>w$} "` where `w = gutter_width - 1`.
-/// That is: the number right-aligned in all-but-one columns, followed by one
-/// trailing space separator. Left padding fills the remaining space automatically.
-///
-/// - digits  = decimal digits in `total_lines` (minimum 1)
-/// - width   = digits + 2 (one trailing space + at least one leading space), minimum 4
-///
-/// Minimum 4 keeps the gutter from becoming uselessly narrow on tiny files.
-pub(crate) fn compute_gutter_width(total_lines: usize) -> usize {
-    // ilog10(0) is undefined; treat 0-line buffers the same as 1-line.
-    let digits = if total_lines <= 1 {
-        1
-    } else {
-        total_lines.ilog10() as usize + 1
-    };
-    (1 + digits + 1).max(4)
-}
-
-// ── Soft-wrap helpers ────────────────────────────────────────────────────────
-
-/// Split a buffer line into wrapped segments that each fit within `content_width`
-/// display columns.
-///
-/// Returns `Vec<(char_start, char_end)>` — one pair per wrapped row. Char
-/// positions are absolute buffer offsets (not relative to `line_start`).
-///
-/// Rules:
-/// - Never splits a grapheme cluster across segments.
-/// - A CJK double-width char that would straddle the right edge starts a new
-///   segment (the trailing cell of the previous row stays empty — standard
-///   terminal behavior).
-/// - Tab expansion uses `tab_width - (col % tab_width)` where `col` is the
-///   absolute display column within the buffer line (not the segment), so tab
-///   stops remain visually consistent across wrapped rows.
-/// - An empty line produces one segment `(line_start, line_start)`.
-/// - If a single grapheme is wider than `content_width`, it gets its own
-///   segment (the renderer will clip).
-fn wrap_line(
-    buf: &Buffer,
-    line_start: usize,
-    content_end: usize,
-    content_width: usize,
-    tab_width: usize,
-) -> Vec<(usize, usize)> {
-    if line_start == content_end {
-        return vec![(line_start, line_start)];
-    }
-
-    let slice = buf.slice(line_start..content_end);
-    let cow: Cow<str> = slice.into();
-    let tab_width = tab_width.max(1);
-    let content_width = content_width.max(1);
-
-    let mut segments: Vec<(usize, usize)> = Vec::new();
-    let mut seg_start = line_start;
-    // Display column within the current segment (resets to 0 on each wrap).
-    let mut seg_col: usize = 0;
-    // Absolute display column from the buffer line start (for tab-stop math).
-    let mut abs_col: usize = 0;
-    let mut char_pos = line_start;
-
-    for grapheme in cow.graphemes(true) {
-        let advance = grapheme_advance(grapheme, abs_col, tab_width);
-
-        // Would this grapheme exceed the segment width?
-        if seg_col + advance > content_width && seg_col > 0 {
-            // Finish the current segment before this grapheme.
-            segments.push((seg_start, char_pos));
-            seg_start = char_pos;
-            seg_col = 0;
-        }
-
-        seg_col += advance;
-        abs_col += advance;
-        char_pos += grapheme.chars().count();
-    }
-
-    if seg_start <= content_end {
-        segments.push((seg_start, char_pos));
-    }
-
-    segments
-}
-
-/// Which wrapped sub-row of buffer line `line_idx` contains `cursor_char`.
-///
-/// Returns 0 for the first row, 1 for the first continuation, etc.
-fn cursor_sub_row(
-    buf: &Buffer,
-    line_idx: usize,
-    cursor_char: usize,
-    content_width: usize,
-    tab_width: usize,
-) -> usize {
-    let (line_start, content_end) = line_content_range(buf, line_idx);
-    let segments = wrap_line(buf, line_start, content_end, content_width, tab_width);
-    for (i, &(seg_start, seg_end)) in segments.iter().enumerate() {
-        // The cursor belongs to this segment if it's within [seg_start, seg_end).
-        // For the last segment, the cursor can be at seg_end (the newline pos).
-        let is_last = i + 1 == segments.len();
-        if cursor_char >= seg_start && (cursor_char < seg_end || (is_last && cursor_char <= seg_end)) {
-            return i;
-        }
-    }
-    // Fallback: last sub-row (cursor is at or past end of line content).
-    segments.len().saturating_sub(1)
-}
-
-/// How many display rows buffer line `line_idx` occupies when soft-wrapped.
-fn count_wrapped_rows(
-    buf: &Buffer,
-    line_idx: usize,
-    content_width: usize,
-    tab_width: usize,
-) -> usize {
-    let (line_start, content_end) = line_content_range(buf, line_idx);
-    wrap_line(buf, line_start, content_end, content_width, tab_width).len()
-}
-
-/// Return the char range of visible content for buffer line `line_idx`,
-/// stripping the trailing `\n` (which is implicit in the row advance).
-fn line_content_range(buf: &Buffer, line_idx: usize) -> (usize, usize) {
-    let start = buf.line_to_char(line_idx);
-    let end_excl = line_end_exclusive(buf, line_idx);
-    let content_end = if end_excl > start && buf.char_at(end_excl - 1) == Some('\n') {
-        end_excl - 1
-    } else {
-        end_excl
-    };
-    (start, content_end)
-}
 
 impl ViewState {
+    /// Total gutter width in display columns (sum of column widths + separator).
+    pub(crate) fn gutter_width(&self) -> usize {
+        self.gutter.total_width(self.cached_total_lines)
+    }
+
     /// Width of the content area in display columns (total width minus gutter).
     pub(crate) fn content_width(&self) -> usize {
-        self.width.saturating_sub(self.gutter_width)
-    }
-
-    /// Produce the display lines that are currently visible in the viewport.
-    ///
-    /// When `soft_wrap` is `false`, every display line maps 1:1 to a buffer
-    /// line. When `true`, long buffer lines are split into multiple display
-    /// rows via [`wrap_line`], with continuation rows marked by
-    /// `is_continuation: true` and `line_number: None`.
-    ///
-    /// The returned `Vec` borrows content from `buf` — it cannot outlive the
-    /// borrow. Using a `Vec` (rather than a lazy iterator) keeps the call
-    /// sites simple and the allocation is tiny (at most `height` elements,
-    /// typically 20–50).
-    pub(crate) fn display_lines<'buf>(&self, buf: &'buf Buffer) -> Vec<DisplayLine<'buf>> {
-        // Ropey's len_lines() counts the phantom empty "line" that follows a
-        // trailing '\n'. For a buffer with content "hello\nworld\n" it returns
-        // 3, not 2. Since every buffer ends with '\n' by invariant, the real
-        // visible line count is always `len_lines() - 1`.
-        let total = buf.len_lines().saturating_sub(1);
-        let first = self.scroll_offset.min(total.saturating_sub(1));
-        let content_width = self.content_width();
-
-        if self.soft_wrap && content_width > 0 {
-            return self.display_lines_wrapped(buf, total, first);
-        }
-
-        // Non-wrapped path: one display line per buffer line.
-        let last = (first + self.height).min(total);
-        (first..last)
-            .map(|line_idx| {
-                let (start, content_end) = line_content_range(buf, line_idx);
-                DisplayLine {
-                    content: buf.slice(start..content_end),
-                    line_number: Some(line_idx + 1),
-                    char_offset: Some(start),
-                    is_continuation: false,
-                }
-            })
-            .collect()
-    }
-
-    /// Wrapped variant of [`display_lines`]: splits long buffer lines into
-    /// multiple display rows. `scroll_sub_offset` controls how many wrapped
-    /// sub-rows to skip within the first visible buffer line (handles the
-    /// edge case where a single line wraps to more rows than the viewport).
-    fn display_lines_wrapped<'buf>(
-        &self,
-        buf: &'buf Buffer,
-        total: usize,
-        first: usize,
-    ) -> Vec<DisplayLine<'buf>> {
-        let content_width = self.content_width();
-        let mut result = Vec::with_capacity(self.height);
-        let mut line_idx = first;
-
-        while result.len() < self.height && line_idx < total {
-            let (line_start, content_end) = line_content_range(buf, line_idx);
-            let segments = wrap_line(buf, line_start, content_end, content_width, self.tab_width);
-
-            // For the first visible buffer line, skip `scroll_sub_offset`
-            // segments so the viewport starts partway through a long line.
-            let skip = if line_idx == first { self.scroll_sub_offset } else { 0 };
-
-            for (seg_idx, &(seg_start, seg_end)) in segments.iter().enumerate() {
-                if seg_idx < skip {
-                    continue;
-                }
-                if result.len() >= self.height {
-                    break;
-                }
-                result.push(DisplayLine {
-                    content: buf.slice(seg_start..seg_end),
-                    line_number: if seg_idx == 0 { Some(line_idx + 1) } else { None },
-                    char_offset: Some(seg_start),
-                    is_continuation: seg_idx > 0,
-                });
-            }
-            line_idx += 1;
-        }
-
-        result
+        self.width.saturating_sub(self.gutter_width())
     }
 
     /// Adjust `scroll_offset` (and `scroll_sub_offset` when soft-wrapping)
@@ -370,7 +165,7 @@ impl ViewState {
                     rows_above += 1;
                 } else if self.scroll_offset > 0 {
                     self.scroll_offset -= 1;
-                    let rows = count_wrapped_rows(buf, self.scroll_offset, content_width, self.tab_width);
+                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width);
                     if rows_above + rows > margin {
                         // Don't overshoot — start partway through this line.
                         self.scroll_sub_offset = rows - (margin - rows_above);
@@ -390,7 +185,7 @@ impl ViewState {
         // bottom margin. This keeps the scan O(height) instead of O(N).
         let mut display_row: usize = 0;
         for line_idx in self.scroll_offset..=cursor_line {
-            let rows = count_wrapped_rows(buf, line_idx, content_width, self.tab_width);
+            let rows = count_visual_rows(buf, line_idx, content_width, self.tab_width);
             let skip = if line_idx == self.scroll_offset { self.scroll_sub_offset } else { 0 };
             if line_idx == cursor_line {
                 // cursor_sub < skip would mean the cursor is in a row that
@@ -423,7 +218,7 @@ impl ViewState {
                     rows_above += 1;
                 } else if self.scroll_offset > 0 {
                     self.scroll_offset -= 1;
-                    let rows = count_wrapped_rows(buf, self.scroll_offset, content_width, self.tab_width);
+                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width);
                     if rows_above + rows > target_row {
                         // Don't overshoot — start partway through this line.
                         self.scroll_sub_offset = rows - (target_row - rows_above);
@@ -453,7 +248,7 @@ impl ViewState {
 
         let head = sels.primary().head;
         let cursor_col = display_col_in_line(buf, cursor_line, head, self.tab_width);
-        let content_width = self.width.saturating_sub(self.gutter_width);
+        let content_width = self.content_width();
         if content_width == 0 {
             return;
         }
@@ -477,13 +272,16 @@ mod tests {
     use super::*;
     use crate::core::buffer::Buffer;
     use crate::core::selection::{Selection, SelectionSet};
+    use crate::ui::gutter::GutterConfig;
 
     fn view(scroll_offset: usize, height: usize, buf: &Buffer) -> ViewState {
+        let cached_total_lines = buf.len_lines().saturating_sub(1);
         ViewState {
             scroll_offset,
             height,
             width: 80,
-            gutter_width: compute_gutter_width(buf.len_lines()),
+            gutter: GutterConfig::default(),
+            cached_total_lines,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,
@@ -491,119 +289,6 @@ mod tests {
             soft_wrap: false,
             scroll_sub_offset: 0,
         }
-    }
-
-    // ── compute_gutter_width ──────────────────────────────────────────────────
-
-    #[test]
-    fn gutter_width_minimum_is_4() {
-        assert_eq!(compute_gutter_width(0), 4);
-        assert_eq!(compute_gutter_width(1), 4);
-        assert_eq!(compute_gutter_width(9), 4);  // " 9 " = 3, but min is 4
-    }
-
-    #[test]
-    fn gutter_width_two_digit_lines() {
-        assert_eq!(compute_gutter_width(10), 4);  // " 10 " = 4
-        assert_eq!(compute_gutter_width(99), 4);  // " 99 " = 4
-    }
-
-    #[test]
-    fn gutter_width_three_digit_lines() {
-        assert_eq!(compute_gutter_width(100), 5); // " 100 " = 5
-        assert_eq!(compute_gutter_width(999), 5);
-    }
-
-    #[test]
-    fn gutter_width_four_digit_lines() {
-        assert_eq!(compute_gutter_width(1000), 6); // " 1000 " = 6
-        assert_eq!(compute_gutter_width(9999), 6);
-    }
-
-    // ── display_lines ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn display_lines_simple_file() {
-        let buf = Buffer::from("hello\nworld\n");
-        let v = view(0, 10, &buf);
-        let lines = v.display_lines(&buf);
-
-        // Two real lines in the buffer.
-        assert_eq!(lines.len(), 2);
-
-        assert_eq!(lines[0].content.to_string(), "hello");
-        assert_eq!(lines[0].line_number, Some(1));
-        assert_eq!(lines[0].char_offset, Some(0));
-
-        assert_eq!(lines[1].content.to_string(), "world");
-        assert_eq!(lines[1].line_number, Some(2));
-        assert_eq!(lines[1].char_offset, Some(6));
-    }
-
-    #[test]
-    fn display_lines_strips_trailing_newline() {
-        let buf = Buffer::from("abc\n");
-        let v = view(0, 10, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 1);
-        // '\n' must not appear in displayed content.
-        assert_eq!(lines[0].content.to_string(), "abc");
-    }
-
-    #[test]
-    fn display_lines_empty_buffer() {
-        // An empty buffer contains only the structural '\n'.
-        let buf = Buffer::empty();
-        let v = view(0, 10, &buf);
-        let lines = v.display_lines(&buf);
-        // One display line for the structural newline, content is empty string.
-        assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].content.to_string(), "");
-        assert_eq!(lines[0].line_number, Some(1));
-    }
-
-    #[test]
-    fn display_lines_viewport_clips_to_height() {
-        let buf = Buffer::from("a\nb\nc\nd\ne\n");
-        let v = view(0, 3, &buf);
-        let lines = v.display_lines(&buf);
-        // Only the first 3 lines visible.
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0].content.to_string(), "a");
-        assert_eq!(lines[2].content.to_string(), "c");
-    }
-
-    #[test]
-    fn display_lines_scrolled() {
-        let buf = Buffer::from("a\nb\nc\nd\ne\n");
-        let v = view(2, 3, &buf);
-        let lines = v.display_lines(&buf);
-        // Lines 2..5 (0-based): "c", "d", "e".
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0].content.to_string(), "c");
-        assert_eq!(lines[0].line_number, Some(3)); // 1-based
-        assert_eq!(lines[2].content.to_string(), "e");
-    }
-
-    #[test]
-    fn display_lines_partial_last_page() {
-        // Scroll past midpoint — fewer lines than height.
-        let buf = Buffer::from("a\nb\nc\n");
-        let v = view(2, 10, &buf);
-        let lines = v.display_lines(&buf);
-        // Only line index 2 ("c") is visible.
-        assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].content.to_string(), "c");
-    }
-
-    #[test]
-    fn display_lines_line_numbers_are_one_based() {
-        let buf = Buffer::from("x\ny\nz\n");
-        let v = view(0, 10, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines[0].line_number, Some(1));
-        assert_eq!(lines[1].line_number, Some(2));
-        assert_eq!(lines[2].line_number, Some(3));
     }
 
     // ── ensure_cursor_visible ─────────────────────────────────────────────────
@@ -648,13 +333,31 @@ mod tests {
 
     // ── ensure_cursor_visible_horizontal ──────────────────────────────────────
 
-    /// Build a ViewState with explicit width and gutter for horizontal tests.
-    fn hview(width: usize, gutter_width: usize) -> ViewState {
+    /// Build a ViewState with an explicit total width for horizontal scroll tests.
+    ///
+    /// `desired_gutter_width` is the gutter width the test expects. We derive
+    /// `cached_total_lines` so that `GutterConfig::default().total_width(n)`
+    /// equals `desired_gutter_width`.
+    fn hview(width: usize, desired_gutter_width: usize) -> ViewState {
+        // total_width(n) = col.width(n) + 1 separator.
+        // col.width(n) = max(1 + digits(n), 3).
+        // Solve for n such that total_width(n) == desired:
+        //   col.width(n) = desired - 1
+        //   => 1 + digits(n) = desired - 1  (for desired >= 4)
+        //   => digits(n) = desired - 2
+        // For desired=4: digits=2 → n=10 works (10 has 2 digits).
+        // For desired=5: digits=3 → n=100. Etc.
+        // For desired<4: use 0 (total_width returns 0 if desired=0, else min is 4).
+        let gutter = GutterConfig::default();
+        let cached_total_lines = (0usize..=99_999)
+            .find(|&n| gutter.total_width(n) == desired_gutter_width)
+            .unwrap_or(1);
         ViewState {
             scroll_offset: 0,
             height: 10,
             width,
-            gutter_width,
+            gutter,
+            cached_total_lines,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,
@@ -734,15 +437,17 @@ mod tests {
         assert_eq!(v.col_offset, 6);
     }
 
-    // ── display_lines (soft wrap) ───────────────────────────────────────────
+    // ── wrap_view helper ─────────────────────────────────────────────────────
 
     /// Build a ViewState with soft wrap enabled.
     fn wrap_view(scroll_offset: usize, height: usize, width: usize, buf: &Buffer) -> ViewState {
+        let cached_total_lines = buf.len_lines().saturating_sub(1);
         ViewState {
             scroll_offset,
             height,
             width,
-            gutter_width: compute_gutter_width(buf.len_lines()),
+            gutter: GutterConfig::default(),
+            cached_total_lines,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
             tab_width: 4,
@@ -752,188 +457,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn display_lines_wrap_short_lines_unchanged() {
-        let buf = Buffer::from("hi\nbye\n");
-        let v = wrap_view(0, 10, 80, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].content.to_string(), "hi");
-        assert!(!lines[0].is_continuation);
-        assert_eq!(lines[1].content.to_string(), "bye");
-        assert!(!lines[1].is_continuation);
-    }
-
-    #[test]
-    fn display_lines_wrap_splits_long_line() {
-        // "abcdefgh" (8 chars), width 8, gutter 4 → content_width 4.
-        // Segments: "abcd" (0..4), "efgh" (4..8).
-        let buf = Buffer::from("abcdefgh\n");
-        let v = wrap_view(0, 10, 8, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].content.to_string(), "abcd");
-        assert_eq!(lines[0].line_number, Some(1));
-        assert!(!lines[0].is_continuation);
-        assert_eq!(lines[1].content.to_string(), "efgh");
-        assert_eq!(lines[1].line_number, None);
-        assert!(lines[1].is_continuation);
-    }
-
-    #[test]
-    fn display_lines_wrap_clips_to_height() {
-        // Long line wraps to 4 rows but viewport is only 2.
-        let buf = Buffer::from("abcdefghijklmnop\n");
-        let gw = compute_gutter_width(buf.len_lines());
-        let content_width = 4;
-        let v = wrap_view(0, 2, gw + content_width, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].content.to_string(), "abcd");
-        assert_eq!(lines[1].content.to_string(), "efgh");
-    }
-
-    #[test]
-    fn display_lines_wrap_scroll_sub_offset() {
-        // "abcdefghijklmnop" wraps to 4 rows at width 4.
-        // scroll_sub_offset=2 skips first 2 sub-rows.
-        let buf = Buffer::from("abcdefghijklmnop\n");
-        let gw = compute_gutter_width(buf.len_lines());
-        let mut v = wrap_view(0, 10, gw + 4, &buf);
-        v.scroll_sub_offset = 2;
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 2);
-        // Third segment: "ijkl", fourth: "mnop".
-        assert_eq!(lines[0].content.to_string(), "ijkl");
-        assert!(lines[0].is_continuation);
-        assert_eq!(lines[1].content.to_string(), "mnop");
-        assert!(lines[1].is_continuation);
-    }
-
-    #[test]
-    fn display_lines_wrap_mixed_lines() {
-        // Short line "ab" + long line "cdefghij" (wraps to 2 rows at content_width 4).
-        let buf = Buffer::from("ab\ncdefghij\n");
-        let gw = compute_gutter_width(buf.len_lines());
-        let v = wrap_view(0, 10, gw + 4, &buf);
-        let lines = v.display_lines(&buf);
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0].content.to_string(), "ab");
-        assert_eq!(lines[0].line_number, Some(1));
-        assert_eq!(lines[1].content.to_string(), "cdef");
-        assert_eq!(lines[1].line_number, Some(2));
-        assert!(!lines[1].is_continuation);
-        assert_eq!(lines[2].content.to_string(), "ghij");
-        assert_eq!(lines[2].line_number, None);
-        assert!(lines[2].is_continuation);
-    }
-
-    // ── wrap_line ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn wrap_line_short_line_no_wrap() {
-        let buf = Buffer::from("hello\n");
-        // "hello" = 5 display cols, content_width = 10 → fits in one segment.
-        let segs = wrap_line(&buf, 0, 5, 10, 4);
-        assert_eq!(segs, vec![(0, 5)]);
-    }
-
-    #[test]
-    fn wrap_line_exact_fit_no_wrap() {
-        let buf = Buffer::from("abcde\n");
-        // Exactly 5 chars in width 5 → one segment, no wrap.
-        let segs = wrap_line(&buf, 0, 5, 5, 4);
-        assert_eq!(segs, vec![(0, 5)]);
-    }
-
-    #[test]
-    fn wrap_line_one_char_overflow() {
-        let buf = Buffer::from("abcdef\n");
-        // 6 chars in width 5 → wraps: "abcde" + "f".
-        let segs = wrap_line(&buf, 0, 6, 5, 4);
-        assert_eq!(segs, vec![(0, 5), (5, 6)]);
-    }
-
-    #[test]
-    fn wrap_line_multiple_wraps() {
-        let buf = Buffer::from("abcdefghijklmno\n");
-        // 15 chars in width 5 → 3 segments of 5 each.
-        let segs = wrap_line(&buf, 0, 15, 5, 4);
-        assert_eq!(segs, vec![(0, 5), (5, 10), (10, 15)]);
-    }
-
-    #[test]
-    fn wrap_line_empty_line() {
-        let buf = Buffer::from("\n");
-        let segs = wrap_line(&buf, 0, 0, 10, 4);
-        assert_eq!(segs, vec![(0, 0)]);
-    }
-
-    #[test]
-    fn wrap_line_cjk_at_boundary() {
-        // "abcd世" = 4 + 2 = 6 display cols. Width 5.
-        // "abcd" fits (4 cols). "世" needs 2 cols, 4+2=6 > 5 → wrap before it.
-        let buf = Buffer::from("abcd世\n");
-        let segs = wrap_line(&buf, 0, 5, 5, 4);
-        assert_eq!(segs, vec![(0, 4), (4, 5)]);
-    }
-
-    #[test]
-    fn wrap_line_cjk_fits() {
-        // "ab世" = 2 + 2 = 4 display cols. Width 4 → fits.
-        let buf = Buffer::from("ab世\n");
-        let segs = wrap_line(&buf, 0, 3, 4, 4);
-        assert_eq!(segs, vec![(0, 3)]);
-    }
-
-    #[test]
-    fn wrap_line_cjk_sequence() {
-        // "世界世界世" = 5 CJK chars = 10 display cols. Width 4.
-        // Row 1: "世界" (4 cols), Row 2: "世界" (4 cols), Row 3: "世" (2 cols).
-        let buf = Buffer::from("世界世界世\n");
-        let segs = wrap_line(&buf, 0, 5, 4, 4);
-        assert_eq!(segs, vec![(0, 2), (2, 4), (4, 5)]);
-    }
-
-    #[test]
-    fn wrap_line_tab_expansion() {
-        // "\tabc" with tab_width=4: tab at col 0 → 4 cols, then "abc" → 3 cols = 7 total.
-        // Width 5: tab takes 4 cols, then 'a' at col 4 → 5 cols ≤ 5, OK.
-        // 'b' at col 5 → 6 > 5 → wrap. Second segment: "bc" = 2 cols.
-        let buf = Buffer::from("\tabc\n");
-        let segs = wrap_line(&buf, 0, 4, 5, 4);
-        assert_eq!(segs, vec![(0, 2), (2, 4)]);
-    }
-
-    #[test]
-    fn wrap_line_tab_at_boundary() {
-        // "ab\t" with tab_width=4: 'a'=1, 'b'=2, tab at col 2 → 4-2=2 cols → col 4.
-        // Width 4 → fits. Total = 4.
-        let buf = Buffer::from("ab\t\n");
-        let segs = wrap_line(&buf, 0, 3, 4, 4);
-        assert_eq!(segs, vec![(0, 3)]);
-    }
-
-    #[test]
-    fn wrap_line_tab_exceeds_boundary() {
-        // "abc\t" with tab_width=4: 'a'=1,'b'=2,'c'=3, tab at col 3 → 4-3=1 col → col 4.
-        // Width 3: 'a','b','c' fill 3 cols, tab at col 3 → advance 1 → 4 > 3 → wrap.
-        // Second segment: tab at abs_col 3 → advance 1 → fits in width 3.
-        let buf = Buffer::from("abc\t\n");
-        let segs = wrap_line(&buf, 0, 4, 3, 4);
-        assert_eq!(segs, vec![(0, 3), (3, 4)]);
-    }
-
-    #[test]
-    fn wrap_line_single_wide_char_wider_than_content() {
-        // Pathological: CJK char (2 cols) in content_width=1.
-        // It gets its own segment even though it exceeds width.
-        let buf = Buffer::from("世\n");
-        let segs = wrap_line(&buf, 0, 1, 1, 4);
-        assert_eq!(segs, vec![(0, 1)]);
-    }
-
-    // ── cursor_sub_row ───────────────────────────────────────────────────────
+    // ── cursor_sub_row (formatter) ───────────────────────────────────────────
 
     #[test]
     fn cursor_sub_row_no_wrap() {
@@ -952,33 +476,22 @@ mod tests {
         assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4), 1); // 'j'
     }
 
-    // ── count_wrapped_rows ───────────────────────────────────────────────────
+    // ── count_visual_rows ───────────────────────────────────────────────────
 
     #[test]
-    fn count_wrapped_rows_short_line() {
+    fn count_visual_rows_short_line() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(count_wrapped_rows(&buf, 0, 80, 4), 1);
+        assert_eq!(count_visual_rows(&buf, 0, 80, 4), 1);
     }
 
     #[test]
-    fn count_wrapped_rows_wrapped() {
+    fn count_visual_rows_wrapped() {
         let buf = Buffer::from("abcdefghijklmno\n");
         // 15 chars, width 5 → 3 rows.
-        assert_eq!(count_wrapped_rows(&buf, 0, 5, 4), 3);
+        assert_eq!(count_visual_rows(&buf, 0, 5, 4), 3);
     }
 
     // ── ensure_cursor_visible_wrapped ─────────────────────────────────────────
-
-    /// Build a wrap_view with an explicit scroll_sub_offset.
-    fn wrap_view_sub(
-        scroll_offset: usize,
-        scroll_sub_offset: usize,
-        height: usize,
-        width: usize,
-        buf: &Buffer,
-    ) -> ViewState {
-        ViewState { scroll_sub_offset, ..wrap_view(scroll_offset, height, width, buf) }
-    }
 
     #[test]
     fn wrapped_cursor_visible_no_scroll_needed() {
