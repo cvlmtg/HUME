@@ -82,8 +82,8 @@ pub(crate) fn apply(&self, buf: &Buffer) -> Result<Buffer, ApplyError> {
     if buf.len_chars() != self.len_before { return Err(...); }
     let mut rope = buf.rope().clone();   // O(1)
     // ... mutate rope ...
-    if rope.char(rope.len_chars() - 1) != '\n' { return Err(...); }
-    Ok(Buffer::from_rope(rope))
+    if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' { return Err(...); }
+    Ok(Buffer::from_rope(rope, buf.line_ending()))
 }
 ```
 

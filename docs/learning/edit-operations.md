@@ -3,7 +3,8 @@
 ## The select-then-act model
 
 In HUME, edit operations never act on a bare cursor position. They act on a
-`SelectionSet` — which is always a `Vec<Selection>`. Selections are always
+`SelectionSet` — a struct wrapping a `Vec<Selection>` with a `primary` index
+that identifies the main cursor. Selections are always
 **inclusive**: `anchor == head` is a 1-char selection covering the character at
 that index, not a zero-width point. Each `Selection` is either:
 

@@ -23,8 +23,8 @@ relate to each other. Every user-facing operation is a named `MappableCommand`
 enum MappableCommand {
     Motion    { name, fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet },
     Selection { name, fun: fn(&Buffer, SelectionSet) -> SelectionSet },
-    Edit      { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet) },
-    EditorCmd { name, fun: fn(&mut Editor, usize) },
+    Edit      { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet), repeatable: bool },
+    EditorCmd { name, fun: fn(&mut Editor, usize), repeatable: bool },
 }
 ```
 
@@ -70,7 +70,7 @@ This means extend variants can be **bound to any key independently**:
 
 ## Layer 2: Editor Commands (`commands.rs`)
 
-This file holds ~35 `EditorCmd` implementations as free functions:
+This file holds ~50 `EditorCmd` implementations as free functions:
 `cmd_change`, `cmd_find_forward`, `cmd_open_line_below`, etc. Each is a
 `fn(&mut Editor, usize)` registered by name in the registry. This parallels
 how `ops/motion.rs` holds pure motion functions.
