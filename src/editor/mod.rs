@@ -354,6 +354,8 @@ impl Editor {
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
             soft_wrap: true,
+            word_wrap: true,
+            indent_wrap: true,
             scroll_sub_offset: 0,
         };
 

@@ -90,6 +90,15 @@ pub(crate) struct ViewState {
     /// scrolling horizontally. `col_offset` is forced to 0 while active.
     pub soft_wrap: bool,
 
+    /// When `true` (and `soft_wrap` is also `true`), wrap breaks prefer word
+    /// boundaries (whitespace) over mid-grapheme breaks.
+    pub word_wrap: bool,
+
+    /// When `true` (and `soft_wrap` is also `true`), continuation rows are
+    /// visually indented to the buffer line's indent level (up to
+    /// `content_width / 3`), matching the appearance of the first segment.
+    pub indent_wrap: bool,
+
     /// Number of wrapped sub-rows to skip within the buffer line at
     /// `scroll_offset`. Only meaningful when `soft_wrap` is `true`.
     ///
@@ -147,7 +156,7 @@ impl ViewState {
         }
 
         let margin = SCROLL_MARGIN.min(self.height / 2);
-        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, content_width, self.tab_width);
+        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
 
         // ── Cursor above the viewport ────────────────────────────────────────
         if cursor_line < self.scroll_offset
@@ -165,7 +174,7 @@ impl ViewState {
                     rows_above += 1;
                 } else if self.scroll_offset > 0 {
                     self.scroll_offset -= 1;
-                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width);
+                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
                     if rows_above + rows > margin {
                         // Don't overshoot — start partway through this line.
                         self.scroll_sub_offset = rows - (margin - rows_above);
@@ -185,7 +194,7 @@ impl ViewState {
         // bottom margin. This keeps the scan O(height) instead of O(N).
         let mut display_row: usize = 0;
         for line_idx in self.scroll_offset..=cursor_line {
-            let rows = count_visual_rows(buf, line_idx, content_width, self.tab_width);
+            let rows = count_visual_rows(buf, line_idx, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
             let skip = if line_idx == self.scroll_offset { self.scroll_sub_offset } else { 0 };
             if line_idx == cursor_line {
                 // cursor_sub < skip would mean the cursor is in a row that
@@ -218,7 +227,7 @@ impl ViewState {
                     rows_above += 1;
                 } else if self.scroll_offset > 0 {
                     self.scroll_offset -= 1;
-                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width);
+                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
                     if rows_above + rows > target_row {
                         // Don't overshoot — start partway through this line.
                         self.scroll_sub_offset = rows - (target_row - rows_above);
@@ -287,6 +296,8 @@ mod tests {
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
             soft_wrap: false,
+            word_wrap: false,
+            indent_wrap: false,
             scroll_sub_offset: 0,
         }
     }
@@ -363,6 +374,8 @@ mod tests {
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
             soft_wrap: false,
+            word_wrap: false,
+            indent_wrap: false,
             scroll_sub_offset: 0,
         }
     }
@@ -453,6 +466,8 @@ mod tests {
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
             soft_wrap: true,
+            word_wrap: false,
+            indent_wrap: false,
             scroll_sub_offset: 0,
         }
     }
@@ -462,18 +477,18 @@ mod tests {
     #[test]
     fn cursor_sub_row_no_wrap() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4), 0);
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4, false, false), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4, false, false), 0);
     }
 
     #[test]
     fn cursor_sub_row_wrapped() {
         let buf = Buffer::from("abcdefghij\n");
         // Width 5 → segs: (0,5), (5,10).
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4), 0); // 'a'
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4), 0); // 'e'
-        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4), 1); // 'f' (first of second row)
-        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4), 1); // 'j'
+        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4, false, false), 0); // 'a'
+        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4, false, false), 0); // 'e'
+        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4, false, false), 1); // 'f' (first of second row)
+        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4, false, false), 1); // 'j'
     }
 
     // ── count_visual_rows ───────────────────────────────────────────────────
@@ -481,14 +496,14 @@ mod tests {
     #[test]
     fn count_visual_rows_short_line() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(count_visual_rows(&buf, 0, 80, 4), 1);
+        assert_eq!(count_visual_rows(&buf, 0, 80, 4, false, false), 1);
     }
 
     #[test]
     fn count_visual_rows_wrapped() {
         let buf = Buffer::from("abcdefghijklmno\n");
         // 15 chars, width 5 → 3 rows.
-        assert_eq!(count_visual_rows(&buf, 0, 5, 4), 3);
+        assert_eq!(count_visual_rows(&buf, 0, 5, 4, false, false), 3);
     }
 
     // ── ensure_cursor_visible_wrapped ─────────────────────────────────────────
@@ -560,7 +575,7 @@ mod tests {
         // Cursor must be in view.
         let content_width = v.content_width();
         let cursor_line = buf.char_to_line(cursor_char);
-        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width);
+        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width, v.word_wrap, v.indent_wrap);
         assert!(cursor_sub >= v.scroll_sub_offset);
         assert!(cursor_sub - v.scroll_sub_offset < v.height);
     }

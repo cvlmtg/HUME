@@ -47,6 +47,7 @@ impl GutterColumn {
     /// Render this column's cell for one visual row into `screen_buf`.
     ///
     /// `x` is the left edge of this column's area; `y` is the screen row.
+    /// `wrap_indicator` is shown for continuation rows when `Some`.
     pub(crate) fn render(
         &self,
         screen_buf: &mut ScreenBuf,
@@ -54,6 +55,7 @@ impl GutterColumn {
         line_number_style: LineNumberStyle,
         cursor_line: usize,
         colors: &EditorColors,
+        wrap_indicator: Option<char>,
         x: u16,
         y: u16,
         total_lines: usize,
@@ -65,6 +67,7 @@ impl GutterColumn {
                 line_number_style,
                 cursor_line,
                 colors,
+                wrap_indicator,
                 x,
                 y,
                 self.width(total_lines),
@@ -83,11 +86,17 @@ impl GutterColumn {
 #[derive(Debug, Clone)]
 pub(crate) struct GutterConfig {
     pub columns: Vec<GutterColumn>,
+    /// Character drawn in the gutter for soft-wrap continuation rows.
+    ///
+    /// `None` (the default) leaves continuation gutter cells blank. Set to a
+    /// character such as `'↪'` to show a wrap indicator — useful when
+    /// `indent_wrap` is disabled and there is no other visual cue.
+    pub wrap_indicator: Option<char>,
 }
 
 impl Default for GutterConfig {
     fn default() -> Self {
-        Self { columns: vec![GutterColumn::LineNumber] }
+        Self { columns: vec![GutterColumn::LineNumber], wrap_indicator: None }
     }
 }
 
@@ -124,7 +133,7 @@ impl GutterConfig {
     ) {
         let mut x = base_x;
         for col in &self.columns {
-            col.render(screen_buf, vrow, line_number_style, cursor_line, colors, x, y, total_lines);
+            col.render(screen_buf, vrow, line_number_style, cursor_line, colors, self.wrap_indicator, x, y, total_lines);
             x += col.width(total_lines) as u16;
         }
         // The trailing separator space is implicit: the content area Rect
@@ -139,22 +148,27 @@ impl GutterConfig {
 /// The label is right-aligned within the column width, with the style switching
 /// to `gutter_cursor_line` on the cursor's row for visual emphasis.
 ///
-/// Continuation rows (soft-wrap second/third/... display rows) get a blank
-/// cell — no number, no indicator. The text indentation already provides a
-/// visual cue that the row continues the previous line.
+/// Continuation rows (soft-wrap second/third/... display rows) show a
+/// `wrap_indicator` character (e.g. `↪`) when configured, or a blank cell.
 fn render_line_number(
     screen_buf: &mut ScreenBuf,
     vrow: &VisualRow,
     style: LineNumberStyle,
     cursor_line: usize,
     colors: &EditorColors,
+    wrap_indicator: Option<char>,
     x: u16,
     y: u16,
     col_width: usize,
 ) {
-    // Continuation rows: blank gutter cell. The indentation of the wrapped
-    // text is enough visual cue (a wrap indicator is a future opt-in feature).
+    // Continuation rows: show a wrap indicator if configured, otherwise blank.
     if vrow.is_continuation {
+        if let Some(indicator) = wrap_indicator {
+            let gutter_style = colors.gutter;
+            // Right-align the indicator in col_width, then the trailing separator space.
+            let cell = format!("{indicator:>col_width$} ");
+            screen_buf.set_string(x, y, &cell, gutter_style);
+        }
         return;
     }
 
@@ -239,7 +253,7 @@ mod tests {
 
     #[test]
     fn total_width_no_columns() {
-        let cfg = GutterConfig { columns: vec![] };
+        let cfg = GutterConfig { columns: vec![], wrap_indicator: None };
         assert_eq!(cfg.total_width(100), 0);
     }
 }
