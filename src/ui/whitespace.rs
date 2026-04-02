@@ -4,6 +4,7 @@
 /// following the Helix `[editor.whitespace.render]` model — the Rust equivalent
 /// of vim's `listchars`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)] // All variants used in tests; wired to Steel config in a later milestone.
 pub(crate) enum WhitespaceShow {
     /// No indicator — the character renders normally (or invisibly).
     #[default]

@@ -69,7 +69,7 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
         // Symmetric source (e.g. `"` → `(`): use selection index as
         // tiebreaker.  After `ms"` the first cursor (even index) sits on
         // the opening quote, the second (odd) on the closing quote.
-        if sel_index % 2 == 0 { open } else { close }
+        if sel_index.is_multiple_of(2) { open } else { close }
     } else {
         replacement
     }
