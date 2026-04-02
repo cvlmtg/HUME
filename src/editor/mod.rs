@@ -350,7 +350,7 @@ impl Editor {
             col_offset: 0,
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
-            soft_wrap: false,
+            soft_wrap: true,
             scroll_sub_offset: 0,
         };
 
