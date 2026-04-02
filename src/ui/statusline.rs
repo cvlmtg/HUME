@@ -34,7 +34,7 @@ fn fill_row(screen_buf: &mut ScreenBuf, colors: &crate::ui::theme::EditorColors,
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusElement {
-    /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, or `"SRC"`.
+    /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
     ///
     /// Rendered with the per-mode color. Contains no padding — the renderer's
     /// edge padding and inter-element spacing handle surrounding whitespace.
@@ -210,7 +210,7 @@ fn render_statusline(
     // Center section: centered in the gap between left and right.
     let right_fence = if right_fits { right_x } else { area.right() };
     let gap = right_fence.saturating_sub(left_end);
-    let center_x = left_end + gap / 2 - center_w / 2;
+    let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
     let center_fits = !center_spans.is_empty()
         && center_w <= gap
         && center_x >= left_end
