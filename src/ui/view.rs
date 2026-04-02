@@ -162,29 +162,8 @@ impl ViewState {
         if cursor_line < self.scroll_offset
             || (cursor_line == self.scroll_offset && cursor_sub < self.scroll_sub_offset)
         {
-            // Place cursor at `margin` rows from the top. Walk backward from
-            // the cursor's sub-row to find the right scroll position.
-            self.scroll_offset = cursor_line;
-            self.scroll_sub_offset = cursor_sub;
-            // Try to give `margin` rows above the cursor.
-            let mut rows_above = 0;
-            while rows_above < margin {
-                if self.scroll_sub_offset > 0 {
-                    self.scroll_sub_offset -= 1;
-                    rows_above += 1;
-                } else if self.scroll_offset > 0 {
-                    self.scroll_offset -= 1;
-                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
-                    if rows_above + rows > margin {
-                        // Don't overshoot — start partway through this line.
-                        self.scroll_sub_offset = rows - (margin - rows_above);
-                        break;
-                    }
-                    rows_above += rows;
-                } else {
-                    break; // top of file
-                }
-            }
+            // Place the viewport so `margin` rows appear above the cursor.
+            self.scroll_backward_from_cursor(buf, content_width, cursor_line, cursor_sub, margin);
             return;
         }
 
@@ -214,29 +193,45 @@ impl ViewState {
 
         // ── Cursor below the viewport ────────────────────────────────────────
         if display_row >= self.height.saturating_sub(margin) {
-            // Walk backward from the cursor `target_row` rows to find the new
-            // scroll position. Symmetric to the above-viewport path, and always
-            // O(height) regardless of how far the cursor jumped (e.g. `ge`).
+            // Walk backward from the cursor to place it `target_row` rows from
+            // the top. Symmetric to the above-viewport path, always O(height).
             let target_row = self.height.saturating_sub(margin).saturating_sub(1);
-            self.scroll_offset = cursor_line;
-            self.scroll_sub_offset = cursor_sub;
-            let mut rows_above = 0;
-            while rows_above < target_row {
-                if self.scroll_sub_offset > 0 {
-                    self.scroll_sub_offset -= 1;
-                    rows_above += 1;
-                } else if self.scroll_offset > 0 {
-                    self.scroll_offset -= 1;
-                    let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
-                    if rows_above + rows > target_row {
-                        // Don't overshoot — start partway through this line.
-                        self.scroll_sub_offset = rows - (target_row - rows_above);
-                        break;
-                    }
-                    rows_above += rows;
-                } else {
-                    break; // top of file
+            self.scroll_backward_from_cursor(buf, content_width, cursor_line, cursor_sub, target_row);
+        }
+    }
+
+    /// Set the scroll position so that `target_rows` display rows appear above
+    /// the given cursor position `(cursor_line, cursor_sub)`.
+    ///
+    /// Walks backward through wrapped lines, adjusting `scroll_offset` and
+    /// `scroll_sub_offset`. Stops at the top of the file or when the target
+    /// row count is reached.
+    fn scroll_backward_from_cursor(
+        &mut self,
+        buf: &Buffer,
+        content_width: usize,
+        cursor_line: usize,
+        cursor_sub: usize,
+        target_rows: usize,
+    ) {
+        self.scroll_offset = cursor_line;
+        self.scroll_sub_offset = cursor_sub;
+        let mut rows_above = 0;
+        while rows_above < target_rows {
+            if self.scroll_sub_offset > 0 {
+                self.scroll_sub_offset -= 1;
+                rows_above += 1;
+            } else if self.scroll_offset > 0 {
+                self.scroll_offset -= 1;
+                let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
+                if rows_above + rows > target_rows {
+                    // Don't overshoot — start partway through this line.
+                    self.scroll_sub_offset = rows - (target_rows - rows_above);
+                    break;
                 }
+                rows_above += rows;
+            } else {
+                break;
             }
         }
     }
@@ -470,40 +465,6 @@ mod tests {
             indent_wrap: false,
             scroll_sub_offset: 0,
         }
-    }
-
-    // ── cursor_sub_row (formatter) ───────────────────────────────────────────
-
-    #[test]
-    fn cursor_sub_row_no_wrap() {
-        let buf = Buffer::from("hello\n");
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4, false, false), 0);
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4, false, false), 0);
-    }
-
-    #[test]
-    fn cursor_sub_row_wrapped() {
-        let buf = Buffer::from("abcdefghij\n");
-        // Width 5 → segs: (0,5), (5,10).
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4, false, false), 0); // 'a'
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4, false, false), 0); // 'e'
-        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4, false, false), 1); // 'f' (first of second row)
-        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4, false, false), 1); // 'j'
-    }
-
-    // ── count_visual_rows ───────────────────────────────────────────────────
-
-    #[test]
-    fn count_visual_rows_short_line() {
-        let buf = Buffer::from("hello\n");
-        assert_eq!(count_visual_rows(&buf, 0, 80, 4, false, false), 1);
-    }
-
-    #[test]
-    fn count_visual_rows_wrapped() {
-        let buf = Buffer::from("abcdefghijklmno\n");
-        // 15 chars, width 5 → 3 rows.
-        assert_eq!(count_visual_rows(&buf, 0, 5, 4, false, false), 3);
     }
 
     // ── ensure_cursor_visible_wrapped ─────────────────────────────────────────

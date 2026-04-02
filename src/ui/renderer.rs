@@ -365,20 +365,27 @@ fn render_row_content(
     // for free instead of calling `display_col_in_line()` again.
     let mut abs_col: usize = vrow.col_offset_in_line;
 
-    // Pre-scan for trailing whitespace boundary: the char offset of the first
-    // trailing whitespace run (everything from there to row-end is "trailing").
-    let trailing_start: usize = {
-        let mut last_non_ws = char_offset;
-        let mut pos = char_offset;
-        for g in content_cow.graphemes(true) {
-            let g_end = pos + g.chars().count();
-            if !g.chars().all(|c| c == ' ' || c == '\t') {
-                last_non_ws = g_end;
+    // Pre-scan for trailing whitespace boundary: only needed when at least one
+    // whitespace type uses WhitespaceShow::Trailing. Skipping it when unused
+    // avoids a full grapheme walk before the main rendering loop.
+    let trailing_start: usize =
+        if ws_cfg.render.space == WhitespaceShow::Trailing
+            || ws_cfg.render.tab == WhitespaceShow::Trailing
+            || ws_cfg.render.newline == WhitespaceShow::Trailing
+        {
+            let mut last_non_ws = char_offset;
+            let mut pos = char_offset;
+            for g in content_cow.graphemes(true) {
+                let g_end = pos + g.chars().count();
+                if !g.chars().all(|c| c == ' ' || c == '\t') {
+                    last_non_ws = g_end;
+                }
+                pos = g_end;
             }
-            pos = g_end;
-        }
-        last_non_ws
-    };
+            last_non_ws
+        } else {
+            usize::MAX // sentinel: char_pos >= usize::MAX is never true
+        };
 
     for grapheme in content_cow.graphemes(true) {
         let is_tab = grapheme == "\t";
