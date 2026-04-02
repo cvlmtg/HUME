@@ -18,7 +18,8 @@ use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
 use crate::ui::theme::EditorColors;
-use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
+use crate::ui::gutter::GutterConfig;
+use crate::ui::view::{LineNumberStyle, ViewState};
 use crate::ui::whitespace::WhitespaceConfig;
 
 use self::keymap::{Keymap, WaitCharPending};
@@ -341,11 +342,13 @@ impl Editor {
 
         // Placeholder dimensions — updated at the top of every event-loop
         // iteration before the first render.
+        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
         let view = ViewState {
             scroll_offset: 0,
             height: 24,
             width: 80,
-            gutter_width: compute_gutter_width(doc.buf().len_lines()),
+            gutter: GutterConfig::default(),
+            cached_total_lines,
             line_number_style: LineNumberStyle::Hybrid,
             col_offset: 0,
             tab_width: 4,
@@ -401,7 +404,7 @@ impl Editor {
             self.view.width = size.width as usize;
             // Reserve one row for the statusline.
             self.view.height = (size.height as usize).saturating_sub(1);
-            self.view.gutter_width = compute_gutter_width(self.doc.buf().len_lines());
+            self.view.cached_total_lines = self.doc.buf().len_lines().saturating_sub(1);
 
             // ── 3. Scroll ─────────────────────────────────────────────────────
             let cursor_char = self.doc.sels().primary().head;

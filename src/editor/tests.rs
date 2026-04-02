@@ -3,7 +3,8 @@ use pretty_assertions::assert_eq;
 
 use crate::core::document::Document;
 use crate::testing::{parse_state, serialize_state};
-use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
+use crate::ui::gutter::GutterConfig;
+use crate::ui::view::{LineNumberStyle, ViewState};
 
 use super::{Editor, Mode};
 
@@ -16,7 +17,7 @@ fn editor_from(input: &str) -> Editor {
         scroll_offset: 0,
         height: 24,
         width: 80,
-        gutter_width: compute_gutter_width(buf.len_lines()),
+        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
         tab_width: 4,
@@ -1949,7 +1950,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
         scroll_offset: 0,
         height: 24,
         width: 80,
-        gutter_width: compute_gutter_width(buf.len_lines()),
+        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
         tab_width: 4,
@@ -2125,7 +2126,7 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
         scroll_offset: 0,
         height: 24,
         width: 80,
-        gutter_width: compute_gutter_width(buf.len_lines()),
+        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
         tab_width: 4,

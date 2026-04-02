@@ -1,4 +1,5 @@
-pub(crate) mod display_line;
+pub(crate) mod formatter;
+pub(crate) mod gutter;
 pub(crate) mod renderer;
 pub(crate) mod highlight;
 pub(crate) mod theme;
