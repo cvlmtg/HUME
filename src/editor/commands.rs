@@ -605,6 +605,12 @@ pub(super) static TYPED_COMMANDS: &[TypedCommand] = &[
         doc: "Clear search highlights",
         fun: typed_clear_search,
     },
+    TypedCommand {
+        name: "toggle-soft-wrap",
+        aliases: &["wrap"],
+        doc: "Toggle soft line wrapping",
+        fun: typed_toggle_soft_wrap,
+    },
 ];
 
 /// Look up a typed command by exact name or alias.
@@ -639,6 +645,16 @@ fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) {
 
 fn typed_clear_search(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
     cmd_clear_search(ed, 0);
+}
+
+fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
+    ed.view.soft_wrap = !ed.view.soft_wrap;
+    if ed.view.soft_wrap {
+        ed.view.col_offset = 0;
+    }
+    ed.view.scroll_sub_offset = 0;
+    let state = if ed.view.soft_wrap { "on" } else { "off" };
+    ed.status_msg = Some(format!("Soft wrap {state}"));
 }
 
 /// Serialize the buffer and write it to disk.
