@@ -35,6 +35,6 @@ pub(crate) struct DisplayLine<'buf> {
 
     /// `true` for soft-wrap continuation rows — the second, third, etc.
     /// display rows of a buffer line that was too long to fit in one row.
-    /// The gutter renders a wrap indicator instead of a line number.
+    /// The gutter is left blank for these rows (no line number, no indicator).
     pub is_continuation: bool,
 }

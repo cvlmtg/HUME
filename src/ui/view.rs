@@ -390,6 +390,10 @@ impl ViewState {
             let rows = count_wrapped_rows(buf, line_idx, content_width, self.tab_width);
             let skip = if line_idx == self.scroll_offset { self.scroll_sub_offset } else { 0 };
             if line_idx == cursor_line {
+                // cursor_sub < skip would mean the cursor is in a row that
+                // the viewport has scrolled past — the above-viewport guard
+                // should prevent this.
+                debug_assert!(cursor_sub >= skip, "cursor scrolled past by scroll_sub_offset");
                 display_row += cursor_sub.saturating_sub(skip);
                 break;
             }
@@ -404,7 +408,10 @@ impl ViewState {
             let mut remaining = overshoot;
             while remaining > 0 {
                 let rows = count_wrapped_rows(buf, self.scroll_offset, content_width, self.tab_width);
-                let available = rows - self.scroll_sub_offset;
+                // scroll_sub_offset is always < rows (reset to 0 on every line
+                // advance), so this subtraction never wraps. saturating_sub
+                // guards against any future invariant violation.
+                let available = rows.saturating_sub(self.scroll_sub_offset);
                 if remaining < available {
                     self.scroll_sub_offset += remaining;
                     remaining = 0;
@@ -945,5 +952,116 @@ mod tests {
         let buf = Buffer::from("abcdefghijklmno\n");
         // 15 chars, width 5 → 3 rows.
         assert_eq!(count_wrapped_rows(&buf, 0, 5, 4), 3);
+    }
+
+    // ── ensure_cursor_visible_wrapped ─────────────────────────────────────────
+
+    /// Build a wrap_view with an explicit scroll_sub_offset.
+    fn wrap_view_sub(
+        scroll_offset: usize,
+        scroll_sub_offset: usize,
+        height: usize,
+        width: usize,
+        buf: &Buffer,
+    ) -> ViewState {
+        ViewState { scroll_sub_offset, ..wrap_view(scroll_offset, height, width, buf) }
+    }
+
+    #[test]
+    fn wrapped_cursor_visible_no_scroll_needed() {
+        // Cursor on line 0, already at top — no scroll.
+        let buf = Buffer::from("abcdefgh\n");
+        // content_width = 8 - 4 = 4, line wraps to 2 rows.
+        let mut v = wrap_view(0, 10, 8, &buf);
+        v.ensure_cursor_visible(&buf, 0);
+        assert_eq!(v.scroll_offset, 0);
+        assert_eq!(v.scroll_sub_offset, 0);
+    }
+
+    #[test]
+    fn wrapped_cursor_below_viewport_scrolls_down() {
+        // 4 lines × 2 rows each = 8 display rows. Viewport height 4 → can
+        // only show 2 lines. Cursor on line 3 (last line) should scroll.
+        // Each line is "abcdefgh" (8 chars), content_width = 8 - 4 = 4 → 2 rows/line.
+        let buf = Buffer::from("abcdefgh\nabcdefgh\nabcdefgh\nabcdefgh\n");
+        let mut v = wrap_view(0, 4, 8, &buf);
+        let cursor_char = buf.line_to_char(3); // start of line 3
+        v.ensure_cursor_visible(&buf, cursor_char);
+        // Cursor (line 3, sub-row 0) should be near the bottom with margin.
+        // margin = min(SCROLL_MARGIN=3, height/2=2) = 2.
+        // Target row = height - margin - 1 = 4 - 2 - 1 = 1.
+        // Cursor display row from new scroll position should be ≤ 1.
+        assert!(v.scroll_offset > 0 || v.scroll_sub_offset > 0, "should have scrolled");
+        // After scrolling, cursor must be in view.
+        let cursor_line = buf.char_to_line(cursor_char);
+        let content_width = v.content_width();
+        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width);
+        let mut display_row = 0usize;
+        for line_idx in v.scroll_offset..=cursor_line {
+            let rows = count_wrapped_rows(&buf, line_idx, content_width, v.tab_width);
+            let skip = if line_idx == v.scroll_offset { v.scroll_sub_offset } else { 0 };
+            if line_idx == cursor_line {
+                display_row += cursor_sub.saturating_sub(skip);
+                break;
+            }
+            display_row += rows.saturating_sub(skip);
+        }
+        assert!(display_row < v.height, "cursor should be within viewport after scroll");
+    }
+
+    #[test]
+    fn wrapped_cursor_above_viewport_scrolls_up() {
+        // Start scrolled to line 3, cursor moves to line 0.
+        let buf = Buffer::from("abcdefgh\nabcdefgh\nabcdefgh\nabcdefgh\n");
+        // content_width = 8 - 4 = 4 → each line wraps to 2 rows.
+        let mut v = wrap_view(3, 4, 8, &buf);
+        v.ensure_cursor_visible(&buf, 0); // cursor at char 0, line 0
+        assert_eq!(v.scroll_offset, 0);
+        assert_eq!(v.scroll_sub_offset, 0);
+    }
+
+    #[test]
+    fn wrapped_cursor_on_continuation_row_scrolls_into_view() {
+        // Cursor is on the second wrapped segment of line 0 (sub-row 1).
+        // Viewport shows only 1 row. Cursor should cause a scroll so sub-row 1
+        // becomes the top of the viewport.
+        // "abcdefgh" with content_width 4 → 2 rows: "abcd" / "efgh".
+        let buf = Buffer::from("abcdefgh\n");
+        let mut v = wrap_view(0, 1, 8, &buf);
+        let cursor_char = 4; // start of "efgh" segment, sub-row 1
+        v.ensure_cursor_visible(&buf, cursor_char);
+        assert_eq!(v.scroll_offset, 0);
+        assert_eq!(v.scroll_sub_offset, 1, "should scroll within the line to show sub-row 1");
+    }
+
+    #[test]
+    fn wrapped_single_line_taller_than_viewport() {
+        // "abcdefghijklmnop" (16 chars), content_width 4 → 4 rows.
+        // Viewport height 2. Cursor at char 12 (sub-row 3).
+        let buf = Buffer::from("abcdefghijklmnop\n");
+        let mut v = wrap_view(0, 2, 8, &buf);
+        let cursor_char = 12;
+        v.ensure_cursor_visible(&buf, cursor_char);
+        // All scrolling is within line 0 via scroll_sub_offset.
+        assert_eq!(v.scroll_offset, 0);
+        assert!(v.scroll_sub_offset > 0, "sub-offset should advance within the long line");
+        // Cursor must be in view.
+        let content_width = v.content_width();
+        let cursor_line = buf.char_to_line(cursor_char);
+        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width);
+        assert!(cursor_sub >= v.scroll_sub_offset);
+        assert!(cursor_sub - v.scroll_sub_offset < v.height);
+    }
+
+    #[test]
+    fn wrapped_cursor_at_margin_boundary_no_scroll() {
+        // Cursor already within margin — no scroll should happen.
+        // 5 short lines (no wrap). Height 10, margin = min(3, 5) = 3.
+        let buf = Buffer::from("a\nb\nc\nd\ne\n");
+        let mut v = wrap_view(0, 10, 80, &buf);
+        let cursor_char = buf.line_to_char(2); // line 2, well within viewport
+        v.ensure_cursor_visible(&buf, cursor_char);
+        assert_eq!(v.scroll_offset, 0);
+        assert_eq!(v.scroll_sub_offset, 0);
     }
 }
