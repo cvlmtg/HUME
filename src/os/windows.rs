@@ -1,9 +1,11 @@
-use std::io;
+use std::fs::File;
+use std::io::{self, Read, Write};
+use std::mem::ManuallyDrop;
+use std::os::windows::io::FromRawHandle;
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::{
     Foundation::{INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
-    Storage::FileSystem::{ReadFile, WriteFile},
     System::{
         Console::{
             GetConsoleMode, GetStdHandle, SetConsoleMode,
@@ -24,7 +26,8 @@ use windows_sys::Win32::{
 /// with the XTVERSION and DA1 replies.
 ///
 /// We temporarily enable `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin so that the
-/// terminal's response arrives as raw VT bytes via `ReadFile`, and restore the
+/// terminal's response arrives as raw VT bytes instead of translated
+/// `KEY_EVENT` records, and restore the
 /// original mode unconditionally before returning.
 ///
 /// Must be called after `enable_raw_mode()`.
@@ -85,16 +88,11 @@ unsafe fn run_probe(
 ) -> io::Result<bool> {
     // Send three queries together: kitty flags query, XTVERSION (fallback
     // identification for terminals that support push but not query), DA1 sentinel.
+    // ManuallyDrop prevents closing the underlying OS handle when dropped —
+    // we borrowed these handles from GetStdHandle, we don't own them.
     let query = b"\x1B[?u\x1B[>q\x1B[c";
-    let mut written = 0u32;
-    if WriteFile(
-        stdout_handle,
-        query.as_ptr(),
-        query.len() as u32,
-        &mut written,
-        std::ptr::null_mut(),
-    ) == 0
-    {
+    let mut stdout_file = ManuallyDrop::new(File::from_raw_handle(stdout_handle as _));
+    if stdout_file.write_all(query).is_err() {
         return Ok(false);
     }
 
@@ -103,6 +101,7 @@ unsafe fn run_probe(
     // quickly, so remaining time naturally bounds the subsequent reads.
     let mut response = Vec::with_capacity(256);
     let mut buf = [0u8; 256]; // large enough for kitty + XTVERSION + DA1
+    let mut stdin_file = ManuallyDrop::new(File::from_raw_handle(stdin_handle as _));
     let deadline = Instant::now() + Duration::from_millis(500);
 
     loop {
@@ -118,20 +117,12 @@ unsafe fn run_probe(
             break; // timeout or error
         }
 
-        let mut bytes_read = 0u32;
-        if ReadFile(
-            stdin_handle,
-            buf.as_mut_ptr(),
-            buf.len() as u32,
-            &mut bytes_read,
-            std::ptr::null_mut(),
-        ) == 0
-            || bytes_read == 0
-        {
-            break;
-        }
+        let bytes_read = match stdin_file.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
 
-        response.extend_from_slice(&buf[..bytes_read as usize]);
+        response.extend_from_slice(&buf[..bytes_read]);
 
         // Keep reading until we see a complete DA1 response (ESC [ ? ... c),
         // which is the last thing the terminal sends.
