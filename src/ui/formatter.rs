@@ -350,7 +350,7 @@ fn compute_segments_full(
     for grapheme in cow.graphemes(true) {
         let advance = grapheme_advance(grapheme, abs_col, tab_width);
         let char_len = grapheme.chars().count();
-        let is_ws = grapheme.chars().all(|c| c.is_whitespace());
+        let is_ws = grapheme.chars().all(|c| c == ' ' || c == '\t');
 
         // Track the end of the last non-whitespace grapheme for trailing_ws_start.
         if !is_ws {
