@@ -125,7 +125,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
             };
             screen_buf.set_style(Rect::new(lay.content.x, y, indent, 1), indent_style);
         }
-        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, content_x, y, content_w, &mut sels_scratch, segment_str);
+        render_row_content(screen_buf, editor, &highlights, &vrow, line_idx == cursor_line, content_x, y, content_w, &mut sels_scratch, segment_str);
 
         last_rendered_row = Some(vrow.row);
     }
@@ -469,7 +469,7 @@ fn render_row_content(
     editor: &Editor,
     highlights: &HighlightMap,
     vrow: &VisualRow,
-    cursor_line: usize,
+    is_cursor_line_row: bool,
     x: u16,
     y: u16,
     width: u16,
@@ -496,10 +496,6 @@ fn render_row_content(
             .copied(),
     );
     let sels_on_line = &*sels_scratch;
-
-    // Whether this row is the primary cursor's row. Used for cursor-line bg tint.
-    // Continuation rows share the buffer line of the first segment.
-    let is_cursor_line_row = buf.char_to_line(char_offset) == cursor_line;
 
     // Pre-fill the content area with cursor-line bg so empty space at the end
     // of the row also gets the tint. Individual cells are overwritten below.
