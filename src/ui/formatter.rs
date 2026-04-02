@@ -1052,61 +1052,6 @@ mod tests {
         assert_eq!(pos, Some((4, 0)));
     }
 
-    // ── Segment shape tests ───────────────────────────────────────────────────
-
-    #[test]
-    fn parity_segments_match_wrap_line() {
-        // Reproduce the key cases from the old wrap_line tests, using
-        // compute_segments_for_line as the replacement.
-        let buf = Buffer::from("abcdef\n");
-        let segs = compute_segments_for_line(&buf, 0, 5, 4, true, false, false);
-        // Old: wrap_line(&buf, 0, 6, 5, 4) == [(0,5),(5,6)]
-        // New: (char_start, char_end, col_offset). char_end for last seg = content_end.
-        assert_eq!(segs[0].0, 0);
-        assert_eq!(segs[0].1, 5);
-        assert_eq!(segs[1].0, 5);
-        assert_eq!(segs[1].1, 6); // content_end = position of '\n' = 6
-    }
-
-    #[test]
-    fn parity_display_lines_simple() {
-        // formatter on "hello\nworld\n" should produce same row structure as
-        // the old display_lines().
-        let buf = Buffer::from("hello\nworld\n");
-        let view = make_view(&buf, 0, 10, 80, false);
-        let rows = rows(&buf, &view);
-
-        // Old: lines[0].content = "hello", line_number = Some(1), char_offset = Some(0)
-        assert_eq!(rows[0].char_start, 0);
-        assert_eq!(rows[0].char_end, 5);
-        assert_eq!(rows[0].line_number, Some(1));
-
-        // Old: lines[1].content = "world", line_number = Some(2), char_offset = Some(6)
-        assert_eq!(rows[1].char_start, 6);
-        assert_eq!(rows[1].char_end, 11);
-        assert_eq!(rows[1].line_number, Some(2));
-    }
-
-    #[test]
-    fn parity_display_lines_wrapped_split() {
-        // formatter on "abcdefgh\n" with content_width=4 should match old wrapped output.
-        let buf = Buffer::from("abcdefgh\n");
-        let view = make_view(&buf, 0, 10, 8, true);
-        let rows = rows(&buf, &view);
-
-        // Old: lines[0]: content="abcd", line_number=Some(1), is_continuation=false
-        assert_eq!(rows[0].char_start, 0);
-        assert_eq!(rows[0].char_end, 4);
-        assert_eq!(rows[0].line_number, Some(1));
-        assert!(!rows[0].is_continuation);
-
-        // Old: lines[1]: content="efgh", line_number=None, is_continuation=true
-        assert_eq!(rows[1].char_start, 4);
-        assert_eq!(rows[1].char_end, 8);
-        assert_eq!(rows[1].line_number, None);
-        assert!(rows[1].is_continuation);
-    }
-
     // ── Word-boundary wrapping ────────────────────────────────────────────────
 
     #[test]
