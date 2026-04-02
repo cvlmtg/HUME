@@ -146,7 +146,7 @@ impl GutterConfig {
                 // format so the indicator sits flush with the number column.
                 let inner_w = self.total_width(total_lines).saturating_sub(1);
                 scratch.clear();
-                write!(scratch, "{indicator:>inner_w$} ").unwrap();
+                let _ = write!(scratch, "{indicator:>inner_w$} ");
                 screen_buf.set_string(base_x, y, scratch.as_str(), colors.gutter);
             }
             return;
@@ -200,7 +200,7 @@ fn render_line_number(
     // Write right-aligned number + separator space directly into the scratch
     // buffer — one write!() instead of two format!() heap allocations.
     scratch.clear();
-    write!(scratch, "{n:>col_width$} ").unwrap();
+    let _ = write!(scratch, "{n:>col_width$} ");
 
     let gutter_style =
         if line_idx == cursor_line { colors.gutter_cursor_line } else { colors.gutter };

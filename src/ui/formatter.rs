@@ -164,7 +164,11 @@ impl<'buf> DocumentFormatter<'buf> {
         // Compute segments for the first buffer line so the iterator is ready
         // to yield immediately.
         let mut segments = Vec::new();
-        compute_segments_full(buf, first, content_width, view.tab_width, view.soft_wrap, view.word_wrap, view.indent_wrap, &mut segments);
+        compute_segments_full(
+            buf, first, content_width, view.tab_width,
+            view.soft_wrap, view.word_wrap, view.indent_wrap,
+            &mut segments,
+        );
 
         // scroll_sub_offset skips the first N wrapped sub-rows of the starting
         // buffer line (needed when a single line wraps to more rows than the
@@ -262,9 +266,9 @@ pub(crate) fn line_content_range(buf: &Buffer, line_idx: usize) -> (usize, usize
 /// Compute the wrapped segments for buffer line `line_idx`, returning full
 /// per-segment metadata including `visual_indent`.
 ///
-/// This is the canonical implementation. The public [`compute_segments_for_line`]
-/// function is a thin wrapper that strips `visual_indent` for callers (such as
-/// [`count_visual_rows`] and [`cursor_sub_row`]) that only need char boundaries.
+/// Results are written into `out` (cleared first). [`count_visual_rows`] and
+/// [`cursor_sub_row`] call this directly; [`compute_segments_for_line`] is a
+/// test-only wrapper that converts the output to a simpler tuple form.
 fn compute_segments_full(
     buf: &Buffer,
     line_idx: usize,
@@ -431,7 +435,7 @@ pub(crate) fn count_visual_rows(
 ) -> usize {
     compute_segments_full(
         buf, line_idx, view.content_width(), view.tab_width,
-        true, view.word_wrap, view.indent_wrap, scratch,
+        view.soft_wrap, view.word_wrap, view.indent_wrap, scratch,
     );
     scratch.len()
 }
@@ -451,7 +455,7 @@ pub(crate) fn cursor_sub_row(
 ) -> usize {
     compute_segments_full(
         buf, line_idx, view.content_width(), view.tab_width,
-        true, view.word_wrap, view.indent_wrap, scratch,
+        view.soft_wrap, view.word_wrap, view.indent_wrap, scratch,
     );
     for (i, seg) in scratch.iter().enumerate() {
         let is_last = i + 1 == scratch.len();
@@ -977,26 +981,11 @@ mod tests {
 
     #[test]
     fn cursor_pos_wrapped_at_newline() {
-        // Cursor at '\n' (char 8) → last segment, col = 8-4 = 4, but that's
-        // past the content width (4)... actually let's check.
-        // abs_col = display_col_in_line(buf, 0, 8, 4).
-        // "abcdefgh" = 8 chars all width 1, so abs_col = 8.
-        // col_offset_in_line for second segment = 4.
-        // visual_col = 8 - 4 = 4. content_width = 4. 4 >= 4 → None.
-        // Actually the cursor at '\n' should be allowed at exactly the width.
-        // Hmm, let me reconsider. The check is `visual_col >= view.content_width()`.
-        // 4 >= 4 → true → None.
-        // But this should be Some! The cursor at EOL should be visible.
-        // Actually: "abcdefgh" is 8 chars. Segment 2 is chars 4..8 (no '\n').
-        // The '\n' is at char 8. So visual_col = display_col(8) - 4 = 8-4 = 4.
-        // The content_width is 4. So 4 >= 4 → returns None.
-        // This is correct behavior: EOL cursor is at col 4 which is just past
-        // the last visible column. In practice, cursor at EOL is typically
-        // at the last content char position, not past it. Let me test a
-        // reasonable scenario instead.
+        // "abcde\n" with content_width=4 wraps to "abcd" + "e".
+        // Cursor at 'e' (char 4) lands on the second segment at col 0.
+        // The '\n' at char 5 would compute visual_col = 5-4 = 1, also visible.
         let buf = Buffer::from("abcde\n");
         let view = make_view(&buf, 0, 10, 8, true); // content_width=4
-        // "abcde" wraps to "abcd" + "e". Cursor at 'e' (char 4): second seg.
         let pos = cursor_visual_pos(&buf, &view, 4);
         assert_eq!(pos, Some((0, 1)));
     }
@@ -1020,9 +1009,7 @@ mod tests {
         assert_eq!(pos, Some((4, 0)));
     }
 
-    // ── Parity: formatter vs old display_lines ────────────────────────────────
-    // These tests verify that the formatter produces the same row structure
-    // as the old display_lines() / display_lines_wrapped() pipeline.
+    // ── Segment shape tests ───────────────────────────────────────────────────
 
     #[test]
     fn parity_segments_match_wrap_line() {

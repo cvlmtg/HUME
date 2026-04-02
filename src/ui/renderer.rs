@@ -227,11 +227,6 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
     }
 }
 
-// ── Gutter ────────────────────────────────────────────────────────────────────
-// Gutter rendering is now handled by GutterConfig::render_row() in gutter.rs.
-// render_gutter() has been removed; render() calls editor.view.gutter.render_row()
-// directly for each VisualRow yielded by the DocumentFormatter.
-
 // ── Content ───────────────────────────────────────────────────────────────────
 
 /// Resolve the style for a single character at `char_pos`.
@@ -307,11 +302,9 @@ fn should_show_ws(show: WhitespaceShow, char_pos: usize, trailing_start: usize) 
 /// widths come from `unicode-width` so CJK double-width characters consume
 /// exactly 2 columns. Style resolution is delegated to [`resolve_style`].
 ///
-/// This replaces the old `render_content(dl: &DisplayLine)`. The key improvement
-/// is that `abs_col` (absolute display column within the buffer line) is taken
-/// directly from `vrow.col_offset_in_line` instead of being recomputed via
-/// `display_col_in_line()` — the formatter already computed it when determining
-/// wrap break points, so we get it for free.
+/// `abs_col` (absolute display column within the buffer line) is taken directly
+/// from `vrow.col_offset_in_line` — the formatter already computed it when
+/// determining wrap break points, so we get it for free.
 fn render_row_content(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
