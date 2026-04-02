@@ -10,10 +10,11 @@ use crate::core::grapheme::grapheme_advance;
 use crate::core::selection::Selection;
 use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
-use crate::ui::formatter::{DocumentFormatter, VisualRow, cursor_visual_pos};
-use crate::ui::highlight::HighlightSet;
+use crate::ui::formatter::{DocumentFormatter, VisualRow, cursor_visual_pos, line_content_range};
+use crate::ui::highlight::{HighlightKind, HighlightMap};
 use crate::ui::theme::EditorColors;
-use crate::ui::whitespace::WhitespaceShow;
+use crate::core::buffer::Buffer;
+use crate::ui::whitespace::{WhitespaceConfig, WhitespaceShow};
 use crate::ui::statusline::render_bottom_row;
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -66,16 +67,35 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     // descriptors and draws gutter + content for each.
 
     let mut last_rendered_row: Option<usize> = None;
-    // Both scratch buffers are created once here and reused across all rows,
-    // eliminating per-row heap allocations.
+    // Scratch buffers created once and reused across all rows to avoid
+    // per-row heap allocations.
     let mut sels_scratch: Vec<Selection> = Vec::new();
     let mut gutter_scratch = String::new();
+
+    // Per-line Cow cache: a single buffer line may produce multiple visual rows
+    // when soft-wrapped. Convert the rope slice to Cow once per buffer line and
+    // reuse it across all continuation rows, avoiding redundant allocations.
+    let mut line_cache: Option<(usize, usize, ropey::RopeSlice, Cow<str>)> = None;
 
     for vrow in DocumentFormatter::new(buf, &editor.view) {
         let y = area.y + vrow.row as u16;
         if y >= lay.content.y + lay.content.height {
             break;
         }
+
+        // Refresh the line cache when we advance to a new buffer line.
+        let line_idx = buf.char_to_line(vrow.char_start);
+        if line_cache.as_ref().is_none_or(|&(l, ..)| l != line_idx) {
+            let (ls, ce) = line_content_range(buf, line_idx);
+            let sl = buf.slice(ls..ce);
+            let cow: Cow<str> = sl.into();
+            line_cache = Some((line_idx, ls, sl, cow));
+        }
+        let &(_, line_start, ref sl, ref cow) = line_cache.as_ref().unwrap();
+        // Extract the byte range of this segment within the cached Cow.
+        let bs = sl.char_to_byte(vrow.char_start - line_start);
+        let be = sl.char_to_byte(vrow.char_end - line_start);
+        let segment_str: &str = &cow[bs..be];
 
         // Gutter: delegate to composable column providers.
         editor.view.gutter.render_row(
@@ -98,14 +118,14 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         let content_x = lay.content.x + indent;
         let content_w = lay.content.width.saturating_sub(indent);
         if indent > 0 {
-            let indent_style = if buf.char_to_line(vrow.char_start) == cursor_line {
+            let indent_style = if line_idx == cursor_line {
                 editor.colors.cursor_line
             } else {
                 editor.colors.default
             };
             screen_buf.set_style(Rect::new(lay.content.x, y, indent, 1), indent_style);
         }
-        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, content_x, y, content_w, &mut sels_scratch);
+        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, content_x, y, content_w, &mut sels_scratch, segment_str);
 
         last_rendered_row = Some(vrow.row);
     }
@@ -168,18 +188,18 @@ fn layout(area: Rect, gutter_width: u16) -> Layout {
 /// `editor.colors.search_match`. The primary match is already shown as a
 /// selection, so overlapping search highlights will be visually overridden by
 /// the selection/cursor colors in [`resolve_style`].
-fn compute_highlights(editor: &Editor) -> HighlightSet {
+fn compute_highlights(editor: &Editor) -> HighlightMap {
     if editor.mode == Mode::Insert {
-        // Zero allocation: building an empty set is trivial.
-        return HighlightSet::new().build();
+        // Zero allocation: building an empty map is trivial.
+        return HighlightMap::new().build();
     }
 
     let head = editor.doc.sels().primary().head;
-    let mut hl = HighlightSet::new();
+    let mut hl = HighlightMap::new();
 
     // ── Search match highlights ───────────────────────────────────────────────
     for &(start, end_incl) in editor.search.matches() {
-        hl.push(start, end_incl, editor.colors.search_match);
+        hl.push(start, end_incl, HighlightKind::SearchMatch);
     }
 
     // ── Bracket match highlight ───────────────────────────────────────────────
@@ -196,7 +216,7 @@ fn compute_highlights(editor: &Editor) -> HighlightSet {
         {
             // Highlight the OTHER bracket — the cursor already marks the one it's on.
             let match_pos = if head == op { cp } else { op };
-            hl.push(match_pos, match_pos, editor.colors.bracket_match);
+            hl.push(match_pos, match_pos, HighlightKind::BracketMatch);
         }
     }
 
@@ -244,7 +264,7 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
 fn resolve_style(
     char_pos: usize,
     colors: &EditorColors,
-    highlights: &HighlightSet,
+    highlights: &HighlightMap,
     sels_on_line: &[Selection],
     is_cursor_line: bool,
     show_sels: bool,
@@ -255,10 +275,9 @@ fn resolve_style(
     if show_sels && sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end()) {
         return colors.selection;
     }
-    if let Some(hl) = highlights.style_at(char_pos) {
-        return hl;
+    if let Some(kind) = highlights.kind_at(char_pos) {
+        return kind.style(colors);
     }
-    // Future: syntax highlighting goes here (between highlights and cursor_line).
     if is_cursor_line {
         return colors.cursor_line;
     }
@@ -295,12 +314,152 @@ fn should_show_ws(show: WhitespaceShow, char_pos: usize, trailing_start: usize) 
     }
 }
 
+/// Trailing-whitespace char-position boundary for one visual row.
+///
+/// For wrapped rows the formatter pre-computed this during its grapheme walk
+/// (free); `usize::MAX` in `vrow.trailing_ws_start` means "not computed" and
+/// triggers a local pre-scan. When no whitespace type uses
+/// [`WhitespaceShow::Trailing`] the pre-scan is skipped and `usize::MAX` is
+/// returned — `should_show_ws` treats positions ≥ `usize::MAX` as non-trailing.
+fn trailing_ws_boundary(
+    vrow: &VisualRow,
+    content: &str,
+    char_offset: usize,
+    ws_cfg: &WhitespaceConfig,
+) -> usize {
+    if vrow.trailing_ws_start != usize::MAX {
+        return vrow.trailing_ws_start;
+    }
+    let needs_scan = ws_cfg.render.space == WhitespaceShow::Trailing
+        || ws_cfg.render.tab == WhitespaceShow::Trailing
+        || ws_cfg.render.newline == WhitespaceShow::Trailing;
+    if !needs_scan {
+        return usize::MAX;
+    }
+    let mut last_non_ws = char_offset;
+    let mut pos = char_offset;
+    for g in content.graphemes(true) {
+        let g_end = pos + g.chars().count();
+        if !g.chars().all(|c| c == ' ' || c == '\t') {
+            last_non_ws = g_end;
+        }
+        pos = g_end;
+    }
+    last_non_ws
+}
+
+/// Write one grapheme's screen cells into `screen_buf`.
+///
+/// Handles the three rendering branches:
+/// - **Tab**: expanded to `advance` columns; first cell is the tab indicator
+///   character (if enabled), remaining cells are spaces.
+/// - **Space**: replaced with the space indicator character (if enabled).
+/// - **Regular grapheme**: written as-is.
+///
+/// The caller is responsible for position computation, viewport clipping, and
+/// style resolution — this function only handles the cell writes.
+fn draw_cell(
+    screen_buf: &mut ScreenBuf,
+    grapheme: &str,
+    screen_col: u16,
+    advance: usize,
+    char_pos: usize,
+    x: u16,
+    y: u16,
+    width: u16,
+    style: Style,
+    trailing_start: usize,
+    ws_cfg: &WhitespaceConfig,
+    colors: &EditorColors,
+) {
+    if grapheme == "\t" {
+        // Tab: expand to `advance` columns. First cell gets the indicator
+        // character if enabled; remaining cells are spaces.
+        let show_tab = should_show_ws(ws_cfg.render.tab, char_pos, trailing_start);
+        let (first_ch, tab_style) = if show_tab {
+            (ws_cfg.chars.tab, compose_whitespace_style(style, colors))
+        } else {
+            (' ', style)
+        };
+        let mut utf8_buf = [0u8; 4];
+        let first_str = first_ch.encode_utf8(&mut utf8_buf);
+        screen_buf.set_stringn(x + screen_col, y, first_str, 1, tab_style);
+        for i in 1..advance {
+            if screen_col + i as u16 >= width { break; }
+            screen_buf.set_string(x + screen_col + i as u16, y, " ", tab_style);
+        }
+    } else if grapheme == " " && should_show_ws(ws_cfg.render.space, char_pos, trailing_start) {
+        let ws_style = compose_whitespace_style(style, colors);
+        let mut utf8_buf = [0u8; 4];
+        let s = ws_cfg.chars.space.encode_utf8(&mut utf8_buf);
+        screen_buf.set_stringn(x + screen_col, y, s, 1, ws_style);
+    } else {
+        screen_buf.set_string(x + screen_col, y, grapheme, style);
+    }
+}
+
+/// Render the newline indicator and cursor-past-last-glyph for the final
+/// segment of a buffer line. No-ops for soft-wrap continuation rows.
+fn render_eol(
+    screen_buf: &mut ScreenBuf,
+    buf: &Buffer,
+    vrow: &VisualRow,
+    char_pos: usize,
+    eol_screen_col: u16,
+    x: u16,
+    y: u16,
+    width: u16,
+    is_cursor_line_row: bool,
+    show_sels: bool,
+    sels_on_line: &[Selection],
+    ws_cfg: &WhitespaceConfig,
+    colors: &EditorColors,
+) {
+    // EOL rendering only applies to the last segment of a buffer line.
+    // After the grapheme loop, char_pos sits on '\n' or past the last char.
+    if !vrow.is_last_segment {
+        return;
+    }
+    if buf.char_at(char_pos) != Some('\n') && char_pos != buf.len_chars() {
+        return;
+    }
+
+    if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
+        let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
+        let ws_style = compose_whitespace_style(base_style, colors);
+        let mut utf8_buf = [0u8; 4];
+        let s = ws_cfg.chars.newline.encode_utf8(&mut utf8_buf);
+        screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
+    }
+
+    // If any selection's head or range reaches the newline position, draw a
+    // space with the selection/cursor style so the cursor is visible past
+    // the last glyph.
+    let eol_is_head = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
+    let eol_is_selected = !eol_is_head
+        && show_sels
+        && sels_on_line.iter().any(|s| char_pos >= s.start() && char_pos <= s.end());
+
+    if (eol_is_head || eol_is_selected) && eol_screen_col < width {
+        let style = if eol_is_head { colors.cursor_head } else { colors.selection };
+        screen_buf.set_string(x + eol_screen_col, y, " ", style);
+    }
+}
+
 /// Render the text content of one visual row into the screen buffer.
 ///
 /// Iterates grapheme clusters (via `unicode-segmentation`) so that multi-byte
 /// characters and combining sequences are treated as single units. Display
 /// widths come from `unicode-width` so CJK double-width characters consume
-/// exactly 2 columns. Style resolution is delegated to [`resolve_style`].
+/// exactly 2 columns.
+///
+/// Structured as three separated concerns:
+/// - **What to draw**: grapheme walk with left/right viewport clipping (this loop)
+/// - **How to style it**: delegated to [`resolve_style`]
+/// - **How to render it**: delegated to [`draw_cell`] and [`render_eol`]
+///
+/// Adding a new style layer means editing [`resolve_style`] only; adding a new
+/// visual representation means editing [`draw_cell`] only.
 ///
 /// `abs_col` (absolute display column within the buffer line) is taken directly
 /// from `vrow.col_offset_in_line` — the formatter already computed it when
@@ -308,13 +467,14 @@ fn should_show_ws(show: WhitespaceShow, char_pos: usize, trailing_start: usize) 
 fn render_row_content(
     screen_buf: &mut ScreenBuf,
     editor: &Editor,
-    highlights: &HighlightSet,
+    highlights: &HighlightMap,
     vrow: &VisualRow,
     cursor_line: usize,
     x: u16,
     y: u16,
     width: u16,
     sels_scratch: &mut Vec<Selection>,
+    content: &str,
 ) {
     let buf = editor.doc.buf();
     let mode = editor.mode;
@@ -347,49 +507,22 @@ fn render_row_content(
         screen_buf.set_style(Rect::new(x, y, width, 1), colors.cursor_line);
     }
 
-    // Borrow the row content as &str — zero-copy for contiguous rope slices
-    // (the common case), falling back to an owned String for multi-chunk lines.
-    let content_cow: Cow<str> = buf.slice(char_offset..vrow.char_end).into();
     let mut char_pos = char_offset;
-
     // Show selections in Normal and Search mode; suppress in Insert mode
     // (the bar cursor handles visual feedback there).
     let show_sels = mode != Mode::Insert;
-
     let col_offset = editor.view.col_offset;
     let tab_width = editor.view.tab_width.max(1);
     let ws_cfg = &editor.view.whitespace;
     let mut display_col: usize = 0;
-
     // `abs_col` = absolute display column from the buffer line's first char.
     // The formatter pre-computed this as `vrow.col_offset_in_line` — we get it
     // for free instead of calling `display_col_in_line()` again.
     let mut abs_col: usize = vrow.col_offset_in_line;
 
-    // Pre-scan for trailing whitespace boundary: only needed when at least one
-    // whitespace type uses WhitespaceShow::Trailing. Skipping it when unused
-    // avoids a full grapheme walk before the main rendering loop.
-    let trailing_start: usize =
-        if ws_cfg.render.space == WhitespaceShow::Trailing
-            || ws_cfg.render.tab == WhitespaceShow::Trailing
-            || ws_cfg.render.newline == WhitespaceShow::Trailing
-        {
-            let mut last_non_ws = char_offset;
-            let mut pos = char_offset;
-            for g in content_cow.graphemes(true) {
-                let g_end = pos + g.chars().count();
-                if !g.chars().all(|c| c == ' ' || c == '\t') {
-                    last_non_ws = g_end;
-                }
-                pos = g_end;
-            }
-            last_non_ws
-        } else {
-            usize::MAX // sentinel: char_pos >= usize::MAX is never true
-        };
+    let trailing_start = trailing_ws_boundary(vrow, content, char_offset, ws_cfg);
 
-    for grapheme in content_cow.graphemes(true) {
-        let is_tab = grapheme == "\t";
+    for grapheme in content.graphemes(true) {
         let advance = grapheme_advance(grapheme, abs_col, tab_width);
 
         if display_col + advance <= col_offset {
@@ -416,72 +549,20 @@ fn render_row_content(
         }
 
         let screen_col = (display_col - col_offset) as u16;
-
         if screen_col + advance as u16 > width {
             break; // clip at right edge
         }
 
         let style = resolve_style(char_pos, colors, highlights, sels_on_line, is_cursor_line_row, show_sels);
-
-        if is_tab {
-            // Tab: expand to `advance` columns. First cell gets the indicator
-            // character if enabled; remaining cells are spaces.
-            let show_tab = should_show_ws(ws_cfg.render.tab, char_pos, trailing_start);
-            let (first_ch, tab_style) = if show_tab {
-                (ws_cfg.chars.tab, compose_whitespace_style(style, colors))
-            } else {
-                (' ', style)
-            };
-            let mut utf8_buf = [0u8; 4];
-            let first_str = first_ch.encode_utf8(&mut utf8_buf);
-            screen_buf.set_stringn(x + screen_col, y, first_str, 1, tab_style);
-            for i in 1..advance {
-                if screen_col + i as u16 >= width { break; }
-                screen_buf.set_string(x + screen_col + i as u16, y, " ", tab_style);
-            }
-        } else if grapheme == " " && should_show_ws(ws_cfg.render.space, char_pos, trailing_start) {
-            let ws_style = compose_whitespace_style(style, colors);
-            let mut utf8_buf = [0u8; 4];
-            let s = ws_cfg.chars.space.encode_utf8(&mut utf8_buf);
-            screen_buf.set_stringn(x + screen_col, y, s, 1, ws_style);
-        } else {
-            screen_buf.set_string(x + screen_col, y, grapheme, style);
-        }
+        draw_cell(screen_buf, grapheme, screen_col, advance, char_pos, x, y, width, style, trailing_start, ws_cfg, colors);
 
         display_col += advance;
         abs_col += advance;
         char_pos += grapheme.chars().count();
     }
 
-    // After the loop, char_pos points to either the '\n' (for the last segment
-    // of a buffer line) or the first char of the next segment (for intermediate
-    // wrap rows). EOL rendering only applies to the last segment of each line.
-    let at_newline = vrow.is_last_segment
-        && (buf.char_at(char_pos) == Some('\n') || char_pos == buf.len_chars());
     let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
-
-    if at_newline {
-        if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
-            let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
-            let ws_style = compose_whitespace_style(base_style, colors);
-            let mut utf8_buf = [0u8; 4];
-            let s = ws_cfg.chars.newline.encode_utf8(&mut utf8_buf);
-            screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
-        }
-
-        // If any selection's head or range reaches the newline position, draw a
-        // space with the selection/cursor style so the cursor is visible past
-        // the last glyph.
-        let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
-        let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
-            char_pos >= s.start() && char_pos <= s.end()
-        });
-
-        if (eol_is_head || eol_is_selected) && eol_screen_col < width {
-            let style = if eol_is_head { colors.cursor_head } else { colors.selection };
-            screen_buf.set_string(x + eol_screen_col, y, " ", style);
-        }
-    }
+    render_eol(screen_buf, buf, vrow, char_pos, eol_screen_col, x, y, width, is_cursor_line_row, show_sels, sels_on_line, ws_cfg, colors);
 }
 
 // ── Test helper ───────────────────────────────────────────────────────────────
