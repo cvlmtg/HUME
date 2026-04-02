@@ -19,6 +19,8 @@ fn editor_from(input: &str) -> Editor {
         gutter_width: compute_gutter_width(buf.len_lines()),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
+        tab_width: 4,
+        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
     };
     Editor {
         doc: Document::new(buf, sels),
@@ -1948,6 +1950,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
         gutter_width: compute_gutter_width(buf.len_lines()),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
+        tab_width: 4,
+        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
     };
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc, view);
@@ -2120,6 +2124,8 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
         gutter_width: compute_gutter_width(buf.len_lines()),
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
+        tab_width: 4,
+        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
     };
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc, view);

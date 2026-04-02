@@ -19,6 +19,7 @@ use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
 use crate::ui::theme::EditorColors;
 use crate::ui::view::{compute_gutter_width, LineNumberStyle, ViewState};
+use crate::ui::whitespace::WhitespaceConfig;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -347,6 +348,8 @@ impl Editor {
             gutter_width: compute_gutter_width(doc.buf().len_lines()),
             line_number_style: LineNumberStyle::Hybrid,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         };
 
         Ok(Self {

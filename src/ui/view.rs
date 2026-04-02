@@ -1,6 +1,7 @@
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::display_col_in_line;
 use crate::ui::display_line::DisplayLine;
+use crate::ui::whitespace::WhitespaceConfig;
 use crate::helpers::line_end_exclusive;
 use crate::core::selection::SelectionSet;
 
@@ -68,6 +69,14 @@ pub(crate) struct ViewState {
     /// that CJK double-width characters are accounted for correctly. Updated by
     /// [`ensure_cursor_visible_horizontal`](Self::ensure_cursor_visible_horizontal).
     pub col_offset: usize,
+
+    /// Tab stop width in display columns. A tab at display column `c` expands
+    /// to `tab_width - (c % tab_width)` columns. Default: 4.
+    pub tab_width: usize,
+
+    /// Whitespace rendering configuration — which whitespace characters get
+    /// visual indicators and what replacement characters to use.
+    pub whitespace: WhitespaceConfig,
 }
 
 /// Compute the line-number gutter width for a buffer with `total_lines` lines.
@@ -164,7 +173,7 @@ impl ViewState {
     /// columns from the left and right edges of the content area.
     pub(crate) fn ensure_cursor_visible_horizontal(&mut self, buf: &Buffer, sels: &SelectionSet, cursor_line: usize) {
         let head = sels.primary().head;
-        let cursor_col = display_col_in_line(buf, cursor_line, head);
+        let cursor_col = display_col_in_line(buf, cursor_line, head, self.tab_width);
         let content_width = self.width.saturating_sub(self.gutter_width);
         if content_width == 0 {
             return;
@@ -198,6 +207,8 @@ mod tests {
             gutter_width: compute_gutter_width(buf.len_lines()),
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         }
     }
 
@@ -364,6 +375,8 @@ mod tests {
             gutter_width,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         }
     }
 

@@ -45,6 +45,12 @@ pub(crate) struct EditorColors {
     /// selection; other matches use this highlight.
     pub search_match: Style,
 
+    /// Foreground colour for whitespace indicator characters (`·`, `→`, `⏎`).
+    /// Intentionally dim so indicators don't compete with actual content.
+    /// The background is inherited from the underlying style (cursor_line,
+    /// selection, etc.) via style composition in the renderer.
+    pub whitespace: Style,
+
     // ── Gutter ────────────────────────────────────────────────────────────────
 
     /// Line number gutter on the cursor line.
@@ -102,6 +108,7 @@ impl EditorColors {
             search_match: Style::new()
                 .bg(Color::Rgb(80, 40, 0))
                 .fg(Color::Rgb(255, 180, 80)),
+            whitespace: Style::new().fg(Color::Rgb(70, 70, 80)),
             gutter_cursor_line: Style::new()
                 .fg(Color::Rgb(180, 180, 180))
                 .bg(Color::Rgb(35, 35, 45)),
