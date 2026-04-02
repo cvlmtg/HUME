@@ -15,7 +15,7 @@ use crate::ui::view::LineNumberStyle;
 /// new column — diagnostics, git signs, fold markers — means adding a variant
 /// here and a `render` arm. No other code changes required.
 ///
-/// This enum-based design matches Hume's broader pattern of concrete types over
+/// This enum-based design matches HUME's broader pattern of concrete types over
 /// trait objects: `MappableCommand` and `StatusElement` use the same idiom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GutterColumn {

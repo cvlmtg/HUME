@@ -130,4 +130,4 @@ Theme: embed the Steel scripting engine and land the most impactful editing poli
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
-- **PLUM plugin manager** (Steel): `core:plum` bundled plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace (shipped with Hume, never fetched). Hume runtime loads plugins independently — PLUM is swappable.
+- **PLUM plugin manager** (Steel): `core:plum` bundled plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace (shipped with HUME, never fetched). HUME runtime loads plugins independently — PLUM is swappable.
