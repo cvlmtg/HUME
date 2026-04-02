@@ -286,11 +286,9 @@ fn render_gutter(
     x: u16,
     y: u16,
 ) {
-    // Soft-wrap continuation rows show a wrap indicator instead of a number.
+    // Soft-wrap continuation rows get a blank gutter — no line number,
+    // no indicator. The indentation of the wrapped text is enough visual cue.
     if dl.is_continuation {
-        let view = &editor.view;
-        let indicator = format!("{:>width$} ", "↪", width = view.gutter_width.saturating_sub(1));
-        screen_buf.set_string(x, y, &indicator, editor.colors.gutter);
         return;
     }
     // Virtual lines have no line number — nothing to render in the gutter.
@@ -1563,7 +1561,7 @@ mod tests {
         let out = render_to_string(&editor_for(doc, v), 8, 5);
         insta::assert_snapshot!(out, @r"
           1 abcd
-          ↪ efgh
+            efgh
         ~
         ~
          1:1 [sc
@@ -1579,7 +1577,7 @@ mod tests {
         insta::assert_snapshot!(out, @r"
           1 hi
           2 abcd
-          ↪ efgh
+            efgh
         ~
          1:1 [sc
         ");
@@ -1593,7 +1591,7 @@ mod tests {
         let out = render_to_string(&editor_for(doc, v), 8, 3);
         insta::assert_snapshot!(out, @r"
           1 abcd
-          ↪ efgh
+            efgh
          1:1 [sc
         ");
     }
@@ -1606,7 +1604,7 @@ mod tests {
         let out = render_to_string(&editor_for(doc, v), 8, 4);
         insta::assert_snapshot!(out, @r"
           1 abcd
-          ↪ efgh
+            efgh
         ~
          1:7 [sc
         ");
