@@ -83,7 +83,12 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
         render_bottom_row(screen_buf, editor, area, lay.statusline.y);
     }
 
-    CursorState { pos: compute_cursor_pos(editor) }
+    let cursor_pos = if editor.view.soft_wrap {
+        compute_cursor_pos_wrapped(editor, &display_lines)
+    } else {
+        compute_cursor_pos(editor)
+    };
+    CursorState { pos: cursor_pos }
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -200,6 +205,72 @@ fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
     Some(((view.gutter_width + screen_col) as u16, screen_row as u16))
 }
 
+/// Compute cursor position for soft-wrapped display.
+///
+/// Same mode logic as [`compute_cursor_pos`] but finds the cursor's screen
+/// row by scanning the pre-computed display lines rather than using arithmetic.
+fn compute_cursor_pos_wrapped(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
+    match editor.mode {
+        Mode::Normal => None,
+        Mode::Insert => cursor_screen_pos_wrapped(editor, display_lines),
+        Mode::Command | Mode::Search | Mode::Select => None,
+    }
+}
+
+/// Map the primary cursor to screen (col, row) in soft-wrapped mode.
+///
+/// Iterates `display_lines` to find the display row containing the cursor's
+/// char position. The column is computed relative to the segment start
+/// (since `col_offset` is 0 in wrapped mode).
+fn cursor_screen_pos_wrapped(editor: &Editor, display_lines: &[DisplayLine<'_>]) -> Option<(u16, u16)> {
+    let buf = editor.doc.buf();
+    let view = &editor.view;
+    let head = editor.doc.sels().primary().head;
+
+    for (row, dl) in display_lines.iter().enumerate() {
+        let Some(offset) = dl.char_offset else { continue };
+        let seg_len = dl.content.len_chars();
+        let seg_end = offset + seg_len;
+
+        // Cursor is in this segment if head ∈ [offset, seg_end).
+        // For the last segment of a buffer line, head == seg_end is the
+        // newline position — it belongs here too (EOL cursor).
+        let in_segment = if head >= offset {
+            if head < seg_end {
+                true
+            } else if head == seg_end {
+                // Only claim the EOL position if the *next* display line
+                // is NOT a continuation of the same buffer line (i.e. this
+                // is the last segment).
+                let next_is_continuation = display_lines
+                    .get(row + 1)
+                    .is_some_and(|next| next.is_continuation);
+                !next_is_continuation
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if in_segment {
+            // Compute display column relative to the segment start.
+            // Both calls share the same buffer line, so tab-stop alignment
+            // is consistent: col_of_head - col_of_seg_start.
+            let line = buf.char_to_line(offset);
+            let col_head = display_col_in_line(buf, line, head, view.tab_width);
+            let col_seg = display_col_in_line(buf, line, offset, view.tab_width);
+            let display_col = col_head - col_seg;
+            let content_width = view.content_width();
+            if display_col >= content_width {
+                return None;
+            }
+            return Some(((view.gutter_width + display_col) as u16, row as u16));
+        }
+    }
+    None
+}
+
 // ── Gutter ────────────────────────────────────────────────────────────────────
 
 /// Render the line-number gutter cell for one display row.
@@ -215,6 +286,13 @@ fn render_gutter(
     x: u16,
     y: u16,
 ) {
+    // Soft-wrap continuation rows show a wrap indicator instead of a number.
+    if dl.is_continuation {
+        let view = &editor.view;
+        let indicator = format!("{:>width$} ", "↪", width = view.gutter_width.saturating_sub(1));
+        screen_buf.set_string(x, y, &indicator, editor.colors.gutter);
+        return;
+    }
     // Virtual lines have no line number — nothing to render in the gutter.
     let Some(line_number) = dl.line_number else { return };
     let line_idx = line_number.saturating_sub(1); // 0-based
@@ -350,7 +428,15 @@ fn render_content(
 
     // Whether this display line is the primary cursor's line. Used for the
     // cursor-line background tint (lowest priority in the style chain).
-    let is_cursor_line_row = dl.line_number.is_some_and(|ln| ln.saturating_sub(1) == cursor_line);
+    // For continuation rows (line_number is None), check via char_offset:
+    // the cursor's buffer line matches if the segment's start char is on it.
+    let is_cursor_line_row = if let Some(ln) = dl.line_number {
+        ln.saturating_sub(1) == cursor_line
+    } else if dl.is_continuation {
+        dl.char_offset.is_some_and(|off| editor.doc.buf().char_to_line(off) == cursor_line)
+    } else {
+        false
+    };
 
     // Pre-fill the content area with the cursor-line bg so empty space at the
     // end of the line also gets the tint. Individual cells are overwritten below
@@ -374,6 +460,17 @@ fn render_content(
     let ws_cfg = &editor.view.whitespace;
     let mut display_col: usize = 0;
 
+    // Absolute display column from the buffer line start — used for tab-stop
+    // alignment which must be consistent across wrapped segments. For the
+    // first segment (or non-wrapped lines) this equals `display_col`. For
+    // continuation segments it starts at the segment's offset within the line.
+    let mut abs_col: usize = if dl.is_continuation {
+        let line_idx = editor.doc.buf().char_to_line(char_offset);
+        display_col_in_line(editor.doc.buf(), line_idx, char_offset, tab_width)
+    } else {
+        0
+    };
+
     // Pre-scan for trailing whitespace boundary: char offset of the first
     // trailing whitespace run (everything from here to EOL is trailing).
     let trailing_start: usize = {
@@ -392,7 +489,9 @@ fn render_content(
     for grapheme in content_cow.graphemes(true) {
         let is_tab = grapheme == "\t";
         let advance = if is_tab {
-            tab_width - (display_col % tab_width)
+            // Tab stops align to absolute column position within the buffer
+            // line, not the screen column — consistent across wrapped rows.
+            tab_width - (abs_col % tab_width)
         } else {
             let gw = UnicodeWidthStr::width(grapheme);
             // Combining marks have display width 0 — advance at least 1 col so
@@ -402,6 +501,7 @@ fn render_content(
 
         if display_col + advance <= col_offset {
             display_col += advance;
+            abs_col += advance;
             char_pos += grapheme.chars().count();
             continue;
         }
@@ -419,6 +519,7 @@ fn render_content(
                 screen_buf.set_string(x + i as u16, y, " ", style);
             }
             display_col += advance;
+            abs_col += advance;
             char_pos += grapheme.chars().count();
             continue;
         }
@@ -457,33 +558,39 @@ fn render_content(
         }
 
         display_col += advance;
+        abs_col += advance;
         char_pos += grapheme.chars().count();
     }
 
-    // After the loop, char_pos == line_end_excl (the '\n' position).
-    // If newline indicators are enabled, draw the newline char before
-    // selection/cursor rendering so it doesn't interfere with cursor visibility.
+    // After the loop, char_pos points to either the '\n' (for the last segment
+    // of a buffer line, or non-wrapped lines) or the start of the next wrapped
+    // segment. EOL rendering (newline indicator, cursor/selection past last
+    // glyph) only applies when we're actually at the newline.
+    let at_newline = editor.doc.buf().char_at(char_pos) == Some('\n')
+        || char_pos == editor.doc.buf().len_chars(); // last line, no trailing \n
     let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
 
-    if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
-        let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
-        let ws_style = compose_whitespace_style(base_style, colors);
-        let mut utf8_buf = [0u8; 4];
-        let s = ws_cfg.chars.newline.encode_utf8(&mut utf8_buf);
-        screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
-    }
+    if at_newline {
+        if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
+            let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
+            let ws_style = compose_whitespace_style(base_style, colors);
+            let mut utf8_buf = [0u8; 4];
+            let s = ws_cfg.chars.newline.encode_utf8(&mut utf8_buf);
+            screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
+        }
 
-    // If any selection's head or range reaches the newline position (cursor on
-    // the newline / empty line), draw a space with the appropriate style so the
-    // cursor is visible past the last glyph.
-    let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
-    let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
-        char_pos >= s.start() && char_pos <= s.end()
-    });
+        // If any selection's head or range reaches the newline position (cursor on
+        // the newline / empty line), draw a space with the appropriate style so the
+        // cursor is visible past the last glyph.
+        let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
+        let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
+            char_pos >= s.start() && char_pos <= s.end()
+        });
 
-    if (eol_is_head || eol_is_selected) && eol_screen_col < width {
-        let style = if eol_is_head { colors.cursor_head } else { colors.selection };
-        screen_buf.set_string(x + eol_screen_col, y, " ", style);
+        if (eol_is_head || eol_is_selected) && eol_screen_col < width {
+            let style = if eol_is_head { colors.cursor_head } else { colors.selection };
+            screen_buf.set_string(x + eol_screen_col, y, " ", style);
+        }
     }
 }
 
@@ -546,6 +653,8 @@ mod tests {
             col_offset: 0,
             tab_width: 4,
             whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+            soft_wrap: false,
+            scroll_sub_offset: 0,
         }
     }
 
@@ -711,6 +820,8 @@ mod tests {
             col_offset: 0,
             tab_width: 4,
             whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+            soft_wrap: false,
+            scroll_sub_offset: 0,
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 5);
@@ -747,6 +858,8 @@ mod tests {
             col_offset: 0,
             tab_width: 4,
             whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+            soft_wrap: false,
+            scroll_sub_offset: 0,
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 20, 3);
@@ -782,7 +895,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -805,7 +918,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
@@ -832,7 +945,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -863,7 +976,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -889,7 +1002,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -913,7 +1026,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 10, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -1003,7 +1116,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default(), soft_wrap: false, scroll_sub_offset: 0 };
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -1404,6 +1517,111 @@ mod tests {
           1 a·→ b·⏎
         ~
          1:1 [scratch]     │ NOR
+        ");
+    }
+
+    // ── Soft-wrap snapshot tests ─────────────────────────────────────────────
+
+    /// Build a ViewState with soft wrap enabled for snapshot tests.
+    fn wrap_view(doc: &Document, width: usize, height: usize) -> ViewState {
+        let buf = doc.buf();
+        ViewState {
+            scroll_offset: 0,
+            height,
+            width,
+            gutter_width: compute_gutter_width(buf.len_lines()),
+            line_number_style: LineNumberStyle::Absolute,
+            col_offset: 0,
+            tab_width: 4,
+            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+            soft_wrap: true,
+            scroll_sub_offset: 0,
+        }
+    }
+
+    #[test]
+    fn render_soft_wrap_no_wrap_needed() {
+        // "abcdefgh" fits in content_width 16 (width 20, gutter 4) — no wrapping.
+        let doc = doc_at("abcdefgh\n", 0);
+        let v = wrap_view(&doc, 20, 3);
+        let out = render_to_string(&editor_for(doc, v), 20, 4);
+        insta::assert_snapshot!(out, @r"
+          1 abcdefgh
+        ~
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_soft_wrap_basic() {
+        // gutter_width = 4, total width 8 → content_width 4.
+        // "abcdefgh" wraps into "abcd" + "efgh".
+        let doc = doc_at("abcdefgh\n", 0);
+        let v = wrap_view(&doc, 8, 4);
+        assert_eq!(v.content_width(), 4);
+        let out = render_to_string(&editor_for(doc, v), 8, 5);
+        insta::assert_snapshot!(out, @r"
+          1 abcd
+          ↪ efgh
+        ~
+        ~
+         1:1 [sc
+        ");
+    }
+
+    #[test]
+    fn render_soft_wrap_mixed_lines() {
+        // "hi" (fits) + "abcdefgh" (wraps to 2 rows at content_width 4).
+        let doc = doc_at("hi\nabcdefgh\n", 0);
+        let v = wrap_view(&doc, 8, 4);
+        let out = render_to_string(&editor_for(doc, v), 8, 5);
+        insta::assert_snapshot!(out, @r"
+          1 hi
+          2 abcd
+          ↪ efgh
+        ~
+         1:1 [sc
+        ");
+    }
+
+    #[test]
+    fn render_soft_wrap_clips_to_height() {
+        // Line wraps to 3 rows but viewport is only 2.
+        let doc = doc_at("abcdefghijkl\n", 0);
+        let v = wrap_view(&doc, 8, 2);
+        let out = render_to_string(&editor_for(doc, v), 8, 3);
+        insta::assert_snapshot!(out, @r"
+          1 abcd
+          ↪ efgh
+         1:1 [sc
+        ");
+    }
+
+    #[test]
+    fn render_soft_wrap_cursor_on_continuation() {
+        // Cursor at char 6 ('g') → second wrapped row.
+        let doc = doc_at("abcdefgh\n", 6);
+        let v = wrap_view(&doc, 8, 3);
+        let out = render_to_string(&editor_for(doc, v), 8, 4);
+        insta::assert_snapshot!(out, @r"
+          1 abcd
+          ↪ efgh
+        ~
+         1:7 [sc
+        ");
+    }
+
+    #[test]
+    fn render_soft_wrap_empty_buffer() {
+        let doc = doc_at("\n", 0);
+        let v = wrap_view(&doc, 20, 3);
+        let out = render_to_string(&editor_for(doc, v), 20, 4);
+        insta::assert_snapshot!(out, @r"
+          1
+        ~
+        ~
+         1:1 [scratch]│ NOR
         ");
     }
 }

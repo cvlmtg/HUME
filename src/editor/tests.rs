@@ -21,6 +21,8 @@ fn editor_from(input: &str) -> Editor {
         col_offset: 0,
         tab_width: 4,
         whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+        soft_wrap: false,
+        scroll_sub_offset: 0,
     };
     Editor {
         doc: Document::new(buf, sels),
@@ -1952,6 +1954,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
         col_offset: 0,
         tab_width: 4,
         whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+        soft_wrap: false,
+        scroll_sub_offset: 0,
     };
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc, view);
@@ -2126,6 +2130,8 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
         col_offset: 0,
         tab_width: 4,
         whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
+        soft_wrap: false,
+        scroll_sub_offset: 0,
     };
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc, view);
