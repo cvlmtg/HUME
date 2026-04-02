@@ -156,14 +156,14 @@ impl ViewState {
         }
 
         let margin = SCROLL_MARGIN.min(self.height / 2);
-        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
+        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, self);
 
         // ── Cursor above the viewport ────────────────────────────────────────
         if cursor_line < self.scroll_offset
             || (cursor_line == self.scroll_offset && cursor_sub < self.scroll_sub_offset)
         {
             // Place the viewport so `margin` rows appear above the cursor.
-            self.scroll_backward_from_cursor(buf, content_width, cursor_line, cursor_sub, margin);
+            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, margin);
             return;
         }
 
@@ -173,7 +173,7 @@ impl ViewState {
         // bottom margin. This keeps the scan O(height) instead of O(N).
         let mut display_row: usize = 0;
         for line_idx in self.scroll_offset..=cursor_line {
-            let rows = count_visual_rows(buf, line_idx, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
+            let rows = count_visual_rows(buf, line_idx, self);
             let skip = if line_idx == self.scroll_offset { self.scroll_sub_offset } else { 0 };
             if line_idx == cursor_line {
                 // cursor_sub < skip would mean the cursor is in a row that
@@ -196,7 +196,7 @@ impl ViewState {
             // Walk backward from the cursor to place it `target_row` rows from
             // the top. Symmetric to the above-viewport path, always O(height).
             let target_row = self.height.saturating_sub(margin).saturating_sub(1);
-            self.scroll_backward_from_cursor(buf, content_width, cursor_line, cursor_sub, target_row);
+            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, target_row);
         }
     }
 
@@ -209,7 +209,6 @@ impl ViewState {
     fn scroll_backward_from_cursor(
         &mut self,
         buf: &Buffer,
-        content_width: usize,
         cursor_line: usize,
         cursor_sub: usize,
         target_rows: usize,
@@ -223,7 +222,7 @@ impl ViewState {
                 rows_above += 1;
             } else if self.scroll_offset > 0 {
                 self.scroll_offset -= 1;
-                let rows = count_visual_rows(buf, self.scroll_offset, content_width, self.tab_width, self.word_wrap, self.indent_wrap);
+                let rows = count_visual_rows(buf, self.scroll_offset, self);
                 if rows_above + rows > target_rows {
                     // Don't overshoot — start partway through this line.
                     self.scroll_sub_offset = rows - (target_rows - rows_above);
@@ -534,9 +533,8 @@ mod tests {
         assert_eq!(v.scroll_offset, 0);
         assert!(v.scroll_sub_offset > 0, "sub-offset should advance within the long line");
         // Cursor must be in view.
-        let content_width = v.content_width();
         let cursor_line = buf.char_to_line(cursor_char);
-        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, content_width, v.tab_width, v.word_wrap, v.indent_wrap);
+        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, &v);
         assert!(cursor_sub >= v.scroll_sub_offset);
         assert!(cursor_sub - v.scroll_sub_offset < v.height);
     }

@@ -440,39 +440,29 @@ fn compute_segments_full(
 }
 
 /// How many visual rows buffer line `line_idx` occupies when wrapped.
-///
-/// `word_wrap` and `indent_wrap` must match the view settings so that the
-/// segment count matches what the renderer produces.
-pub(crate) fn count_visual_rows(
-    buf: &Buffer,
-    line_idx: usize,
-    content_width: usize,
-    tab_width: usize,
-    word_wrap: bool,
-    indent_wrap: bool,
-) -> usize {
+pub(crate) fn count_visual_rows(buf: &Buffer, line_idx: usize, view: &ViewState) -> usize {
     let mut scratch = Vec::new();
-    compute_segments_full(buf, line_idx, content_width, tab_width, true, word_wrap, indent_wrap, &mut scratch);
+    compute_segments_full(
+        buf, line_idx, view.content_width(), view.tab_width,
+        true, view.word_wrap, view.indent_wrap, &mut scratch,
+    );
     scratch.len()
 }
 
 /// Which wrapped sub-row of buffer line `line_idx` contains `cursor_char`.
 ///
 /// Returns 0 for the first (or only) row, 1 for the first continuation, etc.
-///
-/// `word_wrap` and `indent_wrap` must match the view settings so that the
-/// sub-row index agrees with what the renderer renders.
 pub(crate) fn cursor_sub_row(
     buf: &Buffer,
     line_idx: usize,
     cursor_char: usize,
-    content_width: usize,
-    tab_width: usize,
-    word_wrap: bool,
-    indent_wrap: bool,
+    view: &ViewState,
 ) -> usize {
     let mut scratch = Vec::new();
-    compute_segments_full(buf, line_idx, content_width, tab_width, true, word_wrap, indent_wrap, &mut scratch);
+    compute_segments_full(
+        buf, line_idx, view.content_width(), view.tab_width,
+        true, view.word_wrap, view.indent_wrap, &mut scratch,
+    );
     for (i, seg) in scratch.iter().enumerate() {
         let is_last = i + 1 == scratch.len();
         // The cursor is in this segment if it falls in [char_start, char_end),
@@ -896,14 +886,17 @@ mod tests {
     #[test]
     fn count_rows_short_line() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(count_visual_rows(&buf, 0, 80, 4, false, false), 1);
+        // gutter width = 4 (default, 1-line buf), so total width 84 → content 80.
+        let view = make_view(&buf, 0, 10, 84, true);
+        assert_eq!(count_visual_rows(&buf, 0, &view), 1);
     }
 
     #[test]
     fn count_rows_wrapped() {
         let buf = Buffer::from("abcdefghijklmno\n");
-        // 15 chars, width 5 → 3 rows.
-        assert_eq!(count_visual_rows(&buf, 0, 5, 4, false, false), 3);
+        // 15 chars, content_width 5 → 3 rows. Total width = 5 + 4 = 9.
+        let view = make_view(&buf, 0, 10, 9, true);
+        assert_eq!(count_visual_rows(&buf, 0, &view), 3);
     }
 
     // ── cursor_sub_row ────────────────────────────────────────────────────────
@@ -911,25 +904,28 @@ mod tests {
     #[test]
     fn sub_row_no_wrap() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 80, 4, false, false), 0);
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 80, 4, false, false), 0);
+        let view = make_view(&buf, 0, 10, 84, true); // content_width = 80
+        assert_eq!(cursor_sub_row(&buf, 0, 0, &view), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 4, &view), 0);
     }
 
     #[test]
     fn sub_row_wrapped() {
         let buf = Buffer::from("abcdefghij\n");
-        // Width 5 → segs: (0,5), (5,10).
-        assert_eq!(cursor_sub_row(&buf, 0, 0, 5, 4, false, false), 0); // 'a'
-        assert_eq!(cursor_sub_row(&buf, 0, 4, 5, 4, false, false), 0); // 'e'
-        assert_eq!(cursor_sub_row(&buf, 0, 5, 5, 4, false, false), 1); // 'f'
-        assert_eq!(cursor_sub_row(&buf, 0, 9, 5, 4, false, false), 1); // 'j'
+        // content_width = 5, total width = 9.
+        let view = make_view(&buf, 0, 10, 9, true);
+        assert_eq!(cursor_sub_row(&buf, 0, 0, &view), 0); // 'a'
+        assert_eq!(cursor_sub_row(&buf, 0, 4, &view), 0); // 'e'
+        assert_eq!(cursor_sub_row(&buf, 0, 5, &view), 1); // 'f'
+        assert_eq!(cursor_sub_row(&buf, 0, 9, &view), 1); // 'j'
     }
 
     #[test]
     fn sub_row_at_newline_is_last_segment() {
         let buf = Buffer::from("abcdefghij\n");
         // '\n' at position 10 belongs to the last segment.
-        assert_eq!(cursor_sub_row(&buf, 0, 10, 5, 4, false, false), 1);
+        let view = make_view(&buf, 0, 10, 9, true);
+        assert_eq!(cursor_sub_row(&buf, 0, 10, &view), 1);
     }
 
     // ── cursor_visual_pos ────────────────────────────────────────────────────

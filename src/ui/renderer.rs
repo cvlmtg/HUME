@@ -66,6 +66,9 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     // descriptors and draws gutter + content for each.
 
     let mut last_rendered_row: Option<usize> = None;
+    // Reused across rows to avoid a heap allocation per row. Cleared and
+    // refilled by render_row_content on every call.
+    let mut sels_scratch: Vec<Selection> = Vec::new();
 
     for vrow in DocumentFormatter::new(buf, &editor.view) {
         let y = area.y + vrow.row as u16;
@@ -100,7 +103,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
             };
             screen_buf.set_style(Rect::new(lay.content.x, y, indent, 1), indent_style);
         }
-        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, content_x, y, content_w);
+        render_row_content(screen_buf, editor, &highlights, &vrow, cursor_line, content_x, y, content_w, &mut sels_scratch);
 
         last_rendered_row = Some(vrow.row);
     }
@@ -316,6 +319,7 @@ fn render_row_content(
     x: u16,
     y: u16,
     width: u16,
+    sels_scratch: &mut Vec<Selection>,
 ) {
     let buf = editor.doc.buf();
     let mode = editor.mode;
@@ -327,14 +331,16 @@ fn render_row_content(
     // last segment; = first char of next segment for intermediate wrap rows).
     let line_end_excl = vrow.char_end;
 
-    // Collect selections that overlap this display row once, so the per-grapheme
-    // style check iterates a small local slice rather than the full set.
-    // Selection is Copy (two usizes), and count per row is typically 1.
-    let sels_on_line: Vec<Selection> = sels
-        .iter_sorted()
-        .filter(|s| s.end() >= char_offset && s.start() <= line_end_excl)
-        .copied()
-        .collect();
+    // Collect selections that overlap this display row into the caller-provided
+    // buffer. Reusing the allocation avoids a heap alloc per row (40-60×/frame).
+    // Selection is Copy (two usizes), count per row is typically 1.
+    sels_scratch.clear();
+    sels_scratch.extend(
+        sels.iter_sorted()
+            .filter(|s| s.end() >= char_offset && s.start() <= line_end_excl)
+            .copied(),
+    );
+    let sels_on_line = &*sels_scratch;
 
     // Whether this row is the primary cursor's row. Used for cursor-line bg tint.
     // Continuation rows share the buffer line of the first segment.
