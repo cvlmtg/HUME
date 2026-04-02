@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::core::buffer::Buffer;
-use crate::core::grapheme::{display_col_in_line, grapheme_advance};
+use crate::core::grapheme::grapheme_advance;
 use crate::helpers::line_end_exclusive;
 use crate::ui::view::ViewState;
 
@@ -68,6 +68,14 @@ pub(crate) struct VisualRow {
     /// line's own indent level (capped at `content_width / 3`), matching the
     /// visual indent of the line's first row.
     pub visual_indent: usize,
+
+    /// First char offset in this segment that is part of trailing whitespace.
+    ///
+    /// Any char at `char_pos >= trailing_ws_start` is trailing whitespace.
+    /// Computed for free during the wrap-break grapheme walk. Set to
+    /// `usize::MAX` for non-wrapped rows (the no-wrap fast path skips the
+    /// grapheme walk) — the renderer must scan for itself in that case.
+    pub trailing_ws_start: usize,
 }
 
 // ── LineSegment ───────────────────────────────────────────────────────────────
@@ -83,6 +91,12 @@ pub(crate) struct LineSegment {
     pub char_end: usize,
     pub col_offset_in_line: usize,
     pub visual_indent: usize,
+    /// First char offset in this segment that is part of trailing whitespace.
+    ///
+    /// Any char at `char_pos >= trailing_ws_start` is trailing whitespace.
+    /// Set to `usize::MAX` for segments computed without a grapheme walk
+    /// (the no-wrap fast path) — the renderer must scan for itself in that case.
+    pub trailing_ws_start: usize,
 }
 
 // ── DocumentFormatter ─────────────────────────────────────────────────────────
@@ -235,6 +249,7 @@ impl<'buf> Iterator for DocumentFormatter<'buf> {
             char_end: seg.char_end,
             col_offset_in_line: seg.col_offset_in_line,
             visual_indent: seg.visual_indent,
+            trailing_ws_start: seg.trailing_ws_start,
         };
 
         self.visual_row += 1;
@@ -283,7 +298,7 @@ fn compute_segments_full(
     let (line_start, content_end) = line_content_range(buf, line_idx);
 
     if !soft_wrap || content_width == 0 || line_start == content_end {
-        out.push(LineSegment { char_start: line_start, char_end: content_end, col_offset_in_line: 0, visual_indent: 0 });
+        out.push(LineSegment { char_start: line_start, char_end: content_end, col_offset_in_line: 0, visual_indent: 0, trailing_ws_start: usize::MAX });
         return;
     }
 
@@ -319,6 +334,12 @@ fn compute_segments_full(
     let mut char_pos = line_start;
     let mut is_first_seg = true;
 
+    // Trailing-whitespace tracking: the char position just past the last
+    // non-whitespace grapheme seen in the current segment. Initialized to
+    // seg_start so that a segment with no non-ws content has
+    // trailing_ws_start == seg_start (= everything is trailing).
+    let mut last_non_ws_end = line_start;
+
     // Word-boundary state: track the start of the current word so we can break
     // before it rather than mid-grapheme when `word_wrap` is enabled.
     let mut last_word_start_char: usize = line_start;
@@ -328,7 +349,13 @@ fn compute_segments_full(
 
     for grapheme in cow.graphemes(true) {
         let advance = grapheme_advance(grapheme, abs_col, tab_width);
+        let char_len = grapheme.chars().count();
         let is_ws = grapheme.chars().all(|c| c.is_whitespace());
+
+        // Track the end of the last non-whitespace grapheme for trailing_ws_start.
+        if !is_ws {
+            last_non_ws_end = char_pos + char_len;
+        }
 
         // Track word start for word-boundary breaks.
         if word_wrap {
@@ -360,9 +387,11 @@ fn compute_segments_full(
                     char_end: last_word_start_char,
                     col_offset_in_line: seg_start_col,
                     visual_indent: vi,
+                    trailing_ws_start: last_non_ws_end,
                 });
                 seg_start = last_word_start_char;
                 seg_start_col = last_word_start_abs_col;
+                last_non_ws_end = seg_start;
                 // Recalculate seg_col: columns occupied by the word so far
                 // (from word_start up to char_pos, not yet including this grapheme).
                 seg_col = abs_col - last_word_start_abs_col;
@@ -381,9 +410,11 @@ fn compute_segments_full(
                         char_end: char_pos,
                         col_offset_in_line: seg_start_col,
                         visual_indent: indent_col,
+                        trailing_ws_start: last_non_ws_end,
                     });
                     seg_start = char_pos;
                     seg_start_col = abs_col;
+                    last_non_ws_end = seg_start;
                     seg_col = 0;
                     last_word_start_char = seg_start;
                     last_word_start_abs_col = seg_start_col;
@@ -395,9 +426,11 @@ fn compute_segments_full(
                     char_end: char_pos,
                     col_offset_in_line: seg_start_col,
                     visual_indent: vi,
+                    trailing_ws_start: last_non_ws_end,
                 });
                 seg_start = char_pos;
                 seg_start_col = abs_col;
+                last_non_ws_end = seg_start;
                 seg_col = 0;
                 is_first_seg = false;
                 if word_wrap {
@@ -411,7 +444,7 @@ fn compute_segments_full(
 
         seg_col += advance;
         abs_col += advance;
-        char_pos += grapheme.chars().count();
+        char_pos += char_len;
     }
 
     // Final segment (always emitted — the loop above only pushes on overflow).
@@ -420,6 +453,7 @@ fn compute_segments_full(
         char_end: content_end,
         col_offset_in_line: seg_start_col,
         visual_indent: if is_first_seg { 0 } else { indent_col },
+        trailing_ws_start: last_non_ws_end,
     });
 }
 
@@ -490,9 +524,9 @@ pub(crate) fn compute_segments_for_line(
 /// Find the screen position `(visual_col, visual_row)` of a buffer char offset.
 ///
 /// Scans the formatter output to find which visual row contains `cursor_char`,
-/// then uses [`display_col_in_line`] for the column — the same utility the
-/// renderer uses, eliminating any divergence between rendering and cursor
-/// placement.
+/// then walks graphemes from the segment's `char_start` (seeded with
+/// `col_offset_in_line`) to compute the column. This is at most one segment's
+/// worth of graphemes — never a full-line walk.
 ///
 /// Returns `None` if the cursor is outside the viewport (scrolled out of view).
 pub(crate) fn cursor_visual_pos(
@@ -508,8 +542,17 @@ pub(crate) fn cursor_visual_pos(
             && (cursor_char < vrow.char_end || (cursor_char == vrow.char_end && vrow.is_last_segment));
 
         if in_row {
-            let line_idx = buf.char_to_line(vrow.char_start);
-            let abs_col = display_col_in_line(buf, line_idx, cursor_char, view.tab_width);
+            // Walk graphemes only from this segment's start to cursor_char,
+            // seeding abs_col from col_offset_in_line. This is at most one
+            // segment's worth of graphemes — far cheaper than display_col_in_line
+            // which walks from the beginning of the buffer line.
+            let tab_width = view.tab_width.max(1);
+            let seg_slice = buf.slice(vrow.char_start..cursor_char);
+            let seg_cow: Cow<str> = seg_slice.into();
+            let mut abs_col = vrow.col_offset_in_line;
+            for g in seg_cow.graphemes(true) {
+                abs_col += grapheme_advance(g, abs_col, tab_width);
+            }
             // visual_col is the screen column within the content area:
             // visual_indent accounts for the indent padding on continuation rows.
             let visual_col = abs_col.saturating_sub(vrow.col_offset_in_line) + vrow.visual_indent;
