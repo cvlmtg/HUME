@@ -67,7 +67,7 @@ character, which may be composed of multiple Unicode scalar values.
 
 Pressing the right-arrow key on `"👨‍👩‍👧"` should advance the cursor past the
 entire emoji in one step, not stop five times. This is the job of
-`grapheme.rs`: it takes a `RopeSlice` and returns the next/previous **valid
+`grapheme.rs`: it takes a `&Buffer` and returns the next/previous **valid
 grapheme boundary** as a char offset.
 
 ## Architectural rule

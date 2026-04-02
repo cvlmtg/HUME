@@ -12,14 +12,14 @@ Vim and Helix distinguish two kinds of "word":
 In `helpers.rs`, this is captured by `CharClass` and two boundary predicates:
 
 ```rust
-pub enum CharClass { Word, Punctuation, Space, Eol }
+pub(crate) enum CharClass { Word, Punctuation, Space, Eol }
 
 // word: any class change is a boundary
-fn is_word_boundary(a: CharClass, b: CharClass) -> bool { a != b }
+pub(crate) fn is_word_boundary(a: CharClass, b: CharClass) -> bool { a != b }
 
 // WORD: treat Punctuation as Word — only whitespace/Eol changes count
-fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
-    let merge = |c| if c == Punctuation { Word } else { c };
+pub(crate) fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
+    let merge = |c: CharClass| if c == CharClass::Punctuation { CharClass::Word } else { c };
     merge(a) != merge(b)
 }
 ```

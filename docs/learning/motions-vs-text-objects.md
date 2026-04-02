@@ -38,7 +38,7 @@ that converge to the same range.
 fn move_right(buf: &Buffer, head: usize) -> usize { ... }
 
 // Text object inner function: position → Option<(start, end)>
-fn inner_word(buf: &Buffer, pos: usize) -> Option<(usize, usize)> { ... }
+fn inner_word_impl(buf: &Buffer, pos: usize) -> Option<(usize, usize)> { ... }
 ```
 
 Returning `Option` from a text object inner function means "no match at this
