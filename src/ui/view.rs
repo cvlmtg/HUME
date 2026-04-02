@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
-use crate::core::grapheme::display_col_in_line;
+use crate::core::grapheme::{display_col_in_line, grapheme_advance};
 use crate::ui::display_line::DisplayLine;
 use crate::ui::whitespace::WhitespaceConfig;
 use crate::helpers::line_end_exclusive;
@@ -160,11 +159,7 @@ fn wrap_line(
     let mut char_pos = line_start;
 
     for grapheme in cow.graphemes(true) {
-        let advance = if grapheme == "\t" {
-            tab_width - (abs_col % tab_width)
-        } else {
-            UnicodeWidthStr::width(grapheme).max(1)
-        };
+        let advance = grapheme_advance(grapheme, abs_col, tab_width);
 
         // Would this grapheme exceed the segment width?
         if seg_col + advance > content_width && seg_col > 0 {
@@ -179,9 +174,6 @@ fn wrap_line(
         char_pos += grapheme.chars().count();
     }
 
-    // Push the final segment (may be empty if the last grapheme exactly
-    // filled the previous segment — that can't happen because we only wrap
-    // *before* writing, but guard anyway).
     if seg_start <= content_end {
         segments.push((seg_start, char_pos));
     }
@@ -324,34 +316,35 @@ impl ViewState {
         result
     }
 
-    /// Adjust `scroll_offset` so the primary cursor's line stays visible.
+    /// Adjust `scroll_offset` (and `scroll_sub_offset` when soft-wrapping)
+    /// so the primary cursor stays visible in the viewport.
     ///
-    /// Maintains a margin of [`SCROLL_MARGIN`] lines between the cursor and
-    /// the top/bottom edges of the viewport. If the viewport is very short
-    /// the margin is halved to avoid thrashing.
-    ///
-    /// The caller provides `cursor_line` (the 0-based buffer line of the
-    /// primary cursor) so that the event loop can compute it once and share
-    /// it with [`ensure_cursor_visible_horizontal`].
-    pub(crate) fn ensure_cursor_visible(&mut self, cursor_line: usize) {
+    /// Dispatches to a simple buffer-line check when wrapping is off, or to
+    /// a display-row-counting algorithm when wrapping is on.
+    pub(crate) fn ensure_cursor_visible(&mut self, buf: &Buffer, cursor_char: usize) {
+        if self.soft_wrap {
+            self.ensure_cursor_visible_wrapped(buf, cursor_char);
+        } else {
+            let cursor_line = buf.char_to_line(cursor_char);
+            self.ensure_cursor_visible_unwrapped(cursor_line);
+        }
+    }
+
+    /// Non-wrapped scroll adjustment: simple buffer-line arithmetic with margin.
+    fn ensure_cursor_visible_unwrapped(&mut self, cursor_line: usize) {
         let margin = SCROLL_MARGIN.min(self.height / 2);
 
         if cursor_line < self.scroll_offset + margin {
-            // Cursor is above (or near) the top edge — scroll up.
             self.scroll_offset = cursor_line.saturating_sub(margin);
         } else if self.height > 0 && cursor_line >= self.scroll_offset + self.height - margin {
-            // Cursor is below (or near) the bottom edge — scroll down.
             self.scroll_offset = cursor_line.saturating_sub(self.height - margin - 1);
         }
     }
 
-    /// Adjust `scroll_offset` and `scroll_sub_offset` for soft-wrapped display.
-    ///
-    /// Accounts for the fact that a single buffer line may occupy multiple
-    /// display rows. Counts display rows from the current scroll position to
-    /// the cursor's sub-row, then adjusts so the cursor sits within the
-    /// viewport with [`SCROLL_MARGIN`] breathing room.
-    pub(crate) fn ensure_cursor_visible_wrapped(&mut self, buf: &Buffer, cursor_char: usize) {
+    /// Wrapped scroll adjustment: accounts for buffer lines spanning multiple
+    /// display rows. Counts rows from the scroll position to the cursor's
+    /// sub-row and adjusts so the cursor sits within the viewport with margin.
+    fn ensure_cursor_visible_wrapped(&mut self, buf: &Buffer, cursor_char: usize) {
         let cursor_line = buf.char_to_line(cursor_char);
         let content_width = self.content_width();
         if content_width == 0 || self.height == 0 {
@@ -599,7 +592,8 @@ mod tests {
     fn cursor_visible_no_scroll_needed() {
         let buf = Buffer::from("a\nb\nc\nd\ne\n");
         let mut v = view(0, 10, &buf);
-        v.ensure_cursor_visible(2);
+        // Cursor on line 2 (char offset = 4: "a\nb\n" = 4 chars).
+        v.ensure_cursor_visible(&buf, buf.line_to_char(2));
         assert_eq!(v.scroll_offset, 0); // cursor is well within viewport
     }
 
@@ -608,7 +602,7 @@ mod tests {
         let buf = Buffer::from("a\nb\nc\nd\ne\nf\ng\nh\n");
         // Viewport shows lines 0..5, cursor is on line 7 (below).
         let mut v = view(0, 5, &buf);
-        v.ensure_cursor_visible(7);
+        v.ensure_cursor_visible(&buf, buf.line_to_char(7));
         // After scroll the cursor should be within viewport with margin.
         assert!(7 >= v.scroll_offset);
         assert!(7 < v.scroll_offset + v.height);
@@ -619,7 +613,7 @@ mod tests {
         let buf = Buffer::from("a\nb\nc\nd\ne\nf\ng\nh\n");
         // Viewport starts at line 5, cursor is on line 1 (above).
         let mut v = view(5, 5, &buf);
-        v.ensure_cursor_visible(1);
+        v.ensure_cursor_visible(&buf, buf.line_to_char(1));
         assert!(1 >= v.scroll_offset);
         assert!(1 < v.scroll_offset + v.height);
     }
@@ -628,7 +622,7 @@ mod tests {
     fn cursor_at_top_of_buffer_scroll_offset_is_zero() {
         let buf = Buffer::from("a\nb\nc\n");
         let mut v = view(2, 5, &buf); // scrolled down
-        v.ensure_cursor_visible(0);
+        v.ensure_cursor_visible(&buf, 0);
         assert_eq!(v.scroll_offset, 0);
     }
 
