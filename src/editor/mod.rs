@@ -13,6 +13,8 @@ use crate::io::FileMeta;
 use crate::core::history::RevisionId;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
+use crate::ops::text_object::find_bracket_pair;
+use crate::ui::highlight::{HighlightKind, HighlightMap};
 use crate::ui::renderer::{cursor_style, render};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::StatusLineConfig;
@@ -289,6 +291,14 @@ pub(crate) struct Editor {
     // ── Search ────────────────────────────────────────────────────────────────
     pub(super) search: SearchState,
 
+    // ── Per-frame highlights ──────────────────────────────────────────────────
+    /// Pre-computed highlight map for the current frame (bracket match, search).
+    ///
+    /// Updated by [`update_highlight_cache`] once per event-loop iteration,
+    /// after scroll is resolved and before `term.draw`. The renderer reads
+    /// this directly — no highlight logic runs inside the render path.
+    pub(crate) highlights: HighlightMap,
+
     // ── Select (s) ───────────────────────────────────────────────────────────
     /// Snapshot of selections taken when entering Select mode (`select-within`).
     /// Restored on cancel; discarded on confirm.
@@ -385,6 +395,7 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
+            highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
         })
@@ -415,9 +426,9 @@ impl Editor {
             self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels(), cursor_line);
 
             // ── 4. Render ─────────────────────────────────────────────────────
-            // All mutations are done above. Rust allows a shared reborrow of
-            // `self` here since no mutable reference is live at this point.
-            // Highlights (bracket match, etc.) are computed inside render().
+            // All mutations are done above. Highlights are pre-computed once
+            // here so the render closure only reads state — no logic inside draw.
+            self.update_highlight_cache();
             term.draw(|frame| {
                 let cursor = render(self, frame.area(), frame.buffer_mut());
                 if let Some(pos) = cursor.pos {
@@ -485,6 +496,46 @@ impl Editor {
             self.search.match_count = Some(search_match_info(&self.search.matches, head));
             self.search.cache_head = head;
         }
+    }
+
+    /// Recompute and cache the per-frame highlight map.
+    ///
+    /// Called once per event-loop iteration, after scroll is resolved and before
+    /// `term.draw`. Bracket matching is suppressed in Insert mode — the bar
+    /// cursor doesn't "sit on" a character the same way a block cursor does.
+    pub(crate) fn update_highlight_cache(&mut self) {
+        if self.mode == Mode::Insert {
+            self.highlights = HighlightMap::new().build();
+            return;
+        }
+
+        let head = self.doc.sels().primary().head;
+        let mut hl = HighlightMap::new();
+
+        // ── Search match highlights ───────────────────────────────────────────
+        for &(start, end_incl) in self.search.matches() {
+            hl.push(start, end_incl, HighlightKind::SearchMatch);
+        }
+
+        // ── Bracket match highlight ───────────────────────────────────────────
+        if let Some(ch) = self.doc.buf().char_at(head) {
+            let pair = match ch {
+                '(' | ')' => Some(('(', ')')),
+                '[' | ']' => Some(('[', ']')),
+                '{' | '}' => Some(('{', '}')),
+                '<' | '>' => Some(('<', '>')),
+                _ => None,
+            };
+            if let Some((open, close)) = pair
+                && let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close)
+            {
+                // Highlight the OTHER bracket — the cursor already marks the one it's on.
+                let match_pos = if head == op { cp } else { op };
+                hl.push(match_pos, match_pos, HighlightKind::BracketMatch);
+            }
+        }
+
+        self.highlights = hl.build();
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
@@ -582,6 +633,7 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
+            highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
         }

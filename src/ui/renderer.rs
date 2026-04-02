@@ -6,14 +6,13 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::core::grapheme::grapheme_advance;
-use crate::core::selection::Selection;
-use crate::editor::{Editor, Mode};
-use crate::ops::text_object::find_bracket_pair;
-use crate::ui::formatter::{DocumentFormatter, VisualRow, cursor_visual_pos, line_content_range};
-use crate::ui::highlight::{HighlightKind, HighlightMap};
-use crate::ui::theme::EditorColors;
 use crate::core::buffer::Buffer;
+use crate::core::grapheme::grapheme_advance;
+use crate::core::selection::{Selection, SelectionSet};
+use crate::editor::{Editor, Mode};
+use crate::ui::formatter::{DocumentFormatter, VisualRow, cursor_visual_pos, line_content_range};
+use crate::ui::highlight::HighlightMap;
+use crate::ui::theme::EditorColors;
 use crate::ui::whitespace::{WhitespaceConfig, WhitespaceShow};
 use crate::ui::statusline::render_bottom_row;
 
@@ -56,8 +55,18 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     let buf = editor.doc.buf();
     let total_lines = buf.len_lines().saturating_sub(1);
     let lay = layout(area, editor.view.gutter_width() as u16);
-    let highlights = compute_highlights(editor);
     let cursor_line = buf.char_to_line(editor.doc.sels().primary().head);
+
+    let ctx = FrameContext {
+        buf,
+        sels: editor.doc.sels(),
+        mode: editor.mode,
+        colors: &editor.colors,
+        highlights: &editor.highlights,
+        col_offset: editor.view.col_offset,
+        tab_width: editor.view.tab_width.max(1),
+        ws_cfg: &editor.view.whitespace,
+    };
 
     // ── Content rows via DocumentFormatter ───────────────────────────────────
     //
@@ -125,7 +134,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
             };
             screen_buf.set_style(Rect::new(lay.content.x, y, indent, 1), indent_style);
         }
-        render_row_content(screen_buf, editor, &highlights, &vrow, line_idx == cursor_line, content_x, y, content_w, &mut sels_scratch, segment_str);
+        render_row_content(screen_buf, &ctx, &vrow, line_idx == cursor_line, content_x, y, content_w, &mut sels_scratch, segment_str);
 
         last_rendered_row = Some(vrow.row);
     }
@@ -175,52 +184,22 @@ fn layout(area: Rect, gutter_width: u16) -> Layout {
     Layout { gutter, content, statusline }
 }
 
-// ── Highlights ────────────────────────────────────────────────────────────────
+// ── FrameContext ──────────────────────────────────────────────────────────────
 
-/// Compute per-frame highlights from editor state.
+/// Per-frame rendering state extracted from [`Editor`] at the start of [`render`].
 ///
-/// Produces bracket-match highlights when the primary cursor sits on a bracket
-/// in Normal or Search mode. Insert mode suppresses bracket matching — the bar
-/// cursor doesn't "sit on" a character the same way.
-///
-/// When a search regex is cached (during Search mode or after confirming a
-/// search for use with `n`/`N`), all match ranges are highlighted with
-/// `editor.colors.search_match`. The primary match is already shown as a
-/// selection, so overlapping search highlights will be visually overridden by
-/// the selection/cursor colors in [`resolve_style`].
-fn compute_highlights(editor: &Editor) -> HighlightMap {
-    if editor.mode == Mode::Insert {
-        // Zero allocation: building an empty map is trivial.
-        return HighlightMap::new().build();
-    }
-
-    let head = editor.doc.sels().primary().head;
-    let mut hl = HighlightMap::new();
-
-    // ── Search match highlights ───────────────────────────────────────────────
-    for &(start, end_incl) in editor.search.matches() {
-        hl.push(start, end_incl, HighlightKind::SearchMatch);
-    }
-
-    // ── Bracket match highlight ───────────────────────────────────────────────
-    if let Some(ch) = editor.doc.buf().char_at(head) {
-        let pair = match ch {
-            '(' | ')' => Some(('(', ')')),
-            '[' | ']' => Some(('[', ']')),
-            '{' | '}' => Some(('{', '}')),
-            '<' | '>' => Some(('<', '>')),
-            _ => None,
-        };
-        if let Some((open, close)) = pair
-            && let Some((op, cp)) = find_bracket_pair(editor.doc.buf(), head, open, close)
-        {
-            // Highlight the OTHER bracket — the cursor already marks the one it's on.
-            let match_pos = if head == op { cp } else { op };
-            hl.push(match_pos, match_pos, HighlightKind::BracketMatch);
-        }
-    }
-
-    hl.build()
+/// Bundles the read-only values that every row needs, extracted once before the
+/// formatter loop. This avoids passing `&Editor` into `render_row_content` and
+/// makes the renderer's dependency on editor state explicit and minimal.
+struct FrameContext<'a> {
+    buf: &'a Buffer,
+    sels: &'a SelectionSet,
+    mode: Mode,
+    colors: &'a EditorColors,
+    highlights: &'a HighlightMap,
+    col_offset: usize,
+    tab_width: usize,
+    ws_cfg: &'a WhitespaceConfig,
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
@@ -402,7 +381,7 @@ fn draw_cell(
 /// segment of a buffer line. No-ops for soft-wrap continuation rows.
 fn render_eol(
     screen_buf: &mut ScreenBuf,
-    buf: &Buffer,
+    ctx: &FrameContext,
     vrow: &VisualRow,
     char_pos: usize,
     eol_screen_col: u16,
@@ -410,19 +389,20 @@ fn render_eol(
     y: u16,
     width: u16,
     is_cursor_line_row: bool,
-    show_sels: bool,
     sels_on_line: &[Selection],
-    ws_cfg: &WhitespaceConfig,
-    colors: &EditorColors,
 ) {
     // EOL rendering only applies to the last segment of a buffer line.
     // After the grapheme loop, char_pos sits on '\n' or past the last char.
     if !vrow.is_last_segment {
         return;
     }
-    if buf.char_at(char_pos) != Some('\n') && char_pos != buf.len_chars() {
+    if ctx.buf.char_at(char_pos) != Some('\n') && char_pos != ctx.buf.len_chars() {
         return;
     }
+
+    let colors = ctx.colors;
+    let ws_cfg = ctx.ws_cfg;
+    let show_sels = ctx.mode != Mode::Insert;
 
     if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
         let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
@@ -466,8 +446,7 @@ fn render_eol(
 /// determining wrap break points, so we get it for free.
 fn render_row_content(
     screen_buf: &mut ScreenBuf,
-    editor: &Editor,
-    highlights: &HighlightMap,
+    ctx: &FrameContext,
     vrow: &VisualRow,
     is_cursor_line_row: bool,
     x: u16,
@@ -476,10 +455,9 @@ fn render_row_content(
     sels_scratch: &mut Vec<Selection>,
     content: &str,
 ) {
-    let buf = editor.doc.buf();
-    let mode = editor.mode;
-    let colors = &editor.colors;
-    let sels = editor.doc.sels();
+    let mode = ctx.mode;
+    let colors = ctx.colors;
+    let sels = ctx.sels;
     let char_offset = vrow.char_start;
 
     // vrow.char_end is the exclusive end of content (= position of '\n' for the
@@ -507,9 +485,9 @@ fn render_row_content(
     // Show selections in Normal and Search mode; suppress in Insert mode
     // (the bar cursor handles visual feedback there).
     let show_sels = mode != Mode::Insert;
-    let col_offset = editor.view.col_offset;
-    let tab_width = editor.view.tab_width.max(1);
-    let ws_cfg = &editor.view.whitespace;
+    let col_offset = ctx.col_offset;
+    let tab_width = ctx.tab_width;
+    let ws_cfg = ctx.ws_cfg;
     let mut display_col: usize = 0;
     // `abs_col` = absolute display column from the buffer line's first char.
     // The formatter pre-computed this as `vrow.col_offset_in_line` — we get it
@@ -532,7 +510,7 @@ fn render_row_content(
         // its first column is before col_offset but later columns are visible.
         // Render placeholder spaces so the partial char appears as a gap.
         if display_col < col_offset {
-            let style = resolve_style(char_pos, colors, highlights, sels_on_line, is_cursor_line_row, show_sels);
+            let style = resolve_style(char_pos, colors, ctx.highlights, sels_on_line, is_cursor_line_row, show_sels);
             let visible = (display_col + advance).saturating_sub(col_offset);
             for i in 0..visible {
                 if i as u16 >= width { break; }
@@ -549,7 +527,7 @@ fn render_row_content(
             break; // clip at right edge
         }
 
-        let style = resolve_style(char_pos, colors, highlights, sels_on_line, is_cursor_line_row, show_sels);
+        let style = resolve_style(char_pos, colors, ctx.highlights, sels_on_line, is_cursor_line_row, show_sels);
         draw_cell(screen_buf, grapheme, screen_col, advance, char_pos, x, y, width, style, trailing_start, ws_cfg, colors);
 
         display_col += advance;
@@ -558,7 +536,7 @@ fn render_row_content(
     }
 
     let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
-    render_eol(screen_buf, buf, vrow, char_pos, eol_screen_col, x, y, width, is_cursor_line_row, show_sels, sels_on_line, ws_cfg, colors);
+    render_eol(screen_buf, ctx, vrow, char_pos, eol_screen_col, x, y, width, is_cursor_line_row, sels_on_line);
 }
 
 // ── Test helper ───────────────────────────────────────────────────────────────
@@ -917,15 +895,16 @@ mod tests {
 
     #[test]
     fn bracket_match_highlights_partner() {
-        // Cursor on '(' at pos 0. render() computes the match automatically —
-        // the ')' at pos 6 should receive bracket_match bg; '(' gets cursor_head.
+        // Cursor on '(' at pos 0. The bracket match at ')' pos 6 is pre-computed
+        // by update_highlight_cache before render, as in the real event loop.
         use ratatui::layout::Rect;
         use ratatui::style::Color;
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
-        let editor = editor_for(doc, v);
+        let mut editor = editor_for(doc, v);
+        editor.update_highlight_cache();
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -951,7 +930,8 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
         let v = view(&doc, 15, 2, LineNumberStyle::Absolute);
-        let editor = editor_for(doc, v);
+        let mut editor = editor_for(doc, v);
+        editor.update_highlight_cache();
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -975,7 +955,8 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let v = view(&doc, 10, 2, LineNumberStyle::Absolute);
-        let editor = editor_for(doc, v);
+        let mut editor = editor_for(doc, v);
+        editor.update_highlight_cache();
         let gw = editor.view.gutter_width();
         let area = Rect::new(0, 0, 10, 3);
         let mut screen = ScreenBuf::empty(area);

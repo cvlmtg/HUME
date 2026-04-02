@@ -53,6 +53,7 @@ fn editor_from(input: &str) -> Editor {
         insert_session: None,
         explicit_count: false,
         search: super::SearchState::default(),
+        highlights: crate::ui::highlight::HighlightMap::new().build(),
         pre_select_sels: None,
         jump_list: crate::core::jump_list::JumpList::new(),
     }
