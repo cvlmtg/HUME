@@ -20,3 +20,4 @@ useful later. Each topic lives in its own file under `docs/learning/`.
 | Inner vs Around: The Text Object Convention | [docs/learning/inner-vs-around.md](docs/learning/inner-vs-around.md) |
 | Quote Scanning: Parity Instead of Depth | [docs/learning/quote-scanning.md](docs/learning/quote-scanning.md) |
 | The Command/Keymap/Dispatch Architecture | [docs/learning/command-keymap-dispatch.md](docs/learning/command-keymap-dispatch.md) |
+| The Rendering Pipeline: ViewState → Formatter → Renderer | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
