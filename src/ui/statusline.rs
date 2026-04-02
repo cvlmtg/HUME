@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -247,7 +249,7 @@ fn render_statusline(
 /// Returns `(String::new(), _)` for elements that have nothing to show in the
 /// current context (e.g. [`StatusElement::Selections`] when only one selection
 /// is active). The caller skips zero-width spans.
-fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
+fn render_element(seg: StatusElement, editor: &Editor) -> (Cow<'static, str>, Style) {
     let colors = &editor.colors;
     match seg {
         StatusElement::Mode => {
@@ -259,57 +261,51 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
                 (Mode::Command, _)    => ("CMD", colors.status_command),
                 (Mode::Select, _)     => ("SEL", colors.status_select),
             };
-            (label.to_string(), style)
+            (Cow::Borrowed(label), style)
         }
-        StatusElement::Separator => ("│".to_string(), colors.statusline),
+        StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
         StatusElement::FileName => {
             let name = editor.file_path.as_deref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("[scratch]");
-            (name.to_string(), colors.statusline)
+            (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {
             let buf = editor.doc.buf();
             let cursor_head = editor.doc.sels().primary().head;
             let cursor_line = buf.char_to_line(cursor_head);
             let col_0 = grapheme_col_in_line(buf, cursor_line, cursor_head);
-            (format!("{}:{}", cursor_line + 1, col_0 + 1), colors.statusline)
+            (Cow::Owned(format!("{}:{}", cursor_line + 1, col_0 + 1)), colors.statusline)
         }
         StatusElement::KittyProtocol => {
-            if editor.kitty_enabled {
-                ("🐱".to_string(), colors.statusline)
-            } else {
-                (String::new(), colors.statusline)
-            }
+            let label = if editor.kitty_enabled { "🐱" } else { "" };
+            (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Selections => {
             let n = editor.doc.sels().len();
             // Only show the count when there is more than one selection —
             // the single-cursor case is the default and needs no annotation.
             if n > 1 {
-                (format!("{n} sels"), colors.statusline)
+                (Cow::Owned(format!("{n} sels")), colors.statusline)
             } else {
-                (String::new(), colors.statusline)
+                (Cow::Borrowed(""), colors.statusline)
             }
         }
         StatusElement::DirtyIndicator => {
-            if editor.doc.is_dirty() {
-                ("[+]".to_string(), colors.statusline)
-            } else {
-                (String::new(), colors.statusline)
-            }
+            let label = if editor.doc.is_dirty() { "[+]" } else { "" };
+            (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.search.match_count() {
                 if total == 0 {
-                    (String::new(), colors.statusline)
+                    (Cow::Borrowed(""), colors.statusline)
                 } else {
                     let w = if editor.search.wrapped() { "W " } else { "" };
-                    (format!("{w}[{current}/{total}]"), colors.statusline)
+                    (Cow::Owned(format!("{w}[{current}/{total}]")), colors.statusline)
                 }
             } else {
-                (String::new(), colors.statusline)
+                (Cow::Borrowed(""), colors.statusline)
             }
         }
         StatusElement::MiniBuf => {
@@ -317,9 +313,9 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
                 let mut text = String::with_capacity(2 + mb.input.len());
                 text.push(mb.prompt);
                 text.push_str(&mb.input);
-                (text, colors.statusline)
+                (Cow::Owned(text), colors.statusline)
             } else {
-                (String::new(), colors.statusline)
+                (Cow::Borrowed(""), colors.statusline)
             }
         }
     }
@@ -329,9 +325,9 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (String, Style) {
 ///
 /// Skips empty elements (e.g. [`StatusElement::Selections`] in single-cursor
 /// mode) and applies the boundary-aware spacing rule between adjacent spans.
-fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, Style)> {
+fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(Cow<'static, str>, Style)> {
     // Each element produces at most 2 spans (the element + a possible gap span).
-    let mut spans: Vec<(String, Style)> = Vec::with_capacity(elements.len() * 2);
+    let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
 
     for &seg in elements {
         let (text, style) = render_element(seg, editor);
@@ -346,7 +342,7 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
 
             if !a_ends_space && !b_starts_space {
                 // Neither boundary is a space — insert a gap span.
-                spans.push((" ".to_string(), editor.colors.statusline));
+                spans.push((Cow::Borrowed(" "), editor.colors.statusline));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
                 // Both boundaries are spaces — trim exactly one leading space
@@ -355,8 +351,11 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
                 // trim_start_matches) to remove at most one space so that
                 // elements intentionally padded with multiple leading spaces
                 // keep their extra indent.
-                let trimmed = text.strip_prefix(' ').unwrap_or(&text);
-                spans.push((trimmed.to_string(), style));
+                let trimmed = match &text {
+                    Cow::Borrowed(s) => Cow::Borrowed(s.strip_prefix(' ').unwrap_or(s)),
+                    Cow::Owned(s) => Cow::Owned(s.strip_prefix(' ').unwrap_or(s.as_str()).to_string()),
+                };
+                spans.push((trimmed, style));
             } else {
                 // Exactly one boundary is a space — concatenate directly.
                 spans.push((text, style));
@@ -376,11 +375,11 @@ fn render_section(elements: &[StatusElement], editor: &Editor) -> Vec<(String, S
 /// This gives every left section a consistent left margin without requiring
 /// individual elements to be edge-aware.
 fn pad_left(
-    mut spans: Vec<(String, Style)>,
+    mut spans: Vec<(Cow<'static, str>, Style)>,
     colors: &crate::ui::theme::EditorColors,
-) -> Vec<(String, Style)> {
+) -> Vec<(Cow<'static, str>, Style)> {
     if !spans.is_empty() {
-        spans.insert(0, (" ".to_string(), colors.statusline));
+        spans.insert(0, (Cow::Borrowed(" "), colors.statusline));
     }
     spans
 }
@@ -390,11 +389,11 @@ fn pad_left(
 /// Mirrors [`pad_left`] for the trailing edge, replacing the old hardcoded
 /// `+1` right-margin offset in the placement arithmetic.
 fn pad_right(
-    mut spans: Vec<(String, Style)>,
+    mut spans: Vec<(Cow<'static, str>, Style)>,
     colors: &crate::ui::theme::EditorColors,
-) -> Vec<(String, Style)> {
+) -> Vec<(Cow<'static, str>, Style)> {
     if !spans.is_empty() {
-        spans.push((" ".to_string(), colors.statusline));
+        spans.push((Cow::Borrowed(" "), colors.statusline));
     }
     spans
 }
@@ -402,25 +401,25 @@ fn pad_right(
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
 /// Total display-column width of a rendered section.
-fn section_width(spans: &[(String, Style)]) -> u16 {
-    spans.iter().map(|(t, _)| UnicodeWidthStr::width(t.as_str()) as u16).sum()
+fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
+    spans.iter().map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16).sum()
 }
 
 /// Display-column offset of the last span in a section.
 ///
 /// Used to locate the MiniBuf span, which is always the last element in the
 /// minibuf left section (`MINIBUF_LEFT`).
-fn last_span_offset(spans: &[(String, Style)]) -> u16 {
+fn last_span_offset(spans: &[(Cow<'static, str>, Style)]) -> u16 {
     let total = section_width(spans);
-    let last_w = spans.last().map(|(t, _)| UnicodeWidthStr::width(t.as_str()) as u16).unwrap_or(0);
+    let last_w = spans.last().map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16).unwrap_or(0);
     total - last_w
 }
 
 /// Draw a section's spans left-to-right starting at `x`.
-fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(String, Style)], mut x: u16, y: u16) {
+fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)], mut x: u16, y: u16) {
     for (text, style) in spans {
-        screen_buf.set_string(x, y, text, *style);
-        x += UnicodeWidthStr::width(text.as_str()) as u16;
+        screen_buf.set_string(x, y, text.as_ref(), *style);
+        x += UnicodeWidthStr::width(text.as_ref()) as u16;
     }
 }
 
