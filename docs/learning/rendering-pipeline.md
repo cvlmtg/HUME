@@ -31,6 +31,52 @@ Each layer has a single, well-bounded job:
 The renderer never re-implements line wrapping. The formatter never touches
 colors. The clean boundary between them is the `VisualRow` struct.
 
+### Why this boundary?
+
+The formatter answers a purely geometric question: given this buffer content
+and these viewport settings, which chars land on which screen row? The answer
+depends only on text content, line lengths, tab widths, and wrap settings — not
+on what any character looks like.
+
+The renderer answers a purely visual question: given that this char is at this
+position on screen, what color and style should it have? The answer depends on
+cursor position, selections, highlights, and theme — not on how lines were
+broken.
+
+Keeping these questions separate means each can change independently. Swap the
+wrap algorithm: only the formatter changes. Redesign the theme or add syntax
+highlighting: only the renderer changes. And crucially, both the renderer *and*
+the cursor-position mapper consume the formatter — because there is only one
+place that decides row boundaries, they can never disagree about where a
+character lives on screen.
+
+### Separation within the renderer
+
+The renderer itself has a further three-way split inside `render_row_content`:
+
+- **What to draw** — the grapheme walk with viewport clipping (left/right
+  column offsets, CJK double-width straddling). This loop drives everything.
+- **How to style it** — delegated entirely to `resolve_style`, which is a pure
+  function of character position and editor state, with no knowledge of
+  terminals or cell layout.
+- **How to render it** — delegated to `draw_cell` and `render_eol`, which
+  handle the mechanics of writing one grapheme into `ScreenBuf` (tab expansion,
+  whitespace substitution, CJK width).
+
+Adding a new style layer (e.g. syntax highlighting) means touching only
+`resolve_style`. Adding a new visual representation (e.g. a squiggle under a
+diagnostic) means touching only `draw_cell`. Neither change touches the
+grapheme walk.
+
+### Data vs styling
+
+`VisualRow` carries only geometry: char ranges, column offsets, wrap metadata.
+It has no color, no style, no knowledge of themes. All appearance decisions
+live in two dedicated structures: `EditorColors` (the theme — maps semantic
+slot names to ratatui `Style` values) and `HighlightMap` (per-frame highlight
+ranges with associated kinds). The renderer maps from geometry + editor state
+to appearance; it never conflates the two.
+
 ---
 
 ## ViewState: what the viewport knows
