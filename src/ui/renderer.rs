@@ -66,9 +66,10 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
     // descriptors and draws gutter + content for each.
 
     let mut last_rendered_row: Option<usize> = None;
-    // Reused across rows to avoid a heap allocation per row. Cleared and
-    // refilled by render_row_content on every call.
+    // Both scratch buffers are created once here and reused across all rows,
+    // eliminating per-row heap allocations.
     let mut sels_scratch: Vec<Selection> = Vec::new();
+    let mut gutter_scratch = String::new();
 
     for vrow in DocumentFormatter::new(buf, &editor.view) {
         let y = area.y + vrow.row as u16;
@@ -86,6 +87,7 @@ pub(crate) fn render(editor: &Editor, area: Rect, screen_buf: &mut ScreenBuf) ->
             lay.gutter.x,
             y,
             total_lines,
+            &mut gutter_scratch,
         );
 
         // Content: grapheme walk with per-character style resolution.
@@ -408,7 +410,7 @@ fn render_row_content(
         // its first column is before col_offset but later columns are visible.
         // Render placeholder spaces so the partial char appears as a gap.
         if display_col < col_offset {
-            let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
+            let style = resolve_style(char_pos, colors, highlights, sels_on_line, is_cursor_line_row, show_sels);
             let visible = (display_col + advance).saturating_sub(col_offset);
             for i in 0..visible {
                 if i as u16 >= width { break; }
@@ -426,7 +428,7 @@ fn render_row_content(
             break; // clip at right edge
         }
 
-        let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
+        let style = resolve_style(char_pos, colors, highlights, sels_on_line, is_cursor_line_row, show_sels);
 
         if is_tab {
             // Tab: expand to `advance` columns. First cell gets the indicator

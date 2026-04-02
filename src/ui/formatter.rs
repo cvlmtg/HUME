@@ -259,33 +259,6 @@ pub(crate) fn line_content_range(buf: &Buffer, line_idx: usize) -> (usize, usize
     (start, content_end)
 }
 
-/// Compute the display-column width of the leading whitespace on a buffer line.
-///
-/// Walks graphemes until the first non-whitespace character, accumulating
-/// display columns with tab-stop awareness. Returns 0 for lines that start
-/// with non-whitespace or are empty.
-fn compute_line_indent(
-    buf: &Buffer,
-    line_start: usize,
-    content_end: usize,
-    tab_width: usize,
-) -> usize {
-    if line_start >= content_end {
-        return 0;
-    }
-    let slice = buf.slice(line_start..content_end);
-    let cow: Cow<str> = slice.into();
-    let tab_width = tab_width.max(1);
-    let mut col = 0;
-    for grapheme in cow.graphemes(true) {
-        if !grapheme.chars().all(|c| c == ' ' || c == '\t') {
-            break;
-        }
-        col += grapheme_advance(grapheme, col, tab_width);
-    }
-    col
-}
-
 /// Compute the wrapped segments for buffer line `line_idx`, returning full
 /// per-segment metadata including `visual_indent`.
 ///
@@ -310,19 +283,26 @@ fn compute_segments_full(
         return;
     }
 
-    // Indent level for this line, used when `indent_wrap` is on.
-    // Capped at content_width / 3 so continuation rows always have meaningful
-    // width even for very deeply-indented code.
-    let indent_col = if indent_wrap {
-        compute_line_indent(buf, line_start, content_end, tab_width).min(content_width / 3)
-    } else {
-        0
-    };
-
+    // Convert the rope slice once; both indent detection and the main grapheme
+    // walk below use this Cow — avoids a second rope-to-Cow conversion.
     let slice = buf.slice(line_start..content_end);
     let cow: Cow<str> = slice.into();
     let tab_width = tab_width.max(1);
     let content_width = content_width.max(1);
+
+    // Indent level for this line, used when `indent_wrap` is on.
+    // Capped at content_width / 3 so continuation rows always have meaningful
+    // width even for very deeply-indented code.
+    let indent_col = if indent_wrap {
+        let mut col = 0;
+        for g in cow.graphemes(true) {
+            if !g.chars().all(|c| c == ' ' || c == '\t') { break; }
+            col += grapheme_advance(g, col, tab_width);
+        }
+        col.min(content_width / 3)
+    } else {
+        0
+    };
 
     let mut seg_start = line_start;
     // Absolute display column at the start of the current segment (for
@@ -440,11 +420,18 @@ fn compute_segments_full(
 }
 
 /// How many visual rows buffer line `line_idx` occupies when wrapped.
-pub(crate) fn count_visual_rows(buf: &Buffer, line_idx: usize, view: &ViewState) -> usize {
-    let mut scratch = Vec::new();
+///
+/// `scratch` is a caller-provided buffer reused across calls to avoid repeated
+/// allocations when this function is called in a loop.
+pub(crate) fn count_visual_rows(
+    buf: &Buffer,
+    line_idx: usize,
+    view: &ViewState,
+    scratch: &mut Vec<LineSegment>,
+) -> usize {
     compute_segments_full(
         buf, line_idx, view.content_width(), view.tab_width,
-        true, view.word_wrap, view.indent_wrap, &mut scratch,
+        true, view.word_wrap, view.indent_wrap, scratch,
     );
     scratch.len()
 }
@@ -452,16 +439,19 @@ pub(crate) fn count_visual_rows(buf: &Buffer, line_idx: usize, view: &ViewState)
 /// Which wrapped sub-row of buffer line `line_idx` contains `cursor_char`.
 ///
 /// Returns 0 for the first (or only) row, 1 for the first continuation, etc.
+///
+/// `scratch` is a caller-provided buffer reused across calls to avoid repeated
+/// allocations when this function is called in a loop.
 pub(crate) fn cursor_sub_row(
     buf: &Buffer,
     line_idx: usize,
     cursor_char: usize,
     view: &ViewState,
+    scratch: &mut Vec<LineSegment>,
 ) -> usize {
-    let mut scratch = Vec::new();
     compute_segments_full(
         buf, line_idx, view.content_width(), view.tab_width,
-        true, view.word_wrap, view.indent_wrap, &mut scratch,
+        true, view.word_wrap, view.indent_wrap, scratch,
     );
     for (i, seg) in scratch.iter().enumerate() {
         let is_last = i + 1 == scratch.len();
@@ -888,7 +878,7 @@ mod tests {
         let buf = Buffer::from("hello\n");
         // gutter width = 4 (default, 1-line buf), so total width 84 → content 80.
         let view = make_view(&buf, 0, 10, 84, true);
-        assert_eq!(count_visual_rows(&buf, 0, &view), 1);
+        assert_eq!(count_visual_rows(&buf, 0, &view, &mut Vec::new()), 1);
     }
 
     #[test]
@@ -896,7 +886,7 @@ mod tests {
         let buf = Buffer::from("abcdefghijklmno\n");
         // 15 chars, content_width 5 → 3 rows. Total width = 5 + 4 = 9.
         let view = make_view(&buf, 0, 10, 9, true);
-        assert_eq!(count_visual_rows(&buf, 0, &view), 3);
+        assert_eq!(count_visual_rows(&buf, 0, &view, &mut Vec::new()), 3);
     }
 
     // ── cursor_sub_row ────────────────────────────────────────────────────────
@@ -905,8 +895,8 @@ mod tests {
     fn sub_row_no_wrap() {
         let buf = Buffer::from("hello\n");
         let view = make_view(&buf, 0, 10, 84, true); // content_width = 80
-        assert_eq!(cursor_sub_row(&buf, 0, 0, &view), 0);
-        assert_eq!(cursor_sub_row(&buf, 0, 4, &view), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 0, &view, &mut Vec::new()), 0);
+        assert_eq!(cursor_sub_row(&buf, 0, 4, &view, &mut Vec::new()), 0);
     }
 
     #[test]
@@ -914,10 +904,10 @@ mod tests {
         let buf = Buffer::from("abcdefghij\n");
         // content_width = 5, total width = 9.
         let view = make_view(&buf, 0, 10, 9, true);
-        assert_eq!(cursor_sub_row(&buf, 0, 0, &view), 0); // 'a'
-        assert_eq!(cursor_sub_row(&buf, 0, 4, &view), 0); // 'e'
-        assert_eq!(cursor_sub_row(&buf, 0, 5, &view), 1); // 'f'
-        assert_eq!(cursor_sub_row(&buf, 0, 9, &view), 1); // 'j'
+        assert_eq!(cursor_sub_row(&buf, 0, 0, &view, &mut Vec::new()), 0); // 'a'
+        assert_eq!(cursor_sub_row(&buf, 0, 4, &view, &mut Vec::new()), 0); // 'e'
+        assert_eq!(cursor_sub_row(&buf, 0, 5, &view, &mut Vec::new()), 1); // 'f'
+        assert_eq!(cursor_sub_row(&buf, 0, 9, &view, &mut Vec::new()), 1); // 'j'
     }
 
     #[test]
@@ -925,7 +915,7 @@ mod tests {
         let buf = Buffer::from("abcdefghij\n");
         // '\n' at position 10 belongs to the last segment.
         let view = make_view(&buf, 0, 10, 9, true);
-        assert_eq!(cursor_sub_row(&buf, 0, 10, &view), 1);
+        assert_eq!(cursor_sub_row(&buf, 0, 10, &view, &mut Vec::new()), 1);
     }
 
     // ── cursor_visual_pos ────────────────────────────────────────────────────

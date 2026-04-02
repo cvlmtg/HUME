@@ -1,6 +1,6 @@
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::display_col_in_line;
-use crate::ui::formatter::{count_visual_rows, cursor_sub_row};
+use crate::ui::formatter::{LineSegment, count_visual_rows, cursor_sub_row};
 use crate::ui::gutter::GutterConfig;
 use crate::ui::whitespace::WhitespaceConfig;
 use crate::core::selection::SelectionSet;
@@ -156,14 +156,18 @@ impl ViewState {
         }
 
         let margin = SCROLL_MARGIN.min(self.height / 2);
-        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, self);
+        // Scratch buffer reused by every count_visual_rows / cursor_sub_row
+        // call in this function and its helpers — one allocation for the whole
+        // scroll adjustment pass.
+        let mut scratch: Vec<LineSegment> = Vec::new();
+        let cursor_sub = cursor_sub_row(buf, cursor_line, cursor_char, self, &mut scratch);
 
         // ── Cursor above the viewport ────────────────────────────────────────
         if cursor_line < self.scroll_offset
             || (cursor_line == self.scroll_offset && cursor_sub < self.scroll_sub_offset)
         {
             // Place the viewport so `margin` rows appear above the cursor.
-            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, margin);
+            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, margin, &mut scratch);
             return;
         }
 
@@ -173,7 +177,7 @@ impl ViewState {
         // bottom margin. This keeps the scan O(height) instead of O(N).
         let mut display_row: usize = 0;
         for line_idx in self.scroll_offset..=cursor_line {
-            let rows = count_visual_rows(buf, line_idx, self);
+            let rows = count_visual_rows(buf, line_idx, self, &mut scratch);
             let skip = if line_idx == self.scroll_offset { self.scroll_sub_offset } else { 0 };
             if line_idx == cursor_line {
                 // cursor_sub < skip would mean the cursor is in a row that
@@ -196,7 +200,7 @@ impl ViewState {
             // Walk backward from the cursor to place it `target_row` rows from
             // the top. Symmetric to the above-viewport path, always O(height).
             let target_row = self.height.saturating_sub(margin).saturating_sub(1);
-            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, target_row);
+            self.scroll_backward_from_cursor(buf, cursor_line, cursor_sub, target_row, &mut scratch);
         }
     }
 
@@ -212,6 +216,7 @@ impl ViewState {
         cursor_line: usize,
         cursor_sub: usize,
         target_rows: usize,
+        scratch: &mut Vec<LineSegment>,
     ) {
         self.scroll_offset = cursor_line;
         self.scroll_sub_offset = cursor_sub;
@@ -222,7 +227,7 @@ impl ViewState {
                 rows_above += 1;
             } else if self.scroll_offset > 0 {
                 self.scroll_offset -= 1;
-                let rows = count_visual_rows(buf, self.scroll_offset, self);
+                let rows = count_visual_rows(buf, self.scroll_offset, self, scratch);
                 if rows_above + rows > target_rows {
                     // Don't overshoot — start partway through this line.
                     self.scroll_sub_offset = rows - (target_rows - rows_above);
@@ -534,7 +539,7 @@ mod tests {
         assert!(v.scroll_sub_offset > 0, "sub-offset should advance within the long line");
         // Cursor must be in view.
         let cursor_line = buf.char_to_line(cursor_char);
-        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, &v);
+        let cursor_sub = cursor_sub_row(&buf, cursor_line, cursor_char, &v, &mut Vec::new());
         assert!(cursor_sub >= v.scroll_sub_offset);
         assert!(cursor_sub - v.scroll_sub_offset < v.height);
     }

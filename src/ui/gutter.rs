@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use ratatui::buffer::Buffer as ScreenBuf;
 
 use crate::ui::formatter::VisualRow;
@@ -59,6 +61,7 @@ impl GutterColumn {
         x: u16,
         y: u16,
         total_lines: usize,
+        scratch: &mut String,
     ) {
         match self {
             Self::LineNumber => render_line_number(
@@ -70,6 +73,7 @@ impl GutterColumn {
                 x,
                 y,
                 self.width(total_lines),
+                scratch,
             ),
         }
     }
@@ -133,6 +137,7 @@ impl GutterConfig {
         base_x: u16,
         y: u16,
         total_lines: usize,
+        scratch: &mut String,
     ) {
         if vrow.is_continuation {
             if let Some(indicator) = self.wrap_indicator {
@@ -140,15 +145,16 @@ impl GutterConfig {
                 // then append the separator space. Matches the line-number cell
                 // format so the indicator sits flush with the number column.
                 let inner_w = self.total_width(total_lines).saturating_sub(1);
-                let cell = format!("{indicator:>inner_w$} ");
-                screen_buf.set_string(base_x, y, &cell, colors.gutter);
+                scratch.clear();
+                write!(scratch, "{indicator:>inner_w$} ").unwrap();
+                screen_buf.set_string(base_x, y, scratch.as_str(), colors.gutter);
             }
             return;
         }
 
         let mut x = base_x;
         for col in &self.columns {
-            col.render(screen_buf, vrow, line_number_style, cursor_line, colors, x, y, total_lines);
+            col.render(screen_buf, vrow, line_number_style, cursor_line, colors, x, y, total_lines, scratch);
             x += col.width(total_lines) as u16;
         }
         // The trailing separator space is implicit: the content area Rect
@@ -174,6 +180,7 @@ fn render_line_number(
     x: u16,
     y: u16,
     col_width: usize,
+    scratch: &mut String,
 ) {
     // Virtual rows have no line number — nothing to render.
     let Some(line_number) = vrow.line_number else {
@@ -182,27 +189,23 @@ fn render_line_number(
 
     let line_idx = line_number.saturating_sub(1); // 0-based
 
-    let label = match style {
-        LineNumberStyle::Absolute => format!("{line_number}"),
-        LineNumberStyle::Relative => format!("{}", line_idx.abs_diff(cursor_line)),
+    let n = match style {
+        LineNumberStyle::Absolute => line_number,
+        LineNumberStyle::Relative => line_idx.abs_diff(cursor_line),
         LineNumberStyle::Hybrid => {
-            if line_idx == cursor_line {
-                format!("{line_number}")
-            } else {
-                format!("{}", line_idx.abs_diff(cursor_line))
-            }
+            if line_idx == cursor_line { line_number } else { line_idx.abs_diff(cursor_line) }
         }
     };
 
-    // Right-align in col_width columns, then append one trailing separator space.
-    // Total = col_width + 1 = total_width (matches the old monolithic render_gutter
-    // format string `"{:>w$} "` where w = gutter_width - 1 = col_width).
-    let cell = format!("{label:>col_width$} ");
+    // Write right-aligned number + separator space directly into the scratch
+    // buffer — one write!() instead of two format!() heap allocations.
+    scratch.clear();
+    write!(scratch, "{n:>col_width$} ").unwrap();
 
     let gutter_style =
         if line_idx == cursor_line { colors.gutter_cursor_line } else { colors.gutter };
 
-    screen_buf.set_string(x, y, &cell, gutter_style);
+    screen_buf.set_string(x, y, scratch.as_str(), gutter_style);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
