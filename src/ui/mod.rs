@@ -4,3 +4,4 @@ pub(crate) mod highlight;
 pub(crate) mod theme;
 pub(crate) mod statusline;
 pub(crate) mod view;
+pub(crate) mod whitespace;

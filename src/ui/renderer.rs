@@ -13,8 +13,9 @@ use crate::editor::{Editor, Mode};
 use crate::ops::text_object::find_bracket_pair;
 use crate::ui::display_line::DisplayLine;
 use crate::ui::highlight::HighlightSet;
-use crate::ui::statusline::render_bottom_row;
 use crate::ui::theme::EditorColors;
+use crate::ui::whitespace::WhitespaceShow;
+use crate::ui::statusline::render_bottom_row;
 use crate::ui::view::LineNumberStyle;
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ fn cursor_screen_pos(editor: &Editor) -> Option<(u16, u16)> {
     if screen_row >= view.height {
         return None;
     }
-    let display_col = display_col_in_line(buf, cursor_line, head);
+    let display_col = display_col_in_line(buf, cursor_line, head, view.tab_width);
     let screen_col = display_col.checked_sub(view.col_offset)?;
     let content_width = view.width.saturating_sub(view.gutter_width);
     if screen_col >= content_width {
@@ -278,6 +279,36 @@ fn resolve_style(
     colors.default
 }
 
+/// Compose the whitespace indicator style with the resolved base style.
+///
+/// Uses the whitespace fg colour but preserves the base style's bg. This means
+/// whitespace indicators inside a selection show the selection bg but use the
+/// dim whitespace fg — the indicator is visible but the selection extent remains
+/// clear.
+///
+/// Exception: when the base style is `cursor_head`, no patching is done — the
+/// cursor cell must remain fully visible and unambiguous.
+fn compose_whitespace_style(base: Style, colors: &EditorColors) -> Style {
+    if base == colors.cursor_head {
+        return base;
+    }
+    // Patch fg from the whitespace style; keep everything else from the base.
+    Style {
+        fg: colors.whitespace.fg,
+        ..base
+    }
+}
+
+/// Whether a whitespace grapheme at `char_pos` should be shown as an indicator,
+/// given the per-type [`WhitespaceShow`] setting and the trailing boundary.
+fn should_show_ws(show: WhitespaceShow, char_pos: usize, trailing_start: usize) -> bool {
+    match show {
+        WhitespaceShow::None => false,
+        WhitespaceShow::All => true,
+        WhitespaceShow::Trailing => char_pos >= trailing_start,
+    }
+}
+
 /// Render the text content of one display line into the screen buffer.
 ///
 /// Iterates grapheme clusters (via `unicode-segmentation`) so that multi-byte
@@ -339,13 +370,35 @@ fn render_content(
     let show_sels = mode != Mode::Insert;
 
     let col_offset = editor.view.col_offset;
+    let tab_width = editor.view.tab_width.max(1);
+    let ws_cfg = &editor.view.whitespace;
     let mut display_col: usize = 0;
 
+    // Pre-scan for trailing whitespace boundary: char offset of the first
+    // trailing whitespace run (everything from here to EOL is trailing).
+    let trailing_start: usize = {
+        let mut last_non_ws = char_offset;
+        let mut pos = char_offset;
+        for g in content_cow.graphemes(true) {
+            let g_end = pos + g.chars().count();
+            if !g.chars().all(|c| c == ' ' || c == '\t') {
+                last_non_ws = g_end;
+            }
+            pos = g_end;
+        }
+        last_non_ws
+    };
+
     for grapheme in content_cow.graphemes(true) {
-        let gw = UnicodeWidthStr::width(grapheme) as u16;
-        // Combining marks have display width 0 — advance at least 1 col so
-        // they don't stack on the gutter edge.
-        let advance = gw.max(1) as usize;
+        let is_tab = grapheme == "\t";
+        let advance = if is_tab {
+            tab_width - (display_col % tab_width)
+        } else {
+            let gw = UnicodeWidthStr::width(grapheme);
+            // Combining marks have display width 0 — advance at least 1 col so
+            // they don't stack on the gutter edge.
+            gw.max(1)
+        };
 
         if display_col + advance <= col_offset {
             display_col += advance;
@@ -353,13 +406,18 @@ fn render_content(
             continue;
         }
 
-        // A wide character (e.g. CJK) might straddle the left edge: its
-        // first column is before col_offset but its second column is visible.
-        // Render a placeholder space so the partial char appears as a gap
+        // A wide character (e.g. CJK) or tab might straddle the left edge:
+        // its first column is before col_offset but later columns are visible.
+        // Render placeholder spaces so the partial char appears as a gap
         // rather than being silently swallowed.
         if display_col < col_offset {
             let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
-            screen_buf.set_string(x, y, " ", style);
+            // Fill only the visible portion of the straddling grapheme.
+            let visible = (display_col + advance).saturating_sub(col_offset);
+            for i in 0..visible {
+                if i as u16 >= width { break; }
+                screen_buf.set_string(x + i as u16, y, " ", style);
+            }
             display_col += advance;
             char_pos += grapheme.chars().count();
             continue;
@@ -372,21 +430,57 @@ fn render_content(
         }
 
         let style = resolve_style(char_pos, colors, highlights, &sels_on_line, is_cursor_line_row, show_sels);
-        screen_buf.set_string(x + screen_col, y, grapheme, style);
+
+        if is_tab {
+            // Tab: expand to `advance` columns. With indicator, the first
+            // cell gets the tab char; without, all cells are spaces.
+            let show_tab = should_show_ws(ws_cfg.render.tab, char_pos, trailing_start);
+            let (first_ch, tab_style) = if show_tab {
+                (ws_cfg.chars.tab, compose_whitespace_style(style, colors))
+            } else {
+                (' ', style)
+            };
+            let mut utf8_buf = [0u8; 4];
+            let first_str = first_ch.encode_utf8(&mut utf8_buf);
+            screen_buf.set_stringn(x + screen_col, y, first_str, 1, tab_style);
+            for i in 1..advance {
+                if screen_col + i as u16 >= width { break; }
+                screen_buf.set_string(x + screen_col + i as u16, y, " ", tab_style);
+            }
+        } else if grapheme == " " && should_show_ws(ws_cfg.render.space, char_pos, trailing_start) {
+            let ws_style = compose_whitespace_style(style, colors);
+            let mut utf8_buf = [0u8; 4];
+            let s = ws_cfg.chars.space.encode_utf8(&mut utf8_buf);
+            screen_buf.set_stringn(x + screen_col, y, s, 1, ws_style);
+        } else {
+            screen_buf.set_string(x + screen_col, y, grapheme, style);
+        }
+
         display_col += advance;
         char_pos += grapheme.chars().count();
     }
 
     // After the loop, char_pos == line_end_excl (the '\n' position).
-    // If any selection's head or range reaches this position (cursor on the
-    // newline / empty line), draw a space with the appropriate style so the
+    // If newline indicators are enabled, draw the newline char before
+    // selection/cursor rendering so it doesn't interfere with cursor visibility.
+    let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
+
+    if ws_cfg.render.newline != WhitespaceShow::None && eol_screen_col < width {
+        let base_style = if is_cursor_line_row { colors.cursor_line } else { colors.default };
+        let ws_style = compose_whitespace_style(base_style, colors);
+        let mut utf8_buf = [0u8; 4];
+        let s = ws_cfg.chars.newline.encode_utf8(&mut utf8_buf);
+        screen_buf.set_stringn(x + eol_screen_col, y, s, 1, ws_style);
+    }
+
+    // If any selection's head or range reaches the newline position (cursor on
+    // the newline / empty line), draw a space with the appropriate style so the
     // cursor is visible past the last glyph.
     let eol_is_head     = show_sels && sels_on_line.iter().any(|s| char_pos == s.head);
     let eol_is_selected = !eol_is_head && show_sels && sels_on_line.iter().any(|s| {
         char_pos >= s.start() && char_pos <= s.end()
     });
 
-    let eol_screen_col = display_col.saturating_sub(col_offset) as u16;
     if (eol_is_head || eol_is_selected) && eol_screen_col < width {
         let style = if eol_is_head { colors.cursor_head } else { colors.selection };
         screen_buf.set_string(x + eol_screen_col, y, " ", style);
@@ -450,6 +544,8 @@ mod tests {
             gutter_width: compute_gutter_width(buf.len_lines()),
             line_number_style: style,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
         }
     }
 
@@ -613,6 +709,8 @@ mod tests {
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 5);
@@ -647,6 +745,8 @@ mod tests {
             gutter_width: gw,
             line_number_style: LineNumberStyle::Absolute,
             col_offset: 0,
+            tab_width: 4,
+            whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
         };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 20, 3);
@@ -682,7 +782,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -705,7 +805,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 3, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 4);
         let mut screen = ScreenBuf::empty(area);
@@ -732,7 +832,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(0, 2));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -763,7 +863,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -789,7 +889,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::new(6, 0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -813,7 +913,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 10, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v);
         let area = Rect::new(0, 0, 10, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -903,7 +1003,7 @@ mod tests {
         let sels = SelectionSet::single(Selection::cursor(0)); // cursor on '('
         let doc = Document::new(buf, sels);
         let gw = compute_gutter_width(doc.buf().len_lines());
-        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0 };
+        let v = ViewState { scroll_offset: 0, height: 2, width: 15, gutter_width: gw, line_number_style: LineNumberStyle::Absolute, col_offset: 0, tab_width: 4, whitespace: crate::ui::whitespace::WhitespaceConfig::default() };
         let editor = editor_for(doc, v).with_mode(Mode::Insert);
         let area = Rect::new(0, 0, 15, 3);
         let mut screen = ScreenBuf::empty(area);
@@ -1095,6 +1195,215 @@ mod tests {
           1 hello
         ~
          1:1 notes.txt     │ NOR
+        ");
+    }
+
+    // ── Whitespace rendering ─────────────────────────────────────────────────
+
+    #[test]
+    fn render_whitespace_none_is_default() {
+        // Default config (all None) — spaces render as spaces, no indicators.
+        let doc = doc_at("hello world\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let out = render_to_string(&editor_for(doc, v), 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 hello world
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_all_spaces() {
+        // WhitespaceShow::All on spaces — middle dot replaces every space.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("hi lo\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { space: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 hi·lo
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_trailing_only() {
+        // Trailing mode — mid-content space stays normal, trailing spaces get indicators.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("hi lo   \n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { space: WhitespaceShow::Trailing, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 hi lo···
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_tab_expansion() {
+        // Tab expands to 4 columns (default tab_width), no indicator.
+        let doc = doc_at("\thi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let editor = editor_for(doc, v);
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1     hi
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_tab_indicator() {
+        // Tab with indicator — arrow + fill spaces.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("\thi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { tab: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 →   hi
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_tab_mid_line() {
+        // Tab after content aligns to next tab stop.
+        // "ab" is 2 cols, tab expands to 2 more cols (next stop at col 4).
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("ab\tcd\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { tab: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 ab→ cd
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_newline_indicator() {
+        // Newline indicator draws ⏎ at end of line.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("hi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { newline: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 hi⏎
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_trailing_all_spaces_line() {
+        // A line that is entirely spaces — all are trailing in Trailing mode.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("   \n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { space: WhitespaceShow::Trailing, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 ···
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_tab_with_horizontal_scroll() {
+        // Tab at col 0 expands to 4 columns. With col_offset=2, the first
+        // two columns are scrolled off — only 2 placeholder spaces remain visible.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("\thi\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.col_offset = 2;
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { tab: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 20, 3);
+        // The tab's first 2 cols (including the →) are scrolled off; 2 fill spaces remain.
+        insta::assert_snapshot!(out, @"
+          1   hi
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_custom_chars() {
+        // Custom indicator characters instead of defaults.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("a b\n", 0);
+        let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender { space: WhitespaceShow::All, ..Default::default() },
+            chars: WhitespaceChars { space: '•', ..Default::default() },
+        };
+        let out = render_to_string(&editor, 20, 3);
+        insta::assert_snapshot!(out, @"
+          1 a•b
+        ~
+         1:1 [scratch]│ NOR
+        ");
+    }
+
+    #[test]
+    fn render_whitespace_combined_indicators() {
+        // All indicator types enabled simultaneously on a line with mixed whitespace.
+        use crate::ui::whitespace::{WhitespaceConfig, WhitespaceRender, WhitespaceChars, WhitespaceShow};
+        let doc = doc_at("a \tb \n", 0);
+        let v = view(&doc, 25, 2, LineNumberStyle::Absolute);
+        let mut editor = editor_for(doc, v);
+        editor.view.whitespace = WhitespaceConfig {
+            render: WhitespaceRender {
+                space: WhitespaceShow::All,
+                tab: WhitespaceShow::All,
+                newline: WhitespaceShow::All,
+            },
+            chars: WhitespaceChars::default(),
+        };
+        let out = render_to_string(&editor, 25, 3);
+        // "a" (1) + "·" (1) + "→ " (tab: 2 cols to next stop at 4) + "b" (1) + "·" (1) + "⏎"
+        insta::assert_snapshot!(out, @"
+          1 a·→ b·⏎
+        ~
+         1:1 [scratch]     │ NOR
         ");
     }
 }

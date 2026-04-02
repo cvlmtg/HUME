@@ -197,10 +197,23 @@ pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> 
 /// width is 0 are counted as 1 column, matching the renderer's `advance.max(1)`
 /// logic (so they don't stack invisibly at the gutter edge).
 ///
+/// Tabs expand to the next tab stop: a tab at display column `col` occupies
+/// `tab_width - (col % tab_width)` columns. This requires tracking a running
+/// column instead of a simple sum.
+///
+/// **Important**: the running column starts at 0, so `from_char` must be at
+/// the start of a line for tab expansion to be correct. All production callers
+/// go through [`display_col_in_line`] which guarantees this.
+///
 /// This is the right unit for horizontal scrolling: the viewport offset and
 /// cursor screen column must agree on how many terminal columns each grapheme
 /// consumes.
-pub(crate) fn display_col_width(buf: &Buffer, from_char: usize, to_char: usize) -> usize {
+pub(crate) fn display_col_width(
+    buf: &Buffer,
+    from_char: usize,
+    to_char: usize,
+    tab_width: usize,
+) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {
         return 0;
@@ -212,14 +225,22 @@ pub(crate) fn display_col_width(buf: &Buffer, from_char: usize, to_char: usize) 
     let slice = buf.slice(from_char..to_char);
     let cow: Cow<str> = slice.into();
 
-    cow.graphemes(true)
-        .map(|g| {
+    // Track a running column to handle tab-stop alignment correctly.
+    let mut col: usize = 0;
+    for g in cow.graphemes(true) {
+        if g == "\t" {
+            // Expand to the next tab stop. tab_width of 0 is treated as 1
+            // to avoid division by zero.
+            let tw = tab_width.max(1);
+            col += tw - (col % tw);
+        } else {
             let w = UnicodeWidthStr::width(g);
-            // Combining marks have width 0 — count at least 1 so they occupy a
-            // cell, consistent with the renderer.
-            w.max(1)
-        })
-        .sum()
+            // Combining marks have width 0 — count at least 1 so they occupy
+            // a cell, consistent with the renderer.
+            col += w.max(1);
+        }
+    }
+    col
 }
 
 /// 0-based grapheme column of `char_pos` within line `line_idx`.
@@ -241,8 +262,13 @@ pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usiz
 /// Compare with [`grapheme_col_in_line`], which counts
 /// *grapheme clusters* (logical column — how many `→` presses). This function
 /// counts *display columns* (visual column — how many terminal cells).
-pub(crate) fn display_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
-    display_col_width(buf, buf.line_to_char(line_idx), char_pos)
+pub(crate) fn display_col_in_line(
+    buf: &Buffer,
+    line_idx: usize,
+    char_pos: usize,
+    tab_width: usize,
+) -> usize {
+    display_col_width(buf, buf.line_to_char(line_idx), char_pos, tab_width)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -478,27 +504,27 @@ mod tests {
     #[test]
     fn display_col_width_ascii() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(display_col_width(&buf, 0, 5), 5);
+        assert_eq!(display_col_width(&buf, 0, 5, 4), 5);
     }
 
     #[test]
     fn display_col_width_empty_range() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(display_col_width(&buf, 2, 2), 0);
+        assert_eq!(display_col_width(&buf, 2, 2, 4), 0);
     }
 
     #[test]
     fn display_col_width_cjk() {
         // CJK ideographs are double-width: "世界" = 2 chars, 4 display columns.
         let buf = Buffer::from("世界\n");
-        assert_eq!(display_col_width(&buf, 0, 2), 4);
+        assert_eq!(display_col_width(&buf, 0, 2, 4), 4);
     }
 
     #[test]
     fn display_col_width_mixed_ascii_cjk() {
         // "a世b" = 3 chars: 'a' (1 col) + '世' (2 cols) + 'b' (1 col) = 4 cols.
         let buf = Buffer::from("a世b\n");
-        assert_eq!(display_col_width(&buf, 0, 3), 4);
+        assert_eq!(display_col_width(&buf, 0, 3, 4), 4);
     }
 
     #[test]
@@ -507,7 +533,7 @@ mod tests {
         // Combining marks have display width 0 but the cluster is clamped to
         // min 1, so the total is 1 display column.
         let buf = Buffer::from("e\u{0301}\n");
-        assert_eq!(display_col_width(&buf, 0, 2), 1);
+        assert_eq!(display_col_width(&buf, 0, 2, 4), 1);
     }
 
     #[test]
@@ -515,7 +541,7 @@ mod tests {
         // 👨‍👩‍👧 = 5 codepoints, 1 grapheme cluster, typically 2 display columns
         // on modern terminals. unicode-width reports 2 for this cluster.
         let buf = Buffer::from("👨‍👩‍👧\n");
-        let w = display_col_width(&buf, 0, 5);
+        let w = display_col_width(&buf, 0, 5, 4);
         // ZWJ emoji width varies by unicode-width version; accept 1 or 2.
         assert!(w >= 1 && w <= 2, "expected 1..=2, got {w}");
     }
@@ -523,7 +549,7 @@ mod tests {
     #[test]
     fn display_col_width_reversed_range() {
         let buf = Buffer::from("hello\n");
-        assert_eq!(display_col_width(&buf, 3, 1), 0);
+        assert_eq!(display_col_width(&buf, 3, 1, 4), 0);
     }
 
     #[test]
@@ -531,7 +557,7 @@ mod tests {
         // "hello\nworld\n" — cursor at char 8 ("r") on line 1.
         // Line 1 starts at char 6 ("world"), so column = width of "wo" = 2.
         let buf = Buffer::from("hello\nworld\n");
-        assert_eq!(display_col_in_line(&buf, 1, 8), 2);
+        assert_eq!(display_col_in_line(&buf, 1, 8, 4), 2);
     }
 
     #[test]
@@ -539,7 +565,45 @@ mod tests {
         // "世界abc\n" — cursor at char 3 ("b"), line 0.
         // Width of "世界a" = 2 + 2 + 1 = 5 display columns.
         let buf = Buffer::from("世界abc\n");
-        assert_eq!(display_col_in_line(&buf, 0, 3), 5);
+        assert_eq!(display_col_in_line(&buf, 0, 3, 4), 5);
+    }
+
+    // ── Tab-width expansion ────────────────────────────────────────────────────
+
+    #[test]
+    fn display_col_width_tab_at_start() {
+        // Tab at column 0 with tab_width 4 → expands to 4 columns.
+        let buf = Buffer::from("\thi\n");
+        assert_eq!(display_col_width(&buf, 0, 1, 4), 4);
+    }
+
+    #[test]
+    fn display_col_width_tab_after_content() {
+        // "ab\t" — 'a'(1) + 'b'(1) = col 2, tab expands to 2 (next stop at 4).
+        let buf = Buffer::from("ab\t\n");
+        assert_eq!(display_col_width(&buf, 0, 3, 4), 4);
+    }
+
+    #[test]
+    fn display_col_width_tab_width_8() {
+        // Tab at column 0 with tab_width 8 → 8 columns.
+        let buf = Buffer::from("\t\n");
+        assert_eq!(display_col_width(&buf, 0, 1, 8), 8);
+    }
+
+    #[test]
+    fn display_col_width_multiple_tabs() {
+        // "\t\t" with tab_width 4 → 4 + 4 = 8 columns.
+        let buf = Buffer::from("\t\t\n");
+        assert_eq!(display_col_width(&buf, 0, 2, 4), 8);
+    }
+
+    #[test]
+    fn display_col_in_line_with_tab() {
+        // "\thi\n" — cursor at 'h' (char 1), tab_width 4.
+        // Tab expands to 4 cols, so 'h' is at display column 4.
+        let buf = Buffer::from("\thi\n");
+        assert_eq!(display_col_in_line(&buf, 0, 1, 4), 4);
     }
 
     // ── Invariant enforcement ─────────────────────────────────────────────────
