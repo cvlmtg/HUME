@@ -1,28 +1,9 @@
-[package]
-name = "hume"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["engine", "editor"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 ropey = "1.6.1"
 unicode-segmentation = "1.13.0"
-crossterm = "0.29"
-ratatui = "0.30"
 unicode-width = "0.2"
-tempfile = "3"
-regex-cursor = "0.1.5"
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = [
-    "Win32_System_Console",
-    "Win32_Foundation",
-    "Win32_System_Threading",
-] }
-
-[dev-dependencies]
-pretty_assertions = "1.4.1"
-proptest = "1.11.0"
-insta = "1.47"
+ratatui = "0.30"
