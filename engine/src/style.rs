@@ -1,0 +1,753 @@
+use crate::providers::{HighlightSource, HighlightTier, SourceContext};
+use crate::theme::Theme;
+use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
+
+// ---------------------------------------------------------------------------
+// Scratch storage
+// ---------------------------------------------------------------------------
+
+/// Reusable scratch buffers for the Style stage (Stage 3).
+///
+/// Owned by [`crate::pipeline::FrameScratch`] so capacity is retained across
+/// frames — no heap allocation after the first frame warms up the `Vec`s.
+pub struct StyleScratch {
+    /// Per-grapheme resolved styles (parallel to the graphemes slice).
+    pub styles: Vec<ResolvedStyle>,
+    /// Raw highlight intervals from one provider, reused across providers.
+    pub highlights: Vec<(usize, usize, ScopeId)>,
+    /// Sorted highlight intervals split by tier; built once per buffer line.
+    pub tier_bufs: TierBufs,
+    /// Selection column spans for the current row (all selections, including primary).
+    pub sel_spans: Vec<(u16, u16)>,
+    /// Cursor-head columns for the current row (all cursors, including primary).
+    pub cursor_heads: Vec<u16>,
+    /// Sorted copy of selections; populated once per frame or batch call.
+    pub sorted_sels: Vec<Selection>,
+    /// Index of the primary selection within `sorted_sels`. `None` if empty.
+    ///
+    /// The primary is always `selections[0]` by convention (the selection the viewport follows).
+    /// We track it by post-sort index rather than adding an `is_primary: bool` field on
+    /// `Selection`, because `Selection` is a pure data type (anchor + head) and "primary" is a
+    /// display concern — it would bleed UI logic into the core model. Using an index also avoids
+    /// fragile DocPos equality: two distinct selections could share the same head position.
+    pub primary_idx_in_sorted: Option<usize>,
+    /// Column of the primary cursor head on the current row. `None` if not on this row.
+    pub primary_cursor_col: Option<u16>,
+    /// Column span of the primary selection on the current row. `None` if not on this row.
+    pub primary_sel_span: Option<(u16, u16)>,
+}
+
+impl StyleScratch {
+    pub fn new() -> Self {
+        Self {
+            styles: Vec::with_capacity(512),
+            highlights: Vec::with_capacity(256),
+            tier_bufs: TierBufs::default(),
+            sel_spans: Vec::new(),
+            cursor_heads: Vec::new(),
+            sorted_sels: Vec::new(),
+            primary_idx_in_sorted: None,
+            primary_cursor_col: None,
+            primary_sel_span: None,
+        }
+    }
+
+    /// Sort `selections` into `sorted_sels` by range start (no allocation after warmup).
+    /// Records where the primary selection (selections[0]) lands after the sort.
+    /// `sort_by_key` is stable, so equal-range selections preserve their original order.
+    pub fn populate_sorted_sels(&mut self, selections: &[Selection]) {
+        self.sorted_sels.clear();
+        self.sorted_sels.extend_from_slice(selections);
+        self.sorted_sels.sort_by_key(|s| s.range().0);
+        self.primary_idx_in_sorted = selections
+            .first()
+            .and_then(|primary| self.sorted_sels.iter().position(|s| s == primary));
+    }
+
+    /// Reset all buffers to empty, retaining allocated capacity.
+    pub fn clear(&mut self) {
+        self.styles.clear();
+        self.highlights.clear();
+        self.tier_bufs.clear();
+        self.sel_spans.clear();
+        self.cursor_heads.clear();
+        self.sorted_sels.clear();
+        self.primary_idx_in_sorted = None;
+        self.primary_cursor_col = None;
+        self.primary_sel_span = None;
+    }
+}
+
+impl Default for StyleScratch {
+    fn default() -> Self { Self::new() }
+}
+
+// ---------------------------------------------------------------------------
+// Interval cursor — O(1) amortised forward lookup
+// ---------------------------------------------------------------------------
+
+/// Walks a sorted, non-overlapping slice of `(byte_start, byte_end, ScopeId)`
+/// intervals in order. Queries must be monotonically non-decreasing.
+struct IntervalCursor<'a> {
+    intervals: &'a [(usize, usize, ScopeId)],
+    pos: usize,
+}
+
+impl<'a> IntervalCursor<'a> {
+    fn new(intervals: &'a [(usize, usize, ScopeId)]) -> Self {
+        Self { intervals, pos: 0 }
+    }
+
+    /// Return the scope id active at `byte_offset`, or `None`.
+    /// Advances the internal cursor forward; never goes backward.
+    fn scope_at(&mut self, byte_offset: usize) -> Option<ScopeId> {
+        // Skip intervals that have already ended.
+        while self.pos < self.intervals.len() && self.intervals[self.pos].1 <= byte_offset {
+            self.pos += 1;
+        }
+        // Check if the current interval covers `byte_offset`.
+        if self.pos < self.intervals.len() {
+            let (start, end, id) = self.intervals[self.pos];
+            if start <= byte_offset && byte_offset < end {
+                return Some(id);
+            }
+        }
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-line highlight stack
+// ---------------------------------------------------------------------------
+
+/// Aggregated highlight intervals for one buffer line, one cursor per tier.
+/// Built once before iterating graphemes, queried per grapheme in O(1) amortised.
+struct HighlightStack<'a> {
+    syntax: IntervalCursor<'a>,
+    search: IntervalCursor<'a>,
+    diagnostic: IntervalCursor<'a>,
+    bracket: IntervalCursor<'a>,
+}
+
+impl<'a> HighlightStack<'a> {
+    fn new(tiers: &'a TierBufs) -> Self {
+        Self {
+            syntax: IntervalCursor::new(&tiers.syntax),
+            search: IntervalCursor::new(&tiers.search),
+            diagnostic: IntervalCursor::new(&tiers.diagnostic),
+            bracket: IntervalCursor::new(&tiers.bracket),
+        }
+    }
+
+    /// Layer all active highlight tiers at `byte_offset` into `base`.
+    ///
+    /// Each `theme.resolve(id)` call is an O(1) `Vec` index into the baked
+    /// style array — no hashing on the per-grapheme hot path.
+    fn layer_at(&mut self, byte_offset: usize, mut base: ResolvedStyle, theme: &Theme) -> ResolvedStyle {
+        // Syntax (lowest)
+        if let Some(id) = self.syntax.scope_at(byte_offset) {
+            base = base.layer(theme.resolve(id));
+        }
+        // Search match
+        if let Some(id) = self.search.scope_at(byte_offset) {
+            base = base.layer(theme.resolve(id));
+        }
+        // Diagnostic
+        if let Some(id) = self.diagnostic.scope_at(byte_offset) {
+            base = base.layer(theme.resolve(id));
+        }
+        // Bracket match (highest highlight)
+        if let Some(id) = self.bracket.scope_at(byte_offset) {
+            base = base.layer(theme.resolve(id));
+        }
+        base
+    }
+}
+
+/// Scratch buffer holding sorted highlight intervals split by tier.
+/// Owned by `FrameScratch` so capacity is retained across frames.
+///
+/// Each interval is `(byte_start, byte_end, ScopeId)` — the `ScopeId` maps to
+/// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
+#[derive(Default)]
+pub struct TierBufs {
+    syntax: Vec<(usize, usize, ScopeId)>,
+    search: Vec<(usize, usize, ScopeId)>,
+    diagnostic: Vec<(usize, usize, ScopeId)>,
+    bracket: Vec<(usize, usize, ScopeId)>,
+}
+
+impl TierBufs {
+    pub fn clear(&mut self) {
+        self.syntax.clear();
+        self.search.clear();
+        self.diagnostic.clear();
+        self.bracket.clear();
+    }
+
+    fn push(&mut self, tier: HighlightTier, interval: (usize, usize, ScopeId)) {
+        match tier {
+            HighlightTier::Syntax => self.syntax.push(interval),
+            HighlightTier::SearchMatch => self.search.push(interval),
+            HighlightTier::Diagnostic => self.diagnostic.push(interval),
+            HighlightTier::BracketMatch => self.bracket.push(interval),
+        }
+    }
+
+    fn sort_all(&mut self) {
+        self.syntax.sort_by_key(|i| i.0);
+        self.search.sort_by_key(|i| i.0);
+        self.diagnostic.sort_by_key(|i| i.0);
+        self.bracket.sort_by_key(|i| i.0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public entry points
+// ---------------------------------------------------------------------------
+
+/// Gather highlight intervals from all providers for one buffer line.
+///
+/// Must be called once per buffer line before calling [`style_row`] for that
+/// line's display rows. Clears and re-fills `tier_bufs` and `raw_highlights`.
+pub(crate) fn rebuild_tier_bufs(
+    line_idx: usize,
+    providers: &[Box<dyn HighlightSource>],
+    rope: &ropey::Rope,
+    tree: Option<&tree_sitter::Tree>,
+    scratch: &mut StyleScratch,
+) {
+    scratch.tier_bufs.clear();
+    scratch.highlights.clear();
+    let ctx = SourceContext {
+        rope,
+        tree,
+        line_start_byte: rope.line_to_byte(line_idx),
+    };
+    for provider in providers {
+        provider.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
+        for &interval in scratch.highlights.iter() {
+            scratch.tier_bufs.push(provider.tier(), interval);
+        }
+        scratch.highlights.clear();
+    }
+    scratch.tier_bufs.sort_all();
+}
+
+/// Resolve per-grapheme styles for one display row.
+///
+/// `styles_out` must be pre-sized to at least `row.graphemes.end` (parallel
+/// to `graphemes`). Writes into the row's slice of `styles_out`; entries
+/// outside `row.graphemes` are untouched.
+///
+/// Call [`rebuild_tier_bufs`] for the current buffer line before this.
+/// `scratch.sorted_sels` must be pre-populated and sorted by the caller.
+pub(crate) fn style_row(
+    row: &DisplayRow,
+    graphemes: &[Grapheme],
+    line_idx: usize,
+    is_cursor_line: bool,
+    mode: EditorMode,
+    theme: &Theme,
+    scratch: &mut StyleScratch,
+) {
+    let primary_idx = scratch.primary_idx_in_sorted;
+    collect_selection_spans(line_idx, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.sel_spans, &mut scratch.primary_sel_span);
+    collect_cursor_heads(line_idx, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.cursor_heads, &mut scratch.primary_cursor_col);
+
+    let mut hl = HighlightStack::new(&scratch.tier_bufs);
+
+    for g_idx in row.graphemes.start..row.graphemes.end {
+        let g = &graphemes[g_idx];
+
+        // WidthContinuation cells get the same style as their primary cell.
+        if matches!(g.content, crate::types::CellContent::WidthContinuation) {
+            if g_idx > 0 {
+                scratch.styles[g_idx] = scratch.styles[g_idx - 1];
+            }
+            continue;
+        }
+
+        let mut style = theme.default;
+
+        // Tier 3: cursor-line background tint (lowest).
+        // theme.ui fields are O(1) struct-field reads — no HashMap lookup.
+        if is_cursor_line {
+            style = style.layer(theme.ui.cursorline);
+        }
+
+        // Tier 2a–2d: highlights layered in ascending priority.
+        // Each theme.resolve(id) is an O(1) Vec index.
+        style = hl.layer_at(g.byte_range.start, style, theme);
+
+        // Tier 1: selection (primary wins over secondary for style; both are highlighted)
+        let in_primary_sel = scratch.primary_sel_span
+            .is_some_and(|(s, e)| g.col >= s && g.col < e);
+        if in_primary_sel {
+            style = style.layer(theme.ui.selection_primary);
+        } else if scratch.sel_spans.iter().any(|&(s, e)| g.col >= s && g.col < e) {
+            style = style.layer(theme.ui.selection);
+        }
+
+        // Tier 0: cursor head (highest); primary cursor uses a distinct scope
+        let is_primary_cursor = scratch.primary_cursor_col == Some(g.col);
+        if is_primary_cursor {
+            let cursor_style = if mode.cursor_is_bar() {
+                theme.ui.cursor_insert_primary
+            } else {
+                theme.ui.cursor_primary
+            };
+            style = style.layer(cursor_style);
+        } else if scratch.cursor_heads.contains(&g.col) {
+            let cursor_style = if mode.cursor_is_bar() {
+                theme.ui.cursor_insert
+            } else {
+                theme.ui.cursor
+            };
+            style = style.layer(cursor_style);
+        }
+
+        scratch.styles[g_idx] = style;
+    }
+}
+
+/// Stage 3 — resolve per-grapheme styles for all display rows.
+///
+/// Convenience wrapper over [`rebuild_tier_bufs`] + [`style_row`] that
+/// processes the full set of visible rows in one call. Used by the
+/// non-fused pipeline path and tests.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_styles(
+    rows: &[DisplayRow],
+    graphemes: &[Grapheme],
+    selections: &[Selection],
+    mode: EditorMode,
+    highlight_providers: &[Box<dyn HighlightSource>],
+    theme: &Theme,
+    rope: &ropey::Rope,
+    tree: Option<&tree_sitter::Tree>,
+    scratch: &mut StyleScratch,
+) {
+    scratch.populate_sorted_sels(selections);
+
+    let mut current_line: Option<usize> = None;
+    scratch.styles.resize(graphemes.len(), ResolvedStyle::default());
+
+    for row in rows {
+        let line_idx = match row.kind.line_idx() {
+            Some(l) => l,
+            None => {
+                // Virtual row: styles are already default-initialised.
+                continue;
+            }
+        };
+
+        // Rebuild highlight tiers once per buffer line (multiple rows can share a line
+        // when wrapping is enabled).
+        if current_line != Some(line_idx) {
+            current_line = Some(line_idx);
+            rebuild_tier_bufs(line_idx, highlight_providers, rope, tree, scratch);
+        }
+
+        let is_cursor_line = scratch.sorted_sels.iter().any(|s| s.head.line == line_idx);
+        style_row(row, graphemes, line_idx, is_cursor_line, mode, theme, scratch);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Selection and cursor helpers
+// ---------------------------------------------------------------------------
+
+/// Collect (start_col, end_col_exclusive) spans for the given line within `row`.
+///
+/// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
+/// `sorted_sels`) has a visible span on this row.
+fn collect_selection_spans(
+    line_idx: usize,
+    sorted_sels: &[Selection],
+    primary_idx: Option<usize>,
+    graphemes: &[Grapheme],
+    row_range: &std::ops::Range<usize>,
+    out: &mut Vec<(u16, u16)>,
+    primary_sel_span: &mut Option<(u16, u16)>,
+) {
+    out.clear();
+    *primary_sel_span = None;
+    for (idx, sel) in sorted_sels.iter().enumerate() {
+        let (start, end) = sel.range();
+        if start.line > line_idx || end.line < line_idx {
+            continue;
+        }
+        let sel_byte_start = if start.line == line_idx { start.byte_offset } else { 0 };
+        let sel_byte_end = if end.line == line_idx { end.byte_offset } else { usize::MAX };
+        let col_start = byte_offset_to_col(sel_byte_start, graphemes, row_range).unwrap_or(0);
+        let col_end = byte_offset_to_col(sel_byte_end, graphemes, row_range)
+            .unwrap_or_else(|| graphemes[row_range.clone()].last().map_or(0, |g| g.col + g.width as u16));
+        if col_end > col_start {
+            out.push((col_start, col_end));
+            if Some(idx) == primary_idx {
+                *primary_sel_span = Some((col_start, col_end));
+            }
+        }
+    }
+}
+
+/// Collect cursor head columns for `line_idx` within the current `row_range`.
+///
+/// Also sets `primary_cursor_col` on `scratch` when the primary cursor (identified
+/// by `primary_idx`) lands on this row.
+fn collect_cursor_heads(
+    line_idx: usize,
+    sorted_sels: &[Selection],
+    primary_idx: Option<usize>,
+    graphemes: &[Grapheme],
+    row_range: &std::ops::Range<usize>,
+    out: &mut Vec<u16>,
+    primary_cursor_col: &mut Option<u16>,
+) {
+    out.clear();
+    *primary_cursor_col = None;
+    for (idx, sel) in sorted_sels.iter().enumerate() {
+        if sel.head.line != line_idx {
+            continue;
+        }
+        if let Some(col) = byte_offset_to_col(sel.head.byte_offset, graphemes, row_range) {
+            out.push(col);
+            if Some(idx) == primary_idx {
+                *primary_cursor_col = Some(col);
+            }
+        }
+    }
+}
+
+/// Binary-search for the grapheme in `row_range` whose `byte_range.start` is
+/// closest to `byte_offset`, returning its `col`.
+fn byte_offset_to_col(
+    byte_offset: usize,
+    graphemes: &[Grapheme],
+    row_range: &std::ops::Range<usize>,
+) -> Option<u16> {
+    let row_graphemes = &graphemes[row_range.clone()];
+    let idx = row_graphemes.partition_point(|g| g.byte_range.start < byte_offset);
+    row_graphemes.get(idx).map(|g| g.col)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{ScopeRegistry, Theme};
+    use crate::types::{DisplayRow, Grapheme, RowKind, ScopeId, Selection, DocPos, CellContent, ResolvedStyle};
+    use std::collections::HashMap;
+
+    fn make_graphemes(count: usize) -> Vec<Grapheme> {
+        (0..count)
+            .map(|i| Grapheme {
+                byte_range: i..i + 1,
+                col: i as u16,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            })
+            .collect()
+    }
+
+    fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
+        DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes }
+    }
+
+    fn default_theme() -> Theme {
+        Theme::default()
+    }
+
+    #[test]
+    fn no_selections_yields_default_style() {
+        let rope = ropey::Rope::from_str("abc");
+        let graphemes = make_graphemes(3);
+        let rows = vec![make_row(0..3)];
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &[], EditorMode::Normal, &[], &default_theme(), &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles.len(), 3);
+        assert!(scratch.styles.iter().all(|s| *s == ResolvedStyle::default()));
+    }
+
+    #[test]
+    fn cursor_head_overrides_default() {
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = make_graphemes(5);
+        let rows = vec![make_row(0..5)];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 2 },
+            head: DocPos { line: 0, byte_offset: 2 },
+        }];
+
+        // Theme with a cursor style so we can detect the override.
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Grapheme at col 2 (index 2) should have the cursor style.
+        assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red));
+        // Other graphemes should not.
+        assert_eq!(scratch.styles[0].fg, None);
+    }
+
+    fn make_scope_ids(names: &[&'static str]) -> (ScopeRegistry, Vec<ScopeId>) {
+        let mut reg = ScopeRegistry::new();
+        let ids = names.iter().map(|&n| reg.intern(n)).collect();
+        (reg, ids)
+    }
+
+    #[test]
+    fn interval_cursor_basic() {
+        let (_reg, ids) = make_scope_ids(&["kw", "fn"]);
+        let (kw, fn_) = (ids[0], ids[1]);
+        let intervals = vec![(2, 5, kw), (7, 9, fn_)];
+        let mut cursor = IntervalCursor::new(&intervals);
+        assert_eq!(cursor.scope_at(0), None);
+        assert_eq!(cursor.scope_at(2), Some(kw));
+        assert_eq!(cursor.scope_at(4), Some(kw));
+        assert_eq!(cursor.scope_at(5), None);
+        assert_eq!(cursor.scope_at(7), Some(fn_));
+        assert_eq!(cursor.scope_at(9), None);
+    }
+
+    #[test]
+    fn interval_cursor_empty() {
+        let mut cursor = IntervalCursor::<'_>::new(&[]);
+        assert_eq!(cursor.scope_at(0), None);
+        assert_eq!(cursor.scope_at(100), None);
+    }
+
+    #[test]
+    fn interval_cursor_adjacent_intervals() {
+        // (2,5) and (5,8) are adjacent — byte 5 must match the second.
+        let (_reg, ids) = make_scope_ids(&["kw", "fn"]);
+        let (kw, fn_) = (ids[0], ids[1]);
+        let intervals = vec![(2, 5, kw), (5, 8, fn_)];
+        let mut cursor = IntervalCursor::new(&intervals);
+        assert_eq!(cursor.scope_at(4), Some(kw));
+        assert_eq!(cursor.scope_at(5), Some(fn_));
+        assert_eq!(cursor.scope_at(7), Some(fn_));
+        assert_eq!(cursor.scope_at(8), None);
+    }
+
+    #[test]
+    fn selection_range_highlighted() {
+        // Graphemes at cols 0,1,2. Selection spans bytes 1..3 (cols 1 and 2).
+        let rope = ropey::Rope::from_str("abc");
+        let graphemes = make_graphemes(3);
+        let rows = vec![make_row(0..3)];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 1 },
+            head: DocPos { line: 0, byte_offset: 3 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles[0].bg, None, "col 0 outside selection");
+        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Red), "col 1 inside selection");
+        assert_eq!(scratch.styles[2].bg, Some(ratatui::style::Color::Red), "col 2 inside selection");
+    }
+
+    #[test]
+    fn cursorline_background_applied_to_cursor_line_only() {
+        // Two lines; cursor on line 0.
+        let rope = ropey::Rope::from_str("ab\ncd");
+        let g0 = Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g1 = Grapheme { byte_range: 1..2, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g2 = Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g3 = Grapheme { byte_range: 1..2, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let graphemes = vec![g0, g1, g2, g3];
+        let rows = vec![
+            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..2 },
+            DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 2..4 },
+        ];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 0 },
+            head: DocPos { line: 0, byte_offset: 0 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Green), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Green), "line 0 has cursorline bg");
+        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Green), "line 0 has cursorline bg");
+        assert_eq!(scratch.styles[2].bg, None, "line 1 has no cursorline bg");
+        assert_eq!(scratch.styles[3].bg, None, "line 1 has no cursorline bg");
+    }
+
+    #[test]
+    fn insert_mode_uses_insert_cursor_scope() {
+        let rope = ropey::Rope::from_str("ab");
+        let graphemes = make_graphemes(2);
+        let rows = vec![make_row(0..2)];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 0 },
+            head: DocPos { line: 0, byte_offset: 0 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursor.insert", ResolvedStyle { fg: Some(ratatui::style::Color::Green), ..Default::default() });
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Insert, &[], &theme, &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Green), "Insert uses ui.cursor.insert scope");
+    }
+
+    #[test]
+    fn multi_cursor_all_lines_get_cursorline() {
+        // Two cursors on lines 0 and 2; line 1 should not get cursorline.
+        let rope = ropey::Rope::from_str("a\nb\nc");
+        let graphemes = vec![
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+        ];
+        let rows = vec![
+            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
+            DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 1..2 },
+            DisplayRow { kind: RowKind::LineStart { line_idx: 2 }, graphemes: 2..3 },
+        ];
+        let selections = vec![
+            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } },
+            Selection { anchor: DocPos { line: 2, byte_offset: 0 }, head: DocPos { line: 2, byte_offset: 0 } },
+        ];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "line 0 cursor");
+        assert_eq!(scratch.styles[1].bg, None, "line 1 no cursor");
+        assert_eq!(scratch.styles[2].bg, Some(ratatui::style::Color::Blue), "line 2 cursor");
+    }
+
+    #[test]
+    fn virtual_rows_keep_default_style() {
+        let rope = ropey::Rope::from_str("ab");
+        let graphemes = vec![
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..0, col: 0, width: 1, content: crate::types::CellContent::Virtual("hint"), indent_depth: 0 },
+        ];
+        let rows = vec![
+            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
+            DisplayRow { kind: RowKind::Virtual { provider_id: 0, anchor_line: 0 }, graphemes: 1..2 },
+        ];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 0 },
+            head: DocPos { line: 0, byte_offset: 0 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Virtual row grapheme stays at default style.
+        assert_eq!(scratch.styles[1], ResolvedStyle::default());
+    }
+
+    // ── Primary vs secondary cursor/selection ───────────────────────────────
+
+    #[test]
+    fn primary_cursor_gets_primary_style() {
+        // Two cursors on the same line (cols 0 and 2). Primary is first in the
+        // selections slice (col 0). Theme has distinct styles for primary vs secondary.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = make_graphemes(5);
+        let rows = vec![make_row(0..5)];
+        let selections = vec![
+            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } }, // primary (col 0)
+            Selection { anchor: DocPos { line: 0, byte_offset: 2 }, head: DocPos { line: 0, byte_offset: 2 } }, // secondary (col 2)
+        ];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursor.primary", ResolvedStyle { fg: Some(ratatui::style::Color::Yellow), ..Default::default() });
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Yellow), "primary cursor gets ui.cursor.primary");
+        assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red), "secondary cursor gets ui.cursor");
+        assert_eq!(scratch.styles[1].fg, None, "non-cursor grapheme unchanged");
+    }
+
+    #[test]
+    fn primary_selection_gets_primary_style() {
+        // Two selections on the same line. Primary is first (bytes 0..2), secondary is bytes 3..5.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = make_graphemes(5);
+        let rows = vec![make_row(0..5)];
+        let selections = vec![
+            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 2 } }, // primary
+            Selection { anchor: DocPos { line: 0, byte_offset: 3 }, head: DocPos { line: 0, byte_offset: 5 } }, // secondary
+        ];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.selection.primary", ResolvedStyle { bg: Some(ratatui::style::Color::Cyan), ..Default::default() });
+        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Primary selection: cols 0 and 1 (bytes 0..2)
+        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Cyan), "col 0 in primary selection");
+        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Cyan), "col 1 in primary selection");
+        // Secondary selection: cols 3 and 4 (bytes 3..5)
+        assert_eq!(scratch.styles[3].bg, Some(ratatui::style::Color::Blue), "col 3 in secondary selection");
+        assert_eq!(scratch.styles[4].bg, Some(ratatui::style::Color::Blue), "col 4 in secondary selection");
+        // Col 2 is between selections
+        assert_eq!(scratch.styles[2].bg, None, "col 2 outside both selections");
+    }
+
+    #[test]
+    fn primary_cursor_falls_back_when_no_primary_scope() {
+        // Theme does not define ui.cursor.primary — both cursors should get ui.cursor.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = make_graphemes(5);
+        let rows = vec![make_row(0..5)];
+        let selections = vec![
+            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } }, // primary
+            Selection { anchor: DocPos { line: 0, byte_offset: 2 }, head: DocPos { line: 0, byte_offset: 2 } }, // secondary
+        ];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Both cursors get ui.cursor via dot-notation fallback.
+        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Red), "primary falls back to ui.cursor");
+        assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red), "secondary uses ui.cursor");
+    }
+}
