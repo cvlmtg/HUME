@@ -117,6 +117,8 @@ Theme: embed the Steel scripting engine and land the most impactful editing poli
 ### M6 — Syntax awareness (planned)
 
 - **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
+- **Incremental tree-sitter parsing**: translate document edits (`ChangeSet`) into tree-sitter `InputEdit` operations for incremental re-parsing rather than a full re-parse on each edit. The `SharedBuffer.tree` field already exists; this wires up the update path.
+- **Multi-layer tree-sitter injections**: support embedded languages (e.g. JavaScript in HTML, code blocks in Markdown) via injection layers with priority ordering.
 - **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable).
 
 ### Future milestones
@@ -125,6 +127,7 @@ Theme: embed the Steel scripting engine and land the most impactful editing poli
 - **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
+- **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
 - Code folding (tree-sitter powered collapse/expand)
 - Git gutter signs (plugin candidate — keep out of core, implement via Steel once scripting lands)
 - File watcher (detect external file changes, prompt to reload)
