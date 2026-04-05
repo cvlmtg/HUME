@@ -3,8 +3,6 @@ use pretty_assertions::assert_eq;
 
 use crate::core::document::Document;
 use crate::testing::{parse_state, serialize_state};
-use crate::ui::gutter::GutterConfig;
-use crate::ui::view::{LineNumberStyle, ViewState};
 
 use super::{Editor, Mode};
 
@@ -13,23 +11,7 @@ use super::{Editor, Mode};
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
     let (buf, sels) = parse_state(input);
-    let cached_total_lines = buf.len_lines().saturating_sub(1);
-    let view = ViewState {
-        scroll_offset: 0,
-        height: 24,
-        width: 80,
-        gutter: GutterConfig::default(),
-        cached_total_lines,
-        line_number_style: LineNumberStyle::Hybrid,
-        col_offset: 0,
-        tab_width: 4,
-        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
-        soft_wrap: false,
-        word_wrap: false,
-        indent_wrap: false,
-        scroll_sub_offset: 0,
-    };
-    Editor::for_testing(Document::new(buf, sels), view)
+    Editor::for_testing(Document::new(buf, sels))
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
@@ -1922,22 +1904,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::cursor(pos),
     );
-    let view = ViewState {
-        scroll_offset: 0,
-        height: 24,
-        width: 80,
-        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
-        line_number_style: LineNumberStyle::Hybrid,
-        col_offset: 0,
-        tab_width: 4,
-        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
-        soft_wrap: false,
-        word_wrap: false,
-        indent_wrap: false,
-        scroll_sub_offset: 0,
-    };
     let doc = crate::core::document::Document::new(buf, sels);
-    let mut ed = Editor::for_testing(doc, view);
+    let mut ed = Editor::for_testing(doc);
     // Ensure we start in Normal mode.
     ed.mode = Mode::Normal;
     ed
@@ -2100,22 +2068,8 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::cursor(0),
     );
-    let view = ViewState {
-        scroll_offset: 0,
-        height: 24,
-        width: 80,
-        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
-        line_number_style: LineNumberStyle::Hybrid,
-        col_offset: 0,
-        tab_width: 4,
-        whitespace: crate::ui::whitespace::WhitespaceConfig::default(),
-        soft_wrap: false,
-        word_wrap: false,
-        indent_wrap: false,
-        scroll_sub_offset: 0,
-    };
     let doc = crate::core::document::Document::new(buf, sels);
-    let mut ed = Editor::for_testing(doc, view);
+    let mut ed = Editor::for_testing(doc);
     ed.kitty_enabled = true;
 
     // Search "editor" — lands on first match.

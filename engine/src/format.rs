@@ -188,7 +188,7 @@ pub fn count_visual_rows(
 }
 
 /// Format one buffer line, appending zero or more `DisplayRow`s.
-pub(crate) fn format_buffer_line(
+pub fn format_buffer_line(
     rope: &Rope,
     line_idx: usize,
     tab_width: u8,
