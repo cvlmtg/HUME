@@ -7,6 +7,7 @@ use unicode_segmentation::UnicodeSegmentation;
 ///
 /// `prompt` distinguishes the context (`:` for commands, `/` or `?` for search)
 /// without needing separate mode variants for each prompt type.
+#[derive(Clone)]
 pub(crate) struct MiniBuffer {
     /// The character shown before the input, e.g. `:` for commands, `/` for search.
     pub prompt: char,

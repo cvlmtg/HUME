@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
@@ -6,8 +8,11 @@ use ratatui::style::{Modifier, Style};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use engine::types::EditorMode;
+
 use crate::core::grapheme::grapheme_col_in_line;
 use crate::editor::{Editor, Mode};
+use crate::ui::theme::EditorColors;
 
 /// Hardcoded left section for Command/Search modes.
 const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
@@ -421,6 +426,237 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)]
         screen_buf.set_string(x, y, text.as_ref(), *style);
         x += UnicodeWidthStr::width(text.as_ref()) as u16;
     }
+}
+
+// ── Engine integration ────────────────────────────────────────────────────────
+
+/// A point-in-time snapshot of all statusline-visible editor state.
+///
+/// The editor writes a fresh snapshot once per frame (after event dispatch,
+/// before `term.draw`). The engine's render path reads this snapshot through
+/// the `Arc<Mutex<...>>` shared with `HumeStatusline`. Per-frame rebuild is
+/// acceptable — it's a handful of clones of short strings.
+pub(crate) struct StatuslineSnapshot {
+    pub mode: EditorMode,
+    pub file_path: Option<PathBuf>,
+    /// `(line_1based, col_1based)` of the primary cursor.
+    pub cursor_pos: (usize, usize),
+    pub kitty_enabled: bool,
+    pub is_dirty: bool,
+    /// `Some((current_1based, total))` when a search regex is active.
+    pub match_count: Option<(usize, usize)>,
+    pub search_wrapped: bool,
+    /// Mini-buffer state when active.
+    pub minibuf: Option<crate::editor::MiniBuffer>,
+    /// Transient status message (shown instead of normal statusline content).
+    pub status_msg: Option<String>,
+    pub config: StatusLineConfig,
+    pub colors: EditorColors,
+}
+
+impl StatuslineSnapshot {
+    /// Capture the current editor state into a snapshot.
+    pub(crate) fn from_editor(editor: &Editor) -> Self {
+        let buf = editor.doc.buf();
+        let head = editor.doc.sels().primary().head;
+        let cursor_line = buf.char_to_line(head);
+        let col_0 = grapheme_col_in_line(buf, cursor_line, head);
+
+        Self {
+            mode: editor.mode,
+            file_path: editor.file_path.clone(),
+            cursor_pos: (cursor_line + 1, col_0 + 1),
+            kitty_enabled: editor.kitty_enabled,
+            is_dirty: editor.doc.is_dirty(),
+            match_count: editor.search.match_count(),
+            search_wrapped: editor.search.wrapped(),
+            minibuf: editor.minibuf.clone(),
+            status_msg: editor.status_msg.clone(),
+            config: editor.statusline_config.clone(),
+            colors: EditorColors::default(),
+        }
+    }
+}
+
+/// Engine-compatible statusline provider.
+///
+/// Holds a shared `Arc<Mutex<StatuslineSnapshot>>` updated by the editor
+/// each frame. Implements `StatuslineProvider` so it can be registered on
+/// `EditorView::statusline`.
+pub(crate) struct HumeStatusline {
+    pub(crate) data: Arc<Mutex<StatuslineSnapshot>>,
+}
+
+impl engine::providers::StatuslineProvider for HumeStatusline {
+    fn render(
+        &self,
+        area: ratatui::layout::Rect,
+        _theme: &engine::theme::Theme,
+        buf: &mut ratatui::buffer::Buffer,
+    ) {
+        let snap = self.data.lock().unwrap();
+        let y = area.y;
+
+        if snap.minibuf.is_none() {
+            if let Some(ref msg) = snap.status_msg {
+                fill_row_colors(buf, &snap.colors, area, y);
+                buf.set_string(area.x + 1, y, msg, snap.colors.statusline);
+                return;
+            }
+        }
+
+        render_statusline_from_snapshot(buf, &snap, area, y);
+    }
+}
+
+fn fill_row_colors(buf: &mut ScreenBuf, colors: &EditorColors, area: Rect, y: u16) {
+    buf.set_style(Rect::new(area.x, y, area.width, 1), colors.statusline);
+}
+
+fn render_statusline_from_snapshot(
+    screen_buf: &mut ScreenBuf,
+    snap: &StatuslineSnapshot,
+    area: Rect,
+    y: u16,
+) {
+    let colors = &snap.colors;
+    let config = &snap.config;
+
+    let (left_elems, center_elems, right_elems): (&[StatusElement], &[StatusElement], &[StatusElement]) =
+        if snap.minibuf.is_some() {
+            (MINIBUF_LEFT, &[], &config.right)
+        } else {
+            (&config.left, &config.center, &config.right)
+        };
+
+    fill_row_colors(screen_buf, colors, area, y);
+
+    let left_spans = pad_left(render_section_snap(left_elems, snap), colors);
+    let center_spans = render_section_snap(center_elems, snap);
+    let right_spans = pad_right(render_section_snap(right_elems, snap), colors);
+
+    let left_w = section_width(&left_spans);
+    let center_w = section_width(&center_spans);
+    let right_w = section_width(&right_spans);
+
+    let left_x = area.x;
+    let left_end = left_x + left_w;
+    let right_x = area.right().saturating_sub(right_w);
+    let right_fits = right_x >= left_end;
+    let right_fence = if right_fits { right_x } else { area.right() };
+    let gap = right_fence.saturating_sub(left_end);
+    let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
+    let center_fits = !center_spans.is_empty()
+        && center_w <= gap
+        && center_x >= left_end
+        && center_x + center_w <= right_fence;
+
+    draw_section(screen_buf, &left_spans, left_x, y);
+    if right_fits { draw_section(screen_buf, &right_spans, right_x, y); }
+    if center_fits { draw_section(screen_buf, &center_spans, center_x, y); }
+
+    if let Some(mb) = &snap.minibuf {
+        let mb_offset = last_span_offset(&left_spans);
+        let prompt_w = mb.prompt.width().unwrap_or(0) as u16;
+        let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
+        let cursor_x = left_x + mb_offset + prompt_w + input_before_cursor;
+        if cursor_x < area.right() {
+            let ch = mb.input[mb.cursor..].graphemes(true).next().unwrap_or(" ");
+            let cursor_style = Style::new().remove_modifier(Modifier::REVERSED);
+            screen_buf.set_string(cursor_x, y, ch, cursor_style);
+        }
+    }
+}
+
+fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'static, str>, Style) {
+    let colors = &snap.colors;
+    match seg {
+        StatusElement::Mode => {
+            let (label, style) = match snap.mode {
+                EditorMode::Normal  => ("NOR", colors.status_normal),
+                EditorMode::Extend  => ("EXT", colors.status_extend),
+                EditorMode::Insert  => ("INS", colors.status_insert),
+                EditorMode::Search  => ("SRC", colors.status_search),
+                EditorMode::Command => ("CMD", colors.status_command),
+                EditorMode::Select  => ("SEL", colors.status_select),
+            };
+            (Cow::Borrowed(label), style)
+        }
+        StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
+        StatusElement::FileName => {
+            let name = snap.file_path.as_deref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("[scratch]");
+            (Cow::Owned(name.to_string()), colors.statusline)
+        }
+        StatusElement::Position => {
+            let (line, col) = snap.cursor_pos;
+            (Cow::Owned(format!("{line}:{col}")), colors.statusline)
+        }
+        StatusElement::KittyProtocol => {
+            let label = if snap.kitty_enabled { "🐱" } else { "" };
+            (Cow::Borrowed(label), colors.statusline)
+        }
+        StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
+        StatusElement::DirtyIndicator => {
+            let label = if snap.is_dirty { "[+]" } else { "" };
+            (Cow::Borrowed(label), colors.statusline)
+        }
+        StatusElement::SearchMatches => {
+            if let Some((current, total)) = snap.match_count {
+                if total == 0 {
+                    (Cow::Borrowed(""), colors.statusline)
+                } else {
+                    let w = if snap.search_wrapped { "W " } else { "" };
+                    (Cow::Owned(format!("{w}[{current}/{total}]")), colors.statusline)
+                }
+            } else {
+                (Cow::Borrowed(""), colors.statusline)
+            }
+        }
+        StatusElement::MiniBuf => {
+            if let Some(mb) = &snap.minibuf {
+                let mut text = String::with_capacity(2 + mb.input.len());
+                text.push(mb.prompt);
+                text.push_str(&mb.input);
+                (Cow::Owned(text), colors.statusline)
+            } else {
+                (Cow::Borrowed(""), colors.statusline)
+            }
+        }
+    }
+}
+
+fn render_section_snap(elements: &[StatusElement], snap: &StatuslineSnapshot) -> Vec<(Cow<'static, str>, Style)> {
+    let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
+
+    for &seg in elements {
+        let (text, style) = render_element_snap(seg, snap);
+        if text.is_empty() { continue; }
+
+        if let Some((prev_text, _)) = spans.last() {
+            let a_ends_space = prev_text.ends_with(' ');
+            let b_starts_space = text.starts_with(' ');
+
+            if !a_ends_space && !b_starts_space {
+                spans.push((Cow::Borrowed(" "), snap.colors.statusline));
+                spans.push((text, style));
+            } else if a_ends_space && b_starts_space {
+                let trimmed = match &text {
+                    Cow::Borrowed(s) => Cow::Borrowed(s.strip_prefix(' ').unwrap_or(s)),
+                    Cow::Owned(s) => Cow::Owned(s.strip_prefix(' ').unwrap_or(s.as_str()).to_string()),
+                };
+                spans.push((trimmed, style));
+            } else {
+                spans.push((text, style));
+            }
+        } else {
+            spans.push((text, style));
+        }
+    }
+
+    spans
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
