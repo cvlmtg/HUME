@@ -317,24 +317,17 @@ fn display_col_in_line(
     cursor_char: usize,
     tab_width: usize,
 ) -> usize {
-    let line_start = rope.line_to_char(line_idx);
-    let mut col = 0usize;
-    let line = rope.line(line_idx);
-    // Walk graphemes up to cursor_char, accumulating display columns.
+    use crate::core::grapheme::grapheme_advance;
     use unicode_segmentation::UnicodeSegmentation;
-    use unicode_width::UnicodeWidthStr;
+    let line_start = rope.line_to_char(line_idx);
+    let line = rope.line(line_idx);
+    let mut col = 0usize;
     let mut char_pos = line_start;
     for grapheme in line.chunks().flat_map(|c| c.graphemes(true)) {
         if char_pos >= cursor_char {
             break;
         }
-        if grapheme == "\t" {
-            // Tab expands to the next tab stop.
-            let remainder = tab_width - (col % tab_width);
-            col += remainder;
-        } else {
-            col += UnicodeWidthStr::width(grapheme);
-        }
+        col += grapheme_advance(grapheme, col, tab_width);
         char_pos += grapheme.chars().count();
     }
     col
@@ -400,10 +393,49 @@ mod tests {
     }
 
     #[test]
+    fn display_col_cjk() {
+        // CJK ideographs are double-width: "世界abc\n", cursor at char 3 ("b").
+        // Width of "世界a" = 2 + 2 + 1 = 5 display columns.
+        let r = rope("世界abc\n");
+        assert_eq!(display_col_in_line(&r, 0, 3, 4), 5);
+    }
+
+    #[test]
+    fn display_col_combining_mark() {
+        // "é" = e + combining acute (2 chars, 1 grapheme cluster).
+        // Combining marks have display width 0 but the cluster is clamped to
+        // min 1 by grapheme_advance, so the total is 1 display column.
+        let r = rope("e\u{0301}\n");
+        assert_eq!(display_col_in_line(&r, 0, 2, 4), 1);
+    }
+
+    #[test]
     fn display_col_tab_expansion() {
         let r = rope("\thello\n");
         // Tab at col 0 with tab_width 4 → expands to 4 cells. Cursor at char 1 → col 4.
         assert_eq!(display_col_in_line(&r, 0, 1, 4), 4);
+    }
+
+    #[test]
+    fn display_col_tab_after_content() {
+        // "ab\t" — 'a'(1) + 'b'(1) = col 2, tab expands to 2 (next stop at 4).
+        let r = rope("ab\t\n");
+        assert_eq!(display_col_in_line(&r, 0, 3, 4), 4);
+    }
+
+    #[test]
+    fn display_col_multiple_tabs() {
+        // "\t\t" with tab_width 4 → 4 + 4 = 8 columns.
+        let r = rope("\t\t\n");
+        assert_eq!(display_col_in_line(&r, 0, 2, 4), 8);
+    }
+
+    #[test]
+    fn display_col_multiline() {
+        // "hello\nworld\n" — cursor at char 8 ("r") on line 1.
+        // Line 1 starts at char 6 ("world"), so column = width of "wo" = 2.
+        let r = rope("hello\nworld\n");
+        assert_eq!(display_col_in_line(&r, 1, 8, 4), 2);
     }
 
     // ── cursor_sub_row ───────────────────────────────────────────────────────

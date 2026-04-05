@@ -862,17 +862,6 @@ impl Editor {
         }
     }
 
-    pub(crate) fn with_mode(mut self, mode: Mode) -> Self { self.mode = mode; self }
-    pub(crate) fn with_file_path(mut self, path: PathBuf) -> Self { self.file_path = Some(path); self }
-    pub(crate) fn with_statusline_config(mut self, config: StatusLineConfig) -> Self {
-        self.statusline_config = config;
-        self
-    }
-    pub(crate) fn with_minibuf(mut self, prompt: char, input: &str) -> Self {
-        let cursor = input.len(); // cursor at end of input, which is the default state
-        self.minibuf = Some(MiniBuffer { prompt, input: input.to_string(), cursor });
-        self
-    }
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
         self.search.set_regex(regex_cursor::engines::meta::Regex::new(pattern).ok());
         self.update_search_cache();
