@@ -12,6 +12,8 @@ use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
 
 use super::keymap::WalkResult;
+use engine::types::EditorMode;
+
 use super::{Editor, Mode, SearchDirection};
 
 /// Commands that always record a jump before executing.
@@ -40,7 +42,7 @@ impl Editor {
         // Any keypress dismisses the previous transient status message.
         self.status_msg = None;
         match self.mode {
-            Mode::Normal => self.handle_normal(key),
+            Mode::Normal | Mode::Extend => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
             Mode::Command => self.handle_command(key),
             Mode::Search => self.handle_search(key),
@@ -59,10 +61,9 @@ impl Editor {
             if let KeyCode::Char(ch) = key.code {
                 let count = self.count.take().unwrap_or(1);
                 self.pending_char = Some(ch);
-                // Extend resolution happens inside execute_keymap_command via the
-                // registry. Use self.extend (checked at char-consumption time) OR
-                // ctrl_extend (set when the wait-char was triggered via Ctrl+key).
-                let extend = self.extend || wc.ctrl_extend;
+                // Extend resolution: sticky extend (mode == Extend) OR one-shot
+                // ctrl_extend carried into WaitCharPending from the original keypress.
+                let extend = (self.mode == EditorMode::Extend) || wc.ctrl_extend;
                 self.execute_keymap_command(wc.cmd_name, count, extend);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
@@ -75,7 +76,10 @@ impl Editor {
         if key.code == KeyCode::Esc {
             self.pending_keys.clear();
             self.count = None;
-            self.extend = false;
+            // Esc exits Extend mode; Normal is the reset state.
+            if self.mode == EditorMode::Extend {
+                self.mode = EditorMode::Normal;
+            }
             cmd_clear_search(self, 0);
             return;
         }
@@ -145,9 +149,9 @@ impl Editor {
                 (self.keymap.normal.walk(&self.pending_keys), false)
             };
 
-        // Compute the effective extend flag: sticky extend OR kitty one-shot.
-        // Passed as a parameter — no temporary editor state mutation.
-        let extend = self.extend || ctrl_extend;
+        // Compute the effective extend flag: sticky extend (mode == Extend) OR
+        // kitty one-shot (ctrl_extend local). Passed as a parameter — no mode change.
+        let extend = (self.mode == EditorMode::Extend) || ctrl_extend;
 
         // Ctrl one-shot extend guard: only dispatch if the command has an
         // extend variant. Prevents e.g. Ctrl+u from running "undo" (which
@@ -476,7 +480,7 @@ impl Editor {
 
         match find_next_match(self.doc.buf(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
-                let anchor = if self.extend {
+                let anchor = if self.search.extend {
                     // Extend from the original anchor.
                     Some(self.search.pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
                 } else {

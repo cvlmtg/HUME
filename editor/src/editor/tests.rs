@@ -32,7 +32,6 @@ fn editor_from(input: &str) -> Editor {
         view,
         file_path: None,
         mode: Mode::Normal,
-        extend: false,
         pending_keys: Vec::new(),
         count: None,
         wait_char: None,
@@ -270,11 +269,11 @@ fn m_a_unknown_char_falls_through_cleanly() {
 #[test]
 fn e_toggles_extend_mode_and_motions_extend_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    assert!(!ed.extend, "extend off initially");
+    assert_eq!(ed.mode, Mode::Normal, "Normal mode initially");
 
     // Toggle extend on.
     ed.handle_key(key('e'));
-    assert!(ed.extend, "extend on after 'e'");
+    assert_eq!(ed.mode, Mode::Extend, "Extend mode after 'e'");
 
     // A motion in extend mode should grow the selection, not move a cursor.
     ed.handle_key(key('l'));
@@ -282,7 +281,7 @@ fn e_toggles_extend_mode_and_motions_extend_selection() {
 
     // Toggle extend off.
     ed.handle_key(key('e'));
-    assert!(!ed.extend, "extend off after second 'e'");
+    assert_eq!(ed.mode, Mode::Normal, "Normal mode after second 'e'");
 }
 
 // ── `x` select-line ────────────────────────────────────────────────────────
@@ -546,14 +545,14 @@ fn plain_comma_still_keeps_primary_selection() {
 #[test]
 fn o_in_extend_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.extend = true;
+    ed.mode = Mode::Extend;
 
     ed.handle_key(key('o'));
 
     // anchor and head are swapped — selection is now backward.
     assert_eq!(state(&ed), "<[hell]-o\n");
     // extend mode is still active (flip doesn't exit it).
-    assert!(ed.extend);
+    assert_eq!(ed.mode, Mode::Extend);
 }
 
 #[test]
@@ -575,11 +574,11 @@ fn o_in_normal_mode_still_opens_line_below() {
 #[test]
 fn semicolon_collapses_selection_and_resets_extend() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.extend = true;
+    ed.mode = Mode::Extend;
 
     ed.handle_key(key(';'));
 
-    assert!(!ed.extend, "extend cleared by ';'");
+    assert_eq!(ed.mode, Mode::Normal, "extend cleared by ';'");
     // head of the original selection was 'l' (last char of "hell").
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
@@ -1714,7 +1713,7 @@ fn search_no_match_behaviour() {
 fn extend_search_next_extends_selection() {
     // Cursor on 'h'; search forward for "world" with extend active.
     let mut ed = editor_from("-[h]>ello world\n");
-    ed.extend = true;
+    ed.mode = Mode::Extend;
 
     ed.handle_key(key('/'));
     for ch in "world".chars() {
@@ -1724,10 +1723,10 @@ fn extend_search_next_extends_selection() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 
     ed.handle_key(key_enter());
-    ed.extend = false;
+    ed.mode = Mode::Normal;
 
     // n in extend mode: anchor stays at 0, head jumps to next match.
-    ed.extend = true;
+    ed.mode = Mode::Extend;
     // Only one "world" — wraps back to the same match.
     ed.handle_key(key('n'));
     // Selection should still cover from anchor=0 to the match end.

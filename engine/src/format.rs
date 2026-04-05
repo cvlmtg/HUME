@@ -164,6 +164,29 @@ fn emit_virtual_row(
 // Buffer line formatting
 // ---------------------------------------------------------------------------
 
+/// Return the number of display rows that `line_idx` occupies when formatted.
+///
+/// Convenience wrapper for external crates (e.g. the editor's scroll logic)
+/// that need to count visual rows without using `FormatScratch` directly for
+/// all four pipeline stages.
+///
+/// The scratch buffers are cleared before use; the caller may treat `scratch`
+/// as dirty after this call.
+pub fn count_visual_rows(
+    rope: &Rope,
+    line_idx: usize,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    wrap_mode: &WrapMode,
+    scratch: &mut FormatScratch,
+) -> usize {
+    scratch.display_rows.clear();
+    scratch.graphemes.clear();
+    scratch.line_texts.clear();
+    format_buffer_line(rope, line_idx, tab_width, whitespace, wrap_mode, &[], scratch);
+    scratch.display_rows.len()
+}
+
 /// Format one buffer line, appending zero or more `DisplayRow`s.
 pub(crate) fn format_buffer_line(
     rope: &Rope,

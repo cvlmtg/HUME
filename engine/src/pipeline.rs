@@ -1,4 +1,3 @@
-use ropey::Rope;
 use slotmap::{SlotMap, new_key_type};
 
 use crate::format::FormatScratch;
@@ -21,19 +20,28 @@ new_key_type! {
 // ---------------------------------------------------------------------------
 
 /// State shared across all panes that view the same file.
+///
+/// The rope is intentionally absent — it lives in the editor's `Document` and
+/// is passed to `EditorView::render()` via the `get_rope` closure at render
+/// time. Keeping it here would require a per-frame clone to stay in sync.
 pub struct SharedBuffer {
-    pub rope: Rope,
     /// Incremental tree-sitter parse tree, rebuilt on each edit.
     pub tree: Option<tree_sitter::Tree>,
 }
 
 impl SharedBuffer {
-    pub fn from_str(text: &str) -> Self {
-        Self { rope: Rope::from_str(text), tree: None }
+    pub fn new() -> Self {
+        Self { tree: None }
     }
 
-    pub fn from_rope(rope: Rope) -> Self {
-        Self { rope, tree: None }
+    pub fn with_tree(tree: tree_sitter::Tree) -> Self {
+        Self { tree: Some(tree) }
+    }
+}
+
+impl Default for SharedBuffer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -204,12 +212,20 @@ impl EditorView {
 
     /// Render all panes into `buf` for the given terminal area.
     ///
+    /// `get_rope` resolves a `BufferId` to the authoritative `&Rope` owned by
+    /// the caller (typically the editor's `Document`). The borrow is used only
+    /// inside this call — no rope is stored in `SharedBuffer`.
+    ///
+    /// The `'rope` lifetime must outlive this call; since ropes live in the
+    /// caller's `Document`, this is always satisfied.
+    ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
-    pub fn render(
+    pub fn render<'rope>(
         &mut self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
+        get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
     ) {
         // ── Partition the terminal area for chrome ────────────────────────────
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
@@ -250,13 +266,16 @@ impl EditorView {
             let (pane_id, rect) = self.pane_rects[i];
             let Some(pane) = self.panes.get(pane_id) else { continue };
             let Some(buffer) = self.buffers.get(pane.buffer_id) else { continue };
+            // Resolve the rope from the caller — zero-copy, no clone needed.
+            let Some(rope) = get_rope(pane.buffer_id) else { continue };
 
             self.scratch.clear();
 
             // The unsafe-free approach: extract what we need before the call.
             let pane_ctx = PaneRenderCtx {
                 pane,
-                buffer,
+                rope,
+                tree: buffer.tree.as_ref(),
                 theme: &self.theme,
                 rect,
             };
@@ -280,7 +299,10 @@ impl EditorView {
 /// dozen separate parameters through the call stack.
 pub(crate) struct PaneRenderCtx<'a> {
     pub pane: &'a Pane,
-    pub buffer: &'a SharedBuffer,
+    /// Rope borrowed from the caller's `Document` for this frame only.
+    pub rope: &'a ropey::Rope,
+    /// Tree-sitter parse tree from `SharedBuffer`, if available.
+    pub tree: Option<&'a tree_sitter::Tree>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
 }
@@ -349,7 +371,7 @@ pub(crate) fn render_pane(
 
     // ── Stage 1: Layout ───────────────────────────────────────────────────
     let visible = layout::compute_viewport(
-        &pane_ctx.buffer.rope,
+        pane_ctx.rope,
         &pane_ctx.pane.viewport,
         &pane_ctx.pane.wrap_mode,
         &pane_ctx.pane.providers.gutter_columns,
@@ -463,7 +485,7 @@ fn render_buffer_line(
 
     scratch.format.line_texts.clear();
 
-    if line_idx < pane_ctx.buffer.rope.len_lines() {
+    if line_idx < pane_ctx.rope.len_lines() {
         // Collect and sort inline decorations for this line.
         scratch.inline_inserts.clear();
         for provider in &pane_ctx.pane.providers.inline_decorations {
@@ -475,7 +497,7 @@ fn render_buffer_line(
         // `inline_inserts` is kept outside `scratch.format` to allow simultaneous
         // `&scratch.inline_inserts` and `&mut scratch.format` without a borrow conflict.
         format::format_buffer_line(
-            &pane_ctx.buffer.rope,
+            pane_ctx.rope,
             line_idx,
             pane_ctx.pane.tab_width,
             &pane_ctx.pane.whitespace,
@@ -488,8 +510,8 @@ fn render_buffer_line(
         style::rebuild_tier_bufs(
             line_idx,
             &pane_ctx.pane.providers.highlights,
-            &pane_ctx.buffer.rope,
-            pane_ctx.buffer.tree.as_ref(),
+            pane_ctx.rope,
+            pane_ctx.tree,
             &mut scratch.style,
         );
 

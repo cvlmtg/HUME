@@ -253,13 +253,13 @@ fn render_element(seg: StatusElement, editor: &Editor) -> (Cow<'static, str>, St
     let colors = &editor.colors;
     match seg {
         StatusElement::Mode => {
-            let (label, style) = match (editor.mode, editor.extend) {
-                (Mode::Normal, true)  => ("EXT", colors.status_extend),
-                (Mode::Normal, false) => ("NOR", colors.status_normal),
-                (Mode::Insert, _)     => ("INS", colors.status_insert),
-                (Mode::Search, _)     => ("SRC", colors.status_search),
-                (Mode::Command, _)    => ("CMD", colors.status_command),
-                (Mode::Select, _)     => ("SEL", colors.status_select),
+            let (label, style) = match editor.mode {
+                Mode::Normal   => ("NOR", colors.status_normal),
+                Mode::Extend   => ("EXT", colors.status_extend),
+                Mode::Insert   => ("INS", colors.status_insert),
+                Mode::Search   => ("SRC", colors.status_search),
+                Mode::Command  => ("CMD", colors.status_command),
+                Mode::Select   => ("SEL", colors.status_select),
             };
             (Cow::Borrowed(label), style)
         }

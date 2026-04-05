@@ -5,6 +5,8 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
 
+use engine::types::EditorMode;
+
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
@@ -92,27 +94,15 @@ pub(super) struct FindChar {
 }
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
-
-/// The current editing mode.
-///
-/// Starts as `Normal`. `Insert` is entered via insert commands (`insert-before`,
-/// `insert-after`, etc.) and exited via `exit-insert`.
-/// `Command` is entered via `command-mode` and exited via `Enter` (execute) or `Esc` (cancel).
-/// `Search` is entered via `search-forward` / `search-backward`; live highlights update
-/// on every keystroke; `Enter` confirms, `Esc` restores the pre-search position.
-/// `Select` is entered via `select-within`; user types a regex and all matches within the
-/// current selections become new selections (multi-cursor). Live preview updates
-/// on each keystroke; `Enter` confirms, `Esc` restores original selections.
-/// The keymap is completely different in each mode — `handle_key` dispatches
-/// to the appropriate handler accordingly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Mode {
-    Normal,
-    Insert,
-    Command,
-    Search,
-    Select,
-}
+//
+// The editor uses `engine::types::EditorMode` directly. It unifies the old
+// `Mode` enum and the `extend: bool` field: sticky extend is represented as
+// `EditorMode::Extend`. One-shot ctrl-extend is a per-dispatch local variable
+// and is NOT a mode change.
+//
+// `pub(crate) use EditorMode as Mode;` lets all internal modules use `Mode`
+// as an unqualified alias without a rename migration sweep.
+pub(crate) use engine::types::EditorMode as Mode;
 
 // ── Search state ──────────────────────────────────────────────────────────────
 
@@ -133,6 +123,13 @@ pub(crate) struct SearchState {
     /// Snapshot of selections taken when entering Search mode.
     /// Restored on cancel; discarded on confirm.
     pub pre_search_sels: Option<SelectionSet>,
+    /// Whether extend mode was active when this search was started.
+    ///
+    /// Captured at search-enter time (before mode becomes `Search`) so live
+    /// search can extend from the pre-search anchor even though `mode` is now
+    /// `Search` rather than `Extend`. Cleared with the rest of `SearchState`
+    /// via [`clear`].
+    pub extend: bool,
     /// Compiled regex from the last confirmed (or in-progress) search pattern.
     /// `None` until a valid pattern is typed. Reused by `search-next`/`search-prev` without recompiling.
     /// Mutate only through [`set_regex`] to keep the match cache coherent.
@@ -168,6 +165,7 @@ impl Default for SearchState {
         Self {
             direction: SearchDirection::Forward,
             pre_search_sels: None,
+            extend: false,
             regex: None,
             matches: Vec::new(),
             match_count: None,
@@ -186,6 +184,7 @@ impl SearchState {
     /// `search-forward`/`search-backward` still knows the last-used direction.
     pub fn clear(&mut self) {
         self.pre_search_sels = None;
+        self.extend = false;
         self.wrapped = false;
         self.set_regex(None);
     }
@@ -224,10 +223,10 @@ pub(crate) struct Editor {
     pub(crate) doc: Document,
     pub(crate) view: ViewState,
     pub(crate) file_path: Option<PathBuf>,
+    /// Current editing mode. `EditorMode::Extend` represents the sticky extend
+    /// state (previously a separate `extend: bool` field). Mode is the single
+    /// source of truth — `extend: bool` has been removed.
     pub(crate) mode: Mode,
-    /// When `true`, all motions extend the current selection rather than moving it.
-    /// Toggled by `toggle-extend`; cleared on entering Insert mode or `collapse-and-exit-extend`.
-    pub(crate) extend: bool,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     ///
     /// Empty when at the trie root. Re-walked from the root on each new keypress.
@@ -374,7 +373,6 @@ impl Editor {
             view,
             file_path,
             mode: Mode::Normal,
-            extend: false,
             pending_keys: Vec::new(),
             count: None,
             wait_char: None,
@@ -504,7 +502,7 @@ impl Editor {
     /// `term.draw`. Bracket matching is suppressed in Insert mode — the bar
     /// cursor doesn't "sit on" a character the same way a block cursor does.
     pub(crate) fn update_highlight_cache(&mut self) {
-        if self.mode == Mode::Insert {
+        if self.mode == EditorMode::Insert {
             self.highlights = HighlightMap::new().build();
             return;
         }
@@ -544,7 +542,7 @@ impl Editor {
     /// For Insert mode entry and exit use [`begin_insert_session`] and
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
-    pub(super) fn set_mode(&mut self, mode: Mode) {
+    pub(super) fn set_mode(&mut self, mode: EditorMode) {
         self.mode = mode;
     }
 
@@ -559,11 +557,11 @@ impl Editor {
     /// original command, so that the re-executed command's call here becomes a
     /// no-op for undo/repeat purposes — only the cursor motion takes effect.
     pub(super) fn begin_insert_session(&mut self) {
-        self.extend = false;
         if !self.doc.is_group_open() {
             self.doc.begin_edit_group();
             self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
         }
+        // Mode is SSOT for extend state; transitioning to Insert implicitly clears Extend.
         self.mode = Mode::Insert;
     }
 
@@ -579,7 +577,7 @@ impl Editor {
         {
             action.insert_keys = session.keystrokes;
         }
-        self.mode = Mode::Normal;
+        self.mode = EditorMode::Normal;
     }
 
     /// Apply a motion command and store the resulting selection.
@@ -612,7 +610,6 @@ impl Editor {
             view,
             file_path: None,
             mode: Mode::Normal,
-            extend: false,
             pending_keys: Vec::new(),
             count: None,
             wait_char: None,
@@ -640,7 +637,6 @@ impl Editor {
     }
 
     pub(crate) fn with_mode(mut self, mode: Mode) -> Self { self.mode = mode; self }
-    pub(crate) fn with_extend(mut self, extend: bool) -> Self { self.extend = extend; self }
     pub(crate) fn with_file_path(mut self, path: PathBuf) -> Self { self.file_path = Some(path); self }
     pub(crate) fn with_statusline_config(mut self, config: StatusLineConfig) -> Self {
         self.statusline_config = config;
