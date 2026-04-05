@@ -18,60 +18,9 @@ use engine::types::{Modifiers, ResolvedStyle};
 /// becomes the runtime-mutable output of the theme resolver; the hardcoded
 /// values become the built-in "dark" fallback theme.
 pub(crate) struct EditorColors {
-    // ── Content area ──────────────────────────────────────────────────────────
-
-    /// Default text style — terminal default fg and bg, no decoration.
-    pub default: Style,
-
-    /// The cursor head cell. Must be visually distinct from `selection` so
-    /// the user can see exactly where the cursor is within a selection.
-    /// White-on-black gives a solid, unmistakable block on dark backgrounds.
-    pub cursor_head: Style,
-
-    /// Selected characters that are not the cursor head.
-    /// A muted blue-purple bg lets the text remain readable while making the
-    /// selection extent clear.
-    pub selection: Style,
-
-    /// Background tint for the entire cursor line (lowest priority — overridden
-    /// by `selection` and `cursor_head`). Very subtle so it doesn't fight with
-    /// the selection highlight.
-    pub cursor_line: Style,
-
-    /// Matching bracket highlight. Shown on the bracket that pairs with the
-    /// one under the primary cursor. Lower priority than `selection` and
-    /// `cursor_head`; higher than `cursor_line`.
-    pub bracket_match: Style,
-
-    /// Search match highlight. Shown on all pattern matches while search mode
-    /// is active (or until the next keypress clears the regex). Lower priority
-    /// than `selection` and `cursor_head` — the primary match is visible as a
-    /// selection; other matches use this highlight.
-    pub search_match: Style,
-
-    /// Foreground colour for whitespace indicator characters (`·`, `→`, `⏎`).
-    /// Intentionally dim so indicators don't compete with actual content.
-    /// The background is inherited from the underlying style (cursor_line,
-    /// selection, etc.) via style composition in the renderer.
-    pub whitespace: Style,
-
-    // ── Gutter ────────────────────────────────────────────────────────────────
-
-    /// Line number gutter on the cursor line.
-    /// Slightly brighter than `gutter` so the current line stands out;
-    /// shares the `cursor_line` background tint for visual consistency.
-    pub gutter_cursor_line: Style,
-
-    /// Line number gutter on non-cursor lines. Dimmed so it recedes behind
-    /// the document content.
-    pub gutter: Style,
-
-    // ── EOF tilde rows ────────────────────────────────────────────────────────
-
-    /// The `~` drawn on rows past the end of the buffer.
-    pub tilde: Style,
-
     // ── Statusline ────────────────────────────────────────────────────────────
+    // Content-area colors (cursor, selection, highlights, gutter) are now
+    // handled by the engine's Theme system via `build_default_theme()` below.
 
     /// Base style for the entire statusline row (inverted video fill).
     pub statusline: Style,
@@ -99,25 +48,6 @@ impl EditorColors {
     pub(crate) fn default() -> Self {
         let reversed = Style::new().add_modifier(Modifier::REVERSED);
         Self {
-            default: Style::new(),
-            cursor_head: Style::new()
-                .bg(Color::Rgb(255, 255, 255))
-                .fg(Color::Rgb(0, 0, 0)),
-            selection: Style::new().bg(Color::Rgb(68, 68, 120)),
-            cursor_line: Style::new().bg(Color::Rgb(35, 35, 45)),
-            bracket_match: Style::new()
-                .bg(Color::Rgb(60, 55, 20))
-                .fg(Color::Rgb(220, 180, 50))
-                .add_modifier(Modifier::BOLD),
-            search_match: Style::new()
-                .bg(Color::Rgb(80, 40, 0))
-                .fg(Color::Rgb(255, 180, 80)),
-            whitespace: Style::new().fg(Color::Rgb(70, 70, 80)),
-            gutter_cursor_line: Style::new()
-                .fg(Color::Rgb(180, 180, 180))
-                .bg(Color::Rgb(35, 35, 45)),
-            gutter: Style::new().fg(Color::DarkGray),
-            tilde: Style::new().fg(Color::DarkGray),
             statusline: reversed,
             status_normal: reversed,
             status_insert: reversed.fg(Color::Cyan),

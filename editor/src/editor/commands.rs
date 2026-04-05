@@ -308,7 +308,7 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 
 /// Shared implementation for the four page-scroll commands.
 fn page_scroll(ed: &mut Editor, motion_name: &str) {
-    let page = ed.view.height.max(1);
+    let page = ed.viewport().height as usize;
     let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
         unreachable!("page_scroll: motion '{}' not in registry", motion_name);
     };
@@ -334,7 +334,7 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 
 /// Shared implementation for the four half-page-scroll commands.
 fn half_page_scroll(ed: &mut Editor, motion_name: &str) {
-    let half = (ed.view.height / 2).max(1);
+    let half = (ed.viewport().height as usize / 2).max(1);
     let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
         unreachable!("half_page_scroll: motion '{}' not in registry", motion_name);
     };
@@ -659,12 +659,19 @@ fn typed_clear_search(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
 }
 
 fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
-    ed.view.soft_wrap = !ed.view.soft_wrap;
-    if ed.view.soft_wrap {
-        ed.view.col_offset = 0;
+    use engine::pane::WrapMode;
+    let pane = ed.pane_mut();
+    let currently_wrapping = pane.wrap_mode.is_wrapping();
+    if currently_wrapping {
+        pane.wrap_mode = WrapMode::None;
+        // Horizontal offset is now meaningful; scroll stays where it is.
+    } else {
+        let content_w = pane.viewport.width.saturating_sub(4).max(1);
+        pane.wrap_mode = WrapMode::Indent { width: content_w };
+        pane.viewport.horizontal_offset = 0;
+        pane.viewport.top_row_offset = 0;
     }
-    ed.view.scroll_sub_offset = 0;
-    let state = if ed.view.soft_wrap { "on" } else { "off" };
+    let state = if currently_wrapping { "off" } else { "on" };
     ed.status_msg = Some(format!("Soft wrap {state}"));
 }
 

@@ -20,15 +20,10 @@ use crate::core::history::RevisionId;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ops::text_object::find_bracket_pair;
-use crate::ui::highlight::{HighlightKind, HighlightMap};
-use crate::ui::renderer::{cursor_style, render};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::{StatusLineConfig, StatuslineSnapshot};
 use crate::terminal::Term;
 use crate::ui::theme::EditorColors;
-use crate::ui::gutter::GutterConfig;
-use crate::ui::view::{LineNumberStyle, ViewState};
-use crate::ui::whitespace::WhitespaceConfig;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -37,6 +32,7 @@ mod commands;
 mod keymap;
 mod mappings;
 mod minibuf;
+pub(super) mod scroll;
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
@@ -225,7 +221,6 @@ impl SearchState {
 
 pub(crate) struct Editor {
     pub(crate) doc: Document,
-    pub(crate) view: ViewState,
     pub(crate) file_path: Option<PathBuf>,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state (previously a separate `extend: bool` field). Mode is the single
@@ -252,7 +247,6 @@ pub(crate) struct Editor {
     /// `dispatch_editor_cmd`. Always `None` between commands.
     pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
-    pub(crate) colors: EditorColors,
     pub(super) should_quit: bool,
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
@@ -293,14 +287,6 @@ pub(crate) struct Editor {
 
     // ── Search ────────────────────────────────────────────────────────────────
     pub(super) search: SearchState,
-
-    // ── Per-frame highlights ──────────────────────────────────────────────────
-    /// Pre-computed highlight map for the current frame (bracket match, search).
-    ///
-    /// Updated by [`update_highlight_cache`] once per event-loop iteration,
-    /// after scroll is resolved and before `term.draw`. The renderer reads
-    /// this directly — no highlight logic runs inside the render path.
-    pub(crate) highlights: HighlightMap,
 
     // ── Select (s) ───────────────────────────────────────────────────────────
     /// Snapshot of selections taken when entering Select mode (`select-within`).
@@ -367,25 +353,6 @@ impl Editor {
 
         let sels = SelectionSet::single(Selection::cursor(0));
         let doc = Document::new(buf, sels);
-
-        // Placeholder dimensions — updated at the top of every event-loop
-        // iteration before the first render.
-        let cached_total_lines = doc.buf().len_lines().saturating_sub(1);
-        let view = ViewState {
-            scroll_offset: 0,
-            height: 24,
-            width: 80,
-            gutter: GutterConfig::default(),
-            cached_total_lines,
-            line_number_style: LineNumberStyle::Hybrid,
-            col_offset: 0,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            soft_wrap: true,
-            word_wrap: true,
-            indent_wrap: true,
-            scroll_sub_offset: 0,
-        };
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::ui::theme::build_default_theme();
@@ -458,7 +425,6 @@ impl Editor {
 
         Ok(Self {
             doc,
-            view,
             file_path,
             mode: Mode::Normal,
             pending_keys: Vec::new(),
@@ -466,7 +432,6 @@ impl Editor {
             wait_char: None,
             pending_char: None,
             registers: RegisterSet::new(),
-            colors: EditorColors::default(),
             should_quit: false,
             minibuf: None,
             status_msg: None,
@@ -481,7 +446,6 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
-            highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
             engine_view,
@@ -506,35 +470,78 @@ impl Editor {
         loop {
             // ── 1 & 2. Sync dimensions ────────────────────────────────────────
             let size = term.size()?;
-            self.view.width = size.width as usize;
-            // Reserve one row for the statusline.
-            self.view.height = (size.height as usize).saturating_sub(1);
-            self.view.cached_total_lines = self.doc.buf().len_lines().saturating_sub(1);
+            // Engine reserves 1 row for the statusline; the pane gets the rest.
+            {
+                let vp = self.viewport_mut();
+                vp.width  = size.width;
+                vp.height = size.height.saturating_sub(1);
+            }
 
             // ── 3. Scroll ─────────────────────────────────────────────────────
             let cursor_char = self.doc.sels().primary().head;
-            let cursor_line = self.doc.buf().char_to_line(cursor_char);
-            self.view.ensure_cursor_visible(self.doc.buf(), cursor_char);
-            self.view.ensure_cursor_visible_horizontal(self.doc.buf(), self.doc.sels(), cursor_line);
+            {
+                // Clone pane config to avoid holding a borrow alongside buf().
+                let pane = &self.engine_view.panes[self.pane_id];
+                let wrap_mode  = pane.wrap_mode.clone();
+                let tab_width  = pane.tab_width;
+                let whitespace = pane.whitespace.clone();
+                let rope       = self.doc.buf().rope();
+                let vp = &mut self.engine_view.panes[self.pane_id].viewport;
+                scroll::ensure_cursor_visible(vp, rope, cursor_char, &wrap_mode, tab_width, &whitespace);
+                scroll::ensure_cursor_visible_horizontal(vp, rope, cursor_char, &wrap_mode, tab_width as usize);
+            }
 
-            // ── 4. Render ─────────────────────────────────────────────────────
-            // All mutations are done above. Highlights are pre-computed once
-            // here so the render closure only reads state — no logic inside draw.
-            self.update_highlight_cache();
+            // ── 4. Pre-draw updates ───────────────────────────────────────────
+            // Highlight and statusline data are written to shared Arcs here so
+            // the provider closures read consistent, pre-computed values.
+            self.update_highlight_providers();
+            self.update_statusline_snapshot();
+
+            // ── 5. Render ─────────────────────────────────────────────────────
+            // Compute cursor screen position before entering the draw closure
+            // (avoids split-borrow conflicts inside the closure).
+            let cursor_screen = if self.mode.cursor_is_bar() {
+                // Clone pane geometry so we don't hold a borrow while also
+                // calling gutter_width_approx_for_cursor().
+                let (vp, wrap_mode, tab_width, whitespace) = {
+                    let pane = &self.engine_view.panes[self.pane_id];
+                    (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone())
+                };
+                let gutter_w = self.gutter_width_approx_for_cursor();
+                scroll::cursor_screen_pos(
+                    &vp, self.doc.buf().rope(), cursor_char,
+                    &wrap_mode, tab_width, &whitespace,
+                ).map(|(col, row)| (col + gutter_w, row))
+            } else {
+                None
+            };
+
+            // Split borrows so the closure captures `engine_view` (mut) and
+            // `rope` (immutable reference into `doc`) from different fields.
+            let rope      = self.doc.buf().rope();
+            let buffer_id = self.buffer_id;
+            let engine_view = &mut self.engine_view;
             term.draw(|frame| {
-                let cursor = render(self, frame.area(), frame.buffer_mut());
-                if let Some(pos) = cursor.pos {
-                    frame.set_cursor_position(pos);
+                engine_view.render(frame.area(), frame.buffer_mut(), |bid| {
+                    if bid == buffer_id { Some(rope) } else { None }
+                });
+                if let Some((col, row)) = cursor_screen {
+                    frame.set_cursor_position((col, row));
                 }
             })?;
 
-            // ── 4b. Cursor shape ──────────────────────────────────────────────
+            // ── 5b. Cursor shape ──────────────────────────────────────────────
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = execute!(std::io::stdout(), cursor_style(self.mode));
+            let shape = if self.mode.cursor_is_bar() {
+                SetCursorStyle::SteadyBar
+            } else {
+                SetCursorStyle::SteadyBlock
+            };
+            let _ = execute!(std::io::stdout(), shape);
 
-            // ── 5 & 6. Event ──────────────────────────────────────────────────
+            // ── 6. Event ──────────────────────────────────────────────────────
             match event::read()? {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
@@ -557,6 +564,23 @@ impl Editor {
         Ok(())
     }
 
+    /// Approximate the gutter width for cursor screen-position calculation.
+    ///
+    /// Mirrors the engine's `compute_viewport` logic: sum of `GutterColumn::width`
+    /// for all columns registered on this pane's providers. Used only for placing
+    /// the terminal cursor in Insert mode — the engine renders the gutter authoritatively.
+    fn gutter_width_approx_for_cursor(&self) -> u16 {
+        let total_lines = self.doc.buf().len_lines();
+        let approx_end = self.viewport().top_line + self.viewport().height as usize;
+        let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
+        self.engine_view.panes[self.pane_id]
+            .providers
+            .gutter_columns
+            .iter()
+            .map(|c| c.width(max_visible_line) as u16)
+            .sum()
+    }
+
     // ── Engine accessors ──────────────────────────────────────────────────────
 
     pub(crate) fn viewport(&self) -> &ViewportState {
@@ -565,10 +589,6 @@ impl Editor {
 
     pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
         &mut self.engine_view.panes[self.pane_id].viewport
-    }
-
-    pub(crate) fn pane(&self) -> &Pane {
-        &self.engine_view.panes[self.pane_id]
     }
 
     pub(crate) fn pane_mut(&mut self) -> &mut Pane {
@@ -634,44 +654,69 @@ impl Editor {
         }
     }
 
-    /// Recompute and cache the per-frame highlight map.
-    ///
-    /// Called once per event-loop iteration, after scroll is resolved and before
-    /// `term.draw`. Bracket matching is suppressed in Insert mode — the bar
-    /// cursor doesn't "sit on" a character the same way a block cursor does.
-    pub(crate) fn update_highlight_cache(&mut self) {
-        if self.mode == EditorMode::Insert {
-            self.highlights = HighlightMap::new().build();
-            return;
-        }
 
-        let head = self.doc.sels().primary().head;
-        let mut hl = HighlightMap::new();
+    /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
+    /// read by `BracketMatchHighlighter` and `SearchMatchHighlighter`.
+    ///
+    /// Called once per frame, after scroll is resolved and before `term.draw`.
+    /// Bracket matching is suppressed in Insert mode.
+    pub(super) fn update_highlight_providers(&mut self) {
+        let buf = self.doc.buf();
 
         // ── Search match highlights ───────────────────────────────────────────
-        for &(start, end_incl) in self.search.matches() {
-            hl.push(start, end_incl, HighlightKind::SearchMatch);
-        }
-
-        // ── Bracket match highlight ───────────────────────────────────────────
-        if let Some(ch) = self.doc.buf().char_at(head) {
-            let pair = match ch {
-                '(' | ')' => Some(('(', ')')),
-                '[' | ']' => Some(('[', ']')),
-                '{' | '}' => Some(('{', '}')),
-                '<' | '>' => Some(('<', '>')),
-                _ => None,
-            };
-            if let Some((open, close)) = pair
-                && let Some((op, cp)) = find_bracket_pair(self.doc.buf(), head, open, close)
-            {
-                // Highlight the OTHER bracket — the cursor already marks the one it's on.
-                let match_pos = if head == op { cp } else { op };
-                hl.push(match_pos, match_pos, HighlightKind::BracketMatch);
+        {
+            let mut data = self.search_hl_data.write().unwrap();
+            data.clear();
+            for &(start, end_incl) in self.search.matches() {
+                let line = buf.char_to_line(start);
+                let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
+                let byte_start = buf.char_to_byte(start).saturating_sub(line_start_byte);
+                // end_incl is inclusive char offset; +1 makes it exclusive in chars,
+                // then convert to byte.
+                let end_char = (end_incl + 1).min(buf.len_chars());
+                let byte_end = buf.char_to_byte(end_char).saturating_sub(line_start_byte);
+                data.push((line, byte_start, byte_end));
             }
         }
 
-        self.highlights = hl.build();
+        // ── Bracket match highlight ───────────────────────────────────────────
+        {
+            let mut data = self.bracket_hl_data.write().unwrap();
+            data.clear();
+            if self.mode != EditorMode::Insert {
+                let head = self.doc.sels().primary().head;
+                if let Some(ch) = buf.char_at(head) {
+                    let pair = match ch {
+                        '(' | ')' => Some(('(', ')')),
+                        '[' | ']' => Some(('[', ']')),
+                        '{' | '}' => Some(('{', '}')),
+                        '<' | '>' => Some(('<', '>')),
+                        _ => None,
+                    };
+                    if let Some((open, close)) = pair
+                        && let Some((op, cp)) = find_bracket_pair(buf, head, open, close)
+                    {
+                        let match_pos = if head == op { cp } else { op };
+                        let line = buf.char_to_line(match_pos);
+                        let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
+                        let byte = buf.char_to_byte(match_pos).saturating_sub(line_start_byte);
+                        // Single-char match: byte_end = byte + utf8 length of the char.
+                        let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                        data.push((line, byte, byte + ch_len));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Capture the current editor state into `statusline_data` so `HumeStatusline`
+    /// renders a consistent snapshot each frame.
+    ///
+    /// Called once per frame before `term.draw`. Per-frame rebuild is cheap:
+    /// a handful of clones of short strings.
+    pub(super) fn update_statusline_snapshot(&mut self) {
+        let snap = crate::ui::statusline::StatuslineSnapshot::from_editor(self);
+        *self.statusline_data.lock().unwrap() = snap;
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
@@ -747,21 +792,21 @@ impl Editor {
     /// Only `doc` and `view` are meaningful — all other fields are set to
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
-    pub(crate) fn for_testing(doc: Document, view: ViewState) -> Self {
-        // Minimal engine view for test contexts.
+    pub(crate) fn for_testing(doc: Document) -> Self {
+        // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EditorView::new(theme);
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
         let pane = Pane {
             buffer_id,
-            viewport: ViewportState::new(view.width as u16, view.height as u16),
+            viewport: ViewportState::new(80, 24),
             selections: vec![EngineSelection {
                 anchor: DocPos { line: 0, byte_offset: 0 },
                 head:   DocPos { line: 0, byte_offset: 0 },
             }],
             mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Indent { width: (view.width as u16).saturating_sub(4) },
-            tab_width: view.tab_width as u8,
+            wrap_mode: WrapMode::Indent { width: 76 },
+            tab_width: 4,
             whitespace: engine::pane::WhitespaceConfig::default(),
             providers: engine::providers::ProviderSet::new(),
         };
@@ -785,7 +830,6 @@ impl Editor {
 
         Self {
             doc,
-            view,
             file_path: None,
             mode: Mode::Normal,
             pending_keys: Vec::new(),
@@ -793,7 +837,6 @@ impl Editor {
             wait_char: None,
             pending_char: None,
             registers: RegisterSet::new(),
-            colors: EditorColors::default(),
             should_quit: false,
             minibuf: None,
             status_msg: None,
@@ -808,7 +851,6 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
-            highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
             engine_view,
