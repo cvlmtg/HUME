@@ -2186,3 +2186,62 @@ fn surround_no_match_is_noop() {
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
+// ── Pane selection sync (Bug 3) ──────────────────────────────────────────────
+//
+// The engine pane's `selections` field must stay in sync with `doc.sels()` so
+// the renderer always shows the correct cursor. `push_selections_to_pane` is
+// called once per frame in the run loop; these tests call it explicitly (as
+// the run loop would) and verify the pane reflects the post-operation state.
+
+/// Return the pane's primary cursor as `(line, byte_offset)` — the DocPos
+/// fields that the engine uses for rendering.
+fn pane_head(ed: &Editor) -> (usize, usize) {
+    let head = ed.engine_view.panes[ed.pane_id].selections[0].head;
+    (head.line, head.byte_offset)
+}
+
+/// After `c` (change): the selection is deleted and Insert mode entered.
+/// Before the fix, the pane still held the pre-deletion selection after `c`.
+#[test]
+fn pane_selections_synced_after_change_command() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('c'));
+    // `c` enters Insert; buffer is now "o\n" with cursor at char 0.
+    assert_eq!(ed.mode, Mode::Insert);
+
+    // Simulate the per-frame sync that happens in the run loop.
+    ed.push_selections_to_pane();
+
+    // Cursor must be at line 0, byte offset 0 (start of "o\n").
+    assert_eq!(pane_head(&ed), (0, 0), "pane head must be at (0,0) after 'c' deletes selection");
+}
+
+/// After typing a character in Insert mode: the pane cursor must advance.
+/// Before the fix, `apply_edit_grouped` never called `push_selections_to_pane`.
+#[test]
+fn pane_selections_synced_after_insert_typing() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.handle_key(key('c')); // delete "a", enter Insert — cursor at byte 0
+    ed.handle_key(key('x')); // type 'x' — cursor advances past 'x' to byte 1
+
+    ed.push_selections_to_pane();
+
+    // Buffer is now "xb\n"; cursor sits after 'x', at byte offset 1.
+    assert_eq!(pane_head(&ed), (0, 1), "pane head must be at byte 1 after typing 'x'");
+}
+
+/// After `Esc` (exit Insert): pane must reflect the final cursor position.
+/// Before the fix, `end_insert_session` never called `push_selections_to_pane`.
+#[test]
+fn pane_selections_synced_after_exit_insert() {
+    let mut ed = editor_from("ab-[c]>\n");
+    ed.handle_key(key('i')); // enter Insert at 'c' (byte 2)
+    ed.handle_key(key('x')); // type 'x' before 'c' → "abxc\n", cursor at byte 3
+    ed.handle_key(key_esc()); // exit Insert
+
+    ed.push_selections_to_pane();
+
+    // 'x' was inserted at byte 2; cursor now sits just after 'x' at byte 3.
+    assert_eq!(pane_head(&ed), (0, 3), "pane head must be at byte 3 (after 'x') after Esc");
+}
+
