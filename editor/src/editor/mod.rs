@@ -492,6 +492,14 @@ impl Editor {
             }
 
             // ── 4. Pre-draw updates ───────────────────────────────────────────
+            // Sync selections to the engine pane before every render.
+            // `push_selections_to_pane` is also called from `apply_motion`, but
+            // edits (apply_edit/apply_edit_grouped) and mode transitions
+            // (begin/end_insert_session) do not call it. Syncing here once per
+            // frame ensures the engine always renders fresh selection state,
+            // regardless of which code path modified the selections last.
+            self.push_selections_to_pane();
+
             // Highlight and statusline data are written to shared Arcs here so
             // the provider closures read consistent, pre-computed values.
             self.update_highlight_providers();

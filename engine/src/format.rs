@@ -329,6 +329,20 @@ pub fn format_buffer_line(
         }
     }
 
+    // ── Empty-line sentinel ────────────────────────────────────────────────
+    // If no graphemes were emitted (truly empty line, e.g. just "\n"), push a
+    // width-1 Empty cell at col 0. This gives the cursor a grapheme to land on
+    // in the Style stage — without it the cursor is invisible on empty lines.
+    if graphemes_out.len() == wrap.row_g_start {
+        graphemes_out.push(Grapheme {
+            byte_range: 0..0,
+            col: 0,
+            width: 1,
+            content: CellContent::Empty,
+            indent_depth: 0,
+        });
+    }
+
     // ── Emit any trailing inline inserts ──────────────────────────────────
     for ins in &inline_inserts[insert_idx..] {
         let ins_width = unicode_display_width(ins.text) as u8;
@@ -593,6 +607,22 @@ mod tests {
     }
 
     #[test]
+    fn empty_line_produces_empty_sentinel_grapheme() {
+        // "a\n\nb" has 3 lines: "a", "", "b".
+        // The middle empty line must produce exactly 1 sentinel grapheme with
+        // CellContent::Empty so the cursor has something to render on.
+        let (rows, graphemes) = do_format("a\n\nb", WrapMode::None);
+        assert_eq!(rows.len(), 3, "three lines");
+        let empty_row = &rows[1];
+        assert_eq!(empty_row.kind, RowKind::LineStart { line_idx: 1 });
+        let row_gs = &graphemes[empty_row.graphemes.clone()];
+        assert_eq!(row_gs.len(), 1, "exactly one sentinel grapheme");
+        assert!(matches!(row_gs[0].content, CellContent::Empty), "sentinel must be Empty");
+        assert_eq!(row_gs[0].col, 0);
+        assert_eq!(row_gs[0].width, 1);
+    }
+
+    #[test]
     fn two_lines_no_wrap() {
         // No trailing newline → ropey sees exactly 2 lines.
         let (rows, graphemes) = do_format("ab\ncd", WrapMode::None);
@@ -686,12 +716,16 @@ mod tests {
         let mut ws = WhitespaceConfig::default();
         ws.newline = crate::pane::WhitespaceRender::All;
         ws.newline_char = "⏎";
-        let (_, graphemes) = do_format_ws("abc\n", ws);
-        // 3 content graphemes + 1 newline indicator
-        assert_eq!(graphemes.len(), 4);
-        let last = &graphemes[3];
-        assert!(matches!(&last.content, CellContent::Indicator(s) if *s == "⏎"));
-        assert_eq!(last.col, 3);
+        let (rows, graphemes) = do_format_ws("abc\n", ws);
+        // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
+        // Line 0: 3 content graphemes + 1 newline indicator.
+        // Line 1: 1 Empty sentinel (added so cursor is visible on empty lines).
+        assert_eq!(rows.len(), 2);
+        let row0_gs = &graphemes[rows[0].graphemes.clone()];
+        assert_eq!(row0_gs.len(), 4, "line 0: 3 content + 1 newline indicator");
+        let nl_indicator = &row0_gs[3];
+        assert!(matches!(&nl_indicator.content, CellContent::Indicator(s) if *s == "⏎"));
+        assert_eq!(nl_indicator.col, 3);
     }
 
     #[test]

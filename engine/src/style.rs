@@ -429,7 +429,15 @@ fn byte_offset_to_col(
 ) -> Option<u16> {
     let row_graphemes = &graphemes[row_range.clone()];
     let idx = row_graphemes.partition_point(|g| g.byte_range.start < byte_offset);
-    row_graphemes.get(idx).map(|g| g.col)
+    // If byte_offset falls before this row's first grapheme, the cursor belongs
+    // to an earlier wrap segment — don't claim it for this row.
+    row_graphemes.get(idx).and_then(|g| {
+        if idx == 0 && byte_offset < g.byte_range.start {
+            None
+        } else {
+            Some(g.col)
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -749,5 +757,42 @@ mod tests {
         // Both cursors get ui.cursor via dot-notation fallback.
         assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Red), "primary falls back to ui.cursor");
         assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red), "secondary uses ui.cursor");
+    }
+
+    #[test]
+    fn cursor_on_wrapped_line_only_on_correct_segment() {
+        // Simulate a wrapped line: line 0 has two display rows.
+        // First segment: graphemes at byte ranges 0..1 (col 0), 1..2 (col 1), 2..3 (col 2).
+        // Second segment: graphemes at byte ranges 3..4 (col 0), 4..5 (col 1).
+        // Cursor head is at byte_offset=1 (first segment). It must appear only on row 0.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = vec![
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 1..2, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 2..3, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 3..4, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // wrap segment
+            Grapheme { byte_range: 4..5, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+        ];
+        let rows = vec![
+            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
+            DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
+        ];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 1 },
+            head: DocPos { line: 0, byte_offset: 1 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Cursor at byte 1 → col 1 in the first segment.
+        assert_eq!(scratch.styles[1].fg, Some(ratatui::style::Color::Red), "cursor at col 1 in first segment");
+        // Second segment graphemes must NOT have the cursor style.
+        assert_eq!(scratch.styles[3].fg, None, "wrap segment col 0 must not show cursor");
+        assert_eq!(scratch.styles[4].fg, None, "wrap segment col 1 must not show cursor");
     }
 }
