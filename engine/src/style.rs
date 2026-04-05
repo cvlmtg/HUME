@@ -373,6 +373,11 @@ fn collect_selection_spans(
 ) {
     out.clear();
     *primary_sel_span = None;
+
+    let row_gs = &graphemes[row_range.clone()];
+    let row_first_byte = row_gs.first().map_or(usize::MAX, |g| g.byte_range.start);
+    let row_last_byte = row_gs.last().map_or(0, |g| g.byte_range.end);
+
     for (idx, sel) in sorted_sels.iter().enumerate() {
         let (start, end) = sel.range();
         if start.line > line_idx || end.line < line_idx {
@@ -380,9 +385,21 @@ fn collect_selection_spans(
         }
         let sel_byte_start = if start.line == line_idx { start.byte_offset } else { 0 };
         let sel_byte_end = if end.line == line_idx { end.byte_offset } else { usize::MAX };
+
+        // For rows with a real byte range (not the empty-line sentinel whose
+        // byte_range is 0..0), skip the selection if it doesn't intersect this
+        // wrap segment. Without this check the fallbacks below would produce a
+        // full-row highlight for selections that live entirely on a different
+        // wrap segment of the same buffer line.
+        if row_first_byte < row_last_byte
+            && (sel_byte_end <= row_first_byte || sel_byte_start >= row_last_byte)
+        {
+            continue;
+        }
+
         let col_start = byte_offset_to_col(sel_byte_start, graphemes, row_range).unwrap_or(0);
         let col_end = byte_offset_to_col(sel_byte_end, graphemes, row_range)
-            .unwrap_or_else(|| graphemes[row_range.clone()].last().map_or(0, |g| g.col + g.width as u16));
+            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u16));
         if col_end > col_start {
             out.push((col_start, col_end));
             if Some(idx) == primary_idx {
@@ -794,5 +811,43 @@ mod tests {
         // Second segment graphemes must NOT have the cursor style.
         assert_eq!(scratch.styles[3].fg, None, "wrap segment col 0 must not show cursor");
         assert_eq!(scratch.styles[4].fg, None, "wrap segment col 1 must not show cursor");
+    }
+
+    #[test]
+    fn selection_on_wrapped_line_does_not_highlight_other_segments() {
+        // Same wrapped line layout as cursor_on_wrapped_line_only_on_correct_segment.
+        // A selection spanning bytes 0..2 (cols 0–1 in segment 0) must not
+        // produce a selection highlight on segment 1 at all.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = vec![
+            Grapheme { byte_range: 0..1, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 1..2, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 2..3, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 3..4, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 4..5, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+        ];
+        let rows = vec![
+            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
+            DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
+        ];
+        let selections = vec![Selection {
+            anchor: DocPos { line: 0, byte_offset: 0 },
+            head: DocPos { line: 0, byte_offset: 2 },
+        }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // Segment 0: cols 0 and 1 should be highlighted (selection spans bytes 0..2).
+        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "col 0 in selection");
+        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Blue), "col 1 in selection");
+        assert_eq!(scratch.styles[2].bg, None, "col 2 outside selection");
+        // Segment 1: no selection highlight at all.
+        assert_eq!(scratch.styles[3].bg, None, "wrap segment col 0 must not show selection");
+        assert_eq!(scratch.styles[4].bg, None, "wrap segment col 1 must not show selection");
     }
 }
