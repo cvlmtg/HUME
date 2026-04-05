@@ -13,11 +13,13 @@ use super::{Editor, Mode};
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
     let (buf, sels) = parse_state(input);
+    let cached_total_lines = buf.len_lines().saturating_sub(1);
     let view = ViewState {
         scroll_offset: 0,
         height: 24,
         width: 80,
-        gutter: GutterConfig::default(), cached_total_lines: buf.len_lines().saturating_sub(1),
+        gutter: GutterConfig::default(),
+        cached_total_lines,
         line_number_style: LineNumberStyle::Hybrid,
         col_offset: 0,
         tab_width: 4,
@@ -27,35 +29,7 @@ fn editor_from(input: &str) -> Editor {
         indent_wrap: false,
         scroll_sub_offset: 0,
     };
-    Editor {
-        doc: Document::new(buf, sels),
-        view,
-        file_path: None,
-        mode: Mode::Normal,
-        pending_keys: Vec::new(),
-        count: None,
-        wait_char: None,
-        pending_char: None,
-        registers: crate::ops::register::RegisterSet::new(),
-        colors: crate::ui::theme::EditorColors::default(),
-        should_quit: false,
-        minibuf: None,
-        status_msg: None,
-        file_meta: None,
-        statusline_config: crate::ui::statusline::StatusLineConfig::default(),
-        registry: super::registry::CommandRegistry::with_defaults(),
-        keymap: super::keymap::Keymap::default(),
-        auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
-        last_find: None,
-        kitty_enabled: false,
-        last_action: None,
-        insert_session: None,
-        explicit_count: false,
-        search: super::SearchState::default(),
-        highlights: crate::ui::highlight::HighlightMap::new().build(),
-        pre_select_sels: None,
-        jump_list: crate::core::jump_list::JumpList::new(),
-    }
+    Editor::for_testing(Document::new(buf, sels), view)
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.

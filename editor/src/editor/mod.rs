@@ -1,11 +1,15 @@
 use std::io;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
 
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
 
-use engine::types::EditorMode;
+use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
+use engine::pane::{Pane, ViewportState, WrapMode};
+use engine::pipeline::{BufferId, EditorView, LayoutTree, PaneId, SharedBuffer};
+use engine::types::{DocPos, EditorMode, Selection as EngineSelection};
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
@@ -19,7 +23,7 @@ use crate::ops::text_object::find_bracket_pair;
 use crate::ui::highlight::{HighlightKind, HighlightMap};
 use crate::ui::renderer::{cursor_style, render};
 use crate::core::selection::{Selection, SelectionSet};
-use crate::ui::statusline::StatusLineConfig;
+use crate::ui::statusline::{StatusLineConfig, StatuslineSnapshot};
 use crate::terminal::Term;
 use crate::ui::theme::EditorColors;
 use crate::ui::gutter::GutterConfig;
@@ -303,6 +307,21 @@ pub(crate) struct Editor {
     /// Restored on cancel; discarded on confirm.
     pub(super) pre_select_sels: Option<SelectionSet>,
 
+    // ── Engine rendering state ────────────────────────────────────────────────
+    /// The engine's rendering state: layout, panes, buffers, theme.
+    pub(crate) engine_view: EditorView,
+    /// The single pane created in `open()`.
+    pub(crate) pane_id: PaneId,
+    /// The single buffer registered in `open()`.
+    pub(crate) buffer_id: BufferId,
+    /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
+    /// Written by `update_highlight_providers()` each frame; read by the provider.
+    pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    /// Shared search match highlight data: same shape as `bracket_hl_data`.
+    pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
+    /// Shared statusline snapshot. Written per-frame; read by the provider.
+    pub(crate) statusline_data: Arc<Mutex<StatuslineSnapshot>>,
+
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Navigable history of cursor positions before large movements.
     /// `jump-backward` / `jump-forward` traverse the list.
@@ -368,6 +387,75 @@ impl Editor {
             scroll_sub_offset: 0,
         };
 
+        // ── Engine view setup ─────────────────────────────────────────────────
+        let theme = crate::ui::theme::build_default_theme();
+        let mut engine_view = EditorView::new(theme);
+
+        // Intern highlight scopes before registering providers.
+        let bracket_scope = engine_view.registry.intern("ui.cursor.match");
+        let search_scope  = engine_view.registry.intern("ui.selection.search");
+
+        // Register the shared highlight data arcs.
+        let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
+        let search_hl_data:  Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
+
+        // Insert a buffer — just metadata; the rope is passed at render time.
+        let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+
+        // Build the initial pane.
+        let mut providers = engine::providers::ProviderSet::new();
+        providers.gutter_columns.push(Box::new(
+            LineNumberColumn::with_style(0, EngineLineNumberStyle::Hybrid)
+        ));
+        providers.highlights.push(Box::new(crate::ui::highlight_providers::BracketMatchHighlighter {
+            id: 1,
+            scope: bracket_scope,
+            data: Arc::clone(&bracket_hl_data),
+        }));
+        providers.highlights.push(Box::new(crate::ui::highlight_providers::SearchMatchHighlighter {
+            id: 2,
+            scope: search_scope,
+            data: Arc::clone(&search_hl_data),
+        }));
+
+        let pane = Pane {
+            buffer_id,
+            viewport: ViewportState::new(80, 24),
+            selections: vec![EngineSelection {
+                anchor: DocPos { line: 0, byte_offset: 0 },
+                head:   DocPos { line: 0, byte_offset: 0 },
+            }],
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::Indent { width: 76 },
+            tab_width: 4,
+            whitespace: engine::pane::WhitespaceConfig::default(),
+            providers,
+        };
+        let pane_id = engine_view.panes.insert(pane);
+        engine_view.layout = LayoutTree::Leaf(pane_id);
+
+        // Statusline provider.
+        let initial_snapshot = StatuslineSnapshot {
+            mode: EditorMode::Normal,
+            file_path: file_path.clone(),
+            cursor_pos: (1, 1),
+            kitty_enabled: false,
+            is_dirty: false,
+            match_count: None,
+            search_wrapped: false,
+            minibuf: None,
+            status_msg: None,
+            config: StatusLineConfig::default(),
+            colors: EditorColors::default(),
+        };
+        let statusline_data = Arc::new(Mutex::new(initial_snapshot));
+        engine_view.statusline = Some(Box::new(crate::ui::statusline::HumeStatusline {
+            data: Arc::clone(&statusline_data),
+        }));
+
+        // Bake theme now that all scopes are interned.
+        engine_view.theme.bake(&engine_view.registry);
+
         Ok(Self {
             doc,
             view,
@@ -396,6 +484,12 @@ impl Editor {
             highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
+            engine_view,
+            pane_id,
+            buffer_id,
+            bracket_hl_data,
+            search_hl_data,
+            statusline_data,
         })
     }
 
@@ -461,6 +555,50 @@ impl Editor {
         // Restore the user's default cursor shape before returning to the shell.
         execute!(std::io::stdout(), SetCursorStyle::DefaultUserShape)?;
         Ok(())
+    }
+
+    // ── Engine accessors ──────────────────────────────────────────────────────
+
+    pub(crate) fn viewport(&self) -> &ViewportState {
+        &self.engine_view.panes[self.pane_id].viewport
+    }
+
+    pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
+        &mut self.engine_view.panes[self.pane_id].viewport
+    }
+
+    pub(crate) fn pane(&self) -> &Pane {
+        &self.engine_view.panes[self.pane_id]
+    }
+
+    pub(crate) fn pane_mut(&mut self) -> &mut Pane {
+        &mut self.engine_view.panes[self.pane_id]
+    }
+
+    /// Convert the editor's char-offset selections to engine `DocPos`-based
+    /// selections and push them to the engine pane.
+    ///
+    /// Called after every selection-mutating operation. Cheap per-action
+    /// (O(N × log M) where N = selections, M = rope size).
+    pub(crate) fn push_selections_to_pane(&mut self) {
+        let buf = self.doc.buf();
+        let engine_sels: Vec<EngineSelection> = self.doc.sels().iter_sorted()
+            .map(|sel| {
+                let anchor_line = buf.char_to_line(sel.anchor);
+                let anchor_line_start = buf.char_to_byte(buf.line_to_char(anchor_line));
+                let anchor_byte = buf.char_to_byte(sel.anchor);
+
+                let head_line = buf.char_to_line(sel.head);
+                let head_line_start = buf.char_to_byte(buf.line_to_char(head_line));
+                let head_byte = buf.char_to_byte(sel.head);
+
+                EngineSelection {
+                    anchor: DocPos { line: anchor_line, byte_offset: anchor_byte - anchor_line_start },
+                    head:   DocPos { line: head_line,   byte_offset: head_byte   - head_line_start   },
+                }
+            })
+            .collect();
+        self.engine_view.panes[self.pane_id].selections = engine_sels;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -544,6 +682,8 @@ impl Editor {
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
         self.mode = mode;
+        // Push-based pane sync: mode is SSOT, so keep the engine pane in sync.
+        self.engine_view.panes[self.pane_id].mode = mode;
     }
 
     /// Enter Insert mode as a repeatable insert action.
@@ -563,6 +703,7 @@ impl Editor {
         }
         // Mode is SSOT for extend state; transitioning to Insert implicitly clears Extend.
         self.mode = Mode::Insert;
+        self.engine_view.panes[self.pane_id].mode = EditorMode::Insert;
     }
 
     /// Exit Insert mode and finalise the undo/repeat state.
@@ -578,6 +719,7 @@ impl Editor {
             action.insert_keys = session.keystrokes;
         }
         self.mode = EditorMode::Normal;
+        self.engine_view.panes[self.pane_id].mode = EditorMode::Normal;
     }
 
     /// Apply a motion command and store the resulting selection.
@@ -592,6 +734,7 @@ impl Editor {
             f(buf, sels)
         };
         self.doc.set_selections(new_sels);
+        self.push_selections_to_pane();
     }
 }
 
@@ -605,6 +748,41 @@ impl Editor {
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Document, view: ViewState) -> Self {
+        // Minimal engine view for test contexts.
+        let theme = crate::ui::theme::build_default_theme();
+        let mut engine_view = EditorView::new(theme);
+        let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+        let pane = Pane {
+            buffer_id,
+            viewport: ViewportState::new(view.width as u16, view.height as u16),
+            selections: vec![EngineSelection {
+                anchor: DocPos { line: 0, byte_offset: 0 },
+                head:   DocPos { line: 0, byte_offset: 0 },
+            }],
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::Indent { width: (view.width as u16).saturating_sub(4) },
+            tab_width: view.tab_width as u8,
+            whitespace: engine::pane::WhitespaceConfig::default(),
+            providers: engine::providers::ProviderSet::new(),
+        };
+        let pane_id = engine_view.panes.insert(pane);
+        engine_view.layout = LayoutTree::Leaf(pane_id);
+        engine_view.theme.bake(&engine_view.registry);
+
+        let statusline_data = Arc::new(Mutex::new(StatuslineSnapshot {
+            mode: EditorMode::Normal,
+            file_path: None,
+            cursor_pos: (1, 1),
+            kitty_enabled: false,
+            is_dirty: false,
+            match_count: None,
+            search_wrapped: false,
+            minibuf: None,
+            status_msg: None,
+            config: StatusLineConfig::default(),
+            colors: EditorColors::default(),
+        }));
+
         Self {
             doc,
             view,
@@ -633,6 +811,12 @@ impl Editor {
             highlights: HighlightMap::new().build(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(),
+            engine_view,
+            pane_id,
+            buffer_id,
+            bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
+            search_hl_data: Arc::new(RwLock::new(Vec::new())),
+            statusline_data,
         }
     }
 
