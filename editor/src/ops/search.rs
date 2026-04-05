@@ -100,8 +100,8 @@ pub(crate) fn find_next_match(
 /// Results are `(start_char, end_char_inclusive)` pairs in document order.
 /// Zero-width matches are skipped.
 ///
-/// Used by the renderer to build the `HighlightMap` for search-match
-/// highlighting every frame.
+/// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
+/// ranges for the engine's highlight provider system.
 pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize)> {
     find_matches_in_range(buf, regex, 0, buf.len_chars() - 1)
 }
