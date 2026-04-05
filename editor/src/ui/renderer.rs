@@ -32,9 +32,10 @@ pub(crate) struct CursorState {
 /// Must be the last escape sequence before blocking — ratatui's `ShowCursor`
 /// flush can otherwise reset the shape on some terminals.
 pub(crate) fn cursor_style(mode: Mode) -> SetCursorStyle {
-    match mode {
-        Mode::Normal => SetCursorStyle::SteadyBlock,
-        Mode::Insert | Mode::Command | Mode::Search | Mode::Select => SetCursorStyle::SteadyBar,
+    if mode.cursor_is_bar() {
+        SetCursorStyle::SteadyBar
+    } else {
+        SetCursorStyle::SteadyBlock
     }
 }
 
@@ -221,8 +222,8 @@ fn compute_cursor_pos(editor: &Editor) -> Option<(u16, u16)> {
                 ((editor.view.gutter_width() + col) as u16, row as u16)
             })
         }
-        // Normal uses a visual block cell; Command/Search use a MiniBuf cursor.
-        Mode::Normal | Mode::Command | Mode::Search | Mode::Select => None,
+        // Normal/Extend use a visual block cell; Command/Search use a MiniBuf cursor.
+        Mode::Normal | Mode::Extend | Mode::Command | Mode::Search | Mode::Select => None,
     }
 }
 
@@ -986,7 +987,7 @@ mod tests {
     fn render_extend_mode_label() {
         let doc = doc_at("hi\n", 0);
         let v = view(&doc, 20, 2, LineNumberStyle::Absolute);
-        let editor = editor_for(doc, v).with_extend(true);
+        let editor = editor_for(doc, v).with_mode(Mode::Extend);
         let out = render_to_string(&editor, 20, 3);
         insta::assert_snapshot!(out, @"
           1 hi

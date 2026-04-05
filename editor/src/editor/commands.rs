@@ -27,6 +27,8 @@ use crate::ops::selection_cmd::cmd_collapse_selection;
 use crate::ops::text_object::inner_word_impl;
 use crate::helpers::is_word_boundary;
 
+use engine::types::EditorMode;
+
 use super::registry::MappableCommand;
 use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 
@@ -147,14 +149,19 @@ pub(super) fn cmd_redo(ed: &mut Editor, _count: usize) {
 // ── Selection state ───────────────────────────────────────────────────────────
 
 pub(super) fn cmd_toggle_extend(ed: &mut Editor, _count: usize) {
-    ed.extend = !ed.extend;
+    ed.mode = if ed.mode == EditorMode::Extend {
+        EditorMode::Normal
+    } else {
+        EditorMode::Extend
+    };
 }
 
 /// Collapse each selection to its cursor AND exit extend mode.
 ///
 /// Collapsing is a "done selecting" signal, so extend mode is always cleared.
 pub(super) fn cmd_collapse_and_exit_extend(ed: &mut Editor, _count: usize) {
-    ed.extend = false;
+    // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
+    ed.mode = EditorMode::Normal;
     ed.apply_motion(cmd_collapse_selection);
 }
 
@@ -282,7 +289,7 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     // - For non-insert commands: the group is empty (no `apply_edit_grouped`
     //   calls), so `commit_edit_group` is a no-op and the command's own
     //   `apply_edit` revision stands alone in history.
-    if ed.mode == super::Mode::Insert {
+    if ed.mode == EditorMode::Insert {
         ed.end_insert_session();
     } else {
         ed.doc.commit_edit_group();
@@ -356,6 +363,8 @@ pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize) {
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search.direction = SearchDirection::Forward;
+    // Capture extend state before mode becomes Search — live search uses it.
+    ed.search.extend = ed.mode == EditorMode::Extend;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
 }
@@ -364,6 +373,8 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search.direction = SearchDirection::Backward;
+    // Capture extend state before mode becomes Search — live search uses it.
+    ed.search.extend = ed.mode == EditorMode::Extend;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new(), cursor: 0 });
 }
