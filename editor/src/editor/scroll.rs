@@ -35,9 +35,10 @@ pub(super) fn ensure_cursor_visible(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
 ) {
     if wrap_mode.is_wrapping() {
-        ensure_cursor_visible_wrapped(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace);
+        ensure_cursor_visible_wrapped(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch);
     } else {
         let cursor_line = rope.char_to_line(cursor_char);
         ensure_cursor_visible_unwrapped(viewport, cursor_line);
@@ -100,6 +101,7 @@ fn ensure_cursor_visible_wrapped(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
 ) {
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
@@ -108,23 +110,22 @@ fn ensure_cursor_visible_wrapped(
     }
 
     let margin = SCROLL_MARGIN.min(height / 2);
-    let mut scratch = FormatScratch::new();
 
-    let cursor_sub = cursor::sub_row(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, &mut scratch);
+    let cursor_sub = cursor::sub_row(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, scratch);
 
     // ── Cursor above the viewport ────────────────────────────────────────────
     let top_row = viewport.top_row_offset as usize;
     if cursor_line < viewport.top_line
         || (cursor_line == viewport.top_line && cursor_sub < top_row)
     {
-        scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, margin, wrap_mode, tab_width, whitespace, &mut scratch);
+        scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, margin, wrap_mode, tab_width, whitespace, scratch);
         return;
     }
 
     // ── Count display rows from scroll position to cursor ────────────────────
     let mut display_row: usize = 0;
     for line_idx in viewport.top_line..=cursor_line {
-        let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, &mut scratch);
+        let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
         let skip = if line_idx == viewport.top_line { top_row } else { 0 };
         if line_idx == cursor_line {
             display_row += cursor_sub.saturating_sub(skip);
@@ -139,7 +140,7 @@ fn ensure_cursor_visible_wrapped(
     // ── Cursor below the viewport ────────────────────────────────────────────
     if display_row >= height.saturating_sub(margin) {
         let target_row = height.saturating_sub(margin).saturating_sub(1);
-        scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, target_row, wrap_mode, tab_width, whitespace, &mut scratch);
+        scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, target_row, wrap_mode, tab_width, whitespace, scratch);
     }
 }
 
@@ -201,7 +202,7 @@ mod tests {
     fn no_wrap_cursor_visible_no_scroll_needed() {
         let r = rope("a\nb\nc\nd\ne\n");
         let mut v = viewport(0, 10, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(2), &WrapMode::None, 4, &WhitespaceConfig::default());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(2), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
         assert_eq!(v.top_line, 0);
     }
 
@@ -209,7 +210,7 @@ mod tests {
     fn no_wrap_cursor_below_viewport_scrolls_down() {
         let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
         let mut v = viewport(0, 5, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(7), &WrapMode::None, 4, &WhitespaceConfig::default());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(7), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
         let cursor_line = 7usize;
         assert!(cursor_line >= v.top_line);
         assert!(cursor_line < v.top_line + v.height as usize);
@@ -219,7 +220,7 @@ mod tests {
     fn no_wrap_cursor_above_viewport_scrolls_up() {
         let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
         let mut v = viewport(5, 5, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(1), &WrapMode::None, 4, &WhitespaceConfig::default());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(1), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
         let cursor_line = 1usize;
         assert!(cursor_line >= v.top_line);
         assert!(cursor_line < v.top_line + v.height as usize);

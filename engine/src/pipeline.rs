@@ -113,11 +113,13 @@ impl Default for FrameScratch {
 /// allocations occur.
 pub struct RenderContext {
     /// Engine pipeline scratch (format, style, inline inserts, gutter cells).
-    pub frame: FrameScratch,
+    pub(crate) frame: FrameScratch,
     /// Pane rects computed by the layout stage.
-    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
-    /// Scratch for cursor-position computation (`cursor::screen_pos`).
-    pub format: FormatScratch,
+    pub(crate) pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
+    /// Scratch for cursor-position computation (`cursor::screen_pos` and scroll).
+    /// Distinct from `frame.format` — used outside the render pipeline, where
+    /// borrowing `frame` simultaneously would conflict.
+    pub cursor_format: FormatScratch,
 }
 
 impl RenderContext {
@@ -125,7 +127,7 @@ impl RenderContext {
         Self {
             frame: FrameScratch::new(),
             pane_rects: Vec::new(),
-            format: FormatScratch::new(),
+            cursor_format: FormatScratch::new(),
         }
     }
 }

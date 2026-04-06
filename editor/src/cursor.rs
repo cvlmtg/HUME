@@ -42,7 +42,7 @@ pub(crate) fn screen_pos(
     whitespace: &WhitespaceConfig,
     ctx: &mut RenderContext,
 ) -> Option<(u16, u16)> {
-    let scratch = &mut ctx.format;
+    let scratch = &mut ctx.cursor_format;
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
     if height == 0 { return None; }
