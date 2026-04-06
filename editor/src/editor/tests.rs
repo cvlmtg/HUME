@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pretty_assertions::assert_eq;
 
@@ -744,7 +746,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let tmp_path = tmp.into_temp_path();
     let (_, meta) = crate::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.file_path = Some(path);
+    ed.file_path = Some(Arc::new(path));
     ed.file_meta = Some(meta);
     (ed, tmp_path)
 }
@@ -977,7 +979,7 @@ fn write_follows_symlink() {
     assert_eq!(meta.resolved_path, std::fs::canonicalize(real.path()).unwrap());
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.file_path = Some(link_path.clone());
+    ed.file_path = Some(Arc::new(link_path.clone()));
     ed.file_meta = Some(meta);
 
     for ch in ":w".chars() { ed.handle_key(key(ch)); }

@@ -13,6 +13,8 @@
 
 
 
+use std::sync::Arc;
+
 use crate::core::buffer::Buffer;
 use crate::core::grapheme::next_grapheme_boundary;
 use crate::core::selection::{Selection, SelectionSet};
@@ -716,7 +718,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> bool {
             Ok(meta) => {
                 // Store the canonicalized path so file_path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
-                ed.file_path = Some(meta.resolved_path.clone());
+                ed.file_path = Some(Arc::new(meta.resolved_path.clone()));
                 ed.file_meta = Some(meta);
                 ed.doc.mark_saved();
                 ed.status_msg = Some(format!("Written {line_count} lines"));
