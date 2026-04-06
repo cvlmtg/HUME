@@ -12,11 +12,11 @@ Two changes to the engine crate before touching the editor.
 
 ### 0a. Remove rope ownership from `SharedBuffer`
 
-`SharedBuffer` currently owns a `Rope`, which would require a per-frame copy to stay in sync with the editor's authoritative `Document`. Instead, have `EditorView::render()` accept a `get_rope` closure so each pane resolves its rope from the caller at render time — zero-copy, multi-pane-ready.
+`SharedBuffer` currently owns a `Rope`, which would require a per-frame copy to stay in sync with the editor's authoritative `Document`. Instead, have `EngineView::render()` accept a `get_rope` closure so each pane resolves its rope from the caller at render time — zero-copy, multi-pane-ready.
 
 - Remove `rope: Rope` from `SharedBuffer`. It keeps `tree: Option<tree_sitter::Tree>` for future syntax highlighting.
 - Replace `SharedBuffer::from_str()` and `SharedBuffer::from_rope()` with `SharedBuffer::new() -> Self { Self { tree: None } }`. Add `SharedBuffer::with_tree(tree)` for future use. (No engine tests use the old constructors — safe to remove.)
-- Change `EditorView::render()` to accept `get_rope: &dyn Fn(BufferId) -> Option<&ropey::Rope>`.
+- Change `EngineView::render()` to accept `get_rope: &dyn Fn(BufferId) -> Option<&ropey::Rope>`.
 - Change `PaneRenderCtx` to hold `rope: &'a ropey::Rope` and `tree: Option<&'a tree_sitter::Tree>` instead of `buffer: &'a SharedBuffer`.
 - Inside `render()`, for each pane: call `get_rope(pane.buffer_id)` for the rope and look up `self.buffers.get(pane.buffer_id)` for the tree.
 - `SharedBuffer`, `BufferId`, `buffers: SlotMap<BufferId, SharedBuffer>`, and `Pane::buffer_id` are all retained — they are the multi-pane bookkeeping structure.
@@ -155,7 +155,7 @@ The statusline currently reads `&Editor` directly. Refactor to a snapshot-based 
 - `mode: Mode` → `mode: engine::types::EditorMode`
 
 **Add fields**:
-- `engine_view: engine::pipeline::EditorView`
+- `engine_view: engine::pipeline::EngineView`
 - `pane_id: engine::pipeline::PaneId`
 - `buffer_id: engine::pipeline::BufferId`
 - `bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>` (line_idx, byte_start, byte_end — shared with bracket provider)
@@ -181,7 +181,7 @@ This eliminates a per-frame O(N log N) selection conversion on idle frames.
 
 After creating `Document`:
 1. `ui::theme::build_default_theme()` → `Theme`
-2. `EditorView::new(theme)` + intern `"ui.cursor.match"` and `"ui.selection.search"` scopes via `engine_view.registry`
+2. `EngineView::new(theme)` + intern `"ui.cursor.match"` and `"ui.selection.search"` scopes via `engine_view.registry`
 3. Insert `SharedBuffer::new()` → `buffer_id`
 4. Create `Pane` with `buffer_id`, `ViewportState::new(80, 24)`, `WrapMode::Indent { width: 76 }`, `tab_width: 4`, engine `WhitespaceConfig::default()`
 5. Register providers: `LineNumberColumn::with_style(0, Hybrid)`, bracket HL, search HL

@@ -13,7 +13,7 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 /// Then call [`Theme::bake`] with the registry before the first render.
 /// After baking, [`Theme::resolve`] is an O(1) `Vec` index — no hashing.
 ///
-/// Lives on [`crate::pipeline::EditorView`] so it outlives all providers.
+/// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
 pub struct ScopeRegistry {
     map: HashMap<&'static str, ScopeId>,

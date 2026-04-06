@@ -22,7 +22,7 @@ new_key_type! {
 /// State shared across all panes that view the same file.
 ///
 /// The rope is intentionally absent — it lives in the editor's `Document` and
-/// is passed to `EditorView::render()` via the `get_rope` closure at render
+/// is passed to `EngineView::render()` via the `get_rope` closure at render
 /// time. Keeping it here would require a per-frame clone to stay in sync.
 pub struct SharedBuffer {
     /// Incremental tree-sitter parse tree, rebuilt on each edit.
@@ -172,7 +172,7 @@ fn split_rect(
 // ---------------------------------------------------------------------------
 
 /// The root of the editor's rendering state.
-pub struct EditorView {
+pub struct EngineView {
     pub layout: LayoutTree,
     pub panes: SlotMap<PaneId, Pane>,
     pub buffers: SlotMap<BufferId, SharedBuffer>,
@@ -192,7 +192,7 @@ pub struct EditorView {
     pub statusline: Option<Box<dyn StatuslineProvider>>,
 }
 
-impl EditorView {
+impl EngineView {
     pub fn new(theme: Theme) -> Self {
         let panes = SlotMap::with_key();
         let buffers = SlotMap::with_key();

@@ -7,7 +7,7 @@ use crossterm::execute;
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState, WrapMode};
-use engine::pipeline::{BufferId, EditorView, LayoutTree, PaneId, SharedBuffer};
+use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
 use crate::auto_pairs::AutoPairsConfig;
@@ -293,7 +293,7 @@ pub(crate) struct Editor {
 
     // ── Engine rendering state ────────────────────────────────────────────────
     /// The engine's rendering state: layout, panes, buffers, theme.
-    pub(crate) engine_view: EditorView,
+    pub(crate) engine_view: EngineView,
     /// The single pane created in `open()`.
     pub(crate) pane_id: PaneId,
     /// The single buffer registered in `open()`.
@@ -357,7 +357,7 @@ impl Editor {
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::ui::theme::build_default_theme();
-        let mut engine_view = EditorView::new(theme);
+        let mut engine_view = EngineView::new(theme);
 
         // Intern highlight scopes before registering providers.
         let bracket_scope = engine_view.registry.intern("ui.cursor.match");
@@ -786,7 +786,7 @@ impl Editor {
     pub(crate) fn for_testing(doc: Document) -> Self {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::ui::theme::build_default_theme();
-        let mut engine_view = EditorView::new(theme);
+        let mut engine_view = EngineView::new(theme);
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
         let pane = Pane {
             buffer_id,
