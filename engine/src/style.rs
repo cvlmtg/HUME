@@ -55,6 +55,10 @@ impl StyleScratch {
     /// Copy `selections` (already sorted in ascending document order) into
     /// `sorted_sels`. No sort is performed — the caller guarantees order.
     pub fn populate_sorted_sels(&mut self, selections: &[Selection], primary_idx: usize) {
+        debug_assert!(
+            selections.windows(2).all(|w| w[0].head <= w[1].head),
+            "selections must be sorted by head position",
+        );
         self.sorted_sels.clear();
         self.sorted_sels.extend_from_slice(selections);
         self.primary_idx_in_sorted = if selections.is_empty() { None } else { Some(primary_idx) };

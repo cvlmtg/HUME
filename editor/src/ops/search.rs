@@ -218,7 +218,7 @@ pub(crate) fn find_match_from_cache(
                 Some((s, e, false))
             } else {
                 // Wrap: take the very first match in the buffer.
-                let &(s, e) = matches.first().unwrap(); // non-empty guard above
+                let &(s, e) = &matches[0]; // non-empty guard above
                 Some((s, e, true))
             }
         }
@@ -229,7 +229,7 @@ pub(crate) fn find_match_from_cache(
                 Some((s, e, false))
             } else {
                 // Wrap: take the very last match in the buffer.
-                let &(s, e) = matches.last().unwrap(); // non-empty guard above
+                let &(s, e) = &matches[matches.len() - 1]; // non-empty guard above
                 Some((s, e, true))
             }
         }

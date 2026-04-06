@@ -85,10 +85,6 @@ fn compute_line_range(
     wrap_mode: &WrapMode,
     total_lines: usize,
 ) -> Range<usize> {
-    if total_lines == 0 {
-        return 0..0;
-    }
-
     // For non-wrapping mode each buffer line is exactly one display row.
     if wrap_mode.wrap_width().is_none() {
         // top_skip is always 0 for non-wrapping (no wrapped lines).

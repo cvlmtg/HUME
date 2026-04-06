@@ -279,7 +279,6 @@ impl Document {
         self.sels = sels;
     }
 
-    /// True if an edit group is currently open.
     /// The current revision in the undo history.
     ///
     /// Changes every time the buffer content changes (edits, undo, redo).
@@ -288,12 +287,13 @@ impl Document {
         self.history.current_id()
     }
 
+    /// True if an edit group is currently open.
     pub(crate) fn is_group_open(&self) -> bool {
         self.group.is_some()
     }
 
-    #[allow(dead_code)]
     /// True if there is at least one edit to undo.
+    #[allow(dead_code)]
     pub(crate) fn can_undo(&self) -> bool {
         self.history.can_undo()
     }

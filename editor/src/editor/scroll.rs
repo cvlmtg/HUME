@@ -1,14 +1,7 @@
 //! Scroll logic for the engine-based viewport.
 //!
-//! Operates on `engine::pane::ViewportState` and `ropey::Rope` — no
-//! dependency on `Editor` or the old `ViewState`. Called from `Editor::run()`
-//! via `scroll::ensure_cursor_visible(...)`.
-//!
-//! Field mapping from old `ViewState` to engine `ViewportState`:
-//! - `scroll_offset`     → `top_line`
-//! - `scroll_sub_offset` → `top_row_offset` (u16)
-//! - `col_offset`        → `horizontal_offset` (u16)
-//! - `height`/`width`    → same names
+//! Operates on `engine::pane::ViewportState` and `ropey::Rope`.
+//! Called from `Editor::run()` via `scroll::ensure_cursor_visible(...)`.
 
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
