@@ -102,6 +102,41 @@ impl Default for FrameScratch {
 }
 
 // ---------------------------------------------------------------------------
+// Render context — all per-frame scratch in one place
+// ---------------------------------------------------------------------------
+
+/// All scratch buffers needed for one render pass.
+///
+/// Create once with `RenderContext::new()` and pass `&mut ctx` to
+/// `EngineView::render()` and `cursor::screen_pos()` each frame. After a few
+/// frames all internal `Vec`s have stabilised capacity and no further heap
+/// allocations occur.
+pub struct RenderContext {
+    /// Engine pipeline scratch (format, style, inline inserts, gutter cells).
+    pub frame: FrameScratch,
+    /// Pane rects computed by the layout stage.
+    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
+    /// Scratch for cursor-position computation (`cursor::screen_pos`).
+    pub format: FormatScratch,
+}
+
+impl RenderContext {
+    pub fn new() -> Self {
+        Self {
+            frame: FrameScratch::new(),
+            pane_rects: Vec::new(),
+            format: FormatScratch::new(),
+        }
+    }
+}
+
+impl Default for RenderContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Layout tree
 // ---------------------------------------------------------------------------
 
@@ -215,9 +250,10 @@ impl EngineView {
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
         statusline: Option<&dyn StatuslineProvider>,
-        scratch: &mut FrameScratch,
-        pane_rects: &mut Vec<(PaneId, ratatui::layout::Rect)>,
+        ctx: &mut RenderContext,
     ) {
+        let scratch = &mut ctx.frame;
+        let pane_rects = &mut ctx.pane_rects;
         // ── Partition the terminal area for chrome ────────────────────────────
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
         let statusline_height: u16 = if statusline.is_some() { 1 } else { 0 };
