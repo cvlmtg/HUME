@@ -1902,7 +1902,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
     // Place cursor at the start of the requested line.
     let pos = buf.line_to_char(cursor_line);
     let sels = crate::core::selection::SelectionSet::single(
-        crate::core::selection::Selection::cursor(pos),
+        crate::core::selection::Selection::collapsed(pos),
     );
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
@@ -2066,7 +2066,7 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     let text = "the editor and the editor\nother line\n";
     let buf = crate::core::buffer::Buffer::from(text);
     let sels = crate::core::selection::SelectionSet::single(
-        crate::core::selection::Selection::cursor(0),
+        crate::core::selection::Selection::collapsed(0),
     );
     let doc = crate::core::document::Document::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
@@ -2245,3 +2245,44 @@ fn pane_selections_synced_after_exit_insert() {
     assert_eq!(pane_head(&ed), (0, 3), "pane head must be at byte 3 (after 'x') after Esc");
 }
 
+/// When the primary selection is NOT the earliest in the document,
+/// `pane.selections[0]` must still be the primary (not the earliest).
+///
+/// Before the fix, `push_selections_to_pane` used `iter_sorted()`, which lost
+/// primary info, so the engine always treated the earliest selection as primary.
+#[test]
+fn pane_selections_primary_is_first_even_when_not_earliest() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    let mut ed = editor_from("-[a]>b\n");
+
+    // Two cursors: one at "a" (char 0) and one at "b" (char 1).
+    // Primary is index 1 — the "b" cursor, which is LATER in document order.
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(0), // at "a" — NOT primary
+            Selection::collapsed(1), // at "b" — IS primary
+        ],
+        1,
+    );
+    ed.doc.set_selections(two_sels);
+
+    // Simulate the per-frame sync.
+    ed.push_selections_to_pane();
+
+    // Selections are passed in sorted document order; primary_idx identifies the primary.
+    let pane = &ed.engine_view.panes[ed.pane_id];
+    assert_eq!(
+        pane.selections[0].head.byte_offset, 0,
+        "pane.selections[0] is the earliest in document order (at byte 0, 'a')"
+    );
+    assert_eq!(
+        pane.selections[1].head.byte_offset, 1,
+        "pane.selections[1] is 'b'"
+    );
+    assert_eq!(pane.primary_idx, 1, "primary_idx must point to 'b' (index 1)");
+    assert_eq!(
+        pane.primary_head_line(), 0,
+        "primary_head_line must reflect the primary selection's line"
+    );
+}

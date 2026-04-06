@@ -35,7 +35,7 @@ use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
 pub(super) fn cmd_insert_before(ed: &mut Editor, _count: usize) {
-    ed.apply_motion(|_b, sels| sels.map(|s| Selection::cursor(s.start())));
+    ed.apply_motion(|_b, sels| sels.map(|s| Selection::collapsed(s.start())));
     ed.begin_insert_session();
 }
 
@@ -513,7 +513,7 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 /// within the current selections become new selections (live preview).
 pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
     // Nothing meaningful to search within a single-char selection.
-    if ed.doc.sels().iter_sorted().all(Selection::is_cursor) {
+    if ed.doc.sels().iter_sorted().all(Selection::is_collapsed) {
         return;
     }
     ed.pre_select_sels = Some(ed.doc.sels().clone());
@@ -533,7 +533,7 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
     let primary = ed.doc.sels().primary();
 
     // If cursor (1-char selection), expand to inner word first.
-    let (text, new_sel): (String, Option<Selection>) = if primary.is_cursor() {
+    let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
         let Some((start, end)) = inner_word_impl(buf, primary.head, is_word_boundary) else {
             return; // cursor on structural newline or similar — nothing to do
         };

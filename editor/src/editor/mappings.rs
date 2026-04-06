@@ -351,7 +351,7 @@ impl Editor {
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
         self.doc.sels().iter_sorted().all(|sel| {
-            sel.is_cursor() && self.doc.buf().char_at(sel.head) == Some(ch)
+            sel.is_collapsed() && self.doc.buf().char_at(sel.head) == Some(ch)
         })
     }
 
@@ -363,7 +363,7 @@ impl Editor {
         let buf = self.doc.buf();
         let pairs = &self.auto_pairs.pairs;
         self.doc.sels().iter_sorted().all(|sel| {
-            if !sel.is_cursor() || sel.head == 0 {
+            if !sel.is_collapsed() || sel.head == 0 {
                 return false;
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote

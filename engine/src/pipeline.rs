@@ -216,9 +216,6 @@ impl EditorView {
     /// the caller (typically the editor's `Document`). The borrow is used only
     /// inside this call — no rope is stored in `SharedBuffer`.
     ///
-    /// The `'rope` lifetime must outlive this call; since ropes live in the
-    /// caller's `Document`, this is always satisfied.
-    ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
     pub fn render<'rope>(
@@ -379,8 +376,8 @@ pub(crate) fn render_pane(
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
 
-    // Sort selections once; all row iterations reuse the same sorted slice.
-    scratch.style.populate_sorted_sels(&pane_ctx.pane.selections);
+    // Selections arrive pre-sorted from the editor; copy once, reuse every row.
+    scratch.style.populate_sorted_sels(&pane_ctx.pane.selections, pane_ctx.pane.primary_idx);
 
     // Pre-collect virtual lines from all providers; sort by anchor.
     scratch.format.virtual_lines.clear();
@@ -405,7 +402,7 @@ pub(crate) fn render_pane(
         visible: &visible,
         viewport: &pane_ctx.pane.viewport,
         mode: pane_ctx.pane.mode,
-        primary_cursor_line: pane_ctx.pane.primary_cursor_line(),
+        primary_head_line: pane_ctx.pane.primary_head_line(),
         tab_width: pane_ctx.pane.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text.into(),
         indent_guide_style: pane_ctx.theme.ui.indent_guide.into(),
@@ -517,7 +514,7 @@ fn render_buffer_line(
 
         scratch.style.styles.resize(scratch.format.graphemes.len(), ResolvedStyle::default());
 
-        let is_cursor_line = scratch.style.sorted_sels.iter().any(|s| s.head.line == line_idx);
+        let is_head_line = scratch.style.sorted_sels.iter().any(|s| s.head.line == line_idx);
         // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
         let line_str = scratch.format.line_texts.as_str();
 
@@ -530,7 +527,7 @@ fn render_buffer_line(
                 &scratch.format.display_rows[row_idx],
                 &scratch.format.graphemes,
                 line_idx,
-                is_cursor_line,
+                is_head_line,
                 pane_ctx.pane.mode,
                 pane_ctx.theme,
                 &mut scratch.style,

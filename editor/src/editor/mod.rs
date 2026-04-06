@@ -2,7 +2,6 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
-use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
 
@@ -351,7 +350,7 @@ impl Editor {
             None => (Buffer::empty(), None),
         };
 
-        let sels = SelectionSet::single(Selection::cursor(0));
+        let sels = SelectionSet::single(Selection::collapsed(0));
         let doc = Document::new(buf, sels);
 
         // ── Engine view setup ─────────────────────────────────────────────────
@@ -392,6 +391,7 @@ impl Editor {
                 anchor: DocPos { line: 0, byte_offset: 0 },
                 head:   DocPos { line: 0, byte_offset: 0 },
             }],
+            primary_idx: 0,
             mode: EditorMode::Normal,
             wrap_mode: WrapMode::Indent { width: 76 },
             tab_width: 4,
@@ -405,7 +405,7 @@ impl Editor {
         let initial_snapshot = StatuslineSnapshot {
             mode: EditorMode::Normal,
             file_path: file_path.clone(),
-            cursor_pos: (1, 1),
+            head_pos: (1, 1),
             kitty_enabled: false,
             is_dirty: false,
             match_count: None,
@@ -460,63 +460,32 @@ impl Editor {
     /// Run the editor event loop until the user quits.
     ///
     /// Each iteration:
-    /// 1. Sync viewport dimensions from the terminal.
-    /// 2. Recompute gutter width (line count changes on every edit).
-    /// 3. Scroll so the cursor stays on screen.
-    /// 4. Render.
-    /// 5. Block until the next terminal event.
-    /// 6. Dispatch the event.
+    /// 1. Prepare the frame: sync all editor state to the engine pane.
+    /// 2. Render.
+    /// 3. Block until the next terminal event.
+    /// 4. Dispatch the event.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
         loop {
-            // ── 1 & 2. Sync dimensions ────────────────────────────────────────
+            // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
-            // Engine reserves 1 row for the statusline; the pane gets the rest.
-            {
-                let vp = self.viewport_mut();
-                vp.width  = size.width;
-                vp.height = size.height.saturating_sub(1);
-            }
+            self.prepare_frame(size.width, size.height);
 
-            // ── 3. Scroll ─────────────────────────────────────────────────────
-            let cursor_char = self.doc.sels().primary().head;
-            {
-                // Clone pane config to avoid holding a borrow alongside buf().
-                let pane = &self.engine_view.panes[self.pane_id];
-                let wrap_mode  = pane.wrap_mode.clone();
-                let tab_width  = pane.tab_width;
-                let whitespace = pane.whitespace.clone();
-                let rope       = self.doc.buf().rope();
-                let vp = &mut self.engine_view.panes[self.pane_id].viewport;
-                scroll::ensure_cursor_visible(vp, rope, cursor_char, &wrap_mode, tab_width, &whitespace);
-                scroll::ensure_cursor_visible_horizontal(vp, rope, cursor_char, &wrap_mode, tab_width as usize);
-            }
-
-            // ── 4. Pre-draw updates ───────────────────────────────────────────
-            // Sync selections to the engine pane before every render.
-            // `push_selections_to_pane` is also called from `apply_motion`, but
-            // edits (apply_edit/apply_edit_grouped) and mode transitions
-            // (begin/end_insert_session) do not call it. Syncing here once per
-            // frame ensures the engine always renders fresh selection state,
-            // regardless of which code path modified the selections last.
-            self.push_selections_to_pane();
-
-            // Highlight and statusline data are written to shared Arcs here so
-            // the provider closures read consistent, pre-computed values.
-            self.update_highlight_providers();
-            self.update_statusline_snapshot();
-
-            // ── 5. Render ─────────────────────────────────────────────────────
-            // Compute cursor screen position before entering the draw closure
-            // (avoids split-borrow conflicts inside the closure).
+            // ── 2. Render ─────────────────────────────────────────────────────
+            // Compute terminal cursor position before the draw closure to avoid
+            // split-borrow conflicts: pane borrows and rope borrows must end
+            // before `&mut self.engine_view` is captured by the closure.
             let cursor_screen = if self.mode.cursor_is_bar() {
-                // Clone pane geometry so we don't hold a borrow while also
-                // calling gutter_width_approx_for_cursor().
-                let (vp, wrap_mode, tab_width, whitespace) = {
+                let cursor_char = self.doc.sels().primary().head;
+                let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
-                    (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone())
+                    let gw = crate::cursor::gutter_width(
+                        &pane.viewport,
+                        &pane.providers.gutter_columns,
+                        self.doc.buf().len_lines(),
+                    );
+                    (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)
                 };
-                let gutter_w = self.gutter_width_approx_for_cursor();
-                scroll::cursor_screen_pos(
+                crate::cursor::screen_pos(
                     &vp, self.doc.buf().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
                 ).map(|(col, row)| (col + gutter_w, row))
@@ -524,8 +493,8 @@ impl Editor {
                 None
             };
 
-            // Split borrows so the closure captures `engine_view` (mut) and
-            // `rope` (immutable reference into `doc`) from different fields.
+            // Split borrows: `engine_view` (mut) and `rope` (from `doc`) are
+            // different fields, so the borrow checker allows both in the closure.
             let rope      = self.doc.buf().rope();
             let buffer_id = self.buffer_id;
             let engine_view = &mut self.engine_view;
@@ -538,18 +507,13 @@ impl Editor {
                 }
             })?;
 
-            // ── 5b. Cursor shape ──────────────────────────────────────────────
+            // ── 2b. Cursor shape ──────────────────────────────────────────────
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let shape = if self.mode.cursor_is_bar() {
-                SetCursorStyle::SteadyBar
-            } else {
-                SetCursorStyle::SteadyBlock
-            };
-            let _ = execute!(std::io::stdout(), shape);
+            let _ = execute!(std::io::stdout(), crate::cursor::shape(self.mode));
 
-            // ── 6. Event ──────────────────────────────────────────────────────
+            // ── 3. Event ──────────────────────────────────────────────────────
             match event::read()? {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
@@ -568,25 +532,53 @@ impl Editor {
             }
         }
         // Restore the user's default cursor shape before returning to the shell.
-        execute!(std::io::stdout(), SetCursorStyle::DefaultUserShape)?;
+        execute!(std::io::stdout(), crossterm::cursor::SetCursorStyle::DefaultUserShape)?;
         Ok(())
     }
 
-    /// Approximate the gutter width for cursor screen-position calculation.
+    /// Prepare the engine pane for rendering by syncing all editor-authoritative
+    /// state in one place, once per frame.
     ///
-    /// Mirrors the engine's `compute_viewport` logic: sum of `GutterColumn::width`
-    /// for all columns registered on this pane's providers. Used only for placing
-    /// the terminal cursor in Insert mode — the engine renders the gutter authoritatively.
-    fn gutter_width_approx_for_cursor(&self) -> u16 {
-        let total_lines = self.doc.buf().len_lines();
-        let approx_end = self.viewport().top_line + self.viewport().height as usize;
-        let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
-        self.engine_view.panes[self.pane_id]
-            .providers
-            .gutter_columns
-            .iter()
-            .map(|c| c.width(max_visible_line) as u16)
-            .sum()
+    /// This is the **single sync point** between the editor and the engine.
+    /// No other code path should write to `pane.mode`, `pane.selections`, or
+    /// the highlight/statusline shared buffers — all such writes happen here,
+    /// immediately before every `render()` call.
+    fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16) {
+        // 1. Sync viewport dimensions.
+        // Engine reserves 1 row for the statusline; the pane gets the rest.
+        {
+            let vp = self.viewport_mut();
+            vp.width  = terminal_width;
+            vp.height = terminal_height.saturating_sub(1);
+        }
+
+        // 2. Sync mode. Editor's `self.mode` is the SSOT; the pane is a
+        //    derived copy used only during rendering.
+        self.engine_view.panes[self.pane_id].mode = self.mode;
+
+        // 3. Convert char-offset selections to engine DocPos and push to pane.
+        self.push_selections_to_pane();
+
+        // 4. Scroll so the primary cursor stays visible.
+        let cursor_char = self.doc.sels().primary().head;
+        {
+            // Clone pane config to avoid holding a borrow alongside buf().
+            let pane = &self.engine_view.panes[self.pane_id];
+            let wrap_mode  = pane.wrap_mode.clone();
+            let tab_width  = pane.tab_width;
+            let whitespace = pane.whitespace.clone();
+            let rope       = self.doc.buf().rope();
+            let vp = &mut self.engine_view.panes[self.pane_id].viewport;
+            scroll::ensure_cursor_visible(vp, rope, cursor_char, &wrap_mode, tab_width, &whitespace);
+            scroll::ensure_cursor_visible_horizontal(vp, rope, cursor_char, &wrap_mode, tab_width as usize);
+        }
+
+        // 5. Sync highlight data (search matches, bracket matches) to shared
+        //    Arc buffers read by the highlight providers during rendering.
+        self.update_highlight_providers();
+
+        // 6. Sync statusline snapshot.
+        self.update_statusline_snapshot();
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────
@@ -606,8 +598,8 @@ impl Editor {
     /// Convert the editor's char-offset selections to engine `DocPos`-based
     /// selections and push them to the engine pane.
     ///
-    /// Called after every selection-mutating operation. Cheap per-action
-    /// (O(N × log M) where N = selections, M = rope size).
+    /// Called once per frame from `prepare_frame`. Selections are passed in
+    /// sorted document order; `primary_idx` tells the engine which one is primary.
     pub(crate) fn push_selections_to_pane(&mut self) {
         let buf = self.doc.buf();
         let engine_sels: Vec<EngineSelection> = self.doc.sels().iter_sorted()
@@ -626,7 +618,9 @@ impl Editor {
                 }
             })
             .collect();
-        self.engine_view.panes[self.pane_id].selections = engine_sels;
+        let pane = &mut self.engine_view.panes[self.pane_id];
+        pane.selections = engine_sels;
+        pane.primary_idx = self.doc.sels().primary_index();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -671,12 +665,19 @@ impl Editor {
     pub(super) fn update_highlight_providers(&mut self) {
         let buf = self.doc.buf();
 
+        // Visible line range — skip matches outside the viewport (search matches
+        // are sorted by document order, so we can break early past the bottom).
+        let top_line = self.viewport().top_line;
+        let bot_line = top_line + self.viewport().height as usize;
+
         // ── Search match highlights ───────────────────────────────────────────
         {
             let mut data = self.search_hl_data.write().unwrap();
             data.clear();
             for &(start, end_incl) in self.search.matches() {
                 let line = buf.char_to_line(start);
+                if line > bot_line { break; }   // matches are sorted; all remaining are past viewport
+                if line < top_line { continue; } // before viewport
                 let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
                 let byte_start = buf.char_to_byte(start).saturating_sub(line_start_byte);
                 // end_incl is inclusive char offset; +1 makes it exclusive in chars,
@@ -734,9 +735,8 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
+        // `self.mode` is the SSOT. Engine pane is synced by `prepare_frame` each frame.
         self.mode = mode;
-        // Push-based pane sync: mode is SSOT, so keep the engine pane in sync.
-        self.engine_view.panes[self.pane_id].mode = mode;
     }
 
     /// Enter Insert mode as a repeatable insert action.
@@ -755,8 +755,8 @@ impl Editor {
             self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
         }
         // Mode is SSOT for extend state; transitioning to Insert implicitly clears Extend.
+        // Engine pane is synced by `prepare_frame` each frame.
         self.mode = Mode::Insert;
-        self.engine_view.panes[self.pane_id].mode = EditorMode::Insert;
     }
 
     /// Exit Insert mode and finalise the undo/repeat state.
@@ -771,8 +771,8 @@ impl Editor {
         {
             action.insert_keys = session.keystrokes;
         }
+        // Engine pane is synced by `prepare_frame` each frame.
         self.mode = EditorMode::Normal;
-        self.engine_view.panes[self.pane_id].mode = EditorMode::Normal;
     }
 
     /// Apply a motion command and store the resulting selection.
@@ -787,7 +787,7 @@ impl Editor {
             f(buf, sels)
         };
         self.doc.set_selections(new_sels);
-        self.push_selections_to_pane();
+        // Selection sync deferred to `prepare_frame` — no intra-frame push needed.
     }
 }
 
@@ -812,6 +812,7 @@ impl Editor {
                 anchor: DocPos { line: 0, byte_offset: 0 },
                 head:   DocPos { line: 0, byte_offset: 0 },
             }],
+            primary_idx: 0,
             mode: EditorMode::Normal,
             wrap_mode: WrapMode::Indent { width: 76 },
             tab_width: 4,
@@ -825,7 +826,7 @@ impl Editor {
         let statusline_data = Arc::new(Mutex::new(StatuslineSnapshot {
             mode: EditorMode::Normal,
             file_path: None,
-            cursor_pos: (1, 1),
+            head_pos: (1, 1),
             kitty_enabled: false,
             is_dirty: false,
             match_count: None,

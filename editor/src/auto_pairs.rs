@@ -95,12 +95,12 @@ pub(crate) fn insert_pair_close(
         let start = sel.start();
         b.retain(start - b.old_pos());
 
-        if sel.is_cursor() {
+        if sel.is_collapsed() {
             // Simple auto-close: insert open + close.
             b.insert_char(open);
             b.insert_char(close);
             // Cursor on `close` (new_pos is one past close, step back by 1).
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            new_sels.push(Selection::collapsed(b.new_pos() - 1));
         } else {
             // Wrap selection: read the selected text, delete it, re-insert
             // with open/close around it.
@@ -111,7 +111,7 @@ pub(crate) fn insert_pair_close(
             b.insert(&selected);
             b.insert_char(close);
             // Cursor on the close bracket.
-            new_sels.push(Selection::cursor(b.new_pos() - 1));
+            new_sels.push(Selection::collapsed(b.new_pos() - 1));
         }
     })
 }
@@ -130,7 +130,7 @@ pub(crate) fn delete_pair(
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        debug_assert!(sel.is_cursor(), "delete_pair called on non-cursor selection");
+        debug_assert!(sel.is_collapsed(), "delete_pair called on non-collapsed selection");
 
         let p = sel.head;
         let prev = prev_grapheme_boundary(buf, p);
@@ -138,7 +138,7 @@ pub(crate) fn delete_pair(
 
         if prev < b.old_pos() {
             // A previous selection already consumed this region — treat as no-op.
-            new_sels.push(Selection::cursor(b.new_pos()));
+            new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
 
@@ -146,7 +146,7 @@ pub(crate) fn delete_pair(
         // char before the cursor and the char the cursor sits on.
         b.retain(prev - b.old_pos());
         b.delete(next - prev);
-        new_sels.push(Selection::cursor(b.new_pos()));
+        new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
 

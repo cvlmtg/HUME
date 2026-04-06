@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(buf.to_string(), "hello\n");
         assert_eq!(sels.len(), 1);
         let s = sels.primary();
-        assert!(s.is_cursor());
+        assert!(s.is_collapsed());
         assert_eq!(s.head, 0);
         assert_eq!(s.anchor, 0);
     }
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn serialize_cursor_at_start() {
         let buf = Buffer::from("hello");
-        let sels = SelectionSet::single(Selection::cursor(0));
+        let sels = SelectionSet::single(Selection::collapsed(0));
         assert_eq!(serialize_state(&buf, &sels), "-[h]>ello\n");
     }
 
@@ -471,7 +471,7 @@ mod tests {
     fn serialize_cursor_at_end() {
         // cursor at 5 = on the structural trailing \n.
         let buf = Buffer::from("hello");
-        let sels = SelectionSet::single(Selection::cursor(5));
+        let sels = SelectionSet::single(Selection::collapsed(5));
         assert_eq!(serialize_state(&buf, &sels), "hello-[\n]>");
     }
 

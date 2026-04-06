@@ -3,6 +3,7 @@ pub(crate) mod ops;
 pub(crate) mod ui;
 pub(crate) mod io;
 pub(crate) mod auto_pairs;
+pub(crate) mod cursor;
 pub(crate) mod helpers;
 pub(crate) mod os;
 pub(crate) mod terminal;

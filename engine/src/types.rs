@@ -230,8 +230,8 @@ impl Selection {
         }
     }
 
-    /// True if this selection is a bare cursor (no range).
-    pub fn is_cursor(self) -> bool {
+    /// True if this selection is collapsed (anchor == head, no range).
+    pub fn is_collapsed(self) -> bool {
         self.anchor == self.head
     }
 }
@@ -369,13 +369,13 @@ mod tests {
     }
 
     #[test]
-    fn selection_is_cursor() {
+    fn selection_is_collapsed() {
         let pos = DocPos { line: 0, byte_offset: 0 };
-        assert!(Selection { anchor: pos, head: pos }.is_cursor());
+        assert!(Selection { anchor: pos, head: pos }.is_collapsed());
         assert!(!Selection {
             anchor: DocPos { line: 0, byte_offset: 0 },
             head: DocPos { line: 0, byte_offset: 1 },
-        }.is_cursor());
+        }.is_collapsed());
     }
 
     #[test]

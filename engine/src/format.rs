@@ -331,8 +331,8 @@ pub fn format_buffer_line(
 
     // ── Empty-line sentinel ────────────────────────────────────────────────
     // If no graphemes were emitted (truly empty line, e.g. just "\n"), push a
-    // width-1 Empty cell at col 0. This gives the cursor a grapheme to land on
-    // in the Style stage — without it the cursor is invisible on empty lines.
+    // width-1 Empty cell at col 0. This gives the selection head a grapheme to land on
+    // in the Style stage — without it the selection head is invisible on empty lines.
     if graphemes_out.len() == wrap.row_g_start {
         graphemes_out.push(Grapheme {
             byte_range: 0..0,
@@ -610,7 +610,7 @@ mod tests {
     fn empty_line_produces_empty_sentinel_grapheme() {
         // "a\n\nb" has 3 lines: "a", "", "b".
         // The middle empty line must produce exactly 1 sentinel grapheme with
-        // CellContent::Empty so the cursor has something to render on.
+        // CellContent::Empty so the selection head has something to render on.
         let (rows, graphemes) = do_format("a\n\nb", WrapMode::None);
         assert_eq!(rows.len(), 3, "three lines");
         let empty_row = &rows[1];
@@ -719,7 +719,7 @@ mod tests {
         let (rows, graphemes) = do_format_ws("abc\n", ws);
         // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
         // Line 0: 3 content graphemes + 1 newline indicator.
-        // Line 1: 1 Empty sentinel (added so cursor is visible on empty lines).
+        // Line 1: 1 Empty sentinel (added so the selection head is visible on empty lines).
         assert_eq!(rows.len(), 2);
         let row0_gs = &graphemes[rows[0].graphemes.clone()];
         assert_eq!(row0_gs.len(), 4, "line 0: 3 content + 1 newline indicator");

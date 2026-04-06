@@ -102,7 +102,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        let sels = SelectionSet::single(Selection::cursor(1));
+        let sels = SelectionSet::single(Selection::collapsed(1));
         let txn = Transaction::new(cs, sels.clone());
 
         let (new_buf, new_sels) = txn.apply(&buf).unwrap();
@@ -120,7 +120,7 @@ mod tests {
 
         // Cursor at 99 is way past buf_len (3) — this is what a buggy plugin
         // might produce.
-        let sels = SelectionSet::single(Selection::cursor(99));
+        let sels = SelectionSet::single(Selection::collapsed(99));
         let txn = Transaction::new(cs, sels);
 
         let err = txn.apply(&buf).unwrap_err();
@@ -143,7 +143,7 @@ mod tests {
         b.retain_rest();
         let cs = b.finish();
 
-        let txn = Transaction::new(cs, SelectionSet::single(Selection::cursor(0)));
+        let txn = Transaction::new(cs, SelectionSet::single(Selection::collapsed(0)));
         let err = txn.apply(&buf).unwrap_err();
         assert!(
             matches!(

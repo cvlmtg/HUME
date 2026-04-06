@@ -127,7 +127,7 @@ mod tests {
         // With only 1 valid position (a single-char buffer of just '\n'), we
         // can only produce a single cursor at position 0.
         if buf_len <= 1 {
-            return Just(SelectionSet::single(Selection::cursor(0))).boxed();
+            return Just(SelectionSet::single(Selection::collapsed(0))).boxed();
         }
 
         let n_sels = 1..=max_sels;

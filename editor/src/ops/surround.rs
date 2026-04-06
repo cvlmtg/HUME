@@ -93,8 +93,8 @@ fn select_surround(
             new_primary = new_sels.len();
         }
         if let Some((open_pos, close_pos)) = find_pair(buf, sel.head) {
-            new_sels.push(Selection::cursor(open_pos));
-            new_sels.push(Selection::cursor(close_pos));
+            new_sels.push(Selection::collapsed(open_pos));
+            new_sels.push(Selection::collapsed(close_pos));
         } else {
             new_sels.push(*sel);
         }
@@ -149,7 +149,7 @@ mod tests {
         f: impl Fn(&Buffer, SelectionSet) -> SelectionSet,
     ) -> Vec<(usize, usize)> {
         let buf = Buffer::from(text);
-        let sels = SelectionSet::single(Selection::cursor(cursor_pos));
+        let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
         let result = f(&buf, sels);
         result.iter_sorted().map(|s| (s.anchor, s.head)).collect()
     }
@@ -230,7 +230,7 @@ mod tests {
         // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
         let buf = Buffer::from("(a) [b]\n");
         let sels = SelectionSet::from_vec(
-            vec![Selection::cursor(1), Selection::cursor(5)],
+            vec![Selection::collapsed(1), Selection::collapsed(5)],
             0,
         );
         let result = cmd_surround_paren(&buf, sels);
@@ -245,7 +245,7 @@ mod tests {
         // (hello) — two cursors both inside the same parens (pos 1 and 3).
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::from_vec(
-            vec![Selection::cursor(1), Selection::cursor(3)],
+            vec![Selection::collapsed(1), Selection::collapsed(3)],
             0,
         );
         let result = cmd_surround_paren(&buf, sels);

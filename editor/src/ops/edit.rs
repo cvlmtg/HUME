@@ -165,14 +165,14 @@ fn delete_one_grapheme(
     if p + 1 >= buf.len_chars() {
         // Cursor is on the structural trailing '\n' — cannot delete it.
         b.retain(p - b.old_pos());
-        let sel = Selection::cursor(b.new_pos());
+        let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
         return;
     }
     let end = next_grapheme_boundary(buf, p);
     b.retain(p - b.old_pos());
     b.delete(end - p);
-    let sel = Selection::cursor(b.new_pos());
+    let sel = Selection::collapsed(b.new_pos());
     new_sels.push(sel);
 }
 
@@ -197,7 +197,7 @@ fn delete_sel_region(
     let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
     b.retain(start - b.old_pos());
     b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
-    let sel = Selection::cursor(b.new_pos());
+    let sel = Selection::collapsed(b.new_pos());
     new_sels.push(sel);
 }
 
@@ -241,18 +241,18 @@ where
         // N-to-N if counts match; every selection gets the full joined string otherwise.
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
 
-        if sel.is_cursor() {
+        if sel.is_collapsed() {
             replaced.push(String::new()); // cursors displace nothing
             let insert_at = cursor_insert_pos(buf, sel);
             b.retain(insert_at - b.old_pos());
             if text.is_empty() {
                 // Nothing to insert — cursor stays where it is.
-                new_sels.push(Selection::cursor(sel.head));
+                new_sels.push(Selection::collapsed(sel.head));
             } else {
                 b.insert(text);
                 // new_pos() is one past the inserted text; -1 lands on the last
                 // inserted character (the cursor sits on it — inclusive model).
-                new_sels.push(Selection::cursor(b.new_pos() - 1));
+                new_sels.push(Selection::collapsed(b.new_pos() - 1));
             }
         } else {
             // Multi-char selection: replace the selected region.
@@ -269,7 +269,7 @@ where
             // the deleted region; -1 would underflow. Use saturating_sub so
             // the cursor lands at start (the first char after the deletion).
             let pos = if text.is_empty() { b.new_pos() } else { b.new_pos() - 1 };
-            new_sels.push(Selection::cursor(pos));
+            new_sels.push(Selection::collapsed(pos));
         }
     })
 }
@@ -295,7 +295,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
-        if !sel.is_cursor() {
+        if !sel.is_collapsed() {
             // Delete the selected region. Cap at the last content char to protect
             // the structural trailing '\n'.
             let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
@@ -304,7 +304,7 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
         // character that was originally at `start` (now shifted right by 1).
-        let sel = Selection::cursor(b.new_pos());
+        let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
 }
@@ -322,7 +322,7 @@ pub(crate) fn delete_char_forward(
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        if sel.is_cursor() {
+        if sel.is_collapsed() {
             delete_one_grapheme(b, buf, new_sels, sel.head);
         } else {
             delete_sel_region(b, buf, sel, new_sels);
@@ -343,11 +343,11 @@ pub(crate) fn delete_char_backward(
     sels: SelectionSet,
 ) -> (Buffer, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        if sel.is_cursor() {
+        if sel.is_collapsed() {
             let p = sel.head;
             if p == 0 {
                 // At start of buffer — nothing to delete to the left.
-                let sel = Selection::cursor(b.new_pos());
+                let sel = Selection::collapsed(b.new_pos());
                 new_sels.push(sel);
                 return;
             }
@@ -356,13 +356,13 @@ pub(crate) fn delete_char_backward(
             if prev < b.old_pos() {
                 // A previous selection already consumed `prev` — the character
                 // we'd delete is gone. Treat as a no-op; the cursor stays put.
-                let sel = Selection::cursor(b.new_pos());
+                let sel = Selection::collapsed(b.new_pos());
                 new_sels.push(sel);
                 return;
             }
             b.retain(prev - b.old_pos());
             b.delete(p - prev);
-            let sel = Selection::cursor(b.new_pos());
+            let sel = Selection::collapsed(b.new_pos());
             new_sels.push(sel);
         } else {
             delete_sel_region(b, buf, sel, new_sels);
@@ -398,10 +398,10 @@ pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, Sele
 
 /// Paste `values` after/onto each selection (normal-mode `p`).
 ///
-/// **Cursor selections (`is_cursor()`):** insert `text` just after the cursor
+/// **Cursor selections (`is_collapsed()`):** insert `text` just after the cursor
 /// character. The cursor lands on the last inserted character.
 ///
-/// **Multi-char selections (`!is_cursor()`):** replace the selected region with
+/// **Multi-char selections (`!is_collapsed()`):** replace the selected region with
 /// `text`. The displaced text is returned in the third tuple element so the
 /// caller can write it back to the register — a swap. This eliminates the need
 /// for a separate `R` keybind or Vim-style `"0` yank register.
@@ -430,10 +430,10 @@ pub(crate) fn paste_after(
 
 /// Paste `values` before/onto each selection (normal-mode `P`).
 ///
-/// **Cursor selections (`is_cursor()`):** insert `text` just before the cursor
+/// **Cursor selections (`is_collapsed()`):** insert `text` just before the cursor
 /// character. The cursor lands on the last inserted character.
 ///
-/// **Multi-char selections (`!is_cursor()`):** same replace-and-swap semantics
+/// **Multi-char selections (`!is_collapsed()`):** same replace-and-swap semantics
 /// as [`paste_after`] — the after/before distinction only applies to cursors.
 /// When replacing, the selection is deleted and `text` is inserted in its place.
 ///
@@ -475,7 +475,7 @@ pub(crate) fn replace_selections(
         // Smart replace: when replacing a single character (cursor selection)
         // and the replacement is a pair character, resolve open/close based on
         // what's currently under the cursor.  See `surround::smart_replace_char`.
-        let effective_ch = if sel.is_cursor() {
+        let effective_ch = if sel.is_collapsed() {
             if let Some(current) = buf.char_at(sel_start) {
                 crate::ops::surround::smart_replace_char(ch, current, i)
             } else {

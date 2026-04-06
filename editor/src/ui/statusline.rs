@@ -176,8 +176,8 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)]
 pub(crate) struct StatuslineSnapshot {
     pub mode: EditorMode,
     pub file_path: Option<PathBuf>,
-    /// `(line_1based, col_1based)` of the primary cursor.
-    pub cursor_pos: (usize, usize),
+    /// `(line_1based, col_1based)` of the primary selection head.
+    pub head_pos: (usize, usize),
     pub kitty_enabled: bool,
     pub is_dirty: bool,
     /// `Some((current_1based, total))` when a search regex is active.
@@ -196,13 +196,13 @@ impl StatuslineSnapshot {
     pub(crate) fn from_editor(editor: &Editor) -> Self {
         let buf = editor.doc.buf();
         let head = editor.doc.sels().primary().head;
-        let cursor_line = buf.char_to_line(head);
-        let col_0 = grapheme_col_in_line(buf, cursor_line, head);
+        let head_line = buf.char_to_line(head);
+        let col_0 = grapheme_col_in_line(buf, head_line, head);
 
         Self {
             mode: editor.mode,
             file_path: editor.file_path.clone(),
-            cursor_pos: (cursor_line + 1, col_0 + 1),
+            head_pos: (head_line + 1, col_0 + 1),
             kitty_enabled: editor.kitty_enabled,
             is_dirty: editor.doc.is_dirty(),
             match_count: editor.search.match_count(),
@@ -328,7 +328,7 @@ fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'s
             (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {
-            let (line, col) = snap.cursor_pos;
+            let (line, col) = snap.head_pos;
             (Cow::Owned(format!("{line}:{col}")), colors.statusline)
         }
         StatusElement::KittyProtocol => {

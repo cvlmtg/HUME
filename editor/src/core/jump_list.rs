@@ -130,7 +130,7 @@ mod tests {
     /// Bypasses `JumpEntry::new` since unit tests don't have a Buffer.
     fn entry(char_pos: usize, line: usize) -> JumpEntry {
         JumpEntry {
-            selections: SelectionSet::single(Selection::cursor(char_pos)),
+            selections: SelectionSet::single(Selection::collapsed(char_pos)),
             primary_line: line,
         }
     }

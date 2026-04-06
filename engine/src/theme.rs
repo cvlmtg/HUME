@@ -73,21 +73,21 @@ impl ScopeRegistry {
 /// construction, but calling it is idempotent).
 #[derive(Default)]
 pub struct UiScopes {
-    /// Cursor block/cell background (Normal, Visual, … modes).
+    /// Selection-head highlight (Normal, Visual, … modes). Named `cursor` for Helix theme compat.
     pub cursor: ResolvedStyle,
-    /// Cursor bar/underline background (Insert mode).
+    /// Selection-head highlight in Insert mode. Named `cursor_insert` for Helix theme compat.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
-    /// Cursor-line background tint applied to every grapheme on the cursor row.
+    /// Background tint applied to every grapheme on the primary selection head's line.
     pub cursorline: ResolvedStyle,
     /// Style for virtual / filler text (tilde rows, virtual lines).
     pub virtual_text: ResolvedStyle,
     /// Indent-guide column markers.
     pub indent_guide: ResolvedStyle,
-    /// Primary cursor style (Normal/Extend/… modes). Falls back to `cursor` if unset.
+    /// Primary selection-head highlight (Normal/Extend/… modes). Falls back to `cursor` if unset.
     pub cursor_primary: ResolvedStyle,
-    /// Primary cursor style in Insert mode. Falls back to `cursor_insert` if unset.
+    /// Primary selection-head highlight in Insert mode. Falls back to `cursor_insert` if unset.
     pub cursor_insert_primary: ResolvedStyle,
     /// Primary selection highlight. Falls back to `selection` if unset.
     pub selection_primary: ResolvedStyle,

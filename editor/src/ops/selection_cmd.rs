@@ -15,7 +15,7 @@ use crate::ops::search::find_matches_in_range;
 /// overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
 pub(crate) fn cmd_collapse_selection(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    let new_sels = sels.map_and_merge(|s| Selection::cursor(s.head));
+    let new_sels = sels.map_and_merge(|s| Selection::collapsed(s.head));
     new_sels.debug_assert_valid(buf);
     new_sels
 }
@@ -220,7 +220,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
 
         // If we consumed everything, the selection is all whitespace.
         if start > end {
-            return Selection::cursor(sel.head);
+            return Selection::collapsed(sel.head);
         }
 
         // Walk backward from end, skipping whitespace (grapheme boundary steps).
@@ -622,7 +622,7 @@ mod tests {
         // Selection covering only spaces — should collapse to cursor at head.
         let (buf, sels) = parse_state("-[    ]>\n");
         let sels_out = cmd_trim_selection_whitespace(&buf, sels);
-        assert!(sels_out.primary().is_cursor());
+        assert!(sels_out.primary().is_collapsed());
         // Head was at offset 3 (the `|` position in DSL).
         assert_eq!(sels_out.primary().head, 3);
     }
@@ -996,7 +996,7 @@ mod tests {
         let sel = result.primary();
         assert_eq!(sel.anchor, 1);
         assert_eq!(sel.head, 1);
-        assert!(sel.is_cursor());
+        assert!(sel.is_collapsed());
     }
 
     #[test]
