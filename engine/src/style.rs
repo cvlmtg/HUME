@@ -241,15 +241,16 @@ pub(crate) fn rebuild_tier_bufs(
 pub(crate) fn style_row(
     row: &DisplayRow,
     graphemes: &[Grapheme],
-    line_idx: usize,
+    line_start_char: usize,
+    line_end_char: usize,
     is_head_line: bool,
     mode: EditorMode,
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
     let primary_idx = scratch.primary_idx_in_sorted;
-    collect_selection_spans(line_idx, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.sel_spans, &mut scratch.primary_sel_span);
-    collect_head_cols(line_idx, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.head_cols, &mut scratch.primary_head_col);
+    collect_selection_spans(line_start_char, line_end_char, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.sel_spans, &mut scratch.primary_sel_span);
+    collect_head_cols(line_start_char, line_end_char, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.head_cols, &mut scratch.primary_head_col);
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
@@ -351,8 +352,11 @@ pub fn resolve_styles(
             rebuild_tier_bufs(line_idx, highlight_providers, rope, tree, scratch);
         }
 
-        let is_head_line = scratch.sorted_sels.iter().any(|s| s.head.line == line_idx);
-        style_row(row, graphemes, line_idx, is_head_line, mode, theme, scratch);
+        // Char range for this line: selections are char-offset based.
+        let line_start_char = rope.line_to_char(line_idx);
+        let line_end_char = rope.line_to_char(line_idx + 1);
+        let is_head_line = scratch.sorted_sels.iter().any(|s| s.head >= line_start_char && s.head < line_end_char);
+        style_row(row, graphemes, line_start_char, line_end_char, is_head_line, mode, theme, scratch);
     }
 }
 
@@ -362,10 +366,15 @@ pub fn resolve_styles(
 
 /// Collect (start_col, end_col_exclusive) spans for the given line within `row`.
 ///
+/// `line_start_char` / `line_end_char` are the half-open absolute-char range of
+/// the buffer line being rendered (from `rope.line_to_char`). Selections use
+/// absolute char offsets.
+///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this row.
 fn collect_selection_spans(
-    line_idx: usize,
+    line_start_char: usize,
+    line_end_char: usize,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -377,30 +386,43 @@ fn collect_selection_spans(
     *primary_sel_span = None;
 
     let row_gs = &graphemes[row_range.clone()];
+    // Use byte_range to detect the empty-line sentinel (byte_range 0..0 = no real content).
     let row_first_byte = row_gs.first().map_or(usize::MAX, |g| g.byte_range.start);
-    let row_last_byte = row_gs.last().map_or(0, |g| g.byte_range.end);
+    let row_last_byte  = row_gs.last().map_or(0, |g| g.byte_range.end);
+    // Char-based wrap-segment boundaries for the intersection check below.
+    let row_first_char = row_gs.first().map_or(usize::MAX, |g| g.char_offset);
+    // row_last_char_excl: char immediately after the last grapheme on this row.
+    // Adding 1 is exact because cursor positions always land on grapheme-cluster
+    // boundaries — a selection can never start inside a multi-char cluster.
+    let row_last_char_excl = row_gs.last().map_or(0, |g| g.char_offset.saturating_add(1));
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        let (start, end) = sel.range();
-        if start.line > line_idx || end.line < line_idx {
-            continue;
-        }
-        let sel_byte_start = if start.line == line_idx { start.byte_offset } else { 0 };
-        let sel_byte_end = if end.line == line_idx { end.byte_offset } else { usize::MAX };
+        let (start, end) = sel.range(); // (usize, usize) absolute char offsets
 
-        // For rows with a real byte range (not the empty-line sentinel whose
-        // byte_range is 0..0), skip the selection if it doesn't intersect this
-        // wrap segment. Without this check the fallbacks below would produce a
-        // full-row highlight for selections that live entirely on a different
-        // wrap segment of the same buffer line.
-        if row_first_byte < row_last_byte
-            && (sel_byte_end <= row_first_byte || sel_byte_start >= row_last_byte)
-        {
+        // Skip if the selection doesn't overlap this line at all.
+        if start >= line_end_char || end < line_start_char {
             continue;
         }
 
-        let col_start = byte_offset_to_col(sel_byte_start, graphemes, row_range).unwrap_or(0);
-        let col_end = byte_offset_to_col(sel_byte_end, graphemes, row_range)
+        // Clamp the selection to this line's char range.
+        let sel_char_start = start.max(line_start_char);
+        // `usize::MAX` signals "extends past the end of this row" — the col fallback
+        // below will then use the last grapheme's trailing column.
+        let sel_char_end = if end < line_end_char { end } else { usize::MAX };
+
+        // For rows with real content, skip if the selection doesn't intersect
+        // this wrap segment. Without this check a selection on wrap segment N
+        // would incorrectly highlight all other wrap segments of the same line.
+        if row_first_byte < row_last_byte {
+            let ends_before_row = sel_char_end != usize::MAX && sel_char_end <= row_first_char;
+            let starts_after_row = sel_char_start >= row_last_char_excl;
+            if ends_before_row || starts_after_row {
+                continue;
+            }
+        }
+
+        let col_start = char_offset_to_col(sel_char_start, graphemes, row_range).unwrap_or(0);
+        let col_end = char_offset_to_col(sel_char_end, graphemes, row_range)
             .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u16));
         if col_end > col_start {
             out.push((col_start, col_end));
@@ -411,12 +433,16 @@ fn collect_selection_spans(
     }
 }
 
-/// Collect the display column of each selection head on `line_idx` within `row_range`.
+/// Collect the display column of each selection head on this line within `row_range`.
 ///
-/// Also sets `primary_head_col` when the primary selection (identified by `primary_idx`)
-/// has its head on this row.
+/// `line_start_char` / `line_end_char` are the half-open absolute-char range of
+/// the buffer line. Heads outside this range are skipped.
+///
+/// Also sets `primary_head_col` when the primary selection (identified by
+/// `primary_idx`) has its head on this row.
 fn collect_head_cols(
-    line_idx: usize,
+    line_start_char: usize,
+    line_end_char: usize,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -427,10 +453,10 @@ fn collect_head_cols(
     out.clear();
     *primary_head_col = None;
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        if sel.head.line != line_idx {
+        if sel.head < line_start_char || sel.head >= line_end_char {
             continue;
         }
-        if let Some(col) = byte_offset_to_col(sel.head.byte_offset, graphemes, row_range) {
+        if let Some(col) = char_offset_to_col(sel.head, graphemes, row_range) {
             out.push(col);
             if Some(idx) == primary_idx {
                 *primary_head_col = Some(col);
@@ -439,25 +465,35 @@ fn collect_head_cols(
     }
 }
 
-/// Binary-search for the grapheme in `row_range` whose `byte_range.start` is
-/// closest to `byte_offset`, returning its `col`.
-fn byte_offset_to_col(
-    byte_offset: usize,
+/// Binary-search for the grapheme in `row_range` whose `char_offset` equals or
+/// immediately follows `char_offset`, returning its display column.
+///
+/// Returns `None` when `char_offset` is before this row's first grapheme (the
+/// head belongs to an earlier wrap segment and should not be claimed for this row).
+/// Returns `None` when `char_offset` is past all graphemes (caller uses a
+/// fallback such as end-of-row column).
+fn char_offset_to_col(
+    char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u16> {
+    if char_offset == usize::MAX {
+        // Sentinel value meaning "extend to end of row" — let the caller use the fallback.
+        return None;
+    }
     let row_graphemes = &graphemes[row_range.clone()];
-    let idx = row_graphemes.partition_point(|g| g.byte_range.start < byte_offset);
-    // If byte_offset falls before this row's first grapheme, the selection head
-    // belongs to an earlier wrap segment — don't claim it for this row.
+    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
+    // If char_offset falls before this row's first grapheme, the head belongs
+    // to an earlier wrap segment — don't claim it for this row.
     row_graphemes.get(idx).and_then(|g| {
-        if idx == 0 && byte_offset < g.byte_range.start {
+        if idx == 0 && char_offset < g.char_offset {
             None
         } else {
             Some(g.col)
         }
     })
 }
+
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -467,13 +503,14 @@ fn byte_offset_to_col(
 mod tests {
     use super::*;
     use crate::theme::{ScopeRegistry, Theme};
-    use crate::types::{DisplayRow, Grapheme, RowKind, ScopeId, Selection, DocPos, CellContent, ResolvedStyle};
+    use crate::types::{DisplayRow, Grapheme, RowKind, ScopeId, Selection, CellContent, ResolvedStyle};
     use std::collections::HashMap;
 
     fn make_graphemes(count: usize) -> Vec<Grapheme> {
         (0..count)
             .map(|i| Grapheme {
                 byte_range: i..i + 1,
+                char_offset: i,
                 col: i as u16,
                 width: 1,
                 content: CellContent::Grapheme,
@@ -507,10 +544,7 @@ mod tests {
         let rope = ropey::Rope::from_str("abcde");
         let graphemes = make_graphemes(5);
         let rows = vec![make_row(0..5)];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 2 },
-            head: DocPos { line: 0, byte_offset: 2 },
-        }];
+        let selections = vec![Selection { anchor: 2, head: 2 }];
 
         // Theme with a cursor style so we can detect the override.
         let mut styles_map = HashMap::new();
@@ -568,14 +602,11 @@ mod tests {
 
     #[test]
     fn selection_range_highlighted() {
-        // Graphemes at cols 0,1,2. Selection spans bytes 1..3 (cols 1 and 2).
+        // Graphemes at cols 0,1,2. Selection spans chars 1..3 (cols 1 and 2).
         let rope = ropey::Rope::from_str("abc");
         let graphemes = make_graphemes(3);
         let rows = vec![make_row(0..3)];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 1 },
-            head: DocPos { line: 0, byte_offset: 3 },
-        }];
+        let selections = vec![Selection { anchor: 1, head: 3 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Red), ..Default::default() });
@@ -592,20 +623,18 @@ mod tests {
     #[test]
     fn cursorline_background_applied_to_cursor_line_only() {
         // Two lines; cursor on line 0.
+        // "ab\ncd": a=char0, b=char1, \n=char2, c=char3, d=char4
         let rope = ropey::Rope::from_str("ab\ncd");
-        let g0 = Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g1 = Grapheme { byte_range: 1..2, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g2 = Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g3 = Grapheme { byte_range: 1..2, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g0 = Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g1 = Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g2 = Grapheme { byte_range: 0..1, char_offset: 3, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g3 = Grapheme { byte_range: 1..2, char_offset: 4, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
         let graphemes = vec![g0, g1, g2, g3];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..2 },
             DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 2..4 },
         ];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 0 },
-            head: DocPos { line: 0, byte_offset: 0 },
-        }];
+        let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Green), ..Default::default() });
@@ -625,10 +654,7 @@ mod tests {
         let rope = ropey::Rope::from_str("ab");
         let graphemes = make_graphemes(2);
         let rows = vec![make_row(0..2)];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 0 },
-            head: DocPos { line: 0, byte_offset: 0 },
-        }];
+        let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.cursor.insert", ResolvedStyle { fg: Some(ratatui::style::Color::Green), ..Default::default() });
@@ -644,11 +670,12 @@ mod tests {
     #[test]
     fn multi_head_all_lines_get_cursorline() {
         // Two selection heads on lines 0 and 2; line 1 should not get cursorline.
+        // "a\nb\nc": a=char0, \n=char1, b=char2, \n=char3, c=char4
         let rope = ropey::Rope::from_str("a\nb\nc");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 2, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 4, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
         ];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
@@ -656,8 +683,8 @@ mod tests {
             DisplayRow { kind: RowKind::LineStart { line_idx: 2 }, graphemes: 2..3 },
         ];
         let selections = vec![
-            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } },
-            Selection { anchor: DocPos { line: 2, byte_offset: 0 }, head: DocPos { line: 2, byte_offset: 0 } },
+            Selection { anchor: 0, head: 0 },
+            Selection { anchor: 4, head: 4 },
         ];
 
         let mut styles_map = HashMap::new();
@@ -676,17 +703,14 @@ mod tests {
     fn virtual_rows_keep_default_style() {
         let rope = ropey::Rope::from_str("ab");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..0, col: 0, width: 1, content: crate::types::CellContent::Virtual("hint"), indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..0, char_offset: usize::MAX, col: 0, width: 1, content: crate::types::CellContent::Virtual("hint"), indent_depth: 0 },
         ];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
             DisplayRow { kind: RowKind::Virtual { provider_id: 0, anchor_line: 0 }, graphemes: 1..2 },
         ];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 0 },
-            head: DocPos { line: 0, byte_offset: 0 },
-        }];
+        let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
@@ -709,8 +733,8 @@ mod tests {
         let graphemes = make_graphemes(5);
         let rows = vec![make_row(0..5)];
         let selections = vec![
-            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } }, // primary (col 0)
-            Selection { anchor: DocPos { line: 0, byte_offset: 2 }, head: DocPos { line: 0, byte_offset: 2 } }, // secondary (col 2)
+            Selection { anchor: 0, head: 0 }, // primary (col 0)
+            Selection { anchor: 2, head: 2 }, // secondary (col 2)
         ];
 
         let mut styles_map = HashMap::new();
@@ -733,8 +757,8 @@ mod tests {
         let graphemes = make_graphemes(5);
         let rows = vec![make_row(0..5)];
         let selections = vec![
-            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 2 } }, // primary
-            Selection { anchor: DocPos { line: 0, byte_offset: 3 }, head: DocPos { line: 0, byte_offset: 5 } }, // secondary
+            Selection { anchor: 0, head: 2 }, // primary
+            Selection { anchor: 3, head: 5 }, // secondary
         ];
 
         let mut styles_map = HashMap::new();
@@ -762,8 +786,8 @@ mod tests {
         let graphemes = make_graphemes(5);
         let rows = vec![make_row(0..5)];
         let selections = vec![
-            Selection { anchor: DocPos { line: 0, byte_offset: 0 }, head: DocPos { line: 0, byte_offset: 0 } }, // primary
-            Selection { anchor: DocPos { line: 0, byte_offset: 2 }, head: DocPos { line: 0, byte_offset: 2 } }, // secondary
+            Selection { anchor: 0, head: 0 }, // primary
+            Selection { anchor: 2, head: 2 }, // secondary
         ];
 
         let mut styles_map = HashMap::new();
@@ -783,23 +807,21 @@ mod tests {
         // Simulate a wrapped line: line 0 has two display rows.
         // First segment: graphemes at byte ranges 0..1 (col 0), 1..2 (col 1), 2..3 (col 2).
         // Second segment: graphemes at byte ranges 3..4 (col 0), 4..5 (col 1).
-        // Cursor head is at byte_offset=1 (first segment). It must appear only on row 0.
+        // Cursor head is at char_offset=1 (first segment). It must appear only on row 0.
+        // "abcde" has no newlines so all chars are on line 0 with absolute char offsets 0..5.
         let rope = ropey::Rope::from_str("abcde");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 1..2, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 2..3, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 3..4, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // wrap segment
-            Grapheme { byte_range: 4..5, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 2..3, char_offset: 2, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 3..4, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // wrap segment
+            Grapheme { byte_range: 4..5, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
         ];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
             DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
         ];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 1 },
-            head: DocPos { line: 0, byte_offset: 1 },
-        }];
+        let selections = vec![Selection { anchor: 1, head: 1 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
@@ -817,25 +839,22 @@ mod tests {
 
     #[test]
     fn selection_on_wrapped_line_does_not_highlight_other_segments() {
-        // Same wrapped line layout as cursor_on_wrapped_line_only_on_correct_segment.
-        // A selection spanning bytes 0..2 (cols 0–1 in segment 0) must not
+        // Same wrapped line layout as head_on_wrapped_line_only_on_correct_segment.
+        // A selection spanning chars 0..2 (cols 0–1 in segment 0) must not
         // produce a selection highlight on segment 1 at all.
         let rope = ropey::Rope::from_str("abcde");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 1..2, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 2..3, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 3..4, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 4..5, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 2..3, char_offset: 2, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 3..4, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme { byte_range: 4..5, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
         ];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
             DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
         ];
-        let selections = vec![Selection {
-            anchor: DocPos { line: 0, byte_offset: 0 },
-            head: DocPos { line: 0, byte_offset: 2 },
-        }];
+        let selections = vec![Selection { anchor: 0, head: 2 }];
 
         let mut styles_map = HashMap::new();
         styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });

@@ -2195,11 +2195,10 @@ fn surround_no_match_is_noop() {
 // called once per frame in the run loop; these tests call it explicitly (as
 // the run loop would) and verify the pane reflects the post-operation state.
 
-/// Return the pane's primary cursor as `(line, byte_offset)` — the DocPos
-/// fields that the engine uses for rendering.
-fn pane_head(ed: &Editor) -> (usize, usize) {
-    let head = ed.engine_view.panes[ed.pane_id].selections[0].head;
-    (head.line, head.byte_offset)
+/// Return the pane's primary cursor as an absolute char offset — the engine's
+/// representation after Phase 2 unified the selection types.
+fn pane_head(ed: &Editor) -> usize {
+    ed.engine_view.panes[ed.pane_id].selections[0].head
 }
 
 /// After `c` (change): the selection is deleted and Insert mode entered.
@@ -2214,8 +2213,8 @@ fn pane_selections_synced_after_change_command() {
     // Simulate the per-frame sync that happens in the run loop.
     ed.push_selections_to_pane();
 
-    // Cursor must be at line 0, byte offset 0 (start of "o\n").
-    assert_eq!(pane_head(&ed), (0, 0), "pane head must be at (0,0) after 'c' deletes selection");
+    // Cursor must be at char offset 0 (start of "o\n").
+    assert_eq!(pane_head(&ed), 0, "pane head must be at char 0 after 'c' deletes selection");
 }
 
 /// After typing a character in Insert mode: the pane cursor must advance.
@@ -2229,7 +2228,7 @@ fn pane_selections_synced_after_insert_typing() {
     ed.push_selections_to_pane();
 
     // Buffer is now "xb\n"; cursor sits after 'x', at byte offset 1.
-    assert_eq!(pane_head(&ed), (0, 1), "pane head must be at byte 1 after typing 'x'");
+    assert_eq!(pane_head(&ed), 1, "pane head must be at char 1 after typing 'x'");
 }
 
 /// After `Esc` (exit Insert): pane must reflect the final cursor position.
@@ -2244,7 +2243,7 @@ fn pane_selections_synced_after_exit_insert() {
     ed.push_selections_to_pane();
 
     // 'x' was inserted at byte 2; cursor now sits just after 'x' at byte 3.
-    assert_eq!(pane_head(&ed), (0, 3), "pane head must be at byte 3 (after 'x') after Esc");
+    assert_eq!(pane_head(&ed), 3, "pane head must be at char 3 (after 'x') after Esc");
 }
 
 /// When the primary selection is NOT the earliest in the document,
@@ -2275,16 +2274,12 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     // Selections are passed in sorted document order; primary_idx identifies the primary.
     let pane = &ed.engine_view.panes[ed.pane_id];
     assert_eq!(
-        pane.selections[0].head.byte_offset, 0,
-        "pane.selections[0] is the earliest in document order (at byte 0, 'a')"
+        pane.selections[0].head, 0,
+        "pane.selections[0] is the earliest in document order (char 0, 'a')"
     );
     assert_eq!(
-        pane.selections[1].head.byte_offset, 1,
-        "pane.selections[1] is 'b'"
+        pane.selections[1].head, 1,
+        "pane.selections[1] is 'b' at char 1"
     );
     assert_eq!(pane.primary_idx, 1, "primary_idx must point to 'b' (index 1)");
-    assert_eq!(
-        pane.primary_head_line(), 0,
-        "primary_head_line must reflect the primary selection's line"
-    );
 }

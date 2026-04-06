@@ -402,7 +402,7 @@ pub(crate) fn render_pane(
         visible: &visible,
         viewport: &pane_ctx.pane.viewport,
         mode: pane_ctx.pane.mode,
-        primary_head_line: pane_ctx.pane.primary_head_line(),
+        primary_head_line: pane_ctx.pane.primary_head_line(pane_ctx.rope),
         tab_width: pane_ctx.pane.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text.into(),
         indent_guide_style: pane_ctx.theme.ui.indent_guide.into(),
@@ -514,7 +514,9 @@ fn render_buffer_line(
 
         scratch.style.styles.resize(scratch.format.graphemes.len(), ResolvedStyle::default());
 
-        let is_head_line = scratch.style.sorted_sels.iter().any(|s| s.head.line == line_idx);
+        let line_start_char = pane_ctx.rope.line_to_char(line_idx);
+        let line_end_char   = pane_ctx.rope.line_to_char(line_idx + 1);
+        let is_head_line = scratch.style.sorted_sels.iter().any(|s| s.head >= line_start_char && s.head < line_end_char);
         // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
         let line_str = scratch.format.line_texts.as_str();
 
@@ -526,7 +528,8 @@ fn render_buffer_line(
             style::style_row(
                 &scratch.format.display_rows[row_idx],
                 &scratch.format.graphemes,
-                line_idx,
+                line_start_char,
+                line_end_char,
                 is_head_line,
                 pane_ctx.pane.mode,
                 pane_ctx.theme,
@@ -723,6 +726,7 @@ mod tests {
         for _ in 0..100 {
             s.format.graphemes.push(crate::types::Grapheme {
                 byte_range: 0..1,
+                char_offset: 0,
                 col: 0,
                 width: 1,
                 content: crate::types::CellContent::Empty,

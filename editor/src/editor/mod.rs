@@ -8,7 +8,7 @@ use crossterm::execute;
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState, WrapMode};
 use engine::pipeline::{BufferId, EditorView, LayoutTree, PaneId, SharedBuffer};
-use engine::types::{DocPos, EditorMode, Selection as EngineSelection};
+use engine::types::{EditorMode, Selection as EngineSelection};
 
 use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
@@ -387,10 +387,7 @@ impl Editor {
         let pane = Pane {
             buffer_id,
             viewport: ViewportState::new(80, 24),
-            selections: vec![EngineSelection {
-                anchor: DocPos { line: 0, byte_offset: 0 },
-                head:   DocPos { line: 0, byte_offset: 0 },
-            }],
+            selections: vec![EngineSelection { anchor: 0, head: 0 }],
             primary_idx: 0,
             mode: EditorMode::Normal,
             wrap_mode: WrapMode::Indent { width: 76 },
@@ -560,7 +557,7 @@ impl Editor {
         //    derived copy used only during rendering.
         self.engine_view.panes[self.pane_id].mode = self.mode;
 
-        // 3. Convert char-offset selections to engine DocPos and push to pane.
+        // 3. Push char-offset selections to the engine pane (no conversion needed).
         self.push_selections_to_pane();
 
         // 4. Scroll so the primary cursor stays visible.
@@ -604,30 +601,18 @@ impl Editor {
     /// Called once per frame from `prepare_frame`. Selections are passed in
     /// sorted document order; `primary_idx` tells the engine which one is primary.
     pub(crate) fn push_selections_to_pane(&mut self) {
-        // Borrow `doc` first (immutable), then borrow `engine_view` separately.
-        // The compiler allows this because they are disjoint fields of `self`.
-        let buf = self.doc.buf();
+        // The engine now uses the same char-offset representation as the editor,
+        // so this is a direct copy with no rope lookups. The engine resolves char
+        // offsets to line/column coordinates during rendering via `Grapheme::char_offset`.
+        //
+        // Borrow `doc` (immutable) and `engine_view` (mutable) simultaneously —
+        // they are disjoint fields, so the compiler allows it.
         let primary_idx = self.doc.sels().primary_index();
-        let iter = self.doc.sels().iter_sorted().map(|sel| {
-            let anchor_line = buf.char_to_line(sel.anchor);
-            let anchor_line_start = buf.char_to_byte(buf.line_to_char(anchor_line));
-            let anchor_byte = buf.char_to_byte(sel.anchor);
-
-            let head_line = buf.char_to_line(sel.head);
-            let head_line_start = buf.char_to_byte(buf.line_to_char(head_line));
-            let head_byte = buf.char_to_byte(sel.head);
-
-            EngineSelection {
-                anchor: DocPos { line: anchor_line, byte_offset: anchor_byte - anchor_line_start },
-                head:   DocPos { line: head_line,   byte_offset: head_byte   - head_line_start   },
-            }
-        });
-
-        // Reuse the existing Vec allocation each frame instead of dropping and
-        // reallocating with `.collect()`. `clear()` keeps the heap buffer.
         let pane = &mut self.engine_view.panes[self.pane_id];
         pane.selections.clear();
-        pane.selections.extend(iter);
+        pane.selections.extend(self.doc.sels().iter_sorted().map(|sel| {
+            EngineSelection { anchor: sel.anchor, head: sel.head }
+        }));
         pane.primary_idx = primary_idx;
     }
 
@@ -816,10 +801,7 @@ impl Editor {
         let pane = Pane {
             buffer_id,
             viewport: ViewportState::new(80, 24),
-            selections: vec![EngineSelection {
-                anchor: DocPos { line: 0, byte_offset: 0 },
-                head:   DocPos { line: 0, byte_offset: 0 },
-            }],
+            selections: vec![EngineSelection { anchor: 0, head: 0 }],
             primary_idx: 0,
             mode: EditorMode::Normal,
             wrap_mode: WrapMode::Indent { width: 76 },

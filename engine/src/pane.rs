@@ -1,5 +1,6 @@
 use crate::providers::ProviderSet;
 use crate::types::{EditorMode, Selection};
+use ropey::Rope;
 
 // ---------------------------------------------------------------------------
 // Viewport state  (per-pane scroll / size)
@@ -142,13 +143,14 @@ pub struct Pane {
 }
 
 impl Pane {
-    /// Line index of the primary selection head.
+    /// Line index of the primary selection head, resolved via the rope.
     ///
-    /// Panics in debug builds if the pane has no selections — a pane must
-    /// always have at least one selection.
-    pub fn primary_head_line(&self) -> usize {
+    /// Called once per frame from the pipeline — O(log n) rope lookup.
+    /// Panics in debug builds if the pane has no selections.
+    pub fn primary_head_line(&self, rope: &Rope) -> usize {
         debug_assert!(!self.selections.is_empty(), "pane has no selections");
-        self.selections.get(self.primary_idx).map(|s| s.head.line).unwrap_or(0)
+        let head_char = self.selections.get(self.primary_idx).map(|s| s.head).unwrap_or(0);
+        rope.char_to_line(head_char)
     }
 }
 
@@ -159,7 +161,7 @@ impl Pane {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{DocPos, Selection};
+    use crate::types::Selection;
 
     #[test]
     fn viewport_state_defaults() {
@@ -200,14 +202,11 @@ mod tests {
         assert_eq!(wc.newline_char, "⏎");
     }
 
-    fn make_pane(head_line: usize) -> Pane {
+    fn make_pane_at_char(head_char: usize) -> Pane {
         Pane {
             buffer_id: crate::pipeline::BufferId::default(),
             viewport: ViewportState::new(80, 24),
-            selections: vec![Selection {
-                anchor: DocPos { line: head_line, byte_offset: 0 },
-                head: DocPos { line: head_line, byte_offset: 0 },
-            }],
+            selections: vec![Selection { anchor: head_char, head: head_char }],
             primary_idx: 0,
             mode: crate::types::EditorMode::Normal,
             wrap_mode: WrapMode::None,
@@ -219,19 +218,21 @@ mod tests {
 
     #[test]
     fn primary_head_line_returns_head_line() {
-        let pane = make_pane(7);
-        assert_eq!(pane.primary_head_line(), 7);
+        // "aaa\nbbb\nccc" — line 0 is chars 0..3, line 1 is chars 4..7, line 2 is chars 8..11.
+        // Char 8 (start of line 2) should resolve to line 2.
+        let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
+        let pane = make_pane_at_char(8); // first char of line 2
+        assert_eq!(pane.primary_head_line(&rope), 2);
     }
 
     #[test]
     fn primary_head_line_uses_primary_idx() {
-        // Two selections; primary_idx points to the second one (line 10).
-        let mut pane = make_pane(3);
-        pane.selections.push(Selection {
-            anchor: DocPos { line: 10, byte_offset: 0 },
-            head: DocPos { line: 10, byte_offset: 0 },
-        });
+        // Two selections; primary_idx points to the second one (on line 2).
+        // "aaa\nbbb\nccc": char 0 = line 0, char 8 = line 2.
+        let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
+        let mut pane = make_pane_at_char(0); // first selection on line 0
+        pane.selections.push(Selection { anchor: 8, head: 8 }); // second on line 2
         pane.primary_idx = 1;
-        assert_eq!(pane.primary_head_line(), 10);
+        assert_eq!(pane.primary_head_line(&rope), 2);
     }
 }
