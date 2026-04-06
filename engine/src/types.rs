@@ -3,18 +3,6 @@ use std::ops::Range;
 use bitflags::bitflags;
 
 // ---------------------------------------------------------------------------
-// Coordinates
-// ---------------------------------------------------------------------------
-
-/// A position in the buffer: line index + byte offset within that line.
-/// This is the canonical "where in the document" type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct DocPos {
-    pub line: usize,
-    pub byte_offset: usize,
-}
-
-// ---------------------------------------------------------------------------
 // Theme & Style
 // ---------------------------------------------------------------------------
 
@@ -135,7 +123,16 @@ impl From<ResolvedStyle> for ratatui::style::Style {
 #[derive(Clone, Debug)]
 pub struct Grapheme {
     /// Byte range within the materialized line buffer (empty for virtual content).
+    ///
+    /// Used by the highlight system (tree-sitter intervals are byte-native) and
+    /// by the wrap-segment intersection check in the style stage.
     pub byte_range: Range<usize>,
+    /// Absolute char offset from the start of the buffer.
+    ///
+    /// Populated by the format stage so the style stage can resolve selection
+    /// head positions without any rope lookups. `usize::MAX` for purely virtual
+    /// graphemes (inline inserts, newline indicators) that have no buffer char.
+    pub char_offset: usize,
     /// Display column within the row (0-based, accounts for preceding widths).
     pub col: u16,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.
@@ -212,17 +209,24 @@ impl RowKind {
 // Selections & Cursor
 // ---------------------------------------------------------------------------
 
-/// An editor selection: an anchor and a head. The selection spans from anchor
-/// to head (inclusive). Anchor == head means a simple cursor with no range.
+/// An editor selection: an anchor and a head, both as absolute char offsets
+/// from the start of the buffer.
+///
+/// Anchor == head is a single-character selection covering the char at that
+/// index (the editor's inclusive selection invariant). The selection spans
+/// [min(anchor, head), max(anchor, head)] inclusive.
+///
+/// Using char offsets avoids per-frame rope lookups at the editor→engine
+/// boundary: the editor simply copies its char-offset selections directly.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
-    pub anchor: DocPos,
-    pub head: DocPos,
+    pub anchor: usize,
+    pub head: usize,
 }
 
 impl Selection {
     /// Returns the selection range as (start, end) with start <= end.
-    pub fn range(self) -> (DocPos, DocPos) {
+    pub fn range(self) -> (usize, usize) {
         if self.anchor <= self.head {
             (self.anchor, self.head)
         } else {
@@ -301,12 +305,11 @@ mod tests {
 
     #[test]
     fn selection_range_ordered() {
-        let sel = Selection {
-            anchor: DocPos { line: 5, byte_offset: 10 },
-            head: DocPos { line: 3, byte_offset: 2 },
-        };
+        let sel = Selection { anchor: 42, head: 7 };
         let (start, end) = sel.range();
         assert!(start <= end);
+        assert_eq!(start, 7);
+        assert_eq!(end, 42);
     }
 
     #[test]
@@ -361,21 +364,16 @@ mod tests {
 
     #[test]
     fn selection_range_anchor_equals_head() {
-        let pos = DocPos { line: 2, byte_offset: 5 };
-        let sel = Selection { anchor: pos, head: pos };
+        let sel = Selection { anchor: 5, head: 5 };
         let (start, end) = sel.range();
-        assert_eq!(start, pos);
-        assert_eq!(end, pos);
+        assert_eq!(start, 5);
+        assert_eq!(end, 5);
     }
 
     #[test]
     fn selection_is_collapsed() {
-        let pos = DocPos { line: 0, byte_offset: 0 };
-        assert!(Selection { anchor: pos, head: pos }.is_collapsed());
-        assert!(!Selection {
-            anchor: DocPos { line: 0, byte_offset: 0 },
-            head: DocPos { line: 0, byte_offset: 1 },
-        }.is_collapsed());
+        assert!(Selection { anchor: 0, head: 0 }.is_collapsed());
+        assert!(!Selection { anchor: 0, head: 1 }.is_collapsed());
     }
 
     #[test]
@@ -396,12 +394,4 @@ mod tests {
         assert!(!RowKind::Filler.is_virtual());
     }
 
-    #[test]
-    fn doc_pos_ordering() {
-        let a = DocPos { line: 0, byte_offset: 5 };
-        let b = DocPos { line: 1, byte_offset: 0 };
-        assert!(a < b, "line 0 < line 1 regardless of byte_offset");
-        let c = DocPos { line: 1, byte_offset: 3 };
-        assert!(b < c, "same line, smaller byte_offset wins");
-    }
 }

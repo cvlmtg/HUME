@@ -322,6 +322,8 @@ mod tests {
     fn simple_grapheme(col: u16, byte_start: usize, ch_len: usize) -> Grapheme {
         Grapheme {
             byte_range: byte_start..byte_start + ch_len,
+            // char_offset is not needed for render tests (selections handled in style stage).
+            char_offset: byte_start,
             col,
             width: 1,
             content: CellContent::Grapheme,
@@ -438,8 +440,8 @@ mod tests {
         let g = vec![
             simple_grapheme(0, 0, 1), // 'a' on line 0
             simple_grapheme(1, 1, 1), // 'b' on line 0
-            Grapheme { byte_range: 0..1, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'c' on line 1
-            Grapheme { byte_range: 1..2, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'd' on line 1
+            Grapheme { byte_range: 0..1, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'c' on line 1
+            Grapheme { byte_range: 1..2, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'd' on line 1
         ];
         let rows = vec![
             DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..2 },
@@ -467,6 +469,7 @@ mod tests {
         let graphemes: Vec<Grapheme> = (0..5u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
+                char_offset: i as usize,
                 col: i,
                 width: 1,
                 content: CellContent::Grapheme,
@@ -499,6 +502,7 @@ mod tests {
         let graphemes: Vec<Grapheme> = (0..11u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
+                char_offset: i as usize,
                 col: i,
                 width: 1,
                 content: CellContent::Grapheme,
@@ -531,6 +535,7 @@ mod tests {
         let graphemes: Vec<Grapheme> = (0..8u16)
             .map(|i| Grapheme {
                 byte_range: (i as usize)..(i as usize + 1),
+                char_offset: i as usize,
                 col: i,
                 width: 1,
                 content: CellContent::Grapheme,
@@ -564,6 +569,7 @@ mod tests {
         let rope = Rope::from_str("\t");
         let graphemes = vec![Grapheme {
             byte_range: 0..1,
+            char_offset: 0,
             col: 0,
             width: 4,
             content: CellContent::Indicator("→"),

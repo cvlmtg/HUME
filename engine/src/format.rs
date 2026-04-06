@@ -248,6 +248,10 @@ pub fn format_buffer_line(
     let mut in_leading_ws = true;
     let mut had_non_ws = false;
 
+    // Running absolute char position within the buffer. Populated per grapheme
+    // so the style stage can resolve selection positions without rope lookups.
+    let mut char_pos = rope.line_to_char(line_idx);
+
     for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
         // ── Inject inline inserts before this byte offset ─────────────────
         while insert_idx < inline_inserts.len()
@@ -259,6 +263,8 @@ pub fn format_buffer_line(
                 wrap.maybe_wrap(ins_width, wrap_width, indent_cols, line_idx, indent_depth, rows_out, graphemes_out);
                 graphemes_out.push(Grapheme {
                     byte_range: byte_offset..byte_offset, // zero-length: virtual
+                    // Inline inserts have no buffer char; use sentinel so style stage skips them.
+                    char_offset: usize::MAX,
                     col: wrap.current_col,
                     width: ins_width,
                     content: CellContent::Virtual(ins.text),
@@ -305,13 +311,16 @@ pub fn format_buffer_line(
         }
 
         // ── Emit grapheme ─────────────────────────────────────────────────
+        let char_count = grapheme_str.chars().count();
         graphemes_out.push(Grapheme {
             byte_range: byte_offset..byte_offset + grapheme_str.len(),
+            char_offset: char_pos,
             col: wrap.current_col,
             width,
             content,
             indent_depth,
         });
+        char_pos += char_count;
         wrap.current_col += width as u16;
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
@@ -321,6 +330,8 @@ pub fn format_buffer_line(
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
                 byte_range: byte_offset..byte_offset + grapheme_str.len(),
+                // Same char as the primary cell — this is not a distinct buffer position.
+                char_offset: char_pos - char_count,
                 col: wrap.current_col,
                 width: 0, // zero — does not consume columns
                 content: CellContent::WidthContinuation,
@@ -336,6 +347,8 @@ pub fn format_buffer_line(
     if graphemes_out.len() == wrap.row_g_start {
         graphemes_out.push(Grapheme {
             byte_range: 0..0,
+            // char_pos is line_to_char(line_idx) — the cursor sits on the newline char.
+            char_offset: char_pos,
             col: 0,
             width: 1,
             content: CellContent::Empty,
@@ -349,6 +362,7 @@ pub fn format_buffer_line(
         if ins_width > 0 {
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
+                char_offset: usize::MAX, // virtual, no buffer char
                 col: wrap.current_col,
                 width: ins_width,
                 content: CellContent::Virtual(ins.text),
@@ -366,6 +380,7 @@ pub fn format_buffer_line(
     if had_newline && should_render_whitespace(&whitespace.newline, in_leading_ws, had_non_ws, line_is_blank) {
         graphemes_out.push(Grapheme {
             byte_range: line_str.len()..line_str.len(),
+            char_offset: usize::MAX, // whitespace indicator, no buffer char
             col: wrap.current_col,
             width: 1,
             content: CellContent::Indicator(whitespace.newline_char),
