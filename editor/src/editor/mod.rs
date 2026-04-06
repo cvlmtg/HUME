@@ -215,7 +215,6 @@ impl SearchState {
     }
 }
 
-
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
@@ -452,7 +451,7 @@ impl Editor {
         loop {
             // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
-            self.prepare_frame(size.width, size.height);
+            self.prepare_frame(size.width, size.height, &mut ctx);
 
             // ── 2. Render ─────────────────────────────────────────────────────
             // Compute terminal cursor position before the draw closure to avoid
@@ -531,7 +530,7 @@ impl Editor {
     /// No other code path should write to `pane.mode`, `pane.selections`, or
     /// the highlight/statusline shared buffers — all such writes happen here,
     /// immediately before every `render()` call.
-    fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16) {
+    fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16, ctx: &mut RenderContext) {
         // 1. Sync viewport dimensions.
         // Engine reserves 1 row for the statusline; the pane gets the rest.
         {
@@ -555,7 +554,7 @@ impl Editor {
             let rope = self.doc.buf().rope();
             let pane = &mut self.engine_view.panes[self.pane_id];
             let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
-            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace);
+            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format);
             scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width as usize);
         }
 
