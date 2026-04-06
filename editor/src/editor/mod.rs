@@ -7,7 +7,7 @@ use crossterm::execute;
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState, WrapMode};
-use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, SharedBuffer};
+use engine::pipeline::{BufferId, EngineView, FrameScratch, LayoutTree, PaneId, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
 use crate::auto_pairs::AutoPairsConfig;
@@ -215,6 +215,30 @@ impl SearchState {
     }
 }
 
+// ── Scratch buffers ───────────────────────────────────────────────────────────
+
+/// All per-frame scratch buffers in one place. Hoisted onto `Editor` to avoid
+/// heap allocations on every frame. None of these fields hold meaningful state
+/// between frames — they are cleared at the start of each use.
+pub(super) struct RenderScratch {
+    /// Engine pipeline scratch: format + style + inline inserts + gutter cells.
+    pub frame: FrameScratch,
+    /// Pane rects computed once per frame by the layout stage.
+    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
+    /// Cursor position scratch: used by `cursor::screen_pos` and scroll logic.
+    pub format: engine::format::FormatScratch,
+}
+
+impl RenderScratch {
+    fn new() -> Self {
+        Self {
+            frame: FrameScratch::new(),
+            pane_rects: Vec::new(),
+            format: engine::format::FormatScratch::new(),
+        }
+    }
+}
+
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
@@ -305,9 +329,7 @@ pub(crate) struct Editor {
     pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
     /// Shared statusline snapshot. Written per-frame; read by the provider.
     pub(crate) statusline_data: Arc<Mutex<StatuslineSnapshot>>,
-    /// Reusable scratch buffer for the format pipeline. Hoisted here to avoid
-    /// per-frame heap allocations in `cursor::screen_pos` and scroll logic.
-    pub(super) format_scratch: engine::format::FormatScratch,
+    pub(super) scratch: RenderScratch,
 
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Navigable history of cursor positions before large movements.
@@ -448,7 +470,7 @@ impl Editor {
             bracket_hl_data,
             search_hl_data,
             statusline_data,
-            format_scratch: engine::format::FormatScratch::new(),
+            scratch: RenderScratch::new(),
         })
     }
 
@@ -483,7 +505,7 @@ impl Editor {
                 crate::cursor::screen_pos(
                     &vp, self.doc.buf().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
-                    &mut self.format_scratch,
+                    &mut self.scratch.format,
                 ).map(|(col, row)| (col + gutter_w, row))
             } else {
                 None
@@ -491,13 +513,15 @@ impl Editor {
 
             // Split borrows: `engine_view` (mut) and `rope` (from `doc`) are
             // different fields, so the borrow checker allows both in the closure.
-            let rope      = self.doc.buf().rope();
-            let buffer_id = self.buffer_id;
-            let engine_view = &mut self.engine_view;
+            let rope        = self.doc.buf().rope();
+            let buffer_id   = self.buffer_id;
+            let engine_view = &self.engine_view;
+            let frame_scratch  = &mut self.scratch.frame;
+            let pane_rects     = &mut self.scratch.pane_rects;
             term.draw(|frame| {
                 engine_view.render(frame.area(), frame.buffer_mut(), |bid| {
                     if bid == buffer_id { Some(rope) } else { None }
-                });
+                }, frame_scratch, pane_rects);
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
@@ -838,7 +862,7 @@ impl Editor {
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
             statusline_data,
-            format_scratch: engine::format::FormatScratch::new(),
+            scratch: RenderScratch::new(),
         }
     }
 

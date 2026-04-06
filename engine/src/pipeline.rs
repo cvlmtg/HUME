@@ -182,10 +182,6 @@ pub struct EngineView {
     /// providers are registered and before the first render, to make
     /// `theme.resolve(ScopeId)` an O(1) Vec index.
     pub registry: ScopeRegistry,
-    /// Frame scratch buffers. Reused across panes each frame.
-    pub scratch: FrameScratch,
-    /// Scratch buffer for pane rects computed once per frame (avoids two per-frame allocs).
-    pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
     /// Optional statusline rendered at the bottom of the terminal area.
@@ -203,8 +199,6 @@ impl EngineView {
             buffers,
             theme,
             registry: ScopeRegistry::new(),
-            scratch: FrameScratch::new(),
-            pane_rects: Vec::new(),
             tabbar: None,
             statusline: None,
         }
@@ -219,10 +213,12 @@ impl EngineView {
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// (if present) occupies the bottom row. Panes fill the remaining area.
     pub fn render<'rope>(
-        &mut self,
+        &self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        scratch: &mut FrameScratch,
+        pane_rects: &mut Vec<(PaneId, ratatui::layout::Rect)>,
     ) {
         // ── Partition the terminal area for chrome ────────────────────────────
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
@@ -255,18 +251,18 @@ impl EngineView {
         }
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
-        self.pane_rects.clear();
-        self.layout.collect_rects_into(pane_area, &mut self.pane_rects);
+        pane_rects.clear();
+        self.layout.collect_rects_into(pane_area, pane_rects);
 
         // ── Render panes ──────────────────────────────────────────────────────
-        for i in 0..self.pane_rects.len() {
-            let (pane_id, rect) = self.pane_rects[i];
+        for i in 0..pane_rects.len() {
+            let (pane_id, rect) = pane_rects[i];
             let Some(pane) = self.panes.get(pane_id) else { continue };
             let Some(buffer) = self.buffers.get(pane.buffer_id) else { continue };
             // Resolve the rope from the caller — zero-copy, no clone needed.
             let Some(rope) = get_rope(pane.buffer_id) else { continue };
 
-            self.scratch.clear();
+            scratch.clear();
 
             // The unsafe-free approach: extract what we need before the call.
             let pane_ctx = PaneRenderCtx {
@@ -276,12 +272,12 @@ impl EngineView {
                 theme: &self.theme,
                 rect,
             };
-            render_pane(&pane_ctx, &mut self.scratch, buf);
+            render_pane(&pane_ctx, scratch, buf);
         }
 
         // ── Render overlays on top (may span panes) ───────────────────────────
-        for i in 0..self.pane_rects.len() {
-            let (pane_id, _rect) = self.pane_rects[i];
+        for i in 0..pane_rects.len() {
+            let (pane_id, _rect) = pane_rects[i];
             let Some(pane) = self.panes.get(pane_id) else { continue };
             for overlay in &pane.providers.overlays {
                 if overlay.is_active() {
