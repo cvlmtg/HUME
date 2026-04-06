@@ -1,4 +1,4 @@
-use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 use unicode_width::UnicodeWidthStr;
 
 use crate::core::buffer::Buffer;
@@ -207,6 +207,31 @@ pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> 
 /// user pressed → to reach the cursor from the start of the line.
 pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
+}
+
+/// Display column of `char_pos` within `line_idx`, accounting for tab stops.
+///
+/// Returns the number of terminal columns from the start of the line up to
+/// (but not including) `char_pos`. Wide characters (CJK) count as 2, combining
+/// marks as 1 (via `grapheme_advance`'s `.max(1)` clamp), tabs expand to the
+/// next stop. Compare with [`grapheme_col_in_line`], which counts grapheme
+/// clusters (logical column), not display columns.
+pub(crate) fn display_col_in_line(
+    rope: &ropey::Rope,
+    line_idx: usize,
+    char_pos: usize,
+    tab_width: usize,
+) -> usize {
+    let line_start = rope.line_to_char(line_idx);
+    let line = rope.line(line_idx);
+    let mut col = 0usize;
+    let mut cur = line_start;
+    for grapheme in line.chunks().flat_map(|c| c.graphemes(true)) {
+        if cur >= char_pos { break; }
+        col += grapheme_advance(grapheme, col, tab_width);
+        cur += grapheme.chars().count();
+    }
+    col
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

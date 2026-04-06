@@ -13,6 +13,7 @@
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
 
+use crate::core::grapheme::display_col_in_line;
 use crate::cursor;
 
 /// Rows of look-ahead kept between the cursor and the top/bottom edge.
@@ -172,33 +173,6 @@ fn scroll_backward_from_cursor(
             break;
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Column calculation helper
-// ---------------------------------------------------------------------------
-
-/// Display column of `cursor_char` within `line_idx`, accounting for tab stops.
-fn display_col_in_line(
-    rope: &ropey::Rope,
-    line_idx: usize,
-    cursor_char: usize,
-    tab_width: usize,
-) -> usize {
-    use crate::core::grapheme::grapheme_advance;
-    use unicode_segmentation::UnicodeSegmentation;
-    let line_start = rope.line_to_char(line_idx);
-    let line = rope.line(line_idx);
-    let mut col = 0usize;
-    let mut char_pos = line_start;
-    for grapheme in line.chunks().flat_map(|c| c.graphemes(true)) {
-        if char_pos >= cursor_char {
-            break;
-        }
-        col += grapheme_advance(grapheme, col, tab_width);
-        char_pos += grapheme.chars().count();
-    }
-    col
 }
 
 // ---------------------------------------------------------------------------
