@@ -181,7 +181,7 @@ pub(crate) fn compose_row(
 ///    c. Overlay indent guides on leading-whitespace cells.
 /// 2. Tilde filler rows for empty space past EOF.
 ///
-/// Overlays are composited by the caller (EditorView::render) after this
+/// Overlays are composited by the caller (EngineView::render) after this
 /// function returns, by calling each `OverlayProvider::render`.
 ///
 /// `compose_ctx` must be pre-constructed by the caller (same pattern as the

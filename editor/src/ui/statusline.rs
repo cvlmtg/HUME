@@ -246,7 +246,7 @@ impl StatuslineSnapshot {
 ///
 /// Holds a shared `Arc<Mutex<StatuslineSnapshot>>` updated by the editor
 /// each frame. Implements `StatuslineProvider` so it can be registered on
-/// `EditorView::statusline`.
+/// `EngineView::statusline`.
 pub(crate) struct HumeStatusline {
     pub(crate) data: Arc<Mutex<StatuslineSnapshot>>,
 }
