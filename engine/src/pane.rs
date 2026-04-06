@@ -19,9 +19,9 @@ pub struct ViewportState {
     pub width: u16,
     /// Total height of the pane in terminal cells.
     pub height: u16,
-    /// Vertical scroll-off margin (keep this many rows before/after cursor).
+    /// Vertical scroll-off margin (keep this many rows before/after the primary selection head).
     pub vertical_margin: u16,
-    /// Horizontal scroll-off margin (columns to keep visible around cursor).
+    /// Horizontal scroll-off margin (columns to keep visible around the primary selection head).
     pub horizontal_margin: u16,
 }
 
@@ -125,8 +125,10 @@ pub struct Pane {
     pub buffer_id: crate::pipeline::BufferId,
     /// Scroll and size state.
     pub viewport: ViewportState,
-    /// All active selections (multi-cursor). The primary selection is `[0]`.
+    /// All active selections, sorted in ascending document order.
     pub selections: Vec<Selection>,
+    /// Index of the primary selection within `selections`.
+    pub primary_idx: usize,
     /// Current editor mode.
     pub mode: EditorMode,
     /// Wrap mode for the content area.
@@ -140,13 +142,13 @@ pub struct Pane {
 }
 
 impl Pane {
-    /// Primary cursor line (head of the first selection).
+    /// Line index of the primary selection head.
     ///
     /// Panics in debug builds if the pane has no selections — a pane must
-    /// always have at least one cursor.
-    pub fn primary_cursor_line(&self) -> usize {
+    /// always have at least one selection.
+    pub fn primary_head_line(&self) -> usize {
         debug_assert!(!self.selections.is_empty(), "pane has no selections");
-        self.selections.first().map(|s| s.head.line).unwrap_or(0)
+        self.selections.get(self.primary_idx).map(|s| s.head.line).unwrap_or(0)
     }
 }
 
@@ -206,6 +208,7 @@ mod tests {
                 anchor: DocPos { line: head_line, byte_offset: 0 },
                 head: DocPos { line: head_line, byte_offset: 0 },
             }],
+            primary_idx: 0,
             mode: crate::types::EditorMode::Normal,
             wrap_mode: WrapMode::None,
             tab_width: 4,
@@ -215,18 +218,20 @@ mod tests {
     }
 
     #[test]
-    fn primary_cursor_line_returns_head_line() {
+    fn primary_head_line_returns_head_line() {
         let pane = make_pane(7);
-        assert_eq!(pane.primary_cursor_line(), 7);
+        assert_eq!(pane.primary_head_line(), 7);
     }
 
     #[test]
-    fn primary_cursor_line_uses_first_selection() {
+    fn primary_head_line_uses_primary_idx() {
+        // Two selections; primary_idx points to the second one (line 10).
         let mut pane = make_pane(3);
         pane.selections.push(Selection {
             anchor: DocPos { line: 10, byte_offset: 0 },
             head: DocPos { line: 10, byte_offset: 0 },
         });
-        assert_eq!(pane.primary_cursor_line(), 3);
+        pane.primary_idx = 1;
+        assert_eq!(pane.primary_head_line(), 10);
     }
 }

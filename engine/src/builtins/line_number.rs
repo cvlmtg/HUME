@@ -60,14 +60,14 @@ impl GutterColumn for LineNumberColumn {
         kind: RowKind,
         _: usize,
         _: EditorMode,
-        primary_cursor_line: usize,
+        primary_head_line: usize,
     ) -> GutterCell {
         match kind {
             RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
                 GutterCell::blank(Scope("ui.linenr"))
             }
             RowKind::LineStart { line_idx } => {
-                let scope = if line_idx == primary_cursor_line {
+                let scope = if line_idx == primary_head_line {
                     Scope("ui.linenr.selected")
                 } else {
                     Scope("ui.linenr")
@@ -76,13 +76,13 @@ impl GutterColumn for LineNumberColumn {
                 let display_num = match self.style {
                     LineNumberStyle::Absolute => line_idx + 1,
                     LineNumberStyle::Relative => {
-                        (line_idx as isize - primary_cursor_line as isize).unsigned_abs()
+                        (line_idx as isize - primary_head_line as isize).unsigned_abs()
                     }
                     LineNumberStyle::Hybrid => {
-                        if line_idx == primary_cursor_line {
-                            line_idx + 1 // absolute on cursor line
+                        if line_idx == primary_head_line {
+                            line_idx + 1 // absolute on the primary selection head line
                         } else {
-                            (line_idx as isize - primary_cursor_line as isize).unsigned_abs()
+                            (line_idx as isize - primary_head_line as isize).unsigned_abs()
                         }
                     }
                 };
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_cursor_line_shows_absolute() {
+    fn hybrid_head_line_shows_absolute() {
         let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
         // Cursor is on line 2 (0-based).
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, 100, EditorMode::Normal, 2);
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_non_cursor_line_shows_relative() {
+    fn hybrid_non_head_line_shows_relative() {
         let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
         let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, 100, EditorMode::Normal, 2);
         assert_eq!(cell.as_str(), "3"); // |5-2| = 3
@@ -167,14 +167,14 @@ mod tests {
     }
 
     #[test]
-    fn relative_cursor_line_shows_zero() {
+    fn relative_head_line_shows_zero() {
         let col = LineNumberColumn::with_style(0, LineNumberStyle::Relative);
         let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, 100, EditorMode::Normal, 5);
         assert_eq!(cell.as_str(), "0");
     }
 
     #[test]
-    fn hybrid_line_below_cursor_shows_relative() {
+    fn hybrid_line_below_head_shows_relative() {
         // Cursor at line 5, render line 2 (below in the file, higher index than cursor).
         let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, 100, EditorMode::Normal, 5);

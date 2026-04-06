@@ -86,7 +86,7 @@ pub trait GutterColumn: Send + Sync {
         kind: RowKind,
         total_lines: usize,
         mode: EditorMode,
-        primary_cursor_line: usize,
+        primary_head_line: usize,
     ) -> GutterCell;
 }
 

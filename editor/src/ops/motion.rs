@@ -58,7 +58,7 @@ pub(crate) fn apply_motion(
         // input. `fold` starting from the current head position.
         let new_head = (0..count).fold(sel.head, |h, _| motion(buf, h));
         match mode {
-            MotionMode::Move => Selection::cursor(new_head),
+            MotionMode::Move => Selection::collapsed(new_head),
             MotionMode::Extend => Selection::new(sel.anchor, new_head),
         }
     });

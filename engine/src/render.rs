@@ -16,7 +16,7 @@ pub(crate) struct ComposeCtx<'a> {
     pub visible: &'a VisibleRange,
     pub viewport: &'a ViewportState,
     pub mode: EditorMode,
-    pub primary_cursor_line: usize,
+    pub primary_head_line: usize,
     pub tab_width: u8,
     /// Pre-resolved from `theme.ui.virtual_text` — avoids repeated field access in the hot loop.
     pub tilde_style: ratatui::style::Style,
@@ -56,7 +56,7 @@ pub(crate) fn compose_row(
             row.kind,
             compose_ctx.visible.total_lines,
             compose_ctx.mode,
-            compose_ctx.primary_cursor_line,
+            compose_ctx.primary_head_line,
         );
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
@@ -369,7 +369,7 @@ mod tests {
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_cursor_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
+        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
         compose(&rows, &graphemes, &styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
 
         assert_eq!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "h");
@@ -396,7 +396,7 @@ mod tests {
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_cursor_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
+        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
         compose(&rows, &graphemes, &styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
 
         // Row 0 has 'x', rows 1–4 should have '~'
@@ -426,7 +426,7 @@ mod tests {
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_cursor_line: 0, tab_width, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
+        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
         compose(rows, graphemes, styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
         buf
     }

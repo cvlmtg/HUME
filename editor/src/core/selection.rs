@@ -33,8 +33,8 @@ pub(crate) struct Selection {
 }
 
 impl Selection {
-    /// A single-character selection at `pos` (anchor == head == pos).
-    pub(crate) fn cursor(pos: usize) -> Self {
+    /// A collapsed selection at `pos` (anchor == head == pos).
+    pub(crate) fn collapsed(pos: usize) -> Self {
         Self { anchor: pos, head: pos }
     }
 
@@ -65,7 +65,7 @@ impl Selection {
     }
 
     /// Is this a single-character selection (anchor == head)?
-    pub(crate) fn is_cursor(&self) -> bool {
+    pub(crate) fn is_collapsed(&self) -> bool {
         self.anchor == self.head
     }
 
@@ -183,25 +183,7 @@ impl SelectionSet {
         self.selections.len()
     }
 
-    /// Iterate over all selections, primary first, then others in sorted order.
-    ///
-    /// Yielding the primary first means callers that care about "the main one"
-    /// can `take(1)` without extra logic.
-    ///
-    /// The non-obvious ordering is why this is named `iter_primary_first` rather
-    /// than plain `iter` — a method called `iter` should iterate in the natural
-    /// (sorted) order. Use [`iter_sorted`](Self::iter_sorted) for that.
-    #[allow(dead_code)]
-    pub(crate) fn iter_primary_first(&self) -> impl Iterator<Item = &Selection> {
-        // Yield primary first by chaining: [primary] ++ [all others in order].
-        // This is an O(n) iterator with no allocation.
-        let primary = &self.selections[self.primary];
-        let before = &self.selections[..self.primary];
-        let after = &self.selections[self.primary + 1..];
-        std::iter::once(primary).chain(before.iter()).chain(after.iter())
-    }
-
-    /// Iterate over all selections in sorted order (not primary-first).
+    /// Iterate over all selections in sorted order.
     pub(crate) fn iter_sorted(&self) -> impl Iterator<Item = &Selection> {
         self.selections.iter()
     }
@@ -480,10 +462,10 @@ mod tests {
 
     #[test]
     fn cursor_is_collapsed() {
-        let s = Selection::cursor(5);
+        let s = Selection::collapsed(5);
         assert_eq!(s.anchor, 5);
         assert_eq!(s.head, 5);
-        assert!(s.is_cursor());
+        assert!(s.is_collapsed());
     }
 
     #[test]
@@ -491,7 +473,7 @@ mod tests {
         let s = Selection::new(2, 7); // anchor < head → forward
         assert_eq!(s.start(), 2);
         assert_eq!(s.end(), 7);
-        assert!(!s.is_cursor());
+        assert!(!s.is_collapsed());
     }
 
     #[test]
@@ -530,7 +512,7 @@ mod tests {
 
     #[test]
     fn single_selection_is_primary() {
-        let s = Selection::cursor(0);
+        let s = Selection::collapsed(0);
         let set = SelectionSet::single(s);
         assert_eq!(set.primary(), s);
         assert_eq!(set.len(), 1);
@@ -656,7 +638,7 @@ mod tests {
     #[test]
     fn map_preserves_primary() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5)],
+            vec![Selection::collapsed(0), Selection::collapsed(5)],
             1, // primary is the second one
         );
         let shifted = set.map(|s| s.shift(1));
@@ -666,10 +648,10 @@ mod tests {
     #[test]
     fn replace_updates_selection() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5)],
+            vec![Selection::collapsed(0), Selection::collapsed(5)],
             0,
         );
-        let updated = set.replace(1, Selection::cursor(10));
+        let updated = set.replace(1, Selection::collapsed(10));
         assert_eq!(updated.selections[1].head, 10);
     }
 
@@ -680,10 +662,10 @@ mod tests {
         // Two cursors at different positions that a motion maps to the same
         // spot — e.g. "go to end of line" when both are on the same line.
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(2), Selection::cursor(7)],
+            vec![Selection::collapsed(2), Selection::collapsed(7)],
             0,
         );
-        let merged = set.map_and_merge(|_| Selection::cursor(10));
+        let merged = set.map_and_merge(|_| Selection::collapsed(10));
         assert_eq!(merged.len(), 1);
         assert_eq!(merged.primary().head, 10);
     }
@@ -693,14 +675,14 @@ mod tests {
         // A motion that reverses the order: cursor at 2 maps to 8, cursor
         // at 7 maps to 1. After merge the result should be sorted [1, 8].
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(2), Selection::cursor(7)],
+            vec![Selection::collapsed(2), Selection::collapsed(7)],
             1, // primary is the second one (at 7)
         );
         let merged = set.map_and_merge(|s| {
             if s.head == 2 {
-                Selection::cursor(8)
+                Selection::collapsed(8)
             } else {
-                Selection::cursor(1)
+                Selection::collapsed(1)
             }
         });
         assert_eq!(merged.len(), 2);
@@ -716,7 +698,7 @@ mod tests {
     #[test]
     fn keep_primary_drops_others() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             1, // primary is the middle one
         );
         let kept = set.keep_primary();
@@ -727,7 +709,7 @@ mod tests {
 
     #[test]
     fn keep_primary_single_is_noop() {
-        let set = SelectionSet::single(Selection::cursor(3));
+        let set = SelectionSet::single(Selection::collapsed(3));
         let kept = set.clone().keep_primary();
         assert_eq!(kept, set);
     }
@@ -737,7 +719,7 @@ mod tests {
     #[test]
     fn remove_before_primary_shifts_primary_down() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             2, // primary is the last one
         );
         let result = set.remove(0); // remove first
@@ -749,7 +731,7 @@ mod tests {
     #[test]
     fn remove_primary_advances_to_next() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             1, // primary is the middle one
         );
         let result = set.remove(1); // remove the primary
@@ -761,7 +743,7 @@ mod tests {
     #[test]
     fn remove_primary_at_end_wraps_to_first() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             2, // primary is the last one
         );
         let result = set.remove(2);
@@ -773,7 +755,7 @@ mod tests {
     #[test]
     fn remove_after_primary_leaves_primary_unchanged() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             0, // primary is the first one
         );
         let result = set.remove(2); // remove last
@@ -784,7 +766,7 @@ mod tests {
 
     #[test]
     fn remove_single_is_noop() {
-        let set = SelectionSet::single(Selection::cursor(0));
+        let set = SelectionSet::single(Selection::collapsed(0));
         let result = set.clone().remove(0);
         assert_eq!(result, set); // unchanged — can't remove the only selection
     }
@@ -794,7 +776,7 @@ mod tests {
     #[test]
     fn cycle_primary_forward() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             0,
         );
         let cycled = set.cycle_primary(1);
@@ -806,7 +788,7 @@ mod tests {
     #[test]
     fn cycle_primary_forward_wraps() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             2,
         );
         let cycled = set.cycle_primary(1);
@@ -816,7 +798,7 @@ mod tests {
     #[test]
     fn cycle_primary_backward() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             2,
         );
         let cycled = set.cycle_primary(-1);
@@ -826,7 +808,7 @@ mod tests {
     #[test]
     fn cycle_primary_backward_wraps() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             0,
         );
         let cycled = set.cycle_primary(-1);
@@ -835,7 +817,7 @@ mod tests {
 
     #[test]
     fn cycle_primary_single_is_noop() {
-        let set = SelectionSet::single(Selection::cursor(5));
+        let set = SelectionSet::single(Selection::collapsed(5));
         let cycled = set.clone().cycle_primary(1);
         assert_eq!(cycled, set);
     }
@@ -864,7 +846,7 @@ mod tests {
         let sel = Selection::directed(3, 7, true);
         assert_eq!(sel.anchor, 3);
         assert_eq!(sel.head, 7);
-        assert!(!sel.is_cursor());
+        assert!(!sel.is_collapsed());
     }
 
     #[test]
@@ -872,15 +854,15 @@ mod tests {
         let sel = Selection::directed(3, 7, false);
         assert_eq!(sel.anchor, 7);
         assert_eq!(sel.head, 3);
-        assert!(!sel.is_cursor());
+        assert!(!sel.is_collapsed());
     }
 
     #[test]
     fn directed_cursor_is_same_regardless_of_direction() {
         let fwd = Selection::directed(5, 5, true);
         let bwd = Selection::directed(5, 5, false);
-        assert!(fwd.is_cursor());
-        assert!(bwd.is_cursor());
+        assert!(fwd.is_collapsed());
+        assert!(bwd.is_collapsed());
         assert_eq!(fwd, bwd);
     }
 
@@ -889,7 +871,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "shift underflow")]
     fn shift_underflow_panics() {
-        let sel = Selection::cursor(2);
+        let sel = Selection::collapsed(2);
         let _ = sel.shift(-3); // 2 + (-3) underflows
     }
 
@@ -904,30 +886,17 @@ mod tests {
     #[test]
     #[should_panic(expected = "primary index out of bounds")]
     fn from_vec_primary_out_of_bounds_panics() {
-        let _ = SelectionSet::from_vec(vec![Selection::cursor(0)], 1);
+        let _ = SelectionSet::from_vec(vec![Selection::collapsed(0)], 1);
     }
 
     // ── iter_primary_first ────────────────────────────────────────────────────
-
-    #[test]
-    fn iter_primary_first_yields_primary_first() {
-        // primary = index 1 (the second selection). primary_first should yield it first.
-        let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
-            1,
-        );
-        let heads: Vec<usize> = set.iter_primary_first().map(|s| s.head).collect();
-        assert_eq!(heads[0], 5, "primary (index 1) must be yielded first");
-        assert_eq!(heads[1], 0);
-        assert_eq!(heads[2], 10);
-    }
 
     // ── iter_sorted ───────────────────────────────────────────────────────────
 
     #[test]
     fn iter_sorted_yields_ascending_order() {
         let set = SelectionSet::from_vec(
-            vec![Selection::cursor(0), Selection::cursor(5), Selection::cursor(10)],
+            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
             2, // primary is last
         );
         let starts: Vec<usize> = set.iter_sorted().map(|s| s.start()).collect();
@@ -938,13 +907,13 @@ mod tests {
 
     #[test]
     fn validate_ok_for_valid_set() {
-        let set = SelectionSet::from_vec(vec![Selection::cursor(0), Selection::cursor(3)], 0);
+        let set = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(3)], 0);
         assert!(set.validate(10).is_ok());
     }
 
     #[test]
     fn validate_err_when_buffer_is_empty() {
-        let set = SelectionSet::single(Selection::cursor(0));
+        let set = SelectionSet::single(Selection::collapsed(0));
         assert!(matches!(
             set.validate(0),
             Err(crate::core::error::ValidationError::EmptyBuffer)
@@ -954,7 +923,7 @@ mod tests {
     #[test]
     fn validate_err_when_head_out_of_bounds() {
         // buf_len = 3, head = 5 → out of bounds
-        let set = SelectionSet::single(Selection::cursor(5));
+        let set = SelectionSet::single(Selection::collapsed(5));
         assert!(matches!(
             set.validate(3),
             Err(crate::core::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
@@ -974,7 +943,7 @@ mod tests {
     #[test]
     fn validate_passes_when_head_is_last_valid_char() {
         // head = buf_len - 1 is the largest valid position
-        let set = SelectionSet::single(Selection::cursor(4));
+        let set = SelectionSet::single(Selection::collapsed(4));
         assert!(set.validate(5).is_ok());
     }
 }

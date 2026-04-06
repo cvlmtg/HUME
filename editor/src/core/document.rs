@@ -558,7 +558,7 @@ mod tests {
             let new_buf = cs.apply(&b).unwrap();
             // Cursor at pos 6 (on 'd').
             use crate::core::selection::{Selection, SelectionSet};
-            let new_sels = SelectionSet::single(Selection::cursor(6));
+            let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_buf, new_sels, cs)
         });
         let b1_id = d.history.current_id();
@@ -576,7 +576,7 @@ mod tests {
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
             use crate::core::selection::{Selection, SelectionSet};
-            let new_sels = SelectionSet::single(Selection::cursor(6));
+            let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_buf, new_sels, cs)
         });
         assert_eq!(d.buf().to_string(), "Lorem foo sit amet\n");
@@ -593,7 +593,7 @@ mod tests {
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
             use crate::core::selection::{Selection, SelectionSet};
-            let new_sels = SelectionSet::single(Selection::cursor(10));
+            let new_sels = SelectionSet::single(Selection::collapsed(10));
             (new_buf, new_sels, cs)
         });
         let b3_id = d.history.current_id();
@@ -616,7 +616,7 @@ mod tests {
             let cs = csb.finish();
             let new_buf = cs.apply(&b).unwrap();
             use crate::core::selection::{Selection, SelectionSet};
-            let new_sels = SelectionSet::single(Selection::cursor(6));
+            let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_buf, new_sels, cs)
         });
         assert_eq!(d.buf().to_string(), "Lorem sit amet\n");
