@@ -184,8 +184,6 @@ pub struct EngineView {
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
-    /// Optional statusline rendered at the bottom of the terminal area.
-    pub statusline: Option<Box<dyn StatuslineProvider>>,
 }
 
 impl EngineView {
@@ -200,7 +198,6 @@ impl EngineView {
             theme,
             registry: ScopeRegistry::new(),
             tabbar: None,
-            statusline: None,
         }
     }
 
@@ -217,12 +214,13 @@ impl EngineView {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        statusline: Option<&dyn StatuslineProvider>,
         scratch: &mut FrameScratch,
         pane_rects: &mut Vec<(PaneId, ratatui::layout::Rect)>,
     ) {
         // ── Partition the terminal area for chrome ────────────────────────────
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
-        let statusline_height: u16 = if self.statusline.is_some() { 1 } else { 0 };
+        let statusline_height: u16 = if statusline.is_some() { 1 } else { 0 };
         let chrome_height = tabbar_height + statusline_height;
 
         // Area available for pane content (after reserving chrome rows).
@@ -244,7 +242,7 @@ impl EngineView {
         }
 
         // ── Render statusline ─────────────────────────────────────────────────
-        if let Some(ref statusline) = self.statusline {
+        if let Some(statusline) = statusline {
             let sl_y = area.y + area.height.saturating_sub(1);
             let sl_area = ratatui::layout::Rect { y: sl_y, height: 1, ..area };
             statusline.render(sl_area, &self.theme, buf);

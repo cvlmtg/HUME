@@ -1,6 +1,6 @@
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
@@ -20,7 +20,7 @@ use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ops::text_object::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
-use crate::ui::statusline::{StatusLineConfig, StatuslineSnapshot};
+use crate::ui::statusline::StatusLineConfig;
 use crate::terminal::Term;
 
 use self::keymap::{Keymap, WaitCharPending};
@@ -327,9 +327,6 @@ pub(crate) struct Editor {
     pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
     /// Shared search match highlight data: same shape as `bracket_hl_data`.
     pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
-    /// Shared statusline snapshot. Written per-frame; read by the provider.
-    pub(crate) statusline_data: Arc<Mutex<StatuslineSnapshot>>,
-    pub(super) scratch: RenderScratch,
 
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Navigable history of cursor positions before large movements.
@@ -424,17 +421,8 @@ impl Editor {
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
-        // Wrap path and config in Arc so snapshot clones are O(1) refcount bumps.
         let file_path_arc: Option<Arc<PathBuf>> = file_path.map(Arc::new);
         let statusline_config = Arc::new(StatusLineConfig::default());
-
-        // Statusline provider.
-        let initial_snapshot =
-            StatuslineSnapshot::initial(file_path_arc.clone(), Arc::clone(&statusline_config));
-        let statusline_data = Arc::new(Mutex::new(initial_snapshot));
-        engine_view.statusline = Some(Box::new(crate::ui::statusline::HumeStatusline {
-            data: Arc::clone(&statusline_data),
-        }));
 
         // Bake theme now that all scopes are interned.
         engine_view.theme.bake(&engine_view.registry);
@@ -469,8 +457,6 @@ impl Editor {
             buffer_id,
             bracket_hl_data,
             search_hl_data,
-            statusline_data,
-            scratch: RenderScratch::new(),
         })
     }
 
@@ -482,6 +468,10 @@ impl Editor {
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
+        // Scratch buffers live here — allocated once, reused every frame.
+        // They must be outside `self` so `HumeStatusline { editor: self }` can
+        // borrow `self` immutably while scratch is borrowed mutably.
+        let mut scratch = RenderScratch::new();
         loop {
             // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
@@ -505,23 +495,24 @@ impl Editor {
                 crate::cursor::screen_pos(
                     &vp, self.doc.buf().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
-                    &mut self.scratch.format,
+                    &mut scratch.format,
                 ).map(|(col, row)| (col + gutter_w, row))
             } else {
                 None
             };
 
-            // Split borrows: `engine_view` (mut) and `rope` (from `doc`) are
-            // different fields, so the borrow checker allows both in the closure.
+            // The statusline provider borrows `self` — create it before the
+            // draw closure so the lifetime is tied to this stack frame.
+            let statusline = crate::ui::statusline::HumeStatusline { editor: self };
+
+            // Split borrows: `engine_view` and `doc` are disjoint fields of `self`.
             let rope        = self.doc.buf().rope();
             let buffer_id   = self.buffer_id;
             let engine_view = &self.engine_view;
-            let frame_scratch  = &mut self.scratch.frame;
-            let pane_rects     = &mut self.scratch.pane_rects;
             term.draw(|frame| {
                 engine_view.render(frame.area(), frame.buffer_mut(), |bid| {
                     if bid == buffer_id { Some(rope) } else { None }
-                }, frame_scratch, pane_rects);
+                }, Some(&statusline), &mut scratch.frame, &mut scratch.pane_rects);
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
@@ -594,9 +585,6 @@ impl Editor {
         // 5. Sync highlight data (search matches, bracket matches) to shared
         //    Arc buffers read by the highlight providers during rendering.
         self.update_highlight_providers();
-
-        // 6. Sync statusline snapshot.
-        self.update_statusline_snapshot();
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────
@@ -734,11 +722,6 @@ impl Editor {
     ///
     /// Called once per frame before `term.draw`. Per-frame rebuild is cheap:
     /// a handful of clones of short strings.
-    pub(super) fn update_statusline_snapshot(&mut self) {
-        let snap = crate::ui::statusline::StatuslineSnapshot::from_editor(self);
-        *self.statusline_data.lock().unwrap() = snap;
-    }
-
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     ///
@@ -827,10 +810,6 @@ impl Editor {
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
 
-        let statusline_data = Arc::new(Mutex::new(
-            StatuslineSnapshot::initial(None, Arc::new(StatusLineConfig::default())),
-        ));
-
         Self {
             doc,
             file_path: None,
@@ -861,8 +840,6 @@ impl Editor {
             buffer_id,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
-            statusline_data,
-            scratch: RenderScratch::new(),
         }
     }
 
