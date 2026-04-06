@@ -17,6 +17,7 @@ use crossterm::cursor::SetCursorStyle;
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
 use engine::providers::GutterColumn;
+use engine::layout::gutter_width_for_line;
 use engine::types::EditorMode;
 
 // ---------------------------------------------------------------------------
@@ -38,14 +39,14 @@ pub(crate) fn screen_pos(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
 ) -> Option<(u16, u16)> {
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
     if height == 0 { return None; }
 
-    let mut scratch = FormatScratch::new();
     let (cursor_sub, cursor_col) =
-        format_row_col(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, &mut scratch);
+        format_row_col(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, scratch);
 
     if wrap_mode.is_wrapping() {
         let top_row = viewport.top_row_offset as usize;
@@ -57,7 +58,7 @@ pub(crate) fn screen_pos(
                 screen_row += cursor_sub.saturating_sub(skip);
                 break;
             }
-            let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, &mut scratch);
+            let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
             screen_row += rows.saturating_sub(skip);
             if screen_row >= height { return None; }
         }
@@ -76,9 +77,8 @@ pub(crate) fn screen_pos(
 
 /// Gutter width in terminal columns for the current frame.
 ///
-/// Mirrors the engine's `compute_viewport` formula — the sum of all registered
-/// gutter column widths for the widest visible line. Used to offset the terminal
-/// cursor column past line numbers and other gutter providers.
+/// Used to offset the terminal cursor column past line numbers and other gutter
+/// providers.
 pub(crate) fn gutter_width(
     viewport: &ViewportState,
     gutter_columns: &[Box<dyn GutterColumn>],
@@ -86,7 +86,7 @@ pub(crate) fn gutter_width(
 ) -> u16 {
     let approx_end = viewport.top_line + viewport.height as usize;
     let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
-    gutter_columns.iter().map(|c| c.width(max_visible_line) as u16).sum()
+    gutter_width_for_line(gutter_columns, max_visible_line)
 }
 
 /// Which wrapped display sub-row of buffer `line_idx` contains `cursor_char`.

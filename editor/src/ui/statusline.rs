@@ -194,6 +194,29 @@ pub(crate) struct StatuslineSnapshot {
 }
 
 impl StatuslineSnapshot {
+    /// Blank snapshot for use before the first frame is rendered.
+    ///
+    /// `file_path` and `config` are the only caller-specific values; everything
+    /// else gets a sensible zero/default so the statusline renders without panic.
+    pub(crate) fn initial(
+        file_path: Option<Arc<PathBuf>>,
+        config: Arc<StatusLineConfig>,
+    ) -> Self {
+        Self {
+            mode: EditorMode::Normal,
+            file_path,
+            head_pos: (1, 1),
+            kitty_enabled: false,
+            is_dirty: false,
+            match_count: None,
+            search_wrapped: false,
+            minibuf: None,
+            status_msg: None,
+            config,
+            colors: EditorColors::default(),
+        }
+    }
+
     /// Capture the current editor state into a snapshot.
     pub(crate) fn from_editor(editor: &Editor) -> Self {
         let buf = editor.doc.buf();

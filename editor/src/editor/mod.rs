@@ -22,7 +22,6 @@ use crate::ops::text_object::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ui::statusline::{StatusLineConfig, StatuslineSnapshot};
 use crate::terminal::Term;
-use crate::ui::theme::EditorColors;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -306,6 +305,9 @@ pub(crate) struct Editor {
     pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
     /// Shared statusline snapshot. Written per-frame; read by the provider.
     pub(crate) statusline_data: Arc<Mutex<StatuslineSnapshot>>,
+    /// Reusable scratch buffer for the format pipeline. Hoisted here to avoid
+    /// per-frame heap allocations in `cursor::screen_pos` and scroll logic.
+    pub(super) format_scratch: engine::format::FormatScratch,
 
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Navigable history of cursor positions before large movements.
@@ -373,14 +375,16 @@ impl Editor {
         providers.gutter_columns.push(Box::new(
             LineNumberColumn::with_style(0, EngineLineNumberStyle::Hybrid)
         ));
-        providers.highlights.push(Box::new(crate::ui::highlight_providers::BracketMatchHighlighter {
+        providers.highlights.push(Box::new(crate::ui::highlight_providers::SharedHighlighter {
             id: 1,
             scope: bracket_scope,
+            tier: engine::providers::HighlightTier::BracketMatch,
             data: Arc::clone(&bracket_hl_data),
         }));
-        providers.highlights.push(Box::new(crate::ui::highlight_providers::SearchMatchHighlighter {
+        providers.highlights.push(Box::new(crate::ui::highlight_providers::SharedHighlighter {
             id: 2,
             scope: search_scope,
+            tier: engine::providers::HighlightTier::SearchMatch,
             data: Arc::clone(&search_hl_data),
         }));
 
@@ -403,19 +407,8 @@ impl Editor {
         let statusline_config = Arc::new(StatusLineConfig::default());
 
         // Statusline provider.
-        let initial_snapshot = StatuslineSnapshot {
-            mode: EditorMode::Normal,
-            file_path: file_path_arc.clone(),
-            head_pos: (1, 1),
-            kitty_enabled: false,
-            is_dirty: false,
-            match_count: None,
-            search_wrapped: false,
-            minibuf: None,
-            status_msg: None,
-            config: Arc::clone(&statusline_config),
-            colors: EditorColors::default(),
-        };
+        let initial_snapshot =
+            StatuslineSnapshot::initial(file_path_arc.clone(), Arc::clone(&statusline_config));
         let statusline_data = Arc::new(Mutex::new(initial_snapshot));
         engine_view.statusline = Some(Box::new(crate::ui::statusline::HumeStatusline {
             data: Arc::clone(&statusline_data),
@@ -455,6 +448,7 @@ impl Editor {
             bracket_hl_data,
             search_hl_data,
             statusline_data,
+            format_scratch: engine::format::FormatScratch::new(),
         })
     }
 
@@ -489,6 +483,7 @@ impl Editor {
                 crate::cursor::screen_pos(
                     &vp, self.doc.buf().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
+                    &mut self.format_scratch,
                 ).map(|(col, row)| (col + gutter_w, row))
             } else {
                 None
@@ -553,8 +548,7 @@ impl Editor {
             vp.height = terminal_height.saturating_sub(1);
         }
 
-        // 2. Sync mode. Editor's `self.mode` is the SSOT; the pane is a
-        //    derived copy used only during rendering.
+        // 2. Sync mode.
         self.engine_view.panes[self.pane_id].mode = self.mode;
 
         // 3. Push char-offset selections to the engine pane (no conversion needed).
@@ -667,16 +661,18 @@ impl Editor {
         {
             let mut data = self.search_hl_data.write().unwrap();
             data.clear();
-            for &(start, end_incl) in self.search.matches() {
-                let line = buf.char_to_line(start);
-                if line > bot_line { break; }   // matches are sorted; all remaining are past viewport
-                if line < top_line { continue; } // before viewport
-                let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
-                let byte_start = buf.char_to_byte(start).saturating_sub(line_start_byte);
+            // Matches are sorted by document order. Binary-search to the first
+            // match that starts at or after `top_line` to skip pre-viewport entries.
+            let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
+            let matches = self.search.matches();
+            let first = matches.partition_point(|&(start, _)| start < top_char);
+            for &(start, end_incl) in &matches[first..] {
+                let (line, byte_start) = char_to_line_byte(buf, start);
+                if line > bot_line { break; }
                 // end_incl is inclusive char offset; +1 makes it exclusive in chars,
                 // then convert to byte.
                 let end_char = (end_incl + 1).min(buf.len_chars());
-                let byte_end = buf.char_to_byte(end_char).saturating_sub(line_start_byte);
+                let (_, byte_end) = char_to_line_byte(buf, end_char);
                 data.push((line, byte_start, byte_end));
             }
         }
@@ -699,9 +695,7 @@ impl Editor {
                         && let Some((op, cp)) = find_bracket_pair(buf, head, open, close)
                     {
                         let match_pos = if head == op { cp } else { op };
-                        let line = buf.char_to_line(match_pos);
-                        let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
-                        let byte = buf.char_to_byte(match_pos).saturating_sub(line_start_byte);
+                        let (line, byte) = char_to_line_byte(buf, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
                         data.push((line, byte, byte + ch_len));
@@ -728,7 +722,6 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
-        // `self.mode` is the SSOT. Engine pane is synced by `prepare_frame` each frame.
         self.mode = mode;
     }
 
@@ -747,8 +740,6 @@ impl Editor {
             self.doc.begin_edit_group();
             self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
         }
-        // Mode is SSOT for extend state; transitioning to Insert implicitly clears Extend.
-        // Engine pane is synced by `prepare_frame` each frame.
         self.mode = Mode::Insert;
     }
 
@@ -780,7 +771,6 @@ impl Editor {
             f(buf, sels)
         };
         self.doc.set_selections(new_sels);
-        // Selection sync deferred to `prepare_frame` — no intra-frame push needed.
     }
 }
 
@@ -813,19 +803,9 @@ impl Editor {
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
 
-        let statusline_data = Arc::new(Mutex::new(StatuslineSnapshot {
-            mode: EditorMode::Normal,
-            file_path: None,
-            head_pos: (1, 1),
-            kitty_enabled: false,
-            is_dirty: false,
-            match_count: None,
-            search_wrapped: false,
-            minibuf: None,
-            status_msg: None,
-            config: Arc::new(StatusLineConfig::default()),
-            colors: EditorColors::default(),
-        }));
+        let statusline_data = Arc::new(Mutex::new(
+            StatuslineSnapshot::initial(None, Arc::new(StatusLineConfig::default())),
+        ));
 
         Self {
             doc,
@@ -858,6 +838,7 @@ impl Editor {
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
             statusline_data,
+            format_scratch: engine::format::FormatScratch::new(),
         }
     }
 
@@ -866,6 +847,22 @@ impl Editor {
         self.update_search_cache();
         self
     }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a char-offset position to a line-relative byte offset.
+///
+/// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
+/// from the start of the line — suitable for building highlight spans that the
+/// engine expects in line-relative byte coordinates.
+fn char_to_line_byte(buf: &Buffer, char_pos: usize) -> (usize, usize) {
+    let line = buf.char_to_line(char_pos);
+    let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
+    let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);
+    (line, byte)
 }
 
 #[cfg(test)]
