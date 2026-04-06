@@ -1,6 +1,4 @@
 use std::borrow::Cow;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
@@ -167,109 +165,35 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)]
 
 // ── Engine integration ────────────────────────────────────────────────────────
 
-/// A point-in-time snapshot of all statusline-visible editor state.
+/// Short-lived statusline provider that borrows `&Editor` directly.
 ///
-/// The editor writes a fresh snapshot once per frame (after event dispatch,
-/// before `term.draw`). The engine's render path reads this snapshot through
-/// the `Arc<Mutex<...>>` shared with `HumeStatusline`. Per-frame rebuild is
-/// acceptable — it's a handful of clones of short strings.
-pub(crate) struct StatuslineSnapshot {
-    pub mode: EditorMode,
-    /// `Arc` so snapshot clones are O(1) refcount bumps instead of `PathBuf` heap copies.
-    pub file_path: Option<Arc<PathBuf>>,
-    /// `(line_1based, col_1based)` of the primary selection head.
-    pub head_pos: (usize, usize),
-    pub kitty_enabled: bool,
-    pub is_dirty: bool,
-    /// `Some((current_1based, total))` when a search regex is active.
-    pub match_count: Option<(usize, usize)>,
-    pub search_wrapped: bool,
-    /// Mini-buffer state when active.
-    pub minibuf: Option<crate::editor::MiniBuffer>,
-    /// Transient status message (shown instead of normal statusline content).
-    pub status_msg: Option<String>,
-    /// `Arc` so snapshot clones are O(1) refcount bumps instead of cloning 3 `Vec`s.
-    pub config: Arc<StatusLineConfig>,
-    pub colors: EditorColors,
+/// Created each frame in `Editor::run()` and passed to `EngineView::render()`.
+/// No snapshot, no Arc, no Mutex — the provider reads editor state on demand
+/// during the render call.
+pub(crate) struct HumeStatusline<'a> {
+    pub(crate) editor: &'a Editor,
 }
 
-impl StatuslineSnapshot {
-    /// Blank snapshot for use before the first frame is rendered.
-    ///
-    /// `file_path` and `config` are the only caller-specific values; everything
-    /// else gets a sensible zero/default so the statusline renders without panic.
-    pub(crate) fn initial(
-        file_path: Option<Arc<PathBuf>>,
-        config: Arc<StatusLineConfig>,
-    ) -> Self {
-        Self {
-            mode: EditorMode::Normal,
-            file_path,
-            head_pos: (1, 1),
-            kitty_enabled: false,
-            is_dirty: false,
-            match_count: None,
-            search_wrapped: false,
-            minibuf: None,
-            status_msg: None,
-            config,
-            colors: EditorColors::default(),
-        }
-    }
-
-    /// Capture the current editor state into a snapshot.
-    pub(crate) fn from_editor(editor: &Editor) -> Self {
-        let buf = editor.doc.buf();
-        let head = editor.doc.sels().primary().head;
-        let head_line = buf.char_to_line(head);
-        let col_0 = grapheme_col_in_line(buf, head_line, head);
-
-        Self {
-            mode: editor.mode,
-            // Arc clone — O(1) refcount bump, no PathBuf heap copy.
-            file_path: editor.file_path.clone(),
-            head_pos: (head_line + 1, col_0 + 1),
-            kitty_enabled: editor.kitty_enabled,
-            is_dirty: editor.doc.is_dirty(),
-            match_count: editor.search.match_count(),
-            search_wrapped: editor.search.wrapped(),
-            minibuf: editor.minibuf.clone(),
-            status_msg: editor.status_msg.clone(),
-            // Arc clone — O(1) refcount bump, no Vec heap copies.
-            config: Arc::clone(&editor.statusline_config),
-            colors: EditorColors::default(),
-        }
-    }
-}
-
-/// Engine-compatible statusline provider.
-///
-/// Holds a shared `Arc<Mutex<StatuslineSnapshot>>` updated by the editor
-/// each frame. Implements `StatuslineProvider` so it can be registered on
-/// `EngineView::statusline`.
-pub(crate) struct HumeStatusline {
-    pub(crate) data: Arc<Mutex<StatuslineSnapshot>>,
-}
-
-impl engine::providers::StatuslineProvider for HumeStatusline {
+impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
     fn render(
         &self,
         area: ratatui::layout::Rect,
         _theme: &engine::theme::Theme,
         buf: &mut ratatui::buffer::Buffer,
     ) {
-        let snap = self.data.lock().unwrap();
+        let editor = self.editor;
+        let colors = EditorColors::default();
         let y = area.y;
 
-        if snap.minibuf.is_none() {
-            if let Some(ref msg) = snap.status_msg {
-                fill_row_colors(buf, &snap.colors, area, y);
-                buf.set_string(area.x + 1, y, msg, snap.colors.statusline);
+        if editor.minibuf.is_none() {
+            if let Some(ref msg) = editor.status_msg {
+                fill_row_colors(buf, &colors, area, y);
+                buf.set_string(area.x + 1, y, msg, colors.statusline);
                 return;
             }
         }
 
-        render_statusline_from_snapshot(buf, &snap, area, y);
+        render_statusline(buf, editor, &colors, area, y);
     }
 }
 
@@ -277,17 +201,17 @@ fn fill_row_colors(buf: &mut ScreenBuf, colors: &EditorColors, area: Rect, y: u1
     buf.set_style(Rect::new(area.x, y, area.width, 1), colors.statusline);
 }
 
-fn render_statusline_from_snapshot(
+fn render_statusline(
     screen_buf: &mut ScreenBuf,
-    snap: &StatuslineSnapshot,
+    editor: &Editor,
+    colors: &EditorColors,
     area: Rect,
     y: u16,
 ) {
-    let colors = &snap.colors;
-    let config = &snap.config;
+    let config = &editor.statusline_config;
 
     let (left_elems, center_elems, right_elems): (&[StatusElement], &[StatusElement], &[StatusElement]) =
-        if snap.minibuf.is_some() {
+        if editor.minibuf.is_some() {
             (MINIBUF_LEFT, &[], &config.right)
         } else {
             (&config.left, &config.center, &config.right)
@@ -295,20 +219,20 @@ fn render_statusline_from_snapshot(
 
     fill_row_colors(screen_buf, colors, area, y);
 
-    let left_spans = pad_left(render_section_snap(left_elems, snap), colors);
-    let center_spans = render_section_snap(center_elems, snap);
-    let right_spans = pad_right(render_section_snap(right_elems, snap), colors);
+    let left_spans  = pad_left(render_section(left_elems, editor, colors), colors);
+    let center_spans = render_section(center_elems, editor, colors);
+    let right_spans  = pad_right(render_section(right_elems, editor, colors), colors);
 
-    let left_w = section_width(&left_spans);
+    let left_w   = section_width(&left_spans);
     let center_w = section_width(&center_spans);
-    let right_w = section_width(&right_spans);
+    let right_w  = section_width(&right_spans);
 
-    let left_x = area.x;
-    let left_end = left_x + left_w;
-    let right_x = area.right().saturating_sub(right_w);
+    let left_x    = area.x;
+    let left_end  = left_x + left_w;
+    let right_x   = area.right().saturating_sub(right_w);
     let right_fits = right_x >= left_end;
     let right_fence = if right_fits { right_x } else { area.right() };
-    let gap = right_fence.saturating_sub(left_end);
+    let gap      = right_fence.saturating_sub(left_end);
     let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
     let center_fits = !center_spans.is_empty()
         && center_w <= gap
@@ -316,10 +240,10 @@ fn render_statusline_from_snapshot(
         && center_x + center_w <= right_fence;
 
     draw_section(screen_buf, &left_spans, left_x, y);
-    if right_fits { draw_section(screen_buf, &right_spans, right_x, y); }
+    if right_fits  { draw_section(screen_buf, &right_spans,  right_x,  y); }
     if center_fits { draw_section(screen_buf, &center_spans, center_x, y); }
 
-    if let Some(mb) = &snap.minibuf {
+    if let Some(mb) = &editor.minibuf {
         let mb_offset = last_span_offset(&left_spans);
         let prompt_w = mb.prompt.width().unwrap_or(0) as u16;
         let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
@@ -332,11 +256,10 @@ fn render_statusline_from_snapshot(
     }
 }
 
-fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'static, str>, Style) {
-    let colors = &snap.colors;
+fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, Style) {
     match seg {
         StatusElement::Mode => {
-            let (label, style) = match snap.mode {
+            let (label, style) = match editor.mode {
                 EditorMode::Normal  => ("NOR", colors.status_normal),
                 EditorMode::Extend  => ("EXT", colors.status_extend),
                 EditorMode::Insert  => ("INS", colors.status_insert),
@@ -348,31 +271,34 @@ fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'s
         }
         StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
         StatusElement::FileName => {
-            let name = snap.file_path.as_deref()
+            let name = editor.file_path.as_deref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("[scratch]");
             (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {
-            let (line, col) = snap.head_pos;
-            (Cow::Owned(format!("{line}:{col}")), colors.statusline)
+            let buf = editor.doc.buf();
+            let head = editor.doc.sels().primary().head;
+            let head_line = buf.char_to_line(head);
+            let col_0 = grapheme_col_in_line(buf, head_line, head);
+            (Cow::Owned(format!("{}:{}", head_line + 1, col_0 + 1)), colors.statusline)
         }
         StatusElement::KittyProtocol => {
-            let label = if snap.kitty_enabled { "🐱" } else { "" };
+            let label = if editor.kitty_enabled { "🐱" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
         StatusElement::DirtyIndicator => {
-            let label = if snap.is_dirty { "[+]" } else { "" };
+            let label = if editor.doc.is_dirty() { "[+]" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::SearchMatches => {
-            if let Some((current, total)) = snap.match_count {
+            if let Some((current, total)) = editor.search.match_count() {
                 if total == 0 {
                     (Cow::Borrowed(""), colors.statusline)
                 } else {
-                    let w = if snap.search_wrapped { "W " } else { "" };
+                    let w = if editor.search.wrapped() { "W " } else { "" };
                     (Cow::Owned(format!("{w}[{current}/{total}]")), colors.statusline)
                 }
             } else {
@@ -380,7 +306,7 @@ fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'s
             }
         }
         StatusElement::MiniBuf => {
-            if let Some(mb) = &snap.minibuf {
+            if let Some(mb) = &editor.minibuf {
                 let mut text = String::with_capacity(2 + mb.input.len());
                 text.push(mb.prompt);
                 text.push_str(&mb.input);
@@ -392,19 +318,19 @@ fn render_element_snap(seg: StatusElement, snap: &StatuslineSnapshot) -> (Cow<'s
     }
 }
 
-fn render_section_snap(elements: &[StatusElement], snap: &StatuslineSnapshot) -> Vec<(Cow<'static, str>, Style)> {
+fn render_section(elements: &[StatusElement], editor: &Editor, colors: &EditorColors) -> Vec<(Cow<'static, str>, Style)> {
     let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
 
     for &seg in elements {
-        let (text, style) = render_element_snap(seg, snap);
+        let (text, style) = render_element(seg, editor, colors);
         if text.is_empty() { continue; }
 
         if let Some((prev_text, _)) = spans.last() {
-            let a_ends_space = prev_text.ends_with(' ');
+            let a_ends_space   = prev_text.ends_with(' ');
             let b_starts_space = text.starts_with(' ');
 
             if !a_ends_space && !b_starts_space {
-                spans.push((Cow::Borrowed(" "), snap.colors.statusline));
+                spans.push((Cow::Borrowed(" "), colors.statusline));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
                 let trimmed = match &text {
