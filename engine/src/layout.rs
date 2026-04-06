@@ -33,6 +33,14 @@ pub struct VisibleRange {
 // Stage 1: compute_viewport
 // ---------------------------------------------------------------------------
 
+/// Sum of all gutter column widths for the given `max_line` (0-based).
+///
+/// `max_line` should be the highest visible line — gutter columns that display
+/// line numbers use it to determine the required digit width.
+pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line: usize) -> u16 {
+    gutter_columns.iter().map(|c| c.width(max_line) as u16).sum()
+}
+
 /// Compute the `VisibleRange` for a pane given its current state.
 ///
 /// This is purely arithmetic — no heap allocations.
@@ -44,15 +52,9 @@ pub fn compute_viewport(
 ) -> VisibleRange {
     let total_lines = rope.len_lines();
 
-    // Determine the highest visible line for gutter width calculation.
     let approx_end = viewport.top_line + viewport.height as usize;
     let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
-
-    // Gutter width: sum of all column widths for the widest line in view.
-    let gutter_width: u16 = gutter_columns
-        .iter()
-        .map(|c| c.width(max_visible_line) as u16)
-        .sum();
+    let gutter_width = gutter_width_for_line(gutter_columns, max_visible_line);
 
     let content_width = viewport.width.saturating_sub(gutter_width).max(1);
 

@@ -14,23 +14,22 @@ use std::sync::{Arc, RwLock};
 use engine::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
 use engine::types::ScopeId;
 
-// ── BracketMatchHighlighter ───────────────────────────────────────────────────
-
-/// Highlights the bracket that pairs with the one under the cursor.
+/// Highlights a set of byte ranges, all sharing the same scope and tier.
 ///
 /// Data is `(line_idx, byte_start, byte_end)` in line-relative byte offsets.
 /// The editor writes this via the shared `Arc<RwLock<...>>` once per frame
 /// in `update_highlight_providers()`.
-pub(crate) struct BracketMatchHighlighter {
+pub(crate) struct SharedHighlighter {
     pub(crate) id: ProviderId,
     pub(crate) scope: ScopeId,
-    /// Shared data: `(line_idx, byte_start, byte_end)` for each bracket match.
+    pub(crate) tier: HighlightTier,
+    /// Shared data: `(line_idx, byte_start, byte_end)` for each highlight.
     pub(crate) data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
 }
 
-impl HighlightSource for BracketMatchHighlighter {
+impl HighlightSource for SharedHighlighter {
     fn id(&self) -> ProviderId { self.id }
-    fn tier(&self) -> HighlightTier { HighlightTier::BracketMatch }
+    fn tier(&self) -> HighlightTier { self.tier }
 
     fn highlights_for_line(
         &self,
@@ -40,43 +39,12 @@ impl HighlightSource for BracketMatchHighlighter {
     ) {
         // Unwrap: we never poison the lock (no panics while holding it).
         let data = self.data.read().unwrap();
-        for &(l, byte_start, byte_end) in data.iter() {
-            if l == line_idx {
-                out.push((byte_start, byte_end, self.scope));
-            }
-        }
-    }
-}
-
-// ── SearchMatchHighlighter ────────────────────────────────────────────────────
-
-/// Highlights all search matches currently visible.
-///
-/// Data is `(line_idx, byte_start, byte_end)` in line-relative byte offsets.
-/// The editor converts char-offset match pairs from `SearchState::matches()`
-/// to line-relative byte offsets once per frame in `update_highlight_providers()`.
-pub(crate) struct SearchMatchHighlighter {
-    pub(crate) id: ProviderId,
-    pub(crate) scope: ScopeId,
-    /// Shared data: `(line_idx, byte_start, byte_end)` for each search match.
-    pub(crate) data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
-}
-
-impl HighlightSource for SearchMatchHighlighter {
-    fn id(&self) -> ProviderId { self.id }
-    fn tier(&self) -> HighlightTier { HighlightTier::SearchMatch }
-
-    fn highlights_for_line(
-        &self,
-        line_idx: usize,
-        _ctx: &SourceContext,
-        out: &mut Vec<(usize, usize, ScopeId)>,
-    ) {
-        let data = self.data.read().unwrap();
-        for &(l, byte_start, byte_end) in data.iter() {
-            if l == line_idx {
-                out.push((byte_start, byte_end, self.scope));
-            }
+        // Data is sorted by line_idx (search matches) or tiny (bracket match),
+        // so binary-search to the first entry for this line.
+        let start = data.partition_point(|&(l, _, _)| l < line_idx);
+        for &(l, byte_start, byte_end) in &data[start..] {
+            if l != line_idx { break; }
+            out.push((byte_start, byte_end, self.scope));
         }
     }
 }
