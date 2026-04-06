@@ -227,8 +227,8 @@ impl EngineView {
     pub fn new(theme: Theme) -> Self {
         let panes = SlotMap::with_key();
         let buffers = SlotMap::with_key();
-        // Placeholder layout; caller must set before rendering.
         Self {
+            // Placeholder layout — will be replaced before the first render.
             layout: LayoutTree::Leaf(PaneId::default()),
             panes,
             buffers,

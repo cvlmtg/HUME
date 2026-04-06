@@ -668,7 +668,11 @@ fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
         pane.wrap_mode = WrapMode::None;
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
-        let content_w = pane.viewport.width.saturating_sub(4).max(1);
+        // Estimate gutter width (line numbers + separator). The engine will
+        // compute the exact width at render time; this just needs to be close
+        // enough for a reasonable default wrap column.
+        const GUTTER_WIDTH_ESTIMATE: u16 = 4;
+        let content_w = pane.viewport.width.saturating_sub(GUTTER_WIDTH_ESTIMATE).max(1);
         pane.wrap_mode = WrapMode::Indent { width: content_w };
         pane.viewport.horizontal_offset = 0;
         pane.viewport.top_row_offset = 0;

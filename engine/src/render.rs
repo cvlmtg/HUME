@@ -186,6 +186,7 @@ pub(crate) fn compose_row(
 ///
 /// `compose_ctx` must be pre-constructed by the caller (same pattern as the
 /// fused pipeline). `col_widths` is a caller-supplied scratch buffer.
+// Kept for testing the non-fused path; the live pipeline uses `compose_fused`.
 #[allow(clippy::too_many_arguments, dead_code)]
 pub(crate) fn compose(
     rows: &[DisplayRow],

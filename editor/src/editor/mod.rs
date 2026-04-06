@@ -647,7 +647,7 @@ impl Editor {
 
         // ── Search match highlights ───────────────────────────────────────────
         {
-            let mut data = self.search_hl_data.write().unwrap();
+            let mut data = self.search_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after `top_line` to skip pre-viewport entries.
@@ -667,7 +667,7 @@ impl Editor {
 
         // ── Bracket match highlight ───────────────────────────────────────────
         {
-            let mut data = self.bracket_hl_data.write().unwrap();
+            let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.mode != EditorMode::Insert {
                 let head = self.doc.sels().primary().head;

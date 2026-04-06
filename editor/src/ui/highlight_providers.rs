@@ -37,8 +37,7 @@ impl HighlightSource for SharedHighlighter {
         _ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
-        // Unwrap: we never poison the lock (no panics while holding it).
-        let data = self.data.read().unwrap();
+        let data = self.data.read().expect("RwLock not poisoned");
         // Data is sorted by line_idx (search matches) or tiny (bracket match),
         // so binary-search to the first entry for this line.
         let start = data.partition_point(|&(l, _, _)| l < line_idx);
