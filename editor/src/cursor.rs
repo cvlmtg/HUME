@@ -16,6 +16,7 @@
 use crossterm::cursor::SetCursorStyle;
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
+use engine::pipeline::RenderContext;
 use engine::providers::GutterColumn;
 use engine::layout::gutter_width_for_line;
 use engine::types::EditorMode;
@@ -39,8 +40,9 @@ pub(crate) fn screen_pos(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
+    ctx: &mut RenderContext,
 ) -> Option<(u16, u16)> {
+    let scratch = &mut ctx.format;
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
     if height == 0 { return None; }

@@ -7,7 +7,7 @@ use crossterm::execute;
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState, WrapMode};
-use engine::pipeline::{BufferId, EngineView, FrameScratch, LayoutTree, PaneId, SharedBuffer};
+use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, RenderContext, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
 use crate::auto_pairs::AutoPairsConfig;
@@ -215,29 +215,6 @@ impl SearchState {
     }
 }
 
-// ── Scratch buffers ───────────────────────────────────────────────────────────
-
-/// All per-frame scratch buffers in one place. Hoisted onto `Editor` to avoid
-/// heap allocations on every frame. None of these fields hold meaningful state
-/// between frames — they are cleared at the start of each use.
-pub(super) struct RenderScratch {
-    /// Engine pipeline scratch: format + style + inline inserts + gutter cells.
-    pub frame: FrameScratch,
-    /// Pane rects computed once per frame by the layout stage.
-    pub pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
-    /// Cursor position scratch: used by `cursor::screen_pos` and scroll logic.
-    pub format: engine::format::FormatScratch,
-}
-
-impl RenderScratch {
-    fn new() -> Self {
-        Self {
-            frame: FrameScratch::new(),
-            pane_rects: Vec::new(),
-            format: engine::format::FormatScratch::new(),
-        }
-    }
-}
 
 // ── Editor ────────────────────────────────────────────────────────────────────
 
@@ -468,10 +445,10 @@ impl Editor {
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
-        // Scratch buffers live here — allocated once, reused every frame.
-        // They must be outside `self` so `HumeStatusline { editor: self }` can
-        // borrow `self` immutably while scratch is borrowed mutably.
-        let mut scratch = RenderScratch::new();
+        // Render context lives here — allocated once, reused every frame.
+        // It must be outside `self` so `HumeStatusline { editor: self }` can
+        // borrow `self` immutably while ctx is borrowed mutably.
+        let mut ctx = RenderContext::new();
         loop {
             // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
@@ -495,7 +472,7 @@ impl Editor {
                 crate::cursor::screen_pos(
                     &vp, self.doc.buf().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
-                    &mut scratch.format,
+                    &mut ctx,
                 ).map(|(col, row)| (col + gutter_w, row))
             } else {
                 None
@@ -512,7 +489,7 @@ impl Editor {
             term.draw(|frame| {
                 engine_view.render(frame.area(), frame.buffer_mut(), |bid| {
                     if bid == buffer_id { Some(rope) } else { None }
-                }, Some(&statusline), &mut scratch.frame, &mut scratch.pane_rects);
+                }, Some(&statusline), &mut ctx);
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
