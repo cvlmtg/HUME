@@ -175,7 +175,8 @@ fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)]
 /// acceptable — it's a handful of clones of short strings.
 pub(crate) struct StatuslineSnapshot {
     pub mode: EditorMode,
-    pub file_path: Option<PathBuf>,
+    /// `Arc` so snapshot clones are O(1) refcount bumps instead of `PathBuf` heap copies.
+    pub file_path: Option<Arc<PathBuf>>,
     /// `(line_1based, col_1based)` of the primary selection head.
     pub head_pos: (usize, usize),
     pub kitty_enabled: bool,
@@ -187,7 +188,8 @@ pub(crate) struct StatuslineSnapshot {
     pub minibuf: Option<crate::editor::MiniBuffer>,
     /// Transient status message (shown instead of normal statusline content).
     pub status_msg: Option<String>,
-    pub config: StatusLineConfig,
+    /// `Arc` so snapshot clones are O(1) refcount bumps instead of cloning 3 `Vec`s.
+    pub config: Arc<StatusLineConfig>,
     pub colors: EditorColors,
 }
 
@@ -201,6 +203,7 @@ impl StatuslineSnapshot {
 
         Self {
             mode: editor.mode,
+            // Arc clone — O(1) refcount bump, no PathBuf heap copy.
             file_path: editor.file_path.clone(),
             head_pos: (head_line + 1, col_0 + 1),
             kitty_enabled: editor.kitty_enabled,
@@ -209,7 +212,8 @@ impl StatuslineSnapshot {
             search_wrapped: editor.search.wrapped(),
             minibuf: editor.minibuf.clone(),
             status_msg: editor.status_msg.clone(),
-            config: editor.statusline_config.clone(),
+            // Arc clone — O(1) refcount bump, no Vec heap copies.
+            config: Arc::clone(&editor.statusline_config),
             colors: EditorColors::default(),
         }
     }

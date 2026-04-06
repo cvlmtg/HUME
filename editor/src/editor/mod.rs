@@ -220,7 +220,7 @@ impl SearchState {
 
 pub(crate) struct Editor {
     pub(crate) doc: Document,
-    pub(crate) file_path: Option<PathBuf>,
+    pub(crate) file_path: Option<Arc<PathBuf>>,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state (previously a separate `extend: bool` field). Mode is the single
     /// source of truth — `extend: bool` has been removed.
@@ -262,7 +262,7 @@ pub(crate) struct Editor {
     /// Initialized with [`StatusLineConfig::default`] (mode indicator + separator +
     /// filename on the left, position on the right). Configurable via the
     /// Steel scripting layer.
-    pub(crate) statusline_config: StatusLineConfig,
+    pub(crate) statusline_config: Arc<StatusLineConfig>,
     /// Registry of all mappable commands (motions, selections, edits).
     ///
     /// Keyed by name; looked up by `execute_keymap_command` at dispatch time.
@@ -401,10 +401,14 @@ impl Editor {
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
+        // Wrap path and config in Arc so snapshot clones are O(1) refcount bumps.
+        let file_path_arc: Option<Arc<PathBuf>> = file_path.map(Arc::new);
+        let statusline_config = Arc::new(StatusLineConfig::default());
+
         // Statusline provider.
         let initial_snapshot = StatuslineSnapshot {
             mode: EditorMode::Normal,
-            file_path: file_path.clone(),
+            file_path: file_path_arc.clone(),
             head_pos: (1, 1),
             kitty_enabled: false,
             is_dirty: false,
@@ -412,7 +416,7 @@ impl Editor {
             search_wrapped: false,
             minibuf: None,
             status_msg: None,
-            config: StatusLineConfig::default(),
+            config: Arc::clone(&statusline_config),
             colors: EditorColors::default(),
         };
         let statusline_data = Arc::new(Mutex::new(initial_snapshot));
@@ -425,7 +429,7 @@ impl Editor {
 
         Ok(Self {
             doc,
-            file_path,
+            file_path: file_path_arc,
             mode: Mode::Normal,
             pending_keys: Vec::new(),
             count: None,
@@ -436,7 +440,7 @@ impl Editor {
             minibuf: None,
             status_msg: None,
             file_meta,
-            statusline_config: StatusLineConfig::default(),
+            statusline_config,
             registry: CommandRegistry::with_defaults(),
             keymap: Keymap::default(),
             auto_pairs: AutoPairsConfig::default(),
@@ -562,15 +566,14 @@ impl Editor {
         // 4. Scroll so the primary cursor stays visible.
         let cursor_char = self.doc.sels().primary().head;
         {
-            // Clone pane config to avoid holding a borrow alongside buf().
-            let pane = &self.engine_view.panes[self.pane_id];
-            let wrap_mode  = pane.wrap_mode.clone();
-            let tab_width  = pane.tab_width;
-            let whitespace = pane.whitespace.clone();
-            let rope       = self.doc.buf().rope();
-            let vp = &mut self.engine_view.panes[self.pane_id].viewport;
-            scroll::ensure_cursor_visible(vp, rope, cursor_char, &wrap_mode, tab_width, &whitespace);
-            scroll::ensure_cursor_visible_horizontal(vp, rope, cursor_char, &wrap_mode, tab_width as usize);
+            // Destructure `*pane` to split field borrows: `&mut viewport` and
+            // `&wrap_mode`/`&whitespace` are disjoint fields, so the compiler
+            // allows them simultaneously without any cloning.
+            let rope = self.doc.buf().rope();
+            let pane = &mut self.engine_view.panes[self.pane_id];
+            let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
+            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace);
+            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width as usize);
         }
 
         // 5. Sync highlight data (search matches, bracket matches) to shared
@@ -601,26 +604,31 @@ impl Editor {
     /// Called once per frame from `prepare_frame`. Selections are passed in
     /// sorted document order; `primary_idx` tells the engine which one is primary.
     pub(crate) fn push_selections_to_pane(&mut self) {
+        // Borrow `doc` first (immutable), then borrow `engine_view` separately.
+        // The compiler allows this because they are disjoint fields of `self`.
         let buf = self.doc.buf();
-        let engine_sels: Vec<EngineSelection> = self.doc.sels().iter_sorted()
-            .map(|sel| {
-                let anchor_line = buf.char_to_line(sel.anchor);
-                let anchor_line_start = buf.char_to_byte(buf.line_to_char(anchor_line));
-                let anchor_byte = buf.char_to_byte(sel.anchor);
+        let primary_idx = self.doc.sels().primary_index();
+        let iter = self.doc.sels().iter_sorted().map(|sel| {
+            let anchor_line = buf.char_to_line(sel.anchor);
+            let anchor_line_start = buf.char_to_byte(buf.line_to_char(anchor_line));
+            let anchor_byte = buf.char_to_byte(sel.anchor);
 
-                let head_line = buf.char_to_line(sel.head);
-                let head_line_start = buf.char_to_byte(buf.line_to_char(head_line));
-                let head_byte = buf.char_to_byte(sel.head);
+            let head_line = buf.char_to_line(sel.head);
+            let head_line_start = buf.char_to_byte(buf.line_to_char(head_line));
+            let head_byte = buf.char_to_byte(sel.head);
 
-                EngineSelection {
-                    anchor: DocPos { line: anchor_line, byte_offset: anchor_byte - anchor_line_start },
-                    head:   DocPos { line: head_line,   byte_offset: head_byte   - head_line_start   },
-                }
-            })
-            .collect();
+            EngineSelection {
+                anchor: DocPos { line: anchor_line, byte_offset: anchor_byte - anchor_line_start },
+                head:   DocPos { line: head_line,   byte_offset: head_byte   - head_line_start   },
+            }
+        });
+
+        // Reuse the existing Vec allocation each frame instead of dropping and
+        // reallocating with `.collect()`. `clear()` keeps the heap buffer.
         let pane = &mut self.engine_view.panes[self.pane_id];
-        pane.selections = engine_sels;
-        pane.primary_idx = self.doc.sels().primary_index();
+        pane.selections.clear();
+        pane.selections.extend(iter);
+        pane.primary_idx = primary_idx;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -833,7 +841,7 @@ impl Editor {
             search_wrapped: false,
             minibuf: None,
             status_msg: None,
-            config: StatusLineConfig::default(),
+            config: Arc::new(StatusLineConfig::default()),
             colors: EditorColors::default(),
         }));
 
@@ -850,7 +858,7 @@ impl Editor {
             minibuf: None,
             status_msg: None,
             file_meta: None,
-            statusline_config: StatusLineConfig::default(),
+            statusline_config: Arc::new(StatusLineConfig::default()),
             registry: registry::CommandRegistry::with_defaults(),
             keymap: keymap::Keymap::default(),
             auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
