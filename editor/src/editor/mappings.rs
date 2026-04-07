@@ -380,7 +380,10 @@ impl Editor {
 
     // ── Selection helpers ─────────────────────────────────────────────────────
 
-    /// Replace the primary selection, preserving all other selections.
+    /// Replace the primary selection and merge any resulting overlaps.
+    ///
+    /// If the new selection overlaps an existing secondary, both are merged
+    /// into one — so the total selection count may decrease.
     pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
         let idx = self.doc.sels().primary_index();
         let new_sels = self.doc.sels().clone().replace(idx, new_sel).merge_overlapping();
