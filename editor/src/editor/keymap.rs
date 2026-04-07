@@ -302,6 +302,7 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
+    match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
     match_trie
 }
 
