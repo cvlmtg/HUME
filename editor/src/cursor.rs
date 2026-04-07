@@ -141,7 +141,7 @@ pub(crate) fn set_color_for_mode(mode: EditorMode) -> std::io::Result<()> {
 /// Returns `(sub_row, col)` where `sub_row` is the 0-based display row index
 /// within the line, and `col` is the display column within that row (the
 /// grapheme's `col` field from the engine format output).
-fn format_row_col(
+pub(crate) fn format_row_col(
     rope: &ropey::Rope,
     line_idx: usize,
     cursor_char: usize,

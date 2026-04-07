@@ -6,7 +6,6 @@
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
 
-use crate::core::grapheme::display_col_in_line;
 use crate::cursor;
 
 /// Rows of look-ahead kept between the cursor and the top/bottom edge.
@@ -46,7 +45,9 @@ pub(super) fn ensure_cursor_visible_horizontal(
     rope: &ropey::Rope,
     cursor_char: usize,
     wrap_mode: &WrapMode,
-    tab_width: usize,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
 ) {
     if wrap_mode.is_wrapping() {
         viewport.horizontal_offset = 0;
@@ -54,7 +55,8 @@ pub(super) fn ensure_cursor_visible_horizontal(
     }
 
     let cursor_line = rope.char_to_line(cursor_char);
-    let cursor_col = display_col_in_line(rope, cursor_line, cursor_char, tab_width);
+    let (_sub_row, cursor_col) =
+        cursor::format_row_col(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, scratch);
     let content_width = viewport.width as usize;
     if content_width == 0 {
         return;
@@ -217,61 +219,6 @@ mod tests {
         let cursor_line = 1usize;
         assert!(cursor_line >= v.top_line);
         assert!(cursor_line < v.top_line + v.height as usize);
-    }
-
-    // ── display_col_in_line ──────────────────────────────────────────────────
-
-    #[test]
-    fn display_col_ascii() {
-        let r = rope("hello\n");
-        // Cursor at char 3 ('l') → col 3.
-        assert_eq!(display_col_in_line(&r, 0, 3, 4), 3);
-    }
-
-    #[test]
-    fn display_col_cjk() {
-        // CJK ideographs are double-width: "世界abc\n", cursor at char 3 ("b").
-        // Width of "世界a" = 2 + 2 + 1 = 5 display columns.
-        let r = rope("世界abc\n");
-        assert_eq!(display_col_in_line(&r, 0, 3, 4), 5);
-    }
-
-    #[test]
-    fn display_col_combining_mark() {
-        // "é" = e + combining acute (2 chars, 1 grapheme cluster).
-        // Combining marks have display width 0 but the cluster is clamped to
-        // min 1 by grapheme_advance, so the total is 1 display column.
-        let r = rope("e\u{0301}\n");
-        assert_eq!(display_col_in_line(&r, 0, 2, 4), 1);
-    }
-
-    #[test]
-    fn display_col_tab_expansion() {
-        let r = rope("\thello\n");
-        // Tab at col 0 with tab_width 4 → expands to 4 cells. Cursor at char 1 → col 4.
-        assert_eq!(display_col_in_line(&r, 0, 1, 4), 4);
-    }
-
-    #[test]
-    fn display_col_tab_after_content() {
-        // "ab\t" — 'a'(1) + 'b'(1) = col 2, tab expands to 2 (next stop at 4).
-        let r = rope("ab\t\n");
-        assert_eq!(display_col_in_line(&r, 0, 3, 4), 4);
-    }
-
-    #[test]
-    fn display_col_multiple_tabs() {
-        // "\t\t" with tab_width 4 → 4 + 4 = 8 columns.
-        let r = rope("\t\t\n");
-        assert_eq!(display_col_in_line(&r, 0, 2, 4), 8);
-    }
-
-    #[test]
-    fn display_col_multiline() {
-        // "hello\nworld\n" — cursor at char 8 ("r") on line 1.
-        // Line 1 starts at char 6 ("world"), so column = width of "wo" = 2.
-        let r = rope("hello\nworld\n");
-        assert_eq!(display_col_in_line(&r, 1, 8, 4), 2);
     }
 
     // ── cursor_sub_row ───────────────────────────────────────────────────────
