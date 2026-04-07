@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -317,13 +318,18 @@ pub(crate) struct Editor {
 
     // ── Visual-line movement ──────────────────────────────────────────────────
 
-    /// Sticky display column for visual-line j/k movement.
+    /// Per-selection sticky display columns for visual-line j/k movement.
     ///
-    /// Set on the first j/k press (to the primary cursor's current display
-    /// column) and preserved across consecutive j/k presses so the cursor
-    /// can return to its original column after passing through shorter rows.
-    /// Reset to `None` on any non-vertical command.
-    pub(super) preferred_display_col: Option<u16>,
+    /// Keyed by each selection's `head` char offset. On the first j/k press
+    /// an entry is computed and inserted for every selection; on subsequent
+    /// consecutive presses the stored value is reused so each cursor can
+    /// return to its original column after passing through shorter rows.
+    /// Cleared on any non-vertical command.
+    ///
+    /// Using head position as the key avoids coupling display concerns to the
+    /// core `Selection` type. After `merge_overlapping`, all head positions
+    /// are unique, so the key space is always valid.
+    pub(super) preferred_display_cols: HashMap<usize, u16>,
 
     /// Reusable scratch buffer for format operations in visual-line movement.
     ///
@@ -455,7 +461,7 @@ impl Editor {
             buffer_id,
             bracket_hl_data,
             search_hl_data,
-            preferred_display_col: None,
+            preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
         })
     }
@@ -868,7 +874,7 @@ impl Editor {
             buffer_id,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
-            preferred_display_col: None,
+            preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
         }
     }

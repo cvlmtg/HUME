@@ -2719,7 +2719,7 @@ fn visual_move_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('j'));
     assert_eq!(ed.doc.sels().primary().head, 76, "j: sub-row 0 → sub-row 1, col 0 → char 76");
-    assert_eq!(ed.preferred_display_col, Some(0), "preferred_display_col latched on first j");
+    assert_eq!(ed.preferred_display_cols.get(&76), Some(&0), "sticky col latched on first j");
 }
 
 /// j on the last sub-row crosses to the next buffer line.
@@ -2774,23 +2774,23 @@ fn visual_preferred_col_stickiness() {
     // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
     ed.handle_key(key('j'));
     assert_eq!(ed.doc.sels().primary().head, 79, "j: clamped to last char on short sub-row");
-    assert_eq!(ed.preferred_display_col, Some(40), "preferred_display_col stays at 40");
+    assert_eq!(ed.preferred_display_cols.get(&79), Some(&40), "sticky col stays at 40");
 
     // j again: cross to "short\n" (line 1). target_col=40, "short" has cols 0..4.
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
     assert_eq!(ed.doc.sels().primary().head, 85, "j: clamped to last char on short second line");
-    assert_eq!(ed.preferred_display_col, Some(40), "preferred_display_col still 40");
+    assert_eq!(ed.preferred_display_cols.get(&85), Some(&40), "sticky col still 40");
 }
 
 /// Any non-vertical command resets preferred_display_col.
 #[test]
 fn visual_preferred_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
-    ed.handle_key(key('j')); // sets preferred_display_col
-    assert!(ed.preferred_display_col.is_some());
+    ed.handle_key(key('j')); // sets preferred_display_cols
+    assert!(!ed.preferred_display_cols.is_empty());
     ed.handle_key(key('l')); // horizontal motion
-    assert_eq!(ed.preferred_display_col, None, "l resets preferred_display_col");
+    assert!(ed.preferred_display_cols.is_empty(), "l resets preferred_display_cols");
 }
 
 /// WrapMode::None falls back to buffer-line movement.
@@ -2803,7 +2803,7 @@ fn visual_move_no_wrap_falls_back_to_buffer_line() {
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
     assert_eq!(ed.doc.sels().primary().head, 81, "WrapMode::None: j moves by buffer line");
-    assert_eq!(ed.preferred_display_col, None, "no sticky col in non-wrap mode");
+    assert!(ed.preferred_display_cols.is_empty(), "no sticky col in non-wrap mode");
 }
 
 /// count prefix: 2j moves two visual rows.
@@ -2814,6 +2814,51 @@ fn visual_move_down_with_count() {
     ed.handle_key(key('j'));
     // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
     assert_eq!(ed.doc.sels().primary().head, 81, "2j: two visual rows from sub-row 0");
+}
+
+/// Each cursor uses its own sticky column in multi-cursor j/k.
+///
+/// Buffer layout (visual_test_editor):
+///   sub-row 0: chars  0..76 (cols 0..75)
+///   sub-row 1: chars 76..80 (cols 0..3)  ← two cursors placed here
+///   line 1:    chars 81..86 "short\n"
+///
+/// Cursor A at char 76 (col 0), cursor B at char 79 (col 3, primary).
+/// j → line 1: A should land at col 0 = char 81, B at col 3 = char 84.
+/// k → sub-row 1: A should return to col 0 = char 76, B to col 3 = char 79.
+#[test]
+fn visual_move_per_selection_sticky_col() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    let line0: String = "a".repeat(80);
+    let content = format!("{}\nshort\n", line0);
+    let buf = crate::core::buffer::Buffer::from(content.as_str());
+    // A at col 0, B at col 3 (primary).
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(76), // A — col 0 on sub-row 1
+            Selection::collapsed(79), // B — col 3 on sub-row 1
+        ],
+        1, // primary is B
+    );
+    let mut ed = Editor::for_testing(Document::new(buf, sels));
+
+    // j: each cursor should use its own column, not the primary's.
+    ed.handle_key(key('j'));
+    let sels = ed.doc.sels().clone();
+    assert_eq!(sels.len(), 2, "two cursors remain distinct");
+    // Sorted by start(): A is first.
+    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
+    assert_eq!(heads[0], 81, "A (col 0) → char 81 on line 1");
+    assert_eq!(heads[1], 84, "B (col 3) → char 84 on line 1");
+
+    // k: sticky cols should bring each cursor back to its original column.
+    ed.handle_key(key('k'));
+    let sels = ed.doc.sels().clone();
+    assert_eq!(sels.len(), 2, "two cursors remain distinct");
+    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
+    assert_eq!(heads[0], 76, "A returns to col 0 = char 76 on sub-row 1");
+    assert_eq!(heads[1], 79, "B returns to col 3 = char 79 on sub-row 1");
 }
 
 // ── Visual-line extend variants ───────────────────────────────────────────────

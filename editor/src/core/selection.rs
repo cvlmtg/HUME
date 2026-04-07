@@ -196,6 +196,11 @@ impl SelectionSet {
     /// Use this when you can guarantee that `f` is order-preserving and cannot
     /// produce overlapping selections (e.g. `|s| s.shift(delta)`). If you are
     /// not sure, use [`map_and_merge`](Self::map_and_merge) instead.
+    ///
+    /// **Iteration order:** selections are visited in the same ascending-`start()`
+    /// order as [`iter_sorted`](Self::iter_sorted). Code that zips a pre-computed
+    /// `Vec` with this closure (e.g. per-selection sticky columns) may rely on
+    /// this guarantee.
     #[must_use]
     pub(crate) fn map<F>(self, mut f: F) -> Self
     where
