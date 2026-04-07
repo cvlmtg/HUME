@@ -383,7 +383,7 @@ impl Editor {
     /// Replace the primary selection, preserving all other selections.
     pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
         let idx = self.doc.sels().primary_index();
-        let new_sels = self.doc.sels().clone().replace(idx, new_sel);
+        let new_sels = self.doc.sels().clone().replace(idx, new_sel).merge_overlapping();
         self.doc.set_selections(new_sels);
     }
 

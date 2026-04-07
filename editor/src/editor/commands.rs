@@ -24,7 +24,7 @@ use crate::ops::motion::{
     find_char_backward, find_char_forward, MotionMode,
 };
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
-use crate::ops::search::{compile_search_regex, escape_regex, find_match_from_cache, find_next_match};
+use crate::ops::search::{compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
 use crate::ops::text_object::inner_word_impl;
 use crate::helpers::is_word_boundary;
@@ -506,6 +506,40 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
     search_jump(ed, count, SearchDirection::Backward, true);
 }
 
+// ── Select all matches ────────────────────────────────────────────────────────
+
+/// Turn every search match in the buffer into a selection.
+///
+/// Uses the active search regex, falling back to recompiling from the `'s'`
+/// register (same as `n`/`N`). If there is no active search, does nothing.
+/// The first match becomes primary.
+pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize) {
+    if ed.search.regex.is_none() {
+        let pattern = ed
+            .registers
+            .read(SEARCH_REGISTER)
+            .and_then(|r| r.values().first().cloned())
+            .unwrap_or_default();
+        if pattern.is_empty() {
+            return;
+        }
+        match compile_search_regex(&pattern) {
+            Some(r) => ed.search.set_regex(Some(r)),
+            None => return,
+        }
+    }
+    let Some(regex) = &ed.search.regex else { return };
+
+    let matches = find_all_matches(ed.doc.buf(), regex);
+    if matches.is_empty() {
+        ed.status_msg = Some("no matches".into());
+        return;
+    }
+
+    let sels: Vec<Selection> = matches.into_iter().map(|(s, e)| Selection::new(s, e)).collect();
+    ed.doc.set_selections(SelectionSet::from_vec(sels, 0));
+}
+
 // ── Select within (s) ────────────────────────────────────────────────────────
 
 /// Enter Select mode.
@@ -619,6 +653,12 @@ pub(super) static TYPED_COMMANDS: &[TypedCommand] = &[
         fun: typed_clear_search,
     },
     TypedCommand {
+        name: "select-all-matches",
+        aliases: &["sam"],
+        doc: "Turn every search match in the buffer into a selection",
+        fun: typed_select_all_matches,
+    },
+    TypedCommand {
         name: "toggle-soft-wrap",
         aliases: &["wrap"],
         doc: "Toggle soft line wrapping",
@@ -658,6 +698,10 @@ fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) {
 
 fn typed_clear_search(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
     cmd_clear_search(ed, 0);
+}
+
+fn typed_select_all_matches(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
+    cmd_select_all_matches(ed, 0);
 }
 
 fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {

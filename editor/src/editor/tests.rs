@@ -2093,6 +2093,100 @@ fn search_n_after_select_within_with_no_prior_search() {
     assert_eq!(state(&ed), before);
 }
 
+// ── n merges overlapping selections ──────────────────────────────────────────
+
+/// When `n` moves the primary to a position already covered by a secondary
+/// selection, the two must merge — no duplicate/overlapping selections.
+#[test]
+fn search_n_merges_with_overlapping_secondary() {
+    use crate::core::selection::{Selection, SelectionSet};
+    // "ab cd ab\n" — set up two selections already on the "ab" matches,
+    // then confirm a search for "ab" and press `n` so the primary lands
+    // on the second "ab", which is also the secondary.
+    let mut ed = editor_from("-[ab cd ab]>\n");
+
+    // Search for "ab", confirm → primary lands on first "ab".
+    ed.handle_key(key('/'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "-[ab]> cd ab\n");
+
+    // Add a secondary selection manually on the second "ab" (chars 6..7).
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 1), // first "ab" — primary
+            Selection::new(6, 7), // second "ab" — secondary
+        ],
+        0,
+    );
+    ed.doc.set_selections(sels);
+    assert_eq!(ed.doc.sels().len(), 2);
+
+    // `n` moves primary from first "ab" to second "ab", which already has a
+    // secondary selection there → they must merge.
+    ed.handle_key(key('n'));
+
+    // After merge: one selection covering the second "ab".
+    assert_eq!(ed.doc.sels().len(), 1, "overlapping selections must merge");
+    assert_eq!(ed.doc.sels().primary().start(), 6);
+    assert_eq!(ed.doc.sels().primary().end_inclusive(ed.doc.buf()), 7);
+}
+
+// ── select-all-matches ────────────────────────────────────────────────────────
+
+/// `select-all-matches` turns every match into a selection.
+/// Invoke via `:sam` typed command.
+#[test]
+fn select_all_matches_creates_selection_per_match() {
+    // "ab cd ab\n" — two "ab" matches at 0 and 6.
+    let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
+
+    ed.handle_key(key(':'));
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('m'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.doc.sels().len(), 2, "one selection per 'ab' match");
+    let sels: Vec<_> = ed.doc.sels().iter_sorted().collect();
+    assert_eq!(sels[0].start(), 0);
+    assert_eq!(sels[1].start(), 6);
+}
+
+/// `select-all-matches` with no active search is a no-op.
+#[test]
+fn select_all_matches_no_search_is_noop() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    let original = state(&ed);
+
+    ed.handle_key(key(':'));
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('m'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(state(&ed), original);
+}
+
+/// `select-all-matches` falls back to SEARCH_REGISTER when regex is cleared.
+#[test]
+fn select_all_matches_uses_search_register_fallback() {
+    use crate::ops::register::SEARCH_REGISTER;
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.registers.write(SEARCH_REGISTER, vec!["ab".to_string()]);
+    // No live regex — forces register fallback.
+    assert!(ed.search.regex.is_none());
+
+    ed.handle_key(key(':'));
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('m'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.doc.sels().len(), 2);
+}
+
 // ── Use selection as search (*) ──────────────────────────────────────────────
 
 /// `*` on a cursor expands to the word under the cursor and sets search.
