@@ -1844,6 +1844,111 @@ fn select_within_no_matches_keeps_originals() {
     assert_eq!(state(&ed), original);
 }
 
+// ── Search / select-within independence ──────────────────────────────────────
+
+/// After `/foo` + confirm, `s` + `bar` + confirm, pressing `n` must jump to the
+/// next "foo" — not "bar". This is the critical end-to-end independence test.
+#[test]
+fn search_n_after_select_within_uses_original_search() {
+    // "xx ab cd ab cd\n" — cursor starts before all matches.
+    let mut ed = editor_from("-[x]>x ab cd ab cd\n");
+
+    // Search for "ab", confirm → lands on first "ab".
+    ed.handle_key(key('/'));
+    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "xx -[ab]> cd ab cd\n");
+
+    // Select the whole line and split on "cd".
+    ed.handle_key(key('%'));
+    ed.handle_key(key('s'));
+    for ch in "cd".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    // `n` must jump to an "ab", not a "cd".
+    ed.handle_key(key('n'));
+    let st = state(&ed);
+    assert!(
+        st.contains("-[ab]>") || st.contains("<[ab]-"),
+        "expected primary on 'ab', got: {st}"
+    );
+}
+
+/// After `/foo` + confirm, `s` + `bar` + Esc (cancel), pressing `n` must still
+/// jump to the next "foo".
+#[test]
+fn search_n_after_cancelled_select_within_uses_original_search() {
+    let mut ed = editor_from("-[x]>x ab cd ab cd\n");
+
+    // Search for "ab", confirm.
+    ed.handle_key(key('/'));
+    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    assert_eq!(state(&ed), "xx -[ab]> cd ab cd\n");
+
+    // Select all, start select-within with "cd", then cancel.
+    ed.handle_key(key('%'));
+    ed.handle_key(key('s'));
+    for ch in "cd".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_esc());
+
+    // `n` must still find "ab".
+    ed.handle_key(key('n'));
+    let st = state(&ed);
+    assert!(
+        st.contains("-[ab]>") || st.contains("<[ab]-"),
+        "expected primary on 'ab', got: {st}"
+    );
+}
+
+/// A prior `search.regex` must survive a select-within confirm.
+#[test]
+fn search_regex_survives_select_within_confirm() {
+    use crate::ops::search::compile_search_regex;
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.search.set_regex(compile_search_regex("cd"));
+    assert!(ed.search.regex.is_some());
+
+    ed.handle_key(key('s'));
+    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert!(ed.search.regex.is_some(), "search.regex should survive select-within confirm");
+}
+
+/// A prior `search.regex` must survive a select-within cancel.
+#[test]
+fn search_regex_survives_select_within_cancel() {
+    use crate::ops::search::compile_search_regex;
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.search.set_regex(compile_search_regex("cd"));
+    assert!(ed.search.regex.is_some());
+
+    ed.handle_key(key('s'));
+    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_esc());
+
+    assert!(ed.search.regex.is_some(), "search.regex should survive select-within cancel");
+}
+
+/// `s` + confirm with no prior search — pressing `n` afterward should be a
+/// no-op (no crash, no match, selection unchanged).
+#[test]
+fn search_n_after_select_within_with_no_prior_search() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    assert!(ed.search.regex.is_none());
+    assert!(reg(&ed, 's').is_empty());
+
+    ed.handle_key(key('s'));
+    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    let before = state(&ed);
+    ed.handle_key(key('n'));
+    // With no search pattern, `n` is a no-op — selection unchanged.
+    assert_eq!(state(&ed), before);
+}
+
 // ── Use selection as search (*) ──────────────────────────────────────────────
 
 /// `*` on a cursor expands to the word under the cursor and sets search.
