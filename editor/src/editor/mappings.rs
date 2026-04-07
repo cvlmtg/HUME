@@ -75,10 +75,8 @@ impl Editor {
         }
 
         // ── Macro recording ───────────────────────────────────────────────────
-        // Append this key to the recording buffer, unless the stop-recording `Q`
-        // set `skip_macro_record` (so the stop key itself is not recorded).
-        // This runs after all mode handlers so keys typed in Insert, Command,
-        // and Search modes are all captured.
+        // Runs after all mode handlers so Insert, Command, and Search keys
+        // are captured. `skip_macro_record` excludes the stop `Q` itself.
         if let Some((_, ref mut keys)) = self.macro_recording {
             if !self.skip_macro_record {
                 keys.push(key);
@@ -161,16 +159,14 @@ impl Editor {
                 MacroPending::Record => {
                     match key.code {
                         // `QQ` — record into the default macro register.
-                        // `Q` is uppercase so is_valid_macro_register won't catch it;
-                        // handle it explicitly so the symmetry `QQ`/`qq` works.
+                        // `QQ` — record into the default register. `Q` is uppercase
+                        // so is_valid_macro_register won't catch it; handle explicitly.
                         KeyCode::Char('Q') => {
                             self.macro_recording = Some((MACRO_REGISTER, Vec::new()));
                             self.skip_macro_record = true;
                         }
                         KeyCode::Char(reg) if is_valid_macro_register(reg) => {
                             self.macro_recording = Some((reg, Vec::new()));
-                            // Skip recording this key — the register-name itself
-                            // should not be part of the macro body.
                             self.skip_macro_record = true;
                         }
                         // Esc, Ctrl-C, non-Char, or invalid Char — cancel.
@@ -222,12 +218,9 @@ impl Editor {
             match key.code {
                 KeyCode::Char('Q') => {
                     if let Some((reg, keys)) = self.macro_recording.take() {
-                        // Stop recording: write the accumulated keys to the register.
-                        // skip_macro_record ensures the `Q` stop-key itself is not appended.
                         self.registers.write_macro(reg, keys);
                         self.skip_macro_record = true;
                     } else if self.replay_queue.is_empty() {
-                        // Start recording: wait for the register-name key.
                         self.macro_pending = Some(MacroPending::Record);
                     }
                     // During replay: silently ignore (no nested recording).
