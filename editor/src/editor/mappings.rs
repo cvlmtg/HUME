@@ -332,9 +332,8 @@ impl Editor {
             // Reset the sticky display column unless this was a vertical visual-line command.
             // Any horizontal motion, edit, or mode change should clear it so the next
             // j/k press re-latches to the cursor's actual position.
-            match resolved {
-                "move-down" | "move-up" | "extend-down" | "extend-up" => {}
-                _ => self.preferred_display_col = None,
+            if !is_vertical_visual {
+                self.preferred_display_col = None;
             }
 
             // Record repeatable actions for `.` replay.
