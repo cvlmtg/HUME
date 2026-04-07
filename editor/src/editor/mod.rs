@@ -396,6 +396,14 @@ pub(crate) struct Editor {
     /// not appended to the macro buffer. Checked and cleared unconditionally at
     /// the end of every `handle_key` call.
     pub(super) skip_macro_record: bool,
+
+    /// True while the event loop is draining the replay queue.
+    ///
+    /// Used to suppress nested recording: a `Q` key inside a replayed macro
+    /// must not start a new recording session. Checking this flag is more
+    /// reliable than checking `replay_queue.is_empty()`, which becomes `true`
+    /// at the exact moment the last replayed key is processed.
+    pub(super) is_replaying: bool,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -510,6 +518,7 @@ impl Editor {
             macro_pending: None,
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
+            is_replaying: false,
         })
     }
 
@@ -612,12 +621,7 @@ impl Editor {
             // replay to run immediately — the results are visible on the very
             // next frame rather than requiring an additional keypress.
             // `last_action` is saved/restored so replay does not corrupt dot-repeat.
-            let saved_action = self.last_action.take();
-            while let Some(key) = self.replay_queue.pop_front() {
-                self.handle_key(key);
-                if self.should_quit { break; }
-            }
-            self.last_action = saved_action;
+            self.drain_replay_queue();
             // One cache update covers the entire replay batch — the search
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
@@ -878,6 +882,25 @@ impl Editor {
         };
         self.doc.set_selections(new_sels);
     }
+
+    /// Drain the macro replay queue, executing each key in order.
+    ///
+    /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
+    /// replayed keys cannot start nested recording or replay sessions — including
+    /// when the last key in the macro is `Q` (where `replay_queue.is_empty()`
+    /// would already be `true` and would fail to suppress it).
+    ///
+    /// Saves and restores `last_action` so replay does not corrupt dot-repeat.
+    pub(crate) fn drain_replay_queue(&mut self) {
+        let saved_action = self.last_action.take();
+        self.is_replaying = true;
+        while let Some(key) = self.replay_queue.pop_front() {
+            self.handle_key(key);
+            if self.should_quit { break; }
+        }
+        self.is_replaying = false;
+        self.last_action = saved_action;
+    }
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
@@ -945,6 +968,7 @@ impl Editor {
             macro_pending: None,
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
+            is_replaying: false,
         }
     }
 

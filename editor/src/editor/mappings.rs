@@ -158,7 +158,6 @@ impl Editor {
             match pending {
                 MacroPending::Record => {
                     match key.code {
-                        // `QQ` — record into the default macro register.
                         // `QQ` — record into the default register. `Q` is uppercase
                         // so is_valid_macro_register won't catch it; handle explicitly.
                         KeyCode::Char('Q') => {
@@ -219,15 +218,14 @@ impl Editor {
                 KeyCode::Char('Q') => {
                     if let Some((reg, keys)) = self.macro_recording.take() {
                         self.registers.write_macro(reg, keys);
-                        self.skip_macro_record = true;
-                    } else if self.replay_queue.is_empty() {
+                    } else if !self.is_replaying {
                         self.macro_pending = Some(MacroPending::Record);
                     }
                     // During replay: silently ignore (no nested recording).
                     return;
                 }
                 KeyCode::Char('q') => {
-                    if self.replay_queue.is_empty() && self.macro_recording.is_none() {
+                    if !self.is_replaying && self.macro_recording.is_none() {
                         // Replay: wait for the register-name key.
                         self.macro_pending = Some(MacroPending::Replay);
                     }
