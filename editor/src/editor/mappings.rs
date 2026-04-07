@@ -14,7 +14,9 @@ use crate::ops::selection_cmd::select_matches_within;
 use super::keymap::WalkResult;
 use engine::types::EditorMode;
 
-use super::{Editor, Mode, SearchDirection};
+use crate::ops::register::MACRO_REGISTER;
+
+use super::{Editor, MacroPending, Mode, SearchDirection};
 
 /// Commands that always record a jump before executing.
 const JUMP_COMMANDS: &[&str] = &[
@@ -34,6 +36,29 @@ fn is_jump_command(name: &str) -> bool {
     JUMP_COMMANDS.contains(&name)
 }
 
+/// Valid register names for macro recording/replay: lowercase letters and digits.
+///
+/// This covers all registers defined by HUME's naming scheme. Special registers
+/// like `b` (black hole) and `c` (clipboard) are technically valid register
+/// chars and are accepted here — the register layer handles black-hole semantics.
+fn is_valid_macro_register(ch: char) -> bool {
+    ch.is_ascii_lowercase() || ch.is_ascii_digit()
+}
+
+/// Enqueue the keys stored in `reg` into the editor's replay queue.
+///
+/// The accumulated count (defaulting to 1) determines how many times the macro
+/// is enqueued. Count is consumed and cleared. No-op when the register is empty,
+/// unset, or holds text rather than a macro.
+fn enqueue_macro_replay(ed: &mut Editor, reg: char) {
+    let count = ed.count.take().unwrap_or(1);
+    if let Some(keys) = ed.registers.read(reg).and_then(|r| r.as_macro()).map(|k| k.to_vec()) {
+        for _ in 0..count {
+            ed.replay_queue.extend(keys.iter().copied());
+        }
+    }
+}
+
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -48,11 +73,47 @@ impl Editor {
             Mode::Search => self.handle_search(key),
             Mode::Select => self.handle_select(key),
         }
+
+        // ── Macro recording ───────────────────────────────────────────────────
+        // Append this key to the recording buffer, unless the stop-recording `Q`
+        // set `skip_macro_record` (so the stop key itself is not recorded).
+        // This runs after all mode handlers so keys typed in Insert, Command,
+        // and Search modes are all captured.
+        if let Some((_, ref mut keys)) = self.macro_recording {
+            if !self.skip_macro_record {
+                keys.push(key);
+            }
+        }
+        self.skip_macro_record = false;
     }
 
     // ── Normal mode ───────────────────────────────────────────────────────────
 
     fn handle_normal(&mut self, key: KeyEvent) {
+        // ── Kitty SHIFT normalization ─────────────────────────────────────────
+        // The kitty keyboard protocol reports uppercase letters as Char('Q') with
+        // KeyModifiers::SHIFT. For HUME's purposes the uppercase-ness is already
+        // encoded in the char, so SHIFT is redundant and should be stripped — both
+        // for the q/Q intercept below and for trie lookup (which stores bindings
+        // as key!('Q') = Char('Q') + NONE).
+        //
+        // Only strip SHIFT when it is the *only* modifier (bare Shift+letter).
+        // Ctrl+Shift combinations (e.g. Ctrl+X) keep their modifiers so they
+        // match explicit Ctrl bindings in the keymap.
+        let key = if key.modifiers == KeyModifiers::SHIFT {
+            if let KeyCode::Char(ch) = key.code {
+                if ch.is_alphabetic() {
+                    KeyEvent::new(key.code, KeyModifiers::NONE)
+                } else {
+                    key
+                }
+            } else {
+                key
+            }
+        } else {
+            key
+        };
+
         // ── Consume WaitChar argument ─────────────────────────────────────────
         // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
         // holds the command name to dispatch. The next character (any key)
@@ -76,6 +137,7 @@ impl Editor {
         if key.code == KeyCode::Esc {
             self.pending_keys.clear();
             self.count = None;
+            self.macro_pending = None; // cancel any pending q/Q register-name prompt
             // Esc exits Extend mode; Normal is the reset state.
             if self.mode == EditorMode::Extend {
                 self.mode = EditorMode::Normal;
@@ -84,10 +146,59 @@ impl Editor {
             return;
         }
 
+        // ── Macro pending: consume register-name key ──────────────────────────
+        // After `Q` or `q`, the next keypress names the register.
+        //
+        // Record (`Q`): next key must be a valid register name (a-z, 0-9).
+        //   Esc cancels; anything else cancels.
+        //
+        // Replay (`q`): next key selects the register.
+        //   `qq` → replay from the default register `q` (mirrors `QQ` for recording).
+        //   `q<reg>` → replay from the named register (e.g. `q3`).
+        //   Any other key → cancel silently (key is swallowed).
+        if let Some(pending) = self.macro_pending.take() {
+            match pending {
+                MacroPending::Record => {
+                    match key.code {
+                        // `QQ` — record into the default macro register.
+                        // `Q` is uppercase so is_valid_macro_register won't catch it;
+                        // handle it explicitly so the symmetry `QQ`/`qq` works.
+                        KeyCode::Char('Q') => {
+                            self.macro_recording = Some((MACRO_REGISTER, Vec::new()));
+                            self.skip_macro_record = true;
+                        }
+                        KeyCode::Char(reg) if is_valid_macro_register(reg) => {
+                            self.macro_recording = Some((reg, Vec::new()));
+                            // Skip recording this key — the register-name itself
+                            // should not be part of the macro body.
+                            self.skip_macro_record = true;
+                        }
+                        // Esc, Ctrl-C, non-Char, or invalid Char — cancel.
+                        _ => {}
+                    }
+                    return;
+                }
+                MacroPending::Replay => {
+                    match key.code {
+                        // `q<reg>` — replay from named register (includes `qq` since
+                        // `q` is a valid lowercase register name → replays from `q`).
+                        KeyCode::Char(ch) if is_valid_macro_register(ch) => {
+                            enqueue_macro_replay(self, ch);
+                        }
+                        // Any other key (Esc, non-register, etc.) — cancel silently.
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+
         // ── Count prefix accumulation ─────────────────────────────────────────
         // Only accumulate when we're at the trie root (no pending sequence)
         // and no modifiers are held (Ctrl+4 is not a count digit).
         // `0` without an existing count is the goto-line-start binding, not a digit.
+        // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
+        // register name, not as a count digit.
         if self.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
             match key.code {
                 KeyCode::Char(d @ '1'..='9') => {
@@ -97,6 +208,37 @@ impl Editor {
                 }
                 KeyCode::Char('0') if self.count.is_some() => {
                     self.count = self.count.map(|c| c * 10);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // ── `Q` / `q` intercept (bare key, at trie root, no modifiers) ────────
+        // `Q` toggles recording; `q` triggers replay. Recording uses uppercase
+        // because you do it once; replay uses lowercase because you do it often.
+        // Both are suppressed while a replay is in progress to prevent nesting.
+        if self.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
+            match key.code {
+                KeyCode::Char('Q') => {
+                    if let Some((reg, keys)) = self.macro_recording.take() {
+                        // Stop recording: write the accumulated keys to the register.
+                        // skip_macro_record ensures the `Q` stop-key itself is not appended.
+                        self.registers.write_macro(reg, keys);
+                        self.skip_macro_record = true;
+                    } else if self.replay_queue.is_empty() {
+                        // Start recording: wait for the register-name key.
+                        self.macro_pending = Some(MacroPending::Record);
+                    }
+                    // During replay: silently ignore (no nested recording).
+                    return;
+                }
+                KeyCode::Char('q') => {
+                    if self.replay_queue.is_empty() && self.macro_recording.is_none() {
+                        // Replay: wait for the register-name key.
+                        self.macro_pending = Some(MacroPending::Replay);
+                    }
+                    // During recording or replay: silently ignore.
                     return;
                 }
                 _ => {}
@@ -426,7 +568,7 @@ impl Editor {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_search(),
             MiniBufferEvent::Confirm(pattern) => {
                 // Persist pattern in 's' register for future n/N.
-                self.registers.write(SEARCH_REGISTER, vec![pattern]);
+                self.registers.write_text(SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 if let Some(sels) = self.search.pre_search_sels.take() {

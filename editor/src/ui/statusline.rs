@@ -62,6 +62,9 @@ pub(crate) enum StatusElement {
     /// character followed by the input text. The block cursor within the
     /// input is applied as a post-render patch in [`render_statusline`].
     MiniBuf,
+    /// Macro recording indicator: `"[recording @q]"` while a macro is being
+    /// recorded, empty otherwise.
+    MacroRecording,
 }
 
 /// Describes the content layout of the statusline's three sections.
@@ -97,6 +100,7 @@ impl Default for StatusLineConfig {
             ],
             center: vec![],
             right: vec![
+                StatusElement::MacroRecording,
                 StatusElement::SearchMatches,
                 StatusElement::KittyProtocol,
                 StatusElement::Separator,
@@ -291,6 +295,13 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
                 text.push(mb.prompt);
                 text.push_str(&mb.input);
                 (Cow::Owned(text), colors.statusline)
+            } else {
+                (Cow::Borrowed(""), colors.statusline)
+            }
+        }
+        StatusElement::MacroRecording => {
+            if let Some((reg, _)) = &editor.macro_recording {
+                (Cow::Owned(format!("[recording @{reg}]")), colors.status_insert)
             } else {
                 (Cow::Borrowed(""), colors.statusline)
             }

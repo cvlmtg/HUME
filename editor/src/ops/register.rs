@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crossterm::event::KeyEvent;
+
 use crate::core::buffer::Buffer;
 use crate::core::selection::SelectionSet;
 
@@ -11,8 +13,8 @@ use crate::core::selection::SelectionSet;
 //
 // User-facing register names:
 //   '0'–'9'  Named storage — text or macros (last write wins).
-//   'q'      Default macro register. `qq` records, `Q` replays.
-//            `q3` records into register '3', `Q3` replays from it.
+//   'q'      Default macro register. `QQ` records, `qq` replays.
+//            `Q3` records into register '3', `q3` replays from it.
 //   'c'      System clipboard (requires OS integration).
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
@@ -40,32 +42,54 @@ pub(crate) const CLIPBOARD_REGISTER: char = 'c';
 pub(crate) const SEARCH_REGISTER: char = 's';
 
 /// The default macro register (`q`).
-/// `qq` starts/stops recording into this register; `Q` replays from it.
+/// `QQ` starts/stops recording into this register; `qq` replays from it.
 /// Can also hold yanked text if the user explicitly writes to it.
 #[allow(dead_code)]
 pub(crate) const MACRO_REGISTER: char = 'q';
 
+/// The content of a register — either yanked text or a recorded macro.
+///
+/// Registers are single-slot: the last write wins. Writing a macro to a register
+/// that previously held text replaces it (and vice-versa).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RegisterContent {
+    /// Yanked text — one `String` per selection that was active at yank time,
+    /// in document order. A single-cursor yank produces a `Vec` of length 1.
+    ///
+    /// The linewise-vs-charwise distinction is not tracked explicitly; at paste
+    /// time, content that ends with `\n` is treated as linewise.
+    Text(Vec<String>),
+    /// A recorded macro — the raw sequence of key events captured during recording.
+    Macro(Vec<KeyEvent>),
+}
+
 /// One named register.
-///
-/// Stores a `Vec<String>` — one string per selection that was active at yank
-/// time, in document order. A single-cursor yank produces a `Vec` of length 1.
-///
-/// The linewise-vs-charwise distinction is not tracked explicitly. At paste
-/// time, content that ends with `\n` is treated as linewise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Register {
-    values: Vec<String>,
+    content: RegisterContent,
 }
 
 impl Register {
-    /// Create a register from a `Vec<String>`.
-    pub(crate) fn new(values: Vec<String>) -> Self {
-        Self { values }
+    fn new(content: RegisterContent) -> Self {
+        Self { content }
     }
 
-    /// Borrow the stored strings.
-    pub(crate) fn values(&self) -> &[String] {
-        &self.values
+    /// If this register holds text, borrow the string slice. Returns `None` for macro registers.
+    ///
+    /// Callers that try to paste a macro register get `None` and treat it as a no-op.
+    pub(crate) fn as_text(&self) -> Option<&[String]> {
+        match &self.content {
+            RegisterContent::Text(v) => Some(v),
+            RegisterContent::Macro(_) => None,
+        }
+    }
+
+    /// If this register holds a recorded macro, borrow the key slice. Returns `None` for text registers.
+    pub(crate) fn as_macro(&self) -> Option<&[KeyEvent]> {
+        match &self.content {
+            RegisterContent::Macro(keys) => Some(keys),
+            RegisterContent::Text(_) => None,
+        }
     }
 }
 
@@ -102,14 +126,24 @@ impl RegisterSet {
         self.registers.get(&name)
     }
 
-    /// Write to a register, replacing its previous contents.
+    /// Write text to a register, replacing its previous contents.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
-    pub(crate) fn write(&mut self, name: char, values: Vec<String>) {
+    pub(crate) fn write_text(&mut self, name: char, values: Vec<String>) {
         if name == BLACK_HOLE_REGISTER {
             return;
         }
-        self.registers.insert(name, Register::new(values));
+        self.registers.insert(name, Register::new(RegisterContent::Text(values)));
+    }
+
+    /// Write a recorded macro to a register, replacing its previous contents.
+    ///
+    /// Writes to the black-hole register (`'b'`) are silently discarded.
+    pub(crate) fn write_macro(&mut self, name: char, keys: Vec<KeyEvent>) {
+        if name == BLACK_HOLE_REGISTER {
+            return;
+        }
+        self.registers.insert(name, Register::new(RegisterContent::Macro(keys)));
     }
 }
 
@@ -121,7 +155,7 @@ impl RegisterSet {
 /// ```text
 /// let yanked = yank_selections(&buf, &sels);
 /// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
-/// registers.write(DEFAULT_REGISTER, yanked);
+/// registers.write_text(DEFAULT_REGISTER, yanked);
 /// ```
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
@@ -149,16 +183,16 @@ mod tests {
     #[test]
     fn write_and_read() {
         let mut regs = RegisterSet::new();
-        regs.write(DEFAULT_REGISTER, vec!["hello".to_string()]);
-        assert_eq!(regs.read(DEFAULT_REGISTER).unwrap().values(), &["hello"]);
+        regs.write_text(DEFAULT_REGISTER, vec!["hello".to_string()]);
+        assert_eq!(regs.read(DEFAULT_REGISTER).unwrap().as_text(), Some(vec!["hello".to_string()].as_slice()));
     }
 
     #[test]
     fn overwrite_replaces_previous() {
         let mut regs = RegisterSet::new();
-        regs.write('0', vec!["first".to_string()]);
-        regs.write('0', vec!["second".to_string()]);
-        assert_eq!(regs.read('0').unwrap().values(), &["second"]);
+        regs.write_text('0', vec!["first".to_string()]);
+        regs.write_text('0', vec!["second".to_string()]);
+        assert_eq!(regs.read('0').unwrap().as_text(), Some(vec!["second".to_string()].as_slice()));
     }
 
     #[test]
@@ -170,7 +204,7 @@ mod tests {
     #[test]
     fn black_hole_write_is_discarded() {
         let mut regs = RegisterSet::new();
-        regs.write(BLACK_HOLE_REGISTER, vec!["ignored".to_string()]);
+        regs.write_text(BLACK_HOLE_REGISTER, vec!["ignored".to_string()]);
         assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
     }
 
@@ -183,10 +217,45 @@ mod tests {
     #[test]
     fn named_registers_are_independent() {
         let mut regs = RegisterSet::new();
-        regs.write('1', vec!["one".to_string()]);
-        regs.write('2', vec!["two".to_string()]);
-        assert_eq!(regs.read('1').unwrap().values(), &["one"]);
-        assert_eq!(regs.read('2').unwrap().values(), &["two"]);
+        regs.write_text('1', vec!["one".to_string()]);
+        regs.write_text('2', vec!["two".to_string()]);
+        assert_eq!(regs.read('1').unwrap().as_text(), Some(vec!["one".to_string()].as_slice()));
+        assert_eq!(regs.read('2').unwrap().as_text(), Some(vec!["two".to_string()].as_slice()));
+    }
+
+    #[test]
+    fn write_macro_and_read_back() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let mut regs = RegisterSet::new();
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        regs.write_macro('q', keys.clone());
+        assert_eq!(regs.read('q').unwrap().as_macro(), Some(keys.as_slice()));
+        // as_text() returns None for a macro register
+        assert!(regs.read('q').unwrap().as_text().is_none());
+    }
+
+    #[test]
+    fn macro_overwrites_text_last_write_wins() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let mut regs = RegisterSet::new();
+        regs.write_text('0', vec!["hello".to_string()]);
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        regs.write_macro('0', keys.clone());
+        // now holds a macro, not text
+        assert!(regs.read('0').unwrap().as_text().is_none());
+        assert_eq!(regs.read('0').unwrap().as_macro(), Some(keys.as_slice()));
+    }
+
+    #[test]
+    fn text_overwrites_macro_last_write_wins() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let mut regs = RegisterSet::new();
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        regs.write_macro('0', keys);
+        regs.write_text('0', vec!["text".to_string()]);
+        // now holds text, not a macro
+        assert!(regs.read('0').unwrap().as_macro().is_none());
+        assert_eq!(regs.read('0').unwrap().as_text(), Some(vec!["text".to_string()].as_slice()));
     }
 
     #[test]
