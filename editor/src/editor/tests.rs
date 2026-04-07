@@ -1844,6 +1844,150 @@ fn select_within_no_matches_keeps_originals() {
     assert_eq!(state(&ed), original);
 }
 
+// ── select-within with multiple cursors ───────────────────────────────────────
+
+/// Two pre-existing selections each containing matches — `s` produces one
+/// result selection per match, across all original selections.
+///
+/// "aa bb aa\n" with two selections: [aa ] and [aa] at start/end.
+/// Splitting on "aa" yields two "aa" selections, one from each original.
+#[test]
+fn select_within_multiple_selections_finds_matches_in_each() {
+    use crate::core::selection::{Selection, SelectionSet};
+    // "aa bb aa\n"
+    //  0123456789
+    let mut ed = editor_from("-[aa bb aa]>\n");
+    // Replace with two selections: "aa " (0..2) and "aa" (6..7).
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 2), // "aa " — primary
+            Selection::new(6, 7), // "aa"
+        ],
+        0,
+    );
+    ed.doc.set_selections(two_sels);
+
+    ed.handle_key(key('s'));
+    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    // One "aa" from each original selection → 2 selections total.
+    assert_eq!(ed.doc.sels().len(), 2);
+    // First match: chars 0..1 ("aa" in first selection).
+    let sels: Vec<_> = ed.doc.sels().iter_sorted().collect();
+    assert_eq!(sels[0].start(), 0);
+    assert_eq!(sels[0].end_inclusive(ed.doc.buf()), 1);
+    // Second match: chars 6..7 ("aa" in second selection).
+    assert_eq!(sels[1].start(), 6);
+    assert_eq!(sels[1].end_inclusive(ed.doc.buf()), 7);
+}
+
+/// When one selection has matches and another does not, only the matching
+/// selection produces results — the non-matching one is dropped.
+#[test]
+fn select_within_drops_selections_with_no_match() {
+    use crate::core::selection::{Selection, SelectionSet};
+    // "aa bb cc\n"
+    //  01234567
+    let mut ed = editor_from("-[aa bb cc]>\n");
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 1), // "aa" — primary, has match
+            Selection::new(6, 7), // "cc" — no "aa" here
+        ],
+        0,
+    );
+    ed.doc.set_selections(two_sels);
+
+    ed.handle_key(key('s'));
+    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    // Only one match (from the first selection).
+    assert_eq!(ed.doc.sels().len(), 1);
+    assert_eq!(ed.doc.sels().primary().start(), 0);
+    assert_eq!(ed.doc.sels().primary().end_inclusive(ed.doc.buf()), 1);
+}
+
+/// When NO selection contains a match, the original selections are restored.
+#[test]
+fn select_within_multiple_selections_no_match_restores_all() {
+    use crate::core::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[aa bb cc]>\n");
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 1),
+            Selection::new(3, 4),
+        ],
+        0,
+    );
+    ed.doc.set_selections(two_sels.clone());
+
+    let original = state(&ed);
+    ed.handle_key(key('s'));
+    ed.handle_key(key('z')); // no "z" in either selection
+    // Live preview: no matches → originals restored mid-edit.
+    assert_eq!(state(&ed), original);
+    ed.handle_key(key_enter()); // ConfirmEmpty (input is non-empty but all backspaced? No — confirm with 'z')
+    // Actually confirm with 'z': select_matches_within returns None → cancel path.
+    assert_eq!(ed.doc.sels().len(), 2, "original two selections should be restored");
+}
+
+/// Primary index after select-within tracks to the first match within the
+/// original primary selection, even when that selection is not first in order.
+#[test]
+fn select_within_primary_tracks_original_primary() {
+    use crate::core::selection::{Selection, SelectionSet};
+    // "aa bb aa\n" — two selections, primary is the SECOND one (6..7).
+    let mut ed = editor_from("-[aa bb aa]>\n");
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 1), // first in order, NOT primary
+            Selection::new(6, 7), // second in order, IS primary
+        ],
+        1,
+    );
+    ed.doc.set_selections(two_sels);
+
+    ed.handle_key(key('s'));
+    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.doc.sels().len(), 2);
+    // Primary must be the match from the original primary selection (6..7).
+    let primary = ed.doc.sels().primary();
+    assert_eq!(primary.start(), 6, "primary should come from the original primary selection");
+}
+
+/// Esc after live-preview with multiple selections restores all originals.
+#[test]
+fn select_within_esc_restores_multiple_selections() {
+    use crate::core::selection::{Selection, SelectionSet};
+    // Use wider original selections ("aa bb" and "aa") so the live-preview
+    // of "aa" visibly shrinks them — confirming the snapshot is correct.
+    // "aa bb aa\n"
+    //  012345678
+    let mut ed = editor_from("-[aa bb aa]>\n");
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(0, 4), // "aa bb" — wider than any "aa" match
+            Selection::new(6, 7), // "aa"
+        ],
+        0,
+    );
+    ed.doc.set_selections(two_sels);
+    let original = state(&ed);
+
+    ed.handle_key(key('s'));
+    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    // Live preview shrinks "aa bb" → "aa", so state differs.
+    assert_ne!(state(&ed), original);
+
+    ed.handle_key(key_esc());
+    assert_eq!(ed.doc.sels().len(), 2, "both original selections restored");
+    assert_eq!(state(&ed), original);
+}
+
 // ── Search / select-within independence ──────────────────────────────────────
 
 /// After `/foo` + confirm, `s` + `bar` + confirm, pressing `n` must jump to the
