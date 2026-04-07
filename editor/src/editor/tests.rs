@@ -2815,3 +2815,122 @@ fn visual_move_down_with_count() {
     // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
     assert_eq!(ed.doc.sels().primary().head, 81, "2j: two visual rows from sub-row 0");
 }
+
+// ── Visual-line extend variants ───────────────────────────────────────────────
+//
+// Extend mode is toggled with `e`. In extend mode `j`/`k` resolve to
+// extend-down/extend-up: the anchor stays fixed and only the head moves.
+
+/// extend-down (e+j) within a wrapped line: anchor stays at sub-row 0, head
+/// advances to sub-row 1 of the same buffer line.
+#[test]
+fn visual_extend_down_within_wrapped_line() {
+    let mut ed = visual_test_editor(0);
+    ed.handle_key(key('e')); // enter extend mode
+    ed.handle_key(key('j'));
+    let sel = ed.doc.sels().primary();
+    assert_eq!(sel.anchor, 0,  "anchor fixed at sub-row 0 col 0");
+    assert_eq!(sel.head,   76, "head extends to sub-row 1 col 0");
+}
+
+/// extend-down crosses to the next buffer line when already on the last sub-row.
+#[test]
+fn visual_extend_down_crosses_buffer_line() {
+    let mut ed = visual_test_editor(76); // last sub-row of line 0
+    ed.handle_key(key('e'));
+    ed.handle_key(key('j'));
+    let sel = ed.doc.sels().primary();
+    assert_eq!(sel.anchor, 76, "anchor fixed at last sub-row");
+    assert_eq!(sel.head,   81, "head crosses to first char of next buffer line");
+}
+
+/// extend-up (e+k) within a wrapped line: head retreats from sub-row 1 to sub-row 0.
+#[test]
+fn visual_extend_up_within_wrapped_line() {
+    let mut ed = visual_test_editor(76); // sub-row 1 of line 0
+    ed.handle_key(key('e'));
+    ed.handle_key(key('k'));
+    let sel = ed.doc.sels().primary();
+    assert_eq!(sel.anchor, 76, "anchor fixed at sub-row 1");
+    assert_eq!(sel.head,   0,  "head retreats to sub-row 0 col 0");
+}
+
+/// extend-up enters the last sub-row of the previous buffer line.
+#[test]
+fn visual_extend_up_enters_previous_line_last_subrow() {
+    let mut ed = visual_test_editor(81); // start of "short"
+    ed.handle_key(key('e'));
+    ed.handle_key(key('k'));
+    let sel = ed.doc.sels().primary();
+    assert_eq!(sel.anchor, 81, "anchor fixed at line 1 start");
+    assert_eq!(sel.head,   76, "head enters last sub-row of previous buffer line");
+}
+
+// ── Page scroll ───────────────────────────────────────────────────────────────
+//
+// page_scroll / half_page_scroll were refactored from Motion dispatch to
+// EditorCmd dispatch. These tests verify they still move by the right distance.
+//
+// Viewport height in for_testing = 24 → page = 24, half = 12.
+// Buffer: 30 single-char lines "a\n" (60 chars total). No wrap needed.
+// Line N starts at char 2*N.
+
+fn page_test_editor() -> Editor {
+    use crate::core::buffer::Buffer;
+    use crate::core::selection::{Selection, SelectionSet};
+    use engine::pane::WrapMode;
+    let content = "a\n".repeat(30);
+    let buf = Buffer::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(0));
+    let mut ed = Editor::for_testing(Document::new(buf, sels));
+    ed.pane_mut().wrap_mode = WrapMode::None;
+    ed
+}
+
+fn key_page_down() -> KeyEvent {
+    KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE)
+}
+
+fn key_page_up() -> KeyEvent {
+    KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE)
+}
+
+/// Ctrl+d (half-page-down) moves cursor down by half the viewport height (12 lines).
+#[test]
+fn half_page_down_moves_half_viewport() {
+    let mut ed = page_test_editor();
+    ed.handle_key(key_ctrl('d'));
+    // half = 24/2 = 12 lines → line 12 → char 24
+    assert_eq!(ed.doc.sels().primary().head, 24, "half-page-down from line 0: cursor at line 12");
+}
+
+/// Ctrl+u (half-page-up) moves cursor up by half the viewport height.
+#[test]
+fn half_page_up_moves_half_viewport() {
+    let mut ed = page_test_editor();
+    // Place cursor at line 12 first.
+    ed.handle_key(key_ctrl('d'));
+    assert_eq!(ed.doc.sels().primary().head, 24);
+    ed.handle_key(key_ctrl('u'));
+    assert_eq!(ed.doc.sels().primary().head, 0, "half-page-up returns to line 0");
+}
+
+/// PageDown moves cursor down by a full viewport height (24 lines).
+#[test]
+fn page_down_moves_full_viewport() {
+    let mut ed = page_test_editor();
+    ed.handle_key(key_page_down());
+    // page = 24 lines → line 24 → char 48
+    assert_eq!(ed.doc.sels().primary().head, 48, "page-down from line 0: cursor at line 24");
+}
+
+/// PageUp moves cursor up by a full viewport height.
+#[test]
+fn page_up_moves_full_viewport() {
+    let mut ed = page_test_editor();
+    // Place cursor at line 24 first.
+    ed.handle_key(key_page_down());
+    assert_eq!(ed.doc.sels().primary().head, 48);
+    ed.handle_key(key_page_up());
+    assert_eq!(ed.doc.sels().primary().head, 0, "page-up returns to line 0");
+}
