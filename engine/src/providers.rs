@@ -301,6 +301,15 @@ mod tests {
         fn highlights_for_line(&self, _: usize, _: &SourceContext, _: &mut Vec<(usize, usize, ScopeId)>) {}
     }
 
+    struct DummyGutter;
+
+    impl GutterColumn for DummyGutter {
+        fn width(&self, _: usize) -> u8 { 0 }
+        fn render_row(&self, _: crate::types::RowKind, _: usize, _: crate::types::EditorMode, _: usize) -> GutterCell {
+            GutterCell::blank(Scope("x"))
+        }
+    }
+
     // ── GutterCellContent::from_number ─────────────────────────────────
 
     fn num_str(n: usize) -> String {
@@ -336,6 +345,17 @@ mod tests {
     }
 
     // ── ProviderSet ──────────────────────────────────────────────────────
+
+    #[test]
+    fn provider_set_ids_are_sequential_and_unique_across_types() {
+        let mut set = ProviderSet::new();
+        let id0 = set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Syntax }));
+        let id1 = set.add_gutter_column(Box::new(DummyGutter));
+        let id2 = set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Diagnostic }));
+        assert_eq!(id0, 0);
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+    }
 
     #[test]
     fn provider_set_highlight_sorted_by_tier() {
