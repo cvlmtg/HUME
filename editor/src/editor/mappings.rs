@@ -507,7 +507,7 @@ impl Editor {
         };
         match event {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
-            MiniBufferEvent::Confirm(_pattern) => {
+            MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
                 self.pre_select_sels = None;
                 // Do NOT write to SEARCH_REGISTER or clear search state —
