@@ -507,14 +507,13 @@ impl Editor {
         };
         match event {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
-            MiniBufferEvent::Confirm(pattern) => {
-                // Persist pattern in 's' register (same as search confirm).
-                self.registers.write(SEARCH_REGISTER, vec![pattern]);
+            MiniBufferEvent::Confirm(_pattern) => {
                 // Keep the selections that live preview already set.
                 self.pre_select_sels = None;
-                // Clear any pre-existing search highlights.
-                // n/N can still repeat: search_jump recompiles from the register.
-                self.search.clear();
+                // Do NOT write to SEARCH_REGISTER or clear search state —
+                // select-within is a selection op, not a search. The previous
+                // search pattern and its highlights should be preserved so that
+                // n/N continues to navigate the original search.
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
             }
@@ -532,7 +531,8 @@ impl Editor {
         if let Some(sels) = self.pre_select_sels.take() {
             self.doc.set_selections(sels);
         }
-        self.search.clear();
+        // Do not clear search state — the previous search should survive a
+        // cancelled select-within.
         self.mode = Mode::Normal;
         self.minibuf = None;
     }
