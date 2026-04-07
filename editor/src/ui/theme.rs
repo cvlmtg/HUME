@@ -101,14 +101,17 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
     };
 
     // ── Cursor ──────────────────────────────────────────────────────────────
-    s("ui.cursor",        ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
+    // Primary cursor: bright white block — stands out as the main caret.
+    s("ui.cursor.primary", ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
+    // Secondary cursors (multi-cursor): dimmer gray block — present but not dominant.
+    s("ui.cursor",         ResolvedStyle { fg: Some(rgb(220,220,220)), bg: Some(rgb(140,140,160)), ..Default::default() });
     // In bar-cursor modes the terminal cursor is the sole visual indicator —
     // no cell background override so the character underneath stays readable.
     s("ui.cursor.insert", ResolvedStyle::default());
 
     // ── Selection / cursor-line ──────────────────────────────────────────────
     s("ui.selection",  ResolvedStyle { bg: Some(rgb(68,68,120)), ..Default::default() });
-    s("ui.cursorline", ResolvedStyle { bg: Some(rgb(35,35,45)),  ..Default::default() });
+    s("ui.cursorline", ResolvedStyle { bg: Some(rgb(58,58,58)),  ..Default::default() });
 
     // ── Virtual text / tilde rows ────────────────────────────────────────────
     s("ui.virtual", ResolvedStyle { fg: Some(dark_gray()), ..Default::default() });
