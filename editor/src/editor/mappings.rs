@@ -292,10 +292,11 @@ impl Editor {
             let char_arg = self.pending_char;
 
             // ── Jump list: capture pre-command state ─────────────────────────
-            // Only motions and explicit jump commands can produce a jump.
-            // Skip char_to_line + clone for edits and editor commands.
+            // Motions, explicit jump commands, and vertical visual-line EditorCmds
+            // can all produce large enough line jumps to warrant a jump entry.
             let is_explicit_jump = is_jump_command(resolved);
-            let pre_jump = if is_explicit_jump || matches!(reg_cmd, MappableCommand::Motion { .. }) {
+            let is_vertical_visual = matches!(resolved, "move-down" | "move-up" | "extend-down" | "extend-up");
+            let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
                 let line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
                 Some((self.doc.sels().clone(), line))
             } else {
@@ -326,6 +327,14 @@ impl Editor {
                 if is_explicit_jump || pre_line.abs_diff(post_line) > JUMP_LINE_THRESHOLD {
                     self.jump_list.push(JumpEntry { selections: pre_sels, primary_line: pre_line });
                 }
+            }
+
+            // Reset the sticky display column unless this was a vertical visual-line command.
+            // Any horizontal motion, edit, or mode change should clear it so the next
+            // j/k press re-latches to the cursor's actual position.
+            match resolved {
+                "move-down" | "move-up" | "extend-down" | "extend-up" => {}
+                _ => self.preferred_display_col = None,
             }
 
             // Record repeatable actions for `.` replay.

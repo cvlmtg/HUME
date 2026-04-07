@@ -315,6 +315,22 @@ pub(crate) struct Editor {
     /// one-shot extend shortcuts. Set by the caller after [`Editor::open`].
     pub(crate) kitty_enabled: bool,
 
+    // ── Visual-line movement ──────────────────────────────────────────────────
+
+    /// Sticky display column for visual-line j/k movement.
+    ///
+    /// Set on the first j/k press (to the primary cursor's current display
+    /// column) and preserved across consecutive j/k presses so the cursor
+    /// can return to its original column after passing through shorter rows.
+    /// Reset to `None` on any non-vertical command.
+    pub(super) preferred_display_col: Option<u16>,
+
+    /// Reusable scratch buffer for format operations in visual-line movement.
+    ///
+    /// Allocated once and reused every j/k press to avoid per-keypress
+    /// heap allocation.
+    pub(super) motion_format_scratch: engine::format::FormatScratch,
+
     // ── Dot-repeat fields ─────────────────────────────────────────────────────
 
     /// The last repeatable editing action, available for replay via `.`.
@@ -439,6 +455,8 @@ impl Editor {
             buffer_id,
             bracket_hl_data,
             search_hl_data,
+            preferred_display_col: None,
+            motion_format_scratch: engine::format::FormatScratch::new(),
         })
     }
 
@@ -850,6 +868,8 @@ impl Editor {
             buffer_id,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
+            preferred_display_col: None,
+            motion_format_scratch: engine::format::FormatScratch::new(),
         }
     }
 

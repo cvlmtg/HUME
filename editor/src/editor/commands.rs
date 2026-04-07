@@ -20,16 +20,20 @@ use crate::core::grapheme::next_grapheme_boundary;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ops::edit::{delete_selection, insert_char};
 use crate::ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
+    cmd_extend_down, cmd_extend_up, cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start,
+    cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
     find_char_backward, find_char_forward, MotionMode,
 };
+use crate::cursor::format_row_col;
+use engine::format::{format_buffer_line, FormatScratch};
+use engine::pane::{WhitespaceConfig, WrapMode};
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
 use crate::ops::search::{compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
 use crate::ops::text_object::inner_word_impl;
 use crate::helpers::is_word_boundary;
 
-use engine::types::EditorMode;
+use engine::types::{CellContent, EditorMode};
 
 use super::registry::MappableCommand;
 use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
@@ -311,10 +315,10 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 /// Shared implementation for the four page-scroll commands.
 fn page_scroll(ed: &mut Editor, motion_name: &str) {
     let page = ed.viewport().height as usize;
-    let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
+    let Some(MappableCommand::EditorCmd { fun, .. }) = ed.registry.get(motion_name).copied() else {
         unreachable!("page_scroll: motion '{}' not in registry", motion_name);
     };
-    ed.apply_motion(|b, s| fun(b, s, page));
+    fun(ed, page);
 }
 
 pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize) {
@@ -337,10 +341,10 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 /// Shared implementation for the four half-page-scroll commands.
 fn half_page_scroll(ed: &mut Editor, motion_name: &str) {
     let half = (ed.viewport().height as usize / 2).max(1);
-    let Some(MappableCommand::Motion { fun, .. }) = ed.registry.get(motion_name).copied() else {
+    let Some(MappableCommand::EditorCmd { fun, .. }) = ed.registry.get(motion_name).copied() else {
         unreachable!("half_page_scroll: motion '{}' not in registry", motion_name);
     };
-    ed.apply_motion(|b, s| fun(b, s, half));
+    fun(ed, half);
 }
 
 pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize) {
@@ -354,6 +358,206 @@ pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize) {
 }
 pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize) {
     half_page_scroll(ed, "extend-up");
+}
+
+// ── Visual-line movement ──────────────────────────────────────────────────────
+//
+// When soft-wrap is active, j/k move by one display row rather than one buffer
+// line. These EditorCmd variants need access to wrap_mode, tab_width, and a
+// FormatScratch — unavailable in the pure `(&Buffer, SelectionSet) -> SelectionSet`
+// motion signature — so they live here instead of in ops/motion.rs.
+
+/// Find the char offset of the grapheme in `target_sub_row` closest to
+/// `target_col` display columns, given an already-formatted scratch buffer.
+///
+/// Prefers real content graphemes over the end-of-line sentinel (the `Empty`
+/// grapheme emitted at the `\n` position). The sentinel is only used as a
+/// fallback on truly empty lines where it is the only grapheme. Virtual fill
+/// cells (`char_offset == usize::MAX`) are always skipped.
+///
+/// Returns `0` if the row has no graphemes at all.
+fn find_char_at_display_col(scratch: &FormatScratch, target_sub_row: usize, target_col: u16) -> usize {
+    let Some(row) = scratch.display_rows.get(target_sub_row) else {
+        return 0;
+    };
+    let graphemes = &scratch.graphemes[row.graphemes.clone()];
+
+    // First pass: real content graphemes only (skip Empty sentinel and virtual cells).
+    let mut best: Option<(u16, usize)> = None; // (distance, char_offset)
+    for g in graphemes {
+        if g.char_offset == usize::MAX { continue; } // virtual/fill cell
+        if matches!(g.content, CellContent::Empty) { continue; } // eol sentinel
+        let dist = target_col.abs_diff(g.col);
+        match best {
+            None => best = Some((dist, g.char_offset)),
+            Some((d, _)) if dist < d => best = Some((dist, g.char_offset)),
+            _ => {}
+        }
+    }
+
+    // Fallback: include Empty sentinel (empty lines where it is the only grapheme).
+    if best.is_none() {
+        for g in graphemes {
+            if g.char_offset == usize::MAX { continue; }
+            let dist = target_col.abs_diff(g.col);
+            match best {
+                None => best = Some((dist, g.char_offset)),
+                Some((d, _)) if dist < d => best = Some((dist, g.char_offset)),
+                _ => {}
+            }
+        }
+    }
+
+    best.map_or(0, |(_, off)| off)
+}
+
+/// Advance `head` by one display row downward using the given wrap config.
+///
+/// Returns the new char offset. Stays put when already on the last display row
+/// of the last buffer line.
+fn visual_move_down_one(
+    rope: &ropey::Rope,
+    head: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    target_col: u16,
+    scratch: &mut FormatScratch,
+) -> usize {
+    let line = rope.char_to_line(head);
+
+    // format_row_col clears scratch and formats the current buffer line.
+    let (sub_row, _) = format_row_col(rope, line, head, wrap_mode, tab_width, whitespace, scratch);
+    let total_sub_rows = scratch.display_rows.len();
+
+    if sub_row + 1 < total_sub_rows {
+        // Stay on the same buffer line — just advance one display sub-row.
+        // scratch already holds the formatted current line.
+        find_char_at_display_col(scratch, sub_row + 1, target_col)
+    } else {
+        // Cross to the next buffer line.
+        let next_line = line + 1;
+        if next_line >= rope.len_lines() {
+            return head;
+        }
+        let line_start = rope.line_to_char(next_line);
+        // Guard against the phantom trailing line (structural trailing \n).
+        if line_start >= rope.len_chars() {
+            return head;
+        }
+        scratch.display_rows.clear();
+        scratch.graphemes.clear();
+        scratch.line_texts.clear();
+        format_buffer_line(rope, next_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        find_char_at_display_col(scratch, 0, target_col)
+    }
+}
+
+/// Retreat `head` by one display row upward using the given wrap config.
+///
+/// Returns the new char offset. Stays put when already on the first display
+/// row of the first buffer line.
+fn visual_move_up_one(
+    rope: &ropey::Rope,
+    head: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    target_col: u16,
+    scratch: &mut FormatScratch,
+) -> usize {
+    let line = rope.char_to_line(head);
+    let (sub_row, _) = format_row_col(rope, line, head, wrap_mode, tab_width, whitespace, scratch);
+
+    if sub_row > 0 {
+        // Stay on the same buffer line — retreat one display sub-row.
+        find_char_at_display_col(scratch, sub_row - 1, target_col)
+    } else {
+        // Cross to the previous buffer line.
+        if line == 0 {
+            return head;
+        }
+        let prev_line = line - 1;
+        scratch.display_rows.clear();
+        scratch.graphemes.clear();
+        scratch.line_texts.clear();
+        format_buffer_line(rope, prev_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        let last_sub_row = scratch.display_rows.len().saturating_sub(1);
+        find_char_at_display_col(scratch, last_sub_row, target_col)
+    }
+}
+
+/// Shared core for the four visual-line movement EditorCmds.
+///
+/// When wrapping is off every buffer line is exactly one display row, so we
+/// fall back to the pure buffer-line motions to avoid any overhead.
+fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool) {
+    let pane = &ed.engine_view.panes[ed.pane_id];
+    let wrap_mode = pane.wrap_mode.clone();
+    let tab_width = pane.tab_width;
+    let whitespace = pane.whitespace.clone();
+
+    if !wrap_mode.is_wrapping() {
+        // No wrapping — fall back to buffer-line movement and clear sticky col.
+        ed.preferred_display_col = None;
+        match (down, extend) {
+            (true,  false) => ed.apply_motion(|b, s| cmd_move_down(b, s, count)),
+            (true,  true)  => ed.apply_motion(|b, s| cmd_extend_down(b, s, count)),
+            (false, false) => ed.apply_motion(|b, s| cmd_move_up(b, s, count)),
+            (false, true)  => ed.apply_motion(|b, s| cmd_extend_up(b, s, count)),
+        }
+        return;
+    }
+
+    let rope = ed.doc.buf().rope().clone();
+    let sels = ed.doc.sels().clone();
+
+    // Determine the target display column from the primary cursor.
+    // On the first j/k press preferred_display_col is None, so we compute the
+    // current display column and latch it for subsequent presses.
+    let target_col = if let Some(col) = ed.preferred_display_col {
+        col
+    } else {
+        let primary = sels.primary();
+        let line = rope.char_to_line(primary.head);
+        let (_, col) = format_row_col(
+            &rope, line, primary.head, &wrap_mode, tab_width, &whitespace,
+            &mut ed.motion_format_scratch,
+        );
+        col as u16
+    };
+
+    let scratch = &mut ed.motion_format_scratch;
+    let new_sels = sels.map_and_merge(|sel| {
+        let mut head = sel.head;
+        for _ in 0..count {
+            head = if down {
+                visual_move_down_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+            } else {
+                visual_move_up_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+            };
+        }
+        if extend { Selection::new(sel.anchor, head) } else { Selection::collapsed(head) }
+    });
+
+    ed.preferred_display_col = Some(target_col);
+    ed.doc.set_selections(new_sels);
+}
+
+pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize) {
+    apply_visual_vertical(ed, count, true, false);
+}
+
+pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize) {
+    apply_visual_vertical(ed, count, false, false);
+}
+
+pub(super) fn cmd_visual_extend_down(ed: &mut Editor, count: usize) {
+    apply_visual_vertical(ed, count, true, true);
+}
+
+pub(super) fn cmd_visual_extend_up(ed: &mut Editor, count: usize) {
+    apply_visual_vertical(ed, count, false, true);
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
