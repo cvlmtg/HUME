@@ -2283,3 +2283,43 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     );
     assert_eq!(pane.primary_idx, 1, "primary_idx must point to 'b' (index 1)");
 }
+
+/// Backward selections (head < anchor) can cause start()-order to differ from
+/// head-order. Before the fix, pane selections were passed in start()-order, which
+/// triggered the engine's `debug_assert!(selections sorted by head)`.
+///
+/// Reproduction: two selections where their start() order differs from head order:
+///   A: anchor=10, head=3  → start()=3, head=3   (backward)
+///   B: anchor=0,  head=8  → start()=0, head=8   (forward)
+/// start() order: [B(0), A(3)]  → heads [8, 3]  — NOT sorted → panic
+/// head  order:   [A(3), B(8)]  → heads [3, 8]  — sorted     → OK
+#[test]
+fn pane_selections_sorted_by_head_not_start() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    // Buffer needs at least 11 chars. The -[h]> marker satisfies editor_from's
+    // requirement; we replace the selection set immediately after.
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    // A: backward selection, anchor=10, head=3  → start()=3
+    // B: forward  selection, anchor=0,  head=8  → start()=0
+    // In start() order: [B, A].  In head order: [A, B].
+    let two_sels = SelectionSet::from_vec(
+        vec![
+            Selection { anchor: 10, head: 3 }, // A — primary
+            Selection { anchor: 0,  head: 8 }, // B
+        ],
+        0, // primary is A
+    );
+    ed.doc.set_selections(two_sels);
+
+    // Must not panic (no debug_assert on head ordering).
+    ed.push_selections_to_pane();
+
+    let pane = &ed.engine_view.panes[ed.pane_id];
+    // After sort-by-head: [A(head=3), B(head=8)]
+    assert_eq!(pane.selections[0].head, 3, "first in head order is A");
+    assert_eq!(pane.selections[1].head, 8, "second in head order is B");
+    // Primary (A) ends up at index 0 after sorting.
+    assert_eq!(pane.primary_idx, 0, "primary_idx follows A to its new position");
+}

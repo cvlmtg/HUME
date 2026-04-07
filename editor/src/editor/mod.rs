@@ -600,10 +600,21 @@ impl Editor {
         let primary_idx = self.doc.sels().primary_index();
         let pane = &mut self.engine_view.panes[self.pane_id];
         pane.selections.clear();
-        pane.selections.extend(self.doc.sels().iter_sorted().map(|sel| {
-            EngineSelection { anchor: sel.anchor, head: sel.head }
-        }));
-        pane.primary_idx = primary_idx;
+
+        // The engine requires selections sorted by `head`. The editor stores them
+        // sorted by `start()` (min of anchor/head), which differs when selections
+        // are backward (head < anchor). Collect with original indices, re-sort by
+        // head, then find where the primary landed.
+        let mut engine_sels: Vec<(usize, EngineSelection)> = self.doc.sels()
+            .iter_sorted()
+            .enumerate()
+            .map(|(i, sel)| (i, EngineSelection { anchor: sel.anchor, head: sel.head }))
+            .collect();
+        engine_sels.sort_by_key(|(_, s)| s.head);
+        pane.primary_idx = engine_sels.iter()
+            .position(|(orig_i, _)| *orig_i == primary_idx)
+            .unwrap_or(0);
+        pane.selections.extend(engine_sels.into_iter().map(|(_, s)| s));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
