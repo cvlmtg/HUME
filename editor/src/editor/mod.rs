@@ -457,7 +457,13 @@ impl Editor {
             // Compute terminal cursor position before the draw closure to avoid
             // split-borrow conflicts: pane borrows and rope borrows must end
             // before `&mut self.engine_view` is captured by the closure.
-            let cursor_screen = if self.mode.cursor_is_bar() {
+            let cursor_screen = if let Some(mb) = &self.minibuf {
+                // Minibuf active (Command / Search): place the terminal cursor
+                // in the statusline at the minibuf edit position.
+                let statusline_row = size.height.saturating_sub(1);
+                Some((mb.statusline_cursor_col(), statusline_row))
+            } else if self.mode.cursor_is_bar() {
+                // Insert / Select: place the terminal cursor at the document head.
                 let cursor_char = self.doc.sels().primary().head;
                 let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
