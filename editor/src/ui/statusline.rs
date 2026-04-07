@@ -2,7 +2,8 @@ use std::borrow::Cow;
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use engine::types::EditorMode;
@@ -232,8 +233,17 @@ fn render_statusline(
     if right_fits  { draw_section(screen_buf, &right_spans,  right_x,  y); }
     if center_fits { draw_section(screen_buf, &center_spans, center_x, y); }
 
-    // Minibuf cursor is rendered by the terminal cursor (set_cursor_position),
-    // not by cell-level styling — consistent with how Insert mode works.
+    // Draw the minibuf edit cursor. Removing REVERSED from the cell at cursor
+    // position drops the white statusline background fill, leaving the terminal
+    // default (black) — the same black-cursor appearance as before the engine
+    // migration. The terminal bar cursor also lands here via set_cursor_position.
+    if let Some(mb) = &editor.minibuf {
+        let cursor_x = area.x + mb.statusline_cursor_col();
+        if cursor_x < area.right() {
+            let ch = mb.input[mb.cursor..].graphemes(true).next().unwrap_or(" ");
+            screen_buf.set_string(cursor_x, y, ch, Style::new().remove_modifier(Modifier::REVERSED));
+        }
+    }
 }
 
 fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, Style) {
