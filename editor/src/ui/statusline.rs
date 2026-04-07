@@ -2,9 +2,8 @@ use std::borrow::Cow;
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use ratatui::style::Style;
+use unicode_width::UnicodeWidthStr;
 
 use engine::types::EditorMode;
 
@@ -145,16 +144,6 @@ fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
     spans.iter().map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16).sum()
 }
 
-/// Display-column offset of the last span in a section.
-///
-/// Used to locate the MiniBuf span, which is always the last element in the
-/// minibuf left section (`MINIBUF_LEFT`).
-fn last_span_offset(spans: &[(Cow<'static, str>, Style)]) -> u16 {
-    let total = section_width(spans);
-    let last_w = spans.last().map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16).unwrap_or(0);
-    total - last_w
-}
-
 /// Draw a section's spans left-to-right starting at `x`.
 fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)], mut x: u16, y: u16) {
     for (text, style) in spans {
@@ -243,17 +232,8 @@ fn render_statusline(
     if right_fits  { draw_section(screen_buf, &right_spans,  right_x,  y); }
     if center_fits { draw_section(screen_buf, &center_spans, center_x, y); }
 
-    if let Some(mb) = &editor.minibuf {
-        let mb_offset = last_span_offset(&left_spans);
-        let prompt_w = mb.prompt.width().unwrap_or(0) as u16;
-        let input_before_cursor = UnicodeWidthStr::width(&mb.input[..mb.cursor]) as u16;
-        let cursor_x = left_x + mb_offset + prompt_w + input_before_cursor;
-        if cursor_x < area.right() {
-            let ch = mb.input[mb.cursor..].graphemes(true).next().unwrap_or(" ");
-            let cursor_style = Style::new().remove_modifier(Modifier::REVERSED);
-            screen_buf.set_string(cursor_x, y, ch, cursor_style);
-        }
-    }
+    // Minibuf cursor is rendered by the terminal cursor (set_cursor_position),
+    // not by cell-level styling — consistent with how Insert mode works.
 }
 
 fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, Style) {
@@ -379,27 +359,6 @@ mod tests {
         // CJK character is display-width 2.
         let spans = vec![s("A"), (Cow::Borrowed("中"), Style::default())];
         assert_eq!(section_width(&spans), 3);
-    }
-
-    // ── last_span_offset ─────────────────────────────────────────────────────
-
-    #[test]
-    fn last_span_offset_single_span() {
-        // Only one span: offset is 0 (nothing before it).
-        let spans = vec![s("abc")];
-        assert_eq!(last_span_offset(&spans), 0);
-    }
-
-    #[test]
-    fn last_span_offset_multiple_spans() {
-        // " " (1) + ":" (1) + "cmd" (3) → last span starts at offset 2.
-        let spans = vec![s(" "), s(":"), s("cmd")];
-        assert_eq!(last_span_offset(&spans), 2);
-    }
-
-    #[test]
-    fn last_span_offset_empty() {
-        assert_eq!(last_span_offset(&[]), 0);
     }
 
     // ── pad_left / pad_right ──────────────────────────────────────────────────

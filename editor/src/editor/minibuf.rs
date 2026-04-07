@@ -1,4 +1,5 @@
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,18 @@ pub(super) enum MiniBufferEvent {
 }
 
 impl MiniBuffer {
+    /// Column offset of the edit cursor within the rendered statusline.
+    ///
+    /// Accounts for the 1-column `pad_left` space prepended by the statusline
+    /// renderer, the prompt character, and the input text before the cursor.
+    /// Add `area.x` to get the absolute screen column.
+    pub(crate) fn statusline_cursor_col(&self) -> u16 {
+        let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
+        let prompt_w = self.prompt.width().unwrap_or(1) as u16;
+        let input_w = UnicodeWidthStr::width(&self.input[..self.cursor]) as u16;
+        pad + prompt_w + input_w
+    }
+
     /// Handle a single key event for standard mini-buffer editing.
     ///
     /// Covers: cancel (Esc/Ctrl+C), confirm (Enter), char insertion, grapheme-aware

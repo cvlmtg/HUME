@@ -102,7 +102,9 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
 
     // ── Cursor ──────────────────────────────────────────────────────────────
     s("ui.cursor",        ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
-    s("ui.cursor.insert", ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
+    // In bar-cursor modes the terminal cursor is the sole visual indicator —
+    // no cell background override so the character underneath stays readable.
+    s("ui.cursor.insert", ResolvedStyle::default());
 
     // ── Selection / cursor-line ──────────────────────────────────────────────
     s("ui.selection",  ResolvedStyle { bg: Some(rgb(68,68,120)), ..Default::default() });
