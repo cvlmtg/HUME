@@ -668,19 +668,23 @@ impl Editor {
         {
             let mut data = self.search_hl_data.write().expect("RwLock not poisoned");
             data.clear();
-            // Matches are sorted by document order. Binary-search to the first
-            // match that starts at or after `top_line` to skip pre-viewport entries.
-            let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
-            let matches = self.search.matches();
-            let first = matches.partition_point(|&(start, _)| start < top_char);
-            for &(start, end_incl) in &matches[first..] {
-                let (line, byte_start) = char_to_line_byte(buf, start);
-                if line > bot_line { break; }
-                // end_incl is inclusive char offset; +1 makes it exclusive in chars,
-                // then convert to byte.
-                let end_char = (end_incl + 1).min(buf.len_chars());
-                let (_, byte_end) = char_to_line_byte(buf, end_char);
-                data.push((line, byte_start, byte_end));
+            // Hidden in Insert mode — matches aren't actionable while typing and
+            // clutter the view. Same pattern as bracket match highlights below.
+            if self.mode != EditorMode::Insert {
+                // Matches are sorted by document order. Binary-search to the first
+                // match that starts at or after `top_line` to skip pre-viewport entries.
+                let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
+                let matches = self.search.matches();
+                let first = matches.partition_point(|&(start, _)| start < top_char);
+                for &(start, end_incl) in &matches[first..] {
+                    let (line, byte_start) = char_to_line_byte(buf, start);
+                    if line > bot_line { break; }
+                    // end_incl is inclusive char offset; +1 makes it exclusive in chars,
+                    // then convert to byte.
+                    let end_char = (end_incl + 1).min(buf.len_chars());
+                    let (_, byte_end) = char_to_line_byte(buf, end_char);
+                    data.push((line, byte_start, byte_end));
+                }
             }
         }
 
