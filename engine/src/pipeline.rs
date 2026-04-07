@@ -571,6 +571,7 @@ fn render_buffer_line(
             );
 
             // Stage 4 (per row): write to the ratatui buffer.
+            let row_bg = if is_head_line { pane_ctx.theme.ui.cursorline.bg } else { None };
             render::compose_row(
                 &scratch.format.display_rows[row_idx],
                 &scratch.format.graphemes,
@@ -580,6 +581,7 @@ fn render_buffer_line(
                 &scratch.col_widths,
                 compose_ctx,
                 buf,
+                row_bg,
             );
             vc.screen_row += 1;
         }
@@ -600,6 +602,7 @@ fn render_buffer_line(
                 &scratch.col_widths,
                 compose_ctx,
                 buf,
+                None,
             );
             vc.screen_row += 1;
         }
@@ -632,7 +635,7 @@ fn emit_virtual_row(
     scratch.style.styles.resize(scratch.format.graphemes.len(), ResolvedStyle::default());
 
     let row_idx = scratch.format.display_rows.len() - 1;
-    render::compose_row(&scratch.format.display_rows[row_idx], &scratch.format.graphemes, &scratch.style.styles, "", screen_row, &scratch.col_widths, compose_ctx, buf);
+    render::compose_row(&scratch.format.display_rows[row_idx], &scratch.format.graphemes, &scratch.style.styles, "", screen_row, &scratch.col_widths, compose_ctx, buf, None);
 
     scratch.clear_line();
 }
