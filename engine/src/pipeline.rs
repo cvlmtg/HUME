@@ -548,9 +548,10 @@ fn render_buffer_line(
 
         let line_start_char = pane_ctx.rope.line_to_char(line_idx);
         let line_end_char   = pane_ctx.rope.line_to_char(line_idx + 1);
-        // sorted_sels is sorted by head; binary search to check if any head falls in this line.
-        let first = scratch.style.sorted_sels.partition_point(|s| s.head < line_start_char);
-        let is_head_line = scratch.style.sorted_sels[first..].first().is_some_and(|s| s.head < line_end_char);
+        // Cursorline highlights only the primary cursor's line (Helix convention).
+        let is_head_line = scratch.style.primary_idx_in_sorted
+            .and_then(|i| scratch.style.sorted_sels.get(i))
+            .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
         // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
         let line_str = scratch.format.line_texts.as_str();
 
