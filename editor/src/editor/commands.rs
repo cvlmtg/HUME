@@ -13,6 +13,7 @@
 
 
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::core::buffer::Buffer;
@@ -494,8 +495,8 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
     let whitespace = pane.whitespace.clone();
 
     if !wrap_mode.is_wrapping() {
-        // No wrapping — fall back to buffer-line movement and clear sticky col.
-        ed.preferred_display_col = None;
+        // No wrapping — fall back to buffer-line movement and clear sticky cols.
+        ed.preferred_display_cols.clear();
         match (down, extend) {
             (true,  false) => ed.apply_motion(|b, s| cmd_move_down(b, s, count)),
             (true,  true)  => ed.apply_motion(|b, s| cmd_extend_down(b, s, count)),
@@ -508,23 +509,46 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
     let rope = ed.doc.buf().rope().clone();
     let sels = ed.doc.sels().clone();
 
-    // Determine the target display column from the primary cursor.
-    // On the first j/k press preferred_display_col is None, so we compute the
-    // current display column and latch it for subsequent presses.
-    let target_col = if let Some(col) = ed.preferred_display_col {
-        col
-    } else {
-        let primary = sels.primary();
-        let line = rope.char_to_line(primary.head);
-        let (_, col) = format_row_col(
-            &rope, line, primary.head, &wrap_mode, tab_width, &whitespace,
-            &mut ed.motion_format_scratch,
-        );
-        col as u16
-    };
+    // Pass 1: resolve each selection's sticky display column.
+    //
+    // We do this in a separate pass before calling `map_and_merge` because
+    // `format_row_col` needs `&mut ed.motion_format_scratch`, which cannot be
+    // borrowed inside a closure that also captures `ed`.
+    //
+    // On the first j/k press `preferred_display_cols` is empty, so we compute
+    // the current display column from each head and latch it. On subsequent
+    // consecutive j/k presses the stored value is reused so cursors can return
+    // to their original column after passing through shorter rows.
+    //
+    // `iter_sorted` and `map` both iterate `SelectionSet`'s internal Vec in
+    // the same sorted order, so `target_cols[i]` corresponds to the i-th
+    // selection passed to the `map_and_merge` closure below.
+    let target_cols: Vec<u16> = sels.iter_sorted().map(|sel| {
+        if let Some(&col) = ed.preferred_display_cols.get(&sel.head) {
+            col
+        } else {
+            let line = rope.char_to_line(sel.head);
+            let (_, col) = format_row_col(
+                &rope, line, sel.head, &wrap_mode, tab_width, &whitespace,
+                &mut ed.motion_format_scratch,
+            );
+            col as u16
+        }
+    }).collect();
 
+    // Pass 2: move each selection by `count` display rows and rebuild the
+    // per-selection column map from the resulting head positions.
+    //
+    // The new map is keyed by post-movement head position. If two selections
+    // happen to land on the same head they will be merged by `merge_overlapping`
+    // — one column entry is correct for one surviving selection.
+    let mut new_cols: HashMap<usize, u16> = HashMap::new();
+    let mut col_iter = target_cols.iter();
     let scratch = &mut ed.motion_format_scratch;
     let new_sels = sels.map_and_merge(|sel| {
+        // SAFETY: col_iter has exactly as many items as there are selections —
+        // we built target_cols from the same iter_sorted() above.
+        let &target_col = col_iter.next().unwrap();
         let mut head = sel.head;
         for _ in 0..count {
             head = if down {
@@ -533,10 +557,11 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
                 visual_move_up_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
             };
         }
+        new_cols.insert(head, target_col);
         if extend { Selection::new(sel.anchor, head) } else { Selection::collapsed(head) }
     });
 
-    ed.preferred_display_col = Some(target_col);
+    ed.preferred_display_cols = new_cols;
     ed.doc.set_selections(new_sels);
 }
 

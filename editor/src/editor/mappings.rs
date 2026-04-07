@@ -333,7 +333,7 @@ impl Editor {
             // Any horizontal motion, edit, or mode change should clear it so the next
             // j/k press re-latches to the cursor's actual position.
             if !is_vertical_visual {
-                self.preferred_display_col = None;
+                self.preferred_display_cols.clear();
             }
 
             // Record repeatable actions for `.` replay.
