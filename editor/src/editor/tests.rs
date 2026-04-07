@@ -3069,10 +3069,7 @@ fn macro_big_q_replays_from_register() {
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
 
-    // Drain queue manually (simulates the event loop drain)
-    while let Some(k) = ed.replay_queue.pop_front() {
-        ed.handle_key(k);
-    }
+    ed.drain_replay_queue();
 
     let after = ed.doc.sels().primary().head;
     assert!(after > before, "cursor should have moved down after replay");
@@ -3095,9 +3092,7 @@ fn macro_big_q_non_register_key_cancels() {
     ed.handle_key(key('q'));
     ed.handle_key(key('Q'));
 
-    while let Some(k) = ed.replay_queue.pop_front() {
-        ed.handle_key(k);
-    }
+    ed.drain_replay_queue();
 
     let after = ed.doc.sels().primary().head;
     assert_eq!(before, after, "cancelled replay should not move cursor");
@@ -3135,13 +3130,36 @@ fn macro_no_nested_recording_during_replay() {
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
 
-    // Drain queue
-    while let Some(k) = ed.replay_queue.pop_front() {
-        ed.handle_key(k);
-    }
+    ed.drain_replay_queue();
 
     // Recording should NOT have started — the Q intercept is suppressed during replay
     assert!(ed.macro_recording.is_none(), "nested recording must be suppressed");
+    assert!(ed.macro_pending.is_none(), "macro_pending must not be armed after replay");
+}
+
+/// A macro whose last key is `Q` must not arm `macro_pending` after replay.
+///
+/// Previously, the suppression checked `replay_queue.is_empty()`, which becomes
+/// `true` at the exact moment the last key is processed — causing a trailing `Q`
+/// to slip through and arm `macro_pending`. The fix uses `is_replaying` instead.
+#[test]
+fn macro_trailing_q_does_not_arm_pending() {
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    // Seed a macro ending with Q (can't be recorded normally).
+    ed.registers.write_macro('q', vec![
+        KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
+    ]);
+
+    // Replay: qq
+    ed.handle_key(key('q'));
+    ed.handle_key(key('q'));
+
+    ed.drain_replay_queue();
+
+    assert!(ed.macro_recording.is_none(), "recording must not have started");
+    assert!(ed.macro_pending.is_none(), "macro_pending must not be armed by trailing Q");
 }
 
 /// Text in a register is pasted as text (as_text works); macro registers return None for as_text.
@@ -3240,9 +3258,7 @@ fn macro_q1_replay_after_undo() {
     ed.handle_key(key('1'));
     assert!(!ed.replay_queue.is_empty(), "replay queue populated");
 
-    while let Some(k) = ed.replay_queue.pop_front() {
-        ed.handle_key(k);
-    }
+    ed.drain_replay_queue();
 
     assert_ne!(state(&ed), before, "replay should have changed the state");
 }

@@ -95,7 +95,7 @@ impl Register {
 
 /// The full collection of named registers.
 ///
-/// Each register holds a `Vec<String>` — one entry per selection at yank time.
+/// Each register holds a [`RegisterContent`] — either yanked text or a recorded macro.
 ///
 /// Special registers (enforced here):
 /// - `DEFAULT_REGISTER` (`'"'`): internal default; all yanks/deletes go here
