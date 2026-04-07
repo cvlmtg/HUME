@@ -612,16 +612,17 @@ impl Editor {
             // replay to run immediately — the results are visible on the very
             // next frame rather than requiring an additional keypress.
             // `last_action` is saved/restored so replay does not corrupt dot-repeat.
-            if !self.replay_queue.is_empty() {
-                let saved_action = self.last_action.take();
-                while let Some(key) = self.replay_queue.pop_front() {
-                    self.handle_key(key);
-                    self.update_search_cache();
-                    if self.should_quit { break; }
-                }
-                self.last_action = saved_action;
+            let saved_action = self.last_action.take();
+            while let Some(key) = self.replay_queue.pop_front() {
+                self.handle_key(key);
                 if self.should_quit { break; }
             }
+            self.last_action = saved_action;
+            // One cache update covers the entire replay batch — the search
+            // cache only changes when the buffer revision changes, so calling
+            // it per-key would redundantly clone the regex on every iteration.
+            self.update_search_cache();
+            if self.should_quit { break; }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
         execute!(std::io::stdout(), crossterm::cursor::SetCursorStyle::DefaultUserShape)?;

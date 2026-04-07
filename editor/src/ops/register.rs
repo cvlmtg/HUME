@@ -130,20 +130,21 @@ impl RegisterSet {
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
     pub(crate) fn write_text(&mut self, name: char, values: Vec<String>) {
-        if name == BLACK_HOLE_REGISTER {
-            return;
-        }
-        self.registers.insert(name, Register::new(RegisterContent::Text(values)));
+        self.write(name, RegisterContent::Text(values));
     }
 
     /// Write a recorded macro to a register, replacing its previous contents.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
     pub(crate) fn write_macro(&mut self, name: char, keys: Vec<KeyEvent>) {
+        self.write(name, RegisterContent::Macro(keys));
+    }
+
+    fn write(&mut self, name: char, content: RegisterContent) {
         if name == BLACK_HOLE_REGISTER {
             return;
         }
-        self.registers.insert(name, Register::new(RegisterContent::Macro(keys)));
+        self.registers.insert(name, Register::new(content));
     }
 }
 
