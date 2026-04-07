@@ -97,7 +97,7 @@ pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize) {
 pub(super) fn cmd_delete(ed: &mut Editor, _count: usize) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
     ed.doc.apply_edit(delete_selection);
-    ed.registers.write(DEFAULT_REGISTER, yanked);
+    ed.registers.write_text(DEFAULT_REGISTER, yanked);
 }
 
 /// Yank, delete, then enter insert mode — all in one undo group.
@@ -108,13 +108,13 @@ pub(super) fn cmd_change(ed: &mut Editor, _count: usize) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
     ed.begin_insert_session();
     ed.doc.apply_edit_grouped(delete_selection);
-    ed.registers.write(DEFAULT_REGISTER, yanked);
+    ed.registers.write_text(DEFAULT_REGISTER, yanked);
 }
 
 /// Yank selections into the default register without deleting.
 pub(super) fn cmd_yank(ed: &mut Editor, _count: usize) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
-    ed.registers.write(DEFAULT_REGISTER, yanked);
+    ed.registers.write_text(DEFAULT_REGISTER, yanked);
 }
 
 /// Shared body for paste commands: read the default register, run `paste_fn`,
@@ -124,10 +124,12 @@ fn do_paste(
     paste_fn: impl Fn(Buffer, SelectionSet, &[String]) -> (Buffer, SelectionSet, crate::core::changeset::ChangeSet, Vec<String>),
 ) {
     if let Some(reg) = ed.registers.read(DEFAULT_REGISTER) {
-        let values = reg.values().to_vec();
-        let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
-        if displaced.iter().any(|s| !s.is_empty()) {
-            ed.registers.write(DEFAULT_REGISTER, displaced);
+        if let Some(values) = reg.as_text() {
+            let values = values.to_vec();
+            let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
+            if displaced.iter().any(|s| !s.is_empty()) {
+                ed.registers.write_text(DEFAULT_REGISTER, displaced);
+            }
         }
     }
 }
@@ -626,7 +628,7 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
     let pattern = ed
         .registers
         .read(SEARCH_REGISTER)
-        .and_then(|r| r.values().first().cloned())
+        .and_then(|r| r.as_text().and_then(|v| v.first()).cloned())
         .unwrap_or_default();
     if pattern.is_empty() { return false; }
     match compile_search_regex(&pattern) {
@@ -802,7 +804,7 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
     };
 
     // Store in search register and set as active search.
-    ed.registers.write(SEARCH_REGISTER, vec![escaped]);
+    ed.registers.write_text(SEARCH_REGISTER, vec![escaped]);
     ed.search.direction = SearchDirection::Forward;
     ed.search.set_regex(Some(regex));
 }

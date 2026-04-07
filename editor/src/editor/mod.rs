@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -68,6 +68,20 @@ pub(super) struct RepeatableAction {
     /// Populated by the insert-mode recording path when the command transitions
     /// to Insert mode. Empty for non-insert actions like `delete` or `paste-after`.
     pub insert_keys: Vec<KeyEvent>,
+}
+
+// ── Macro recording state ─────────────────────────────────────────────────────
+
+/// Pending state for the two-keystroke `q<reg>` / `Q<reg>` sequences.
+///
+/// Set when the user presses `q` or `Q` in normal mode; cleared when the
+/// next keypress is consumed as the register name (or cancelled on Esc).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MacroPending {
+    /// `Q` was pressed — waiting for a register name to start recording.
+    Record,
+    /// `q` was pressed — waiting for a register name to start replay.
+    Replay,
 }
 
 // ── Find/till state ───────────────────────────────────────────────────────────
@@ -353,6 +367,35 @@ pub(crate) struct Editor {
     /// Read by `cmd_repeat` to decide whether to use the new count or reuse the
     /// original action's count. Cleared after every dispatch.
     pub(super) explicit_count: bool,
+
+    // ── Keyboard macro fields ─────────────────────────────────────────────────
+
+    /// Active macro recording session.
+    ///
+    /// `Some((register, keys))` while recording is in progress; `None` otherwise.
+    /// The register name was supplied after the initial `q` keypress.
+    pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
+
+    /// Pending two-keystroke macro command.
+    ///
+    /// Set when `q` or `Q` is pressed; the next keypress is consumed as the
+    /// register name. Cleared (and cancelled) on Esc or invalid input.
+    pub(super) macro_pending: Option<MacroPending>,
+
+    /// Queue of keys to replay before reading the next terminal event.
+    ///
+    /// Populated by the `q<reg>` replay path; drained by the main event loop
+    /// one key at a time at the same stack depth as normal input. This avoids
+    /// recursion for long macros and allows `should_quit` to be checked between
+    /// replayed keys.
+    pub(super) replay_queue: VecDeque<KeyEvent>,
+
+    /// Single-frame flag: skip recording the current key.
+    ///
+    /// Set by the stop-recording `Q` intercept so that the stop key itself is
+    /// not appended to the macro buffer. Checked and cleared unconditionally at
+    /// the end of every `handle_key` call.
+    pub(super) skip_macro_record: bool,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -463,6 +506,10 @@ impl Editor {
             search_hl_data,
             preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
+            macro_recording: None,
+            macro_pending: None,
+            replay_queue: VecDeque::new(),
+            skip_macro_record: false,
         })
     }
 
@@ -557,6 +604,23 @@ impl Editor {
 
             if self.should_quit {
                 break;
+            }
+
+            // ── 4. Drain macro replay queue ───────────────────────────────────
+            // Drain after handling the terminal event so that a key that
+            // populates the queue (e.g. the register name after `Q`) causes
+            // replay to run immediately — the results are visible on the very
+            // next frame rather than requiring an additional keypress.
+            // `last_action` is saved/restored so replay does not corrupt dot-repeat.
+            if !self.replay_queue.is_empty() {
+                let saved_action = self.last_action.take();
+                while let Some(key) = self.replay_queue.pop_front() {
+                    self.handle_key(key);
+                    self.update_search_cache();
+                    if self.should_quit { break; }
+                }
+                self.last_action = saved_action;
+                if self.should_quit { break; }
             }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
@@ -876,6 +940,10 @@ impl Editor {
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
             preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
+            macro_recording: None,
+            macro_pending: None,
+            replay_queue: VecDeque::new(),
+            skip_macro_record: false,
         }
     }
 
