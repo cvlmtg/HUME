@@ -592,8 +592,9 @@ impl Editor {
     /// Convert the editor's char-offset selections to engine `DocPos`-based
     /// selections and push them to the engine pane.
     ///
-    /// Called once per frame from `prepare_frame`. Selections are passed in
-    /// sorted document order; `primary_idx` tells the engine which one is primary.
+    /// Called once per frame from `prepare_frame`. Selections are re-sorted by
+    /// `head` for the engine (which requires head-order); `primary_idx` is updated
+    /// to track the primary selection's position in that order.
     pub(crate) fn push_selections_to_pane(&mut self) {
         // The engine now uses the same char-offset representation as the editor,
         // so this is a direct copy with no rope lookups. The engine resolves char

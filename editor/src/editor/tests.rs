@@ -2188,6 +2188,15 @@ fn select_all_matches_uses_search_register_fallback() {
     assert_eq!(ed.doc.sels().len(), 2);
 }
 
+/// `m/` keybind reaches `select-all-matches` (tests the keymap path, not just `:sam`).
+#[test]
+fn select_all_matches_via_m_slash_keybind() {
+    let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('/'));
+    assert_eq!(ed.doc.sels().len(), 2, "m/ should select all 'ab' matches");
+}
+
 // ── Use selection as search (*) ──────────────────────────────────────────────
 
 /// `*` on a cursor expands to the word under the cursor and sets search.

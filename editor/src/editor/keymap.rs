@@ -226,20 +226,22 @@ macro_rules! key {
     };
 }
 
-// ── Text object trie ──────────────────────────────────────────────────────────
+// ── Match / text-object trie ──────────────────────────────────────────────────
 
-/// Build the sub-trie rooted at `m` for text object sequences.
+/// Build the sub-trie rooted at `m` (match commands).
 ///
-/// The full sequence is `m` → `i`/`a` → object char. The returned trie
-/// sits under the `m` key in the normal-mode keymap:
+/// Bindings:
 ///
 /// ```text
 /// m ─┬─ i ─┬─ w  → inner-word
 ///    │      ├─ (  → inner-paren
 ///    │      └─ …
-///    └─ a ─┬─ w  → around-word
-///           ├─ (  → around-paren
-///           └─ …
+///    ├─ a ─┬─ w  → around-word
+///    │      ├─ (  → around-paren
+///    │      └─ …
+///    ├─ s ─┬─ (  → surround-paren
+///    │      └─ …
+///    └─ /       → select-all-matches
 /// ```
 fn build_text_object_trie() -> KeyTrie {
     // Table: (object chars, inner name, around name).
@@ -452,8 +454,8 @@ fn default_normal_keymap() -> KeyTrie {
     // `g` → second key (goto commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));
 
-    // ── Text objects ──────────────────────────────────────────────────────────
-    // `m` → `i`/`a` → object char (3-key sequence).
+    // ── Match prefix (`m`) ────────────────────────────────────────────────────
+    // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
 
     // ── Mode transitions ──────────────────────────────────────────────────────
