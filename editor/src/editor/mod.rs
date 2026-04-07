@@ -505,6 +505,7 @@ impl Editor {
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
             let _ = execute!(std::io::stdout(), crate::cursor::shape(self.mode));
+            let _ = crate::cursor::set_color_for_mode(self.mode);
 
             // ── 3. Event ──────────────────────────────────────────────────────
             match event::read()? {
@@ -524,8 +525,9 @@ impl Editor {
                 break;
             }
         }
-        // Restore the user's default cursor shape before returning to the shell.
+        // Restore the user's default cursor shape and colour before returning to the shell.
         execute!(std::io::stdout(), crossterm::cursor::SetCursorStyle::DefaultUserShape)?;
+        let _ = crate::cursor::set_color_for_mode(EditorMode::Normal); // emits reset sequence
         Ok(())
     }
 
