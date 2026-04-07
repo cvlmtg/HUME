@@ -1804,15 +1804,22 @@ fn select_within_empty_confirm_cancels() {
     assert_eq!(state(&ed), original);
 }
 
-/// `s` writes the confirmed pattern to the search register.
+/// `s` does not overwrite the search register — it is a selection op, not a search.
+/// A prior search pattern must survive a select-within so that n/N still works.
 #[test]
-fn select_within_writes_search_register() {
+fn select_within_does_not_overwrite_search_register() {
+    use crate::ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
+    // Simulate a prior search by writing directly to the search register (as
+    // search confirm does).
+    ed.registers.write(SEARCH_REGISTER, vec!["cd".to_string()]);
+    // Select within using a different pattern.
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
     ed.handle_key(key_enter());
-    assert_eq!(reg(&ed, 's'), vec!["ab"]);
+    // The search register must still hold "cd", not "ab".
+    assert_eq!(reg(&ed, 's'), vec!["cd"]);
 }
 
 /// `s` does not set the search regex — highlights would be misleading
