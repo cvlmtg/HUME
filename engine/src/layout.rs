@@ -137,7 +137,6 @@ mod tests {
 
     struct _NoGutter;
     impl GutterColumn for _NoGutter {
-        fn id(&self) -> crate::providers::ProviderId { 0 }
         fn width(&self, _: usize) -> u8 { 0 }
         fn render_row(&self, _: RowKind, _: usize, _: EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("ui.linenr"))
