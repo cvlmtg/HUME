@@ -573,7 +573,7 @@ impl Editor {
             let pane = &mut self.engine_view.panes[self.pane_id];
             let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
             scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format);
-            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width as usize);
+            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format);
         }
 
         // 5. Sync highlight data (search matches, bracket matches) to shared
