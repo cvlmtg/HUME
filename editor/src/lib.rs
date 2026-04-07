@@ -16,6 +16,8 @@ pub(crate) mod editor;
 pub(crate) mod testing;
 #[cfg(test)]
 mod proptest_doc;
+#[cfg(test)]
+mod proptest_editor;
 
 /// Start the editor.
 ///

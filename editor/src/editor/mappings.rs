@@ -38,7 +38,7 @@ fn is_jump_command(name: &str) -> bool {
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
 
-    pub(super) fn handle_key(&mut self, key: KeyEvent) {
+    pub(crate) fn handle_key(&mut self, key: KeyEvent) {
         // Any keypress dismisses the previous transient status message.
         self.status_msg = None;
         match self.mode {
