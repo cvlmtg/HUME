@@ -511,18 +511,13 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
 
     // Pass 1: resolve each selection's sticky display column.
     //
-    // We do this in a separate pass before calling `map_and_merge` because
-    // `format_row_col` needs `&mut ed.motion_format_scratch`, which cannot be
-    // borrowed inside a closure that also captures `ed`.
+    // Separate pass required because `format_row_col` needs `&mut scratch`,
+    // which cannot be borrowed inside a closure that also captures `ed`.
     //
     // On the first j/k press `preferred_display_cols` is empty, so we compute
-    // the current display column from each head and latch it. On subsequent
-    // consecutive j/k presses the stored value is reused so cursors can return
-    // to their original column after passing through shorter rows.
-    //
-    // `iter_sorted` and `map` both iterate `SelectionSet`'s internal Vec in
-    // the same sorted order, so `target_cols[i]` corresponds to the i-th
-    // selection passed to the `map_and_merge` closure below.
+    // each head's current display column and latch it. On subsequent consecutive
+    // j/k presses the stored value is reused so cursors can return to their
+    // original column after passing through shorter rows.
     let target_cols: Vec<u16> = sels.iter_sorted().map(|sel| {
         if let Some(&col) = ed.preferred_display_cols.get(&sel.head) {
             col
@@ -546,9 +541,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
     let mut col_iter = target_cols.iter();
     let scratch = &mut ed.motion_format_scratch;
     let new_sels = sels.map_and_merge(|sel| {
-        // SAFETY: col_iter has exactly as many items as there are selections —
-        // we built target_cols from the same iter_sorted() above.
-        let &target_col = col_iter.next().unwrap();
+        let &target_col = col_iter.next().unwrap(); // same iter_sorted order as Pass 1
         let mut head = sel.head;
         for _ in 0..count {
             head = if down {
