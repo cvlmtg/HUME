@@ -37,14 +37,14 @@ use crate::core::buffer::Buffer;
 use crate::core::changeset::ChangeSet;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
 use crate::ops::motion::{
-    cmd_extend_down, cmd_extend_first_line, cmd_extend_first_nonblank, cmd_extend_last_line,
+    cmd_extend_first_line, cmd_extend_first_nonblank, cmd_extend_last_line,
     cmd_extend_left, cmd_extend_line_end,
     cmd_extend_line_start, cmd_extend_next_paragraph, cmd_extend_prev_paragraph,
     cmd_extend_right, cmd_extend_select_line, cmd_extend_select_line_backward,
     cmd_extend_select_next_WORD, cmd_extend_select_next_word, cmd_extend_select_prev_WORD,
-    cmd_extend_select_prev_word, cmd_extend_up, cmd_goto_first_line, cmd_goto_first_nonblank,
+    cmd_extend_select_prev_word, cmd_goto_first_line, cmd_goto_first_nonblank,
     cmd_goto_last_line, cmd_goto_line_end,
-    cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right, cmd_move_up,
+    cmd_goto_line_start, cmd_move_left, cmd_move_right,
     cmd_next_paragraph, cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward,
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
 };
@@ -265,12 +265,12 @@ impl CommandRegistry {
         // ── Character motions ─────────────────────────────────────────────────
         motion!("move-right", "Move cursors one grapheme to the right.", cmd_move_right, extend: "extend-right");
         motion!("move-left",  "Move cursors one grapheme to the left.",  cmd_move_left,  extend: "extend-left");
-        motion!("move-down",  "Move cursors down one line.",             cmd_move_down,  extend: "extend-down");
-        motion!("move-up",    "Move cursors up one line.",               cmd_move_up,    extend: "extend-up");
+        editor_cmd!("move-down",  "Move cursors down one visual line.",   cmd_visual_move_down,   extend: "extend-down");
+        editor_cmd!("move-up",    "Move cursors up one visual line.",     cmd_visual_move_up,     extend: "extend-up");
         motion!("extend-right", "Extend selections one grapheme to the right.", cmd_extend_right);
         motion!("extend-left",  "Extend selections one grapheme to the left.",  cmd_extend_left);
-        motion!("extend-down",  "Extend selections down one line.",             cmd_extend_down);
-        motion!("extend-up",    "Extend selections up one line.",               cmd_extend_up);
+        editor_cmd!("extend-down",  "Extend selections down one visual line.", cmd_visual_extend_down);
+        editor_cmd!("extend-up",    "Extend selections up one visual line.",   cmd_visual_extend_up);
 
         // ── Buffer-level goto motions ─────────────────────────────────────────
         motion!("goto-first-line", "Move cursors to the first character of the buffer.",     cmd_goto_first_line, extend: "extend-first-line");

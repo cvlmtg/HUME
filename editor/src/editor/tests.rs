@@ -2682,3 +2682,137 @@ fn pane_selections_sorted_by_head_not_start() {
     // Primary (A) ends up at index 0 after sorting.
     assert_eq!(pane.primary_idx, 0, "primary_idx follows A to its new position");
 }
+
+// ── Visual-line movement ──────────────────────────────────────────────────────
+//
+// `for_testing` uses `WrapMode::Indent { width: 76 }` with tab_width=4 and an
+// 80×24 viewport. For a line with no leading indent, Indent wrap is equivalent
+// to Soft wrap (indent_cols = 0), so the wrap boundary is simply at column 76.
+//
+// Test layout:
+//   Line 0: 'a' × 80  →  sub-row 0: chars  0..76 (cols 0..75)
+//                         sub-row 1: chars 76..80 (cols 0..3) + '\n' at col 4
+//   Line 1: "short\n"  →  chars 81..86
+//
+// Char offsets:
+//   0      = first 'a'
+//   76     = first 'a' on sub-row 1
+//   80     = '\n' at end of line 0
+//   81     = 's' (start of "short")
+//   85     = 't'
+//   86     = '\n' at end of line 1
+
+fn visual_test_editor(head: usize) -> Editor {
+    let line0: String = "a".repeat(80);
+    let content = format!("{}\nshort\n", line0);
+    let (buf, _) = parse_state(&format!("-[{}]>short\n", &line0[1..])); // ignored
+    // Build manually so we can place the cursor at an exact char offset.
+    use crate::core::buffer::Buffer;
+    use crate::core::selection::{Selection, SelectionSet};
+    let buf = Buffer::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(head));
+    Editor::for_testing(Document::new(buf, sels))
+}
+
+/// j moves from sub-row 0 to sub-row 1 of the same buffer line.
+#[test]
+fn visual_move_down_within_wrapped_line() {
+    let mut ed = visual_test_editor(0);
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.sels().primary().head, 76, "j: sub-row 0 → sub-row 1, col 0 → char 76");
+    assert_eq!(ed.preferred_display_col, Some(0), "preferred_display_col latched on first j");
+}
+
+/// j on the last sub-row crosses to the next buffer line.
+#[test]
+fn visual_move_down_crosses_buffer_line() {
+    let mut ed = visual_test_editor(76); // sub-row 1 of line 0
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.sels().primary().head, 81, "j: last sub-row → first char of next buffer line");
+}
+
+/// k from the first row of a buffer line enters the last sub-row of the previous line.
+#[test]
+fn visual_move_up_enters_last_subrow_of_previous_line() {
+    let mut ed = visual_test_editor(81); // start of "short"
+    ed.handle_key(key('k'));
+    assert_eq!(ed.doc.sels().primary().head, 76, "k: buffer line n+1 → last sub-row of line n, col 0 → char 76");
+}
+
+/// k on sub-row 1 retreats to sub-row 0 of the same buffer line.
+#[test]
+fn visual_move_up_within_wrapped_line() {
+    let mut ed = visual_test_editor(76); // sub-row 1 of line 0
+    ed.handle_key(key('k'));
+    assert_eq!(ed.doc.sels().primary().head, 0, "k: sub-row 1 → sub-row 0, col 0 → char 0");
+}
+
+/// k on the first sub-row of the first line stays put.
+#[test]
+fn visual_move_up_at_top_stays_put() {
+    let mut ed = visual_test_editor(0);
+    ed.handle_key(key('k'));
+    assert_eq!(ed.doc.sels().primary().head, 0, "k at first row: no-op");
+}
+
+/// j on the last sub-row of the last line stays put.
+#[test]
+fn visual_move_down_at_bottom_stays_put() {
+    // Place cursor at "short" (line 1 is last). Line 1 has only 1 sub-row.
+    let mut ed = visual_test_editor(81);
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.sels().primary().head, 81, "j at last row: no-op");
+}
+
+/// The preferred display column is preserved across consecutive j/k presses
+/// and used to find the closest grapheme when the target row is shorter.
+#[test]
+fn visual_preferred_col_stickiness() {
+    // Cursor at char 40 (display col 40) in sub-row 0 of the long line.
+    let mut ed = visual_test_editor(40);
+
+    // j: target_col = 40, sub-row 1 has only 4 chars (cols 0..3).
+    // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.sels().primary().head, 79, "j: clamped to last char on short sub-row");
+    assert_eq!(ed.preferred_display_col, Some(40), "preferred_display_col stays at 40");
+
+    // j again: cross to "short\n" (line 1). target_col=40, "short" has cols 0..4.
+    // Closest to 40 is 't' at col 4, char 85.
+    ed.handle_key(key('j'));
+    assert_eq!(ed.doc.sels().primary().head, 85, "j: clamped to last char on short second line");
+    assert_eq!(ed.preferred_display_col, Some(40), "preferred_display_col still 40");
+}
+
+/// Any non-vertical command resets preferred_display_col.
+#[test]
+fn visual_preferred_col_reset_on_horizontal_motion() {
+    let mut ed = visual_test_editor(40);
+    ed.handle_key(key('j')); // sets preferred_display_col
+    assert!(ed.preferred_display_col.is_some());
+    ed.handle_key(key('l')); // horizontal motion
+    assert_eq!(ed.preferred_display_col, None, "l resets preferred_display_col");
+}
+
+/// WrapMode::None falls back to buffer-line movement.
+#[test]
+fn visual_move_no_wrap_falls_back_to_buffer_line() {
+    use engine::pane::WrapMode;
+    let mut ed = visual_test_editor(0);
+    ed.pane_mut().wrap_mode = WrapMode::None;
+
+    ed.handle_key(key('j'));
+    // With no wrapping: j moves by one buffer line (0 → 81 "short").
+    assert_eq!(ed.doc.sels().primary().head, 81, "WrapMode::None: j moves by buffer line");
+    assert_eq!(ed.preferred_display_col, None, "no sticky col in non-wrap mode");
+}
+
+/// count prefix: 2j moves two visual rows.
+#[test]
+fn visual_move_down_with_count() {
+    let mut ed = visual_test_editor(0);
+    ed.handle_key(key('2'));
+    ed.handle_key(key('j'));
+    // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
+    assert_eq!(ed.doc.sels().primary().head, 81, "2j: two visual rows from sub-row 0");
+}
