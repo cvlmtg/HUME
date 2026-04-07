@@ -104,7 +104,7 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
     // Primary cursor: bright white block — stands out as the main caret.
     s("ui.cursor.primary", ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
     // Secondary cursors (multi-cursor): dimmer gray block — present but not dominant.
-    s("ui.cursor",         ResolvedStyle { fg: Some(rgb(220,220,220)), bg: Some(rgb(140,140,160)), ..Default::default() });
+    s("ui.cursor",         ResolvedStyle { fg: Some(rgb(0,0,0)),       bg: Some(rgb(140,140,160)), ..Default::default() });
     // In bar-cursor modes the terminal cursor is the sole visual indicator —
     // no cell background override so the character underneath stays readable.
     s("ui.cursor.insert", ResolvedStyle::default());
@@ -118,7 +118,8 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
 
     // ── Gutter ───────────────────────────────────────────────────────────────
     s("ui.linenr",          ResolvedStyle { fg: Some(dark_gray()),  ..Default::default() });
-    s("ui.linenr.selected", ResolvedStyle { fg: Some(rgb(180,180,180)), bg: Some(rgb(35,35,45)), ..Default::default() });
+    // No bg: the cursorline row_bg fill shows through, unifying gutter and content.
+    s("ui.linenr.selected", ResolvedStyle { fg: Some(rgb(200,200,210)), ..Default::default() });
 
     // ── Highlights ───────────────────────────────────────────────────────────
     s("ui.cursor.match",    ResolvedStyle { fg: Some(rgb(220,180,50)), bg: Some(rgb(60,55,20)), modifiers: Modifiers::BOLD, ..Default::default() });

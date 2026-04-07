@@ -46,6 +46,11 @@ pub(crate) fn compose_row(
     col_widths: &[u16],
     compose_ctx: &ComposeCtx,
     buf: &mut ratatui::buffer::Buffer,
+    // Background colour to fill the entire row (gutter + content) before
+    // writing graphemes. Used for cursorline highlighting so the tint
+    // extends to the right edge even past the last character.
+    // `None` → clear to terminal default (normal rows).
+    row_bg: Option<ratatui::style::Color>,
 ) {
     let y = compose_ctx.pane_rect.y + screen_row;
 
@@ -61,7 +66,14 @@ pub(crate) fn compose_row(
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
-        let style: ratatui::style::Style = compose_ctx.theme.resolve_by_name(cell.scope).into();
+        let scope_style: ratatui::style::Style = compose_ctx.theme.resolve_by_name(cell.scope).into();
+        // Cursorline bg is the base; the gutter scope style layers on top.
+        // If the scope defines its own bg, it wins; otherwise the row bg shows through.
+        let style = if let Some(bg) = row_bg {
+            ratatui::style::Style::default().bg(bg).patch(scope_style)
+        } else {
+            scope_style
+        };
 
         // Right-align the text within the column width.
         let text_len = unicode_display_width(text) as u16;
@@ -86,8 +98,12 @@ pub(crate) fn compose_row(
             clear_row_span(buf, content_x_origin + 1, right_edge, y);
         }
         _ => {
-            // Clear the content row first so prior-frame content doesn't bleed.
-            clear_row_span(buf, content_x_origin, right_edge, y);
+            // Fill the content row with the row background (cursorline or default).
+            // This ensures the tint extends to the right edge past the last grapheme.
+            match row_bg {
+                Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, bg),
+                None     => clear_row_span(buf, content_x_origin, right_edge, y),
+            }
 
             let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
             let row_styles = &styles[row.graphemes.start..row.graphemes.end];
@@ -236,7 +252,7 @@ pub(crate) fn compose(
             _ => {}
         }
 
-        compose_row(row, graphemes, styles, current_line_str, screen_row, col_widths, compose_ctx, buf);
+        compose_row(row, graphemes, styles, current_line_str, screen_row, col_widths, compose_ctx, buf, None);
         screen_row += 1;
     }
 
@@ -278,6 +294,22 @@ fn set_cell(buf: &mut ratatui::buffer::Buffer, x: u16, y: u16, text: &str, style
                 cell.set_symbol(text);
                 cell.set_style(style);
             });
+    }
+}
+
+/// Fill a horizontal span with spaces using an explicit background colour.
+///
+/// Used for cursorline highlighting so the tint extends past the last grapheme.
+#[inline]
+fn fill_row_bg(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
+    if x_start >= x_end { return; }
+    let area = buf.area();
+    let x_start = x_start.max(area.x);
+    let x_end = x_end.min(area.x + area.width);
+    if x_start >= x_end || y >= area.y + area.height { return; }
+    let style = ratatui::style::Style::default().bg(bg);
+    for x in x_start..x_end {
+        buf[(x, y)].set_char(' ').set_style(style);
     }
 }
 
