@@ -458,6 +458,7 @@ impl CommandRegistry {
 
         // ── Editor commands — select ─────────────────────────────────────────
         editor_cmd!("select-within",          "Select regex matches within current selections.",          cmd_select_within);
+        editor_cmd!("select-all-matches",     "Turn every search match in the buffer into a selection.", cmd_select_all_matches);
         editor_cmd!("use-selection-as-search", "Use primary selection text as the search pattern.",      cmd_use_selection_as_search);
 
         // ── Editor commands — jump list ──────────────────────────────────────
@@ -495,13 +496,13 @@ mod tests {
     ///    1 replace editor command
     ///    1 repeat-last-action editor command
     ///    7 search editor commands (search-forward/backward, search-next/prev, extend variants, clear-search)
-    ///    2 select editor commands (select-within, use-selection-as-search)
+    ///    3 select editor commands (select-within, select-all-matches, use-selection-as-search)
     ///    4 page-scroll editor commands
     ///    2 jump-list editor commands
     ///    5 insert editor commands (insert-at-line-start/end, open-line-above/below, exit-insert)
     ///    1 quit editor command
     ///
-    const EXPECTED_COMMAND_COUNT: usize = 150;
+    const EXPECTED_COMMAND_COUNT: usize = 151;
 
     #[test]
     fn registry_has_expected_count() {
