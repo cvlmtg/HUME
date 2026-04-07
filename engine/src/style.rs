@@ -564,6 +564,59 @@ mod tests {
         assert_eq!(scratch.styles[0].fg, None);
     }
 
+    /// Build graphemes for "hello\n": 5 content graphemes + 1 eol sentinel.
+    fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
+        let mut gs = (0..5usize)
+            .map(|i| Grapheme {
+                byte_range: i..i + 1,
+                char_offset: i,
+                col: i as u16,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            })
+            .collect::<Vec<_>>();
+        // eol sentinel at char_offset=5, col=5 (the `\n` position).
+        gs.push(Grapheme {
+            byte_range: 5..5,
+            char_offset: 5,
+            col: 5,
+            width: 1,
+            content: CellContent::Empty,
+            indent_depth: 0,
+        });
+        gs
+    }
+
+    /// After `x` (select-line), the selection head lands on the `\n` char.
+    /// The eol sentinel grapheme must receive cursor styling so the cursor is visible.
+    #[test]
+    fn selection_head_on_newline_is_visible() {
+        let rope = ropey::Rope::from_str("hello\n");
+        let graphemes = make_graphemes_with_sentinel();
+        let rows = vec![make_row(0..6)]; // all 6 graphemes in one row
+
+        let mut styles_map = std::collections::HashMap::new();
+        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        // Line selection: anchor=0, head=5 (the '\n').
+        let selections = vec![Selection { anchor: 0, head: 5 }];
+        let mut scratch = StyleScratch::new();
+        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+
+        // The eol sentinel at index 5 must have the cursor style.
+        assert_eq!(
+            scratch.styles[5].fg, Some(ratatui::style::Color::Red),
+            "eol sentinel (head on \\n) must receive cursor styling"
+        );
+        // The 'o' grapheme (index 4) must NOT have cursor styling (it's in selection, not head).
+        assert_ne!(
+            scratch.styles[4].fg, Some(ratatui::style::Color::Red),
+            "grapheme before \\n must not have cursor styling"
+        );
+    }
+
     fn make_scope_ids(names: &[&'static str]) -> (ScopeRegistry, Vec<ScopeId>) {
         let mut reg = ScopeRegistry::new();
         let ids = names.iter().map(|&n| reg.intern(n)).collect();

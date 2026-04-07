@@ -340,16 +340,21 @@ pub fn format_buffer_line(
         }
     }
 
-    // ── Empty-line sentinel ────────────────────────────────────────────────
-    // If no graphemes were emitted (truly empty line, e.g. just "\n"), push a
-    // width-1 Empty cell at col 0. This gives the selection head a grapheme to land on
-    // in the Style stage — without it the selection head is invisible on empty lines.
-    if graphemes_out.len() == wrap.row_g_start {
+    // ── End-of-line sentinel ──────────────────────────────────────────────
+    // Emit an Empty grapheme at the char offset of the trailing `\n` whenever
+    // the line has a trailing newline. This gives the cursor/selection-head a
+    // cell to land on when positioned on the newline character (e.g. after `x`
+    // selects the whole line). Without this, `char_offset_to_col` in the style
+    // stage finds no grapheme at the `\n` position and leaves the cursor
+    // invisible in block-cursor modes.
+    //
+    // For truly empty lines (just "\n") this is the only grapheme (col 0).
+    // For non-empty lines it sits one column past the last visible character.
+    if had_newline {
         graphemes_out.push(Grapheme {
-            byte_range: 0..0,
-            // char_pos is line_to_char(line_idx) — the cursor sits on the newline char.
-            char_offset: char_pos,
-            col: 0,
+            byte_range: line_str.len()..line_str.len(),
+            char_offset: char_pos, // char offset of the `\n`
+            col: wrap.current_col,
             width: 1,
             content: CellContent::Empty,
             indent_depth: 0,
@@ -622,6 +627,22 @@ mod tests {
     }
 
     #[test]
+    fn eol_sentinel_emitted_on_non_empty_line() {
+        // "hello\n" — the non-empty line must get an eol sentinel at the `\n`
+        // position so the cursor is visible when a line-selection head lands on `\n`.
+        let (rows, graphemes) = do_format("hello\n", WrapMode::None);
+        // "hello\n" has two ropey lines: "hello\n" and "" (trailing).
+        assert_eq!(rows.len(), 2);
+        let row0_gs = &graphemes[rows[0].graphemes.clone()];
+        // 5 content graphemes + 1 eol sentinel.
+        assert_eq!(row0_gs.len(), 6, "5 content + eol sentinel");
+        let sentinel = &row0_gs[5];
+        assert!(matches!(sentinel.content, CellContent::Empty), "sentinel must be Empty");
+        assert_eq!(sentinel.col, 5, "sentinel one past last char");
+        assert_eq!(sentinel.char_offset, 5, "sentinel at \\n char offset");
+    }
+
+    #[test]
     fn empty_line_produces_empty_sentinel_grapheme() {
         // "a\n\nb" has 3 lines: "a", "", "b".
         // The middle empty line must produce exactly 1 sentinel grapheme with
@@ -640,11 +661,13 @@ mod tests {
     #[test]
     fn two_lines_no_wrap() {
         // No trailing newline → ropey sees exactly 2 lines.
+        // "ab\n" has a trailing \n so its row gets the eol sentinel (3 graphemes).
+        // "cd" has no trailing \n, so no sentinel (2 graphemes).
         let (rows, graphemes) = do_format("ab\ncd", WrapMode::None);
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].graphemes.len(), 2);
-        assert_eq!(rows[1].graphemes.len(), 2);
-        assert_eq!(graphemes.len(), 4);
+        assert_eq!(rows[0].graphemes.len(), 3); // 'a', 'b', eol sentinel
+        assert_eq!(rows[1].graphemes.len(), 2); // 'c', 'd'
+        assert_eq!(graphemes.len(), 5);
     }
 
     #[test]
@@ -733,12 +756,17 @@ mod tests {
         ws.newline_char = "⏎";
         let (rows, graphemes) = do_format_ws("abc\n", ws);
         // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
-        // Line 0: 3 content graphemes + 1 newline indicator.
-        // Line 1: 1 Empty sentinel (added so the selection head is visible on empty lines).
+        // Line 0: 3 content graphemes + 1 eol sentinel + 1 newline indicator = 5.
+        // Line 1: 1 Empty sentinel (eol sentinel for empty trailing line).
         assert_eq!(rows.len(), 2);
         let row0_gs = &graphemes[rows[0].graphemes.clone()];
-        assert_eq!(row0_gs.len(), 4, "line 0: 3 content + 1 newline indicator");
-        let nl_indicator = &row0_gs[3];
+        assert_eq!(row0_gs.len(), 5, "line 0: 3 content + eol sentinel + newline indicator");
+        // Sentinel is at index 3, newline indicator at index 4.
+        let sentinel = &row0_gs[3];
+        assert!(matches!(sentinel.content, CellContent::Empty), "index 3 is the eol sentinel");
+        assert_eq!(sentinel.col, 3);
+        assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
+        let nl_indicator = &row0_gs[4];
         assert!(matches!(&nl_indicator.content, CellContent::Indicator(s) if *s == "⏎"));
         assert_eq!(nl_indicator.col, 3);
     }
