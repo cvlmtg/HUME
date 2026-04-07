@@ -401,6 +401,22 @@ pub(super) fn search_sel(
     }
 }
 
+/// Ensure `ed.search.regex` is populated, compiling from `SEARCH_REGISTER` if
+/// needed. Returns `true` if a usable regex is now in place, `false` otherwise.
+fn ensure_search_regex(ed: &mut Editor) -> bool {
+    if ed.search.regex.is_some() { return true; }
+    let pattern = ed
+        .registers
+        .read(SEARCH_REGISTER)
+        .and_then(|r| r.values().first().cloned())
+        .unwrap_or_default();
+    if pattern.is_empty() { return false; }
+    match compile_search_regex(&pattern) {
+        Some(r) => { ed.search.set_regex(Some(r)); true }
+        None => false,
+    }
+}
+
 /// Shared body for `search-next` / `search-prev` / extend variants.
 ///
 /// Reads the cached `search_regex` (compiled during the search session), or
@@ -408,21 +424,7 @@ pub(super) fn search_sel(
 /// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
 /// selection depending on `extend`.
 fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend: bool) {
-    // Ensure search.regex is populated — compile from the 's' register if needed.
-    if ed.search.regex.is_none() {
-        let pattern = ed
-            .registers
-            .read(SEARCH_REGISTER)
-            .and_then(|r| r.values().first().cloned())
-            .unwrap_or_default();
-        if pattern.is_empty() {
-            return;
-        }
-        match compile_search_regex(&pattern) {
-            Some(r) => ed.search.set_regex(Some(r)),
-            None => return,
-        }
-    }
+    if !ensure_search_regex(ed) { return; }
     let Some(regex) = &ed.search.regex else { return };
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
@@ -514,20 +516,7 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 /// register (same as `n`/`N`). If there is no active search, does nothing.
 /// The first match becomes primary.
 pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize) {
-    if ed.search.regex.is_none() {
-        let pattern = ed
-            .registers
-            .read(SEARCH_REGISTER)
-            .and_then(|r| r.values().first().cloned())
-            .unwrap_or_default();
-        if pattern.is_empty() {
-            return;
-        }
-        match compile_search_regex(&pattern) {
-            Some(r) => ed.search.set_regex(Some(r)),
-            None => return,
-        }
-    }
+    if !ensure_search_regex(ed) { return; }
     let Some(regex) = &ed.search.regex else { return };
 
     let matches = find_all_matches(ed.doc.buf(), regex);

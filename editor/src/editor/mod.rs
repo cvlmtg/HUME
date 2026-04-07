@@ -448,6 +448,7 @@ impl Editor {
         // It must be outside `self` so `HumeStatusline { editor: self }` can
         // borrow `self` immutably while ctx is borrowed mutably.
         let mut ctx = RenderContext::new();
+        let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {
             // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
@@ -505,7 +506,10 @@ impl Editor {
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
             let _ = execute!(std::io::stdout(), crate::cursor::shape(self.mode));
-            let _ = crate::cursor::set_color_for_mode(self.mode);
+            if last_cursor_color_mode != Some(self.mode) {
+                let _ = crate::cursor::set_color_for_mode(self.mode);
+                last_cursor_color_mode = Some(self.mode);
+            }
 
             // ── 3. Event ──────────────────────────────────────────────────────
             match event::read()? {

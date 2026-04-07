@@ -1926,10 +1926,11 @@ fn select_within_multiple_selections_no_match_restores_all() {
     let original = state(&ed);
     ed.handle_key(key('s'));
     ed.handle_key(key('z')); // no "z" in either selection
-    // Live preview: no matches → originals restored mid-edit.
+    // Live preview found no matches → originals already restored.
     assert_eq!(state(&ed), original);
-    ed.handle_key(key_enter()); // ConfirmEmpty (input is non-empty but all backspaced? No — confirm with 'z')
-    // Actually confirm with 'z': select_matches_within returns None → cancel path.
+    // Confirm with a non-empty pattern that has no matches. Live preview already
+    // restored the originals, so confirm keeps them in place.
+    ed.handle_key(key_enter());
     assert_eq!(ed.doc.sels().len(), 2, "original two selections should be restored");
 }
 
@@ -2663,7 +2664,6 @@ fn pane_selections_sorted_by_head_not_start() {
     );
     ed.doc.set_selections(two_sels);
 
-    // Must not panic (no debug_assert on head ordering).
     ed.push_selections_to_pane();
 
     let pane = &ed.engine_view.panes[ed.pane_id];
