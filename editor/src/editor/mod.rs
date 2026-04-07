@@ -375,17 +375,15 @@ impl Editor {
 
         // Build the initial pane.
         let mut providers = engine::providers::ProviderSet::new();
-        providers.gutter_columns.push(Box::new(
-            LineNumberColumn::with_style(0, EngineLineNumberStyle::Hybrid)
+        providers.add_gutter_column(Box::new(
+            LineNumberColumn::with_style(EngineLineNumberStyle::Hybrid)
         ));
-        providers.highlights.push(Box::new(crate::ui::highlight_providers::SharedHighlighter {
-            id: 1,
+        providers.add_highlight_source(Box::new(crate::ui::highlight_providers::SharedHighlighter {
             scope: bracket_scope,
             tier: engine::providers::HighlightTier::BracketMatch,
             data: Arc::clone(&bracket_hl_data),
         }));
-        providers.highlights.push(Box::new(crate::ui::highlight_providers::SharedHighlighter {
-            id: 2,
+        providers.add_highlight_source(Box::new(crate::ui::highlight_providers::SharedHighlighter {
             scope: search_scope,
             tier: engine::providers::HighlightTier::SearchMatch,
             data: Arc::clone(&search_hl_data),
@@ -478,7 +476,7 @@ impl Editor {
                     let pane = &self.engine_view.panes[self.pane_id];
                     let gw = crate::cursor::gutter_width(
                         &pane.viewport,
-                        &pane.providers.gutter_columns,
+                        pane.providers.gutter_columns(),
                         self.doc.buf().len_lines(),
                     );
                     (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)

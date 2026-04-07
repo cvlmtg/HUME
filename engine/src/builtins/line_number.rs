@@ -1,4 +1,4 @@
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, ProviderId};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
 use crate::types::{EditorMode, RowKind, Scope};
 
 // ---------------------------------------------------------------------------
@@ -26,17 +26,16 @@ pub enum LineNumberStyle {
 /// Width is computed dynamically: `floor(log10(total_lines)) + 1` digits plus
 /// one space of padding on the right.
 pub struct LineNumberColumn {
-    id: ProviderId,
     pub style: LineNumberStyle,
 }
 
 impl LineNumberColumn {
-    pub fn new(id: ProviderId) -> Self {
-        Self { id, style: LineNumberStyle::Hybrid }
+    pub fn new() -> Self {
+        Self { style: LineNumberStyle::Hybrid }
     }
 
-    pub fn with_style(id: ProviderId, style: LineNumberStyle) -> Self {
-        Self { id, style }
+    pub fn with_style(style: LineNumberStyle) -> Self {
+        Self { style }
     }
 
     /// Number of digits needed to represent `total_lines`.
@@ -46,10 +45,6 @@ impl LineNumberColumn {
 }
 
 impl GutterColumn for LineNumberColumn {
-    fn id(&self) -> ProviderId {
-        self.id
-    }
-
     fn width(&self, last_line_idx: usize) -> u8 {
         // Digits needed to display the 1-based line number, plus 1 space of right-padding.
         Self::digit_count(last_line_idx + 1).saturating_add(1)
@@ -109,7 +104,7 @@ mod tests {
     fn width_grows_with_line_count() {
         // width(max_line) must fit the 1-based line number max_line+1.
         // digit_count(n+1) + 1 pad.
-        let col = LineNumberColumn::new(0);
+        let col = LineNumberColumn::new();
         assert_eq!(col.width(0), 2);   // max line "1" → 1 digit + 1 pad
         assert_eq!(col.width(8), 2);   // max line "9" → 1 digit + 1 pad
         assert_eq!(col.width(9), 3);   // max line "10" → 2 digits + 1 pad
@@ -121,14 +116,14 @@ mod tests {
 
     #[test]
     fn absolute_line_numbers() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Absolute);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Absolute);
         let cell = col.render_row(RowKind::LineStart { line_idx: 4 }, 100, EditorMode::Normal, 0);
         assert_eq!(cell.as_str(), "5"); // 1-based
     }
 
     #[test]
     fn hybrid_head_line_shows_absolute() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
         // Cursor is on line 2 (0-based).
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, 100, EditorMode::Normal, 2);
         assert_eq!(cell.as_str(), "3"); // absolute
@@ -137,28 +132,28 @@ mod tests {
 
     #[test]
     fn hybrid_non_head_line_shows_relative() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
         let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, 100, EditorMode::Normal, 2);
         assert_eq!(cell.as_str(), "3"); // |5-2| = 3
     }
 
     #[test]
     fn wrap_rows_are_blank() {
-        let col = LineNumberColumn::new(0);
+        let col = LineNumberColumn::new();
         let cell = col.render_row(RowKind::Wrap { line_idx: 3, wrap_row: 1 }, 100, EditorMode::Normal, 0);
         assert_eq!(cell.as_str(), " "); // blank
     }
 
     #[test]
     fn virtual_rows_are_blank() {
-        let col = LineNumberColumn::new(0);
+        let col = LineNumberColumn::new();
         let cell = col.render_row(RowKind::Virtual { provider_id: 0, anchor_line: 0 }, 100, EditorMode::Normal, 0);
         assert_eq!(cell.as_str(), " ");
     }
 
     #[test]
     fn relative_line_numbers() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Relative);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Relative);
         // Cursor at line 5 (0-based). Line 3 is distance 2, line 8 is distance 3.
         let cell = col.render_row(RowKind::LineStart { line_idx: 3 }, 100, EditorMode::Normal, 5);
         assert_eq!(cell.as_str(), "2");
@@ -168,7 +163,7 @@ mod tests {
 
     #[test]
     fn relative_head_line_shows_zero() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Relative);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Relative);
         let cell = col.render_row(RowKind::LineStart { line_idx: 5 }, 100, EditorMode::Normal, 5);
         assert_eq!(cell.as_str(), "0");
     }
@@ -176,7 +171,7 @@ mod tests {
     #[test]
     fn hybrid_line_below_head_shows_relative() {
         // Cursor at line 5, render line 2 (below in the file, higher index than cursor).
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Hybrid);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, 100, EditorMode::Normal, 5);
         assert_eq!(cell.as_str(), "3"); // |2-5| = 3
     }
@@ -188,7 +183,7 @@ mod tests {
 
     #[test]
     fn large_line_number_renders_correctly() {
-        let col = LineNumberColumn::with_style(0, LineNumberStyle::Absolute);
+        let col = LineNumberColumn::with_style(LineNumberStyle::Absolute);
         // line_idx = 9_999_998 → display = 9_999_999 (1-based)
         let cell = col.render_row(RowKind::LineStart { line_idx: 9_999_998 }, 9_999_999, EditorMode::Normal, 0);
         assert_eq!(cell.as_str(), "9999999");

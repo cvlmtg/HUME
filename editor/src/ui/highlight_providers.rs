@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use engine::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
+use engine::providers::{HighlightSource, HighlightTier, SourceContext};
 use engine::types::ScopeId;
 
 /// Highlights a set of byte ranges, all sharing the same scope and tier.
@@ -20,7 +20,6 @@ use engine::types::ScopeId;
 /// The editor writes this via the shared `Arc<RwLock<...>>` once per frame
 /// in `update_highlight_providers()`.
 pub(crate) struct SharedHighlighter {
-    pub(crate) id: ProviderId,
     pub(crate) scope: ScopeId,
     pub(crate) tier: HighlightTier,
     /// Shared data: `(line_idx, byte_start, byte_end)` for each highlight.
@@ -28,7 +27,6 @@ pub(crate) struct SharedHighlighter {
 }
 
 impl HighlightSource for SharedHighlighter {
-    fn id(&self) -> ProviderId { self.id }
     fn tier(&self) -> HighlightTier { self.tier }
 
     fn highlights_for_line(

@@ -50,7 +50,6 @@ pub enum HighlightTier {
 /// `(byte_start, byte_end, scope)` with byte offsets *relative to the line
 /// start*. Output must be sorted by `byte_start` and non-overlapping.
 pub trait HighlightSource: Send + Sync {
-    fn id(&self) -> ProviderId;
     fn tier(&self) -> HighlightTier;
 
     /// Append highlight spans for `line_idx` to `out`.
@@ -73,8 +72,6 @@ pub trait HighlightSource: Send + Sync {
 
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
 pub trait GutterColumn: Send + Sync {
-    fn id(&self) -> ProviderId;
-
     /// Display width of this column in terminal cells.
     /// `last_line_idx` is the highest visible 0-based line index — used to
     /// size line-number columns dynamically.
@@ -157,8 +154,6 @@ pub struct VirtualLine {
 
 /// Produces virtual display rows (inline diagnostics, code lenses, git blame).
 pub trait VirtualLineSource: Send + Sync {
-    fn id(&self) -> ProviderId;
-
     fn virtual_lines(
         &self,
         visible_lines: Range<usize>,
@@ -183,7 +178,6 @@ pub struct InlineInsert {
 }
 
 pub trait InlineDecoration: Send + Sync {
-    fn id(&self) -> ProviderId;
     /// Append inline inserts for `line_idx`. Caller sorts by `byte_offset`.
     fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>);
 }
@@ -195,7 +189,6 @@ pub trait InlineDecoration: Send + Sync {
 /// An overlay rendered on top of the content area after the main pipeline.
 /// Writes directly into the ratatui buffer — last registration wins z-order.
 pub trait OverlayProvider: Send + Sync {
-    fn id(&self) -> ProviderId;
     fn is_active(&self) -> bool;
 
     fn render(
@@ -239,11 +232,11 @@ pub trait TabBarProvider: Send + Sync {
 /// Complete set of providers for a pane. Allocated once at startup.
 #[derive(Default)]
 pub struct ProviderSet {
-    pub highlights: Vec<Box<dyn HighlightSource>>,
-    pub gutter_columns: Vec<Box<dyn GutterColumn>>,
-    pub virtual_lines: Vec<Box<dyn VirtualLineSource>>,
-    pub inline_decorations: Vec<Box<dyn InlineDecoration>>,
-    pub overlays: Vec<Box<dyn OverlayProvider>>,
+    pub(crate) highlights: Vec<Box<dyn HighlightSource>>,
+    pub(crate) gutter_columns: Vec<Box<dyn GutterColumn>>,
+    pub(crate) virtual_lines: Vec<Box<dyn VirtualLineSource>>,
+    pub(crate) inline_decorations: Vec<Box<dyn InlineDecoration>>,
+    pub(crate) overlays: Vec<Box<dyn OverlayProvider>>,
     next_id: ProviderId,
 }
 
@@ -284,6 +277,10 @@ impl ProviderSet {
         self.overlays.push(p);
         self.alloc_id()
     }
+
+    pub fn gutter_columns(&self) -> &[Box<dyn GutterColumn>] {
+        &self.gutter_columns
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -296,12 +293,10 @@ mod tests {
     use crate::types::Scope;
 
     struct DummyHighlight {
-        id: ProviderId,
         tier: HighlightTier,
     }
 
     impl HighlightSource for DummyHighlight {
-        fn id(&self) -> ProviderId { self.id }
         fn tier(&self) -> HighlightTier { self.tier }
         fn highlights_for_line(&self, _: usize, _: &SourceContext, _: &mut Vec<(usize, usize, ScopeId)>) {}
     }
@@ -345,9 +340,9 @@ mod tests {
     #[test]
     fn provider_set_highlight_sorted_by_tier() {
         let mut set = ProviderSet::new();
-        set.add_highlight_source(Box::new(DummyHighlight { id: 0, tier: HighlightTier::BracketMatch }));
-        set.add_highlight_source(Box::new(DummyHighlight { id: 1, tier: HighlightTier::Syntax }));
-        set.add_highlight_source(Box::new(DummyHighlight { id: 2, tier: HighlightTier::Diagnostic }));
+        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::BracketMatch }));
+        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Syntax }));
+        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Diagnostic }));
 
         let tiers: Vec<_> = set.highlights.iter().map(|h| h.tier()).collect();
         assert_eq!(tiers, vec![

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Query, QueryCursor};
 
-use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext};
+use crate::providers::{HighlightSource, HighlightTier, SourceContext};
 use crate::theme::ScopeRegistry;
 use crate::types::{Scope, ScopeId};
 
@@ -34,7 +34,6 @@ use crate::types::{Scope, ScopeId};
 /// starting byte, and by trimming the longer one when a shorter one is
 /// contained within it. The output is always sorted and non-overlapping.
 pub struct TreeSitterHighlighter {
-    id: ProviderId,
     query: Query,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
@@ -64,7 +63,6 @@ impl TreeSitterHighlighter {
     /// `scope_map` is interned here so it can be resolved in O(1) at render
     /// time via [`crate::theme::Theme::resolve`].
     pub fn new(
-        id: ProviderId,
         language: &Language,
         query_source: &str,
         scope_map: &[(&str, Scope)],
@@ -86,7 +84,6 @@ impl TreeSitterHighlighter {
             .collect();
 
         Ok(Self {
-            id,
             query,
             capture_scopes,
             state: Mutex::new(TsState {
@@ -108,10 +105,6 @@ impl TreeSitterHighlighter {
 }
 
 impl HighlightSource for TreeSitterHighlighter {
-    fn id(&self) -> ProviderId {
-        self.id
-    }
-
     fn tier(&self) -> HighlightTier {
         HighlightTier::Syntax
     }
