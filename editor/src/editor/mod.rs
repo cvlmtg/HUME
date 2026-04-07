@@ -333,6 +333,14 @@ pub(crate) struct Editor {
     pub(super) explicit_count: bool,
 }
 
+// proptest requires `Debug` on strategy values; this minimal impl satisfies it.
+#[cfg(test)]
+impl std::fmt::Debug for Editor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Editor(buf={:?}, mode={:?})", self.doc.buf().to_string(), self.mode)
+    }
+}
+
 impl Editor {
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
