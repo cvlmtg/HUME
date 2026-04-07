@@ -445,9 +445,7 @@ fn visual_move_down_one(
         if line_start >= rope.len_chars() {
             return head;
         }
-        scratch.display_rows.clear();
-        scratch.graphemes.clear();
-        scratch.line_texts.clear();
+        scratch.clear();
         format_buffer_line(rope, next_line, tab_width, whitespace, wrap_mode, &[], scratch);
         find_char_at_display_col(scratch, 0, target_col)
     }
@@ -478,9 +476,7 @@ fn visual_move_up_one(
             return head;
         }
         let prev_line = line - 1;
-        scratch.display_rows.clear();
-        scratch.graphemes.clear();
-        scratch.line_texts.clear();
+        scratch.clear();
         format_buffer_line(rope, prev_line, tab_width, whitespace, wrap_mode, &[], scratch);
         let last_sub_row = scratch.display_rows.len().saturating_sub(1);
         find_char_at_display_col(scratch, last_sub_row, target_col)

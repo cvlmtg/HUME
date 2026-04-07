@@ -2705,7 +2705,6 @@ fn pane_selections_sorted_by_head_not_start() {
 fn visual_test_editor(head: usize) -> Editor {
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
-    let (buf, _) = parse_state(&format!("-[{}]>short\n", &line0[1..])); // ignored
     // Build manually so we can place the cursor at an exact char offset.
     use crate::core::buffer::Buffer;
     use crate::core::selection::{Selection, SelectionSet};
