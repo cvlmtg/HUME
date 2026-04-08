@@ -203,15 +203,19 @@ mod tests {
     }
 
     #[test]
-    fn black_hole_write_is_discarded() {
+    fn black_hole_write_text_is_discarded() {
         let mut regs = RegisterSet::new();
         regs.write_text(BLACK_HOLE_REGISTER, vec!["ignored".to_string()]);
         assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
     }
 
     #[test]
-    fn black_hole_read_always_none() {
-        let regs = RegisterSet::new();
+    fn black_hole_write_macro_is_discarded() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let mut regs = RegisterSet::new();
+        let keys = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        regs.write_macro(BLACK_HOLE_REGISTER, keys);
+        // The black-hole guard must apply to macro writes too.
         assert!(regs.read(BLACK_HOLE_REGISTER).is_none());
     }
 

@@ -157,6 +157,10 @@ impl Editor {
         if let Some(pending) = self.macro_pending.take() {
             match pending {
                 MacroPending::Record => {
+                    // A count prefix before `Q<reg>` has no meaning for recording.
+                    // Clear it so it doesn't leak into the first key typed during
+                    // the session (which would fire with count N instead of 1).
+                    self.count = None;
                     match key.code {
                         // `QQ` — record into the default register. `Q` is uppercase
                         // so is_valid_macro_register won't catch it; handle explicitly.
