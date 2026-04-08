@@ -2,6 +2,7 @@ use crate::core::buffer::Buffer;
 use crate::core::changeset::ChangeSet;
 use crate::core::history::{History, RevisionId};
 use crate::core::selection::SelectionSet;
+use crate::settings::BufferOverrides;
 
 // ── IntoApplyResult ───────────────────────────────────────────────────────────
 
@@ -72,6 +73,9 @@ pub(crate) struct Document {
     /// `is_dirty()` compares `history.current_id()` against this value so
     /// that undoing back to the save point correctly reports a clean buffer.
     saved_revision: RevisionId,
+    /// Per-buffer setting overrides. `None` fields inherit from
+    /// [`crate::settings::EditorSettings`].
+    pub(crate) overrides: BufferOverrides,
 }
 
 /// Accumulated state for an open edit group.
@@ -91,7 +95,7 @@ impl Document {
         let buf_len = buf.len_chars();
         let history = History::new(sels.clone(), buf_len);
         let saved_revision = history.current_id();
-        Self { buf, sels, history, group: None, saved_revision }
+        Self { buf, sels, history, group: None, saved_revision, overrides: BufferOverrides::default() }
     }
 
     /// Returns `true` if the buffer has unsaved changes.

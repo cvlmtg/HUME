@@ -201,7 +201,7 @@ fn render_statusline(
     area: Rect,
     y: u16,
 ) {
-    let config = &editor.statusline_config;
+    let config = &editor.settings.statusline;
 
     let (left_elems, center_elems, right_elems): (&[StatusElement], &[StatusElement], &[StatusElement]) =
         if editor.minibuf.is_some() {

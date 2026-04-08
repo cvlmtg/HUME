@@ -15,12 +15,10 @@ use std::collections::VecDeque;
 use crate::core::buffer::Buffer;
 use crate::core::selection::SelectionSet;
 
-/// Maximum number of entries kept in the jump list.
-const JUMP_LIST_CAPACITY: usize = 100;
-
-/// Motions that move the primary cursor more than this many lines are
-/// automatically recorded as jumps.
-pub(crate) const JUMP_LINE_THRESHOLD: usize = 5;
+#[cfg(test)]
+/// Default capacity — kept here so tests can construct jump lists without
+/// importing `EditorSettings`.
+pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,11 +49,14 @@ pub(crate) struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
+    /// Maximum number of entries. Oldest entry is dropped when exceeded.
+    capacity: usize,
 }
 
 impl JumpList {
-    pub(crate) fn new() -> Self {
-        Self { entries: VecDeque::new(), cursor: 0 }
+    /// Create a new jump list with the given capacity limit.
+    pub(crate) fn new(capacity: usize) -> Self {
+        Self { entries: VecDeque::new(), cursor: 0, capacity }
     }
 
     /// Record a jump. Truncates forward history, deduplicates against the last
@@ -71,7 +72,7 @@ impl JumpList {
 
         self.entries.push_back(entry);
 
-        if self.entries.len() > JUMP_LIST_CAPACITY {
+        if self.entries.len() > self.capacity {
             self.entries.pop_front();
         }
 
@@ -137,7 +138,7 @@ mod tests {
 
     #[test]
     fn push_and_backward() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 0));
         jl.push(entry(10, 5));
         jl.push(entry(20, 10));
@@ -157,7 +158,7 @@ mod tests {
 
     #[test]
     fn forward_after_backward() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 0));
         jl.push(entry(10, 5));
         jl.push(entry(20, 10));
@@ -177,7 +178,7 @@ mod tests {
 
     #[test]
     fn truncation_on_new_push() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 0));
         jl.push(entry(10, 5));
         jl.push(entry(20, 10));
@@ -201,14 +202,15 @@ mod tests {
 
     #[test]
     fn capacity_cap() {
-        let mut jl = JumpList::new();
-        for i in 0..=JUMP_LIST_CAPACITY {
+        const CAP: usize = DEFAULT_JUMP_LIST_CAPACITY;
+        let mut jl = JumpList::new(CAP);
+        for i in 0..=CAP {
             jl.push(entry(i * 10, i));
         }
-        assert_eq!(jl.len(), JUMP_LIST_CAPACITY);
+        assert_eq!(jl.len(), CAP);
 
         let e = jl.backward(entry(9999, 9999)).unwrap();
-        assert_eq!(e.primary_line, JUMP_LIST_CAPACITY);
+        assert_eq!(e.primary_line, CAP);
 
         let mut oldest = e.primary_line;
         while let Some(e) = jl.backward(entry(0, 0)) {
@@ -219,7 +221,7 @@ mod tests {
 
     #[test]
     fn deduplication() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 5));
         jl.push(entry(3, 5)); // same line — replaces
         assert_eq!(jl.len(), 1);
@@ -234,14 +236,14 @@ mod tests {
 
     #[test]
     fn empty_list() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         assert!(jl.backward(entry(0, 0)).is_none());
         assert!(jl.forward().is_none());
     }
 
     #[test]
     fn backward_after_returning_to_present() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 0));
 
         // Go backward, then forward back to the saved "present" entry.
@@ -263,7 +265,7 @@ mod tests {
 
     #[test]
     fn backward_saves_current_position() {
-        let mut jl = JumpList::new();
+        let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
         jl.push(entry(0, 0));
 
         let e = jl.backward(entry(50, 10)).unwrap();

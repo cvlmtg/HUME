@@ -20,10 +20,6 @@ pub struct ViewportState {
     pub width: u16,
     /// Total height of the pane in terminal cells.
     pub height: u16,
-    /// Vertical scroll-off margin (keep this many rows before/after the primary selection head).
-    pub vertical_margin: u16,
-    /// Horizontal scroll-off margin (columns to keep visible around the primary selection head).
-    pub horizontal_margin: u16,
 }
 
 impl ViewportState {
@@ -34,8 +30,6 @@ impl ViewportState {
             horizontal_offset: 0,
             width,
             height,
-            vertical_margin: 5,
-            horizontal_margin: 5,
         }
     }
 }
@@ -171,8 +165,6 @@ mod tests {
         assert_eq!(vp.horizontal_offset, 0);
         assert_eq!(vp.width, 80);
         assert_eq!(vp.height, 24);
-        assert_eq!(vp.vertical_margin, 5);
-        assert_eq!(vp.horizontal_margin, 5);
     }
 
     #[test]

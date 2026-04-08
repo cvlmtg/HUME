@@ -1058,7 +1058,7 @@ fn auto_pairs_no_false_skip() {
 #[test]
 fn auto_pairs_disabled() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.auto_pairs.enabled = false;
+    ed.settings.auto_pairs_enabled = false;
     ed.handle_key(key('i'));
     ed.handle_key(key('('));
     assert_eq!(state(&ed), "(-[h]>ello\n");
@@ -2797,9 +2797,9 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
 /// WrapMode::None falls back to buffer-line movement.
 #[test]
 fn visual_move_no_wrap_falls_back_to_buffer_line() {
-    use engine::pane::WrapMode;
     let mut ed = visual_test_editor(0);
-    ed.pane_mut().wrap_mode = WrapMode::None;
+    // Set pane directly: tests don't call prepare_frame, so overrides aren't synced.
+    ed.engine_view.panes[ed.pane_id].wrap_mode = engine::pane::WrapMode::None;
 
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
@@ -2929,7 +2929,8 @@ fn page_test_editor() -> Editor {
     let buf = Buffer::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Document::new(buf, sels));
-    ed.pane_mut().wrap_mode = WrapMode::None;
+    // Set pane directly: tests don't call prepare_frame, so overrides aren't synced.
+    ed.engine_view.panes[ed.pane_id].wrap_mode = engine::pane::WrapMode::None;
     ed
 }
 
@@ -3180,7 +3181,7 @@ fn macro_status_indicator() {
     use crate::ui::statusline::StatusElement;
 
     let ed = editor_from("-[a]>bcd\n");
-    let config = ed.statusline_config.clone();
+    let config = &ed.settings.statusline;
     assert!(
         config.right.contains(&StatusElement::MacroRecording),
         "MacroRecording should be in the default right section"
