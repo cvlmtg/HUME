@@ -75,14 +75,23 @@ pub(crate) fn compose_row(
             scope_style
         };
 
-        // Right-align the text within the column width.
+        // Right-align the text within the column, reserving the last column
+        // as a separator space between the gutter and the content area.
+        let usable = col_width.saturating_sub(1); // reserve 1 col for right padding
         let text_len = unicode_display_width(text) as u16;
-        let pad = col_width.saturating_sub(text_len);
-        // Write padding (spaces), then text.
+        let pad = usable.saturating_sub(text_len);
+        // Write leading spaces, then each character, then the trailing separator.
         for px in 0..pad {
             set_cell(buf, gutter_x + px, y, " ", style);
         }
-        set_cell(buf, gutter_x + pad, y, text, style);
+        let mut cx = gutter_x + pad;
+        for ch in text.chars() {
+            let mut tmp = [0u8; 4];
+            set_cell(buf, cx, y, ch.encode_utf8(&mut tmp), style);
+            cx += 1;
+        }
+        // Trailing separator space.
+        set_cell(buf, cx, y, " ", style);
 
         gutter_x += col_width;
     }
