@@ -146,6 +146,7 @@ mod tests {
         fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("ui.linenr"))
         }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
     }
 
     #[test]

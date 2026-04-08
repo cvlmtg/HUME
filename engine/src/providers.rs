@@ -1,5 +1,7 @@
+use std::any::Any;
 use std::ops::Range;
 
+use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
 use crate::types::{EditorMode, Grapheme, RowKind, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
@@ -79,6 +81,11 @@ pub trait GutterColumn: Send + Sync {
 
     /// Produce content for one display row.
     fn render_row(&self, kind: RowKind, mode: EditorMode, primary_head_line: usize) -> GutterCell;
+
+    /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
+    ///
+    /// Implement as `fn as_any_mut(&mut self) -> &mut dyn Any { self }`.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 #[derive(Clone, Debug)]
@@ -275,6 +282,18 @@ impl ProviderSet {
     pub fn gutter_columns(&self) -> &[Box<dyn GutterColumn>] {
         &self.gutter_columns
     }
+
+    /// Push the resolved line-number style into the `LineNumberColumn`, if present.
+    ///
+    /// Called from `prepare_frame` each frame so `:set line-number-style` takes
+    /// effect without rebuilding the provider set.
+    pub fn sync_line_number_style(&mut self, style: &LineNumberStyle) {
+        for col in &mut self.gutter_columns {
+            if let Some(ln) = col.as_any_mut().downcast_mut::<LineNumberColumn>() {
+                ln.style = style.clone();
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +321,7 @@ mod tests {
         fn render_row(&self, _: crate::types::RowKind, _: crate::types::EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("x"))
         }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
     }
 
     // ── GutterCellContent::from_number ─────────────────────────────────

@@ -558,6 +558,8 @@ impl Editor {
             pane.tab_width = self.doc.overrides.tab_width(&self.settings);
             pane.wrap_mode = self.doc.overrides.wrap_mode(&self.settings);
             pane.whitespace = self.doc.overrides.whitespace(&self.settings);
+            let ln_style = self.doc.overrides.line_number_style(&self.settings);
+            pane.providers.sync_line_number_style(&ln_style);
         }
 
         // 5. Scroll so the primary cursor stays visible.

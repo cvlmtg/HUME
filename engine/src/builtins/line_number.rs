@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
 use crate::types::{EditorMode, RowKind, Scope};
 
@@ -89,6 +91,8 @@ impl GutterColumn for LineNumberColumn {
             }
         }
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
 
 // ---------------------------------------------------------------------------

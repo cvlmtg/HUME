@@ -128,10 +128,6 @@ impl BufferOverrides {
     }
 
     /// Effective line-number style: buffer override → global default.
-    ///
-    /// Note: pushing this to the engine's `LineNumberColumn` each frame is a
-    /// follow-up — the resolver is ready, but the render-pipeline sync is not yet wired.
-    #[allow(dead_code)]
     pub(crate) fn line_number_style(&self, global: &EditorSettings) -> LineNumberStyle {
         self.line_number_style
             .clone()
