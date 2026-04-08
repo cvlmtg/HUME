@@ -222,7 +222,7 @@ pub(crate) fn compose(
 
     // Pre-compute per-column widths into the caller-supplied scratch (no alloc after warmup).
     col_widths.clear();
-    col_widths.extend(compose_ctx.gutter_columns.iter().map(|c| c.width(visible.total_lines) as u16));
+    col_widths.extend(compose_ctx.gutter_columns.iter().map(|c| c.width(visible.last_line_idx) as u16));
 
     let mut screen_row: u16 = 0;
     // Current line text slice, looked up once per new line_idx.
@@ -397,6 +397,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
         let pane_rect = ratatui::layout::Rect { x: 0, y: 0, width: 20, height: 5 };
@@ -424,6 +425,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
         let pane_rect = ratatui::layout::Rect { x: 0, y: 0, width: 20, height: 5 };
@@ -488,6 +490,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 2,
+            last_line_idx: 1,
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose(&rope, &rows, &g, &styles, visible, viewport, 4, 20, 5);
@@ -518,6 +521,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 2; // skip columns 0 and 1
@@ -551,6 +555,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
@@ -587,6 +592,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
@@ -617,6 +623,7 @@ mod tests {
             content_width: 20,
             gutter_width: 0,
             total_lines: 1,
+            last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);

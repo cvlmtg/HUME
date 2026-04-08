@@ -425,7 +425,7 @@ pub(crate) fn render_pane(
     // Gutter column widths: constant for the entire frame.
     scratch.col_widths.clear();
     scratch.col_widths.extend(
-        pane_ctx.pane.providers.gutter_columns.iter().map(|c| c.width(visible.total_lines) as u16),
+        pane_ctx.pane.providers.gutter_columns.iter().map(|c| c.width(visible.last_line_idx) as u16),
     );
 
     // Bundle per-frame constants so compose_row call sites stay concise.

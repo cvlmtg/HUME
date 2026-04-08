@@ -25,8 +25,11 @@ pub struct VisibleRange {
     pub content_width: u16,
     /// Total gutter width in columns.
     pub gutter_width: u16,
-    /// Total buffer lines (for gutter line-number sizing).
+    /// Total buffer lines (for `render_row` callers that need the count).
     pub total_lines: usize,
+    /// 0-based index of the last buffer line (`total_lines - 1`).
+    /// This is the correct value to pass to `GutterColumn::width()`.
+    pub last_line_idx: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -51,15 +54,16 @@ pub fn compute_viewport(
     gutter_columns: &[Box<dyn GutterColumn>],
 ) -> VisibleRange {
     let total_lines = rope.len_lines();
-
-    let approx_end = viewport.top_line + viewport.height as usize;
-    let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
-    let gutter_width = gutter_width_for_line(gutter_columns, max_visible_line);
+    // 0-based index of the last line — the single source of truth for GutterColumn::width().
+    // Using the whole-file last line (not just the visible range) keeps gutter width stable
+    // as the user scrolls.
+    let last_line_idx = total_lines.saturating_sub(1);
+    let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx);
 
     let content_width = viewport.width.saturating_sub(gutter_width).max(1);
 
     // Compute buffer line range that fills the viewport.
-    let top_line = viewport.top_line.min(total_lines.saturating_sub(1));
+    let top_line = viewport.top_line.min(last_line_idx);
     let top_skip = viewport.top_row_offset;
 
     let line_range = compute_line_range(rope, top_line, top_skip, viewport.height, content_width, wrap_mode, total_lines);
@@ -71,6 +75,7 @@ pub fn compute_viewport(
         content_width,
         gutter_width,
         total_lines,
+        last_line_idx,
     }
 }
 
