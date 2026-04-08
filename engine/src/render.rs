@@ -285,12 +285,12 @@ pub(crate) fn render_tilde_fillers(
 #[inline]
 fn set_cell(buf: &mut ratatui::buffer::Buffer, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
     let area = buf.area();
-    if x < area.x + area.width && y < area.y + area.height {
-        buf.cell_mut(ratatui::layout::Position { x, y })
-            .map(|cell| {
-                cell.set_symbol(text);
-                cell.set_style(style);
-            });
+    if x < area.x + area.width
+        && y < area.y + area.height
+        && let Some(cell) = buf.cell_mut(ratatui::layout::Position { x, y })
+    {
+        cell.set_symbol(text);
+        cell.set_style(style);
     }
 }
 

@@ -178,12 +178,12 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let colors = EditorColors::default();
         let y = area.y;
 
-        if editor.minibuf.is_none() {
-            if let Some(ref msg) = editor.status_msg {
-                fill_row_colors(buf, &colors, area, y);
-                buf.set_string(area.x + 1, y, msg, colors.statusline);
-                return;
-            }
+        if editor.minibuf.is_none()
+            && let Some(ref msg) = editor.status_msg
+        {
+            fill_row_colors(buf, &colors, area, y);
+            buf.set_string(area.x + 1, y, msg, colors.statusline);
+            return;
         }
 
         render_statusline(buf, editor, &colors, area, y);

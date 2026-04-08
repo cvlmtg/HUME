@@ -291,8 +291,7 @@ impl EngineView {
         self.layout.collect_rects_into(pane_area, pane_rects);
 
         // ── Render panes ──────────────────────────────────────────────────────
-        for i in 0..pane_rects.len() {
-            let (pane_id, rect) = pane_rects[i];
+        for (pane_id, rect) in pane_rects.iter().copied() {
             let Some(pane) = self.panes.get(pane_id) else { continue };
             let Some(buffer) = self.buffers.get(pane.buffer_id) else { continue };
             // Resolve the rope from the caller — zero-copy, no clone needed.
@@ -312,8 +311,7 @@ impl EngineView {
         }
 
         // ── Render overlays on top (may span panes) ───────────────────────────
-        for i in 0..pane_rects.len() {
-            let (pane_id, _rect) = pane_rects[i];
+        for (pane_id, _rect) in pane_rects.iter().copied() {
             let Some(pane) = self.panes.get(pane_id) else { continue };
             for overlay in &pane.providers.overlays {
                 if overlay.is_active() {

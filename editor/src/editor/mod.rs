@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::path::PathBuf;
@@ -61,7 +62,9 @@ pub(super) struct InsertSession {
 #[derive(Debug, Clone)]
 pub(super) struct RepeatableAction {
     /// The command name that initiated this action (e.g. `"delete"`, `"change"`).
-    pub command: &'static str,
+    /// `Cow::Borrowed` for built-in commands (zero allocation); `Cow::Owned` for
+    /// dynamically-registered commands (e.g. from the Steel scripting layer).
+    pub command: Cow<'static, str>,
     /// The count prefix used originally. Overridden when `.` itself is given a count.
     pub count: usize,
     /// Character argument for wait-char commands (`r`, `f`, `t`, …).

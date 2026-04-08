@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
@@ -18,23 +20,6 @@ use crate::ops::register::MACRO_REGISTER;
 
 use super::{Editor, MacroPending, Mode, SearchDirection};
 
-/// Commands that always record a jump before executing.
-const JUMP_COMMANDS: &[&str] = &[
-    "goto-first-line",
-    "goto-last-line",
-    "search-next",
-    "search-prev",
-    "extend-search-next",
-    "extend-search-prev",
-    "page-down",
-    "page-up",
-    "extend-page-down",
-    "extend-page-up",
-];
-
-fn is_jump_command(name: &str) -> bool {
-    JUMP_COMMANDS.contains(&name)
-}
 
 /// Valid register names for macro recording/replay: lowercase letters and digits.
 ///
@@ -77,10 +62,10 @@ impl Editor {
         // ── Macro recording ───────────────────────────────────────────────────
         // Runs after all mode handlers so Insert, Command, and Search keys
         // are captured. `skip_macro_record` excludes the stop `Q` itself.
-        if let Some((_, ref mut keys)) = self.macro_recording {
-            if !self.skip_macro_record {
-                keys.push(key);
-            }
+        if let Some((_, ref mut keys)) = self.macro_recording
+            && !self.skip_macro_record
+        {
+            keys.push(key);
         }
         self.skip_macro_record = false;
     }
@@ -123,7 +108,7 @@ impl Editor {
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
                 let extend = (self.mode == EditorMode::Extend) || wc.ctrl_extend;
-                self.execute_keymap_command(wc.cmd_name, count, extend);
+                self.execute_keymap_command(wc.cmd_name.clone(), count, extend);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -294,9 +279,9 @@ impl Editor {
         // extend variant. Prevents e.g. Ctrl+u from running "undo" (which
         // has no extend variant and is not a motion).
         if ctrl_extend {
-            let name = match &result {
-                WalkResult::Leaf(cmd) => Some(cmd.name),
-                WalkResult::WaitChar(wc) => Some(wc.cmd_name),
+            let name: Option<&str> = match &result {
+                WalkResult::Leaf(cmd) => Some(cmd.name.as_ref()),
+                WalkResult::WaitChar(wc) => Some(wc.cmd_name.as_ref()),
                 _ => None,
             };
             if let Some(n) = name
@@ -314,7 +299,7 @@ impl Editor {
                 let raw_count = self.count.take();
                 self.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
-                self.execute_keymap_command(cmd.name, count, extend);
+                self.execute_keymap_command(cmd.name.clone(), count, extend);
                 self.explicit_count = false;
             }
             WalkResult::WaitChar(mut wc) => {
@@ -343,7 +328,7 @@ impl Editor {
         let trie_result = self.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                self.execute_keymap_command(cmd.name, 1, false);
+                self.execute_keymap_command(cmd.name.clone(), 1, false);
                 return;
             }
             WalkResult::NoMatch => {}
@@ -415,24 +400,26 @@ impl Editor {
     /// extend variant exists.
     ///
     /// [`CommandRegistry`]: super::registry::CommandRegistry
-    pub(super) fn execute_keymap_command(&mut self, name: &'static str, count: usize, extend: bool) {
+    pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool) {
         // Resolve extend-mode duality via the registry. When extend is active,
         // use the extend variant if one exists; otherwise fall back to the base.
-        let resolved = if extend {
-            self.registry.extend_variant(name).unwrap_or(name)
+        // `extend_variant` returns an owned Cow, so `resolved` owns its value
+        // independent of the registry borrow — no lifetime entanglement.
+        let resolved: Cow<'static, str> = if extend {
+            self.registry.extend_variant(&name).unwrap_or(name)
         } else {
             name
         };
 
-        if let Some(reg_cmd) = self.registry.get(resolved).cloned() {
+        if let Some(reg_cmd) = self.registry.get(resolved.as_ref()).cloned() {
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
             // ── Jump list: capture pre-command state ─────────────────────────
             // Motions, explicit jump commands, and vertical visual-line EditorCmds
             // can all produce large enough line jumps to warrant a jump entry.
-            let is_explicit_jump = is_jump_command(resolved);
-            let is_vertical_visual = matches!(resolved, "move-down" | "move-up" | "extend-down" | "extend-up");
+            let is_explicit_jump = reg_cmd.is_jump();
+            let is_vertical_visual = reg_cmd.is_visual_move();
             let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
                 let line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
                 Some((self.doc.sels().clone(), line))
@@ -479,7 +466,7 @@ impl Editor {
             // so any transient overwrite here is harmless.
             if reg_cmd.is_repeatable() {
                 self.last_action = Some(super::RepeatableAction {
-                    command: resolved,
+                    command: resolved.clone(),
                     count,
                     char_arg,
                     insert_keys: Vec::new(),
@@ -774,34 +761,45 @@ impl Editor {
 mod tests {
     use super::*;
 
-    /// Guard: every command whose name starts with a jump-related prefix must
-    /// appear in `JUMP_COMMANDS`. Catches silent omissions when new jump-worthy
-    /// commands are added to the registry.
+    /// Guard: every jump command has `is_jump() == true` in the registry.
+    ///
+    /// The registry is the single source of truth — there is no separate
+    /// `JUMP_COMMANDS` list to keep in sync.
     #[test]
-    fn jump_commands_list_is_complete() {
+    fn jump_and_visual_move_flags_are_correct() {
         let reg = super::super::registry::CommandRegistry::with_defaults();
 
-        // Prefixes that indicate a command should always record a jump.
-        let jump_prefixes = ["goto-first-line", "goto-last-line", "search-next", "search-prev",
-                             "extend-search-next", "extend-search-prev",
-                             "page-down", "page-up", "extend-page-down", "extend-page-up"];
-
-        for prefix in &jump_prefixes {
+        let must_be_jump = [
+            "goto-first-line", "goto-last-line",
+            "search-next", "search-prev",
+            "extend-search-next", "extend-search-prev",
+            "page-down", "page-up",
+            "extend-page-down", "extend-page-up",
+        ];
+        for name in must_be_jump {
             assert!(
-                reg.get(prefix).is_some(),
-                "JUMP_COMMANDS references '{prefix}' which is not in the registry"
-            );
-            assert!(
-                is_jump_command(prefix),
-                "'{prefix}' is registered but missing from JUMP_COMMANDS"
+                reg.get(name).expect(name).is_jump(),
+                "'{name}' should have jump: true"
             );
         }
 
-        // Reverse check: every entry in JUMP_COMMANDS must exist in the registry.
-        for &name in JUMP_COMMANDS {
+        let must_be_visual_move = ["move-down", "move-up", "extend-down", "extend-up"];
+        for name in must_be_visual_move {
             assert!(
-                reg.get(name).is_some(),
-                "JUMP_COMMANDS contains '{name}' which is not in the registry"
+                reg.get(name).expect(name).is_visual_move(),
+                "'{name}' should have visual_move: true"
+            );
+        }
+
+        // Spot-check non-jump commands.
+        for name in ["move-left", "move-right", "delete", "undo", "insert-before"] {
+            assert!(
+                !reg.get(name).expect(name).is_jump(),
+                "'{name}' should have jump: false"
+            );
+            assert!(
+                !reg.get(name).expect(name).is_visual_move(),
+                "'{name}' should have visual_move: false"
             );
         }
     }

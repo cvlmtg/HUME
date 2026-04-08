@@ -31,6 +31,7 @@
 //! in `Editor.pending_char` and dispatches the named command. Extend-mode
 //! resolution happens at char-consumption time via the registry.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -42,9 +43,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// On the next keypress the dispatcher stores the character in
 /// `Editor.pending_char` and dispatches `cmd_name`. Extend-mode resolution
 /// happens at char-consumption time via the registry.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct WaitCharPending {
-    pub cmd_name: &'static str,
+    pub cmd_name: Cow<'static, str>,
     /// Set to `true` when this wait-char was triggered via Ctrl+key (kitty
     /// protocol). The dispatcher uses this to force extend resolution at
     /// char-consumption time.
@@ -60,10 +61,10 @@ pub(crate) struct WaitCharPending {
 /// pairing is stored in the registry, not here.
 ///
 /// [`CommandRegistry`]: super::registry::CommandRegistry
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct KeymapCommand {
     /// The command name to look up in the registry.
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
 }
 
 // ── WalkResult ────────────────────────────────────────────────────────────────
@@ -121,6 +122,71 @@ impl KeyTrie {
         self.bind(key, KeyTrieNode::Leaf(cmd));
     }
 
+    /// Bind a multi-key sequence to a leaf command, creating interior nodes as
+    /// needed. Single-key sequences insert directly as a `Leaf`.
+    ///
+    /// Called by [`Keymap::bind_user`] at runtime (e.g. from Steel config).
+    #[allow(dead_code)]
+    pub(crate) fn bind_sequence(&mut self, keys: &[KeyEvent], cmd: KeymapCommand) {
+        debug_assert!(!keys.is_empty());
+        if keys.len() == 1 {
+            self.bind_leaf(keys[0], cmd);
+            return;
+        }
+        // Walk/create interior nodes for all but the last key.
+        let mut current = self;
+        for &key in &keys[..keys.len() - 1] {
+            let entry = current.map.entry(key).or_insert_with(|| {
+                KeyTrieNode::Node(KeyTrie::new("user"))
+            });
+            // If the slot already holds a Leaf or WaitChar, replace with a Node
+            // so the prefix can be extended. This may shadow an existing binding.
+            if !matches!(entry, KeyTrieNode::Node(_)) {
+                *entry = KeyTrieNode::Node(KeyTrie::new("user"));
+            }
+            match entry {
+                KeyTrieNode::Node(sub) => {
+                    // SAFETY: This is a reborrow. The borrow checker can't see that
+                    // `current` changes each iteration because lifetimes in a loop
+                    // can't be expressed simply. Using a raw pointer here is the
+                    // idiomatic workaround for tree traversal with a mutable cursor.
+                    // Correctness: we always return immediately after using `current`,
+                    // and we never alias the pointer.
+                    current = unsafe { &mut *(sub as *mut KeyTrie) };
+                }
+                _ => unreachable!(),
+            }
+        }
+        current.bind_leaf(*keys.last().unwrap(), cmd);
+    }
+
+    /// Remove the binding for a single key at the root of this trie.
+    ///
+    /// For multi-key sequences, removes the leaf node at the end of the
+    /// sequence but leaves any interior nodes in place. No-op if the key or
+    /// any intermediate node is absent.
+    #[allow(dead_code)]
+    pub(crate) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
+        if keys.is_empty() {
+            return;
+        }
+        if keys.len() == 1 {
+            self.map.remove(&keys[0]);
+            return;
+        }
+        // Walk to the parent of the last key.
+        let mut current = self;
+        for &key in &keys[..keys.len() - 1] {
+            match current.map.get_mut(&key) {
+                Some(KeyTrieNode::Node(sub)) => {
+                    current = unsafe { &mut *(sub as *mut KeyTrie) };
+                }
+                _ => return, // path doesn't exist — no-op
+            }
+        }
+        current.map.remove(keys.last().unwrap());
+    }
+
     /// Walk a key sequence through the trie, returning the result after all keys.
     ///
     /// Called by the dispatcher with `self.pending_keys` on every keypress.
@@ -134,7 +200,7 @@ impl KeyTrie {
             match current.map.get(key) {
                 None => return WalkResult::NoMatch,
                 Some(KeyTrieNode::Leaf(cmd)) if i == last => {
-                    return WalkResult::Leaf(*cmd);
+                    return WalkResult::Leaf(cmd.clone());
                 }
                 Some(KeyTrieNode::Leaf(_)) => {
                     // A leaf was reached before consuming all keys — the extra
@@ -142,7 +208,7 @@ impl KeyTrie {
                     return WalkResult::NoMatch;
                 }
                 Some(KeyTrieNode::WaitChar(wc)) if i == last => {
-                    return WalkResult::WaitChar(*wc);
+                    return WalkResult::WaitChar(wc.clone());
                 }
                 Some(KeyTrieNode::WaitChar(_)) => {
                     // WaitChar is always a leaf — can't go deeper.
@@ -160,6 +226,18 @@ impl KeyTrie {
         // Unreachable: the loop above always returns before the iterator exhausts.
         WalkResult::NoMatch
     }
+}
+
+// ── BindMode ─────────────────────────────────────────────────────────────────
+
+/// Which keymap to apply a user-supplied binding to.
+///
+/// Used by [`Keymap::bind_user`] and [`Keymap::unbind_user`].
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BindMode {
+    Normal,
+    Insert,
 }
 
 // ── Keymap ────────────────────────────────────────────────────────────────────
@@ -181,19 +259,50 @@ impl Default for Keymap {
     }
 }
 
+impl Keymap {
+    /// Bind a key sequence to a command name in the given mode.
+    ///
+    /// Overwrites any existing binding for the same sequence. Single-key
+    /// sequences are inserted as a `Leaf`; multi-key sequences create
+    /// interior nodes as needed.
+    ///
+    /// `keys` must not be empty.
+    #[allow(dead_code)]
+    pub(crate) fn bind_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
+        debug_assert!(!keys.is_empty(), "bind_user called with empty key sequence");
+        let trie = match mode {
+            BindMode::Normal => &mut self.normal,
+            BindMode::Insert => &mut self.insert,
+        };
+        trie.bind_sequence(keys, KeymapCommand { name: command });
+    }
+
+    /// Remove a binding for a key sequence in the given mode.
+    ///
+    /// No-op if the sequence is not bound or any intermediate node is missing.
+    #[allow(dead_code)]
+    pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
+        let trie = match mode {
+            BindMode::Normal => &mut self.normal,
+            BindMode::Insert => &mut self.insert,
+        };
+        trie.remove_sequence(keys);
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Construct a [`KeymapCommand`] from a command name string.
+/// Construct a [`KeymapCommand`] from a command name string literal.
 macro_rules! cmd {
     ($name:expr) => {
-        KeymapCommand { name: $name }
+        KeymapCommand { name: Cow::Borrowed($name) }
     };
 }
 
-/// Construct a wait-char trie node from a command name string.
+/// Construct a wait-char trie node from a command name string literal.
 macro_rules! wait_char {
     ($cmd_name:expr) => {
-        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: $cmd_name, ctrl_extend: false })
+        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: Cow::Borrowed($cmd_name), ctrl_extend: false })
     };
 }
 
@@ -511,24 +620,15 @@ mod tests {
     fn single_key_leaf() {
         let trie = default_normal_keymap();
         let result = trie.walk(&[key!('h')]);
-        assert!(matches!(result, WalkResult::Leaf(KeymapCommand { name: "move-left", .. })));
+        assert!(matches!(result, WalkResult::Leaf(ref cmd) if cmd.name == "move-left"));
     }
 
     #[test]
     fn single_key_editor_cmd() {
         let trie = default_normal_keymap();
-        assert!(matches!(
-            trie.walk(&[key!('d')]),
-            WalkResult::Leaf(KeymapCommand { name: "delete", .. })
-        ));
-        assert!(matches!(
-            trie.walk(&[key!('u')]),
-            WalkResult::Leaf(KeymapCommand { name: "undo", .. })
-        ));
-        assert!(matches!(
-            trie.walk(&[key!('i')]),
-            WalkResult::Leaf(KeymapCommand { name: "insert-before", .. })
-        ));
+        assert!(matches!(trie.walk(&[key!('d')]), WalkResult::Leaf(ref cmd) if cmd.name == "delete"));
+        assert!(matches!(trie.walk(&[key!('u')]), WalkResult::Leaf(ref cmd) if cmd.name == "undo"));
+        assert!(matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-before"));
     }
 
     #[test]
@@ -688,19 +788,13 @@ mod tests {
     #[test]
     fn insert_esc_exits() {
         let trie = default_insert_keymap();
-        assert!(matches!(
-            trie.walk(&[key!(Esc)]),
-            WalkResult::Leaf(KeymapCommand { name: "exit-insert", .. })
-        ));
+        assert!(matches!(trie.walk(&[key!(Esc)]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert"));
     }
 
     #[test]
     fn insert_arrows_are_motions() {
         let trie = default_insert_keymap();
-        assert!(matches!(
-            trie.walk(&[key!(Left)]),
-            WalkResult::Leaf(KeymapCommand { name: "move-left", .. })
-        ));
+        assert!(matches!(trie.walk(&[key!(Left)]), WalkResult::Leaf(ref cmd) if cmd.name == "move-left"));
     }
 
     #[test]
@@ -716,30 +810,18 @@ mod tests {
     fn insert_ctrl_c_exits() {
         // Ctrl+c is an alternative exit key in insert mode (same as Esc).
         let trie = default_insert_keymap();
-        assert!(matches!(
-            trie.walk(&[key!(Ctrl + 'c')]),
-            WalkResult::Leaf(KeymapCommand { name: "exit-insert", .. })
-        ));
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert"));
     }
 
     #[test]
     fn ctrl_bindings_in_normal_keymap() {
         let trie = default_normal_keymap();
-        // Ctrl+c → quit
-        assert!(matches!(
-            trie.walk(&[key!(Ctrl + 'c')]),
-            WalkResult::Leaf(KeymapCommand { name: "quit", .. })
-        ));
-        // Ctrl+r → redo (explicit binding, not kitty one-shot extend)
-        assert!(matches!(
-            trie.walk(&[key!(Ctrl + 'r')]),
-            WalkResult::Leaf(KeymapCommand { name: "redo", .. })
-        ));
-        // Ctrl+x → extend-select-line (explicit binding, not kitty one-shot extend)
-        assert!(matches!(
-            trie.walk(&[key!(Ctrl + 'x')]),
-            WalkResult::Leaf(KeymapCommand { name: "extend-select-line", .. })
-        ));
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "quit"),
+            "Ctrl+c should map to quit");
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
+            "Ctrl+r should map to redo");
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "extend-select-line"),
+            "Ctrl+x should map to extend-select-line");
     }
 
     #[test]
