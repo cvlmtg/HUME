@@ -94,7 +94,7 @@ impl Editor {
         {
             let pane = &mut self.engine_view.panes[self.pane_id];
             let rope = self.doc.buf().rope();
-            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace);
+            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -115,7 +115,7 @@ impl Editor {
             let pane = &mut self.engine_view.panes[self.pane_id];
             let rope = self.doc.buf().rope();
             let total_lines = rope.len_lines();
-            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines);
+            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -131,11 +131,7 @@ impl Editor {
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let pane = &self.engine_view.panes[self.pane_id];
-        let gutter_w = cursor::gutter_width(
-            &pane.viewport,
-            pane.providers.gutter_columns(),
-            self.doc.buf().len_lines(),
-        );
+        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.doc.buf().len_lines());
         let (vp, wrap_mode, tab_width, whitespace) = (
             pane.viewport.clone(),
             pane.wrap_mode.clone(),
@@ -167,8 +163,9 @@ fn scroll_viewport_up(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &engine::pane::WhitespaceConfig,
+    scratch: &mut FormatScratch,
 ) {
-    let mut scratch = FormatScratch::new();
+    scratch.clear();
     if wrap_mode.is_wrapping() {
         // Decrement by SCROLL_LINES display rows, respecting sub-row offsets.
         let mut rows_left = SCROLL_LINES;
@@ -179,7 +176,7 @@ fn scroll_viewport_up(
                 rows_left -= dec;
             } else if viewport.top_line > 0 {
                 viewport.top_line -= 1;
-                let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, &mut scratch);
+                let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, scratch);
                 // Jump to the last sub-row of the new top line.
                 let sub = rows.saturating_sub(1);
                 viewport.top_row_offset = sub as u16;
@@ -200,17 +197,17 @@ fn scroll_viewport_down(
     tab_width: u8,
     whitespace: &engine::pane::WhitespaceConfig,
     total_lines: usize,
+    scratch: &mut FormatScratch,
 ) {
+    scratch.clear();
     // Content lines = all lines minus the structural trailing '\n' sentinel.
     let content_lines = total_lines.saturating_sub(1);
     let height = viewport.height as usize;
-
-    let mut scratch = FormatScratch::new();
     if wrap_mode.is_wrapping() {
         // For wrapping, guard: if total display rows fit in the viewport, nothing to scroll.
         let mut total_rows = 0usize;
         for i in 0..content_lines {
-            total_rows += count_visual_rows(rope, i, tab_width, whitespace, wrap_mode, &mut scratch);
+            total_rows += count_visual_rows(rope, i, tab_width, whitespace, wrap_mode, scratch);
             if total_rows > height {
                 break;
             }
@@ -226,7 +223,7 @@ fn scroll_viewport_down(
             if viewport.top_line > last_line {
                 break;
             }
-            let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, &mut scratch);
+            let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, scratch);
             let remaining_in_line = rows.saturating_sub(1 + viewport.top_row_offset as usize);
             if rows_left <= remaining_in_line {
                 viewport.top_row_offset += rows_left as u16;

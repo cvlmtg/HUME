@@ -608,7 +608,6 @@ mod tests {
             content_height: 50,
             content_width: 80,
             gutter_width: 0,
-            total_lines: rope.len_lines(),
             last_line_idx: rope.len_lines().saturating_sub(1),
         };
         let ws = WhitespaceConfig::default();
@@ -689,7 +688,6 @@ mod tests {
             content_height: 10,
             content_width: 80,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let mut inserts = Vec::new();
@@ -715,7 +713,6 @@ mod tests {
             content_height: 10,
             content_width: 80,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let mut inserts = Vec::new();
@@ -744,7 +741,6 @@ mod tests {
             content_height: 50,
             content_width: 80,
             gutter_width: 0,
-            total_lines: rope.len_lines(),
             last_line_idx: rope.len_lines().saturating_sub(1),
         };
         let mut inserts = Vec::new();
@@ -824,7 +820,6 @@ mod tests {
             content_height: 10,
             content_width: 80,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let mut inserts = Vec::new();
