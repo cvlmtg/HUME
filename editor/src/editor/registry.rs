@@ -191,7 +191,7 @@ impl MappableCommand {
 /// Registry of all mappable commands, keyed by name.
 ///
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
-/// The keymap trie (`editor/keymap.rs`) stores command names as `&'static str`;
+/// The keymap trie (`editor/keymap.rs`) stores command names as `Cow<'static, str>`;
 /// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
 /// dispatch time to obtain the actual function pointer.
 ///

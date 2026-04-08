@@ -589,6 +589,97 @@ fn default_insert_keymap() -> KeyTrie {
 mod tests {
     use super::*;
 
+    // ── bind_sequence / remove_sequence / bind_user / unbind_user ────────────
+
+    #[test]
+    fn bind_sequence_single_key() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd") });
+        assert!(matches!(trie.walk(&[key!('z')]), WalkResult::Leaf(ref c) if c.name == "my-cmd"));
+    }
+
+    #[test]
+    fn bind_sequence_multi_key() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(
+            &[key!('g'), key!('g')],
+            KeymapCommand { name: Cow::Borrowed("goto-first-line") },
+        );
+        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
+        assert!(matches!(
+            trie.walk(&[key!('g'), key!('g')]),
+            WalkResult::Leaf(ref c) if c.name == "goto-first-line"
+        ));
+    }
+
+    #[test]
+    fn bind_sequence_shadows_existing_leaf() {
+        let mut trie = KeyTrie::new("test");
+        // Bind `g` as a leaf first.
+        trie.bind_sequence(&[key!('g')], KeymapCommand { name: Cow::Borrowed("old-cmd") });
+        // Now bind `gg` — should convert `g` from Leaf to Node.
+        trie.bind_sequence(
+            &[key!('g'), key!('g')],
+            KeymapCommand { name: Cow::Borrowed("new-cmd") },
+        );
+        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
+        assert!(matches!(
+            trie.walk(&[key!('g'), key!('g')]),
+            WalkResult::Leaf(ref c) if c.name == "new-cmd"
+        ));
+    }
+
+    #[test]
+    fn remove_sequence_single_key() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd") });
+        trie.remove_sequence(&[key!('z')]);
+        assert!(matches!(trie.walk(&[key!('z')]), WalkResult::NoMatch));
+    }
+
+    #[test]
+    fn remove_sequence_multi_key() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(
+            &[key!('g'), key!('g')],
+            KeymapCommand { name: Cow::Borrowed("goto-first-line") },
+        );
+        trie.remove_sequence(&[key!('g'), key!('g')]);
+        // Interior node for `g` remains; leaf `gg` is gone.
+        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
+        assert!(matches!(trie.walk(&[key!('g'), key!('g')]), WalkResult::NoMatch));
+    }
+
+    #[test]
+    fn remove_sequence_nonexistent_is_noop() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd") });
+        trie.remove_sequence(&[key!('q')]); // q not bound — no-op
+        trie.remove_sequence(&[key!('z'), key!('z')]); // path doesn't exist — no-op
+        // `z` leaf is untouched.
+        assert!(matches!(trie.walk(&[key!('z')]), WalkResult::Leaf(ref c) if c.name == "my-cmd"));
+    }
+
+    #[test]
+    fn bind_user_normal_mode() {
+        let mut km = Keymap::default();
+        km.bind_user(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"));
+        assert!(matches!(
+            km.normal.walk(&[key!('z')]),
+            WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        ));
+        // Insert mode unchanged.
+        assert!(matches!(km.insert.walk(&[key!('z')]), WalkResult::NoMatch));
+    }
+
+    #[test]
+    fn unbind_user_normal_mode() {
+        let mut km = Keymap::default();
+        km.bind_user(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"));
+        km.unbind_user(BindMode::Normal, &[key!('z')]);
+        assert!(matches!(km.normal.walk(&[key!('z')]), WalkResult::NoMatch));
+    }
+
     // ── Walk ─────────────────────────────────────────────────────────────────
 
     #[test]
