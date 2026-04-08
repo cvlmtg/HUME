@@ -31,6 +31,7 @@ mod commands;
 mod keymap;
 mod mappings;
 mod minibuf;
+mod mouse;
 pub(super) mod scroll;
 
 pub(crate) use minibuf::MiniBuffer;
@@ -404,6 +405,27 @@ pub(crate) struct Editor {
     /// reliable than checking `replay_queue.is_empty()`, which becomes `true`
     /// at the exact moment the last replayed key is processed.
     pub(super) is_replaying: bool,
+
+    // ── Mouse ─────────────────────────────────────────────────────────────────
+
+    /// Master toggle for mouse support.
+    ///
+    /// When `true`, normal mouse tracking (click + scroll) is enabled. The
+    /// terminal emits mouse events instead of handling clicks itself.
+    /// Drag-select still falls through to the terminal unless `mouse_select`
+    /// is also true.
+    pub(crate) mouse_enabled: bool,
+
+    /// When `true`, button-event tracking is also enabled so left-drag events
+    /// are sent to the editor and create editor selections.
+    ///
+    /// When `false` (default), drag events are never sent to the editor, so
+    /// the terminal handles drag-select natively (Cmd+C / Shift+drag style).
+    pub(crate) mouse_select: bool,
+
+    /// Anchor char offset set on `MouseButton::Left` down when `mouse_select`
+    /// is enabled. Cleared on mouse up.
+    pub(super) mouse_drag_anchor: Option<usize>,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -519,6 +541,9 @@ impl Editor {
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
             is_replaying: false,
+            mouse_enabled: true,
+            mouse_select: false,
+            mouse_drag_anchor: None,
         })
     }
 
@@ -607,6 +632,9 @@ impl Editor {
                     self.update_search_cache();
                 }
                 Event::Key(_) => {}
+                Event::Mouse(mouse) => {
+                    self.handle_mouse(mouse);
+                }
                 Event::Resize(_, _) => {} // dimensions re-read at loop top
                 _ => {}
             }
@@ -969,6 +997,9 @@ impl Editor {
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
             is_replaying: false,
+            mouse_enabled: true,
+            mouse_select: false,
+            mouse_drag_anchor: None,
         }
     }
 

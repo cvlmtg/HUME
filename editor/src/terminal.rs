@@ -1,4 +1,4 @@
-use std::io::{self, stdout, Stdout};
+use std::io::{self, stdout, Stdout, Write};
 
 use crossterm::{
     execute,
@@ -17,13 +17,21 @@ pub(crate) type Term = Terminal<CrosstermBackend<Stdout>>;
 /// `Terminal`. Also probes for kitty keyboard protocol support and enables it
 /// if available.
 ///
+/// Mouse tracking is enabled selectively:
+/// - `mouse_enabled` enables normal tracking (button press/release + scroll,
+///   `\x1b[?1000h`) plus SGR extended coordinates (`\x1b[?1006h`). With only
+///   these modes, drag events are NOT sent to the application, so the terminal
+///   handles drag-select natively.
+/// - `mouse_select` additionally enables button-event tracking (`\x1b[?1002h`),
+///   which sends drag events so the editor can create editor selections on drag.
+///
 /// Returns `(Term, kitty_enabled)`. When `kitty_enabled` is `true`, the editor
 /// should activate Ctrl+motion extend shortcuts and filter `KeyEventKind::Release`
 /// events from the event loop.
 ///
 /// Call [`restore`] (or let the panic hook do it) before the process exits so
 /// the user's shell is left in a usable state.
-pub(crate) fn init() -> io::Result<(Term, bool)> {
+pub(crate) fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term, bool)> {
     enable_raw_mode()?;
     let mut out = stdout();
 
@@ -44,6 +52,21 @@ pub(crate) fn init() -> io::Result<(Term, bool)> {
                     | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
             )
         )?;
+    }
+
+    if mouse_enabled {
+        // Normal tracking (1000): button press/release and scroll wheel.
+        // SGR extended coordinates (1006): removes the 223-column limit of the
+        // legacy X10 encoding; required for wide terminals.
+        // We deliberately do NOT enable button-event tracking (1002, which
+        // also reports drag motion) unless `mouse_select` is true. Without
+        // 1002, drag events never reach the application, so the terminal
+        // handles drag-select natively.
+        out.write_all(b"\x1b[?1000h\x1b[?1006h")?;
+        if mouse_select {
+            out.write_all(b"\x1b[?1002h")?;
+        }
+        out.flush()?;
     }
 
     execute!(out, EnterAlternateScreen)?;
@@ -68,6 +91,10 @@ pub(crate) fn restore() -> io::Result<()> {
     // Pop kitty keyboard protocol first. Harmless on legacy terminals — no
     // flags were pushed, so the sequence is silently ignored.
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
+    // Disable all mouse tracking modes. The `l` (low) sequences are harmless
+    // no-ops if the corresponding mode was never enabled.
+    try_op(stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l").map_err(io::Error::from));
+    try_op(stdout().flush());
     // Disable raw mode before leaving the alternate screen so the shell stays
     // usable even if LeaveAlternateScreen fails.
     try_op(disable_raw_mode());
