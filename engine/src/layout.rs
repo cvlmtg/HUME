@@ -125,7 +125,7 @@ fn estimate_line_rows(rope: &Rope, line_idx: usize, content_width: u16) -> usize
     if char_count == 0 {
         1
     } else {
-        (char_count + content_width as usize - 1) / content_width as usize
+        char_count.div_ceil(content_width as usize)
     }
 }
 

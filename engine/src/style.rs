@@ -242,6 +242,7 @@ pub(crate) fn rebuild_tier_bufs(
 ///
 /// Call [`rebuild_tier_bufs`] for the current buffer line before this.
 /// `scratch.sorted_sels` must be pre-populated and sorted by the caller.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn style_row(
     row: &DisplayRow,
     graphemes: &[Grapheme],
@@ -258,8 +259,8 @@ pub(crate) fn style_row(
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
-    for g_idx in row.graphemes.start..row.graphemes.end {
-        let g = &graphemes[g_idx];
+    for (g_idx, g) in graphemes[row.graphemes.clone()].iter().enumerate() {
+        let g_idx = row.graphemes.start + g_idx;
 
         // WidthContinuation cells get the same style as their primary cell.
         if matches!(g.content, crate::types::CellContent::WidthContinuation) {
@@ -376,6 +377,7 @@ pub fn resolve_styles(
 ///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this row.
+#[allow(clippy::too_many_arguments)]
 fn collect_selection_spans(
     line_start_char: usize,
     line_end_char: usize,
@@ -444,6 +446,7 @@ fn collect_selection_spans(
 ///
 /// Also sets `primary_head_col` when the primary selection (identified by
 /// `primary_idx`) has its head on this row.
+#[allow(clippy::too_many_arguments)]
 fn collect_head_cols(
     line_start_char: usize,
     line_end_char: usize,

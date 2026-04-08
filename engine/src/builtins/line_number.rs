@@ -29,9 +29,15 @@ pub struct LineNumberColumn {
     pub style: LineNumberStyle,
 }
 
+impl Default for LineNumberColumn {
+    fn default() -> Self {
+        Self { style: LineNumberStyle::Hybrid }
+    }
+}
+
 impl LineNumberColumn {
     pub fn new() -> Self {
-        Self { style: LineNumberStyle::Hybrid }
+        Self::default()
     }
 
     pub fn with_style(style: LineNumberStyle) -> Self {

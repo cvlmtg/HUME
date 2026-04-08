@@ -139,6 +139,7 @@ fn ensure_cursor_visible_wrapped(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scroll_backward_from_cursor(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,

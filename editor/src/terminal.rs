@@ -93,7 +93,7 @@ pub(crate) fn restore() -> io::Result<()> {
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
     // Disable all mouse tracking modes. The `l` (low) sequences are harmless
     // no-ops if the corresponding mode was never enabled.
-    try_op(stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l").map_err(io::Error::from));
+    try_op(stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l"));
     try_op(stdout().flush());
     // Disable raw mode before leaving the alternate screen so the shell stays
     // usable even if LeaveAlternateScreen fails.

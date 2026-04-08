@@ -31,6 +31,7 @@
 //! Typed commands entered via `:` (`:w`, `:q`, etc.) are a separate system in
 //! `editor/mappings.rs:execute_command` and are NOT stored here.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::core::buffer::Buffer;
@@ -82,7 +83,7 @@ use crate::ops::text_object::{
 ///
 /// The keymap trie stores command *names*; the registry resolves names to
 /// `MappableCommand` values at dispatch time.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
@@ -90,8 +91,11 @@ pub(crate) enum MappableCommand {
     ///
     /// Motions never mutate the buffer, so `repeatable` is always `false`.
     Motion {
-        name: &'static str,
+        name: Cow<'static, str>,
         fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet,
+        /// Whether this motion always records a jump list entry before executing,
+        /// regardless of how far the cursor moves. Used for goto commands.
+        jump: bool,
     },
     /// Selection or text-object operation (no count).
     ///
@@ -99,14 +103,14 @@ pub(crate) enum MappableCommand {
     ///
     /// Pure selection ops never mutate the buffer, so `repeatable` is always `false`.
     Selection {
-        name: &'static str,
+        name: Cow<'static, str>,
         fun: fn(&Buffer, SelectionSet) -> SelectionSet,
     },
     /// Buffer-modifying edit with no extra arguments.
     ///
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
     Edit {
-        name: &'static str,
+        name: Cow<'static, str>,
         fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
@@ -123,20 +127,27 @@ pub(crate) enum MappableCommand {
     /// `fn(&mut Editor, usize)` is a thin pointer so there is no self-referential
     /// sizing issue despite `Editor` owning the registry.
     EditorCmd {
-        name: &'static str,
+        name: Cow<'static, str>,
         fun: fn(&mut super::Editor, usize),
         /// Whether `.` should replay this command.
         repeatable: bool,
+        /// Whether this command always records a jump list entry before executing.
+        /// Used for search jumps and explicit page-scroll commands.
+        jump: bool,
+        /// Whether this command is a visual-line motion (move-down/up, extend-down/up).
+        /// The preferred display column is preserved across consecutive visual-line moves.
+        visual_move: bool,
     },
 }
 
 impl MappableCommand {
-    pub(crate) fn name(&self) -> &'static str {
+    #[allow(dead_code)]
+    pub(crate) fn name(&self) -> &str {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
-            | Self::EditorCmd { name, .. } => name,
+            | Self::EditorCmd { name, .. } => name.as_ref(),
         }
     }
 
@@ -148,6 +159,29 @@ impl MappableCommand {
         match self {
             Self::Motion { .. } | Self::Selection { .. } => false,
             Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
+        }
+    }
+
+    /// Returns `true` if this command always records a jump list entry before
+    /// executing, regardless of how far the cursor moves.
+    ///
+    /// This is the single source of truth for jump-command classification —
+    /// there is no parallel `JUMP_COMMANDS` list.
+    pub(crate) fn is_jump(&self) -> bool {
+        match self {
+            Self::Motion { jump, .. } | Self::EditorCmd { jump, .. } => *jump,
+            Self::Selection { .. } | Self::Edit { .. } => false,
+        }
+    }
+
+    /// Returns `true` if this command is a visual-line motion.
+    ///
+    /// The editor preserves the preferred display column across consecutive
+    /// visual-line moves and clears it for any other command.
+    pub(crate) fn is_visual_move(&self) -> bool {
+        match self {
+            Self::EditorCmd { visual_move, .. } => *visual_move,
+            _ => false,
         }
     }
 }
@@ -166,14 +200,14 @@ impl MappableCommand {
 /// dispatcher calls [`extend_variant`](Self::extend_variant) to resolve
 /// the correct command when extend mode is active.
 pub(crate) struct CommandRegistry {
-    commands: HashMap<&'static str, MappableCommand>,
+    commands: HashMap<Cow<'static, str>, MappableCommand>,
     /// Maps a base command name to its extend variant.
     ///
     /// When extend mode is active, the dispatcher looks up the base command
     /// here and dispatches the extend variant instead. This is the single
     /// source of truth for extend pairing — the keymap stores only base
     /// command names.
-    extend_map: HashMap<&'static str, &'static str>,
+    extend_map: HashMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
 impl CommandRegistry {
@@ -188,18 +222,29 @@ impl CommandRegistry {
     }
 
     fn register(&mut self, cmd: MappableCommand) {
-        self.commands.insert(cmd.name(), cmd);
+        // Clone the name Cow directly to use as the HashMap key.
+        // For Cow::Borrowed (all static built-in names), this is a pointer copy.
+        let key = match &cmd {
+            MappableCommand::Motion { name, .. }
+            | MappableCommand::Selection { name, .. }
+            | MappableCommand::Edit { name, .. }
+            | MappableCommand::EditorCmd { name, .. } => name.clone(),
+        };
+        self.commands.insert(key, cmd);
     }
 
     /// Look up a command by name.
+    ///
+    /// Accepts any `&str` — `HashMap<Cow<'static, str>, _>` supports
+    /// `Borrow<str>`-based lookup without allocating.
     pub(crate) fn get(&self, name: &str) -> Option<&MappableCommand> {
         self.commands.get(name)
     }
 
     /// Iterate over all registered command names.
     #[allow(dead_code)]
-    pub(crate) fn names(&self) -> impl Iterator<Item = &&'static str> {
-        self.commands.keys()
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.commands.keys().map(|k| k.as_ref())
     }
 
     /// Total number of registered commands.
@@ -209,8 +254,28 @@ impl CommandRegistry {
     }
 
     /// Look up the extend variant for a command, if one exists.
-    pub(crate) fn extend_variant(&self, name: &str) -> Option<&'static str> {
-        self.extend_map.get(name).copied()
+    ///
+    /// Returns an owned `Cow<'static, str>` so the caller is not bound by
+    /// the registry's borrow lifetime. For static entries the clone is a
+    /// pointer copy (zero allocation).
+    pub(crate) fn extend_variant(&self, name: &str) -> Option<Cow<'static, str>> {
+        self.extend_map.get(name).cloned()
+    }
+
+    /// Register a command at runtime (e.g. from a Steel plugin).
+    ///
+    /// If a command with the same name already exists it is replaced.
+    #[allow(dead_code)]
+    pub(crate) fn register_dynamic(&mut self, cmd: MappableCommand) {
+        self.register(cmd);
+    }
+
+    /// Register a base → extend-variant pair at runtime.
+    ///
+    /// Used by Steel's `define-command!` + extend-mode support.
+    #[allow(dead_code)]
+    pub(crate) fn register_extend_pair(&mut self, base: Cow<'static, str>, variant: Cow<'static, str>) {
+        self.extend_map.insert(base, variant);
     }
 
     fn register_defaults(&mut self) {
@@ -220,61 +285,79 @@ impl CommandRegistry {
         // The optional `extend: "name"` trailing argument links this command to
         // its extend variant in the extend_map (single source of truth).
         macro_rules! motion {
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, jump) => {{
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: true });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
+            }};
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::Motion { name: $name, fun: $fun });
-                self.extend_map.insert($name, $ext);
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: false });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Motion { name: $name, fun: $fun })
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: false })
             };
         }
         macro_rules! selection {
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::Selection { name: $name, fun: $fun });
-                self.extend_map.insert($name, $ext);
+                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), fun: $fun });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Selection { name: $name, fun: $fun })
+                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), fun: $fun })
             };
         }
         macro_rules! edit {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Edit { name: $name, fun: $fun, repeatable: false })
+                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), fun: $fun, repeatable: false })
             };
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::Edit { name: $name, fun: $fun, repeatable: true })
+                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), fun: $fun, repeatable: true })
             };
         }
         macro_rules! editor_cmd {
             ($name:literal, $doc:literal, $fun:expr, repeatable, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: true });
-                self.extend_map.insert($name, $ext);
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: true, jump: false, visual_move: false });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, jump) => {{
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: true, visual_move: false });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
+            }};
+            ($name:literal, $doc:literal, $fun:expr, jump) => {
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: true, visual_move: false })
+            };
+            ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, visual_move) => {{
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: true });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
+            }};
+            ($name:literal, $doc:literal, $fun:expr, visual_move) => {
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: true })
+            };
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false });
-                self.extend_map.insert($name, $ext);
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: false });
+                self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: true })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: true, jump: false, visual_move: false })
             };
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: $name, fun: $fun, repeatable: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: false })
             };
         }
 
         // ── Character motions ─────────────────────────────────────────────────
         motion!("move-right", "Move cursors one grapheme to the right.", cmd_move_right, extend: "extend-right");
         motion!("move-left",  "Move cursors one grapheme to the left.",  cmd_move_left,  extend: "extend-left");
-        editor_cmd!("move-down",  "Move cursors down one visual line.",   cmd_visual_move_down,   extend: "extend-down");
-        editor_cmd!("move-up",    "Move cursors up one visual line.",     cmd_visual_move_up,     extend: "extend-up");
+        editor_cmd!("move-down",  "Move cursors down one visual line.",   cmd_visual_move_down,   extend: "extend-down", visual_move);
+        editor_cmd!("move-up",    "Move cursors up one visual line.",     cmd_visual_move_up,     extend: "extend-up",   visual_move);
         motion!("extend-right", "Extend selections one grapheme to the right.", cmd_extend_right);
         motion!("extend-left",  "Extend selections one grapheme to the left.",  cmd_extend_left);
-        editor_cmd!("extend-down",  "Extend selections down one visual line.", cmd_visual_extend_down);
-        editor_cmd!("extend-up",    "Extend selections up one visual line.",   cmd_visual_extend_up);
+        editor_cmd!("extend-down",  "Extend selections down one visual line.", cmd_visual_extend_down, visual_move);
+        editor_cmd!("extend-up",    "Extend selections up one visual line.",   cmd_visual_extend_up,   visual_move);
 
         // ── Buffer-level goto motions ─────────────────────────────────────────
-        motion!("goto-first-line", "Move cursors to the first character of the buffer.",     cmd_goto_first_line, extend: "extend-first-line");
-        motion!("goto-last-line",  "Move cursors to the first character of the last line.",  cmd_goto_last_line,  extend: "extend-last-line");
+        motion!("goto-first-line", "Move cursors to the first character of the buffer.",     cmd_goto_first_line, extend: "extend-first-line", jump);
+        motion!("goto-last-line",  "Move cursors to the first character of the last line.",  cmd_goto_last_line,  extend: "extend-last-line",  jump);
         motion!("extend-first-line", "Extend selections to the first character of the buffer.",    cmd_extend_first_line);
         motion!("extend-last-line",  "Extend selections to the first character of the last line.", cmd_extend_last_line);
 
@@ -432,10 +515,10 @@ impl CommandRegistry {
         editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace, repeatable);
 
         // ── Editor commands — page scroll ─────────────────────────────────────
-        editor_cmd!("page-down", "Scroll down by one viewport height.",            cmd_page_down, extend: "extend-page-down");
-        editor_cmd!("page-up",  "Scroll up by one viewport height.",              cmd_page_up,   extend: "extend-page-up");
-        editor_cmd!("extend-page-down", "Extend selections down by one viewport height.", cmd_extend_page_down);
-        editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",   cmd_extend_page_up);
+        editor_cmd!("page-down", "Scroll down by one viewport height.",            cmd_page_down, extend: "extend-page-down", jump);
+        editor_cmd!("page-up",  "Scroll up by one viewport height.",              cmd_page_up,   extend: "extend-page-up",   jump);
+        editor_cmd!("extend-page-down", "Extend selections down by one viewport height.", cmd_extend_page_down, jump);
+        editor_cmd!("extend-page-up",   "Extend selections up by one viewport height.",   cmd_extend_page_up,   jump);
 
         // ── Editor commands — half-page scroll ────────────────────────────
         editor_cmd!("half-page-down", "Scroll down by half a viewport height.",            cmd_half_page_down, extend: "extend-half-page-down");
@@ -450,10 +533,10 @@ impl CommandRegistry {
         // ── Editor commands — search ──────────────────────────────────────────
         editor_cmd!("search-forward",        "Enter search mode (forward).",                            cmd_search_forward);
         editor_cmd!("search-backward",       "Enter search mode (backward).",                           cmd_search_backward);
-        editor_cmd!("search-next", "Jump to the next search match.",             cmd_search_next, extend: "extend-search-next");
-        editor_cmd!("search-prev", "Jump to the previous search match.",       cmd_search_prev, extend: "extend-search-prev");
-        editor_cmd!("extend-search-next", "Extend selection to the next search match.",     cmd_extend_search_next);
-        editor_cmd!("extend-search-prev", "Extend selection to the previous search match.", cmd_extend_search_prev);
+        editor_cmd!("search-next", "Jump to the next search match.",             cmd_search_next, extend: "extend-search-next", jump);
+        editor_cmd!("search-prev", "Jump to the previous search match.",       cmd_search_prev, extend: "extend-search-prev", jump);
+        editor_cmd!("extend-search-next", "Extend selection to the next search match.",     cmd_extend_search_next, jump);
+        editor_cmd!("extend-search-prev", "Extend selection to the previous search match.", cmd_extend_search_prev, jump);
         editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
 
         // ── Editor commands — select ─────────────────────────────────────────
@@ -583,13 +666,13 @@ mod tests {
     #[test]
     fn registry_extend_pairs_are_valid() {
         let reg = CommandRegistry::with_defaults();
-        for (&base, &extend) in &reg.extend_map {
+        for (base, extend) in &reg.extend_map {
             assert!(
-                reg.commands.contains_key(base),
+                reg.commands.contains_key(base.as_ref()),
                 "extend pair: base command '{base}' not in registry"
             );
             assert!(
-                reg.commands.contains_key(extend),
+                reg.commands.contains_key(extend.as_ref()),
                 "extend pair: extend command '{extend}' not in registry"
             );
         }
@@ -598,9 +681,9 @@ mod tests {
     #[test]
     fn extend_variant_lookup() {
         let reg = CommandRegistry::with_defaults();
-        assert_eq!(reg.extend_variant("move-left"), Some("extend-left"));
-        assert_eq!(reg.extend_variant("select-next-word"), Some("extend-select-next-word"));
-        assert_eq!(reg.extend_variant("open-line-below"), Some("flip-selections"));
+        assert_eq!(reg.extend_variant("move-left").as_deref(), Some("extend-left"));
+        assert_eq!(reg.extend_variant("select-next-word").as_deref(), Some("extend-select-next-word"));
+        assert_eq!(reg.extend_variant("open-line-below").as_deref(), Some("flip-selections"));
         assert_eq!(reg.extend_variant("delete"), None);
         assert_eq!(reg.extend_variant("undo"), None);
         assert_eq!(reg.extend_variant("insert-before"), None);
@@ -611,7 +694,53 @@ mod tests {
         // HashMap insertion silently overwrites duplicates, so verify that
         // the final count matches the number of distinct names.
         let reg = CommandRegistry::with_defaults();
-        let unique: std::collections::HashSet<&&'static str> = reg.names().collect();
+        let unique: std::collections::HashSet<&str> = reg.names().collect();
         assert_eq!(unique.len(), reg.len(), "duplicate command names detected");
+    }
+
+    #[test]
+    fn register_dynamic_and_lookup() {
+        use crate::editor::Editor;
+        let mut reg = CommandRegistry::with_defaults();
+        let before = reg.len();
+
+        fn dummy_fn(_ed: &mut Editor, _count: usize) {}
+        let cmd = MappableCommand::EditorCmd {
+            name: Cow::Owned("steel-test-cmd".to_string()),
+            fun: dummy_fn,
+            repeatable: false,
+            jump: false,
+            visual_move: false,
+        };
+        reg.register_dynamic(cmd);
+
+        assert_eq!(reg.len(), before + 1);
+        assert!(reg.get("steel-test-cmd").is_some());
+        assert_eq!(reg.get("steel-test-cmd").unwrap().name(), "steel-test-cmd");
+    }
+
+    #[test]
+    fn register_extend_pair_dynamic() {
+        let mut reg = CommandRegistry::with_defaults();
+
+        reg.register_extend_pair(
+            Cow::Borrowed("move-left"),
+            Cow::Owned("custom-extend-left".to_string()),
+        );
+        // Overwrites the built-in extend variant for move-left.
+        assert_eq!(
+            reg.extend_variant("move-left").as_deref(),
+            Some("custom-extend-left"),
+        );
+
+        // A brand-new pair.
+        reg.register_extend_pair(
+            Cow::Owned("steel-cmd".to_string()),
+            Cow::Owned("steel-cmd-extend".to_string()),
+        );
+        assert_eq!(
+            reg.extend_variant("steel-cmd").as_deref(),
+            Some("steel-cmd-extend"),
+        );
     }
 }

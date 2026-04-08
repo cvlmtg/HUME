@@ -3343,7 +3343,7 @@ fn macro_replay_preserves_dot_repeat() {
 
     // Perform a `d` (delete) to establish last_action = "delete".
     ed.handle_key(key('d'));
-    let action_after_delete = ed.last_action.as_ref().map(|a| a.command);
+    let action_after_delete = ed.last_action.as_ref().map(|a| a.command.as_ref());
     assert_eq!(action_after_delete, Some("delete"), "last_action should be 'delete'");
 
     // Record a `j` motion macro (not repeatable — should not overwrite last_action).
@@ -3358,7 +3358,7 @@ fn macro_replay_preserves_dot_repeat() {
     ed.drain_replay_queue();
 
     // last_action must still be "delete", not whatever the macro did.
-    let action_after_replay = ed.last_action.as_ref().map(|a| a.command);
+    let action_after_replay = ed.last_action.as_ref().map(|a| a.command.as_ref());
     assert_eq!(action_after_replay, Some("delete"),
         "dot-repeat must survive macro replay; got {:?}", action_after_replay);
 }

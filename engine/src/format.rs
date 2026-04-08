@@ -429,7 +429,7 @@ impl WrapState {
         line_idx: usize,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
-        graphemes_out: &mut Vec<Grapheme>,
+        graphemes_out: &mut [Grapheme],
     ) {
         if wrap_width == u16::MAX || self.current_col + width as u16 <= wrap_width {
             return;
@@ -476,13 +476,13 @@ impl WrapState {
 // Row closing helpers
 // ---------------------------------------------------------------------------
 
-fn close_current_row(rows_out: &mut Vec<DisplayRow>, graphemes_out: &[Grapheme], row_g_start: usize) {
+fn close_current_row(rows_out: &mut [DisplayRow], graphemes_out: &[Grapheme], row_g_start: usize) {
     if let Some(row) = rows_out.last_mut() {
         row.graphemes = row_g_start..graphemes_out.len();
     }
 }
 
-fn close_row_at(rows_out: &mut Vec<DisplayRow>, row_g_start: usize, split_at: usize) {
+fn close_row_at(rows_out: &mut [DisplayRow], row_g_start: usize, split_at: usize) {
     if let Some(row) = rows_out.last_mut() {
         row.graphemes = row_g_start..split_at;
     }

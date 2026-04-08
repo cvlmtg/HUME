@@ -119,13 +119,13 @@ fn do_paste(
     ed: &mut Editor,
     paste_fn: impl Fn(Buffer, SelectionSet, &[String]) -> (Buffer, SelectionSet, crate::core::changeset::ChangeSet, Vec<String>),
 ) {
-    if let Some(reg) = ed.registers.read(DEFAULT_REGISTER) {
-        if let Some(values) = reg.as_text() {
-            let values = values.to_vec();
-            let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
-            if displaced.iter().any(|s| !s.is_empty()) {
-                ed.registers.write_text(DEFAULT_REGISTER, displaced);
-            }
+    if let Some(reg) = ed.registers.read(DEFAULT_REGISTER)
+        && let Some(values) = reg.as_text()
+    {
+        let values = values.to_vec();
+        let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
+        if displaced.iter().any(|s| !s.is_empty()) {
+            ed.registers.write_text(DEFAULT_REGISTER, displaced);
         }
     }
 }
@@ -279,7 +279,8 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
     // Re-execute the original command through the normal dispatch path.
     // extend=false because the replayed command was already resolved to its
     // final form (the resolved name is what gets stored in RepeatableAction).
-    ed.execute_keymap_command(action.command, effective_count, false);
+    // Clone the name while `action` is locally owned (moved out via `.take()`).
+    ed.execute_keymap_command(action.command.clone(), effective_count, false);
 
     // Feed recorded insert keystrokes through the normal insert handler.
     // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.
@@ -314,8 +315,11 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 /// Shared implementation for the four page-scroll commands.
 fn page_scroll(ed: &mut Editor, motion_name: &str) {
     let page = ed.viewport().height as usize;
-    let Some(MappableCommand::EditorCmd { fun, .. }) = ed.registry.get(motion_name).copied() else {
-        unreachable!("page_scroll: motion '{}' not in registry", motion_name);
+    // Copy the fn pointer out of the registry borrow before calling `fun(ed, ...)`.
+    // `fn` pointers are `Copy`, so `*fun` is cheap.
+    let fun = match ed.registry.get(motion_name) {
+        Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
+        _ => unreachable!("page_scroll: motion '{}' not in registry", motion_name),
     };
     fun(ed, page);
 }
@@ -340,8 +344,9 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 /// Shared implementation for the four half-page-scroll commands.
 fn half_page_scroll(ed: &mut Editor, motion_name: &str) {
     let half = (ed.viewport().height as usize / 2).max(1);
-    let Some(MappableCommand::EditorCmd { fun, .. }) = ed.registry.get(motion_name).copied() else {
-        unreachable!("half_page_scroll: motion '{}' not in registry", motion_name);
+    let fun = match ed.registry.get(motion_name) {
+        Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
+        _ => unreachable!("half_page_scroll: motion '{}' not in registry", motion_name),
     };
     fun(ed, half);
 }

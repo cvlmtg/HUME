@@ -212,6 +212,7 @@ pub(crate) fn format_row_col(
 /// - in the gutter,
 /// - below the last buffer line, or
 /// - the buffer is empty.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn screen_to_char_offset(
     screen_x: u16,
     screen_y: u16,
@@ -337,6 +338,7 @@ fn col_to_char_offset(
 
 /// Find the char offset for `(content_col, target_sub_row)` within
 /// `line_idx`, using the engine format pipeline.
+#[allow(clippy::too_many_arguments)]
 fn char_at_display_col(
     content_col: u16,
     target_sub: usize,
