@@ -82,13 +82,11 @@ pub(crate) fn screen_pos(
 /// Used to offset the terminal cursor column past line numbers and other gutter
 /// providers.
 pub(crate) fn gutter_width(
-    viewport: &ViewportState,
+    _viewport: &ViewportState,
     gutter_columns: &[Box<dyn GutterColumn>],
     total_lines: usize,
 ) -> u16 {
-    let approx_end = viewport.top_line + viewport.height as usize;
-    let max_visible_line = approx_end.min(total_lines.saturating_sub(1));
-    gutter_width_for_line(gutter_columns, max_visible_line)
+    gutter_width_for_line(gutter_columns, total_lines.saturating_sub(1))
 }
 
 /// Which wrapped display sub-row of buffer `line_idx` contains `cursor_char`.
