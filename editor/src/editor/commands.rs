@@ -315,8 +315,8 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 /// Shared implementation for the four page-scroll commands.
 fn page_scroll(ed: &mut Editor, motion_name: &str) {
     let page = ed.viewport().height as usize;
-    // Copy the fn pointer out of the registry borrow before calling `fun(ed, ...)`.
-    // `fn` pointers are `Copy`, so `*fun` is cheap.
+    // Extract the fn pointer before the call so the registry borrow ends before
+    // `fun(ed, page)` takes `&mut Editor` — Rust can't see the disjointness otherwise.
     let fun = match ed.registry.get(motion_name) {
         Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
         _ => unreachable!("page_scroll: motion '{}' not in registry", motion_name),

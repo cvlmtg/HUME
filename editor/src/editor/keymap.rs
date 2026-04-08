@@ -133,58 +133,33 @@ impl KeyTrie {
             self.bind_leaf(keys[0], cmd);
             return;
         }
-        // Walk/create interior nodes for all but the last key.
-        let mut current = self;
-        for &key in &keys[..keys.len() - 1] {
-            let entry = current.map.entry(key).or_insert_with(|| {
-                KeyTrieNode::Node(KeyTrie::new("user"))
-            });
-            // If the slot already holds a Leaf or WaitChar, replace with a Node
-            // so the prefix can be extended. This may shadow an existing binding.
-            if !matches!(entry, KeyTrieNode::Node(_)) {
-                *entry = KeyTrieNode::Node(KeyTrie::new("user"));
-            }
-            match entry {
-                KeyTrieNode::Node(sub) => {
-                    // SAFETY: This is a reborrow. The borrow checker can't see that
-                    // `current` changes each iteration because lifetimes in a loop
-                    // can't be expressed simply. Using a raw pointer here is the
-                    // idiomatic workaround for tree traversal with a mutable cursor.
-                    // Correctness: we always return immediately after using `current`,
-                    // and we never alias the pointer.
-                    current = unsafe { &mut *(sub as *mut KeyTrie) };
-                }
-                _ => unreachable!(),
-            }
+        let entry = self.map.entry(keys[0]).or_insert_with(|| {
+            KeyTrieNode::Node(KeyTrie::new("user"))
+        });
+        // If the slot already holds a Leaf or WaitChar, replace with a Node
+        // so the prefix can be extended. This may shadow an existing binding.
+        if !matches!(entry, KeyTrieNode::Node(_)) {
+            *entry = KeyTrieNode::Node(KeyTrie::new("user"));
         }
-        current.bind_leaf(*keys.last().unwrap(), cmd);
+        if let KeyTrieNode::Node(sub) = entry {
+            sub.bind_sequence(&keys[1..], cmd);
+        }
     }
 
-    /// Remove the binding for a single key at the root of this trie.
+    /// Remove the binding for a key sequence. Leaves interior nodes in place.
     ///
-    /// For multi-key sequences, removes the leaf node at the end of the
-    /// sequence but leaves any interior nodes in place. No-op if the key or
-    /// any intermediate node is absent.
+    /// No-op if the sequence is not bound or any intermediate node is absent.
     #[allow(dead_code)]
     pub(crate) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
-        if keys.is_empty() {
-            return;
-        }
-        if keys.len() == 1 {
-            self.map.remove(&keys[0]);
-            return;
-        }
-        // Walk to the parent of the last key.
-        let mut current = self;
-        for &key in &keys[..keys.len() - 1] {
-            match current.map.get_mut(&key) {
-                Some(KeyTrieNode::Node(sub)) => {
-                    current = unsafe { &mut *(sub as *mut KeyTrie) };
+        match keys {
+            [] => {}
+            [only] => { self.map.remove(only); }
+            [first, rest @ ..] => {
+                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(first) {
+                    sub.remove_sequence(rest);
                 }
-                _ => return, // path doesn't exist — no-op
             }
         }
-        current.map.remove(keys.last().unwrap());
     }
 
     /// Walk a key sequence through the trie, returning the result after all keys.
