@@ -221,9 +221,10 @@ impl CommandRegistry {
         reg
     }
 
-    fn register(&mut self, cmd: MappableCommand) {
-        // Clone the name Cow directly to use as the HashMap key.
-        // For Cow::Borrowed (all static built-in names), this is a pointer copy.
+    pub(crate) fn register(&mut self, cmd: MappableCommand) {
+        // `cmd.name()` returns `&str` (not `&'static str`), so we can't use it as
+        // a `Cow::Borrowed` key. Extract the name field directly and clone the Cow —
+        // for static built-ins this is a pointer copy; for dynamic names it clones the String.
         let key = match &cmd {
             MappableCommand::Motion { name, .. }
             | MappableCommand::Selection { name, .. }
@@ -260,14 +261,6 @@ impl CommandRegistry {
     /// pointer copy (zero allocation).
     pub(crate) fn extend_variant(&self, name: &str) -> Option<Cow<'static, str>> {
         self.extend_map.get(name).cloned()
-    }
-
-    /// Register a command at runtime (e.g. from a Steel plugin).
-    ///
-    /// If a command with the same name already exists it is replaced.
-    #[allow(dead_code)]
-    pub(crate) fn register_dynamic(&mut self, cmd: MappableCommand) {
-        self.register(cmd);
     }
 
     /// Register a base → extend-variant pair at runtime.
@@ -699,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn register_dynamic_and_lookup() {
+    fn runtime_register_and_lookup() {
         use crate::editor::Editor;
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
@@ -712,7 +705,7 @@ mod tests {
             jump: false,
             visual_move: false,
         };
-        reg.register_dynamic(cmd);
+        reg.register(cmd);
 
         assert_eq!(reg.len(), before + 1);
         assert!(reg.get("steel-test-cmd").is_some());
