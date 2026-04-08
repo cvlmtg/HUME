@@ -406,6 +406,45 @@ mod tests {
         assert!(spans.is_empty());
     }
 
+    // ── MacroRecording element ────────────────────────────────────────────────
+
+    fn test_editor() -> crate::editor::Editor {
+        use crate::core::{buffer::Buffer, selection::{Selection, SelectionSet}};
+        use crate::core::document::Document;
+        let buf = Buffer::from("hello\n");
+        let sels = SelectionSet::single(Selection::collapsed(0));
+        crate::editor::Editor::for_testing(Document::new(buf, sels))
+    }
+
+    #[test]
+    fn macro_recording_element_idle_renders_empty() {
+        // When not recording, MacroRecording should contribute an empty string.
+        let ed = test_editor();
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        assert!(text.is_empty(), "expected empty string when not recording, got {:?}", text);
+    }
+
+    #[test]
+    fn macro_recording_element_active_renders_label() {
+        // While recording into register 'q', MacroRecording renders "[recording @q]".
+        let mut ed = test_editor();
+        ed.macro_recording = Some(('q', vec![]));
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        assert_eq!(text.as_ref(), "[recording @q]");
+    }
+
+    #[test]
+    fn macro_recording_element_named_register() {
+        // Same but for a named register '3'.
+        let mut ed = test_editor();
+        ed.macro_recording = Some(('3', vec![]));
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        assert_eq!(text.as_ref(), "[recording @3]");
+    }
+
     // ── center_x arithmetic ───────────────────────────────────────────────────
 
     #[test]
