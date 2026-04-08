@@ -60,7 +60,7 @@ pub fn compute_viewport(
     let content_width = viewport.width.saturating_sub(gutter_width).max(1);
 
     // Compute buffer line range that fills the viewport.
-    let top_line = viewport.top_line.min(last_line_idx);
+    let top_line = viewport.top_line.min(last_line_idx.saturating_sub(1));
     let top_skip = viewport.top_row_offset;
 
     // Exclude the phantom trailing line. The buffer invariant guarantees a
