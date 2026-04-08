@@ -8,8 +8,9 @@
 //! the terminal-absolute `(column, row)` from the mouse event into a buffer
 //! char offset.
 //!
-//! Scroll wheel events adjust `viewport.top_line` directly, without moving
-//! the cursor. The scroll amount is [`SCROLL_LINES`] buffer lines per notch.
+//! Scroll wheel events move both the viewport and all cursors by [`SCROLL_LINES`]
+//! lines (Vim-style). Moving the cursor with the viewport prevents
+//! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use engine::format::{FormatScratch, count_visual_rows};
@@ -17,6 +18,7 @@ use engine::pane::WrapMode;
 
 use crate::core::selection::{Selection, SelectionSet};
 use crate::cursor;
+use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 
 use super::{Editor, Mode};
 
@@ -85,16 +87,44 @@ impl Editor {
     // ── Scroll ────────────────────────────────────────────────────────────────
 
     fn mouse_scroll_up(&mut self) {
-        let pane = &mut self.engine_view.panes[self.pane_id];
-        let rope = self.doc.buf().rope();
-        scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace);
+        let vp_before = {
+            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            (vp.top_line, vp.top_row_offset)
+        };
+        {
+            let pane = &mut self.engine_view.panes[self.pane_id];
+            let rope = self.doc.buf().rope();
+            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace);
+        }
+        let vp_after = {
+            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            (vp.top_line, vp.top_row_offset)
+        };
+        // Only move cursors if the viewport actually moved (file may already be at top).
+        if vp_before != vp_after {
+            cmd_visual_move_up(self, SCROLL_LINES);
+        }
     }
 
     fn mouse_scroll_down(&mut self) {
-        let pane = &mut self.engine_view.panes[self.pane_id];
-        let rope = self.doc.buf().rope();
-        let total_lines = rope.len_lines();
-        scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines);
+        let vp_before = {
+            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            (vp.top_line, vp.top_row_offset)
+        };
+        {
+            let pane = &mut self.engine_view.panes[self.pane_id];
+            let rope = self.doc.buf().rope();
+            let total_lines = rope.len_lines();
+            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines);
+        }
+        let vp_after = {
+            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            (vp.top_line, vp.top_row_offset)
+        };
+        // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
+        if vp_before != vp_after {
+            cmd_visual_move_down(self, SCROLL_LINES);
+        }
     }
 
     // ── Coordinate conversion ─────────────────────────────────────────────────
@@ -171,11 +201,26 @@ fn scroll_viewport_down(
     whitespace: &engine::pane::WhitespaceConfig,
     total_lines: usize,
 ) {
-    // Do not scroll past the last real line (total_lines - 2 for the sentinel '\n').
-    let last_line = total_lines.saturating_sub(2);
+    // Content lines = all lines minus the structural trailing '\n' sentinel.
+    let content_lines = total_lines.saturating_sub(1);
+    let height = viewport.height as usize;
 
     let mut scratch = FormatScratch::new();
     if wrap_mode.is_wrapping() {
+        // For wrapping, guard: if total display rows fit in the viewport, nothing to scroll.
+        let mut total_rows = 0usize;
+        for i in 0..content_lines {
+            total_rows += count_visual_rows(rope, i, tab_width, whitespace, wrap_mode, &mut scratch);
+            if total_rows > height {
+                break;
+            }
+        }
+        if total_rows <= height {
+            return;
+        }
+
+        // Maximum top_line is the last content line index.
+        let last_line = content_lines.saturating_sub(1);
         let mut rows_left = SCROLL_LINES;
         while rows_left > 0 {
             if viewport.top_line > last_line {
@@ -197,6 +242,8 @@ fn scroll_viewport_down(
             }
         }
     } else {
-        viewport.top_line = (viewport.top_line + SCROLL_LINES).min(last_line);
+        // Max top_line is the farthest position where the last content line is still visible.
+        let max_top = content_lines.saturating_sub(height);
+        viewport.top_line = (viewport.top_line + SCROLL_LINES).min(max_top);
     }
 }
