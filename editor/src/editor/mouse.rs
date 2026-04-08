@@ -8,8 +8,8 @@
 //! the terminal-absolute `(column, row)` from the mouse event into a buffer
 //! char offset.
 //!
-//! Scroll wheel events move both the viewport and all cursors by [`SCROLL_LINES`]
-//! lines (Vim-style). Moving the cursor with the viewport prevents
+//! Scroll wheel events move both the viewport and all cursors by the configured
+//! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -22,10 +22,6 @@ use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 
 use super::{Editor, Mode};
 
-
-/// Number of buffer lines (no-wrap) or display rows (wrap) to scroll per
-/// scroll-wheel notch.
-const SCROLL_LINES: usize = 3;
 
 impl Editor {
     /// Dispatch a crossterm [`MouseEvent`] to the appropriate handler.
@@ -87,6 +83,7 @@ impl Editor {
     // ── Scroll ────────────────────────────────────────────────────────────────
 
     fn mouse_scroll_up(&mut self) {
+        let scroll_lines = self.settings.mouse_scroll_lines;
         let vp_before = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
@@ -94,7 +91,7 @@ impl Editor {
         {
             let pane = &mut self.engine_view.panes[self.pane_id];
             let rope = self.doc.buf().rope();
-            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, &mut self.motion_format_scratch);
+            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -102,11 +99,12 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
         if vp_before != vp_after {
-            cmd_visual_move_up(self, SCROLL_LINES);
+            cmd_visual_move_up(self, scroll_lines);
         }
     }
 
     fn mouse_scroll_down(&mut self) {
+        let scroll_lines = self.settings.mouse_scroll_lines;
         let vp_before = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
@@ -115,7 +113,7 @@ impl Editor {
             let pane = &mut self.engine_view.panes[self.pane_id];
             let rope = self.doc.buf().rope();
             let total_lines = rope.len_lines();
-            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, &mut self.motion_format_scratch);
+            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -123,7 +121,7 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
         if vp_before != vp_after {
-            cmd_visual_move_down(self, SCROLL_LINES);
+            cmd_visual_move_down(self, scroll_lines);
         }
     }
 
@@ -163,12 +161,13 @@ fn scroll_viewport_up(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &engine::pane::WhitespaceConfig,
+    scroll_lines: usize,
     scratch: &mut FormatScratch,
 ) {
     if wrap_mode.is_wrapping() {
         scratch.clear();
-        // Decrement by SCROLL_LINES display rows, respecting sub-row offsets.
-        let mut rows_left = SCROLL_LINES;
+        // Decrement by `scroll_lines` display rows, respecting sub-row offsets.
+        let mut rows_left = scroll_lines;
         while rows_left > 0 {
             if viewport.top_row_offset > 0 {
                 let dec = rows_left.min(viewport.top_row_offset as usize);
@@ -186,10 +185,11 @@ fn scroll_viewport_up(
             }
         }
     } else {
-        viewport.top_line = viewport.top_line.saturating_sub(SCROLL_LINES);
+        viewport.top_line = viewport.top_line.saturating_sub(scroll_lines);
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scroll_viewport_down(
     viewport: &mut engine::pane::ViewportState,
     rope: &ropey::Rope,
@@ -197,6 +197,7 @@ fn scroll_viewport_down(
     tab_width: u8,
     whitespace: &engine::pane::WhitespaceConfig,
     total_lines: usize,
+    scroll_lines: usize,
     scratch: &mut FormatScratch,
 ) {
     scratch.clear();
@@ -218,7 +219,7 @@ fn scroll_viewport_down(
 
         // Maximum top_line is the last content line index.
         let last_line = content_lines.saturating_sub(1);
-        let mut rows_left = SCROLL_LINES;
+        let mut rows_left = scroll_lines;
         while rows_left > 0 {
             if viewport.top_line > last_line {
                 break;
@@ -241,7 +242,7 @@ fn scroll_viewport_down(
     } else {
         // Max top_line is the farthest position where the last content line is still visible.
         let max_top = content_lines.saturating_sub(height);
-        viewport.top_line = (viewport.top_line + SCROLL_LINES).min(max_top);
+        viewport.top_line = (viewport.top_line + scroll_lines).min(max_top);
     }
 }
 
@@ -257,6 +258,7 @@ mod tests {
     use ropey::Rope;
 
     fn ws() -> WhitespaceConfig { WhitespaceConfig::default() }
+    const SCROLL_LINES: usize = 3; // default from EditorSettings
 
     // Build a rope with `n` content lines (each "line\n"), plus the structural trailing '\n'.
     // total_lines() == n + 1 (ropey's phantom line).
@@ -279,7 +281,7 @@ mod tests {
 
         // Scroll far enough to hit the cap.
         for _ in 0..20 {
-            scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, &mut scratch);
+            scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
         }
         assert_eq!(vp.top_line, 5, "top_line must not exceed max_top=5");
     }
@@ -292,7 +294,7 @@ mod tests {
         let mut vp = ViewportState::new(80, 10);
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, &mut scratch);
+        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, 0, "viewport must not move when file fits");
     }
 
@@ -303,7 +305,7 @@ mod tests {
         let mut vp = ViewportState::new(80, 5);
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, &mut scratch);
+        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, SCROLL_LINES, "first scroll advances by SCROLL_LINES");
     }
 
@@ -316,7 +318,7 @@ mod tests {
         vp.top_line = 1; // only 1 above top
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), &mut scratch);
+        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, 0, "saturating_sub must not underflow");
     }
 
@@ -327,7 +329,7 @@ mod tests {
         vp.top_line = 10;
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), &mut scratch);
+        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, 10 - SCROLL_LINES);
     }
 
@@ -338,7 +340,7 @@ mod tests {
         vp.top_line = 0;
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), &mut scratch);
+        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, 0);
         assert_eq!(vp.top_row_offset, 0);
     }
@@ -354,7 +356,7 @@ mod tests {
         let wrap = WrapMode::Soft { width: 80 };
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &wrap, 4, &ws(), total, &mut scratch);
+        scroll_viewport_down(&mut vp, &rope, &wrap, 4, &ws(), total, SCROLL_LINES, &mut scratch);
         assert_eq!(vp.top_line, 0, "no scroll when file fits in viewport");
         assert_eq!(vp.top_row_offset, 0);
     }

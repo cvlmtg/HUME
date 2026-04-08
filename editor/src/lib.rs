@@ -6,6 +6,7 @@ pub(crate) mod auto_pairs;
 pub(crate) mod cursor;
 pub(crate) mod helpers;
 pub(crate) mod os;
+pub(crate) mod settings;
 pub(crate) mod terminal;
 pub(crate) mod editor;
 
@@ -27,7 +28,7 @@ pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::err
     terminal::install_panic_hook();
 
     let mut editor = editor::Editor::open(file_path)?;
-    let (mut term, kitty_enabled) = terminal::init(editor.mouse_enabled, editor.mouse_select)?;
+    let (mut term, kitty_enabled) = terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
     editor.kitty_enabled = kitty_enabled;
 
     let result = editor.run(&mut term);

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
-use crate::core::jump_list::{JumpEntry, JUMP_LINE_THRESHOLD};
+use crate::core::jump_list::JumpEntry;
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
 use crate::core::selection::Selection;
@@ -347,8 +347,9 @@ impl Editor {
         // ── Character input ───────────────────────────────────────────────────
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.auto_pairs.enabled {
-                    if let Some(pair) = self.auto_pairs.pair_for_open(ch) {
+                let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
+                if ap.enabled {
+                    if let Some(pair) = ap.pair_for_open(ch) {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
@@ -357,7 +358,7 @@ impl Editor {
                             // Auto-close or wrap-selection.
                             self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
                         }
-                    } else if self.auto_pairs.pair_for_close(ch).is_some()
+                    } else if ap.pair_for_close(ch).is_some()
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
@@ -377,7 +378,8 @@ impl Editor {
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                if self.auto_pairs.enabled && self.is_between_pair() {
+                let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
+                if ap.enabled && self.is_between_pair() {
                     self.doc.apply_edit_grouped(delete_pair);
                 } else {
                     self.doc.apply_edit_grouped(delete_char_backward);
@@ -448,7 +450,7 @@ impl Editor {
             // ── Jump list: record if this was a jump ─────────────────────────
             if let Some((pre_sels, pre_line)) = pre_jump {
                 let post_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
-                if is_explicit_jump || pre_line.abs_diff(post_line) > JUMP_LINE_THRESHOLD {
+                if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
                     self.jump_list.push(JumpEntry { selections: pre_sels, primary_line: pre_line });
                 }
             }
@@ -492,8 +494,8 @@ impl Editor {
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
     fn is_between_pair(&self) -> bool {
+        let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
         let buf = self.doc.buf();
-        let pairs = &self.auto_pairs.pairs;
         self.doc.sels().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head == 0 {
                 return false;
@@ -503,7 +505,7 @@ impl Editor {
             let prev = crate::core::grapheme::prev_grapheme_boundary(buf, sel.head);
             match (buf.char_at(prev), buf.char_at(sel.head)) {
                 (Some(before), Some(at)) => {
-                    pairs.iter().any(|p| p.open == before && p.close == at)
+                    ap.pairs.iter().any(|p| p.open == before && p.close == at)
                 }
                 _ => false,
             }

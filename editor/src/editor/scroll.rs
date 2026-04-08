@@ -8,18 +8,13 @@ use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
 
 use crate::cursor;
 
-/// Rows of look-ahead kept between the cursor and the top/bottom edge.
-const SCROLL_MARGIN: usize = 3;
-
-/// Columns of look-ahead kept between the cursor and the left/right edge.
-const SCROLL_MARGIN_H: usize = 5;
-
 // ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 /// Adjust `viewport.top_line` (and `top_row_offset` when wrapping) so the
-/// cursor's display row is visible with margin.
+/// cursor's display row is visible with `v_margin` rows of look-ahead.
 pub(super) fn ensure_cursor_visible(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -28,18 +23,20 @@ pub(super) fn ensure_cursor_visible(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
+    v_margin: usize,
 ) {
     if wrap_mode.is_wrapping() {
-        ensure_cursor_visible_wrapped(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch);
+        ensure_cursor_visible_wrapped(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
     } else {
         let cursor_line = rope.char_to_line(cursor_char);
-        ensure_cursor_visible_unwrapped(viewport, cursor_line);
+        ensure_cursor_visible_unwrapped(viewport, cursor_line, v_margin);
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 /// Adjust `viewport.horizontal_offset` so the cursor's display column is
-/// visible with margin. When wrapping is active, horizontal offset is forced
-/// to 0 (wrapping handles long lines).
+/// visible with `h_margin` columns of look-ahead. When wrapping is active,
+/// horizontal offset is forced to 0 (wrapping handles long lines).
 pub(super) fn ensure_cursor_visible_horizontal(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -48,6 +45,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
+    h_margin: usize,
 ) {
     if wrap_mode.is_wrapping() {
         viewport.horizontal_offset = 0;
@@ -62,7 +60,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
         return;
     }
 
-    let margin = SCROLL_MARGIN_H.min(content_width / 2);
+    let margin = h_margin.min(content_width / 2);
     let offset = viewport.horizontal_offset as usize;
 
     if cursor_col < offset + margin {
@@ -77,9 +75,9 @@ pub(super) fn ensure_cursor_visible_horizontal(
 // Private helpers
 // ---------------------------------------------------------------------------
 
-fn ensure_cursor_visible_unwrapped(viewport: &mut ViewportState, cursor_line: usize) {
+fn ensure_cursor_visible_unwrapped(viewport: &mut ViewportState, cursor_line: usize, v_margin: usize) {
     let height = viewport.height as usize;
-    let margin = SCROLL_MARGIN.min(height / 2);
+    let margin = v_margin.min(height / 2);
 
     let top = viewport.top_line;
     if cursor_line < top + margin {
@@ -89,6 +87,7 @@ fn ensure_cursor_visible_unwrapped(viewport: &mut ViewportState, cursor_line: us
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn ensure_cursor_visible_wrapped(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -97,6 +96,7 @@ fn ensure_cursor_visible_wrapped(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
+    v_margin: usize,
 ) {
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
@@ -104,7 +104,7 @@ fn ensure_cursor_visible_wrapped(
         return;
     }
 
-    let margin = SCROLL_MARGIN.min(height / 2);
+    let margin = v_margin.min(height / 2);
 
     let cursor_sub = cursor::sub_row(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, scratch);
 
@@ -114,7 +114,7 @@ fn ensure_cursor_visible_wrapped(
         || (cursor_line == viewport.top_line && cursor_sub < top_row)
     {
         scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, margin, wrap_mode, tab_width, whitespace, scratch);
-        return;
+        return; // cursor above viewport — done
     }
 
     // ── Count display rows from scroll position to cursor ────────────────────
@@ -138,6 +138,7 @@ fn ensure_cursor_visible_wrapped(
         scroll_backward_from_cursor(viewport, rope, cursor_line, cursor_sub, target_row, wrap_mode, tab_width, whitespace, scratch);
     }
 }
+
 
 #[allow(clippy::too_many_arguments)]
 fn scroll_backward_from_cursor(
@@ -198,7 +199,7 @@ mod tests {
     fn no_wrap_cursor_visible_no_scroll_needed() {
         let r = rope("a\nb\nc\nd\ne\n");
         let mut v = viewport(0, 10, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(2), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(2), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new(), 3);
         assert_eq!(v.top_line, 0);
     }
 
@@ -206,7 +207,7 @@ mod tests {
     fn no_wrap_cursor_below_viewport_scrolls_down() {
         let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
         let mut v = viewport(0, 5, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(7), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(7), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new(), 3);
         let cursor_line = 7usize;
         assert!(cursor_line >= v.top_line);
         assert!(cursor_line < v.top_line + v.height as usize);
@@ -216,7 +217,7 @@ mod tests {
     fn no_wrap_cursor_above_viewport_scrolls_up() {
         let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
         let mut v = viewport(5, 5, 80);
-        ensure_cursor_visible(&mut v, &r, r.line_to_char(1), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new());
+        ensure_cursor_visible(&mut v, &r, r.line_to_char(1), &WrapMode::None, 4, &WhitespaceConfig::default(), &mut FormatScratch::new(), 3);
         let cursor_line = 1usize;
         assert!(cursor_line >= v.top_line);
         assert!(cursor_line < v.top_line + v.height as usize);

@@ -666,6 +666,12 @@ pub(super) static TYPED_COMMANDS: &[TypedCommand] = &[
         doc: "Toggle soft line wrapping",
         fun: typed_toggle_soft_wrap,
     },
+    TypedCommand {
+        name: "set",
+        aliases: &[],
+        doc: "Set a configuration value: :set global|buffer key=value",
+        fun: typed_set,
+    },
 ];
 
 /// Look up a typed command by exact name or alias.
@@ -708,23 +714,45 @@ fn typed_select_all_matches(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
 
 fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
     use engine::pane::WrapMode;
-    let pane = ed.pane_mut();
-    let currently_wrapping = pane.wrap_mode.is_wrapping();
+    let currently_wrapping = ed.doc.overrides.wrap_mode(&ed.settings).is_wrapping();
     if currently_wrapping {
-        pane.wrap_mode = WrapMode::None;
+        ed.doc.overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
         // Estimate gutter width (line numbers + separator). The engine will
         // compute the exact width at render time; this just needs to be close
         // enough for a reasonable default wrap column.
         const GUTTER_WIDTH_ESTIMATE: u16 = 4;
-        let content_w = pane.viewport.width.saturating_sub(GUTTER_WIDTH_ESTIMATE).max(1);
-        pane.wrap_mode = WrapMode::Indent { width: content_w };
-        pane.viewport.horizontal_offset = 0;
-        pane.viewport.top_row_offset = 0;
+        let content_w = ed.viewport().width.saturating_sub(GUTTER_WIDTH_ESTIMATE).max(1);
+        ed.doc.overrides.wrap_mode = Some(WrapMode::Indent { width: content_w });
+        ed.viewport_mut().horizontal_offset = 0;
+        ed.viewport_mut().top_row_offset = 0;
     }
     let state = if currently_wrapping { "off" } else { "on" };
     ed.status_msg = Some(format!("Soft wrap {state}"));
+}
+
+fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) {
+    let Some(arg) = arg else {
+        ed.status_msg = Some("Usage: :set global|buffer key=value".into());
+        return;
+    };
+    let Some((scope, rest)) = arg.split_once(' ') else {
+        ed.status_msg = Some("Usage: :set global|buffer key=value".into());
+        return;
+    };
+    let Some((key, value)) = rest.split_once('=') else {
+        ed.status_msg = Some("Expected key=value".into());
+        return;
+    };
+    let result = match scope {
+        "global" => crate::settings::apply_global(&mut ed.settings, key, value),
+        "buffer" => crate::settings::apply_buffer(&mut ed.doc.overrides, key, value),
+        _ => Err(format!("unknown scope '{scope}': expected 'global' or 'buffer'")),
+    };
+    if let Err(msg) = result {
+        ed.status_msg = Some(msg);
+    }
 }
 
 /// Serialize the buffer and write it to disk.

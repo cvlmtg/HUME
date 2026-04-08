@@ -8,11 +8,10 @@ use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use crossterm::execute;
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
-use engine::pane::{Pane, ViewportState, WrapMode};
+use engine::pane::{Pane, ViewportState};
 use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, RenderContext, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
-use crate::auto_pairs::AutoPairsConfig;
 use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
 use crate::core::document::Document;
@@ -21,7 +20,7 @@ use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ops::pair::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
-use crate::ui::statusline::StatusLineConfig;
+use crate::settings::EditorSettings;
 use crate::terminal::Term;
 
 use self::keymap::{Keymap, WaitCharPending};
@@ -165,12 +164,12 @@ pub(crate) struct Editor {
     /// resolved path). `None` for scratch buffers. Used by the write path to
     /// preserve the original file's attributes across atomic saves.
     pub(super) file_meta: Option<FileMeta>,
-    /// Status bar layout configuration.
+    /// All editor settings — global defaults and per-buffer-overridable values.
     ///
-    /// Initialized with [`StatusLineConfig::default`] (mode indicator + separator +
-    /// filename on the left, position on the right). Configurable via the
-    /// Steel scripting layer.
-    pub(crate) statusline_config: Arc<StatusLineConfig>,
+    /// This is the single source of truth for every configurable setting.
+    /// Per-buffer overrides live on [`Document::overrides`]; resolution happens
+    /// at read time via [`crate::settings::BufferOverrides`] accessor methods.
+    pub(crate) settings: EditorSettings,
     /// Registry of all mappable commands (motions, selections, edits).
     ///
     /// Keyed by name; looked up by `execute_keymap_command` at dispatch time.
@@ -181,11 +180,6 @@ pub(crate) struct Editor {
     /// Built once at startup from [`Keymap::default`]. Extended by the Steel
     /// config layer to support user overrides.
     pub(super) keymap: Keymap,
-    /// Auto-pair configuration (bracket/quote completion, skip-close, auto-delete).
-    ///
-    /// Initialized with sensible defaults. Configurable globally or per language
-    /// via the Steel scripting layer.
-    pub(super) auto_pairs: AutoPairsConfig,
     /// The character and kind (inclusive/exclusive) from the last find/till motion.
     ///
     /// Used by `repeat-find-forward` / `repeat-find-backward`.
@@ -301,21 +295,6 @@ pub(crate) struct Editor {
 
     // ── Mouse ─────────────────────────────────────────────────────────────────
 
-    /// Master toggle for mouse support.
-    ///
-    /// When `true`, normal mouse tracking (click + scroll) is enabled. The
-    /// terminal emits mouse events instead of handling clicks itself.
-    /// Drag-select still falls through to the terminal unless `mouse_select`
-    /// is also true.
-    pub(crate) mouse_enabled: bool,
-
-    /// When `true`, button-event tracking is also enabled so left-drag events
-    /// are sent to the editor and create editor selections.
-    ///
-    /// When `false` (default), drag events are never sent to the editor, so
-    /// the terminal handles drag-select natively (Cmd+C / Shift+drag style).
-    pub(crate) mouse_select: bool,
-
     /// Anchor char offset set on `MouseButton::Left` down when `mouse_select`
     /// is enabled. Cleared on mouse up.
     pub(super) mouse_drag_anchor: Option<usize>,
@@ -377,22 +356,24 @@ impl Editor {
             data: Arc::clone(&search_hl_data),
         }));
 
+        let settings = EditorSettings::default();
+
         let pane = Pane {
             buffer_id,
             viewport: ViewportState::new(80, 24),
             selections: vec![EngineSelection { anchor: 0, head: 0 }],
             primary_idx: 0,
             mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Indent { width: 76 },
-            tab_width: 4,
-            whitespace: engine::pane::WhitespaceConfig::default(),
+            wrap_mode: settings.wrap_mode.clone(),
+            tab_width: settings.tab_width,
+            whitespace: settings.whitespace.clone(),
             providers,
         };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
         let file_path_arc: Option<Arc<PathBuf>> = file_path.map(Arc::new);
-        let statusline_config = Arc::new(StatusLineConfig::default());
+        let jump_list_capacity = settings.jump_list_capacity;
 
         // Bake theme now that all scopes are interned.
         engine_view.theme.bake(&engine_view.registry);
@@ -410,10 +391,9 @@ impl Editor {
             minibuf: None,
             status_msg: None,
             file_meta,
-            statusline_config,
+            settings,
             registry: CommandRegistry::with_defaults(),
             keymap: Keymap::default(),
-            auto_pairs: AutoPairsConfig::default(),
             last_find: None,
             kitty_enabled: false,
             last_action: None,
@@ -421,7 +401,7 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
-            jump_list: crate::core::jump_list::JumpList::new(),
+            jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
             engine_view,
             pane_id,
             buffer_id,
@@ -434,8 +414,6 @@ impl Editor {
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
             is_replaying: false,
-            mouse_enabled: true,
-            mouse_select: false,
             mouse_drag_anchor: None,
         })
     }
@@ -573,8 +551,19 @@ impl Editor {
         // 3. Push char-offset selections to the engine pane (no conversion needed).
         self.push_selections_to_pane();
 
-        // 4. Scroll so the primary cursor stays visible.
+        // 4. Push resolved per-buffer settings into the pane so the engine
+        //    always reads the effective values, regardless of overrides.
+        {
+            let pane = &mut self.engine_view.panes[self.pane_id];
+            pane.tab_width = self.doc.overrides.tab_width(&self.settings);
+            pane.wrap_mode = self.doc.overrides.wrap_mode(&self.settings);
+            pane.whitespace = self.doc.overrides.whitespace(&self.settings);
+        }
+
+        // 5. Scroll so the primary cursor stays visible.
         let cursor_char = self.doc.sels().primary().head;
+        let v_margin = self.settings.scroll_margin;
+        let h_margin = self.settings.scroll_margin_h;
         {
             // Destructure `*pane` to split field borrows: `&mut viewport` and
             // `&wrap_mode`/`&whitespace` are disjoint fields, so the compiler
@@ -582,11 +571,11 @@ impl Editor {
             let rope = self.doc.buf().rope();
             let pane = &mut self.engine_view.panes[self.pane_id];
             let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
-            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format);
-            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format);
+            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, v_margin);
+            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, h_margin);
         }
 
-        // 5. Sync highlight data (search matches, bracket matches) to shared
+        // 6. Sync highlight data (search matches, bracket matches) to shared
         //    Arc buffers read by the highlight providers during rendering.
         self.update_highlight_providers();
     }
@@ -599,10 +588,6 @@ impl Editor {
 
     pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
         &mut self.engine_view.panes[self.pane_id].viewport
-    }
-
-    pub(crate) fn pane_mut(&mut self) -> &mut Pane {
-        &mut self.engine_view.panes[self.pane_id]
     }
 
     /// Convert the editor's char-offset selections to engine `DocPos`-based
@@ -834,21 +819,22 @@ impl Editor {
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
+        let settings = EditorSettings::default();
+        let jump_list_capacity = settings.jump_list_capacity;
         let pane = Pane {
             buffer_id,
             viewport: ViewportState::new(80, 24),
             selections: vec![EngineSelection { anchor: 0, head: 0 }],
             primary_idx: 0,
             mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Indent { width: 76 },
-            tab_width: 4,
-            whitespace: engine::pane::WhitespaceConfig::default(),
+            wrap_mode: settings.wrap_mode.clone(),
+            tab_width: settings.tab_width,
+            whitespace: settings.whitespace.clone(),
             providers: engine::providers::ProviderSet::new(),
         };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
-
         Self {
             doc,
             file_path: None,
@@ -862,10 +848,9 @@ impl Editor {
             minibuf: None,
             status_msg: None,
             file_meta: None,
-            statusline_config: Arc::new(StatusLineConfig::default()),
+            settings,
             registry: registry::CommandRegistry::with_defaults(),
             keymap: keymap::Keymap::default(),
-            auto_pairs: crate::auto_pairs::AutoPairsConfig::default(),
             last_find: None,
             kitty_enabled: false,
             last_action: None,
@@ -873,7 +858,7 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
-            jump_list: crate::core::jump_list::JumpList::new(),
+            jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
             engine_view,
             pane_id,
             buffer_id,
@@ -886,8 +871,6 @@ impl Editor {
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
             is_replaying: false,
-            mouse_enabled: true,
-            mouse_select: false,
             mouse_drag_anchor: None,
         }
     }
