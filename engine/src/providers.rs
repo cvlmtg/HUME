@@ -73,18 +73,12 @@ pub trait HighlightSource: Send + Sync {
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
 pub trait GutterColumn: Send + Sync {
     /// Display width of this column in terminal cells.
-    /// `last_line_idx` is the highest visible 0-based line index — used to
-    /// size line-number columns dynamically.
+    /// `last_line_idx` is the 0-based index of the last line in the file — used to
+    /// size line-number columns to fit the largest line number.
     fn width(&self, last_line_idx: usize) -> u8;
 
     /// Produce content for one display row.
-    fn render_row(
-        &self,
-        kind: RowKind,
-        total_lines: usize,
-        mode: EditorMode,
-        primary_head_line: usize,
-    ) -> GutterCell;
+    fn render_row(&self, kind: RowKind, mode: EditorMode, primary_head_line: usize) -> GutterCell;
 }
 
 #[derive(Clone, Debug)]
@@ -305,7 +299,7 @@ mod tests {
 
     impl GutterColumn for DummyGutter {
         fn width(&self, _: usize) -> u8 { 0 }
-        fn render_row(&self, _: crate::types::RowKind, _: usize, _: crate::types::EditorMode, _: usize) -> GutterCell {
+        fn render_row(&self, _: crate::types::RowKind, _: crate::types::EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("x"))
         }
     }

@@ -469,11 +469,7 @@ impl Editor {
                 let cursor_char = self.doc.sels().primary().head;
                 let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
-                    let gw = crate::cursor::gutter_width(
-                        &pane.viewport,
-                        pane.providers.gutter_columns(),
-                        self.doc.buf().len_lines(),
-                    );
+                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc.buf().len_lines());
                     (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)
                 };
                 crate::cursor::screen_pos(

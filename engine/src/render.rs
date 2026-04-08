@@ -57,12 +57,7 @@ pub(crate) fn compose_row(
     // ── Gutter ────────────────────────────────────────────────────────
     let mut gutter_x = compose_ctx.pane_rect.x;
     for (col_provider, &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter()) {
-        let cell = col_provider.render_row(
-            row.kind,
-            compose_ctx.visible.total_lines,
-            compose_ctx.mode,
-            compose_ctx.primary_head_line,
-        );
+        let cell = col_provider.render_row(row.kind, compose_ctx.mode, compose_ctx.primary_head_line);
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
@@ -75,23 +70,16 @@ pub(crate) fn compose_row(
             scope_style
         };
 
-        // Right-align the text within the column, reserving the last column
-        // as a separator space between the gutter and the content area.
-        let usable = col_width.saturating_sub(1); // reserve 1 col for right padding
+        // Right-align within usable width, then write a trailing separator space.
+        let usable = col_width.saturating_sub(1); // 1 col reserved as right-padding separator
         let text_len = unicode_display_width(text) as u16;
         let pad = usable.saturating_sub(text_len);
-        // Write leading spaces, then each character, then the trailing separator.
         for px in 0..pad {
             set_cell(buf, gutter_x + px, y, " ", style);
         }
-        let mut cx = gutter_x + pad;
-        for ch in text.chars() {
-            let mut tmp = [0u8; 4];
-            set_cell(buf, cx, y, ch.encode_utf8(&mut tmp), style);
-            cx += 1;
-        }
-        // Trailing separator space.
-        set_cell(buf, cx, y, " ", style);
+        // set_string writes each character into its own cell, handles multi-byte UTF-8.
+        buf.set_string(gutter_x + pad, y, text, style);
+        set_cell(buf, gutter_x + pad + text_len, y, " ", style);
 
         gutter_x += col_width;
     }
@@ -405,7 +393,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
@@ -433,7 +420,6 @@ mod tests {
             content_height: 5, // 5 rows requested but only 1 line
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
@@ -498,7 +484,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 2,
             last_line_idx: 1,
         };
         let viewport = ViewportState::new(20, 5);
@@ -529,7 +514,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let mut viewport = ViewportState::new(20, 5);
@@ -563,7 +547,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
@@ -600,7 +583,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
@@ -631,7 +613,6 @@ mod tests {
             content_height: 5,
             content_width: 20,
             gutter_width: 0,
-            total_lines: 1,
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);

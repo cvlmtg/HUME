@@ -25,9 +25,7 @@ pub struct VisibleRange {
     pub content_width: u16,
     /// Total gutter width in columns.
     pub gutter_width: u16,
-    /// Total buffer lines (for `render_row` callers that need the count).
-    pub total_lines: usize,
-    /// 0-based index of the last buffer line (`total_lines - 1`).
+    /// 0-based index of the last buffer line (`rope.len_lines() - 1`).
     /// This is the correct value to pass to `GutterColumn::width()`.
     pub last_line_idx: usize,
 }
@@ -36,10 +34,9 @@ pub struct VisibleRange {
 // Stage 1: compute_viewport
 // ---------------------------------------------------------------------------
 
-/// Sum of all gutter column widths for the given `max_line` (0-based).
+/// Sum of all gutter column widths for the given `max_line` (0-based last line index).
 ///
-/// `max_line` should be the highest visible line — gutter columns that display
-/// line numbers use it to determine the required digit width.
+/// Pass the last line index of the entire file so gutter width is stable across scrolling.
 pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line: usize) -> u16 {
     gutter_columns.iter().map(|c| c.width(max_line) as u16).sum()
 }
@@ -78,7 +75,6 @@ pub fn compute_viewport(
         content_height: viewport.height,
         content_width,
         gutter_width,
-        total_lines,
         last_line_idx,
     }
 }
@@ -147,7 +143,7 @@ mod tests {
     struct _NoGutter;
     impl GutterColumn for _NoGutter {
         fn width(&self, _: usize) -> u8 { 0 }
-        fn render_row(&self, _: RowKind, _: usize, _: EditorMode, _: usize) -> GutterCell {
+        fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("ui.linenr"))
         }
     }
