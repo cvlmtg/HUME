@@ -8,7 +8,7 @@
 
 use crate::core::buffer::Buffer;
 use crate::core::selection::{Selection, SelectionSet};
-use crate::ops::text_object::{find_bracket_pair, find_quote_pair};
+use crate::ops::pair::{find_bracket_pair, find_quote_pair};
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
