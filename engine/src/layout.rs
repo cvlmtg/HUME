@@ -66,7 +66,11 @@ pub fn compute_viewport(
     let top_line = viewport.top_line.min(last_line_idx);
     let top_skip = viewport.top_row_offset;
 
-    let line_range = compute_line_range(rope, top_line, top_skip, viewport.height, content_width, wrap_mode, total_lines);
+    // Exclude the phantom trailing line. The buffer invariant guarantees a
+    // trailing `\n`, so ropey always reports one extra empty line at index
+    // `last_line_idx`. Real content is lines 0..last_line_idx (exclusive), so
+    // `last_line_idx` is the correct exclusive upper bound for the range.
+    let line_range = compute_line_range(rope, top_line, top_skip, viewport.height, content_width, wrap_mode, last_line_idx);
 
     VisibleRange {
         line_range,
