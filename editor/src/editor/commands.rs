@@ -33,7 +33,6 @@ use crate::helpers::is_word_boundary;
 
 use engine::types::EditorMode;
 
-use super::registry::MappableCommand;
 use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
@@ -291,48 +290,27 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize, _mode: MotionMode) {
     ed.last_action = Some(action);
 }
 
-// ── Page scroll ───────────────────────────────────────────────────────────────
+// ── Page / half-page scroll ───────────────────────────────────────────────────
 //
-// Uses `view.height` as the move count rather than the user's numeric prefix.
-
-/// Shared implementation for the four page-scroll commands.
-fn page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
-    let page = ed.viewport().height as usize;
-    // Extract the fn pointer before the call so the registry borrow ends before
-    // `fun(ed, page, mode)` takes `&mut Editor` — Rust can't see the disjointness otherwise.
-    let fun = match ed.registry.get_mappable(motion_name) {
-        Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
-        _ => unreachable!("page_scroll: motion '{}' not in registry", motion_name),
-    };
-    fun(ed, page, mode);
-}
+// Uses `view.height` (or half of it) as the move count rather than the user's
+// numeric prefix. Calls the visual-move commands directly instead of going
+// through the registry to avoid a runtime string lookup.
 
 pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
-    page_scroll(ed, "move-down", mode);
+    let count = ed.viewport().height as usize;
+    cmd_visual_move_down(ed, count, mode);
 }
 pub(super) fn cmd_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
-    page_scroll(ed, "move-up", mode);
+    let count = ed.viewport().height as usize;
+    cmd_visual_move_up(ed, count, mode);
 }
-
-// ── Half-page scroll ─────────────────────────────────────────────────────────
-//
-// Like page scroll but uses `view.height / 2` as the move count.
-
-/// Shared implementation for the four half-page-scroll commands.
-fn half_page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
-    let half = (ed.viewport().height as usize / 2).max(1);
-    let fun = match ed.registry.get_mappable(motion_name) {
-        Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
-        _ => unreachable!("half_page_scroll: motion '{}' not in registry", motion_name),
-    };
-    fun(ed, half, mode);
-}
-
 pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
-    half_page_scroll(ed, "move-down", mode);
+    let count = (ed.viewport().height as usize / 2).max(1);
+    cmd_visual_move_down(ed, count, mode);
 }
 pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
-    half_page_scroll(ed, "move-up", mode);
+    let count = (ed.viewport().height as usize / 2).max(1);
+    cmd_visual_move_up(ed, count, mode);
 }
 
 // Visual-line movement lives in visual_move.rs; re-export for the registry glob.

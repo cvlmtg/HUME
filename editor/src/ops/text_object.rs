@@ -79,6 +79,20 @@ pub(crate) fn apply_text_object_extend(
     result
 }
 
+/// Dispatch to [`apply_text_object`] or [`apply_text_object_extend`] based on `mode`.
+#[inline]
+fn apply_text_object_by_mode(
+    buf: &Buffer,
+    sels: SelectionSet,
+    mode: MotionMode,
+    f: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, f),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, f),
+    }
+}
+
 // ── Line ───────────────────────────────────────────────────────────────────────
 
 /// Inner line: the line content excluding the trailing newline.
@@ -112,17 +126,11 @@ fn around_line(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
 }
 
 pub(crate) fn cmd_inner_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, inner_line),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, inner_line),
-    }
+    apply_text_object_by_mode(buf, sels, mode, inner_line)
 }
 
 pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, around_line),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, around_line),
-    }
+    apply_text_object_by_mode(buf, sels, mode, around_line)
 }
 
 
@@ -271,34 +279,22 @@ fn around_word_impl(
 }
 
 pub(crate) fn cmd_inner_word(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary)),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary)),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_word_impl(b, pos, is_word_boundary))
 }
 
 pub(crate) fn cmd_around_word(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary)),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary)),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| around_word_impl(b, pos, is_word_boundary))
 }
 
 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_inner_WORD(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary)),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary)),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
 }
 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_around_WORD(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary)),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary)),
-    }
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
 }
 
 
@@ -320,16 +316,10 @@ fn around_bracket(buf: &Buffer, pos: usize, open: char, close: char) -> Option<(
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
         pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            match mode {
-                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close)),
-                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close)),
-            }
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_bracket(b, pos, $open, $close))
         }
         pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            match mode {
-                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_bracket(b, pos, $open, $close)),
-                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_bracket(b, pos, $open, $close)),
-            }
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| around_bracket(b, pos, $open, $close))
         }
     };
 }
@@ -357,16 +347,10 @@ fn around_quote(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)>
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
         pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            match mode {
-                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_quote(b, pos, $quote)),
-                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_quote(b, pos, $quote)),
-            }
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_quote(b, pos, $quote))
         }
         pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            match mode {
-                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_quote(b, pos, $quote)),
-                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_quote(b, pos, $quote)),
-            }
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| around_quote(b, pos, $quote))
         }
     };
 }
@@ -546,17 +530,11 @@ fn around_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
 }
 
 pub(crate) fn cmd_inner_argument(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, inner_argument),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, inner_argument),
-    }
+    apply_text_object_by_mode(buf, sels, mode, inner_argument)
 }
 
 pub(crate) fn cmd_around_argument(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, around_argument),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, around_argument),
-    }
+    apply_text_object_by_mode(buf, sels, mode, around_argument)
 }
 
 

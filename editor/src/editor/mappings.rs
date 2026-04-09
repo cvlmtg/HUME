@@ -296,10 +296,23 @@ impl Editor {
             if key.modifiers.contains(KeyModifiers::CONTROL) && self.pending_keys.is_empty() {
                 match self.keymap.normal.walk(&[key]) {
                     WalkResult::NoMatch if self.kitty_enabled => {
-                        // Kitty mode: strip CONTROL, re-walk as extend.
+                        // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
+                        // resolved command is extendable — prevents e.g. Ctrl+u running
+                        // "undo" (not a motion) as a one-shot extend.
                         let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
                         self.pending_keys.push(bare);
-                        (self.keymap.normal.walk(&self.pending_keys), true)
+                        let result = self.keymap.normal.walk(&self.pending_keys);
+                        let is_extendable = match &result {
+                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            _ => false,
+                        };
+                        if !is_extendable {
+                            self.pending_keys.clear();
+                            self.count = None;
+                            return;
+                        }
+                        (result, true)
                     }
                     WalkResult::NoMatch => return, // Legacy: no-op.
                     // Explicit Ctrl+letter binding. Treat as extend if the command
@@ -321,21 +334,6 @@ impl Editor {
         // Compute the effective extend flag: sticky extend (mode == Extend) OR
         // kitty one-shot (ctrl_extend local). Passed as a parameter — no mode change.
         let extend = (self.mode == EditorMode::Extend) || ctrl_extend;
-
-        // Ctrl one-shot extend guard: only dispatch if the command is extendable.
-        // Prevents e.g. Ctrl+u from running "undo" (not a motion) in extend mode.
-        if ctrl_extend {
-            let is_extendable = match &result {
-                WalkResult::Leaf(cmd) => self.registry.get_mappable(cmd.name.as_ref()).map_or(false, |c| c.is_extendable()),
-                WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |c| c.is_extendable()),
-                _ => false,
-            };
-            if !is_extendable {
-                self.pending_keys.clear();
-                self.count = None;
-                return;
-            }
-        }
 
         match result {
             WalkResult::Leaf(cmd) => {
