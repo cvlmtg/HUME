@@ -287,10 +287,10 @@ impl ProviderSet {
     ///
     /// Called from `prepare_frame` each frame so `:set line-number-style` takes
     /// effect without rebuilding the provider set.
-    pub fn sync_line_number_style(&mut self, style: &LineNumberStyle) {
+    pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
         for col in &mut self.gutter_columns {
             if let Some(ln) = col.as_any_mut().downcast_mut::<LineNumberColumn>() {
-                ln.style = style.clone();
+                ln.style = style;
             }
         }
     }
@@ -356,6 +356,34 @@ mod tests {
         assert_eq!(s.as_str(), "abc");
         let b = GutterCell::blank(Scope("x"));
         assert_eq!(b.as_str(), " ");
+    }
+
+    // ── sync_line_number_style ───────────────────────────────────────────
+
+    #[test]
+    fn sync_line_number_style_updates_line_number_column() {
+        use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
+        let mut set = ProviderSet::new();
+        set.add_gutter_column(Box::new(LineNumberColumn::with_style(LineNumberStyle::Hybrid)));
+        set.sync_line_number_style(LineNumberStyle::Relative);
+        let col = set.gutter_columns[0].as_any_mut().downcast_mut::<LineNumberColumn>().unwrap();
+        assert_eq!(col.style, LineNumberStyle::Relative);
+    }
+
+    #[test]
+    fn sync_line_number_style_skips_non_line_number_columns() {
+        use crate::builtins::line_number::LineNumberStyle;
+        let mut set = ProviderSet::new();
+        set.add_gutter_column(Box::new(DummyGutter));
+        // Should not panic — DummyGutter doesn't downcast to LineNumberColumn.
+        set.sync_line_number_style(LineNumberStyle::Absolute);
+    }
+
+    #[test]
+    fn sync_line_number_style_no_op_when_empty() {
+        use crate::builtins::line_number::LineNumberStyle;
+        let mut set = ProviderSet::new();
+        set.sync_line_number_style(LineNumberStyle::Hybrid);
     }
 
     // ── ProviderSet ──────────────────────────────────────────────────────

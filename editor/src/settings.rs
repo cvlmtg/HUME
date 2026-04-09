@@ -495,4 +495,149 @@ mod tests {
         // Buffer has no override, so it inherits the new global value.
         assert_eq!(ov.tab_width(&global), 2);
     }
+
+    // ── apply_global: remaining keys ──────────────────────────────────────────
+
+    #[test]
+    fn set_global_scroll_margin_h() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "scroll-margin-h", "10").unwrap();
+        assert_eq!(s.scroll_margin_h, 10);
+    }
+
+    #[test]
+    fn set_global_mouse_scroll_lines() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "mouse-scroll-lines", "5").unwrap();
+        assert_eq!(s.mouse_scroll_lines, 5);
+    }
+
+    #[test]
+    fn set_global_mouse_enabled() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "mouse-enabled", "false").unwrap();
+        assert!(!s.mouse_enabled);
+    }
+
+    #[test]
+    fn set_global_mouse_select() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "mouse-select", "true").unwrap();
+        assert!(s.mouse_select);
+    }
+
+    #[test]
+    fn set_global_jump_list_capacity() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "jump-list-capacity", "50").unwrap();
+        assert_eq!(s.jump_list_capacity, 50);
+    }
+
+    #[test]
+    fn set_global_jump_list_capacity_zero_errors() {
+        let mut s = EditorSettings::default();
+        assert!(apply_global(&mut s, "jump-list-capacity", "0").is_err());
+    }
+
+    #[test]
+    fn set_global_jump_line_threshold() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "jump-line-threshold", "10").unwrap();
+        assert_eq!(s.jump_line_threshold, 10);
+    }
+
+    #[test]
+    fn set_global_whitespace_space() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "whitespace-space", "all").unwrap();
+        assert_eq!(s.whitespace.space, engine::pane::WhitespaceRender::All);
+    }
+
+    #[test]
+    fn set_global_whitespace_tab() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "whitespace-tab", "trailing").unwrap();
+        assert_eq!(s.whitespace.tab, engine::pane::WhitespaceRender::Trailing);
+    }
+
+    #[test]
+    fn set_global_whitespace_newline() {
+        let mut s = EditorSettings::default();
+        apply_global(&mut s, "whitespace-newline", "all").unwrap();
+        assert_eq!(s.whitespace.newline, engine::pane::WhitespaceRender::All);
+    }
+
+    #[test]
+    fn set_global_empty_value_errors() {
+        let mut s = EditorSettings::default();
+        assert!(apply_global(&mut s, "scroll-margin", "").is_err());
+        assert!(apply_global(&mut s, "tab-width", "").is_err());
+        assert!(apply_global(&mut s, "mouse-enabled", "").is_err());
+    }
+
+    // ── apply_buffer: remaining keys ──────────────────────────────────────────
+
+    #[test]
+    fn set_buffer_line_number_style() {
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "line-number-style", "absolute").unwrap();
+        assert_eq!(ov.line_number_style(&global), engine::builtins::line_number::LineNumberStyle::Absolute);
+    }
+
+    #[test]
+    fn set_buffer_auto_pairs_enabled() {
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "auto-pairs-enabled", "false").unwrap();
+        let (enabled, _) = ov.auto_pairs_ref(&global);
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn set_buffer_whitespace_space() {
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "whitespace-space", "all").unwrap();
+        assert_eq!(ov.whitespace(&global).space, engine::pane::WhitespaceRender::All);
+    }
+
+    #[test]
+    fn set_buffer_whitespace_tab() {
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "whitespace-tab", "trailing").unwrap();
+        assert_eq!(ov.whitespace(&global).tab, engine::pane::WhitespaceRender::Trailing);
+    }
+
+    #[test]
+    fn set_buffer_whitespace_newline() {
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "whitespace-newline", "all").unwrap();
+        assert_eq!(ov.whitespace(&global).newline, engine::pane::WhitespaceRender::All);
+    }
+
+    #[test]
+    fn set_buffer_whitespace_fields_are_independent() {
+        // Setting whitespace-space should not touch tab or newline.
+        let global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_buffer(&mut ov, "whitespace-space", "all").unwrap();
+        let ws = ov.whitespace(&global);
+        assert_eq!(ws.space, engine::pane::WhitespaceRender::All);
+        assert_eq!(ws.tab, engine::pane::WhitespaceRender::None);
+        assert_eq!(ws.newline, engine::pane::WhitespaceRender::None);
+    }
+
+    #[test]
+    fn set_buffer_global_only_all_keys_error() {
+        let mut ov = BufferOverrides::default();
+        for key in ["scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
+                    "mouse-enabled", "mouse-select", "jump-list-capacity",
+                    "jump-line-threshold"] {
+            let err = apply_buffer(&mut ov, key, "1").unwrap_err();
+            assert!(err.contains("global-only"), "key '{key}': expected 'global-only' in error: {err}");
+        }
+    }
 }

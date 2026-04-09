@@ -81,6 +81,11 @@ pub fn compute_viewport(
 
 /// Determine which buffer lines need to be formatted to fill `viewport_height`
 /// rows, starting from `top_line` with `top_skip` rows already scrolled past.
+///
+/// `last_line_idx` is the 0-based index of the last real content line (i.e.
+/// `rope.len_lines() - 1`). It is used as an exclusive upper bound for the
+/// returned range because the phantom trailing line at that index must not be
+/// included.
 fn compute_line_range(
     rope: &Rope,
     top_line: usize,
@@ -88,12 +93,12 @@ fn compute_line_range(
     viewport_height: u16,
     content_width: u16,
     wrap_mode: &WrapMode,
-    total_lines: usize,
+    last_line_idx: usize,
 ) -> Range<usize> {
     // For non-wrapping mode each buffer line is exactly one display row.
     if wrap_mode.wrap_width().is_none() {
         // top_skip is always 0 for non-wrapping (no wrapped lines).
-        let end = (top_line + viewport_height as usize).min(total_lines);
+        let end = (top_line + viewport_height as usize).min(last_line_idx);
         return top_line..end;
     }
 
@@ -102,7 +107,7 @@ fn compute_line_range(
     let mut rows_needed = viewport_height as usize + top_skip as usize;
     let mut end = top_line;
 
-    while end < total_lines && rows_needed > 0 {
+    while end < last_line_idx && rows_needed > 0 {
         let line_rows = estimate_line_rows(rope, end, content_width);
         rows_needed = rows_needed.saturating_sub(line_rows);
         end += 1;
@@ -110,7 +115,7 @@ fn compute_line_range(
 
     // Add a small look-ahead so smooth scrolling has room.
     const LOOKAHEAD_LINES: usize = 4;
-    let end = (end + LOOKAHEAD_LINES).min(total_lines);
+    let end = (end + LOOKAHEAD_LINES).min(last_line_idx);
     top_line..end
 }
 

@@ -61,23 +61,24 @@ impl FromStr for WrapMode {
     ///
     /// Accepted forms: `none`, `soft:N`, `word:N`, `indent:N`
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "none" {
+        let lower = s.to_ascii_lowercase();
+        if lower == "none" {
             return Ok(WrapMode::None);
         }
-        let (kind, rest) = s.split_once(':').ok_or_else(|| {
+        let (kind, rest) = lower.split_once(':').ok_or_else(|| {
             format!("invalid wrap-mode '{s}': expected none, soft:N, word:N, or indent:N")
         })?;
         let width: u16 = rest.parse().map_err(|_| {
             format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
         })?;
         if width == 0 {
-            return Err("invalid wrap-mode width: must be at least 1".into());
+            return Err(format!("invalid wrap-mode width in '{s}': must be at least 1"));
         }
         match kind {
             "soft" => Ok(WrapMode::Soft { width }),
             "word" => Ok(WrapMode::Word { width }),
             "indent" => Ok(WrapMode::Indent { width }),
-            _ => Err(format!("invalid wrap-mode kind '{kind}': expected soft, word, or indent")),
+            _ => Err(format!("invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent")),
         }
     }
 }
@@ -102,7 +103,7 @@ impl WrapMode {
 // ---------------------------------------------------------------------------
 
 /// When to render a whitespace indicator for a particular whitespace type.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum WhitespaceRender {
     /// Never render an indicator.
     #[default]
@@ -117,7 +118,7 @@ impl FromStr for WhitespaceRender {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_ascii_lowercase().as_str() {
             "none" => Ok(WhitespaceRender::None),
             "all" => Ok(WhitespaceRender::All),
             "trailing" => Ok(WhitespaceRender::Trailing),
@@ -210,6 +211,70 @@ mod tests {
         assert_eq!(vp.horizontal_offset, 0);
         assert_eq!(vp.width, 80);
         assert_eq!(vp.height, 24);
+    }
+
+    // ── WrapMode::FromStr ────────────────────────────────────────────────
+
+    #[test]
+    fn wrap_mode_from_str_none() {
+        assert_eq!("none".parse::<WrapMode>().unwrap(), WrapMode::None);
+        assert_eq!("NONE".parse::<WrapMode>().unwrap(), WrapMode::None);
+    }
+
+    #[test]
+    fn wrap_mode_from_str_variants() {
+        assert_eq!("soft:80".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 80 });
+        assert_eq!("word:40".parse::<WrapMode>().unwrap(), WrapMode::Word { width: 40 });
+        assert_eq!("indent:76".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 76 });
+    }
+
+    #[test]
+    fn wrap_mode_from_str_case_insensitive() {
+        assert_eq!("Soft:80".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 80 });
+        assert_eq!("INDENT:76".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 76 });
+    }
+
+    #[test]
+    fn wrap_mode_from_str_error_unknown_kind() {
+        assert!("hard:80".parse::<WrapMode>().is_err());
+    }
+
+    #[test]
+    fn wrap_mode_from_str_error_zero_width() {
+        let err = "soft:0".parse::<WrapMode>().unwrap_err();
+        assert!(err.contains("soft:0"), "error should contain input: {err}");
+    }
+
+    #[test]
+    fn wrap_mode_from_str_error_missing_colon() {
+        assert!("soft".parse::<WrapMode>().is_err());
+    }
+
+    #[test]
+    fn wrap_mode_from_str_error_non_numeric_width() {
+        assert!("soft:abc".parse::<WrapMode>().is_err());
+    }
+
+    // ── WhitespaceRender::FromStr ─────────────────────────────────────────
+
+    #[test]
+    fn whitespace_render_from_str_all_variants() {
+        assert_eq!("none".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::None);
+        assert_eq!("all".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::All);
+        assert_eq!("trailing".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::Trailing);
+    }
+
+    #[test]
+    fn whitespace_render_from_str_case_insensitive() {
+        assert_eq!("None".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::None);
+        assert_eq!("ALL".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::All);
+        assert_eq!("Trailing".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::Trailing);
+    }
+
+    #[test]
+    fn whitespace_render_from_str_error() {
+        let err = "always".parse::<WhitespaceRender>().unwrap_err();
+        assert!(err.contains("always"), "error should contain input: {err}");
     }
 
     #[test]
