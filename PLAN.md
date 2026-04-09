@@ -54,7 +54,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Basic edit operations: insert, delete, backspace — operating over all selections
 - [x] ChangeSet: OT-style edit descriptions (Retain/Delete/Insert) with apply, map_pos, invert, compose. Builder pattern for constructing changesets. Edit operations refactored to build changesets.
 - [x] Transaction: thin wrapper pairing ChangeSet with SelectionSet — the unit of undo/redo
-- [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend variants exist as named commands (e.g. `cmd_extend_next_word_start`). Key-to-command mapping is an M3/keybinding concern.
+- [x] Motions: character, word, line, paragraph movement — implemented as named commands (`src/motion.rs`); key bindings are wired in M3. Extend behaviour is a runtime `MotionMode` parameter, not separate command variants. Key-to-command mapping is an M3/keybinding concern.
 - [x] Text objects: inside/around word, quotes, brackets, line
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
 - [x] Registers: named yank/paste buffers (`'0'`–`'9'`) + default (`'"'`) + black hole (`'b'`) + reserved slots for clipboard (`'c'`), search (`'s'`), macro (`'q'`); `yank_selections` (`src/register.rs`), `paste_after`/`paste_before` (`src/edit.rs`). System clipboard deferred to M4 (editor layer).

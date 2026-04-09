@@ -20,7 +20,11 @@ pub(crate) mod text_object;
 /// `Extend` keeps the existing anchor, only moving the head.
 ///
 /// All Motion, Selection, and EditorCmd functions receive a `MotionMode` at
-/// dispatch time. Non-extendable commands accept `_mode: MotionMode` and ignore it.
+/// dispatch time. Most motion and text-object commands branch on it (word-select
+/// and text-object commands use [`Extend`](MotionMode::Extend) to union new
+/// ranges with the existing selection rather than replacing it). Commands with
+/// no extend semantics (e.g. surround, flip, collapse) accept `_mode` and
+/// ignore it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MotionMode {
     Move,
