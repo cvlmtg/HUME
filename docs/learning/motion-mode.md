@@ -26,7 +26,7 @@ Result: Selection { anchor: 1, head: 1 }
 The cursor is on `'e'`, a single-character selection.
 
 Now suppose the cursor is at `{ anchor: 2, head: 2 }` on `'l'` and the user
-triggers an extend-mode variant:
+presses `l` in extend mode:
 
 **Step 2 — apply `MotionMode::Extend`.**
 
@@ -43,7 +43,7 @@ anchor stayed put.
 | Mode | Anchor | Head | Typical use |
 |------|--------|------|-------------|
 | `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
-| `Extend` | `old_anchor` | `new_head` | Grow selection — extend-mode variants |
+| `Extend` | `old_anchor` | `new_head` | Grow selection — extend mode, Ctrl+letter |
 
 `Move` always produces a collapsed single-character selection (anchor == head).
 `Extend` keeps the existing anchor, only moving the head.
@@ -63,8 +63,8 @@ a concern of the keymap layer, not of the motion itself. This means:
 - Adding a new motion (e.g. "next paragraph") requires one position function;
   Move and Extend variants come for free.
 - Testing the motion is simple: just assert on the returned position.
-- The same `move_right` inner function powers both `l` (Move) and its
-  extend-mode variant (Extend).
+- The same `move_right` inner function powers both `l` (Move) and `l` in
+  extend mode (Extend) — no separate command needed.
 
 ```rust
 match mode {
