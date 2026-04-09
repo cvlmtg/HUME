@@ -215,7 +215,6 @@ pub(crate) struct TypedCommand {
     /// Canonical name, e.g. `"write"`. Used as the registry key.
     pub name: Cow<'static, str>,
     /// One-line description for `:help` and command-palette display.
-    #[allow(dead_code)]
     pub doc: Cow<'static, str>,
     /// Short aliases, e.g. `&["w"]`. Each alias is also registered in the
     /// alias index for O(1) lookup. Empty for commands with no alias.
@@ -323,7 +322,7 @@ impl CommandRegistry {
     /// The `:` command dispatcher falls back to [`Self::get_mappable`] when
     /// this returns `None` — see `execute_command` in `editor/mappings.rs`.
     pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
-        let canonical = self.alias_map.get(name).map(|c| c.as_ref()).unwrap_or(name);
+        let canonical = self.alias_map.get(name).map_or(name, |c| c.as_ref());
         match self.commands.get(canonical)? {
             Command::Typed(cmd) => Some(cmd),
             Command::Mappable(_) => None,

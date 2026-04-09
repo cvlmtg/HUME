@@ -751,11 +751,12 @@ impl Editor {
 
         if let Some(tc) = self.registry.get_typed(cmd) {
             (tc.fun)(self, arg, force);
-        } else if let Some(mc) = self.registry.get_mappable(cmd).cloned() {
+        } else if self.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers.
-            self.execute_keymap_command(mc.name().to_owned().into(), 1, false);
+            // `cmd` is already the canonical name — no need to clone the command.
+            self.execute_keymap_command(cmd.to_owned().into(), 1, false);
         } else {
             self.status_msg = Some(format!("Unknown command: {cmd}"));
         }
