@@ -114,13 +114,9 @@ macro_rules! define_settings {
         /// The [`Default`] impl exactly reproduces the values that were
         /// previously hardcoded as constants across the codebase.
         pub(crate) struct EditorSettings {
-            // Global-only settings (auto-generated)
             $( pub $gname: $gtype, )*
-            // Per-buffer-overridable settings (auto-generated)
             $( pub $bname: $btype, )*
-            // Extra global-only fields (no :set key)
             $( pub $egname: $egtype, )*
-            // Extra per-buffer fields (no :set key)
             $( pub $ebname: $ebtype, )*
         }
 
@@ -144,9 +140,7 @@ macro_rules! define_settings {
         /// [`Self::tab_width`]) with a `&EditorSettings` reference.
         #[derive(Default)]
         pub(crate) struct BufferOverrides {
-            // Per-buffer-overridable settings (auto-generated)
             $( pub $bname: Option<$btype>, )*
-            // Extra per-buffer fields (no :set key)
             $( pub $ebname: Option<$ebtype>, )*
         }
 
@@ -268,9 +262,6 @@ define_settings! {
 }
 
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
-//
-// These settings have resolution logic that doesn't fit a simple `Option<T>`
-// unwrap-or pattern and are handled outside the macro.
 
 impl BufferOverrides {
     /// Effective whitespace config: buffer override → global default.
