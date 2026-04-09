@@ -1708,7 +1708,7 @@ fn esc_in_normal_clears_search() {
     assert!(ed.search.matches.is_empty(), "search.matches should be cleared by Esc");
 }
 
-///// `:clear-search` in Command mode clears the active search regex and its cached state.
+/// `:clear-search` in Command mode clears the active search regex and its cached state.
 #[test]
 fn command_clear_search_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");

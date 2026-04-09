@@ -792,10 +792,11 @@ mod tests {
     ///   22 text objects (11 objects × inner/around)
     ///    6 find/till (forward/backward × find/till + repeat forward/backward)
     ///    2 page scroll (down/up)
+    ///    2 half-page scroll (down/up)
     ///    2 search (next/prev)
     ///    1 special (open-line-below → flip-selections)
     ///   ──
-    ///   50 total
+    ///   52 total
     const EXPECTED_EXTEND_PAIR_COUNT: usize = 52;
 
     #[test]
