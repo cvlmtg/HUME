@@ -612,8 +612,14 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) {
         return;
     };
     let result = match scope {
-        "global" => crate::settings::apply_global(&mut ed.settings, key, value),
-        "buffer" => crate::settings::apply_buffer(&mut ed.doc.overrides, key, value),
+        "global" => crate::settings::apply_setting(
+            crate::settings::SettingScope::Global,
+            key, value, &mut ed.settings, &mut ed.doc.overrides,
+        ),
+        "buffer" => crate::settings::apply_setting(
+            crate::settings::SettingScope::Buffer,
+            key, value, &mut ed.settings, &mut ed.doc.overrides,
+        ),
         _ => Err(format!("unknown scope '{scope}': expected 'global' or 'buffer'")),
     };
     if let Err(msg) = result {
