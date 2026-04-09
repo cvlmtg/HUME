@@ -636,13 +636,6 @@ pub(super) fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) 
     }
 }
 
-pub(super) fn typed_clear_search(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
-    cmd_clear_search(ed, 0);
-}
-
-pub(super) fn typed_select_all_matches(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
-    cmd_select_all_matches(ed, 0);
-}
 
 pub(super) fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
     use engine::pane::WrapMode;

@@ -1708,7 +1708,7 @@ fn esc_in_normal_clears_search() {
     assert!(ed.search.matches.is_empty(), "search.matches should be cleared by Esc");
 }
 
-/// `:clear-search` / `:cs` in Command mode clears the active search regex and its cached state.
+///// `:clear-search` in Command mode clears the active search regex and its cached state.
 #[test]
 fn command_clear_search_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
@@ -1728,16 +1728,6 @@ fn command_clear_search_clears_search() {
     assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by :clear-search");
     assert!(ed.search.matches.is_empty(), "search.matches should be cleared by :clear-search");
 
-    // :cs shorthand also works
-    let mut ed2 = editor_from("-[h]>ello hello\n").with_search_regex("hello");
-    ed2.handle_key(key(':'));
-    for ch in "cs".chars() {
-        ed2.handle_key(key(ch));
-    }
-    ed2.handle_key(key_enter());
-    ed2.update_search_cache();
-
-    assert!(ed2.search.regex.is_none(), "search.regex should be cleared by :cs");
 }
 
 // ── Select within (s) ────────────────────────────────────────────────────────
@@ -2138,16 +2128,15 @@ fn search_n_merges_with_overlapping_secondary() {
 // ── select-all-matches ────────────────────────────────────────────────────────
 
 /// `select-all-matches` turns every match into a selection.
-/// Invoke via `:sam` typed command.
 #[test]
 fn select_all_matches_creates_selection_per_match() {
     // "ab cd ab\n" — two "ab" matches at 0 and 6.
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
 
     ed.handle_key(key(':'));
-    ed.handle_key(key('s'));
-    ed.handle_key(key('a'));
-    ed.handle_key(key('m'));
+    for ch in "select-all-matches".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     assert_eq!(ed.doc.sels().len(), 2, "one selection per 'ab' match");
@@ -2163,9 +2152,9 @@ fn select_all_matches_no_search_is_noop() {
     let original = state(&ed);
 
     ed.handle_key(key(':'));
-    ed.handle_key(key('s'));
-    ed.handle_key(key('a'));
-    ed.handle_key(key('m'));
+    for ch in "select-all-matches".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     assert_eq!(state(&ed), original);
@@ -2181,15 +2170,15 @@ fn select_all_matches_uses_search_register_fallback() {
     assert!(ed.search.regex.is_none());
 
     ed.handle_key(key(':'));
-    ed.handle_key(key('s'));
-    ed.handle_key(key('a'));
-    ed.handle_key(key('m'));
+    for ch in "select-all-matches".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     assert_eq!(ed.doc.sels().len(), 2);
 }
 
-/// `m/` keybind reaches `select-all-matches` (tests the keymap path, not just `:sam`).
+/// `m/` keybind reaches `select-all-matches` (tests the keymap path, not just `:select-all-matches`).
 #[test]
 fn select_all_matches_via_m_slash_keybind() {
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
