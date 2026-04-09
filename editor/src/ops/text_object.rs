@@ -3,6 +3,7 @@ use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, CharClass};
 use crate::core::selection::{Selection, SelectionSet};
 use super::pair::{find_bracket_pair, find_quote_pair};
+use super::MotionMode;
 
 // ── Text object framework ──────────────────────────────────────────────────────
 
@@ -110,20 +111,26 @@ fn around_line(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
     Some((start, end_excl - 1))
 }
 
-pub(crate) fn cmd_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, inner_line)
+pub(crate) fn cmd_inner_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, inner_line),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, inner_line),
+    }
 }
 
-pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, around_line)
+pub(crate) fn cmd_around_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, around_line),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, around_line),
+    }
 }
 
-pub(crate) fn cmd_extend_inner_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, inner_line)
+pub(crate) fn cmd_extend_inner_line(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_inner_line(buf, sels, MotionMode::Extend)
 }
 
-pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, around_line)
+pub(crate) fn cmd_extend_around_line(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_around_line(buf, sels, MotionMode::Extend)
 }
 
 // ── Word / WORD ────────────────────────────────────────────────────────────────
@@ -270,40 +277,52 @@ fn around_word_impl(
     Some((start, end))
 }
 
-pub(crate) fn cmd_inner_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary))
+pub(crate) fn cmd_inner_word(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary)),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary)),
+    }
 }
 
-pub(crate) fn cmd_around_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary))
+pub(crate) fn cmd_around_word(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary)),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary)),
+    }
 }
 
-pub(crate) fn cmd_extend_inner_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_word_boundary))
+pub(crate) fn cmd_extend_inner_word(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_inner_word(buf, sels, MotionMode::Extend)
 }
 
-pub(crate) fn cmd_extend_around_word(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_word_boundary))
-}
-
-#[allow(non_snake_case)]
-pub(crate) fn cmd_inner_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
-}
-
-#[allow(non_snake_case)]
-pub(crate) fn cmd_around_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
+pub(crate) fn cmd_extend_around_word(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_around_word(buf, sels, MotionMode::Extend)
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn cmd_extend_inner_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
+pub(crate) fn cmd_inner_WORD(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary)),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_word_impl(b, pos, is_WORD_boundary)),
+    }
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn cmd_extend_around_WORD(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
+pub(crate) fn cmd_around_WORD(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary)),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_word_impl(b, pos, is_WORD_boundary)),
+    }
+}
+
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_inner_WORD(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_inner_WORD(buf, sels, MotionMode::Extend)
+}
+
+#[allow(non_snake_case)]
+pub(crate) fn cmd_extend_around_WORD(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_around_WORD(buf, sels, MotionMode::Extend)
 }
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
@@ -323,17 +342,23 @@ fn around_bracket(buf: &Buffer, pos: usize, open: char, close: char) -> Option<(
 
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $ext_inner_name:ident, $ext_around_name:ident, $open:literal, $close:literal) => {
-        pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close))
+        pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+            match mode {
+                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close)),
+                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close)),
+            }
         }
-        pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object(buf, sels, |b, pos| around_bracket(b, pos, $open, $close))
+        pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+            match mode {
+                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_bracket(b, pos, $open, $close)),
+                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_bracket(b, pos, $open, $close)),
+            }
         }
-        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object_extend(buf, sels, |b, pos| inner_bracket(b, pos, $open, $close))
+        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+            $inner_name(buf, sels, MotionMode::Extend)
         }
-        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object_extend(buf, sels, |b, pos| around_bracket(b, pos, $open, $close))
+        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+            $around_name(buf, sels, MotionMode::Extend)
         }
     };
 }
@@ -360,17 +385,23 @@ fn around_quote(buf: &Buffer, pos: usize, quote: char) -> Option<(usize, usize)>
 
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $ext_inner_name:ident, $ext_around_name:ident, $quote:literal) => {
-        pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object(buf, sels, |b, pos| inner_quote(b, pos, $quote))
+        pub(crate) fn $inner_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+            match mode {
+                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| inner_quote(b, pos, $quote)),
+                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| inner_quote(b, pos, $quote)),
+            }
         }
-        pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object(buf, sels, |b, pos| around_quote(b, pos, $quote))
+        pub(crate) fn $around_name(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+            match mode {
+                MotionMode::Move   => apply_text_object(buf, sels, |b, pos| around_quote(b, pos, $quote)),
+                MotionMode::Extend => apply_text_object_extend(buf, sels, |b, pos| around_quote(b, pos, $quote)),
+            }
         }
-        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object_extend(buf, sels, |b, pos| inner_quote(b, pos, $quote))
+        pub(crate) fn $ext_inner_name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+            $inner_name(buf, sels, MotionMode::Extend)
         }
-        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-            apply_text_object_extend(buf, sels, |b, pos| around_quote(b, pos, $quote))
+        pub(crate) fn $ext_around_name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+            $around_name(buf, sels, MotionMode::Extend)
         }
     };
 }
@@ -549,20 +580,26 @@ fn around_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
     }
 }
 
-pub(crate) fn cmd_inner_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, inner_argument)
+pub(crate) fn cmd_inner_argument(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, inner_argument),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, inner_argument),
+    }
 }
 
-pub(crate) fn cmd_around_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object(buf, sels, around_argument)
+pub(crate) fn cmd_around_argument(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+    match mode {
+        MotionMode::Move   => apply_text_object(buf, sels, around_argument),
+        MotionMode::Extend => apply_text_object_extend(buf, sels, around_argument),
+    }
 }
 
-pub(crate) fn cmd_extend_inner_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, inner_argument)
+pub(crate) fn cmd_extend_inner_argument(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_inner_argument(buf, sels, MotionMode::Extend)
 }
 
-pub(crate) fn cmd_extend_around_argument(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
-    apply_text_object_extend(buf, sels, around_argument)
+pub(crate) fn cmd_extend_around_argument(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+    cmd_around_argument(buf, sels, MotionMode::Extend)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -580,7 +617,7 @@ mod tests {
         // Selection covers `world`, head=d (last char before \n).
         assert_state!(
             "hello\n-[w]>orld\nfoo\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "hello\n-[world]>\nfoo\n"
         );
     }
@@ -589,7 +626,7 @@ mod tests {
     fn inner_line_start_of_line() {
         assert_state!(
             "-[h]>ello world\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "-[hello world]>\n"
         );
     }
@@ -598,7 +635,7 @@ mod tests {
     fn inner_line_end_of_content() {
         assert_state!(
             "hello worl-[d]>\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "-[hello world]>\n"
         );
     }
@@ -609,7 +646,7 @@ mod tests {
         // and the selection is preserved.
         assert_state!(
             "hello\n-[\n]>world\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "hello\n-[\n]>world\n"
         );
     }
@@ -623,7 +660,7 @@ mod tests {
         // mid-cluster end position.
         assert_state!(
             "-[c]>afe\u{0301}\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "-[cafe\u{0301}]>\n"
         );
     }
@@ -633,7 +670,7 @@ mod tests {
         // Selection covers `world\n`; head is the newline char.
         assert_state!(
             "hello\n-[w]>orld\nfoo\n",
-            |(buf, sels)| cmd_around_line(&buf, sels),
+            |(buf, sels)| cmd_around_line(&buf, sels, MotionMode::Move),
             "hello\n-[world\n]>foo\n"
         );
     }
@@ -644,7 +681,7 @@ mod tests {
         // anchor == head, so serialises as a cursor (|).
         assert_state!(
             "hello\n-[\n]>world\n",
-            |(buf, sels)| cmd_around_line(&buf, sels),
+            |(buf, sels)| cmd_around_line(&buf, sels, MotionMode::Move),
             "hello\n-[\n]>world\n"
         );
     }
@@ -656,7 +693,7 @@ mod tests {
         // head=o (last char of `hello`).
         assert_state!(
             "-[h]>ello world\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[hello]> world\n"
         );
     }
@@ -665,7 +702,7 @@ mod tests {
     fn inner_word_cursor_at_end_of_word() {
         assert_state!(
             "hell-[o]> world\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[hello]> world\n"
         );
     }
@@ -677,7 +714,7 @@ mod tests {
         // head = second space, serialised as `#[ | ]#`.
         assert_state!(
             "foo-[ ]> bar\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "foo-[  ]>bar\n"
         );
     }
@@ -687,7 +724,7 @@ mod tests {
         // Both `!!` are Punctuation — selected as one run.
         assert_state!(
             "foo-[!]>!\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "foo-[!!]>\n"
         );
     }
@@ -697,7 +734,7 @@ mod tests {
         // Trailing space is included; head = the space char.
         assert_state!(
             "-[h]>ello world\n",
-            |(buf, sels)| cmd_around_word(&buf, sels),
+            |(buf, sels)| cmd_around_word(&buf, sels, MotionMode::Move),
             "-[hello ]>world\n"
         );
     }
@@ -707,7 +744,7 @@ mod tests {
         // "world" at end of line has no trailing space, so leading space included.
         assert_state!(
             "hello -[w]>orld\n",
-            |(buf, sels)| cmd_around_word(&buf, sels),
+            |(buf, sels)| cmd_around_word(&buf, sels, MotionMode::Move),
             "hello-[ world]>\n"
         );
     }
@@ -726,7 +763,7 @@ mod tests {
         // is included.
         assert_state!(
             "-[c]>afe\u{0301} world\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[cafe\u{0301}]> world\n"
         );
     }
@@ -738,7 +775,7 @@ mod tests {
         // `hello.world` is one WORD (no whitespace boundary within it).
         assert_state!(
             "-[h]>ello.world foo\n",
-            |(buf, sels)| cmd_inner_WORD(&buf, sels),
+            |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
             "-[hello.world]> foo\n"
         );
     }
@@ -749,7 +786,7 @@ mod tests {
     fn inner_paren_cursor_inside() {
         assert_state!(
             "(-[h]>ello)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[hello]>)\n"
         );
     }
@@ -759,7 +796,7 @@ mod tests {
         // around includes the parens themselves; head = `)`.
         assert_state!(
             "(-[h]>ello)\n",
-            |(buf, sels)| cmd_around_paren(&buf, sels),
+            |(buf, sels)| cmd_around_paren(&buf, sels, MotionMode::Move),
             "-[(hello)]>\n"
         );
     }
@@ -769,7 +806,7 @@ mod tests {
         // Cursor ON `(` — treated as if inside; same result as cursor inside.
         assert_state!(
             "-[(]>hello)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[hello]>)\n"
         );
     }
@@ -778,7 +815,7 @@ mod tests {
     fn inner_paren_cursor_on_close() {
         assert_state!(
             "(hello-[)]>\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[hello]>)\n"
         );
     }
@@ -787,7 +824,7 @@ mod tests {
     fn inner_paren_empty_is_noop() {
         assert_state!(
             "-[(]>)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "-[(]>)\n"
         );
     }
@@ -798,7 +835,7 @@ mod tests {
         // anchor == head, so serialises as a cursor.
         assert_state!(
             "(a(-[b]>)c)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(a(-[b]>)c)\n"
         );
     }
@@ -809,7 +846,7 @@ mod tests {
         // is the outer `(...)`, selects `a(b)c`.
         assert_state!(
             "(-[a]>(b)c)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[a(b)c]>)\n"
         );
     }
@@ -818,7 +855,7 @@ mod tests {
     fn inner_brace_basic() {
         assert_state!(
             "{-[h]>ello}\n",
-            |(buf, sels)| cmd_inner_brace(&buf, sels),
+            |(buf, sels)| cmd_inner_brace(&buf, sels, MotionMode::Move),
             "{-[hello]>}\n"
         );
     }
@@ -827,7 +864,7 @@ mod tests {
     fn inner_bracket_basic() {
         assert_state!(
             "[-[h]>ello]\n",
-            |(buf, sels)| cmd_inner_bracket(&buf, sels),
+            |(buf, sels)| cmd_inner_bracket(&buf, sels, MotionMode::Move),
             "[-[hello]>]\n"
         );
     }
@@ -836,7 +873,7 @@ mod tests {
     fn inner_angle_basic() {
         assert_state!(
             "<-[h]>ello>\n",
-            |(buf, sels)| cmd_inner_angle(&buf, sels),
+            |(buf, sels)| cmd_inner_angle(&buf, sels, MotionMode::Move),
             "<-[hello]>>\n"
         );
     }
@@ -845,7 +882,7 @@ mod tests {
     fn inner_paren_no_match_is_noop() {
         assert_state!(
             "hel-[l]>o\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "hel-[l]>o\n"
         );
     }
@@ -856,7 +893,7 @@ mod tests {
         // anchor = `\n` after `(`, head = `\n` before `)`.
         assert_state!(
             "(\n-[h]>ello\n)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[\nhello\n]>)\n"
         );
     }
@@ -867,7 +904,7 @@ mod tests {
     fn inner_double_quote_cursor_inside() {
         assert_state!(
             "\"hel-[l]>o\"\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "\"-[hello]>\"\n"
         );
     }
@@ -877,7 +914,7 @@ mod tests {
         // around includes both quote chars; head = closing `"`.
         assert_state!(
             "\"hel-[l]>o\"\n",
-            |(buf, sels)| cmd_around_double_quote(&buf, sels),
+            |(buf, sels)| cmd_around_double_quote(&buf, sels, MotionMode::Move),
             "-[\"hello\"]>\n"
         );
     }
@@ -886,7 +923,7 @@ mod tests {
     fn inner_double_quote_cursor_on_open() {
         assert_state!(
             "-[\"]>hello\"\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "\"-[hello]>\"\n"
         );
     }
@@ -895,7 +932,7 @@ mod tests {
     fn inner_double_quote_cursor_on_close() {
         assert_state!(
             "\"hello-[\"]>\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "\"-[hello]>\"\n"
         );
     }
@@ -904,7 +941,7 @@ mod tests {
     fn inner_double_quote_empty_is_noop() {
         assert_state!(
             "-[\"]>\"foo\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "-[\"]>\"foo\n"
         );
     }
@@ -914,7 +951,7 @@ mod tests {
         // Two pairs on the same line — cursor in second pair selects second.
         assert_state!(
             "\"a\" \"b-[c]>\"\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "\"a\" \"-[bc]>\"\n"
         );
     }
@@ -923,7 +960,7 @@ mod tests {
     fn inner_single_quote_basic() {
         assert_state!(
             "'hel-[l]>o'\n",
-            |(buf, sels)| cmd_inner_single_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_single_quote(&buf, sels, MotionMode::Move),
             "'-[hello]>'\n"
         );
     }
@@ -932,7 +969,7 @@ mod tests {
     fn inner_backtick_basic() {
         assert_state!(
             "`hel-[l]>o`\n",
-            |(buf, sels)| cmd_inner_backtick(&buf, sels),
+            |(buf, sels)| cmd_inner_backtick(&buf, sels, MotionMode::Move),
             "`-[hello]>`\n"
         );
     }
@@ -941,7 +978,7 @@ mod tests {
     fn inner_double_quote_not_inside_is_noop() {
         assert_state!(
             "hel-[l]>o\n",
-            |(buf, sels)| cmd_inner_double_quote(&buf, sels),
+            |(buf, sels)| cmd_inner_double_quote(&buf, sels, MotionMode::Move),
             "hel-[l]>o\n"
         );
     }
@@ -952,7 +989,7 @@ mod tests {
     fn inner_word_multi_cursor_different_words() {
         assert_state!(
             "-[h]>ello -[w]>orld\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[hello]> -[world]>\n"
         );
     }
@@ -962,7 +999,7 @@ mod tests {
         // Two cursors in the same word — both select "hello", merge to one selection.
         assert_state!(
             "-[h]>el-[l]>o world\n",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[hello]> world\n"
         );
     }
@@ -972,7 +1009,7 @@ mod tests {
         // "hello world foo\n": cursor 0 on 'h'(0) → "hello "(0..5); cursor 1 on 'f'(12) → " foo"(11..14).
         assert_state!(
             "-[h]>ello world-[ ]>foo\n",
-            |(buf, sels)| cmd_around_word(&buf, sels),
+            |(buf, sels)| cmd_around_word(&buf, sels, MotionMode::Move),
             "-[hello ]>world-[ foo]>\n"
         );
     }
@@ -982,7 +1019,7 @@ mod tests {
         // Two cursors on the same line both select that line's content, then merge.
         assert_state!(
             "-[h]>el-[l]>o\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "-[hello]>\n"
         );
     }
@@ -991,7 +1028,7 @@ mod tests {
     fn inner_line_multi_cursor_different_lines() {
         assert_state!(
             "-[h]>ello\n-[w]>orld\n",
-            |(buf, sels)| cmd_inner_line(&buf, sels),
+            |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),
             "-[hello]>\n-[world]>\n"
         );
     }
@@ -1000,7 +1037,7 @@ mod tests {
     fn around_line_multi_cursor_different_lines() {
         assert_state!(
             "-[h]>ello\n-[w]>orld\n",
-            |(buf, sels)| cmd_around_line(&buf, sels),
+            |(buf, sels)| cmd_around_line(&buf, sels, MotionMode::Move),
             "-[hello\n]>-[world\n]>"
         );
     }
@@ -1009,7 +1046,7 @@ mod tests {
     fn inner_WORD_multi_cursor() {
         assert_state!(
             "-[h]>ello.world -[f]>oo\n",
-            |(buf, sels)| cmd_inner_WORD(&buf, sels),
+            |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
             "-[hello.world]> -[foo]>\n"
         );
     }
@@ -1019,7 +1056,7 @@ mod tests {
         // Both cursors inside the same parens — both map to the same range → merge.
         assert_state!(
             "(-[h]>el-[l]>o)\n",
-            |(buf, sels)| cmd_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_inner_paren(&buf, sels, MotionMode::Move),
             "(-[hello]>)\n"
         );
     }
@@ -1030,7 +1067,7 @@ mod tests {
     fn around_WORD_includes_trailing_space() {
         assert_state!(
             "-[h]>ello.world foo\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "-[hello.world ]>foo\n"
         );
     }
@@ -1040,7 +1077,7 @@ mod tests {
         // Last WORD has no trailing space — grabs leading space instead.
         assert_state!(
             "hello.world -[f]>oo\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "hello.world-[ foo]>\n"
         );
     }
@@ -1056,7 +1093,7 @@ mod tests {
         // it as one WORD, so the leading-space extent would differ.
         assert_state!(
             "  -[f]>oo.bar\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "-[  foo.bar]>\n"
         );
     }
@@ -1065,7 +1102,7 @@ mod tests {
     fn around_WORD_cursor_on_whitespace_extends_to_next_WORD() {
         assert_state!(
             "foo-[ ]>bar\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "foo-[ bar]>\n"
         );
     }
@@ -1075,7 +1112,7 @@ mod tests {
         // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
         assert_state!(
             "-[h]>ello world-[ ]>foo\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "-[hello ]>world-[ foo]>\n"
         );
     }
@@ -1087,7 +1124,7 @@ mod tests {
         // around_word would only select "foo " (stopping at '.').
         assert_state!(
             "-[f]>oo.bar baz\n",
-            |(buf, sels)| cmd_around_WORD(&buf, sels),
+            |(buf, sels)| cmd_around_WORD(&buf, sels, MotionMode::Move),
             "-[foo.bar ]>baz\n"
         );
     }
@@ -1100,7 +1137,7 @@ mod tests {
         // Result: just "foo".
         assert_state!(
             "-[f]>oo.bar baz\n",
-            |(buf, sels)| cmd_around_word(&buf, sels),
+            |(buf, sels)| cmd_around_word(&buf, sels, MotionMode::Move),
             "-[foo]>.bar baz\n"
         );
     }
@@ -1111,7 +1148,7 @@ mod tests {
     fn around_brace_basic() {
         assert_state!(
             "{-[h]>ello}\n",
-            |(buf, sels)| cmd_around_brace(&buf, sels),
+            |(buf, sels)| cmd_around_brace(&buf, sels, MotionMode::Move),
             "-[{hello}]>\n"
         );
     }
@@ -1120,7 +1157,7 @@ mod tests {
     fn around_bracket_basic() {
         assert_state!(
             "[-[h]>ello]\n",
-            |(buf, sels)| cmd_around_bracket(&buf, sels),
+            |(buf, sels)| cmd_around_bracket(&buf, sels, MotionMode::Move),
             "-[[hello]]>\n"
         );
     }
@@ -1129,7 +1166,7 @@ mod tests {
     fn around_angle_basic() {
         assert_state!(
             "<-[h]>ello>\n",
-            |(buf, sels)| cmd_around_angle(&buf, sels),
+            |(buf, sels)| cmd_around_angle(&buf, sels, MotionMode::Move),
             "-[<hello>]>\n"
         );
     }
@@ -1140,7 +1177,7 @@ mod tests {
     fn around_single_quote_basic() {
         assert_state!(
             "'hel-[l]>o'\n",
-            |(buf, sels)| cmd_around_single_quote(&buf, sels),
+            |(buf, sels)| cmd_around_single_quote(&buf, sels, MotionMode::Move),
             "-['hello']>\n"
         );
     }
@@ -1149,7 +1186,7 @@ mod tests {
     fn around_backtick_basic() {
         assert_state!(
             "`hel-[l]>o`\n",
-            |(buf, sels)| cmd_around_backtick(&buf, sels),
+            |(buf, sels)| cmd_around_backtick(&buf, sels, MotionMode::Move),
             "-[`hello`]>\n"
         );
     }
@@ -1160,7 +1197,7 @@ mod tests {
     fn inner_brace_multiline() {
         assert_state!(
             "{\n-[h]>ello\n}\n",
-            |(buf, sels)| cmd_inner_brace(&buf, sels),
+            |(buf, sels)| cmd_inner_brace(&buf, sels, MotionMode::Move),
             "{-[\nhello\n]>}\n"
         );
     }
@@ -1173,7 +1210,7 @@ mod tests {
         // (Eol class), which equals the original cursor — no visible change.
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_inner_word(&buf, sels),
+            |(buf, sels)| cmd_inner_word(&buf, sels, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -1182,7 +1219,7 @@ mod tests {
     fn inner_WORD_on_structural_newline() {
         assert_state!(
             "-[\n]>",
-            |(buf, sels)| cmd_inner_WORD(&buf, sels),
+            |(buf, sels)| cmd_inner_WORD(&buf, sels, MotionMode::Move),
             "-[\n]>"
         );
     }
@@ -1198,7 +1235,7 @@ mod tests {
         // Serialized: ]> at position 12 (before ')') → "-[hello (world]>) foo\n".
         assert_state!(
             "-[hello (w]>orld) foo\n",
-            |(buf, sels)| cmd_extend_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_extend_inner_paren(&buf, sels, MotionMode::Move),
             "-[hello (world]>) foo\n"
         );
     }
@@ -1210,8 +1247,8 @@ mod tests {
         assert_state!(
             "-[h]>ello\n",
             |(buf, sels)| {
-                let s1 = cmd_inner_word(&buf, sels);  // selects "hello" (0,4)
-                cmd_extend_inner_paren(&buf, s1)      // no parens → no-op → "hello" unchanged
+                let s1 = cmd_inner_word(&buf, sels, MotionMode::Move);  // selects "hello" (0,4)
+                cmd_extend_inner_paren(&buf, s1, MotionMode::Move)// no parens → no-op → "hello" unchanged
             },
             "-[hello]>\n"
         );
@@ -1225,7 +1262,7 @@ mod tests {
         //   Union: min(0,6)=0, max(7,13)=13 → (0,13) = "hello (world)".
         assert_state!(
             "-[hello (w]>orld) foo\n",
-            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels, MotionMode::Move),
             "-[hello (world)]> foo\n"
         );
     }
@@ -1240,7 +1277,7 @@ mod tests {
         // Serialized: `]-` placed at (anchor+1)=5 → "<[hello]- world\n".
         assert_state!(
             "<[he]-llo world\n",
-            |(buf, sels)| cmd_extend_inner_word(&buf, sels),
+            |(buf, sels)| cmd_extend_inner_word(&buf, sels, MotionMode::Move),
             "<[hello]- world\n"
         );
     }
@@ -1261,7 +1298,7 @@ mod tests {
         // scan_right finds ')' at 8 → (0,8). Union: (0,8). Grows.
         assert_state!(
             "(a -[(b)]> a)\n",
-            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels, MotionMode::Move),
             "-[(a (b) a)]>\n"
         );
     }
@@ -1274,7 +1311,7 @@ mod tests {
         // Union: (1,7). anchor=1, head=7 → "(-[a (b) a]>)\n".
         assert_state!(
             "(a -[(b)]> a)\n",
-            |(buf, sels)| cmd_extend_inner_paren(&buf, sels),
+            |(buf, sels)| cmd_extend_inner_paren(&buf, sels, MotionMode::Move),
             "(-[a (b) a]>)\n"
         );
     }
@@ -1290,7 +1327,7 @@ mod tests {
         // '(' at 0 (depth=0→continues), exits at i=0 → None. No-op.
         assert_state!(
             "-[(a b)]>\n",
-            |(buf, sels)| cmd_extend_around_paren(&buf, sels),
+            |(buf, sels)| cmd_extend_around_paren(&buf, sels, MotionMode::Move),
             "-[(a b)]>\n"
         );
     }
@@ -1303,7 +1340,7 @@ mod tests {
     fn inner_argument_first() {
         assert_state!(
             "foo(-[a]>aa, bbb, ccc)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa]>, bbb, ccc)\n"
         );
     }
@@ -1312,7 +1349,7 @@ mod tests {
     fn inner_argument_middle() {
         assert_state!(
             "foo(aaa, -[b]>bb, ccc)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, -[bbb]>, ccc)\n"
         );
     }
@@ -1321,7 +1358,7 @@ mod tests {
     fn inner_argument_last() {
         assert_state!(
             "foo(aaa, bbb, -[c]>cc)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, bbb, -[ccc]>)\n"
         );
     }
@@ -1330,7 +1367,7 @@ mod tests {
     fn inner_argument_single() {
         assert_state!(
             "foo(-[a]>aa)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa]>)\n"
         );
     }
@@ -1340,7 +1377,7 @@ mod tests {
         // Leading/trailing spaces inside the segment are excluded.
         assert_state!(
             "foo(  -[a]>aa  , bbb)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(  -[aaa]>  , bbb)\n"
         );
     }
@@ -1350,7 +1387,7 @@ mod tests {
         // The comma inside bar(x, y) is at depth 1 — not a segment boundary.
         assert_state!(
             "foo(-[b]>ar(x, y), z)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[bar(x, y)]>, z)\n"
         );
     }
@@ -1359,7 +1396,7 @@ mod tests {
     fn inner_argument_nested_brackets_skips_inner_comma() {
         assert_state!(
             "foo(-[b]>ar[x, y], z)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[bar[x, y]]>, z)\n"
         );
     }
@@ -1370,7 +1407,7 @@ mod tests {
         // Cursor in the second argument selects "ccc", not something split by the inner comma.
         assert_state!(
             "foo({a: 1, b: 2}, cc-[c]>)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo({a: 1, b: 2}, -[ccc]>)\n"
         );
     }
@@ -1381,7 +1418,7 @@ mod tests {
         // The tightest enclosing pair is (), not [].
         assert_state!(
             "[(aaa, -[b]>bb), ccc]\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "[(aaa, -[bbb]>), ccc]\n"
         );
     }
@@ -1391,7 +1428,7 @@ mod tests {
         // Cursor on the comma — treated as belonging to the following segment.
         assert_state!(
             "foo(aaa-[,]> bbb)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, -[bbb]>)\n"
         );
     }
@@ -1400,7 +1437,7 @@ mod tests {
     fn inner_argument_cursor_on_open_bracket() {
         assert_state!(
             "foo-[(]>aaa, bbb)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa]>, bbb)\n"
         );
     }
@@ -1409,7 +1446,7 @@ mod tests {
     fn inner_argument_cursor_on_close_bracket() {
         assert_state!(
             "foo(aaa, bbb-[)]>\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, -[bbb]>)\n"
         );
     }
@@ -1418,7 +1455,7 @@ mod tests {
     fn inner_argument_empty_brackets_is_noop() {
         assert_state!(
             "foo-[(]>)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo-[(]>)\n"
         );
     }
@@ -1427,7 +1464,7 @@ mod tests {
     fn inner_argument_no_enclosing_bracket_is_noop() {
         assert_state!(
             "foo-[,]>bar\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo-[,]>bar\n"
         );
     }
@@ -1436,7 +1473,7 @@ mod tests {
     fn inner_argument_array_items() {
         assert_state!(
             "[-[1]>11, 222, 333]\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "[-[111]>, 222, 333]\n"
         );
     }
@@ -1445,7 +1482,7 @@ mod tests {
     fn inner_argument_object_fields() {
         assert_state!(
             "{-[f]>oo, a: b}\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "{-[foo]>, a: b}\n"
         );
     }
@@ -1454,7 +1491,7 @@ mod tests {
     fn inner_argument_multi_cursor() {
         assert_state!(
             "foo(-[a]>aa, bbb, -[c]>cc)\n",
-            |(buf, sels)| cmd_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa]>, bbb, -[ccc]>)\n"
         );
     }
@@ -1466,7 +1503,7 @@ mod tests {
         // Deletes "aaa, " — no orphan space before bbb.
         assert_state!(
             "foo(-[a]>aa, bbb, ccc)\n",
-            |(buf, sels)| cmd_around_argument(&buf, sels),
+            |(buf, sels)| cmd_around_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa, ]>bbb, ccc)\n"
         );
     }
@@ -1476,7 +1513,7 @@ mod tests {
         // Deletes ", bbb" — eats the preceding comma.
         assert_state!(
             "foo(aaa, -[b]>bb, ccc)\n",
-            |(buf, sels)| cmd_around_argument(&buf, sels),
+            |(buf, sels)| cmd_around_argument(&buf, sels, MotionMode::Move),
             "foo(aaa-[, bbb]>, ccc)\n"
         );
     }
@@ -1486,7 +1523,7 @@ mod tests {
         // Deletes ", ccc" — eats the preceding comma.
         assert_state!(
             "foo(aaa, bbb, -[c]>cc)\n",
-            |(buf, sels)| cmd_around_argument(&buf, sels),
+            |(buf, sels)| cmd_around_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, bbb-[, ccc]>)\n"
         );
     }
@@ -1496,7 +1533,7 @@ mod tests {
         // No comma to eat — same as inner.
         assert_state!(
             "foo(-[a]>aa)\n",
-            |(buf, sels)| cmd_around_argument(&buf, sels),
+            |(buf, sels)| cmd_around_argument(&buf, sels, MotionMode::Move),
             "foo(-[aaa]>)\n"
         );
     }
@@ -1506,7 +1543,7 @@ mod tests {
         // First arg is a nested call — around eats trailing ", ".
         assert_state!(
             "foo(-[b]>ar(x, y), z)\n",
-            |(buf, sels)| cmd_around_argument(&buf, sels),
+            |(buf, sels)| cmd_around_argument(&buf, sels, MotionMode::Move),
             "foo(-[bar(x, y), ]>z)\n"
         );
     }
@@ -1517,7 +1554,7 @@ mod tests {
     fn extend_inner_argument_basic() {
         assert_state!(
             "foo(aaa, -[b]>bb, ccc)\n",
-            |(buf, sels)| cmd_extend_inner_argument(&buf, sels),
+            |(buf, sels)| cmd_extend_inner_argument(&buf, sels, MotionMode::Move),
             "foo(aaa, -[bbb]>, ccc)\n"
         );
     }

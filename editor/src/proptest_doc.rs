@@ -23,6 +23,7 @@ mod tests {
         cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
         cmd_select_prev_word,
     };
+    use crate::ops::MotionMode;
     use crate::core::selection::{Selection, SelectionSet};
     use crate::ops::selection_cmd::{
         cmd_collapse_selection, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
@@ -273,24 +274,24 @@ mod tests {
     /// Apply a `PureOp`, returning the new `SelectionSet` (buffer unchanged).
     fn apply_pure_op(buf: &Buffer, sels: SelectionSet, op: &PureOp) -> SelectionSet {
         match op {
-            PureOp::MoveRight => cmd_move_right(buf, sels, 1),
-            PureOp::MoveLeft => cmd_move_left(buf, sels, 1),
-            PureOp::MoveUp => cmd_move_up(buf, sels, 1),
-            PureOp::MoveDown => cmd_move_down(buf, sels, 1),
-            PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1),
-            PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1),
-            PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1),
-            PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1),
-            PureOp::SelectNextWORD => cmd_select_next_WORD(buf, sels, 1),
-            PureOp::SelectPrevWORD => cmd_select_prev_WORD(buf, sels, 1),
-            PureOp::InnerWord => cmd_inner_word(buf, sels),
-            PureOp::AroundWord => cmd_around_word(buf, sels),
-            PureOp::InnerLine => cmd_inner_line(buf, sels),
-            PureOp::CollapseSelection => cmd_collapse_selection(buf, sels),
-            PureOp::FlipSelections => cmd_flip_selections(buf, sels),
-            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels),
-            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels),
-            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels),
+            PureOp::MoveRight => cmd_move_right(buf, sels, 1, MotionMode::Move),
+            PureOp::MoveLeft => cmd_move_left(buf, sels, 1, MotionMode::Move),
+            PureOp::MoveUp => cmd_move_up(buf, sels, 1, MotionMode::Move),
+            PureOp::MoveDown => cmd_move_down(buf, sels, 1, MotionMode::Move),
+            PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, MotionMode::Move),
+            PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, MotionMode::Move),
+            PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, MotionMode::Move),
+            PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, MotionMode::Move),
+            PureOp::SelectNextWORD => cmd_select_next_WORD(buf, sels, 1, MotionMode::Move),
+            PureOp::SelectPrevWORD => cmd_select_prev_WORD(buf, sels, 1, MotionMode::Move),
+            PureOp::InnerWord => cmd_inner_word(buf, sels, MotionMode::Move),
+            PureOp::AroundWord => cmd_around_word(buf, sels, MotionMode::Move),
+            PureOp::InnerLine => cmd_inner_line(buf, sels, MotionMode::Move),
+            PureOp::CollapseSelection => cmd_collapse_selection(buf, sels, MotionMode::Move),
+            PureOp::FlipSelections => cmd_flip_selections(buf, sels, MotionMode::Move),
+            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, MotionMode::Move),
+            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, MotionMode::Move),
+            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, MotionMode::Move),
         }
     }
 

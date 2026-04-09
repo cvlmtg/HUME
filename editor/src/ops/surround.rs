@@ -9,6 +9,7 @@
 use crate::core::buffer::Buffer;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ops::pair::{find_bracket_pair, find_quote_pair};
+use crate::ops::MotionMode;
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
@@ -114,12 +115,12 @@ fn select_surround(
 
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet) -> SelectionSet {
+        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
@@ -146,11 +147,11 @@ mod tests {
     fn run_surround(
         text: &str,
         cursor_pos: usize,
-        f: impl Fn(&Buffer, SelectionSet) -> SelectionSet,
+        f: impl Fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet,
     ) -> Vec<(usize, usize)> {
         let buf = Buffer::from(text);
         let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
-        let result = f(&buf, sels);
+        let result = f(&buf, sels, MotionMode::Move);
         result.iter_sorted().map(|s| (s.anchor, s.head)).collect()
     }
 
@@ -233,7 +234,7 @@ mod tests {
             vec![Selection::collapsed(1), Selection::collapsed(5)],
             0,
         );
-        let result = cmd_surround_paren(&buf, sels);
+        let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Only the first cursor is inside parens; second is not.
         // First → cursors on ( and ), second preserved.
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
@@ -248,7 +249,7 @@ mod tests {
             vec![Selection::collapsed(1), Selection::collapsed(3)],
             0,
         );
-        let result = cmd_surround_paren(&buf, sels);
+        let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
@@ -260,7 +261,7 @@ mod tests {
         // find_bracket_pair searches from head (pos 4), finds the enclosing ().
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(2, 4));
-        let result = cmd_surround_paren(&buf, sels);
+        let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }
@@ -271,7 +272,7 @@ mod tests {
         // head is at pos 2, still inside the parens.
         let buf = Buffer::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(4, 2));
-        let result = cmd_surround_paren(&buf, sels);
+        let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }

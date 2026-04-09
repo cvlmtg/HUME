@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use crate::core::selection::Selection;
 use crate::cursor::format_row_col;
-use crate::ops::motion::{cmd_extend_down, cmd_extend_up, cmd_move_down, cmd_move_up};
+use crate::ops::motion::{cmd_move_down, cmd_move_up};
+use crate::ops::MotionMode;
 use engine::format::{format_buffer_line, FormatScratch};
 use engine::pane::{WhitespaceConfig, WrapMode};
 use engine::types::CellContent;
@@ -140,7 +141,7 @@ fn visual_move_up_one(
 ///
 /// When wrapping is off every buffer line is exactly one display row, so we
 /// fall back to the pure buffer-line motions to avoid any overhead.
-fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool) {
+fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: MotionMode) {
     let pane = &ed.engine_view.panes[ed.pane_id];
     let wrap_mode = pane.wrap_mode.clone();
     let tab_width = pane.tab_width;
@@ -149,11 +150,9 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
     if !wrap_mode.is_wrapping() {
         // No wrapping — fall back to buffer-line movement and clear sticky cols.
         ed.preferred_display_cols.clear();
-        match (down, extend) {
-            (true,  false) => ed.apply_motion(|b, s| cmd_move_down(b, s, count)),
-            (true,  true)  => ed.apply_motion(|b, s| cmd_extend_down(b, s, count)),
-            (false, false) => ed.apply_motion(|b, s| cmd_move_up(b, s, count)),
-            (false, true)  => ed.apply_motion(|b, s| cmd_extend_up(b, s, count)),
+        match down {
+            true  => ed.apply_motion(|b, s| cmd_move_down(b, s, count, mode)),
+            false => ed.apply_motion(|b, s| cmd_move_up(b, s, count, mode)),
         }
         return;
     }
@@ -203,7 +202,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
             };
         }
         new_cols.insert(head, target_col);
-        if extend { Selection::new(sel.anchor, head) } else { Selection::collapsed(head) }
+        if mode == MotionMode::Extend { Selection::new(sel.anchor, head) } else { Selection::collapsed(head) }
     });
 
     ed.preferred_display_cols = new_cols;
@@ -214,18 +213,18 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, extend: bool
 // Public commands
 // ---------------------------------------------------------------------------
 
-pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize) {
-    apply_visual_vertical(ed, count, true, false);
+pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize, mode: MotionMode) {
+    apply_visual_vertical(ed, count, true, mode);
 }
 
-pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize) {
-    apply_visual_vertical(ed, count, false, false);
+pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize, mode: MotionMode) {
+    apply_visual_vertical(ed, count, false, mode);
 }
 
-pub(super) fn cmd_visual_extend_down(ed: &mut Editor, count: usize) {
-    apply_visual_vertical(ed, count, true, true);
+pub(super) fn cmd_visual_extend_down(ed: &mut Editor, count: usize, _mode: MotionMode) {
+    apply_visual_vertical(ed, count, true, MotionMode::Extend);
 }
 
-pub(super) fn cmd_visual_extend_up(ed: &mut Editor, count: usize) {
-    apply_visual_vertical(ed, count, false, true);
+pub(super) fn cmd_visual_extend_up(ed: &mut Editor, count: usize, _mode: MotionMode) {
+    apply_visual_vertical(ed, count, false, MotionMode::Extend);
 }

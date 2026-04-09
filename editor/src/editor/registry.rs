@@ -35,6 +35,7 @@ use std::collections::HashMap;
 
 use crate::core::buffer::Buffer;
 use crate::core::changeset::ChangeSet;
+use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
 use crate::ops::motion::{
     cmd_extend_first_line, cmd_extend_first_nonblank, cmd_extend_last_line,
@@ -86,30 +87,34 @@ use crate::ops::text_object::{
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
-    /// Signature: `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
+    /// Signature: `fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet`
     ///
-    /// Motions never mutate the buffer, so `repeatable` is always `false`.
+    /// Motions are always extendable. The `mode` parameter selects Move or Extend
+    /// semantics at dispatch time — no separate extend-variant functions needed.
     Motion {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet,
+        fun: fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
     },
     /// Selection or text-object operation (no count).
     ///
-    /// Signature: `fn(&Buffer, SelectionSet) -> SelectionSet`
+    /// Signature: `fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet`
     ///
-    /// Pure selection ops never mutate the buffer, so `repeatable` is always `false`.
+    /// All selection commands receive `MotionMode`. Non-extendable ones accept
+    /// `_mode` and ignore it; extendable text objects branch on it.
     Selection {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&Buffer, SelectionSet) -> SelectionSet,
+        fun: fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet,
     },
     /// Buffer-modifying edit with no extra arguments.
     ///
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
+    ///
+    /// Edits are never extendable — they don't carry `MotionMode`.
     Edit {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
@@ -121,17 +126,17 @@ pub(crate) enum MappableCommand {
     },
     /// Editor-level command requiring `&mut Editor` context.
     ///
-    /// Signature: `fn(&mut Editor, usize)`
+    /// Signature: `fn(&mut Editor, usize, MotionMode)`
     ///
     /// Covers composite operations: mode changes, register access, undo group
     /// management, and parameterized motions (find/till/replace). Stored and
     /// dispatched as a function pointer exactly like the other variants —
-    /// `fn(&mut Editor, usize)` is a thin pointer so there is no self-referential
-    /// sizing issue despite `Editor` owning the registry.
+    /// `fn(&mut Editor, usize, MotionMode)` is a thin pointer so there is no
+    /// self-referential sizing issue despite `Editor` owning the registry.
     EditorCmd {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&mut super::Editor, usize),
+        fun: fn(&mut super::Editor, usize, MotionMode),
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.
@@ -140,6 +145,12 @@ pub(crate) enum MappableCommand {
         /// Whether this command is a visual-line motion (move-down/up, extend-down/up).
         /// The preferred display column is preserved across consecutive visual-line moves.
         visual_move: bool,
+        /// Whether this EditorCmd has extend semantics (used by the Ctrl+key guard
+        /// to decide if Ctrl+key should trigger extend dispatch).
+        ///
+        /// Motion and Selection are always extendable (implicit). Edit is never
+        /// extendable (implicit). Only EditorCmd needs an explicit flag.
+        extendable: bool,
     },
 }
 
@@ -196,6 +207,19 @@ impl MappableCommand {
         match self {
             Self::EditorCmd { visual_move, .. } => *visual_move,
             _ => false,
+        }
+    }
+
+    /// Returns `true` if this command has extend semantics and can be triggered
+    /// as a one-shot extend via Ctrl+key.
+    ///
+    /// Motion and Selection are always extendable. Edit is never extendable.
+    /// EditorCmd has an explicit `extendable` flag set at registration time.
+    pub(crate) fn is_extendable(&self) -> bool {
+        match self {
+            Self::Motion { .. } | Self::Selection { .. } => true,
+            Self::Edit { .. } => false,
+            Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
 }
@@ -394,32 +418,32 @@ impl CommandRegistry {
         }
         macro_rules! editor_cmd {
             ($name:literal, $doc:literal, $fun:expr, repeatable, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false, extendable: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, jump) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false, extendable: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, jump) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false, extendable: false })
             };
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, visual_move) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true, extendable: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, visual_move) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true, extendable: false })
             };
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false, extendable: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false, extendable: false })
             };
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false, extendable: false })
             };
         }
 
@@ -850,7 +874,7 @@ mod tests {
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
 
-        fn dummy_fn(_ed: &mut Editor, _count: usize) {}
+        fn dummy_fn(_ed: &mut Editor, _count: usize, _mode: crate::ops::MotionMode) {}
         let cmd = MappableCommand::EditorCmd {
             name: Cow::Owned("steel-test-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel command for testing."),
@@ -858,6 +882,7 @@ mod tests {
             repeatable: false,
             jump: false,
             visual_move: false,
+            extendable: false,
         };
         reg.register(cmd);
 
