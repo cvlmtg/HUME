@@ -226,13 +226,32 @@ impl Editor {
             }
         }
 
-        // ── Extend-trie override ─────────────────────────────────────────────
+        // ── Extend resolution overview ────────────────────────────────────────
         //
-        // In sticky extend mode, check the extend trie before the normal trie.
-        // The extend trie is sparse — only keys with extend-specific behaviour
-        // are bound (default: `o → flip-selections`). A match dispatches that
-        // command directly with `extend = false`. A miss falls through to the
-        // normal trie, which will be walked with `extend = true` as usual.
+        // "Should this command extend?" is answered in three stages, because
+        // extend depends on *which command* was resolved, and the Ctrl path
+        // changes which key is looked up — so we can't separate extend
+        // resolution from trie walking.
+        //
+        //  Stage 1 (extend-trie override, below):
+        //      In sticky extend mode, try the extend trie first. It maps keys
+        //      to *replacement* commands (e.g. `o → flip-selections` instead
+        //      of `o → open-below`), dispatched with extend = false. A miss
+        //      falls through to the normal trie.
+        //
+        //  Stage 2 (Ctrl normalisation, further below):
+        //      Ctrl+key may strip CONTROL and re-walk with the bare key
+        //      (kitty one-shot extend). Whether to extend depends on whether
+        //      the *resolved bare-key command* is extendable — we don't know
+        //      that until the trie walk completes, so is_extendable() runs
+        //      here, producing `ctrl_extend`.
+        //
+        //  Stage 3 (final merge, after the trie walk):
+        //      Merges the two extend sources: sticky mode (EditorMode::Extend)
+        //      and one-shot Ctrl (ctrl_extend). This is the earliest point
+        //      where both inputs are available.
+
+        // ── Stage 1: Extend-trie override ────────────────────────────────────
         //
         // We walk with [pending_keys..., key] without committing the push yet —
         // only `Interior` commits the key (so the sequence accumulates correctly
@@ -264,7 +283,12 @@ impl Editor {
             }
         }
 
-        // ── Ctrl-key normalisation ────────────────────────────────────────────
+        // ── Stage 2: Ctrl-key normalisation + one-shot extend ────────────────
+        //
+        // `ctrl_extend` is computed here — alongside the trie walk — because
+        // it depends on which command the key resolves to, and the Ctrl path
+        // changes what key is walked. Separating extend resolution from the
+        // trie walk would require walking twice or caching the result.
         //
         // Two categories of CONTROL keys:
         //
@@ -332,8 +356,11 @@ impl Editor {
                 (self.keymap.normal.walk(&self.pending_keys), false)
             };
 
-        // Compute the effective extend flag: sticky extend (mode == Extend) OR
-        // kitty one-shot (ctrl_extend local). Passed as a parameter — no mode change.
+        // ── Stage 3: Final extend merge ───────────────────────────────────────
+        //
+        // Both inputs are now available: sticky extend from editor mode, and
+        // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
+        // `extend` is passed as a parameter — no mode transition occurs.
         let extend = (self.mode == EditorMode::Extend) || ctrl_extend;
 
         match result {
