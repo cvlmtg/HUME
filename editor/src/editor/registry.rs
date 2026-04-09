@@ -92,6 +92,7 @@ pub(crate) enum MappableCommand {
     /// Motions never mutate the buffer, so `repeatable` is always `false`.
     Motion {
         name: Cow<'static, str>,
+        doc: Cow<'static, str>,
         fun: fn(&Buffer, SelectionSet, usize) -> SelectionSet,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
@@ -104,6 +105,7 @@ pub(crate) enum MappableCommand {
     /// Pure selection ops never mutate the buffer, so `repeatable` is always `false`.
     Selection {
         name: Cow<'static, str>,
+        doc: Cow<'static, str>,
         fun: fn(&Buffer, SelectionSet) -> SelectionSet,
     },
     /// Buffer-modifying edit with no extra arguments.
@@ -111,6 +113,7 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
     Edit {
         name: Cow<'static, str>,
+        doc: Cow<'static, str>,
         fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
@@ -128,6 +131,7 @@ pub(crate) enum MappableCommand {
     /// sizing issue despite `Editor` owning the registry.
     EditorCmd {
         name: Cow<'static, str>,
+        doc: Cow<'static, str>,
         fun: fn(&mut super::Editor, usize),
         /// Whether `.` should replay this command.
         repeatable: bool,
@@ -148,6 +152,17 @@ impl MappableCommand {
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
             | Self::EditorCmd { name, .. } => name.as_ref(),
+        }
+    }
+
+    /// One-line description of the command, for `:help` and command-palette display.
+    #[allow(dead_code)]
+    pub(crate) fn doc(&self) -> &str {
+        match self {
+            Self::Motion { doc, .. }
+            | Self::Selection { doc, .. }
+            | Self::Edit { doc, .. }
+            | Self::EditorCmd { doc, .. } => doc.as_ref(),
         }
     }
 
@@ -273,68 +288,66 @@ impl CommandRegistry {
 
     fn register_defaults(&mut self) {
         // Local macros to cut down on struct-literal boilerplate.
-        // `$doc` is accepted but not yet stored — reserved for future `:help`
-        // and command-palette display.
         // The optional `extend: "name"` trailing argument links this command to
         // its extend variant in the extend_map (single source of truth).
         macro_rules! motion {
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, jump) => {{
-                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: true });
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, jump: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: false });
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, jump: false });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), fun: $fun, jump: false })
+                self.register(MappableCommand::Motion { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, jump: false })
             };
         }
         macro_rules! selection {
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), fun: $fun });
+                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), fun: $fun })
+                self.register(MappableCommand::Selection { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun })
             };
         }
         macro_rules! edit {
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), fun: $fun, repeatable: false })
+                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false })
             };
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), fun: $fun, repeatable: true })
+                self.register(MappableCommand::Edit { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true })
             };
         }
         macro_rules! editor_cmd {
             ($name:literal, $doc:literal, $fun:expr, repeatable, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: true, jump: false, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, jump) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: true, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, jump) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: true, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false })
             };
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal, visual_move) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: true });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, visual_move) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: true })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true })
             };
             ($name:literal, $doc:literal, $fun:expr, extend: $ext:literal) => {{
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: false });
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false });
                 self.extend_map.insert(Cow::Borrowed($name), Cow::Borrowed($ext));
             }};
             ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: true, jump: false, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false })
             };
             ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), fun: $fun, repeatable: false, jump: false, visual_move: false })
+                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false })
             };
         }
 
@@ -628,6 +641,15 @@ mod tests {
         assert!(reg.get("nonexistent-command").is_none());
     }
 
+    #[test]
+    fn doc_strings_are_stored_and_accessible() {
+        let reg = CommandRegistry::with_defaults();
+        let cmd = reg.get("move-right").unwrap();
+        assert!(!cmd.doc().is_empty(), "move-right should have a non-empty doc string");
+        let cmd = reg.get("delete-selection").unwrap();
+        assert!(!cmd.doc().is_empty(), "delete-selection should have a non-empty doc string");
+    }
+
     /// Expected number of base → extend pairs registered by `register_extend_pairs`.
     ///
     /// Count breakdown:
@@ -700,6 +722,7 @@ mod tests {
         fn dummy_fn(_ed: &mut Editor, _count: usize) {}
         let cmd = MappableCommand::EditorCmd {
             name: Cow::Owned("steel-test-cmd".to_string()),
+            doc: Cow::Borrowed("A dummy Steel command for testing."),
             fun: dummy_fn,
             repeatable: false,
             jump: false,
