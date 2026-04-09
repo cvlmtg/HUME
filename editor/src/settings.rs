@@ -33,7 +33,7 @@
 //! through [`BufferOverrides`] accessors and [`EditorSettings`].
 
 use engine::builtins::line_number::LineNumberStyle;
-use engine::pane::{WhitespaceConfig, WrapMode};
+use engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
 use crate::auto_pairs::Pair;
 use crate::ui::statusline::StatusLineConfig;
@@ -76,10 +76,13 @@ macro_rules! parse_setting {
 ///   `"key" => field: Type = default, parser: kind;`
 /// - `buffer { … }` — per-buffer-overridable settings with a `:set` key;
 ///   same format, generates both a global field and a buffer override
-/// - `extra_global { … }` — extra global-only fields without a `:set` key;
-///   format: `field: Type = default;`
-/// - `extra_buffer { … }` — extra per-buffer fields without a `:set` key;
+/// - `extra_global { … }` — extra fields on `EditorSettings` only, no `:set`
+///   key; format: `field: Type = default;`
+/// - `extra_buffer { … }` — extra fields on both structs, no `:set` key;
 ///   format: `field: Type = global_default;` (buffer default is always `None`)
+/// - `override_only { … }` — extra `Option<T>` fields on `BufferOverrides`
+///   only (no corresponding `EditorSettings` field); format: `field: Type;`
+///   Resolution is handled manually in a separate `impl BufferOverrides` block.
 ///
 /// ## Parser kinds
 ///
@@ -103,6 +106,9 @@ macro_rules! define_settings {
         }
         extra_buffer {
             $( $ebname:ident : $ebtype:ty = $ebdefault:expr; )*
+        }
+        override_only {
+            $( $ooname:ident : $ootype:ty; )*
         }
     ) => {
 
@@ -142,6 +148,7 @@ macro_rules! define_settings {
         pub(crate) struct BufferOverrides {
             $( pub $bname: Option<$btype>, )*
             $( pub $ebname: Option<$ebtype>, )*
+            $( pub $ooname: Option<$ootype>, )*
         }
 
         impl BufferOverrides {
@@ -201,22 +208,13 @@ macro_rules! define_settings {
                     settings.whitespace.newline = value.parse()?;
                 }
                 (SettingScope::Buffer, "whitespace-space") => {
-                    overrides
-                        .whitespace
-                        .get_or_insert_with(WhitespaceConfig::default)
-                        .space = value.parse()?;
+                    overrides.whitespace_space = Some(value.parse()?);
                 }
                 (SettingScope::Buffer, "whitespace-tab") => {
-                    overrides
-                        .whitespace
-                        .get_or_insert_with(WhitespaceConfig::default)
-                        .tab = value.parse()?;
+                    overrides.whitespace_tab = Some(value.parse()?);
                 }
                 (SettingScope::Buffer, "whitespace-newline") => {
-                    overrides
-                        .whitespace
-                        .get_or_insert_with(WhitespaceConfig::default)
-                        .newline = value.parse()?;
+                    overrides.whitespace_newline = Some(value.parse()?);
                 }
                 _ => return Err(format!("unknown setting '{key}'")),
             }
@@ -247,6 +245,9 @@ define_settings! {
     }
     extra_global {
         statusline: StatusLineConfig = StatusLineConfig::default();
+        // Full whitespace config lives on EditorSettings; per-sub-field buffer
+        // overrides live in BufferOverrides via override_only below.
+        whitespace: WhitespaceConfig = WhitespaceConfig::default();
     }
     extra_buffer {
         auto_pairs: Vec<Pair> = vec![
@@ -257,16 +258,34 @@ define_settings! {
             Pair { open: '\'', close: '\'' },
             Pair { open: '`',  close: '`'  },
         ];
-        whitespace: WhitespaceConfig = WhitespaceConfig::default();
+    }
+    override_only {
+        // Whitespace sub-fields are overridden independently so a buffer can
+        // change just one (e.g. space) while still inheriting the global values
+        // for the others (tab, newline). Resolution in BufferOverrides::whitespace.
+        whitespace_space:   WhitespaceRender;
+        whitespace_tab:     WhitespaceRender;
+        whitespace_newline: WhitespaceRender;
     }
 }
 
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
 
 impl BufferOverrides {
-    /// Effective whitespace config: buffer override → global default.
+    /// Effective whitespace config, resolving each sub-field independently.
+    ///
+    /// Each of `space`, `tab`, and `newline` falls back to the global default
+    /// when no buffer override is set for that sub-field. This lets a buffer
+    /// override just one sub-field (e.g. `space`) while still inheriting the
+    /// global values for the others.
     pub(crate) fn whitespace(&self, global: &EditorSettings) -> WhitespaceConfig {
-        self.whitespace.clone().unwrap_or_else(|| global.whitespace.clone())
+        WhitespaceConfig {
+            space:   self.whitespace_space.unwrap_or(global.whitespace.space),
+            tab:     self.whitespace_tab.unwrap_or(global.whitespace.tab),
+            newline: self.whitespace_newline.unwrap_or(global.whitespace.newline),
+            // Rendering chars are not per-buffer configurable; always from global.
+            ..global.whitespace.clone()
+        }
     }
 
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
@@ -353,7 +372,9 @@ mod tests {
         assert!(ov.line_number_style.is_none());
         assert!(ov.auto_pairs_enabled.is_none());
         assert!(ov.auto_pairs.is_none());
-        assert!(ov.whitespace.is_none());
+        assert!(ov.whitespace_space.is_none());
+        assert!(ov.whitespace_tab.is_none());
+        assert!(ov.whitespace_newline.is_none());
     }
 
     // ── Resolution: override present → returns override value ─────────────────
@@ -515,7 +536,7 @@ mod tests {
     fn set_global_whitespace_space() {
         assert_eq!(
             global("whitespace-space", "all").unwrap().whitespace.space,
-            engine::pane::WhitespaceRender::All,
+            WhitespaceRender::All,
         );
     }
 
@@ -523,7 +544,7 @@ mod tests {
     fn set_global_whitespace_tab() {
         assert_eq!(
             global("whitespace-tab", "trailing").unwrap().whitespace.tab,
-            engine::pane::WhitespaceRender::Trailing,
+            WhitespaceRender::Trailing,
         );
     }
 
@@ -531,7 +552,7 @@ mod tests {
     fn set_global_whitespace_newline() {
         assert_eq!(
             global("whitespace-newline", "all").unwrap().whitespace.newline,
-            engine::pane::WhitespaceRender::All,
+            WhitespaceRender::All,
         );
     }
 
@@ -590,32 +611,34 @@ mod tests {
     fn set_buffer_whitespace_space() {
         let global = EditorSettings::default();
         let ov = buffer("whitespace-space", "all").unwrap();
-        assert_eq!(ov.whitespace(&global).space, engine::pane::WhitespaceRender::All);
+        assert_eq!(ov.whitespace(&global).space, WhitespaceRender::All);
     }
 
     #[test]
     fn set_buffer_whitespace_tab() {
         let global = EditorSettings::default();
         let ov = buffer("whitespace-tab", "trailing").unwrap();
-        assert_eq!(ov.whitespace(&global).tab, engine::pane::WhitespaceRender::Trailing);
+        assert_eq!(ov.whitespace(&global).tab, WhitespaceRender::Trailing);
     }
 
     #[test]
     fn set_buffer_whitespace_newline() {
         let global = EditorSettings::default();
         let ov = buffer("whitespace-newline", "all").unwrap();
-        assert_eq!(ov.whitespace(&global).newline, engine::pane::WhitespaceRender::All);
+        assert_eq!(ov.whitespace(&global).newline, WhitespaceRender::All);
     }
 
     #[test]
     fn set_buffer_whitespace_fields_are_independent() {
-        // Setting whitespace-space should not touch tab or newline.
-        let global = EditorSettings::default();
+        // Overriding one sub-field leaves the others resolved from global,
+        // even when the global has non-default values.
+        let mut global = EditorSettings::default();
+        global.whitespace.tab = WhitespaceRender::Trailing;
         let ov = buffer("whitespace-space", "all").unwrap();
         let ws = ov.whitespace(&global);
-        assert_eq!(ws.space, engine::pane::WhitespaceRender::All);
-        assert_eq!(ws.tab, engine::pane::WhitespaceRender::None);
-        assert_eq!(ws.newline, engine::pane::WhitespaceRender::None);
+        assert_eq!(ws.space, WhitespaceRender::All);       // from buffer override
+        assert_eq!(ws.tab, WhitespaceRender::Trailing);    // inherited from global
+        assert_eq!(ws.newline, WhitespaceRender::None);    // inherited from global
     }
 
     #[test]
