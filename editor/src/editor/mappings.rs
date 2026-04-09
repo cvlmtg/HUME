@@ -9,6 +9,7 @@ use super::registry::MappableCommand;
 use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
+use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
@@ -125,7 +126,7 @@ impl Editor {
             if self.mode == EditorMode::Extend {
                 self.mode = EditorMode::Normal;
             }
-            cmd_clear_search(self, 0);
+            cmd_clear_search(self, 0, MotionMode::Move);
             return;
         }
 
@@ -275,18 +276,15 @@ impl Editor {
         // kitty one-shot (ctrl_extend local). Passed as a parameter — no mode change.
         let extend = (self.mode == EditorMode::Extend) || ctrl_extend;
 
-        // Ctrl one-shot extend guard: only dispatch if the command has an
-        // extend variant. Prevents e.g. Ctrl+u from running "undo" (which
-        // has no extend variant and is not a motion).
+        // Ctrl one-shot extend guard: only dispatch if the command is extendable.
+        // Prevents e.g. Ctrl+u from running "undo" (not a motion) in extend mode.
         if ctrl_extend {
-            let name: Option<&str> = match &result {
-                WalkResult::Leaf(cmd) => Some(cmd.name.as_ref()),
-                WalkResult::WaitChar(wc) => Some(wc.cmd_name.as_ref()),
-                _ => None,
+            let is_extendable = match &result {
+                WalkResult::Leaf(cmd) => self.registry.get_mappable(cmd.name.as_ref()).map_or(false, |c| c.is_extendable()),
+                WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |c| c.is_extendable()),
+                _ => false,
             };
-            if let Some(n) = name
-                && self.registry.extend_variant(n).is_none()
-            {
+            if !is_extendable {
                 self.pending_keys.clear();
                 self.count = None;
                 return;
@@ -353,7 +351,7 @@ impl Editor {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
-                            self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                            self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
                         } else {
                             // Auto-close or wrap-selection.
                             self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
@@ -362,7 +360,7 @@ impl Editor {
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        self.apply_motion(|b, s| cmd_move_right(b, s, 1));
+                        self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
                     } else {
                         self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
                     }
@@ -429,21 +427,23 @@ impl Editor {
                 None
             };
 
+            let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
+
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
-                    // Motion functions take (buf, sels, count). count defaults to 1
+                    // Motion functions take (buf, sels, count, mode). count defaults to 1
                     // if the user typed no prefix.
-                    self.apply_motion(|b, s| fun(b, s, count));
+                    self.apply_motion(|b, s| fun(b, s, count, motion_mode));
                 }
                 MappableCommand::Selection { fun, .. } => {
                     // Selection / text-object functions don't take count.
-                    self.apply_motion(fun);
+                    self.apply_motion(|b, s| fun(b, s, motion_mode));
                 }
                 MappableCommand::Edit { fun, .. } => {
                     self.doc.apply_edit(fun);
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
-                    fun(self, count);
+                    fun(self, count, motion_mode);
                 }
             }
 

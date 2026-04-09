@@ -22,8 +22,9 @@ use crate::ops::edit::{delete_selection, insert_char};
 use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start,
     cmd_move_left, cmd_move_right,
-    find_char_backward, find_char_forward, MotionMode,
+    find_char_backward, find_char_forward,
 };
+use crate::ops::MotionMode;
 use crate::ops::register::{yank_selections, DEFAULT_REGISTER, SEARCH_REGISTER};
 use crate::ops::search::{compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match};
 use crate::ops::selection_cmd::cmd_collapse_selection;
@@ -37,24 +38,24 @@ use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
-pub(super) fn cmd_insert_before(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_insert_before(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.apply_motion(|_b, sels| sels.map(|s| Selection::collapsed(s.start())));
     ed.begin_insert_session();
 }
 
-pub(super) fn cmd_insert_after(ed: &mut Editor, _count: usize) {
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
+pub(super) fn cmd_insert_after(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
     ed.begin_insert_session();
 }
 
-pub(super) fn cmd_insert_at_line_start(ed: &mut Editor, _count: usize) {
-    ed.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1));
+pub(super) fn cmd_insert_at_line_start(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    ed.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1, MotionMode::Move));
     ed.begin_insert_session();
 }
 
-pub(super) fn cmd_insert_at_line_end(ed: &mut Editor, _count: usize) {
-    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
+pub(super) fn cmd_insert_at_line_end(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move));
+    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
     ed.begin_insert_session();
 }
 
@@ -63,34 +64,34 @@ pub(super) fn cmd_insert_at_line_end(ed: &mut Editor, _count: usize) {
 /// `begin_insert_session` opens the edit group so the structural `\n` and
 /// everything typed before Esc form one undo step — the same pattern as
 /// `cmd_change`.
-pub(super) fn cmd_open_line_below(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_open_line_below(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.begin_insert_session();
-    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1));
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1));
+    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move));
+    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
     ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
 }
 
 /// Open a new line above the cursor and enter insert mode.
-pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.begin_insert_session();
-    ed.apply_motion(|b, s| cmd_goto_line_start(b, s, 1));
+    ed.apply_motion(|b, s| cmd_goto_line_start(b, s, 1, MotionMode::Move));
     ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
-    ed.apply_motion(|b, s| cmd_move_left(b, s, 1));
+    ed.apply_motion(|b, s| cmd_move_left(b, s, 1, MotionMode::Move));
 }
 
-pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.set_mode(Mode::Command);
     ed.minibuf = Some(MiniBuffer { prompt: ':', input: String::new(), cursor: 0 });
 }
 
-pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.end_insert_session();
 }
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 
 /// Yank selections into the default register, then delete them.
-pub(super) fn cmd_delete(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_delete(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
     ed.doc.apply_edit(delete_selection);
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
@@ -100,7 +101,7 @@ pub(super) fn cmd_delete(ed: &mut Editor, _count: usize) {
 ///
 /// `begin_insert_session` opens the group so the delete and everything typed
 /// before Esc form one undo step.
-pub(super) fn cmd_change(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_change(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
     ed.begin_insert_session();
     ed.doc.apply_edit_grouped(delete_selection);
@@ -108,7 +109,7 @@ pub(super) fn cmd_change(ed: &mut Editor, _count: usize) {
 }
 
 /// Yank selections into the default register without deleting.
-pub(super) fn cmd_yank(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_yank(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
 }
@@ -132,28 +133,28 @@ fn do_paste(
 
 /// Paste after the selection; swap displaced text back into the register when
 /// the selection was non-cursor (replace-and-swap semantics).
-pub(super) fn cmd_paste_after(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_paste_after(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     use crate::ops::edit::paste_after;
     do_paste(ed, paste_after);
 }
 
 /// Paste before the selection; same replace-and-swap semantics as `cmd_paste_after`.
-pub(super) fn cmd_paste_before(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_paste_before(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     use crate::ops::edit::paste_before;
     do_paste(ed, paste_before);
 }
 
-pub(super) fn cmd_undo(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_undo(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.doc.undo();
 }
 
-pub(super) fn cmd_redo(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_redo(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.doc.redo();
 }
 
 // ── Selection state ───────────────────────────────────────────────────────────
 
-pub(super) fn cmd_toggle_extend(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_toggle_extend(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.mode = if ed.mode == EditorMode::Extend {
         EditorMode::Normal
     } else {
@@ -164,10 +165,10 @@ pub(super) fn cmd_toggle_extend(ed: &mut Editor, _count: usize) {
 /// Collapse each selection to its cursor AND exit extend mode.
 ///
 /// Collapsing is a "done selecting" signal, so extend mode is always cleared.
-pub(super) fn cmd_collapse_and_exit_extend(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_collapse_and_exit_extend(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
     ed.mode = EditorMode::Normal;
-    ed.apply_motion(cmd_collapse_selection);
+    ed.apply_motion(|b, s| cmd_collapse_selection(b, s, MotionMode::Move));
 }
 
 // ── Find / till character ─────────────────────────────────────────────────────
@@ -189,28 +190,28 @@ fn find_char(
     }
 }
 
-pub(super) fn cmd_find_forward(ed: &mut Editor, count: usize) {
-    find_char(ed, count, MotionMode::Move, FindKind::Inclusive, find_char_forward);
+pub(super) fn cmd_find_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    find_char(ed, count, mode, FindKind::Inclusive, find_char_forward);
 }
-pub(super) fn cmd_extend_find_forward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_find_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     find_char(ed, count, MotionMode::Extend, FindKind::Inclusive, find_char_forward);
 }
-pub(super) fn cmd_find_backward(ed: &mut Editor, count: usize) {
-    find_char(ed, count, MotionMode::Move, FindKind::Inclusive, find_char_backward);
+pub(super) fn cmd_find_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    find_char(ed, count, mode, FindKind::Inclusive, find_char_backward);
 }
-pub(super) fn cmd_extend_find_backward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_find_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     find_char(ed, count, MotionMode::Extend, FindKind::Inclusive, find_char_backward);
 }
-pub(super) fn cmd_till_forward(ed: &mut Editor, count: usize) {
-    find_char(ed, count, MotionMode::Move, FindKind::Exclusive, find_char_forward);
+pub(super) fn cmd_till_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    find_char(ed, count, mode, FindKind::Exclusive, find_char_forward);
 }
-pub(super) fn cmd_extend_till_forward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_till_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     find_char(ed, count, MotionMode::Extend, FindKind::Exclusive, find_char_forward);
 }
-pub(super) fn cmd_till_backward(ed: &mut Editor, count: usize) {
-    find_char(ed, count, MotionMode::Move, FindKind::Exclusive, find_char_backward);
+pub(super) fn cmd_till_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    find_char(ed, count, mode, FindKind::Exclusive, find_char_backward);
 }
-pub(super) fn cmd_extend_till_backward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_till_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     find_char(ed, count, MotionMode::Extend, FindKind::Exclusive, find_char_backward);
 }
 
@@ -228,16 +229,16 @@ fn repeat_find(
     }
 }
 
-pub(super) fn cmd_repeat_find_forward(ed: &mut Editor, count: usize) {
-    repeat_find(ed, count, MotionMode::Move, find_char_forward);
+pub(super) fn cmd_repeat_find_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    repeat_find(ed, count, mode, find_char_forward);
 }
-pub(super) fn cmd_extend_repeat_find_forward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_repeat_find_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     repeat_find(ed, count, MotionMode::Extend, find_char_forward);
 }
-pub(super) fn cmd_repeat_find_backward(ed: &mut Editor, count: usize) {
-    repeat_find(ed, count, MotionMode::Move, find_char_backward);
+pub(super) fn cmd_repeat_find_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
+    repeat_find(ed, count, mode, find_char_backward);
 }
-pub(super) fn cmd_extend_repeat_find_backward(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_extend_repeat_find_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
     repeat_find(ed, count, MotionMode::Extend, find_char_backward);
 }
 
@@ -246,7 +247,7 @@ pub(super) fn cmd_extend_repeat_find_backward(ed: &mut Editor, count: usize) {
 /// Replace every character in each selection with the next typed character.
 ///
 /// Reads the replacement character from `ed.pending_char`.
-pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_replace(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     use crate::ops::edit::replace_selections;
     if let Some(ch) = ed.pending_char.take() {
         ed.doc.apply_edit(|b, s| replace_selections(b, s, ch));
@@ -260,7 +261,7 @@ pub(super) fn cmd_replace(ed: &mut Editor, _count: usize) {
 /// Count semantics: if the user typed an explicit count before `.`, that count
 /// overrides the original; otherwise the original count is reused. This mirrors
 /// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
-pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
+pub(super) fn cmd_repeat(ed: &mut Editor, count: usize, _mode: MotionMode) {
     let Some(action) = ed.last_action.take() else { return };
 
     // Prefer an explicit user count; fall back to the count from the original action.
@@ -313,28 +314,28 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize) {
 // Uses `view.height` as the move count rather than the user's numeric prefix.
 
 /// Shared implementation for the four page-scroll commands.
-fn page_scroll(ed: &mut Editor, motion_name: &str) {
+fn page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
     let page = ed.viewport().height as usize;
     // Extract the fn pointer before the call so the registry borrow ends before
-    // `fun(ed, page)` takes `&mut Editor` — Rust can't see the disjointness otherwise.
+    // `fun(ed, page, mode)` takes `&mut Editor` — Rust can't see the disjointness otherwise.
     let fun = match ed.registry.get_mappable(motion_name) {
         Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
         _ => unreachable!("page_scroll: motion '{}' not in registry", motion_name),
     };
-    fun(ed, page);
+    fun(ed, page, mode);
 }
 
-pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize) {
-    page_scroll(ed, "move-down");
+pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
+    page_scroll(ed, "move-down", mode);
 }
-pub(super) fn cmd_extend_page_down(ed: &mut Editor, _count: usize) {
-    page_scroll(ed, "extend-down");
+pub(super) fn cmd_extend_page_down(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    page_scroll(ed, "extend-down", MotionMode::Extend);
 }
-pub(super) fn cmd_page_up(ed: &mut Editor, _count: usize) {
-    page_scroll(ed, "move-up");
+pub(super) fn cmd_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
+    page_scroll(ed, "move-up", mode);
 }
-pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
-    page_scroll(ed, "extend-up");
+pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    page_scroll(ed, "extend-up", MotionMode::Extend);
 }
 
 // ── Half-page scroll ─────────────────────────────────────────────────────────
@@ -342,26 +343,26 @@ pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize) {
 // Like page scroll but uses `view.height / 2` as the move count.
 
 /// Shared implementation for the four half-page-scroll commands.
-fn half_page_scroll(ed: &mut Editor, motion_name: &str) {
+fn half_page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
     let half = (ed.viewport().height as usize / 2).max(1);
     let fun = match ed.registry.get_mappable(motion_name) {
         Some(MappableCommand::EditorCmd { fun, .. }) => *fun,
         _ => unreachable!("half_page_scroll: motion '{}' not in registry", motion_name),
     };
-    fun(ed, half);
+    fun(ed, half, mode);
 }
 
-pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize) {
-    half_page_scroll(ed, "move-down");
+pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
+    half_page_scroll(ed, "move-down", mode);
 }
-pub(super) fn cmd_extend_half_page_down(ed: &mut Editor, _count: usize) {
-    half_page_scroll(ed, "extend-down");
+pub(super) fn cmd_extend_half_page_down(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    half_page_scroll(ed, "extend-down", MotionMode::Extend);
 }
-pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize) {
-    half_page_scroll(ed, "move-up");
+pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
+    half_page_scroll(ed, "move-up", mode);
 }
-pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize) {
-    half_page_scroll(ed, "extend-up");
+pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize, _mode: MotionMode) {
+    half_page_scroll(ed, "extend-up", MotionMode::Extend);
 }
 
 // Visual-line movement lives in visual_move.rs; re-export for the registry glob.
@@ -375,7 +376,7 @@ pub(super) use super::visual_move::{
 ///
 /// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `/` prompt.
-pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search.direction = SearchDirection::Forward;
     // Capture extend state before mode becomes Search — live search uses it.
@@ -385,7 +386,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize) {
 }
 
 /// Enter backward search mode.
-pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.search.pre_search_sels = Some(ed.doc.sels().clone());
     ed.search.direction = SearchDirection::Backward;
     // Capture extend state before mode becomes Search — live search uses it.
@@ -436,7 +437,7 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
 /// recompiles from the `'s'` register if the cache is empty. Repeats `count`
 /// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
 /// selection depending on `extend`.
-fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend: bool) {
+fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: MotionMode) {
     if !ensure_search_regex(ed) { return; }
     let Some(regex) = &ed.search.regex else { return };
 
@@ -449,7 +450,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
             SearchDirection::Forward => next_grapheme_boundary(buf, primary.end_inclusive(buf)),
             SearchDirection::Backward => primary.start(),
         };
-        (from, if extend { Some(primary.anchor) } else { None })
+        (from, if mode == MotionMode::Extend { Some(primary.anchor) } else { None })
     };
 
     // Jump `count` times, advancing `from_char` after each match so that
@@ -501,24 +502,24 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, extend
 /// Clear the active search regex and dismiss all match highlights.
 ///
 /// Also invocable as `:clear-search` / `:cs` in command mode.
-pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.search.clear();
     // update_search_cache() is called by the event loop after handle_key returns,
     // but search.clear() already zeroes the cache fields directly, so the render
     // path sees a clean state immediately regardless of event-loop ordering.
 }
 
-pub(super) fn cmd_search_next(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, SearchDirection::Forward, false);
+pub(super) fn cmd_search_next(ed: &mut Editor, count: usize, mode: MotionMode) {
+    search_jump(ed, count, SearchDirection::Forward, mode);
 }
-pub(super) fn cmd_extend_search_next(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, SearchDirection::Forward, true);
+pub(super) fn cmd_extend_search_next(ed: &mut Editor, count: usize, _mode: MotionMode) {
+    search_jump(ed, count, SearchDirection::Forward, MotionMode::Extend);
 }
-pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, SearchDirection::Backward, false);
+pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize, mode: MotionMode) {
+    search_jump(ed, count, SearchDirection::Backward, mode);
 }
-pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
-    search_jump(ed, count, SearchDirection::Backward, true);
+pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize, _mode: MotionMode) {
+    search_jump(ed, count, SearchDirection::Backward, MotionMode::Extend);
 }
 
 // ── Select all matches ────────────────────────────────────────────────────────
@@ -528,7 +529,7 @@ pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize) {
 /// Uses the active search regex, falling back to recompiling from the `'s'`
 /// register (same as `n`/`N`). If there is no active search, does nothing.
 /// The first match becomes primary.
-pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     if !ensure_search_regex(ed) { return; }
     let Some(regex) = &ed.search.regex else { return };
 
@@ -549,7 +550,7 @@ pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize) {
 /// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `s` prompt. The user types a regex; all matches
 /// within the current selections become new selections (live preview).
-pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     // Nothing meaningful to search within a single-char selection.
     if ed.doc.sels().iter_sorted().all(Selection::is_collapsed) {
         return;
@@ -566,7 +567,7 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize) {
 /// If the primary selection is a cursor (1-char), expands to the word under
 /// the cursor first (same as Helix). The escaped text is compiled as a search
 /// regex, stored in the `'s'` register, and search highlights appear immediately.
-pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     let buf = ed.doc.buf();
     let primary = ed.doc.sels().primary();
 
@@ -604,7 +605,7 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize) {
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
 
-pub(super) fn cmd_quit(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_quit(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     ed.should_quit = true;
 }
 
@@ -754,7 +755,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> bool {
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
-pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     let current = crate::core::jump_list::JumpEntry::new(ed.doc.sels().clone(), ed.doc.buf());
     if let Some(entry) = ed.jump_list.backward(current) {
         let sels = entry.selections.clone();
@@ -762,7 +763,7 @@ pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize) {
     }
 }
 
-pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize) {
+pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) {
     if let Some(entry) = ed.jump_list.forward() {
         let sels = entry.selections.clone();
         ed.doc.set_selections(sels);
