@@ -413,7 +413,7 @@ impl Editor {
             name
         };
 
-        if let Some(reg_cmd) = self.registry.get(resolved.as_ref()).cloned() {
+        if let Some(reg_cmd) = self.registry.get_mappable(resolved.as_ref()).cloned() {
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
@@ -749,7 +749,7 @@ impl Editor {
             None => (cmd_raw, false),
         };
 
-        match super::commands::find_typed_command(cmd) {
+        match self.registry.get_typed(cmd) {
             Some(tc) => (tc.fun)(self, arg, force),
             None => { self.status_msg = Some(format!("Unknown command: {cmd}")); }
         }
@@ -777,7 +777,7 @@ mod tests {
         ];
         for name in must_be_jump {
             assert!(
-                reg.get(name).expect(name).is_jump(),
+                reg.get_mappable(name).expect(name).is_jump(),
                 "'{name}' should have jump: true"
             );
         }
@@ -785,7 +785,7 @@ mod tests {
         let must_be_visual_move = ["move-down", "move-up", "extend-down", "extend-up"];
         for name in must_be_visual_move {
             assert!(
-                reg.get(name).expect(name).is_visual_move(),
+                reg.get_mappable(name).expect(name).is_visual_move(),
                 "'{name}' should have visual_move: true"
             );
         }
@@ -793,11 +793,11 @@ mod tests {
         // Spot-check non-jump commands.
         for name in ["move-left", "move-right", "delete", "undo", "insert-before"] {
             assert!(
-                !reg.get(name).expect(name).is_jump(),
+                !reg.get_mappable(name).expect(name).is_jump(),
                 "'{name}' should have jump: false"
             );
             assert!(
-                !reg.get(name).expect(name).is_visual_move(),
+                !reg.get_mappable(name).expect(name).is_visual_move(),
                 "'{name}' should have visual_move: false"
             );
         }

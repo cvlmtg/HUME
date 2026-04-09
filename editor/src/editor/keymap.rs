@@ -554,7 +554,7 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('O'), cmd!("open-line-above"));
 
     // Ctrl+c quits from normal mode.
-    t.bind_leaf(key!(Ctrl + 'c'), cmd!("quit"));
+    t.bind_leaf(key!(Ctrl + 'c'), cmd!("force-quit"));
 
     t
 }
@@ -882,8 +882,8 @@ mod tests {
     #[test]
     fn ctrl_bindings_in_normal_keymap() {
         let trie = default_normal_keymap();
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "quit"),
-            "Ctrl+c should map to quit");
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "force-quit"),
+            "Ctrl+c should map to force-quit");
         assert!(matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
             "Ctrl+r should map to redo");
         assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "extend-select-line"),
