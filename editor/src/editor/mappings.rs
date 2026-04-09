@@ -234,22 +234,23 @@ impl Editor {
         // command directly with `extend = false`. A miss falls through to the
         // normal trie, which will be walked with `extend = true` as usual.
         //
-        // Only applied at the trie root (no pending_keys) and without modifiers,
-        // to avoid intercepting mid-sequence keys or Ctrl variants.
-        if self.mode == EditorMode::Extend
-            && self.pending_keys.is_empty()
-            && !key.modifiers.contains(KeyModifiers::CONTROL)
-        {
-            let extend_result = self.keymap.extend.walk(&[key]);
-            match extend_result {
+        // We walk with [pending_keys..., key] without committing the push yet —
+        // only `Interior` commits the key (so the sequence accumulates correctly
+        // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
+        // so the normal-trie path below can push it as usual.
+        if self.mode == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
+            let mut seq = self.pending_keys.clone();
+            seq.push(key);
+            match self.keymap.extend.walk(&seq) {
                 WalkResult::Leaf(cmd) => {
+                    self.pending_keys.clear();
                     let count = self.count.take().unwrap_or(1);
                     self.explicit_count = false;
                     self.execute_keymap_command(cmd.name.clone(), count, false);
                     return;
                 }
                 WalkResult::Interior { .. } => {
-                    // Mid-sequence in extend trie — wait for more keys.
+                    // Mid-sequence — commit the key and wait for more.
                     self.pending_keys.push(key);
                     return;
                 }
@@ -258,7 +259,7 @@ impl Editor {
                     return;
                 }
                 WalkResult::NoMatch => {
-                    // Fall through to normal trie with extend = true.
+                    // No extend-trie match — fall through to normal trie.
                 }
             }
         }

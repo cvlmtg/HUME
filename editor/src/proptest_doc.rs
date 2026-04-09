@@ -271,27 +271,33 @@ mod tests {
         ]
     }
 
-    /// Apply a `PureOp`, returning the new `SelectionSet` (buffer unchanged).
-    fn apply_pure_op(buf: &Buffer, sels: SelectionSet, op: &PureOp) -> SelectionSet {
+    fn arb_motion_mode() -> impl Strategy<Value = MotionMode> {
+        prop_oneof![Just(MotionMode::Move), Just(MotionMode::Extend)]
+    }
+
+    /// Apply a `PureOp` with the given `MotionMode`, returning the new
+    /// `SelectionSet` (buffer unchanged).
+    fn apply_pure_op(buf: &Buffer, sels: SelectionSet, op: &PureOp, mode: MotionMode) -> SelectionSet {
         match op {
-            PureOp::MoveRight => cmd_move_right(buf, sels, 1, MotionMode::Move),
-            PureOp::MoveLeft => cmd_move_left(buf, sels, 1, MotionMode::Move),
-            PureOp::MoveUp => cmd_move_up(buf, sels, 1, MotionMode::Move),
-            PureOp::MoveDown => cmd_move_down(buf, sels, 1, MotionMode::Move),
-            PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, MotionMode::Move),
-            PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, MotionMode::Move),
-            PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, MotionMode::Move),
-            PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, MotionMode::Move),
-            PureOp::SelectNextWORD => cmd_select_next_WORD(buf, sels, 1, MotionMode::Move),
-            PureOp::SelectPrevWORD => cmd_select_prev_WORD(buf, sels, 1, MotionMode::Move),
-            PureOp::InnerWord => cmd_inner_word(buf, sels, MotionMode::Move),
-            PureOp::AroundWord => cmd_around_word(buf, sels, MotionMode::Move),
-            PureOp::InnerLine => cmd_inner_line(buf, sels, MotionMode::Move),
-            PureOp::CollapseSelection => cmd_collapse_selection(buf, sels, MotionMode::Move),
-            PureOp::FlipSelections => cmd_flip_selections(buf, sels, MotionMode::Move),
-            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, MotionMode::Move),
-            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, MotionMode::Move),
-            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, MotionMode::Move),
+            PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
+            PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),
+            PureOp::MoveUp => cmd_move_up(buf, sels, 1, mode),
+            PureOp::MoveDown => cmd_move_down(buf, sels, 1, mode),
+            PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, mode),
+            PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, mode),
+            PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, mode),
+            PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, mode),
+            PureOp::SelectNextWORD => cmd_select_next_WORD(buf, sels, 1, mode),
+            PureOp::SelectPrevWORD => cmd_select_prev_WORD(buf, sels, 1, mode),
+            PureOp::InnerWord => cmd_inner_word(buf, sels, mode),
+            PureOp::AroundWord => cmd_around_word(buf, sels, mode),
+            PureOp::InnerLine => cmd_inner_line(buf, sels, mode),
+            // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
+            PureOp::CollapseSelection => cmd_collapse_selection(buf, sels, mode),
+            PureOp::FlipSelections => cmd_flip_selections(buf, sels, mode),
+            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, mode),
+            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, mode),
+            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, mode),
         }
     }
 
@@ -321,14 +327,14 @@ mod tests {
         #[test]
         fn prop_random_pure_ops_preserve_invariants(
             (buf, sels) in arb_initial_state(30),
-            ops in proptest::collection::vec(arb_pure_op(), 1..=25),
+            ops in proptest::collection::vec((arb_pure_op(), arb_motion_mode()), 1..=25),
         ) {
             let cur_buf = buf;
             let mut cur_sels = sels;
             assert_invariants(&cur_buf, &cur_sels);
 
-            for op in &ops {
-                let new_sels = apply_pure_op(&cur_buf, cur_sels, op);
+            for (op, mode) in &ops {
+                let new_sels = apply_pure_op(&cur_buf, cur_sels, op, *mode);
                 assert_invariants(&cur_buf, &new_sels);
                 // cur_buf is unchanged — pure ops never modify the buffer
                 cur_sels = new_sels;
