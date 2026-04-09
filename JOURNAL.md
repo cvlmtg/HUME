@@ -16,3 +16,10 @@ You can tell the agent to analyze your goals and ask questions if something is u
 "Sel.." what? If the question is truncated how can I answer?
 So from now on I'll explicitly ask to "briefly describe any unclear or conflicting instructions, or any issue that comes up", so I can update my goals accordingly.
 *Hopefully this should avo---*
+
+## 09/04/2026 Stick to the plan
+
+I've noticed that Claude is very fixated on the "blast radius" of its edits. I agree that keeping the blast radius small is a good choice most of the time. But "most" doesn't mean "always, at all costs".
+So it comes the day you discuss quite a big refactor: you iron out all the little problems, you challenge and discuss all the proposed ideas and corner cases, etc. Finally you converge on a good plan, you approve it, the implementation starts, and the first thing Claude writes is: "Oh, I have to modify 52 functions and 241 tests — let's take a different approach!"
+And here you are, bashing on the keyboard: "NO Claude! Bad Claude! *Bad!* Stick to the plan! *Stick to the plan!*"
+The lesson here: if you've already done the work of planning a big refactor, don't let the agent second-guess the plan at implementation time. Be explicit that the scope has been agreed upon and should be followed as-is.
