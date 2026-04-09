@@ -701,14 +701,60 @@ mod tests {
         assert!(!tc.doc.is_empty(), "write should have a non-empty doc string");
     }
 
-    /// Expected number of base → extend pairs registered by `register_extend_pairs`.
-    ///
-    /// Count breakdown:
-    ///    4 character motions (left/right/up/down)
-    ///    2 buffer-level goto (first/last line)
-    ///    3 line-position motions (start/end/first-nonblank)
-    ///    4 word motions (next/prev × word/WORD)
-    ///    2 paragraph motions
+    #[test]
+    fn is_extendable_motion_and_selection_always_true() {
+        let reg = CommandRegistry::with_defaults();
+        // All Motion commands are extendable.
+        for name in ["move-right", "move-left", "move-down", "move-up",
+                     "goto-first-line", "goto-last-line",
+                     "goto-line-start", "goto-line-end", "goto-first-nonblank",
+                     "select-next-word", "select-prev-word",
+                     "next-paragraph", "prev-paragraph"] {
+            let cmd = reg.get_mappable(name).unwrap_or_else(|| panic!("{name} not found"));
+            assert!(cmd.is_extendable(), "Motion '{name}' should be extendable");
+        }
+        // All Selection commands are extendable.
+        for name in ["select-line", "select-line-backward",
+                     "collapse-selection", "flip-selections",
+                     "inner-word", "around-word",
+                     "inner-paren", "around-paren"] {
+            let cmd = reg.get_mappable(name).unwrap_or_else(|| panic!("{name} not found"));
+            assert!(cmd.is_extendable(), "Selection '{name}' should be extendable");
+        }
+    }
+
+    #[test]
+    fn is_extendable_editor_cmd_true_for_extendable() {
+        let reg = CommandRegistry::with_defaults();
+        // EditorCmds marked extendable: true.
+        for name in ["find-forward", "find-backward",
+                     "till-forward", "till-backward",
+                     "repeat-find-forward", "repeat-find-backward",
+                     "page-down", "page-up",
+                     "half-page-down", "half-page-up",
+                     "search-next", "search-prev",
+                     "move-down", "move-up"] {
+            let cmd = reg.get_mappable(name).unwrap_or_else(|| panic!("{name} not found"));
+            assert!(cmd.is_extendable(), "EditorCmd '{name}' should be extendable");
+        }
+    }
+
+    #[test]
+    fn is_extendable_false_for_edits_and_non_extendable_editor_cmds() {
+        let reg = CommandRegistry::with_defaults();
+        // Edit commands are never extendable.
+        for name in ["delete-selection", "delete-char-forward", "delete-char-backward"] {
+            let cmd = reg.get_mappable(name).unwrap_or_else(|| panic!("{name} not found"));
+            assert!(!cmd.is_extendable(), "Edit '{name}' should not be extendable");
+        }
+        // Non-extendable EditorCmds.
+        for name in ["undo", "redo", "insert-before", "insert-after",
+                     "open-line-below", "open-line-above",
+                     "force-quit", "exit-insert"] {
+            let cmd = reg.get_mappable(name).unwrap_or_else(|| panic!("{name} not found"));
+            assert!(!cmd.is_extendable(), "EditorCmd '{name}' should not be extendable");
+        }
+    }
 
     #[test]
     fn all_names_are_unique() {
