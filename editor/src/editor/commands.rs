@@ -636,7 +636,6 @@ pub(super) fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) 
     }
 }
 
-
 pub(super) fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
     use engine::pane::WrapMode;
     let currently_wrapping = ed.doc.overrides.wrap_mode(&ed.settings).is_wrapping();
