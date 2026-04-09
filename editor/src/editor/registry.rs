@@ -1,24 +1,26 @@
-//! Mappable command registry.
+//! Command registry — the single namespace for all user-facing commands.
 //!
-//! A [`MappableCommand`] wraps a command together with a string name and a
-//! one-line doc string. All commands live in a [`CommandRegistry`] keyed by
-//! name, built once via [`CommandRegistry::with_defaults`].
+//! Two kinds of commands share this registry:
 //!
-//! **Every user-facing operation is a named command in this registry.**
-//! There is no parallel dispatch system — the keymap trie stores command
-//! *names*; the registry resolves those names to `MappableCommand` values at
-//! dispatch time inside `execute_keymap_command` (`editor/mappings.rs`).
+//! - [`MappableCommand`] — bindable to keys. The keymap trie stores command
+//!   *names*; the registry resolves them to `MappableCommand` values at
+//!   dispatch time inside `execute_keymap_command` (`editor/mappings.rs`).
+//! - [`TypedCommand`] — invocable from the `:` command line. The dispatcher
+//!   in `execute_command` (`editor/mappings.rs`) calls
+//!   [`CommandRegistry::get_typed`] to resolve name or alias to a
+//!   `TypedCommand`.
 //!
-//! # Extend-mode pairing
+//! The shared namespace prevents name collisions between the two kinds and
+//! provides a single source for `:help` and command-palette display.
 //!
-//! The registry is the single source of truth for extend-variant relationships.
-//! Each command declares its extend variant inline at registration time via an
-//! `extend: "variant-name"` argument on the registration macro. When extend
-//! mode is active, the dispatcher resolves the extend variant automatically
-//! via [`CommandRegistry::extend_variant`] — the keymap stores only base
-//! command names.
+//! # Extend-mode pairing (mappable commands only)
 //!
-//! # Command variants
+//! Each mappable command can declare an extend variant inline at registration
+//! time via an `extend: "variant-name"` argument. When extend mode is active,
+//! the dispatcher calls [`CommandRegistry::extend_variant`] to swap in the
+//! extend variant — the keymap stores only base command names.
+//!
+//! # Mappable command variants
 //!
 //! 1. **Motion** — pure `fn(&Buffer, SelectionSet, usize) -> SelectionSet`
 //! 2. **Selection** — pure `fn(&Buffer, SelectionSet) -> SelectionSet`
@@ -27,9 +29,6 @@
 //!    operations (mode changes, registers, undo groups, parameterized motions).
 //!    Implemented in `editor/commands.rs`; stored and dispatched as a
 //!    function pointer exactly like the other variants.
-//!
-//! Typed commands entered via `:` (`:w`, `:q`, etc.) are a separate system in
-//! `editor/mappings.rs:execute_command` and are NOT stored here.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -201,75 +200,141 @@ impl MappableCommand {
     }
 }
 
+// ── TypedCommand ──────────────────────────────────────────────────────────────
+
+/// A command invocable from the `:` command line.
+///
+/// Typed commands have a canonical name and optional short aliases. They are
+/// stored in [`CommandRegistry`] in a dedicated `typed_commands` map, separate
+/// from mappable commands. The two maps share a unified namespace — registering
+/// a typed command with the same name as an existing mappable command (or vice
+/// versa) is a logic error caught in debug builds.
+///
+/// The function signature differs from mappable commands: it receives an
+/// optional string argument (e.g. the path for `:w foo.txt`) and a force flag
+/// (whether `!` was appended), rather than a numeric count.
+pub(crate) struct TypedCommand {
+    /// Canonical name, e.g. `"write"`. Used as the `typed_commands` map key.
+    pub name: Cow<'static, str>,
+    /// One-line description for `:help` and command-palette display.
+    #[allow(dead_code)]
+    pub doc: Cow<'static, str>,
+    /// Short aliases, e.g. `&["w"]`. Each alias is also registered in the
+    /// alias index for O(1) lookup. Empty for commands with no alias.
+    ///
+    /// `&'static [&'static str]` covers all built-in commands. Steel-registered
+    /// typed commands pass `&[]` and register aliases separately if needed.
+    pub aliases: &'static [&'static str],
+    /// The function to execute. Receives the editor, an optional argument
+    /// (e.g. a file path), and whether `!` was appended.
+    pub fun: fn(&mut super::Editor, Option<&str>, bool),
+}
+
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
-/// Registry of all mappable commands, keyed by name.
+/// Registry of all commands — the single namespace for mappable and typed commands.
 ///
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
-/// The keymap trie (`editor/keymap.rs`) stores command names as `Cow<'static, str>`;
-/// `execute_keymap_command` in `editor/mappings.rs` resolves them here at
-/// dispatch time to obtain the actual function pointer.
 ///
-/// Also owns the extend-variant map: each base command can declare its
-/// extend variant at registration time via `extend: "variant-name"`. The
-/// dispatcher calls [`extend_variant`](Self::extend_variant) to resolve
-/// the correct command when extend mode is active.
+/// - **Mappable commands** are resolved by the keymap dispatcher
+///   (`execute_keymap_command` in `editor/mappings.rs`) via [`Self::get_mappable`].
+/// - **Typed commands** are resolved by the `:` command dispatcher
+///   (`execute_command` in `editor/mappings.rs`) via [`Self::get_typed`].
+///   Aliases are supported via a secondary index ([`Self::alias_map`]).
+///
+/// The two maps are separate so a command can exist in both (e.g. `clear-search`
+/// is bound to a key *and* callable from the command line). [`Self::len`] counts
+/// unique canonical names across both maps.
 pub(crate) struct CommandRegistry {
-    commands: HashMap<Cow<'static, str>, MappableCommand>,
-    /// Maps a base command name to its extend variant.
+    /// Mappable commands keyed by canonical name.
+    mappable_commands: HashMap<Cow<'static, str>, MappableCommand>,
+    /// Typed commands keyed by canonical name.
+    typed_commands: HashMap<Cow<'static, str>, TypedCommand>,
+    /// Maps a base mappable-command name to its extend variant.
     ///
     /// When extend mode is active, the dispatcher looks up the base command
     /// here and dispatches the extend variant instead. This is the single
-    /// source of truth for extend pairing — the keymap stores only base
-    /// command names.
+    /// source of truth for extend pairing — the keymap stores only base names.
     extend_map: HashMap<Cow<'static, str>, Cow<'static, str>>,
+    /// Maps typed-command alias → canonical name, for O(1) alias lookup.
+    alias_map: HashMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
 impl CommandRegistry {
     /// Build a registry pre-populated with every default command.
     pub(crate) fn with_defaults() -> Self {
         let mut reg = Self {
-            commands: HashMap::new(),
+            mappable_commands: HashMap::new(),
+            typed_commands: HashMap::new(),
             extend_map: HashMap::new(),
+            alias_map: HashMap::new(),
         };
         reg.register_defaults();
         reg
     }
 
+    /// Register a mappable command.
+    ///
+    /// The name is extracted from the command and used as the `HashMap` key.
+    /// For static built-ins the clone is a pointer copy (zero allocation).
     pub(crate) fn register(&mut self, cmd: MappableCommand) {
-        // `cmd.name()` returns `&str` (not `&'static str`), so we can't use it as
-        // a `Cow::Borrowed` key. Extract the name field directly and clone the Cow —
-        // for static built-ins this is a pointer copy; for dynamic names it clones the String.
         let key = match &cmd {
             MappableCommand::Motion { name, .. }
             | MappableCommand::Selection { name, .. }
             | MappableCommand::Edit { name, .. }
             | MappableCommand::EditorCmd { name, .. } => name.clone(),
         };
-        self.commands.insert(key, cmd);
+        self.mappable_commands.insert(key, cmd);
     }
 
-    /// Look up a command by name.
+    /// Register a typed command.
     ///
-    /// Accepts any `&str` — `HashMap<Cow<'static, str>, _>` supports
-    /// `Borrow<str>`-based lookup without allocating.
-    pub(crate) fn get(&self, name: &str) -> Option<&MappableCommand> {
-        self.commands.get(name)
+    /// Inserts the canonical name into `typed_commands` and each alias into
+    /// `alias_map`. This is the future `define-typed-command!` entry point
+    /// for the Steel scripting layer.
+    pub(crate) fn register_typed(&mut self, cmd: TypedCommand) {
+        let canonical = cmd.name.clone();
+        for &alias in cmd.aliases {
+            self.alias_map.insert(Cow::Borrowed(alias), canonical.clone());
+        }
+        self.typed_commands.insert(canonical, cmd);
     }
 
-    /// Iterate over all registered command names.
+    /// Look up a mappable command by name.
+    ///
+    /// Returns `None` if the name is unknown or is only registered as a typed command.
+    /// Used by `execute_keymap_command` in `editor/mappings.rs`.
+    pub(crate) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
+        self.mappable_commands.get(name)
+    }
+
+    /// Look up a typed command by canonical name or alias.
+    ///
+    /// Returns `None` if the name is unknown or is only registered as a mappable command.
+    /// Used by `execute_command` in `editor/mappings.rs`.
+    pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
+        // Resolve alias first; fall back to treating name as canonical.
+        let canonical = self.alias_map.get(name).map(|c| c.as_ref()).unwrap_or(name);
+        self.typed_commands.get(canonical)
+    }
+
+    /// Iterate over all registered canonical command names (not aliases).
+    ///
+    /// Yields names from both mappable and typed command maps.
     #[allow(dead_code)]
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.commands.keys().map(|k| k.as_ref())
+        self.mappable_commands.keys().chain(self.typed_commands.keys()).map(|k| k.as_ref())
     }
 
-    /// Total number of registered commands.
+    /// Total number of registered commands (mappable + typed, not counting aliases).
+    ///
+    /// A command that exists in both maps (e.g. `clear-search`) is counted twice.
     #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
-        self.commands.len()
+        self.mappable_commands.len() + self.typed_commands.len()
     }
 
-    /// Look up the extend variant for a command, if one exists.
+    /// Look up the extend variant for a mappable command, if one exists.
     ///
     /// Returns an owned `Cow<'static, str>` so the caller is not bound by
     /// the registry's borrow lifetime. For static entries the clone is a
@@ -280,7 +345,7 @@ impl CommandRegistry {
 
     /// Register a base → extend-variant pair at runtime.
     ///
-    /// Used by Steel's `define-command!` + extend-mode support.
+    /// Used by Steel's `define-mappable-command!` + extend-mode support.
     #[allow(dead_code)]
     pub(crate) fn register_extend_pair(&mut self, base: Cow<'static, str>, variant: Cow<'static, str>) {
         self.extend_map.insert(base, variant);
@@ -555,7 +620,27 @@ impl CommandRegistry {
         editor_cmd!("jump-forward",  "Navigate to the next position in the jump list.",     cmd_jump_forward);
 
         // ── Editor commands — misc ────────────────────────────────────────────
-        editor_cmd!("quit", "Quit the editor.", cmd_quit);
+        editor_cmd!("force-quit", "Quit without checking for unsaved changes.", cmd_quit);
+
+        // ── Typed commands (`:` command line) ─────────────────────────────────
+        macro_rules! typed_cmd {
+            ($name:literal, $doc:literal, $aliases:expr, $fun:expr) => {
+                self.register_typed(TypedCommand {
+                    name: Cow::Borrowed($name),
+                    doc: Cow::Borrowed($doc),
+                    aliases: $aliases,
+                    fun: $fun,
+                })
+            };
+        }
+
+        typed_cmd!("quit",              "Close the editor.",                                        &["q"],    typed_quit);
+        typed_cmd!("write",             "Write changes to disk.",                                  &["w"],    typed_write);
+        typed_cmd!("write-quit",        "Write changes and quit.",                                 &["wq"],   typed_write_quit);
+        typed_cmd!("clear-search",      "Clear search highlights.",                               &["cs"],   typed_clear_search);
+        typed_cmd!("select-all-matches","Turn every search match in the buffer into a selection.", &["sam"],  typed_select_all_matches);
+        typed_cmd!("toggle-soft-wrap",  "Toggle soft line wrapping.",                             &["wrap"], typed_toggle_soft_wrap);
+        typed_cmd!("set",               "Set a configuration value: :set global|buffer key=value.", &[],    typed_set);
     }
 
 }
@@ -587,11 +672,15 @@ mod tests {
     ///    7 search editor commands (search-forward/backward, search-next/prev, extend variants, clear-search)
     ///    3 select editor commands (select-within, select-all-matches, use-selection-as-search)
     ///    4 page-scroll editor commands
+    ///    4 half-page-scroll editor commands
     ///    2 jump-list editor commands
     ///    5 insert editor commands (insert-at-line-start/end, open-line-above/below, exit-insert)
-    ///    1 quit editor command
+    ///    1 force-quit editor command
+    ///    7 typed commands (quit, write, write-quit, clear-search, select-all-matches, toggle-soft-wrap, set)
+    ///    Note: clear-search and select-all-matches also exist as mappable EditorCmds —
+    ///    len() counts them twice since they serve both dispatch paths.
     ///
-    const EXPECTED_COMMAND_COUNT: usize = 151;
+    const EXPECTED_COMMAND_COUNT: usize = 158;
 
     #[test]
     fn registry_has_expected_count() {
@@ -604,50 +693,100 @@ mod tests {
     }
 
     #[test]
-    fn lookup_by_name_works() {
+    fn mappable_lookup_by_name_works() {
         let reg = CommandRegistry::with_defaults();
 
         // Motion
-        let cmd = reg.get("move-right").expect("move-right should be registered");
+        let cmd = reg.get_mappable("move-right").expect("move-right should be registered");
         assert_eq!(cmd.name(), "move-right");
         assert!(matches!(cmd, MappableCommand::Motion { .. }));
 
         // Selection
-        let cmd = reg.get("collapse-selection").expect("collapse-selection should be registered");
+        let cmd = reg.get_mappable("collapse-selection").expect("collapse-selection should be registered");
         assert_eq!(cmd.name(), "collapse-selection");
         assert!(matches!(cmd, MappableCommand::Selection { .. }));
 
         // Edit
-        let cmd = reg.get("delete-selection").expect("delete-selection should be registered");
+        let cmd = reg.get_mappable("delete-selection").expect("delete-selection should be registered");
         assert_eq!(cmd.name(), "delete-selection");
         assert!(matches!(cmd, MappableCommand::Edit { .. }));
 
         // EditorCmd
-        let cmd = reg.get("quit").expect("quit should be registered");
-        assert_eq!(cmd.name(), "quit");
+        let cmd = reg.get_mappable("force-quit").expect("force-quit should be registered");
+        assert_eq!(cmd.name(), "force-quit");
         assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
 
-        let cmd = reg.get("find-forward").expect("find-forward should be registered");
+        let cmd = reg.get_mappable("find-forward").expect("find-forward should be registered");
         assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
 
-        let cmd = reg.get("delete").expect("delete should be registered");
+        let cmd = reg.get_mappable("delete").expect("delete should be registered");
         assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+    }
+
+    #[test]
+    fn typed_lookup_by_canonical_name() {
+        let reg = CommandRegistry::with_defaults();
+        let tc = reg.get_typed("write").expect("write should be a typed command");
+        assert_eq!(tc.name, "write");
+        assert!(!tc.doc.is_empty());
+    }
+
+    #[test]
+    fn typed_lookup_by_alias() {
+        let reg = CommandRegistry::with_defaults();
+        // Each alias resolves to the typed command.
+        assert_eq!(reg.get_typed("w").expect("w alias").name, "write");
+        assert_eq!(reg.get_typed("q").expect("q alias").name, "quit");
+        assert_eq!(reg.get_typed("wq").expect("wq alias").name, "write-quit");
+        assert_eq!(reg.get_typed("cs").expect("cs alias").name, "clear-search");
+        assert_eq!(reg.get_typed("sam").expect("sam alias").name, "select-all-matches");
+        assert_eq!(reg.get_typed("wrap").expect("wrap alias").name, "toggle-soft-wrap");
+    }
+
+    #[test]
+    fn typed_lookup_does_not_return_pure_mappable() {
+        let reg = CommandRegistry::with_defaults();
+        // Commands that are mappable-only — typed lookup should return None.
+        assert!(reg.get_typed("move-right").is_none());
+        assert!(reg.get_typed("force-quit").is_none());
+        assert!(reg.get_typed("undo").is_none());
+    }
+
+    #[test]
+    fn mappable_lookup_does_not_return_pure_typed() {
+        let reg = CommandRegistry::with_defaults();
+        // Commands that are typed-only — mappable lookup should return None.
+        assert!(reg.get_mappable("write").is_none());
+        assert!(reg.get_mappable("quit").is_none());
+        assert!(reg.get_mappable("write-quit").is_none());
+    }
+
+    #[test]
+    fn commands_in_both_maps_are_accessible_from_either() {
+        let reg = CommandRegistry::with_defaults();
+        // clear-search and select-all-matches live in both maps.
+        assert!(reg.get_mappable("clear-search").is_some());
+        assert!(reg.get_typed("clear-search").is_some());
+        assert!(reg.get_mappable("select-all-matches").is_some());
+        assert!(reg.get_typed("select-all-matches").is_some());
     }
 
     #[test]
     fn unknown_name_returns_none() {
         let reg = CommandRegistry::with_defaults();
-        assert!(reg.get("does-not-exist").is_none());
-        assert!(reg.get("nonexistent-command").is_none());
+        assert!(reg.get_mappable("does-not-exist").is_none());
+        assert!(reg.get_typed("does-not-exist").is_none());
     }
 
     #[test]
     fn doc_strings_are_stored_and_accessible() {
         let reg = CommandRegistry::with_defaults();
-        let cmd = reg.get("move-right").unwrap();
+        let cmd = reg.get_mappable("move-right").unwrap();
         assert!(!cmd.doc().is_empty(), "move-right should have a non-empty doc string");
-        let cmd = reg.get("delete-selection").unwrap();
+        let cmd = reg.get_mappable("delete-selection").unwrap();
         assert!(!cmd.doc().is_empty(), "delete-selection should have a non-empty doc string");
+        let tc = reg.get_typed("write").unwrap();
+        assert!(!tc.doc.is_empty(), "write should have a non-empty doc string");
     }
 
     /// Expected number of base → extend pairs registered by `register_extend_pairs`.
@@ -683,11 +822,11 @@ mod tests {
         let reg = CommandRegistry::with_defaults();
         for (base, extend) in &reg.extend_map {
             assert!(
-                reg.commands.contains_key(base.as_ref()),
+                reg.mappable_commands.contains_key(base.as_ref()),
                 "extend pair: base command '{base}' not in registry"
             );
             assert!(
-                reg.commands.contains_key(extend.as_ref()),
+                reg.mappable_commands.contains_key(extend.as_ref()),
                 "extend pair: extend command '{extend}' not in registry"
             );
         }
@@ -705,12 +844,20 @@ mod tests {
     }
 
     #[test]
-    fn all_names_are_unique() {
-        // HashMap insertion silently overwrites duplicates, so verify that
-        // the final count matches the number of distinct names.
+    fn all_mappable_names_are_unique() {
+        // HashMap insertion silently overwrites duplicates within each map.
+        // Verify no duplicates within the mappable map.
         let reg = CommandRegistry::with_defaults();
-        let unique: std::collections::HashSet<&str> = reg.names().collect();
-        assert_eq!(unique.len(), reg.len(), "duplicate command names detected");
+        let unique: std::collections::HashSet<&str> = reg.mappable_commands.keys().map(|k| k.as_ref()).collect();
+        assert_eq!(unique.len(), reg.mappable_commands.len(), "duplicate mappable command names detected");
+    }
+
+    #[test]
+    fn all_typed_names_are_unique() {
+        // Verify no duplicates within the typed map.
+        let reg = CommandRegistry::with_defaults();
+        let unique: std::collections::HashSet<&str> = reg.typed_commands.keys().map(|k| k.as_ref()).collect();
+        assert_eq!(unique.len(), reg.typed_commands.len(), "duplicate typed command names detected");
     }
 
     #[test]
@@ -731,8 +878,8 @@ mod tests {
         reg.register(cmd);
 
         assert_eq!(reg.len(), before + 1);
-        assert!(reg.get("steel-test-cmd").is_some());
-        assert_eq!(reg.get("steel-test-cmd").unwrap().name(), "steel-test-cmd");
+        assert!(reg.get_mappable("steel-test-cmd").is_some());
+        assert_eq!(reg.get_mappable("steel-test-cmd").unwrap().name(), "steel-test-cmd");
     }
 
     #[test]
@@ -758,5 +905,28 @@ mod tests {
             reg.extend_variant("steel-cmd").as_deref(),
             Some("steel-cmd-extend"),
         );
+    }
+
+    #[test]
+    fn runtime_register_typed_and_lookup() {
+        use crate::editor::Editor;
+        let mut reg = CommandRegistry::with_defaults();
+        let before = reg.len();
+
+        fn dummy_typed(_ed: &mut Editor, _arg: Option<&str>, _force: bool) {}
+        reg.register_typed(TypedCommand {
+            name: Cow::Owned("steel-typed-cmd".to_string()),
+            doc: Cow::Borrowed("A dummy Steel typed command for testing."),
+            aliases: &["stc"],
+            fun: dummy_typed,
+        });
+
+        assert_eq!(reg.len(), before + 1);
+        // Reachable by canonical name.
+        assert_eq!(reg.get_typed("steel-typed-cmd").unwrap().name, "steel-typed-cmd");
+        // Reachable by alias.
+        assert_eq!(reg.get_typed("stc").unwrap().name, "steel-typed-cmd");
+        // Not reachable as a mappable command.
+        assert!(reg.get_mappable("steel-typed-cmd").is_none());
     }
 }
