@@ -16,6 +16,16 @@
 //! "inherit from global". Resolution happens at call time via the accessor
 //! methods on [`BufferOverrides`] — no pre-merged copy is kept.
 //!
+//! ## Adding a setting
+//!
+//! Most settings are defined in a single [`define_settings!`] invocation that
+//! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
+//! accessor methods, and the [`apply_setting`] dispatch. Adding a simple
+//! setting requires one entry in the macro and nothing else.
+//!
+//! Settings with non-trivial resolution (`auto_pairs_ref`, whitespace
+//! sub-fields) are handled manually below the macro invocation.
+//!
 //! ## Future layers
 //!
 //! The design accommodates a future EditorConfig layer between buffer overrides
@@ -28,119 +38,241 @@ use engine::pane::{WhitespaceConfig, WrapMode};
 use crate::auto_pairs::Pair;
 use crate::ui::statusline::StatusLineConfig;
 
-// ── EditorSettings ────────────────────────────────────────────────────────────
+// ── SettingScope ──────────────────────────────────────────────────────────────
 
-/// Global editor settings — the authoritative defaults for all configurable
-/// editor behaviour.
+/// Scope for a `:set` command.
 ///
-/// Fields are grouped into *global-only* (no per-buffer override makes sense)
-/// and *per-buffer-overridable* (a [`BufferOverrides`] on a document can
-/// shadow them).
-///
-/// The [`Default`] impl exactly reproduces the values that were previously
-/// hardcoded as constants across the codebase.
-pub(crate) struct EditorSettings {
-    // ── Global-only ──────────────────────────────────────────────────────────
-
-    /// Rows to keep between the cursor and the top/bottom viewport edge.
-    pub scroll_margin: usize,
-    /// Columns to keep between the cursor and the left/right viewport edge.
-    pub scroll_margin_h: usize,
-    /// Lines to scroll per mouse-wheel notch.
-    pub mouse_scroll_lines: usize,
-    /// Whether mouse tracking is enabled at all.
-    pub mouse_enabled: bool,
-    /// Whether click-and-drag mouse selection is enabled (requires `mouse_enabled`).
-    pub mouse_select: bool,
-    /// Maximum number of entries kept in the jump list.
-    pub jump_list_capacity: usize,
-    /// Movements crossing more than this many lines are auto-recorded as jumps.
-    pub jump_line_threshold: usize,
-    /// Statusline layout configuration.
-    pub statusline: StatusLineConfig,
-
-    // ── Per-buffer-overridable ────────────────────────────────────────────────
-
-    /// Tab stop width in columns.
-    pub tab_width: u8,
-    /// Line wrapping behaviour.
-    pub wrap_mode: WrapMode,
-    /// Gutter line-number display style.
-    pub line_number_style: LineNumberStyle,
-    /// Master switch for automatic bracket/quote pairing.
-    pub auto_pairs_enabled: bool,
-    /// The active auto-pair set. Indexed by open character.
-    pub auto_pairs: Vec<Pair>,
-    /// Whitespace indicator rendering configuration.
-    pub whitespace: WhitespaceConfig,
+/// `Global` applies to editor-wide defaults (written to [`EditorSettings`]).
+/// `Buffer` overrides a setting for the active buffer only (written to
+/// [`BufferOverrides`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingScope {
+    Global,
+    Buffer,
 }
 
-impl Default for EditorSettings {
-    fn default() -> Self {
-        Self {
-            // Global-only — values previously hardcoded as module constants.
-            scroll_margin: 3,
-            scroll_margin_h: 5,
-            mouse_scroll_lines: 3,
-            mouse_enabled: true,
-            mouse_select: false,
-            jump_list_capacity: 100,
-            jump_line_threshold: 5,
-            statusline: StatusLineConfig::default(),
+// ── Parser helper ─────────────────────────────────────────────────────────────
 
-            // Per-buffer-overridable — values previously hardcoded in Editor::open().
-            tab_width: 4,
-            wrap_mode: WrapMode::Indent { width: 76 },
-            line_number_style: LineNumberStyle::Hybrid,
-            auto_pairs_enabled: true,
-            auto_pairs: vec![
-                Pair { open: '(', close: ')' },
-                Pair { open: '[', close: ']' },
-                Pair { open: '{', close: '}' },
-                Pair { open: '"', close: '"' },
-                Pair { open: '\'', close: '\'' },
-                Pair { open: '`', close: '`' },
-            ],
-            whitespace: WhitespaceConfig::default(),
+/// Dispatch from a parser-kind token to the actual parse call.
+///
+/// All arms return `Result<T, String>`. Used inside `apply_setting` (generated
+/// by `define_settings!`) where `value` and `key` are in scope.
+macro_rules! parse_setting {
+    ($value:expr, $key:expr, bool)          => { parse_bool($value, $key) };
+    ($value:expr, $key:expr, usize)         => { parse_usize($value, $key) };
+    ($value:expr, $key:expr, usize_nonzero) => { parse_usize_nonzero($value, $key) };
+    ($value:expr, $key:expr, tab_width)     => { parse_tab_width($value) };
+    ($value:expr, $key:expr, from_str)      => { $value.parse() };
+}
+
+// ── Settings definition ───────────────────────────────────────────────────────
+
+/// Generate [`EditorSettings`], [`BufferOverrides`], and [`apply_setting`]
+/// from a single source of truth.
+///
+/// ## Sections
+///
+/// - `global { … }` — global-only settings with a `:set` key; format:
+///   `"key" => field: Type = default, parser: kind;`
+/// - `buffer { … }` — per-buffer-overridable settings with a `:set` key;
+///   same format, generates both a global field and a buffer override
+/// - `extra_global { … }` — extra global-only fields without a `:set` key;
+///   format: `field: Type = default;`
+/// - `extra_buffer { … }` — extra per-buffer fields without a `:set` key;
+///   format: `field: Type = global_default;` (buffer default is always `None`)
+///
+/// ## Parser kinds
+///
+/// | Token | Function |
+/// |-------|----------|
+/// | `bool` | `parse_bool(value, key)` |
+/// | `usize` | `parse_usize(value, key)` |
+/// | `usize_nonzero` | `parse_usize_nonzero(value, key)` |
+/// | `tab_width` | `parse_tab_width(value)` |
+/// | `from_str` | `value.parse()` (type inferred from field) |
+macro_rules! define_settings {
+    (
+        global {
+            $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, parser: $gparser:ident; )*
         }
+        buffer {
+            $( $bkey:literal => $bname:ident : $btype:ty = $bdefault:expr, parser: $bparser:ident; )*
+        }
+        extra_global {
+            $( $egname:ident : $egtype:ty = $egdefault:expr; )*
+        }
+        extra_buffer {
+            $( $ebname:ident : $ebtype:ty = $ebdefault:expr; )*
+        }
+    ) => {
+
+        // ── EditorSettings ────────────────────────────────────────────────────
+
+        /// Global editor settings — the authoritative defaults for all
+        /// configurable editor behaviour.
+        ///
+        /// The [`Default`] impl exactly reproduces the values that were
+        /// previously hardcoded as constants across the codebase.
+        pub(crate) struct EditorSettings {
+            // Global-only settings (auto-generated)
+            $( pub $gname: $gtype, )*
+            // Per-buffer-overridable settings (auto-generated)
+            $( pub $bname: $btype, )*
+            // Extra global-only fields (no :set key)
+            $( pub $egname: $egtype, )*
+            // Extra per-buffer fields (no :set key)
+            $( pub $ebname: $ebtype, )*
+        }
+
+        impl Default for EditorSettings {
+            fn default() -> Self {
+                Self {
+                    $( $gname: $gdefault, )*
+                    $( $bname: $bdefault, )*
+                    $( $egname: $egdefault, )*
+                    $( $ebname: $ebdefault, )*
+                }
+            }
+        }
+
+        // ── BufferOverrides ───────────────────────────────────────────────────
+
+        /// Per-buffer setting overrides. All fields are `Option<T>`; `None`
+        /// means "inherit from the global [`EditorSettings`]".
+        ///
+        /// Resolution is always lazy: call the accessor (e.g.
+        /// [`Self::tab_width`]) with a `&EditorSettings` reference.
+        #[derive(Default)]
+        pub(crate) struct BufferOverrides {
+            // Per-buffer-overridable settings (auto-generated)
+            $( pub $bname: Option<$btype>, )*
+            // Extra per-buffer fields (no :set key)
+            $( pub $ebname: Option<$ebtype>, )*
+        }
+
+        impl BufferOverrides {
+            $(
+                /// Effective value: buffer override → global default.
+                pub(crate) fn $bname(&self, global: &EditorSettings) -> $btype {
+                    self.$bname.clone().unwrap_or_else(|| global.$bname.clone())
+                }
+            )*
+        }
+
+        // ── apply_setting ─────────────────────────────────────────────────────
+
+        /// Apply a setting mutation from a `:set scope key=value` command.
+        ///
+        /// - `Global` scope writes to `settings` (always valid for all keys)
+        /// - `Buffer` scope writes to `overrides` (rejected for global-only
+        ///   keys)
+        ///
+        /// Returns `Err(message)` on unknown key, wrong-scope key, or invalid
+        /// value.
+        pub(crate) fn apply_setting(
+            scope: SettingScope,
+            key: &str,
+            value: &str,
+            settings: &mut EditorSettings,
+            overrides: &mut BufferOverrides,
+        ) -> Result<(), String> {
+            match (scope, key) {
+                // Global-only settings: valid only with Global scope
+                $( (SettingScope::Global, $gkey) => {
+                    settings.$gname = parse_setting!(value, key, $gparser)?;
+                } )*
+                // Per-buffer settings: Global scope writes to EditorSettings
+                $( (SettingScope::Global, $bkey) => {
+                    settings.$bname = parse_setting!(value, key, $bparser)?;
+                } )*
+                // Per-buffer settings: Buffer scope writes to override
+                $( (SettingScope::Buffer, $bkey) => {
+                    overrides.$bname = Some(parse_setting!(value, key, $bparser)?);
+                } )*
+                // Global-only settings rejected when scope is Buffer
+                $( (SettingScope::Buffer, $gkey) => {
+                    return Err(format!(
+                        "'{key}' is a global-only setting — use :set global {key}=…"
+                    ));
+                } )*
+                // Whitespace sub-fields — patch one sub-field at a time to let
+                // buffers override space/tab/newline independently.
+                (SettingScope::Global, "whitespace-space") => {
+                    settings.whitespace.space = value.parse()?;
+                }
+                (SettingScope::Global, "whitespace-tab") => {
+                    settings.whitespace.tab = value.parse()?;
+                }
+                (SettingScope::Global, "whitespace-newline") => {
+                    settings.whitespace.newline = value.parse()?;
+                }
+                (SettingScope::Buffer, "whitespace-space") => {
+                    overrides
+                        .whitespace
+                        .get_or_insert_with(WhitespaceConfig::default)
+                        .space = value.parse()?;
+                }
+                (SettingScope::Buffer, "whitespace-tab") => {
+                    overrides
+                        .whitespace
+                        .get_or_insert_with(WhitespaceConfig::default)
+                        .tab = value.parse()?;
+                }
+                (SettingScope::Buffer, "whitespace-newline") => {
+                    overrides
+                        .whitespace
+                        .get_or_insert_with(WhitespaceConfig::default)
+                        .newline = value.parse()?;
+                }
+                _ => return Err(format!("unknown setting '{key}'")),
+            }
+            Ok(())
+        }
+    };
+}
+
+define_settings! {
+    global {
+        "scroll-margin"       => scroll_margin:       usize = 3,    parser: usize;
+        "scroll-margin-h"     => scroll_margin_h:     usize = 5,    parser: usize;
+        "mouse-scroll-lines"  => mouse_scroll_lines:  usize = 3,    parser: usize;
+        "mouse-enabled"       => mouse_enabled:       bool  = true, parser: bool;
+        "mouse-select"        => mouse_select:        bool  = false, parser: bool;
+        "jump-list-capacity"  => jump_list_capacity:  usize = 100,  parser: usize_nonzero;
+        "jump-line-threshold" => jump_line_threshold: usize = 5,    parser: usize;
+    }
+    buffer {
+        "tab-width"          => tab_width:          u8              = 4,
+            parser: tab_width;
+        "wrap-mode"          => wrap_mode:          WrapMode        = WrapMode::Indent { width: 76 },
+            parser: from_str;
+        "line-number-style"  => line_number_style:  LineNumberStyle = LineNumberStyle::Hybrid,
+            parser: from_str;
+        "auto-pairs-enabled" => auto_pairs_enabled: bool            = true,
+            parser: bool;
+    }
+    extra_global {
+        statusline: StatusLineConfig = StatusLineConfig::default();
+    }
+    extra_buffer {
+        auto_pairs: Vec<Pair> = vec![
+            Pair { open: '(', close: ')' },
+            Pair { open: '[', close: ']' },
+            Pair { open: '{', close: '}' },
+            Pair { open: '"',  close: '"'  },
+            Pair { open: '\'', close: '\'' },
+            Pair { open: '`',  close: '`'  },
+        ];
+        whitespace: WhitespaceConfig = WhitespaceConfig::default();
     }
 }
 
-// ── BufferOverrides ───────────────────────────────────────────────────────────
-
-/// Per-buffer setting overrides. All fields are `Option<T>`; `None` means
-/// "inherit from the global [`EditorSettings`]".
-///
-/// Resolution is always lazy: call the accessor (e.g. [`Self::tab_width`])
-/// with a `&EditorSettings` reference to get the effective value.
-#[derive(Default)]
-pub(crate) struct BufferOverrides {
-    pub tab_width: Option<u8>,
-    pub wrap_mode: Option<WrapMode>,
-    pub line_number_style: Option<LineNumberStyle>,
-    pub auto_pairs_enabled: Option<bool>,
-    pub auto_pairs: Option<Vec<Pair>>,
-    pub whitespace: Option<WhitespaceConfig>,
-}
+// ── BufferOverrides: manual accessors ─────────────────────────────────────────
+//
+// These settings have resolution logic that doesn't fit a simple `Option<T>`
+// unwrap-or pattern and are handled outside the macro.
 
 impl BufferOverrides {
-    /// Effective tab width: buffer override → global default.
-    pub(crate) fn tab_width(&self, global: &EditorSettings) -> u8 {
-        self.tab_width.unwrap_or(global.tab_width)
-    }
-
-    /// Effective wrap mode: buffer override → global default.
-    pub(crate) fn wrap_mode(&self, global: &EditorSettings) -> WrapMode {
-        self.wrap_mode.clone().unwrap_or_else(|| global.wrap_mode.clone())
-    }
-
-    /// Effective line-number style: buffer override → global default.
-    pub(crate) fn line_number_style(&self, global: &EditorSettings) -> LineNumberStyle {
-        self.line_number_style
-            .clone()
-            .unwrap_or_else(|| global.line_number_style.clone())
-    }
-
     /// Effective whitespace config: buffer override → global default.
     pub(crate) fn whitespace(&self, global: &EditorSettings) -> WhitespaceConfig {
         self.whitespace.clone().unwrap_or_else(|| global.whitespace.clone())
@@ -151,8 +283,11 @@ impl BufferOverrides {
     /// Returns references to avoid a `Vec` allocation on every keystroke.
     /// The `enabled` flag and the pair list are resolved independently so a
     /// buffer can override just one without replacing the other.
-    pub(crate) fn auto_pairs_ref<'a>(&'a self, global: &'a EditorSettings) -> (bool, &'a [Pair]) {
-        let enabled = self.auto_pairs_enabled.unwrap_or(global.auto_pairs_enabled);
+    pub(crate) fn auto_pairs_ref<'a>(
+        &'a self,
+        global: &'a EditorSettings,
+    ) -> (bool, &'a [Pair]) {
+        let enabled = self.auto_pairs_enabled(global);
         let pairs: &[Pair] = match &self.auto_pairs {
             Some(p) => p.as_slice(),
             None => &global.auto_pairs,
@@ -161,119 +296,12 @@ impl BufferOverrides {
     }
 }
 
-// ── :set parsing ─────────────────────────────────────────────────────────────
-
-/// Apply a global setting mutation from a `:set global key=value` command.
-///
-/// Returns `Err(message)` on unknown key or invalid value.
-pub(crate) fn apply_global(
-    settings: &mut EditorSettings,
-    key: &str,
-    value: &str,
-) -> Result<(), String> {
-    match key {
-        "scroll-margin" => {
-            settings.scroll_margin = parse_usize(value, key)?;
-        }
-        "scroll-margin-h" => {
-            settings.scroll_margin_h = parse_usize(value, key)?;
-        }
-        "mouse-scroll-lines" => {
-            settings.mouse_scroll_lines = parse_usize(value, key)?;
-        }
-        "mouse-enabled" => {
-            settings.mouse_enabled = parse_bool(value, key)?;
-        }
-        "mouse-select" => {
-            settings.mouse_select = parse_bool(value, key)?;
-        }
-        "jump-list-capacity" => {
-            settings.jump_list_capacity = parse_usize_nonzero(value, key)?;
-        }
-        "jump-line-threshold" => {
-            settings.jump_line_threshold = parse_usize(value, key)?;
-        }
-        "tab-width" => {
-            settings.tab_width = parse_tab_width(value)?;
-        }
-        "line-number-style" => {
-            settings.line_number_style = value.parse()?;
-        }
-        "auto-pairs-enabled" => {
-            settings.auto_pairs_enabled = parse_bool(value, key)?;
-        }
-        "whitespace-space" => {
-            settings.whitespace.space = value.parse()?;
-        }
-        "whitespace-tab" => {
-            settings.whitespace.tab = value.parse()?;
-        }
-        "whitespace-newline" => {
-            settings.whitespace.newline = value.parse()?;
-        }
-        "wrap-mode" => {
-            settings.wrap_mode = value.parse()?;
-        }
-        _ => return Err(format!("unknown setting '{key}'")),
-    }
-    Ok(())
-}
-
-/// Apply a per-buffer setting override from a `:set buffer key=value` command.
-///
-/// Returns `Err(message)` on unknown key, global-only key, or invalid value.
-pub(crate) fn apply_buffer(
-    overrides: &mut BufferOverrides,
-    key: &str,
-    value: &str,
-) -> Result<(), String> {
-    match key {
-        "tab-width" => {
-            overrides.tab_width = Some(parse_tab_width(value)?);
-        }
-        "wrap-mode" => {
-            overrides.wrap_mode = Some(value.parse()?);
-        }
-        "line-number-style" => {
-            overrides.line_number_style = Some(value.parse()?);
-        }
-        "auto-pairs-enabled" => {
-            overrides.auto_pairs_enabled = Some(parse_bool(value, key)?);
-        }
-        "whitespace-space" => {
-            // Ensure override struct exists; patch just the one field.
-            let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.space = value.parse()?;
-        }
-        "whitespace-tab" => {
-            let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.tab = value.parse()?;
-        }
-        "whitespace-newline" => {
-            let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.newline = value.parse()?;
-        }
-        // Global-only settings
-        "scroll-margin"
-        | "scroll-margin-h"
-        | "mouse-scroll-lines"
-        | "mouse-enabled"
-        | "mouse-select"
-        | "jump-list-capacity"
-        | "jump-line-threshold" => {
-            return Err(format!("'{key}' is a global-only setting — use :set global {key}=…"));
-        }
-        _ => return Err(format!("unknown setting '{key}'")),
-    }
-    Ok(())
-}
-
 // ── Value parsers ─────────────────────────────────────────────────────────────
 
 fn parse_usize(value: &str, key: &str) -> Result<usize, String> {
-    value
-        .parse::<usize>()
-        .map_err(|_| format!("invalid value for '{key}': expected a non-negative integer, got '{value}'"))
+    value.parse::<usize>().map_err(|_| {
+        format!("invalid value for '{key}': expected a non-negative integer, got '{value}'")
+    })
 }
 
 fn parse_usize_nonzero(value: &str, key: &str) -> Result<usize, String> {
@@ -400,196 +428,169 @@ mod tests {
         assert_eq!(pairs.len(), global.auto_pairs.len());
     }
 
-    // ── apply_global ──────────────────────────────────────────────────────────
+    // ── apply_setting: Global scope ───────────────────────────────────────────
+
+    fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Global, key, value, &mut s, &mut ov)?;
+        Ok(s)
+    }
+
+    fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Buffer, key, value, &mut s, &mut ov)?;
+        Ok(ov)
+    }
 
     #[test]
     fn set_global_scroll_margin() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "scroll-margin", "1").unwrap();
-        assert_eq!(s.scroll_margin, 1);
+        assert_eq!(global("scroll-margin", "1").unwrap().scroll_margin, 1);
+    }
+
+    #[test]
+    fn set_global_scroll_margin_h() {
+        assert_eq!(global("scroll-margin-h", "10").unwrap().scroll_margin_h, 10);
+    }
+
+    #[test]
+    fn set_global_mouse_scroll_lines() {
+        assert_eq!(global("mouse-scroll-lines", "5").unwrap().mouse_scroll_lines, 5);
+    }
+
+    #[test]
+    fn set_global_mouse_enabled() {
+        assert!(!global("mouse-enabled", "false").unwrap().mouse_enabled);
+    }
+
+    #[test]
+    fn set_global_mouse_select() {
+        assert!(global("mouse-select", "true").unwrap().mouse_select);
+    }
+
+    #[test]
+    fn set_global_jump_list_capacity() {
+        assert_eq!(global("jump-list-capacity", "50").unwrap().jump_list_capacity, 50);
+    }
+
+    #[test]
+    fn set_global_jump_list_capacity_zero_errors() {
+        assert!(global("jump-list-capacity", "0").is_err());
+    }
+
+    #[test]
+    fn set_global_jump_line_threshold() {
+        assert_eq!(global("jump-line-threshold", "10").unwrap().jump_line_threshold, 10);
     }
 
     #[test]
     fn set_global_tab_width() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "tab-width", "8").unwrap();
-        assert_eq!(s.tab_width, 8);
-    }
-
-    #[test]
-    fn set_global_line_number_style() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "line-number-style", "relative").unwrap();
-        assert_eq!(s.line_number_style, LineNumberStyle::Relative);
-    }
-
-    #[test]
-    fn set_global_wrap_mode_none() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "wrap-mode", "none").unwrap();
-        assert_eq!(s.wrap_mode, WrapMode::None);
-    }
-
-    #[test]
-    fn set_global_wrap_mode_indent() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "wrap-mode", "indent:80").unwrap();
-        assert_eq!(s.wrap_mode, WrapMode::Indent { width: 80 });
-    }
-
-    #[test]
-    fn set_global_auto_pairs_enabled() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "auto-pairs-enabled", "false").unwrap();
-        assert!(!s.auto_pairs_enabled);
-    }
-
-    #[test]
-    fn set_global_unknown_key_errors() {
-        let mut s = EditorSettings::default();
-        assert!(apply_global(&mut s, "nonexistent", "42").is_err());
-    }
-
-    #[test]
-    fn set_global_invalid_value_errors() {
-        let mut s = EditorSettings::default();
-        assert!(apply_global(&mut s, "scroll-margin", "abc").is_err());
+        assert_eq!(global("tab-width", "8").unwrap().tab_width, 8);
     }
 
     #[test]
     fn set_global_tab_width_zero_errors() {
-        let mut s = EditorSettings::default();
-        assert!(apply_global(&mut s, "tab-width", "0").is_err());
+        assert!(global("tab-width", "0").is_err());
     }
 
-    // ── apply_buffer ─────────────────────────────────────────────────────────
+    #[test]
+    fn set_global_line_number_style() {
+        assert_eq!(
+            global("line-number-style", "relative").unwrap().line_number_style,
+            LineNumberStyle::Relative,
+        );
+    }
+
+    #[test]
+    fn set_global_wrap_mode_none() {
+        assert_eq!(global("wrap-mode", "none").unwrap().wrap_mode, WrapMode::None);
+    }
+
+    #[test]
+    fn set_global_wrap_mode_indent() {
+        assert_eq!(
+            global("wrap-mode", "indent:80").unwrap().wrap_mode,
+            WrapMode::Indent { width: 80 },
+        );
+    }
+
+    #[test]
+    fn set_global_auto_pairs_enabled() {
+        assert!(!global("auto-pairs-enabled", "false").unwrap().auto_pairs_enabled);
+    }
+
+    #[test]
+    fn set_global_whitespace_space() {
+        assert_eq!(
+            global("whitespace-space", "all").unwrap().whitespace.space,
+            engine::pane::WhitespaceRender::All,
+        );
+    }
+
+    #[test]
+    fn set_global_whitespace_tab() {
+        assert_eq!(
+            global("whitespace-tab", "trailing").unwrap().whitespace.tab,
+            engine::pane::WhitespaceRender::Trailing,
+        );
+    }
+
+    #[test]
+    fn set_global_whitespace_newline() {
+        assert_eq!(
+            global("whitespace-newline", "all").unwrap().whitespace.newline,
+            engine::pane::WhitespaceRender::All,
+        );
+    }
+
+    #[test]
+    fn set_global_unknown_key_errors() {
+        assert!(global("nonexistent", "42").is_err());
+    }
+
+    #[test]
+    fn set_global_invalid_value_errors() {
+        assert!(global("scroll-margin", "abc").is_err());
+    }
+
+    #[test]
+    fn set_global_empty_value_errors() {
+        assert!(global("scroll-margin", "").is_err());
+        assert!(global("tab-width", "").is_err());
+        assert!(global("mouse-enabled", "").is_err());
+    }
+
+    // ── apply_setting: Buffer scope ───────────────────────────────────────────
 
     #[test]
     fn set_buffer_tab_width() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "tab-width", "8").unwrap();
+        let ov = buffer("tab-width", "8").unwrap();
         assert_eq!(ov.tab_width(&global), 8);
     }
 
     #[test]
     fn set_buffer_wrap_mode() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "wrap-mode", "none").unwrap();
+        let ov = buffer("wrap-mode", "none").unwrap();
         assert_eq!(ov.wrap_mode(&global), WrapMode::None);
     }
 
     #[test]
-    fn set_buffer_global_only_setting_errors() {
-        let mut ov = BufferOverrides::default();
-        let err = apply_buffer(&mut ov, "scroll-margin", "3").unwrap_err();
-        assert!(err.contains("global-only"), "expected 'global-only' in error: {err}");
-    }
-
-    #[test]
-    fn set_global_tab_width_propagates_to_unoverridden_buffer() {
-        let mut global = EditorSettings::default();
-        let ov = BufferOverrides::default();
-        apply_global(&mut global, "tab-width", "2").unwrap();
-        // Buffer has no override, so it inherits the new global value.
-        assert_eq!(ov.tab_width(&global), 2);
-    }
-
-    // ── apply_global: remaining keys ──────────────────────────────────────────
-
-    #[test]
-    fn set_global_scroll_margin_h() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "scroll-margin-h", "10").unwrap();
-        assert_eq!(s.scroll_margin_h, 10);
-    }
-
-    #[test]
-    fn set_global_mouse_scroll_lines() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "mouse-scroll-lines", "5").unwrap();
-        assert_eq!(s.mouse_scroll_lines, 5);
-    }
-
-    #[test]
-    fn set_global_mouse_enabled() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "mouse-enabled", "false").unwrap();
-        assert!(!s.mouse_enabled);
-    }
-
-    #[test]
-    fn set_global_mouse_select() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "mouse-select", "true").unwrap();
-        assert!(s.mouse_select);
-    }
-
-    #[test]
-    fn set_global_jump_list_capacity() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "jump-list-capacity", "50").unwrap();
-        assert_eq!(s.jump_list_capacity, 50);
-    }
-
-    #[test]
-    fn set_global_jump_list_capacity_zero_errors() {
-        let mut s = EditorSettings::default();
-        assert!(apply_global(&mut s, "jump-list-capacity", "0").is_err());
-    }
-
-    #[test]
-    fn set_global_jump_line_threshold() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "jump-line-threshold", "10").unwrap();
-        assert_eq!(s.jump_line_threshold, 10);
-    }
-
-    #[test]
-    fn set_global_whitespace_space() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "whitespace-space", "all").unwrap();
-        assert_eq!(s.whitespace.space, engine::pane::WhitespaceRender::All);
-    }
-
-    #[test]
-    fn set_global_whitespace_tab() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "whitespace-tab", "trailing").unwrap();
-        assert_eq!(s.whitespace.tab, engine::pane::WhitespaceRender::Trailing);
-    }
-
-    #[test]
-    fn set_global_whitespace_newline() {
-        let mut s = EditorSettings::default();
-        apply_global(&mut s, "whitespace-newline", "all").unwrap();
-        assert_eq!(s.whitespace.newline, engine::pane::WhitespaceRender::All);
-    }
-
-    #[test]
-    fn set_global_empty_value_errors() {
-        let mut s = EditorSettings::default();
-        assert!(apply_global(&mut s, "scroll-margin", "").is_err());
-        assert!(apply_global(&mut s, "tab-width", "").is_err());
-        assert!(apply_global(&mut s, "mouse-enabled", "").is_err());
-    }
-
-    // ── apply_buffer: remaining keys ──────────────────────────────────────────
-
-    #[test]
     fn set_buffer_line_number_style() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "line-number-style", "absolute").unwrap();
-        assert_eq!(ov.line_number_style(&global), engine::builtins::line_number::LineNumberStyle::Absolute);
+        let ov = buffer("line-number-style", "absolute").unwrap();
+        assert_eq!(
+            ov.line_number_style(&global),
+            engine::builtins::line_number::LineNumberStyle::Absolute,
+        );
     }
 
     #[test]
     fn set_buffer_auto_pairs_enabled() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "auto-pairs-enabled", "false").unwrap();
+        let ov = buffer("auto-pairs-enabled", "false").unwrap();
         let (enabled, _) = ov.auto_pairs_ref(&global);
         assert!(!enabled);
     }
@@ -597,24 +598,21 @@ mod tests {
     #[test]
     fn set_buffer_whitespace_space() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "whitespace-space", "all").unwrap();
+        let ov = buffer("whitespace-space", "all").unwrap();
         assert_eq!(ov.whitespace(&global).space, engine::pane::WhitespaceRender::All);
     }
 
     #[test]
     fn set_buffer_whitespace_tab() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "whitespace-tab", "trailing").unwrap();
+        let ov = buffer("whitespace-tab", "trailing").unwrap();
         assert_eq!(ov.whitespace(&global).tab, engine::pane::WhitespaceRender::Trailing);
     }
 
     #[test]
     fn set_buffer_whitespace_newline() {
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "whitespace-newline", "all").unwrap();
+        let ov = buffer("whitespace-newline", "all").unwrap();
         assert_eq!(ov.whitespace(&global).newline, engine::pane::WhitespaceRender::All);
     }
 
@@ -622,8 +620,7 @@ mod tests {
     fn set_buffer_whitespace_fields_are_independent() {
         // Setting whitespace-space should not touch tab or newline.
         let global = EditorSettings::default();
-        let mut ov = BufferOverrides::default();
-        apply_buffer(&mut ov, "whitespace-space", "all").unwrap();
+        let ov = buffer("whitespace-space", "all").unwrap();
         let ws = ov.whitespace(&global);
         assert_eq!(ws.space, engine::pane::WhitespaceRender::All);
         assert_eq!(ws.tab, engine::pane::WhitespaceRender::None);
@@ -631,13 +628,42 @@ mod tests {
     }
 
     #[test]
-    fn set_buffer_global_only_all_keys_error() {
+    fn set_buffer_global_only_setting_errors() {
+        let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        for key in ["scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
-                    "mouse-enabled", "mouse-select", "jump-list-capacity",
-                    "jump-line-threshold"] {
-            let err = apply_buffer(&mut ov, key, "1").unwrap_err();
-            assert!(err.contains("global-only"), "key '{key}': expected 'global-only' in error: {err}");
+        let err = apply_setting(SettingScope::Buffer, "scroll-margin", "3", &mut s, &mut ov)
+            .unwrap_err();
+        assert!(err.contains("global-only"), "expected 'global-only' in error: {err}");
+    }
+
+    #[test]
+    fn set_buffer_global_only_all_keys_error() {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        for key in [
+            "scroll-margin",
+            "scroll-margin-h",
+            "mouse-scroll-lines",
+            "mouse-enabled",
+            "mouse-select",
+            "jump-list-capacity",
+            "jump-line-threshold",
+        ] {
+            let err = apply_setting(SettingScope::Buffer, key, "1", &mut s, &mut ov)
+                .unwrap_err();
+            assert!(
+                err.contains("global-only"),
+                "key '{key}': expected 'global-only' in error: {err}",
+            );
         }
+    }
+
+    #[test]
+    fn set_global_tab_width_propagates_to_unoverridden_buffer() {
+        let mut global = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
+        // Buffer has no override, so it inherits the new global value.
+        assert_eq!(ov.tab_width(&global), 2);
     }
 }
