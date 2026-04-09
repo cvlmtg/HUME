@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::providers::ProviderSet;
 use crate::types::{EditorMode, Selection};
 use ropey::Rope;
@@ -52,6 +54,34 @@ pub enum WrapMode {
     Indent { width: u16 },
 }
 
+impl FromStr for WrapMode {
+    type Err = String;
+
+    /// Parse a wrap mode from a string.
+    ///
+    /// Accepted forms: `none`, `soft:N`, `word:N`, `indent:N`
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "none" {
+            return Ok(WrapMode::None);
+        }
+        let (kind, rest) = s.split_once(':').ok_or_else(|| {
+            format!("invalid wrap-mode '{s}': expected none, soft:N, word:N, or indent:N")
+        })?;
+        let width: u16 = rest.parse().map_err(|_| {
+            format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
+        })?;
+        if width == 0 {
+            return Err("invalid wrap-mode width: must be at least 1".into());
+        }
+        match kind {
+            "soft" => Ok(WrapMode::Soft { width }),
+            "word" => Ok(WrapMode::Word { width }),
+            "indent" => Ok(WrapMode::Indent { width }),
+            _ => Err(format!("invalid wrap-mode kind '{kind}': expected soft, word, or indent")),
+        }
+    }
+}
+
 impl WrapMode {
     pub fn wrap_width(&self) -> Option<u16> {
         match self {
@@ -81,6 +111,21 @@ pub enum WhitespaceRender {
     All,
     /// Only render for trailing whitespace (before end-of-line).
     Trailing,
+}
+
+impl FromStr for WhitespaceRender {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "none" => Ok(WhitespaceRender::None),
+            "all" => Ok(WhitespaceRender::All),
+            "trailing" => Ok(WhitespaceRender::Trailing),
+            _ => Err(format!(
+                "invalid whitespace render '{s}': expected none, all, or trailing"
+            )),
+        }
+    }
 }
 
 /// Configuration for whitespace indicator rendering.

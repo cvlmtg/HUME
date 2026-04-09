@@ -347,9 +347,9 @@ impl Editor {
         // ── Character input ───────────────────────────────────────────────────
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
-                if ap.enabled {
-                    if let Some(pair) = ap.pair_for_open(ch) {
+                let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                if ap_enabled {
+                    if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
@@ -358,7 +358,7 @@ impl Editor {
                             // Auto-close or wrap-selection.
                             self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
                         }
-                    } else if ap.pair_for_close(ch).is_some()
+                    } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
@@ -378,8 +378,8 @@ impl Editor {
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
-                if ap.enabled && self.is_between_pair() {
+                let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                if ap_enabled && self.is_between_pair(ap_pairs) {
                     self.doc.apply_edit_grouped(delete_pair);
                 } else {
                     self.doc.apply_edit_grouped(delete_char_backward);
@@ -493,8 +493,7 @@ impl Editor {
     /// `(char_before_cursor, char_at_cursor)` matches a configured pair.
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
-    fn is_between_pair(&self) -> bool {
-        let ap = self.doc.overrides.resolved_auto_pairs(&self.settings);
+    fn is_between_pair(&self, pairs: &[crate::auto_pairs::Pair]) -> bool {
         let buf = self.doc.buf();
         self.doc.sels().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head == 0 {
@@ -505,7 +504,7 @@ impl Editor {
             let prev = crate::core::grapheme::prev_grapheme_boundary(buf, sel.head);
             match (buf.char_at(prev), buf.char_at(sel.head)) {
                 (Some(before), Some(at)) => {
-                    ap.pairs.iter().any(|p| p.open == before && p.close == at)
+                    pairs.iter().any(|p| p.open == before && p.close == at)
                 }
                 _ => false,
             }
@@ -761,8 +760,6 @@ impl Editor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// Guard: every jump command has `is_jump() == true` in the registry.
     ///
     /// The registry is the single source of truth — there is no separate

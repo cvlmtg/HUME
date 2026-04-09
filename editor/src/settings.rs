@@ -23,9 +23,9 @@
 //! through [`BufferOverrides`] accessors and [`EditorSettings`].
 
 use engine::builtins::line_number::LineNumberStyle;
-use engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use engine::pane::{WhitespaceConfig, WrapMode};
 
-use crate::auto_pairs::{AutoPairsConfig, Pair};
+use crate::auto_pairs::Pair;
 use crate::ui::statusline::StatusLineConfig;
 
 // ── EditorSettings ────────────────────────────────────────────────────────────
@@ -93,7 +93,14 @@ impl Default for EditorSettings {
             wrap_mode: WrapMode::Indent { width: 76 },
             line_number_style: LineNumberStyle::Hybrid,
             auto_pairs_enabled: true,
-            auto_pairs: AutoPairsConfig::default().pairs,
+            auto_pairs: vec![
+                Pair { open: '(', close: ')' },
+                Pair { open: '[', close: ']' },
+                Pair { open: '{', close: '}' },
+                Pair { open: '"', close: '"' },
+                Pair { open: '\'', close: '\'' },
+                Pair { open: '`', close: '`' },
+            ],
             whitespace: WhitespaceConfig::default(),
         }
     }
@@ -139,14 +146,18 @@ impl BufferOverrides {
         self.whitespace.clone().unwrap_or_else(|| global.whitespace.clone())
     }
 
-    /// Build the resolved [`AutoPairsConfig`] for this buffer.
+    /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
+    /// Returns references to avoid a `Vec` allocation on every keystroke.
     /// The `enabled` flag and the pair list are resolved independently so a
     /// buffer can override just one without replacing the other.
-    pub(crate) fn resolved_auto_pairs(&self, global: &EditorSettings) -> AutoPairsConfig {
+    pub(crate) fn auto_pairs_ref<'a>(&'a self, global: &'a EditorSettings) -> (bool, &'a [Pair]) {
         let enabled = self.auto_pairs_enabled.unwrap_or(global.auto_pairs_enabled);
-        let pairs = self.auto_pairs.clone().unwrap_or_else(|| global.auto_pairs.clone());
-        AutoPairsConfig { enabled, pairs }
+        let pairs: &[Pair] = match &self.auto_pairs {
+            Some(p) => p.as_slice(),
+            None => &global.auto_pairs,
+        };
+        (enabled, pairs)
     }
 }
 
@@ -186,25 +197,22 @@ pub(crate) fn apply_global(
             settings.tab_width = parse_tab_width(value)?;
         }
         "line-number-style" => {
-            settings.line_number_style = parse_line_number_style(value)?;
+            settings.line_number_style = value.parse()?;
         }
-        "auto-pairs" => {
+        "auto-pairs-enabled" => {
             settings.auto_pairs_enabled = parse_bool(value, key)?;
         }
         "whitespace-space" => {
-            settings.whitespace.space = parse_whitespace_render(value)?;
+            settings.whitespace.space = value.parse()?;
         }
         "whitespace-tab" => {
-            settings.whitespace.tab = parse_whitespace_render(value)?;
+            settings.whitespace.tab = value.parse()?;
         }
         "whitespace-newline" => {
-            settings.whitespace.newline = parse_whitespace_render(value)?;
+            settings.whitespace.newline = value.parse()?;
         }
-        // Global-only settings that don't have a buffer-level equivalent
-        // are handled above. Settings below are buffer-overridable but also
-        // accepted globally (they set the global default).
         "wrap-mode" => {
-            settings.wrap_mode = parse_wrap_mode(value)?;
+            settings.wrap_mode = value.parse()?;
         }
         _ => return Err(format!("unknown setting '{key}'")),
     }
@@ -224,26 +232,26 @@ pub(crate) fn apply_buffer(
             overrides.tab_width = Some(parse_tab_width(value)?);
         }
         "wrap-mode" => {
-            overrides.wrap_mode = Some(parse_wrap_mode(value)?);
+            overrides.wrap_mode = Some(value.parse()?);
         }
         "line-number-style" => {
-            overrides.line_number_style = Some(parse_line_number_style(value)?);
+            overrides.line_number_style = Some(value.parse()?);
         }
-        "auto-pairs" => {
+        "auto-pairs-enabled" => {
             overrides.auto_pairs_enabled = Some(parse_bool(value, key)?);
         }
         "whitespace-space" => {
             // Ensure override struct exists; patch just the one field.
             let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.space = parse_whitespace_render(value)?;
+            ws.space = value.parse()?;
         }
         "whitespace-tab" => {
             let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.tab = parse_whitespace_render(value)?;
+            ws.tab = value.parse()?;
         }
         "whitespace-newline" => {
             let ws = overrides.whitespace.get_or_insert_with(WhitespaceConfig::default);
-            ws.newline = parse_whitespace_render(value)?;
+            ws.newline = value.parse()?;
         }
         // Global-only settings
         "scroll-margin"
@@ -292,58 +300,6 @@ fn parse_tab_width(value: &str) -> Result<u8, String> {
         return Err("invalid tab-width: must be at least 1".into());
     }
     Ok(n)
-}
-
-fn parse_line_number_style(value: &str) -> Result<LineNumberStyle, String> {
-    match value {
-        "absolute" => Ok(LineNumberStyle::Absolute),
-        "relative" => Ok(LineNumberStyle::Relative),
-        "hybrid" => Ok(LineNumberStyle::Hybrid),
-        _ => Err(format!(
-            "invalid line-number-style '{value}': expected absolute, relative, or hybrid"
-        )),
-    }
-}
-
-fn parse_whitespace_render(value: &str) -> Result<WhitespaceRender, String> {
-    match value {
-        "none" => Ok(WhitespaceRender::None),
-        "all" => Ok(WhitespaceRender::All),
-        "trailing" => Ok(WhitespaceRender::Trailing),
-        _ => Err(format!(
-            "invalid whitespace render '{value}': expected none, all, or trailing"
-        )),
-    }
-}
-
-/// Parse a wrap mode value.
-///
-/// Accepted forms:
-/// - `"none"` — no wrapping
-/// - `"soft:N"` — soft-wrap at column N
-/// - `"word:N"` — word-wrap at column N
-/// - `"indent:N"` — word-wrap with indent continuation at column N
-fn parse_wrap_mode(value: &str) -> Result<WrapMode, String> {
-    if value == "none" {
-        return Ok(WrapMode::None);
-    }
-    let (kind, rest) = value.split_once(':').ok_or_else(|| {
-        format!("invalid wrap-mode '{value}': expected none, soft:N, word:N, or indent:N")
-    })?;
-    let width: u16 = rest.parse().map_err(|_| {
-        format!("invalid wrap-mode width in '{value}': expected a column count, got '{rest}'")
-    })?;
-    if width == 0 {
-        return Err("invalid wrap-mode width: must be at least 1".into());
-    }
-    match kind {
-        "soft" => Ok(WrapMode::Soft { width }),
-        "word" => Ok(WrapMode::Word { width }),
-        "indent" => Ok(WrapMode::Indent { width }),
-        _ => Err(format!(
-            "invalid wrap-mode kind '{kind}': expected soft, word, or indent"
-        )),
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -429,19 +385,19 @@ mod tests {
     fn auto_pairs_override_enabled_only() {
         let global = EditorSettings::default();
         let ov = BufferOverrides { auto_pairs_enabled: Some(false), ..Default::default() };
-        let ap = ov.resolved_auto_pairs(&global);
-        assert!(!ap.enabled);
+        let (enabled, pairs) = ov.auto_pairs_ref(&global);
+        assert!(!enabled);
         // Pairs list inherited from global.
-        assert_eq!(ap.pairs.len(), global.auto_pairs.len());
+        assert_eq!(pairs.len(), global.auto_pairs.len());
     }
 
     #[test]
     fn auto_pairs_both_inherited_when_no_override() {
         let global = EditorSettings::default();
         let ov = BufferOverrides::default();
-        let ap = ov.resolved_auto_pairs(&global);
-        assert_eq!(ap.enabled, global.auto_pairs_enabled);
-        assert_eq!(ap.pairs.len(), global.auto_pairs.len());
+        let (enabled, pairs) = ov.auto_pairs_ref(&global);
+        assert_eq!(enabled, global.auto_pairs_enabled);
+        assert_eq!(pairs.len(), global.auto_pairs.len());
     }
 
     // ── apply_global ──────────────────────────────────────────────────────────
@@ -482,9 +438,9 @@ mod tests {
     }
 
     #[test]
-    fn set_global_auto_pairs() {
+    fn set_global_auto_pairs_enabled() {
         let mut s = EditorSettings::default();
-        apply_global(&mut s, "auto-pairs", "false").unwrap();
+        apply_global(&mut s, "auto-pairs-enabled", "false").unwrap();
         assert!(!s.auto_pairs_enabled);
     }
 

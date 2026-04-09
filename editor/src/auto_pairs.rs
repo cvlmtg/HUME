@@ -20,54 +20,6 @@ impl Pair {
     }
 }
 
-/// Configuration for automatic bracket and quote pairing.
-///
-/// The `enabled` flag is a master switch; `pairs` controls which characters
-/// participate. Both are configurable via the Steel scripting layer.
-#[derive(Debug, Clone)]
-pub(crate) struct AutoPairsConfig {
-    /// Master switch. When `false`, all auto-pair behavior is disabled and
-    /// the editor falls back to plain `insert_char` / `delete_char_backward`.
-    pub enabled: bool,
-    /// The active pairs. Lookup is by character; order does not matter.
-    pub pairs: Vec<Pair>,
-}
-
-impl Default for AutoPairsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            pairs: vec![
-                Pair { open: '(', close: ')' },
-                Pair { open: '[', close: ']' },
-                Pair { open: '{', close: '}' },
-                Pair { open: '"', close: '"' },
-                Pair { open: '\'', close: '\'' },
-                Pair { open: '`', close: '`' },
-            ],
-        }
-    }
-}
-
-impl AutoPairsConfig {
-    /// Return the pair whose `open` char matches `ch`, if any.
-    ///
-    /// Works for both asymmetric pairs (`(` → `Pair { '(', ')' }`) and
-    /// symmetric pairs (`"` → `Pair { '"', '"' }`).
-    pub(crate) fn pair_for_open(&self, ch: char) -> Option<&Pair> {
-        self.pairs.iter().find(|p| p.open == ch)
-    }
-
-    /// Return the pair whose `close` char matches `ch`, if any.
-    ///
-    /// Excludes symmetric pairs (where `open == close`) because a lone `"` is
-    /// always treated as an opener — skip-close for symmetric pairs is handled
-    /// in the caller via `pair_for_open` + `is_symmetric` check.
-    pub(crate) fn pair_for_close(&self, ch: char) -> Option<&Pair> {
-        self.pairs.iter().find(|p| p.close == ch && !p.is_symmetric())
-    }
-}
-
 // ── Edit functions ────────────────────────────────────────────────────────────
 
 /// Insert an opening bracket and its matching close, placing the cursor

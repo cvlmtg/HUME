@@ -2924,7 +2924,6 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
 fn page_test_editor() -> Editor {
     use crate::core::buffer::Buffer;
     use crate::core::selection::{Selection, SelectionSet};
-    use engine::pane::WrapMode;
     let content = "a\n".repeat(30);
     let buf = Buffer::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
