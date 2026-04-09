@@ -371,35 +371,46 @@ impl CommandRegistry {
                 self.register(MappableCommand::Edit { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true })
             };
         }
-        macro_rules! editor_cmd {
-            ($name:literal, $doc:literal, $fun:expr, extendable, jump) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false, extendable: true })
-            };
-            ($name:literal, $doc:literal, $fun:expr, jump) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: true, visual_move: false, extendable: false })
-            };
-            ($name:literal, $doc:literal, $fun:expr, extendable, visual_move) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true, extendable: true })
-            };
-            ($name:literal, $doc:literal, $fun:expr, visual_move) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: true, extendable: false })
-            };
-            ($name:literal, $doc:literal, $fun:expr, extendable) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false, extendable: true })
-            };
-            ($name:literal, $doc:literal, $fun:expr, repeatable) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: true, jump: false, visual_move: false, extendable: false })
-            };
-            ($name:literal, $doc:literal, $fun:expr) => {
-                self.register(MappableCommand::EditorCmd { name: Cow::Borrowed($name), doc: Cow::Borrowed($doc), fun: $fun, repeatable: false, jump: false, visual_move: false, extendable: false })
-            };
+
+        // Builder for EditorCmd registration. Each flag method sets one bool;
+        // .reg(registry) terminates the chain. Adding a new flag costs one
+        // method — existing call sites are unaffected.
+        struct EditorCmdBuilder {
+            name: &'static str,
+            doc:  &'static str,
+            fun:  fn(&mut super::Editor, usize, MotionMode),
+            repeatable:  bool,
+            jump:        bool,
+            visual_move: bool,
+            extendable:  bool,
         }
+        impl EditorCmdBuilder {
+            fn repeatable(mut self)  -> Self { self.repeatable  = true; self }
+            fn jump(mut self)        -> Self { self.jump        = true; self }
+            fn visual_move(mut self) -> Self { self.visual_move = true; self }
+            fn extendable(mut self)  -> Self { self.extendable  = true; self }
+            fn reg(self, r: &mut CommandRegistry) {
+                r.register(MappableCommand::EditorCmd {
+                    name: Cow::Borrowed(self.name),
+                    doc:  Cow::Borrowed(self.doc),
+                    fun:  self.fun,
+                    repeatable:  self.repeatable,
+                    jump:        self.jump,
+                    visual_move: self.visual_move,
+                    extendable:  self.extendable,
+                });
+            }
+        }
+        // Construct a builder with all flags false.
+        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::Editor, usize, MotionMode)| {
+            EditorCmdBuilder { name, doc, fun, repeatable: false, jump: false, visual_move: false, extendable: false }
+        };
 
         // ── Character motions ─────────────────────────────────────────────────
         motion!("move-right", "Move cursors one grapheme to the right.", cmd_move_right);
         motion!("move-left",  "Move cursors one grapheme to the left.",  cmd_move_left);
-        editor_cmd!("move-down",  "Move cursors down one visual line.",   cmd_visual_move_down,   extendable, visual_move);
-        editor_cmd!("move-up",    "Move cursors up one visual line.",     cmd_visual_move_up,     extendable, visual_move);
+        ecmd("move-down", "Move cursors down one visual line.", cmd_visual_move_down).extendable().visual_move().reg(self);
+        ecmd("move-up",   "Move cursors up one visual line.",   cmd_visual_move_up  ).extendable().visual_move().reg(self);
 
         // ── Buffer-level goto motions ─────────────────────────────────────────
         motion!("goto-first-line", "Move cursors to the first character of the buffer.",    cmd_goto_first_line, jump);
@@ -486,69 +497,69 @@ impl CommandRegistry {
         use super::commands::*;
 
         // ── Editor commands — mode transitions ────────────────────────────────
-        editor_cmd!("insert-before",        "Enter insert mode; collapse each selection to its start.",          cmd_insert_before,        repeatable);
-        editor_cmd!("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",     cmd_insert_after,         repeatable);
-        editor_cmd!("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.",  cmd_insert_at_line_start, repeatable);
-        editor_cmd!("insert-at-line-end",   "Enter insert mode after the last character on the line.",          cmd_insert_at_line_end,   repeatable);
-        editor_cmd!("open-line-below",      "Open a new line below the cursor and enter insert mode.",          cmd_open_line_below,      repeatable);
-        editor_cmd!("open-line-above",      "Open a new line above the cursor and enter insert mode.",          cmd_open_line_above,      repeatable);
-        editor_cmd!("command-mode",         "Open the command-mode mini-buffer.",                                           cmd_command_mode);
-        editor_cmd!("exit-insert",          "Return to normal mode from insert mode.",                                     cmd_exit_insert);
+        ecmd("insert-before",        "Enter insert mode; collapse each selection to its start.",         cmd_insert_before       ).repeatable().reg(self);
+        ecmd("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",    cmd_insert_after        ).repeatable().reg(self);
+        ecmd("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.", cmd_insert_at_line_start).repeatable().reg(self);
+        ecmd("insert-at-line-end",   "Enter insert mode after the last character on the line.",         cmd_insert_at_line_end  ).repeatable().reg(self);
+        ecmd("open-line-below",      "Open a new line below the cursor and enter insert mode.",         cmd_open_line_below     ).repeatable().reg(self);
+        ecmd("open-line-above",      "Open a new line above the cursor and enter insert mode.",         cmd_open_line_above     ).repeatable().reg(self);
+        ecmd("command-mode",         "Open the command-mode mini-buffer.",                              cmd_command_mode        ).reg(self);
+        ecmd("exit-insert",          "Return to normal mode from insert mode.",                         cmd_exit_insert         ).reg(self);
 
         // ── Editor commands — edit composites ─────────────────────────────────
-        editor_cmd!("delete",       "Yank selections into the default register, then delete them.",                        cmd_delete,       repeatable);
-        editor_cmd!("change",       "Yank, delete selections, then enter insert mode (one undo group).",                   cmd_change,       repeatable);
-        editor_cmd!("yank",         "Yank selections into the default register without deleting.",                         cmd_yank);
-        editor_cmd!("paste-after",  "Paste register contents after the selection.",                                        cmd_paste_after,  repeatable);
-        editor_cmd!("paste-before", "Paste register contents before the selection.",                                       cmd_paste_before, repeatable);
-        editor_cmd!("undo",         "Undo the last change.",                                                               cmd_undo);
-        editor_cmd!("redo",         "Redo the last undone change.",                                                        cmd_redo);
+        ecmd("delete",       "Yank selections into the default register, then delete them.",              cmd_delete      ).repeatable().reg(self);
+        ecmd("change",       "Yank, delete selections, then enter insert mode (one undo group).",         cmd_change      ).repeatable().reg(self);
+        ecmd("yank",         "Yank selections into the default register without deleting.",               cmd_yank        ).reg(self);
+        ecmd("paste-after",  "Paste register contents after the selection.",                              cmd_paste_after ).repeatable().reg(self);
+        ecmd("paste-before", "Paste register contents before the selection.",                             cmd_paste_before).repeatable().reg(self);
+        ecmd("undo",         "Undo the last change.",                                                     cmd_undo        ).reg(self);
+        ecmd("redo",         "Redo the last undone change.",                                              cmd_redo        ).reg(self);
 
         // ── Editor commands — selection state ────────────────────────────────
-        editor_cmd!("toggle-extend",            "Toggle sticky extend mode.",                                              cmd_toggle_extend);
-        editor_cmd!("collapse-and-exit-extend", "Collapse each selection to its cursor and exit extend mode.",             cmd_collapse_and_exit_extend);
+        ecmd("toggle-extend",            "Toggle sticky extend mode.",                                              cmd_toggle_extend           ).reg(self);
+        ecmd("collapse-and-exit-extend", "Collapse each selection to its cursor and exit extend mode.",             cmd_collapse_and_exit_extend).reg(self);
 
         // ── Editor commands — find / till (read pending_char) ─────────────────
-        editor_cmd!("find-forward",   "Find next occurrence of a character (inclusive, forward).",          cmd_find_forward,   extendable);
-        editor_cmd!("find-backward",  "Find previous occurrence of a character (inclusive, backward).",     cmd_find_backward,  extendable);
-        editor_cmd!("till-forward",   "Move to just before next occurrence of a character (exclusive).",    cmd_till_forward,   extendable);
-        editor_cmd!("till-backward",  "Move to just after previous occurrence of a character (exclusive).", cmd_till_backward,  extendable);
-        editor_cmd!("repeat-find-forward",  "Repeat the last find/till motion forward.",  cmd_repeat_find_forward,  extendable);
-        editor_cmd!("repeat-find-backward", "Repeat the last find/till motion backward.", cmd_repeat_find_backward, extendable);
+        ecmd("find-forward",         "Find next occurrence of a character (inclusive, forward).",          cmd_find_forward        ).extendable().reg(self);
+        ecmd("find-backward",        "Find previous occurrence of a character (inclusive, backward).",     cmd_find_backward       ).extendable().reg(self);
+        ecmd("till-forward",         "Move to just before next occurrence of a character (exclusive).",    cmd_till_forward        ).extendable().reg(self);
+        ecmd("till-backward",        "Move to just after previous occurrence of a character (exclusive).", cmd_till_backward       ).extendable().reg(self);
+        ecmd("repeat-find-forward",  "Repeat the last find/till motion forward.",                         cmd_repeat_find_forward ).extendable().reg(self);
+        ecmd("repeat-find-backward", "Repeat the last find/till motion backward.",                        cmd_repeat_find_backward).extendable().reg(self);
 
         // ── Editor commands — replace (reads pending_char) ───────────────────
-        editor_cmd!("replace", "Replace every character in each selection with the next typed character.", cmd_replace, repeatable);
+        ecmd("replace", "Replace every character in each selection with the next typed character.", cmd_replace).repeatable().reg(self);
 
         // ── Editor commands — page scroll ─────────────────────────────────────
-        editor_cmd!("page-down", "Scroll down by one viewport height.", cmd_page_down, extendable, jump);
-        editor_cmd!("page-up",   "Scroll up by one viewport height.",   cmd_page_up,   extendable, jump);
+        ecmd("page-down", "Scroll down by one viewport height.", cmd_page_down).extendable().jump().reg(self);
+        ecmd("page-up",   "Scroll up by one viewport height.",   cmd_page_up  ).extendable().jump().reg(self);
 
-        // ── Editor commands — half-page scroll ────────────────────────────
-        editor_cmd!("half-page-down", "Scroll down by half a viewport height.", cmd_half_page_down, extendable);
-        editor_cmd!("half-page-up",   "Scroll up by half a viewport height.",   cmd_half_page_up,   extendable);
+        // ── Editor commands — half-page scroll ────────────────────────────────
+        ecmd("half-page-down", "Scroll down by half a viewport height.", cmd_half_page_down).extendable().reg(self);
+        ecmd("half-page-up",   "Scroll up by half a viewport height.",   cmd_half_page_up  ).extendable().reg(self);
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
-        editor_cmd!("repeat-last-action", "Repeat the last editing action.", cmd_repeat);
+        ecmd("repeat-last-action", "Repeat the last editing action.", cmd_repeat).reg(self);
 
         // ── Editor commands — search ──────────────────────────────────────────
-        editor_cmd!("search-forward",        "Enter search mode (forward).",                            cmd_search_forward);
-        editor_cmd!("search-backward",       "Enter search mode (backward).",                           cmd_search_backward);
-        editor_cmd!("search-next", "Jump to the next search match.",     cmd_search_next, extendable, jump);
-        editor_cmd!("search-prev", "Jump to the previous search match.", cmd_search_prev, extendable, jump);
-        editor_cmd!("clear-search",          "Clear search highlights (`:clear-search` / `:cs`).",      cmd_clear_search);
+        ecmd("search-forward",          "Enter search mode (forward).",                          cmd_search_forward         ).reg(self);
+        ecmd("search-backward",         "Enter search mode (backward).",                         cmd_search_backward        ).reg(self);
+        ecmd("search-next",             "Jump to the next search match.",                        cmd_search_next            ).extendable().jump().reg(self);
+        ecmd("search-prev",             "Jump to the previous search match.",                    cmd_search_prev            ).extendable().jump().reg(self);
+        ecmd("clear-search",            "Clear search highlights (`:clear-search` / `:cs`).",    cmd_clear_search           ).reg(self);
 
         // ── Editor commands — select ─────────────────────────────────────────
-        editor_cmd!("select-within",          "Select regex matches within current selections.",          cmd_select_within);
-        editor_cmd!("select-all-matches",     "Turn every search match in the buffer into a selection.", cmd_select_all_matches);
-        editor_cmd!("use-selection-as-search", "Use primary selection text as the search pattern.",      cmd_use_selection_as_search);
+        ecmd("select-within",           "Select regex matches within current selections.",          cmd_select_within          ).reg(self);
+        ecmd("select-all-matches",      "Turn every search match in the buffer into a selection.", cmd_select_all_matches     ).reg(self);
+        ecmd("use-selection-as-search", "Use primary selection text as the search pattern.",       cmd_use_selection_as_search).reg(self);
 
         // ── Editor commands — jump list ──────────────────────────────────────
-        editor_cmd!("jump-backward", "Navigate to the previous position in the jump list.", cmd_jump_backward);
-        editor_cmd!("jump-forward",  "Navigate to the next position in the jump list.",     cmd_jump_forward);
+        ecmd("jump-backward", "Navigate to the previous position in the jump list.", cmd_jump_backward).reg(self);
+        ecmd("jump-forward",  "Navigate to the next position in the jump list.",     cmd_jump_forward ).reg(self);
 
         // ── Editor commands — misc ────────────────────────────────────────────
-        editor_cmd!("force-quit", "Quit without checking for unsaved changes.", cmd_quit);
+        ecmd("force-quit", "Quit without checking for unsaved changes.", cmd_quit).reg(self);
 
         // ── Typed commands (`:` command line) ─────────────────────────────────
         macro_rules! typed_cmd {
