@@ -226,6 +226,43 @@ impl Editor {
             }
         }
 
+        // ── Extend-trie override ─────────────────────────────────────────────
+        //
+        // In sticky extend mode, check the extend trie before the normal trie.
+        // The extend trie is sparse — only keys with extend-specific behaviour
+        // are bound (default: `o → flip-selections`). A match dispatches that
+        // command directly with `extend = false`. A miss falls through to the
+        // normal trie, which will be walked with `extend = true` as usual.
+        //
+        // Only applied at the trie root (no pending_keys) and without modifiers,
+        // to avoid intercepting mid-sequence keys or Ctrl variants.
+        if self.mode == EditorMode::Extend
+            && self.pending_keys.is_empty()
+            && !key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            let extend_result = self.keymap.extend.walk(&[key]);
+            match extend_result {
+                WalkResult::Leaf(cmd) => {
+                    let count = self.count.take().unwrap_or(1);
+                    self.explicit_count = false;
+                    self.execute_keymap_command(cmd.name.clone(), count, false);
+                    return;
+                }
+                WalkResult::Interior { .. } => {
+                    // Mid-sequence in extend trie — wait for more keys.
+                    self.pending_keys.push(key);
+                    return;
+                }
+                WalkResult::WaitChar(wc) => {
+                    self.wait_char = Some(wc);
+                    return;
+                }
+                WalkResult::NoMatch => {
+                    // Fall through to normal trie with extend = true.
+                }
+            }
+        }
+
         // ── Ctrl-key normalisation ────────────────────────────────────────────
         //
         // Two categories of CONTROL keys:

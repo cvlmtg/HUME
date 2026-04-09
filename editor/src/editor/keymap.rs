@@ -212,6 +212,9 @@ impl KeyTrie {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BindMode {
     Normal,
+    /// Sparse extend-mode overrides. These are checked first in extend mode;
+    /// a miss falls through to the normal trie with `extend = true`.
+    Extend,
     Insert,
 }
 
@@ -222,6 +225,13 @@ pub(crate) enum BindMode {
 /// [`Editor`]: super::Editor
 pub(crate) struct Keymap {
     pub(super) normal: KeyTrie,
+    /// Sparse extend-mode overrides (e.g. `o → flip-selections`).
+    ///
+    /// Checked before the normal trie when the editor is in Extend mode.
+    /// A match dispatches directly with `extend = false` — these are
+    /// different commands, not extend variants of normal commands.
+    /// A miss falls through to the normal trie with `extend = true`.
+    pub(super) extend: KeyTrie,
     pub(super) insert: KeyTrie,
 }
 
@@ -229,6 +239,7 @@ impl Default for Keymap {
     fn default() -> Self {
         Self {
             normal: default_normal_keymap(),
+            extend: default_extend_keymap(),
             insert: default_insert_keymap(),
         }
     }
@@ -247,6 +258,7 @@ impl Keymap {
         debug_assert!(!keys.is_empty(), "bind_user called with empty key sequence");
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
+            BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
         };
         trie.bind_sequence(keys, KeymapCommand { name: command });
@@ -259,6 +271,7 @@ impl Keymap {
     pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
+            BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
         };
         trie.remove_sequence(keys);
@@ -556,6 +569,23 @@ fn default_normal_keymap() -> KeyTrie {
     // Ctrl+c quits from normal mode.
     t.bind_leaf(key!(Ctrl + 'c'), cmd!("force-quit"));
 
+    t
+}
+
+// ── Default Extend keymap ─────────────────────────────────────────────────────
+
+/// Sparse overrides active when the editor is in Extend mode.
+///
+/// Keys bound here dispatch their command directly (with `extend = false`),
+/// bypassing the normal trie entirely. Keys *not* bound here fall through to
+/// the normal trie with `extend = true` — the extend-variant resolution in
+/// `execute_keymap_command` then applies as usual.
+///
+/// Default: `o → flip-selections` (mirrors Helix/Kakoune: `Alt+o` in extend
+/// mode flips the selection direction).
+fn default_extend_keymap() -> KeyTrie {
+    let mut t = KeyTrie::new("extend");
+    t.bind_leaf(key!('o'), cmd!("flip-selections"));
     t
 }
 
