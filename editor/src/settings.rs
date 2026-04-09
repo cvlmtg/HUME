@@ -650,6 +650,25 @@ mod tests {
     }
 
     #[test]
+    fn set_buffer_unknown_key_errors() {
+        assert!(buffer("nonexistent", "42").is_err());
+    }
+
+    #[test]
+    fn set_global_whitespace_invalid_value_errors() {
+        assert!(global("whitespace-space", "bogus").is_err());
+        assert!(global("whitespace-tab", "bogus").is_err());
+        assert!(global("whitespace-newline", "bogus").is_err());
+    }
+
+    #[test]
+    fn set_buffer_whitespace_invalid_value_errors() {
+        assert!(buffer("whitespace-space", "bogus").is_err());
+        assert!(buffer("whitespace-tab", "bogus").is_err());
+        assert!(buffer("whitespace-newline", "bogus").is_err());
+    }
+
+    #[test]
     fn set_global_tab_width_propagates_to_unoverridden_buffer() {
         let mut global = EditorSettings::default();
         let mut ov = BufferOverrides::default();
