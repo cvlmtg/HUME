@@ -9,7 +9,7 @@ use crate::types::{EditorMode, RowKind, Scope};
 // ---------------------------------------------------------------------------
 
 /// How line numbers are displayed in the gutter.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum LineNumberStyle {
     /// 1-based absolute line numbers.
     Absolute,
@@ -24,7 +24,7 @@ impl FromStr for LineNumberStyle {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_ascii_lowercase().as_str() {
             "absolute" => Ok(LineNumberStyle::Absolute),
             "relative" => Ok(LineNumberStyle::Relative),
             "hybrid" => Ok(LineNumberStyle::Hybrid),
@@ -194,6 +194,29 @@ mod tests {
         let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid);
         let cell = col.render_row(RowKind::LineStart { line_idx: 2 }, EditorMode::Normal, 5);
         assert_eq!(cell.as_str(), "3"); // |2-5| = 3
+    }
+
+    // ── LineNumberStyle::FromStr ──────────────────────────────────────────
+
+    #[test]
+    fn line_number_style_from_str_all_variants() {
+        assert_eq!("absolute".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Absolute);
+        assert_eq!("relative".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Relative);
+        assert_eq!("hybrid".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Hybrid);
+    }
+
+    #[test]
+    fn line_number_style_from_str_case_insensitive() {
+        assert_eq!("Absolute".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Absolute);
+        assert_eq!("RELATIVE".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Relative);
+        assert_eq!("Hybrid".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Hybrid);
+    }
+
+    #[test]
+    fn line_number_style_from_str_error() {
+        let err = "invalid".parse::<LineNumberStyle>().unwrap_err();
+        assert!(err.contains("invalid"), "error should mention input: {err}");
+        assert!(err.contains("absolute"), "error should list valid values: {err}");
     }
 
     #[test]
