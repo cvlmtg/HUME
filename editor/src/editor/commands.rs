@@ -733,12 +733,13 @@ fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) {
 }
 
 fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) {
+    const USAGE: &str = "Usage: :set global|buffer key=value";
     let Some(arg) = arg else {
-        ed.status_msg = Some("Usage: :set global|buffer key=value".into());
+        ed.status_msg = Some(USAGE.into());
         return;
     };
     let Some((scope, rest)) = arg.split_once(' ') else {
-        ed.status_msg = Some("Usage: :set global|buffer key=value".into());
+        ed.status_msg = Some(USAGE.into());
         return;
     };
     let Some((key, value)) = rest.split_once('=') else {

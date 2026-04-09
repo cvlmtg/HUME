@@ -2,22 +2,23 @@
 //!
 //! Records the cursor position (as a full [`SelectionSet`]) before "jump"
 //! commands like `goto-first-line`, `goto-last-line`, `search-next`,
-//! `search-prev`, page scroll, and any motion that crosses
-//! more than [`JUMP_LINE_THRESHOLD`] lines. The user navigates the history with
-//! `jump-backward` and `jump-forward`.
+//! `search-prev`, page scroll, and any motion that crosses more than
+//! `EditorSettings::jump_line_threshold` lines. The user navigates the
+//! history with `jump-backward` and `jump-forward`.
 //!
-//! Internally this is a [`VecDeque<JumpEntry>`] with a cursor index, capped at
-//! [`JUMP_LIST_CAPACITY`]. When the user navigates backward and then makes a
-//! new jump, forward history is truncated — matching Vim/Helix semantics.
+//! Internally this is a [`VecDeque<JumpEntry>`] with a cursor index, capped
+//! at `EditorSettings::jump_list_capacity`. When the user navigates backward
+//! and then makes a new jump, forward history is truncated — matching
+//! Vim/Helix semantics.
 
 use std::collections::VecDeque;
 
 use crate::core::buffer::Buffer;
 use crate::core::selection::SelectionSet;
 
-#[cfg(test)]
 /// Default capacity — kept here so tests can construct jump lists without
 /// importing `EditorSettings`.
+#[cfg(test)]
 pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
@@ -60,7 +61,7 @@ impl JumpList {
     }
 
     /// Record a jump. Truncates forward history, deduplicates against the last
-    /// entry by line number, and caps the list at [`JUMP_LIST_CAPACITY`].
+    /// entry by line number, and caps the list at `self.capacity`.
     pub(crate) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 

@@ -14,7 +14,7 @@ use crate::ops::pair::{find_bracket_pair, find_quote_pair};
 
 /// All recognised delimiter pairs.  Asymmetric first, then symmetric.
 ///
-/// Intentionally a superset of `AutoPairsConfig::default()`: angle brackets
+/// Intentionally a superset of the default auto-pair set: angle brackets
 /// (`<>`) are useful for surround-select in markup, but shouldn't auto-close
 /// in insert mode where `<` is commonly a comparison operator.
 const PAIRS: &[(char, char)] = &[

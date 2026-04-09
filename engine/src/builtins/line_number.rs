@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::str::FromStr;
 
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
 use crate::types::{EditorMode, RowKind, Scope};
@@ -17,6 +18,21 @@ pub enum LineNumberStyle {
     /// Absolute number on the cursor line, relative everywhere else.
     #[default]
     Hybrid,
+}
+
+impl FromStr for LineNumberStyle {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "absolute" => Ok(LineNumberStyle::Absolute),
+            "relative" => Ok(LineNumberStyle::Relative),
+            "hybrid" => Ok(LineNumberStyle::Hybrid),
+            _ => Err(format!(
+                "invalid line-number-style '{s}': expected absolute, relative, or hybrid"
+            )),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
