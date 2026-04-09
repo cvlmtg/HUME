@@ -17,19 +17,18 @@
 //!
 //! # Extend-mode duality
 //!
-//! The keymap stores only base command names. Extend-variant pairing lives in
-//! the [`CommandRegistry`] — when extend mode is active, the dispatcher
-//! resolves the extend variant automatically via
-//! [`CommandRegistry::extend_variant`].
-//!
-//! [`CommandRegistry`]: super::registry::CommandRegistry
+//! The keymap stores only base command names. Extend mode is resolved at
+//! dispatch time via a `MotionMode` parameter — no separate extend-variant
+//! command names are needed. The sparse `extend` trie in [`Keymap`] holds
+//! per-key overrides (e.g. `o → flip-selections`) that take priority in
+//! extend mode before falling through to the normal trie with `extend = true`.
 //!
 //! # Wait-char bindings
 //!
 //! Keys like f/t/F/T/r produce a [`WaitCharPending`] that stores the command
 //! name to dispatch. When the next character arrives, the dispatcher stores it
 //! in `Editor.pending_char` and dispatches the named command. Extend-mode
-//! resolution happens at char-consumption time via the registry.
+//! resolution happens at char-consumption time via the `ctrl_extend` flag.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -472,8 +471,8 @@ fn default_normal_keymap() -> KeyTrie {
     // Ctrl+x/X extend the selection to cover additional lines — works in both
     // kitty and legacy mode (unlike the basic-motion Ctrl keys, these are not
     // kitty-only; they were explicitly gated on CONTROL in the old code).
-    t.bind_leaf(key!(Ctrl + 'x'), cmd!("extend-select-line"));
-    t.bind_leaf(key!(Ctrl + 'X'), cmd!("extend-select-line-backward"));
+    t.bind_leaf(key!(Ctrl + 'x'), cmd!("select-line"));
+    t.bind_leaf(key!(Ctrl + 'X'), cmd!("select-line-backward"));
 
     // ── Page scroll ───────────────────────────────────────────────────────────
     // PageUp/PageDown use view.height as count — handled by EditorCmd, not a
@@ -916,8 +915,8 @@ mod tests {
             "Ctrl+c should map to force-quit");
         assert!(matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
             "Ctrl+r should map to redo");
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "extend-select-line"),
-            "Ctrl+x should map to extend-select-line");
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
+            "Ctrl+x should map to select-line");
     }
 
     #[test]

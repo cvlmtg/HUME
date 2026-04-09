@@ -193,26 +193,14 @@ fn find_char(
 pub(super) fn cmd_find_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
     find_char(ed, count, mode, FindKind::Inclusive, find_char_forward);
 }
-pub(super) fn cmd_extend_find_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    find_char(ed, count, MotionMode::Extend, FindKind::Inclusive, find_char_forward);
-}
 pub(super) fn cmd_find_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
     find_char(ed, count, mode, FindKind::Inclusive, find_char_backward);
-}
-pub(super) fn cmd_extend_find_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    find_char(ed, count, MotionMode::Extend, FindKind::Inclusive, find_char_backward);
 }
 pub(super) fn cmd_till_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
     find_char(ed, count, mode, FindKind::Exclusive, find_char_forward);
 }
-pub(super) fn cmd_extend_till_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    find_char(ed, count, MotionMode::Extend, FindKind::Exclusive, find_char_forward);
-}
 pub(super) fn cmd_till_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
     find_char(ed, count, mode, FindKind::Exclusive, find_char_backward);
-}
-pub(super) fn cmd_extend_till_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    find_char(ed, count, MotionMode::Extend, FindKind::Exclusive, find_char_backward);
 }
 
 // ── Repeat find ───────────────────────────────────────────────────────────────
@@ -232,14 +220,8 @@ fn repeat_find(
 pub(super) fn cmd_repeat_find_forward(ed: &mut Editor, count: usize, mode: MotionMode) {
     repeat_find(ed, count, mode, find_char_forward);
 }
-pub(super) fn cmd_extend_repeat_find_forward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    repeat_find(ed, count, MotionMode::Extend, find_char_forward);
-}
 pub(super) fn cmd_repeat_find_backward(ed: &mut Editor, count: usize, mode: MotionMode) {
     repeat_find(ed, count, mode, find_char_backward);
-}
-pub(super) fn cmd_extend_repeat_find_backward(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    repeat_find(ed, count, MotionMode::Extend, find_char_backward);
 }
 
 // ── Replace ───────────────────────────────────────────────────────────────────
@@ -328,14 +310,8 @@ fn page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
 pub(super) fn cmd_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
     page_scroll(ed, "move-down", mode);
 }
-pub(super) fn cmd_extend_page_down(ed: &mut Editor, _count: usize, _mode: MotionMode) {
-    page_scroll(ed, "extend-down", MotionMode::Extend);
-}
 pub(super) fn cmd_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
     page_scroll(ed, "move-up", mode);
-}
-pub(super) fn cmd_extend_page_up(ed: &mut Editor, _count: usize, _mode: MotionMode) {
-    page_scroll(ed, "extend-up", MotionMode::Extend);
 }
 
 // ── Half-page scroll ─────────────────────────────────────────────────────────
@@ -355,20 +331,12 @@ fn half_page_scroll(ed: &mut Editor, motion_name: &str, mode: MotionMode) {
 pub(super) fn cmd_half_page_down(ed: &mut Editor, _count: usize, mode: MotionMode) {
     half_page_scroll(ed, "move-down", mode);
 }
-pub(super) fn cmd_extend_half_page_down(ed: &mut Editor, _count: usize, _mode: MotionMode) {
-    half_page_scroll(ed, "extend-down", MotionMode::Extend);
-}
 pub(super) fn cmd_half_page_up(ed: &mut Editor, _count: usize, mode: MotionMode) {
     half_page_scroll(ed, "move-up", mode);
 }
-pub(super) fn cmd_extend_half_page_up(ed: &mut Editor, _count: usize, _mode: MotionMode) {
-    half_page_scroll(ed, "extend-up", MotionMode::Extend);
-}
 
 // Visual-line movement lives in visual_move.rs; re-export for the registry glob.
-pub(super) use super::visual_move::{
-    cmd_visual_extend_down, cmd_visual_extend_up, cmd_visual_move_down, cmd_visual_move_up,
-};
+pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
@@ -512,14 +480,8 @@ pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize, _mode: MotionMode
 pub(super) fn cmd_search_next(ed: &mut Editor, count: usize, mode: MotionMode) {
     search_jump(ed, count, SearchDirection::Forward, mode);
 }
-pub(super) fn cmd_extend_search_next(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    search_jump(ed, count, SearchDirection::Forward, MotionMode::Extend);
-}
 pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize, mode: MotionMode) {
     search_jump(ed, count, SearchDirection::Backward, mode);
-}
-pub(super) fn cmd_extend_search_prev(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    search_jump(ed, count, SearchDirection::Backward, MotionMode::Extend);
 }
 
 // ── Select all matches ────────────────────────────────────────────────────────

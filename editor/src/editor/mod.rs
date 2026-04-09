@@ -173,7 +173,6 @@ pub(crate) struct Editor {
     /// Registry of all mappable commands (motions, selections, edits).
     ///
     /// Keyed by name; looked up by `execute_keymap_command` at dispatch time.
-    /// Also stores extend-variant pairings (base command → extend command).
     pub(super) registry: CommandRegistry,
     /// The trie-based keymap for each mode.
     ///
