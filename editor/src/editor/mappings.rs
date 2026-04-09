@@ -302,7 +302,16 @@ impl Editor {
                         (self.keymap.normal.walk(&self.pending_keys), true)
                     }
                     WalkResult::NoMatch => return, // Legacy: no-op.
-                    matched => (matched, false),   // Explicit Ctrl binding — reuse.
+                    // Explicit Ctrl+letter binding. Treat as extend if the command
+                    // is extendable (e.g. Ctrl+x → select-line always extends).
+                    matched => {
+                        let ctrl_extend = match &matched {
+                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            _ => false,
+                        };
+                        (matched, ctrl_extend)
+                    }
                 }
             } else {
                 self.pending_keys.push(key);
@@ -432,23 +441,11 @@ impl Editor {
 
     /// Execute a named command with the given count and extend flag.
     ///
-    /// When `extend` is true, looks up the extend variant in the registry
-    /// and dispatches that instead. Falls back to the base command if no
-    /// extend variant exists.
-    ///
-    /// [`CommandRegistry`]: super::registry::CommandRegistry
+    /// `extend` is converted to `MotionMode::Extend` / `MotionMode::Move` and
+    /// passed to the command function. The command itself decides what to do
+    /// with the mode — motions and selections branch on it; edits ignore it.
     pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool) {
-        // Resolve extend-mode duality via the registry. When extend is active,
-        // use the extend variant if one exists; otherwise fall back to the base.
-        // `extend_variant` returns an owned Cow, so `resolved` owns its value
-        // independent of the registry borrow — no lifetime entanglement.
-        let resolved: Cow<'static, str> = if extend {
-            self.registry.extend_variant(&name).unwrap_or(name)
-        } else {
-            name
-        };
-
-        if let Some(reg_cmd) = self.registry.get_mappable(resolved.as_ref()).cloned() {
+        if let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() {
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
@@ -505,7 +502,7 @@ impl Editor {
             // so any transient overwrite here is harmless.
             if reg_cmd.is_repeatable() {
                 self.last_action = Some(super::RepeatableAction {
-                    command: resolved.clone(),
+                    command: name.clone(),
                     count,
                     char_arg,
                     insert_keys: Vec::new(),
@@ -815,9 +812,7 @@ mod tests {
         let must_be_jump = [
             "goto-first-line", "goto-last-line",
             "search-next", "search-prev",
-            "extend-search-next", "extend-search-prev",
             "page-down", "page-up",
-            "extend-page-down", "extend-page-up",
         ];
         for name in must_be_jump {
             assert!(
@@ -826,7 +821,7 @@ mod tests {
             );
         }
 
-        let must_be_visual_move = ["move-down", "move-up", "extend-down", "extend-up"];
+        let must_be_visual_move = ["move-down", "move-up"];
         for name in must_be_visual_move {
             assert!(
                 reg.get_mappable(name).expect(name).is_visual_move(),

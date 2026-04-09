@@ -221,10 +221,3 @@ pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize, mode: MotionMode
     apply_visual_vertical(ed, count, false, mode);
 }
 
-pub(super) fn cmd_visual_extend_down(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    apply_visual_vertical(ed, count, true, MotionMode::Extend);
-}
-
-pub(super) fn cmd_visual_extend_up(ed: &mut Editor, count: usize, _mode: MotionMode) {
-    apply_visual_vertical(ed, count, false, MotionMode::Extend);
-}

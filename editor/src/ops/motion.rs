@@ -631,27 +631,11 @@ motion_cmd!(/// Move or extend cursors one grapheme to the right.
     cmd_move_right, move_right);
 motion_cmd!(/// Move or extend cursors one grapheme to the left.
     cmd_move_left, move_left);
-/// Extend selections one grapheme to the right (thin wrapper — always extends).
-pub(crate) fn cmd_extend_right(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_move_right(buf, sels, count, MotionMode::Extend)
-}
-/// Extend selections one grapheme to the left (thin wrapper — always extends).
-pub(crate) fn cmd_extend_left(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_move_left(buf, sels, count, MotionMode::Extend)
-}
 
 motion_cmd!(/// Move or extend cursors to the first character of the buffer.
     cmd_goto_first_line, goto_first_line);
 motion_cmd!(/// Move or extend cursors to the first character of the last line.
     cmd_goto_last_line, goto_last_line);
-/// Extend selections to the first character of the buffer (thin wrapper — always extends).
-pub(crate) fn cmd_extend_first_line(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_goto_first_line(buf, sels, count, MotionMode::Extend)
-}
-/// Extend selections to the first character of the last line (thin wrapper — always extends).
-pub(crate) fn cmd_extend_last_line(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_goto_last_line(buf, sels, count, MotionMode::Extend)
-}
 
 motion_cmd!(/// Move or extend cursors to the start of their current line.
     cmd_goto_line_start, goto_line_start);
@@ -659,25 +643,12 @@ motion_cmd!(/// Move or extend cursors to the last non-newline character on thei
     cmd_goto_line_end, goto_line_end);
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
-/// Extend selections to the start of their current line (thin wrapper — always extends).
-pub(crate) fn cmd_extend_line_start(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_goto_line_start(buf, sels, count, MotionMode::Extend)
-}
-/// Extend selections to the last non-newline character on their current line (thin wrapper).
-pub(crate) fn cmd_extend_line_end(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_goto_line_end(buf, sels, count, MotionMode::Extend)
-}
-/// Extend selections to the first non-blank character on their current line (thin wrapper).
-pub(crate) fn cmd_extend_first_nonblank(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_goto_first_nonblank(buf, sels, count, MotionMode::Extend)
-}
 
 // Vertical motion passes `None` as the target-column hint (no sticky column yet).
 motion_cmd!(/// Move or extend cursors down one line, preserving the char-offset column.
     cmd_move_down, move_down_inner(None));
 motion_cmd!(/// Move or extend cursors up one line, preserving the char-offset column.
     cmd_move_up, move_up_inner(None));
-/// Extend selections down one line (thin wrapper — always extends).
 // `w` / `W` jump to the next word/WORD and select it as a fresh forward
 // selection (anchor = word start, head = word end). `b` / `B` do the same
 // for the previous word. This replaces Helix's "extend from current position"
@@ -726,40 +697,12 @@ pub(crate) fn cmd_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usiz
     }
 }
 
-/// Extend to next word — thin wrapper; always extends (for Phase 3 removal).
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_select_next_word(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_select_next_word(buf, sels, count, MotionMode::Extend)
-}
-/// Extend to next WORD — thin wrapper.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_select_next_WORD(buf, sels, count, MotionMode::Extend)
-}
-/// Extend to previous word — thin wrapper.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_select_prev_word(buf, sels, count, MotionMode::Extend)
-}
-/// Extend to previous WORD — thin wrapper.
-#[allow(non_snake_case)]
-pub(crate) fn cmd_extend_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_select_prev_WORD(buf, sels, count, MotionMode::Extend)
-}
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).
     cmd_next_paragraph, next_paragraph);
 motion_cmd!(/// Move or extend cursors to the first empty line above the current paragraph (`[p`).
     cmd_prev_paragraph, prev_paragraph);
-/// Extend to next paragraph — thin wrapper.
-pub(crate) fn cmd_extend_next_paragraph(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_next_paragraph(buf, sels, count, MotionMode::Extend)
-}
-/// Extend to previous paragraph — thin wrapper.
-pub(crate) fn cmd_extend_prev_paragraph(buf: &Buffer, sels: SelectionSet, count: usize, _mode: MotionMode) -> SelectionSet {
-    cmd_prev_paragraph(buf, sels, count, MotionMode::Extend)
-}
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -813,11 +756,6 @@ pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode
     result
 }
 
-/// Extend-select-line — thin wrapper; always extends.
-pub(crate) fn cmd_extend_select_line(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
-    cmd_select_line(buf, sels, MotionMode::Extend)
-}
-
 /// Select or extend to the full line backward (`X` / `X` in extend mode): branches on `mode`.
 ///
 /// `Move` — re-anchors: anchor on the trailing `\n`, head on line start. If the
@@ -865,11 +803,6 @@ pub(crate) fn cmd_select_line_backward(buf: &Buffer, sels: SelectionSet, mode: M
     });
     result.debug_assert_valid(buf);
     result
-}
-
-/// Extend-select-line-backward — thin wrapper; always extends.
-pub(crate) fn cmd_extend_select_line_backward(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
-    cmd_select_line_backward(buf, sels, MotionMode::Extend)
 }
 
 // ── Find/till character motions ───────────────────────────────────────────────
@@ -1065,7 +998,7 @@ mod tests {
         // Forward selection anchor=0, head=1 → "-[he]>llo\n".
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_extend_right(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Extend),
             "-[he]>llo\n"
         );
     }
@@ -1076,14 +1009,14 @@ mod tests {
         // anchor=0, head=2 → "-[hel]>lo\n".
         assert_state!(
             "-[he]>llo\n",
-            |(buf, sels)| cmd_extend_right(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Extend),
             "-[hel]>lo\n"
         );
     }
 
     #[test]
     fn extend_right_clamp_at_eof() {
-        assert_state!("hello-[\n]>", |(buf, sels)| cmd_extend_right(&buf, sels, 1, MotionMode::Move), "hello-[\n]>");
+        assert_state!("hello-[\n]>", |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Extend), "hello-[\n]>");
     }
 
     // ── extend_left ───────────────────────────────────────────────────────────
@@ -1094,7 +1027,7 @@ mod tests {
         // Backward selection anchor=1, head=0, selects "he" (2 chars).
         assert_state!(
             "h-[e]>llo\n",
-            |(buf, sels)| cmd_extend_left(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_left(&buf, sels, 1, MotionMode::Extend),
             "<[he]-llo\n"
         );
     }
@@ -1105,21 +1038,21 @@ mod tests {
         // anchor=0, head=1 → "-[he]>llo\n".
         assert_state!(
             "-[hel]>lo\n",
-            |(buf, sels)| cmd_extend_left(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_left(&buf, sels, 1, MotionMode::Extend),
             "-[he]>llo\n"
         );
     }
 
     #[test]
     fn extend_left_clamp_at_start() {
-        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_extend_left(&buf, sels, 1, MotionMode::Move), "-[h]>ello\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_move_left(&buf, sels, 1, MotionMode::Extend), "-[h]>ello\n");
     }
 
     #[test]
     fn extend_left_reverses_direction() {
         // Forward selection anchor=3,head=3. Extend left 3 times: head→0.
         // anchor=3 > head=0 → becomes a backward selection spanning "hell".
-        assert_state!("hel-[l]>o\n", |(buf, sels)| cmd_extend_left(&buf, sels, 3, MotionMode::Move), "<[hell]-o\n");
+        assert_state!("hel-[l]>o\n", |(buf, sels)| cmd_move_left(&buf, sels, 3, MotionMode::Extend), "<[hell]-o\n");
     }
 
     #[test]
@@ -1129,7 +1062,7 @@ mod tests {
         // "hello\nworld\n": '\n'=5, 'w'=6. anchor=5, head→6.
         assert_state!(
             "hello-[\n]>world\n",
-            |(buf, sels)| cmd_extend_right(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Extend),
             "hello-[\nw]>orld\n"
         );
     }
@@ -1141,7 +1074,7 @@ mod tests {
         // anchor=6 stays on 'w'; head→5 ('\n'). Backward selection covers "\nw".
         assert_state!(
             "hello\n-[w]>orld\n",
-            |(buf, sels)| cmd_extend_left(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_move_left(&buf, sels, 1, MotionMode::Extend),
             "hello<[\nw]-orld\n"
         );
     }
@@ -1155,7 +1088,7 @@ mod tests {
         // cursor2 anchor=4,head=4 → head=6 → "-[bar]>"
         assert_state!(
             "-[f]>oo -[b]>ar\n",
-            |(buf, sels)| cmd_extend_right(&buf, sels, 2, MotionMode::Move),
+            |(buf, sels)| cmd_move_right(&buf, sels, 2, MotionMode::Extend),
             "-[foo]> -[bar]>\n"
         );
     }
@@ -1710,7 +1643,7 @@ mod tests {
         // Anchor stays at 0, head moves to 'w' at the start of "world".
         assert_state!(
             "-[h]>ello\n\nworld\n",
-            |(buf, sels)| cmd_extend_next_paragraph(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_next_paragraph(&buf, sels, 1, MotionMode::Extend),
             "-[hello\n\nw]>orld\n"
         );
     }
@@ -1720,7 +1653,7 @@ mod tests {
         // Anchor stays on 'w', head moves back to the empty gap line.
         assert_state!(
             "hello\n\n-[w]>orld\n",
-            |(buf, sels)| cmd_extend_prev_paragraph(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_prev_paragraph(&buf, sels, 1, MotionMode::Extend),
             "hello\n<[\nw]-orld\n"
         );
     }
@@ -1749,7 +1682,7 @@ mod tests {
     fn extend_right_count_3() {
         // Extend: anchor stays at old head (0), head folds 3 steps: 0→1→2→3.
         // Selection anchor=0, head=3: covers "hell".
-        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_extend_right(&buf, sels, 3, MotionMode::Move), "-[hell]>o\n");
+        assert_state!("-[h]>ello\n", |(buf, sels)| cmd_move_right(&buf, sels, 3, MotionMode::Extend), "-[hell]>o\n");
     }
 
     #[test]
@@ -1899,7 +1832,7 @@ mod tests {
         // Cursor on 'l' in "hello"; extend to line start: anchor stays at 'l', head at 'h'.
         assert_state!(
             "hel-[l]>o\n",
-            |(buf, sels)| cmd_extend_line_start(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_line_start(&buf, sels, 1, MotionMode::Extend),
             "<[hell]-o\n"
         );
     }
@@ -1909,7 +1842,7 @@ mod tests {
         // Already at line start — no-op.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_extend_line_start(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_line_start(&buf, sels, 1, MotionMode::Extend),
             "-[h]>ello\n"
         );
     }
@@ -1919,7 +1852,7 @@ mod tests {
         // Cursor on 'h'; extend to end: anchor stays at 'h', head at 'o'.
         assert_state!(
             "-[h]>ello\n",
-            |(buf, sels)| cmd_extend_line_end(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_line_end(&buf, sels, 1, MotionMode::Extend),
             "-[hello]>\n"
         );
     }
@@ -1929,7 +1862,7 @@ mod tests {
         // Already at line end — no-op.
         assert_state!(
             "hell-[o]>\n",
-            |(buf, sels)| cmd_extend_line_end(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_line_end(&buf, sels, 1, MotionMode::Extend),
             "hell-[o]>\n"
         );
     }
@@ -1939,7 +1872,7 @@ mod tests {
         // Cursor on 'l'; extend to first nonblank 'h': backward extension.
         assert_state!(
             "hel-[l]>o\n",
-            |(buf, sels)| cmd_extend_first_nonblank(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_first_nonblank(&buf, sels, 1, MotionMode::Extend),
             "<[hell]-o\n"
         );
     }
@@ -1951,7 +1884,7 @@ mod tests {
         // Serialized with ]> after head: "-[  h]>ello\n".
         assert_state!(
             "-[ ]> hello\n",
-            |(buf, sels)| cmd_extend_first_nonblank(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_goto_first_nonblank(&buf, sels, 1, MotionMode::Extend),
             "-[  h]>ello\n"
         );
     }
@@ -1965,7 +1898,7 @@ mod tests {
         // Union: min(0,6)=0, max(0,10)=10 → selection (0,10) = "hello world".
         assert_state!(
             "-[h]>ello world foo\n",
-            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
             "-[hello world]> foo\n"
         );
     }
@@ -1979,7 +1912,7 @@ mod tests {
             "-[h]>ello world foo\n",
             |(buf, sels)| {
                 let s1 = cmd_select_next_word(&buf, sels, 1, MotionMode::Move); // selects "world" (6,10)
-                cmd_extend_select_next_word(&buf, s1, 1, MotionMode::Move)       // union with "foo" (12,14)
+                cmd_select_next_word(&buf, s1, 1, MotionMode::Extend)       // union with "foo" (12,14)
             },
             "hello -[world foo]>\n"
         );
@@ -1994,7 +1927,7 @@ mod tests {
             "-[h]>ello world\n",
             |(buf, sels)| {
                 let s1 = cmd_select_next_word(&buf, sels, 1, MotionMode::Move); // selects "world" (6,10)
-                cmd_extend_select_prev_word(&buf, s1, 1, MotionMode::Move)       // union with "hello" (0,4)
+                cmd_select_prev_word(&buf, s1, 1, MotionMode::Extend)       // union with "hello" (0,4)
             },
             "-[hello world]>\n"
         );
@@ -2016,7 +1949,7 @@ mod tests {
         // Union: min(4,0)=0, max(10,2)=10 → (0,10) = "foo bar baz".
         assert_state!(
             "foo -[bar baz]>\n",
-            |(buf, sels)| cmd_extend_select_prev_word(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
             "-[foo bar baz]>\n"
         );
     }
@@ -2027,7 +1960,7 @@ mod tests {
         // no next word (only '\n' remains) and leaves the selection unchanged.
         assert_state!(
             "-[hello]>\n",
-            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
             "-[hello]>\n"
         );
     }
@@ -2037,7 +1970,7 @@ mod tests {
         // The selection starts at pos 0; there is no previous word. Noop.
         assert_state!(
             "-[hello]> world\n",
-            |(buf, sels)| cmd_extend_select_prev_word(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_select_prev_word(&buf, sels, 1, MotionMode::Extend),
             "-[hello]> world\n"
         );
     }
@@ -2054,7 +1987,7 @@ mod tests {
         // Results (0,6) and (8,14) are disjoint — no merge.
         assert_state!(
             "-[f]>oo bar -[b]>az qux\n",
-            |(buf, sels)| cmd_extend_select_next_word(&buf, sels, 1, MotionMode::Move),
+            |(buf, sels)| cmd_select_next_word(&buf, sels, 1, MotionMode::Extend),
             "-[foo bar]> -[baz qux]>\n"
         );
     }
@@ -2121,14 +2054,14 @@ mod tests {
         );
     }
 
-    // ── cmd_extend_select_line / cmd_extend_select_line_backward ─────────────
+    // ── cmd_select_line / cmd_select_line_backward (extend mode) ─────────────
 
     #[test]
     fn extend_select_line_accumulates_downward() {
         // Each press accumulates one more line.
         assert_state!(
             "-[hello\n]>foo\nbar\n",
-            |(buf, sels)| cmd_extend_select_line(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
             "-[hello\nfoo\n]>bar\n"
         );
     }
@@ -2138,7 +2071,7 @@ mod tests {
         // Already at last line → no change.
         assert_state!(
             "hello\n-[foo\n]>",
-            |(buf, sels)| cmd_extend_select_line(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
             "hello\n-[foo\n]>"
         );
     }
@@ -2148,7 +2081,7 @@ mod tests {
         // Each press accumulates one more line upward.
         assert_state!(
             "aaa\n<[bbb\n]-ccc\n",
-            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
             "<[aaa\nbbb\n]-ccc\n"
         );
     }
@@ -2158,7 +2091,7 @@ mod tests {
         // Already at first line → no change.
         assert_state!(
             "<[hello\n]-world\n",
-            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
             "<[hello\n]-world\n"
         );
     }
@@ -2168,7 +2101,7 @@ mod tests {
         // Starting from a partial selection, the first extend covers the full line.
         assert_state!(
             "hello -[w]>orld\nfoo\n",
-            |(buf, sels)| cmd_extend_select_line(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
             "-[hello world\n]>foo\n"
         );
     }
@@ -2178,7 +2111,7 @@ mod tests {
         // Starting from a partial selection, the first backward extend covers the full line.
         assert_state!(
             "hello -[w]>orld\nfoo\n",
-            |(buf, sels)| cmd_extend_select_line_backward(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line_backward(&buf, sels, MotionMode::Extend),
             "<[hello world\n]-foo\n"
         );
     }
@@ -2236,7 +2169,7 @@ mod tests {
         // (0,15) and (12,19) overlap → merged to (0,19)
         assert_state!(
             "-[hello world\n]>-[foo\n]>bar\n",
-            |(buf, sels)| cmd_extend_select_line(&buf, sels, MotionMode::Move),
+            |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Extend),
             "-[hello world\nfoo\nbar\n]>"
         );
     }
