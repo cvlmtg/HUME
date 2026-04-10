@@ -22,13 +22,13 @@ use crate::ops::register::MACRO_REGISTER;
 use super::{Editor, MacroPending, Mode, SearchDirection};
 
 
-/// Valid register names for macro recording/replay: lowercase letters and digits.
+/// Valid register names for macro recording/replay: `q` (default) and `0`–`9`.
 ///
-/// This covers all registers defined by HUME's naming scheme. Special registers
-/// like `b` (black hole) and `c` (clipboard) are technically valid register
-/// chars and are accepted here — the register layer handles black-hole semantics.
+/// `q` is the default macro register (`QQ`/`qq`). The digits `0`–`9` are the
+/// named storage registers. Other letters (special registers like `b`, `c`, `s`)
+/// are not valid macro targets.
 fn is_valid_macro_register(ch: char) -> bool {
-    ch.is_ascii_lowercase() || ch.is_ascii_digit()
+    ch == MACRO_REGISTER || ch.is_ascii_digit()
 }
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.
