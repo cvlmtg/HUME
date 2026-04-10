@@ -169,10 +169,10 @@ Macros are stored in registers. Register `q` is the default.
 | Key | Action |
 |-----|--------|
 | `Q Q` | Start recording into register `q` |
-| `Q <reg>` | Start recording into named register (any alphanumeric char) |
+| `Q <reg>` | Start recording into named register (`0`–`9`) |
 | `Q` (while recording) | Stop recording |
 | `q q` | Replay register `q` |
-| `q <reg>` | Replay named register |
+| `q <reg>` | Replay named register (`0`–`9`) |
 | `<count> q q` | Replay register `q` `<count>` times |
 
 ### Jump List
