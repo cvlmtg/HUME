@@ -1,5 +1,22 @@
 use std::fmt;
 
+/// A user-facing error produced when a command fails to execute.
+///
+/// Carries a human-readable message suitable for display in the status bar.
+/// Distinct from [`ApplyError`] / [`TransactionError`] (internal buffer
+/// integrity errors) — `CommandError` represents a user-level failure such as
+/// "no match", "unsaved changes", or an I/O error during file write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommandError(pub String);
+
+impl fmt::Display for CommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CommandError {}
+
 /// Errors returned by [`crate::core::changeset::ChangeSet::apply`] when the
 /// changeset cannot be applied to the given buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]

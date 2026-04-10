@@ -503,7 +503,9 @@ impl Editor {
                     self.doc.apply_edit(fun);
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
-                    fun(self, count, motion_mode);
+                    if let Err(e) = fun(self, count, motion_mode) {
+                        self.status_msg = Some(e.0);
+                    }
                 }
             }
 
@@ -810,7 +812,10 @@ impl Editor {
         };
 
         if let Some(tc) = self.registry.get_typed(cmd) {
-            (tc.fun)(self, arg, force);
+            let fun = tc.fun;
+            if let Err(e) = fun(self, arg, force) {
+                self.status_msg = Some(e.0);
+            }
         } else if self.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
