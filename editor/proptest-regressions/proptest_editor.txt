@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9777689231e2a2eae9999b3fe9a04ffef6b289cc20533b6e05387afff3e1eda8 # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('w'), Char('"')]
+cc 4d9ca7cc9c097c364520f4923fc1e655e17f7a9227c644d289389b97cad29c34 # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('*'), Char('[')]
