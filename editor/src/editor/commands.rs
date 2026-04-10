@@ -76,10 +76,7 @@ pub(super) fn cmd_insert_at_selection_start(ed: &mut Editor, _count: usize, _mod
 /// For a collapsed cursor this is identical to `a`.
 pub(super) fn cmd_insert_at_selection_end(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     ed.apply_motion(|b, sels| {
-        sels.map(|sel| {
-            let after = next_grapheme_boundary(b, sel.end_inclusive(b));
-            Selection::collapsed(after)
-        })
+        sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end())))
     });
     ed.begin_insert_session();
     Ok(())

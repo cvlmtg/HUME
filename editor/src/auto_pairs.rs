@@ -3,6 +3,7 @@ use crate::core::changeset::ChangeSet;
 use crate::ops::edit::apply_edit;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::{Selection, SelectionSet};
+use crate::helpers::{classify_char, CharClass};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ pub(crate) fn should_auto_pair_at(buf: &Buffer, head: usize, pair: &Pair, ap_pai
     if pair.is_symmetric() && head > 0 {
         let prev_pos = prev_grapheme_boundary(buf, head);
         if let Some(prev_ch) = buf.char_at(prev_pos) {
-            if prev_ch.is_alphanumeric() || prev_ch == '_' {
+            if classify_char(prev_ch) == CharClass::Word {
                 return false;
             }
         }

@@ -386,10 +386,7 @@ impl Editor {
                 self.pending_keys.clear();
                 self.count = None;
 
-                // Pair-wrap: if a key has no binding, is a pair's open char,
-                // and any selection is non-collapsed, wrap the selections.
-                // Keys that ARE bound (e.g. `(` → cycle-primary-backward) never
-                // reach here and retain their normal-mode behaviour.
+                // Pair-wrap: unbound pair-open key with a non-collapsed selection → wrap.
                 if let KeyCode::Char(ch) = key.code {
                     if !key.modifiers.contains(KeyModifiers::CONTROL) {
                         let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
