@@ -426,10 +426,10 @@ fn capital_o_opens_line_above_and_enters_insert() {
 
 // ── Insert-entry variants position the cursor correctly ────────────────────
 
-/// `a` must move the cursor one grapheme right of the current position, then
-/// enter Insert mode — "append after cursor".
+/// `a` collapses to one past the end of the selection and enters Insert mode.
+/// On a collapsed cursor this is identical to the old "append after cursor".
 #[test]
-fn a_enters_insert_one_right_of_cursor() {
+fn a_enters_insert_after_selection_end() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('a'));
 
@@ -448,14 +448,38 @@ fn capital_a_enters_insert_after_end_of_line() {
     assert_eq!(state(&ed), "hello-[\n]>");
 }
 
-/// `I` collapses a multi-char selection to its start and enters Insert mode.
+/// `I` jumps to the first non-blank character on the line and enters Insert mode.
 #[test]
-fn capital_i_enters_insert_at_selection_start() {
+fn capital_i_enters_insert_at_line_start() {
     let mut ed = editor_from("  -[hello]>\n");
     ed.handle_key(key('I'));
 
     assert_eq!(ed.mode, Mode::Insert);
     assert_eq!(state(&ed), "  -[h]>ello\n");
+}
+
+/// `i` on a multi-char selection collapses to the selection start (not just the
+/// cursor head) and enters Insert mode.
+#[test]
+fn i_on_wide_selection_collapses_to_start() {
+    // Backward selection: head=0 (h), anchor=3 (last l) → start=0.
+    let mut ed = editor_from("<[hell]-o\n");
+    ed.handle_key(key('i'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(state(&ed), "-[h]>ello\n");
+}
+
+/// `a` on a multi-char selection collapses to one past the selection end and
+/// enters Insert mode — the cursor lands after the last selected character.
+#[test]
+fn a_on_wide_selection_collapses_after_end() {
+    // Forward selection: anchor=0 (h), head=3 (l) → end=3, one past = 4.
+    let mut ed = editor_from("-[hel]>lo\n");
+    ed.handle_key(key('a'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
 // ── `S` splits selection on newlines ──────────────────────────────────────────
@@ -994,29 +1018,29 @@ fn write_follows_symlink() {
 
 // ── insert-at-selection-start / insert-at-selection-end ──────────────────────
 
-/// `I` with a forward selection collapses to the start of the selection.
+/// `i` with a forward selection collapses to the start of the selection.
 #[test]
 fn insert_at_selection_start_forward() {
     let mut ed = editor_from("foo -[bar]> baz\n");
-    ed.handle_key(key('I'));
+    ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
     assert_eq!(ed.mode, Mode::Insert);
 }
 
-/// `I` with a backward selection also collapses to the start (lower index).
+/// `i` with a backward selection also collapses to the start (lower index).
 #[test]
 fn insert_at_selection_start_backward() {
     let mut ed = editor_from("foo <[bar]- baz\n");
-    ed.handle_key(key('I'));
+    ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
     assert_eq!(ed.mode, Mode::Insert);
 }
 
-/// `I` with a collapsed cursor just enters insert at the same position.
+/// `i` with a collapsed cursor just enters insert at the same position.
 #[test]
 fn insert_at_selection_start_collapsed() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
-    ed.handle_key(key('I'));
+    ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
     assert_eq!(ed.mode, Mode::Insert);
 }
@@ -1477,12 +1501,12 @@ fn dot_repeats_change_with_insert() {
     assert_eq!(ed.doc.buf().to_string(), "hi hi\n");
 }
 
-/// `i` + typed text + Esc inserts before the selection. `.` should replay that insert.
+/// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
 #[test]
 fn dot_repeats_insert_before() {
     let mut ed = editor_from("-[x]>\n");
 
-    ed.handle_key(key('i'));           // insert-before, cursor collapses to start
+    ed.handle_key(key('i'));           // insert-at-selection-start, cursor collapses to start
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "abx"
