@@ -5,8 +5,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Key files
 - `README.md` — Project description
-- `GOALS.md` — Vision, decisions, and open questions
-- `PLAN.md` — Tech stack, architecture, and milestones
+- `ROADMAP.md` — Design decisions, open questions, and milestones
 - `LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
@@ -15,8 +14,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
 ## Rules
-- **Update GOALS.md** when a decision is made (add to the decisions table, remove from open questions)
-- **Update PLAN.md** when the plan changes (milestones, tech stack, architecture)
+- **Update ROADMAP.md** when a decision is made (add to decisions table, remove from open questions) or when milestones change
 - **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option` — no `.unwrap()` in non-test code.
 - **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable (like Helix does). No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `crossterm` or similar abstractions for platform differences — no platform-specific code unless behind `cfg` gates.
