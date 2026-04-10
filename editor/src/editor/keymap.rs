@@ -556,9 +556,9 @@ fn default_normal_keymap() -> KeyTrie {
 
     // ── Mode transitions ──────────────────────────────────────────────────────
     t.bind_leaf(key!(':'), cmd!("command-mode"));
-    t.bind_leaf(key!('i'), cmd!("insert-before"));
-    t.bind_leaf(key!('a'), cmd!("insert-after"));
-    t.bind_leaf(key!('I'), cmd!("insert-at-selection-start"));
+    t.bind_leaf(key!('i'), cmd!("insert-at-selection-start"));
+    t.bind_leaf(key!('a'), cmd!("insert-at-selection-end"));
+    t.bind_leaf(key!('I'), cmd!("insert-at-line-start"));
     t.bind_leaf(key!('A'), cmd!("insert-at-line-end"));
     // `o` in normal mode: open line below.
     // `o` in extend mode: flip selections (extend pairing in the registry).
@@ -723,7 +723,7 @@ mod tests {
         let trie = default_normal_keymap();
         assert!(matches!(trie.walk(&[key!('d')]), WalkResult::Leaf(ref cmd) if cmd.name == "delete"));
         assert!(matches!(trie.walk(&[key!('u')]), WalkResult::Leaf(ref cmd) if cmd.name == "undo"));
-        assert!(matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-before"));
+        assert!(matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-at-selection-start"));
     }
 
     #[test]
