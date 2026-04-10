@@ -727,7 +727,7 @@ fn colon_w_no_path_sets_error() {
     ed.handle_key(key_enter());
     assert!(!ed.should_quit);
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.status_msg.as_deref(), Some("Error: no file name"));
+    assert_eq!(ed.status_msg.as_deref(), Some("no file name"));
 }
 
 /// Helper: create a temp file with initial content and wire it into an editor.
