@@ -385,6 +385,25 @@ impl Editor {
             WalkResult::NoMatch => {
                 self.pending_keys.clear();
                 self.count = None;
+
+                // Pair-wrap: if a key has no binding, is a pair's open char,
+                // and any selection is non-collapsed, wrap the selections.
+                // Keys that ARE bound (e.g. `(` → cycle-primary-backward) never
+                // reach here and retain their normal-mode behaviour.
+                if let KeyCode::Char(ch) = key.code {
+                    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+                        let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                        if ap_enabled {
+                            if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
+                                let has_selection = self.doc.sels().iter_sorted().any(|s| !s.is_collapsed());
+                                if has_selection {
+                                    let (open, close) = (pair.open, pair.close);
+                                    self.doc.apply_edit(|b, s| insert_pair_close(b, s, open, close));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -424,9 +443,13 @@ impl Editor {
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
                             self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
-                        } else {
-                            // Auto-close or wrap-selection.
+                        } else if self.should_auto_pair(pair, ap_pairs) {
+                            // Context is clear: insert open+close or wrap selection.
                             self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
+                        } else {
+                            // Next char is a word char (or symmetric prev is word char):
+                            // insert only the typed character.
+                            self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
                         }
                     } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                         && self.should_skip_close(ch)
@@ -570,6 +593,17 @@ impl Editor {
                 }
                 _ => false,
             }
+        })
+    }
+
+    /// Returns `true` if auto-pairing `pair` is appropriate given the current
+    /// selections. All-or-nothing: every collapsed selection must satisfy the
+    /// context rules; non-collapsed selections always pass (they wrap).
+    fn should_auto_pair(&self, pair: &crate::auto_pairs::Pair, ap_pairs: &[crate::auto_pairs::Pair]) -> bool {
+        let buf = self.doc.buf();
+        self.doc.sels().iter_sorted().all(|sel| {
+            !sel.is_collapsed()
+                || crate::auto_pairs::should_auto_pair_at(buf, sel.head, pair, ap_pairs)
         })
     }
 
