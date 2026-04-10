@@ -14,8 +14,8 @@ use super::MotionMode;
 /// `text_object` returns `Some((start, end))` as an inclusive char-offset pair,
 /// or `None` if no match exists (e.g., cursor not inside any bracket pair).
 ///
-/// On `None`, the existing selection is preserved (Helix behaviour: `mi(` when
-/// not inside parens is a no-op). On `Some`, the selection is replaced with a
+/// On `None`, the existing selection is preserved — `mi(` when not inside parens
+/// is a no-op. On `Some`, the selection is replaced with a
 /// forward selection anchored at `start` and with head at `end`.
 ///
 /// Uses `map_and_merge` so that multiple cursors landing on the same range
@@ -475,8 +475,8 @@ fn inner_argument(buf: &Buffer, pos: usize) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
-/// Around argument: the item plus its separator comma, following the Helix convention
-/// that deleting around leaves a clean, properly-spaced list.
+/// Around argument: the item plus its separator comma, so that deleting around
+/// leaves a clean, properly-spaced list.
 ///
 /// - **Only arg**: same as inner (no separator to consume).
 /// - **First arg**: extend end through the trailing comma and any whitespace

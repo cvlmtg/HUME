@@ -546,7 +546,7 @@ fn render_buffer_line(
 
         let line_start_char = pane_ctx.rope.line_to_char(line_idx);
         let line_end_char   = pane_ctx.rope.line_to_char(line_idx + 1);
-        // Cursorline highlights only the primary cursor's line (Helix convention).
+        // Cursorline highlights only the primary cursor's line.
         let is_head_line = scratch.style.primary_idx_in_sorted
             .and_then(|i| scratch.style.sorted_sels.get(i))
             .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);

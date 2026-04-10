@@ -26,8 +26,8 @@ pub(crate) struct RevisionId(pub(crate) usize);
 ///
 /// The `children` vec records all revisions that branch from this one. The
 /// **last** child (highest index) is the most recently created branch and is
-/// the default redo target, matching Vim/Helix behaviour: after undoing and
-/// making a new edit, redo goes to the most recent edit.
+/// the default redo target: after undoing and making a new edit, redo goes
+/// to the most recent edit.
 struct Revision {
     /// Apply this to move from the current state back to the parent state (undo).
     /// Its `selection` is the pre-edit selection — where cursors were before
