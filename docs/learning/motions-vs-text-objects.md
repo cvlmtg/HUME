@@ -43,7 +43,7 @@ fn inner_word_impl(buf: &Buffer, pos: usize) -> Option<(usize, usize)> { ... }
 
 Returning `Option` from a text object inner function means "no match at this
 position". On `None`, the existing selection is preserved — `mi(` when not
-inside parens is a no-op, matching Helix behaviour.
+inside parens is a no-op.
 
 ## `map_and_merge`
 

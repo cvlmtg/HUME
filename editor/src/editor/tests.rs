@@ -1759,7 +1759,7 @@ fn search_n_repeats_backward() {
 
 /// After a `?` backward search, `n` still goes forward (absolute direction model).
 ///
-/// Vim would go backward here; Helix/Kakoune go forward. HUME follows Helix/Kakoune.
+/// Vim would go backward here; HUME uses absolute direction (same choice as Kakoune/Helix).
 #[test]
 fn search_backward_n_goes_forward() {
     // Three matches; cursor at the third. `?` lands on the second.

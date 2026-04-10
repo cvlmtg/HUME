@@ -16,11 +16,11 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 ## Rules
 - **Update ROADMAP.md** when a decision is made (add to decisions table, remove from open questions) or when milestones change
 - **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option` — no `.unwrap()` in non-test code.
-- **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable (like Helix does). No shims for truly ancient terminals.
+- **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable. No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `crossterm` or similar abstractions for platform differences — no platform-specific code unless behind `cfg` gates.
 - **Keep it simple**: This is a learning project. Prefer clarity over cleverness, and direct solutions over premature abstraction.
-- **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands. Core editing logic uses Helix-style state triples (`initial, op, expected` with cursor/selection markers). Renderer uses `insta` inline snapshots.
-- **Editing model**: Select-then-act (Helix/Kakoune). Keys bind to named commands, not to other key sequences. No key-to-key remapping.
+- **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands. Core editing logic uses state triples (`initial, op, expected` with cursor/selection markers). Renderer uses `insta` inline snapshots.
+- **Editing model**: Select-then-act. Keys bind to named commands, not to other key sequences. No key-to-key remapping.
 - **Scripting**: Steel (Scheme) for plugins and configuration. Rust handles performance-critical paths; Steel handles behavior and customization.
 
 ## Day-one architectural invariants

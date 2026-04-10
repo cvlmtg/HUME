@@ -1,6 +1,6 @@
 # Inner vs Around: The Text Object Convention
 
-Every text object in HUME comes in two flavours, following Vim/Helix convention:
+Every text object in HUME comes in two flavours:
 
 - **`inner` (`i` prefix)**: the content *without* the delimiters. `i(` selects
   the text inside parentheses; `iw` selects the word without surrounding space.
