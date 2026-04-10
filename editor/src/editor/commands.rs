@@ -723,12 +723,12 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
                 ed.status_msg = Some(format!("Written {line_count} lines"));
                 Ok(())
             }
-            Err(e) => Err(CommandError(format!("Error: {e}"))),
+            Err(e) => Err(CommandError(e.to_string())),
         }
     } else {
         // Write to the current file.
         let Some(meta) = ed.file_meta.as_ref() else {
-            return Err(CommandError("Error: no file name".into()));
+            return Err(CommandError("no file name".into()));
         };
         match crate::io::write_file_atomic(&content, meta) {
             Ok(()) => {
@@ -736,7 +736,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
                 ed.status_msg = Some(format!("Written {line_count} lines"));
                 Ok(())
             }
-            Err(e) => Err(CommandError(format!("Error: {e}"))),
+            Err(e) => Err(CommandError(e.to_string())),
         }
     }
 }
