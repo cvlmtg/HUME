@@ -64,6 +64,27 @@ pub(super) fn cmd_insert_at_line_end(ed: &mut Editor, _count: usize, _mode: Moti
     Ok(())
 }
 
+/// Enter insert mode at the start of each selection (min of anchor and head).
+/// For a collapsed cursor this is identical to `i`.
+pub(super) fn cmd_insert_at_selection_start(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    ed.apply_motion(|_b, sels| sels.map(|sel| Selection::collapsed(sel.start())));
+    ed.begin_insert_session();
+    Ok(())
+}
+
+/// Enter insert mode after the end of each selection (one past max of anchor and head).
+/// For a collapsed cursor this is identical to `a`.
+pub(super) fn cmd_insert_at_selection_end(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    ed.apply_motion(|b, sels| {
+        sels.map(|sel| {
+            let after = next_grapheme_boundary(b, sel.end_inclusive(b));
+            Selection::collapsed(after)
+        })
+    });
+    ed.begin_insert_session();
+    Ok(())
+}
+
 /// Open a new line below the cursor and enter insert mode.
 ///
 /// `begin_insert_session` opens the edit group so the structural `\n` and

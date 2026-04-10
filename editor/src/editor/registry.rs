@@ -500,8 +500,10 @@ impl CommandRegistry {
         // ── Editor commands — mode transitions ────────────────────────────────
         ecmd("insert-before",        "Enter insert mode; collapse each selection to its start.",         cmd_insert_before       ).repeatable().reg(self);
         ecmd("insert-after",         "Enter insert mode after the cursor (move one grapheme right).",    cmd_insert_after        ).repeatable().reg(self);
-        ecmd("insert-at-line-start", "Enter insert mode at the first non-blank character on the line.", cmd_insert_at_line_start).repeatable().reg(self);
-        ecmd("insert-at-line-end",   "Enter insert mode after the last character on the line.",         cmd_insert_at_line_end  ).repeatable().reg(self);
+        ecmd("insert-at-line-start",      "Enter insert mode at the first non-blank character on the line.", cmd_insert_at_line_start     ).repeatable().reg(self);
+        ecmd("insert-at-line-end",        "Enter insert mode after the last character on the line.",         cmd_insert_at_line_end       ).repeatable().reg(self);
+        ecmd("insert-at-selection-start", "Enter insert mode at the start of the selection.",                cmd_insert_at_selection_start).repeatable().reg(self);
+        ecmd("insert-at-selection-end",   "Enter insert mode after the end of the selection.",               cmd_insert_at_selection_end  ).repeatable().reg(self);
         ecmd("open-line-below",      "Open a new line below the cursor and enter insert mode.",         cmd_open_line_below     ).repeatable().reg(self);
         ecmd("open-line-above",      "Open a new line above the cursor and enter insert mode.",         cmd_open_line_above     ).repeatable().reg(self);
         ecmd("command-mode",         "Open the command-mode mini-buffer.",                              cmd_command_mode        ).reg(self);
@@ -612,12 +614,12 @@ mod tests {
     ///    2 page-scroll editor commands
     ///    2 half-page-scroll editor commands
     ///    2 jump-list editor commands
-    ///    5 insert editor commands (insert-at-line-start/end, open-line-above/below, exit-insert)
+    ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
     ///    1 force-quit editor command
     ///    5 typed commands (quit, write, write-quit, toggle-soft-wrap, set)
     ///  ──
-    ///  105 total
-    const EXPECTED_COMMAND_COUNT: usize = 105;
+    ///  107 total
+    const EXPECTED_COMMAND_COUNT: usize = 107;
 
     #[test]
     fn registry_has_expected_count() {
