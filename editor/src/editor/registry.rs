@@ -35,6 +35,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::core::buffer::Buffer;
+use crate::core::error::CommandError;
 use crate::core::changeset::ChangeSet;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
@@ -115,17 +116,17 @@ pub(crate) enum MappableCommand {
     },
     /// Editor-level command requiring `&mut Editor` context.
     ///
-    /// Signature: `fn(&mut Editor, usize, MotionMode)`
+    /// Signature: `fn(&mut Editor, usize, MotionMode) -> Result<(), CommandError>`
     ///
     /// Covers composite operations: mode changes, register access, undo group
-    /// management, and parameterized motions (find/till/replace). Stored and
-    /// dispatched as a function pointer exactly like the other variants —
-    /// `fn(&mut Editor, usize, MotionMode)` is a thin pointer so there is no
-    /// self-referential sizing issue despite `Editor` owning the registry.
+    /// management, and parameterized motions (find/till/replace). Returns `Err`
+    /// only for true user-facing failures (e.g. "no match", I/O errors).
+    /// Silent no-ops (boundary conditions) return `Ok(())`. Stored and
+    /// dispatched as a function pointer exactly like the other variants.
     EditorCmd {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&mut super::Editor, usize, MotionMode),
+        fun: fn(&mut super::Editor, usize, MotionMode) -> Result<(), CommandError>,
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.
@@ -238,7 +239,7 @@ pub(crate) struct TypedCommand {
     pub aliases: &'static [&'static str],
     /// The function to execute. Receives the editor, an optional argument
     /// (e.g. a file path), and whether `!` was appended.
-    pub fun: fn(&mut super::Editor, Option<&str>, bool),
+    pub fun: fn(&mut super::Editor, Option<&str>, bool) -> Result<(), CommandError>,
 }
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
@@ -378,7 +379,7 @@ impl CommandRegistry {
         struct EditorCmdBuilder {
             name: &'static str,
             doc:  &'static str,
-            fun:  fn(&mut super::Editor, usize, MotionMode),
+            fun:  fn(&mut super::Editor, usize, MotionMode) -> Result<(), CommandError>,
             repeatable:  bool,
             jump:        bool,
             visual_move: bool,
@@ -402,7 +403,7 @@ impl CommandRegistry {
             }
         }
         // Construct a builder with all flags false.
-        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::Editor, usize, MotionMode)| {
+        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::Editor, usize, MotionMode) -> Result<(), CommandError>| {
             EditorCmdBuilder { name, doc, fun, repeatable: false, jump: false, visual_move: false, extendable: false }
         };
 
@@ -783,7 +784,7 @@ mod tests {
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
 
-        fn dummy_fn(_ed: &mut Editor, _count: usize, _mode: crate::ops::MotionMode) {}
+        fn dummy_fn(_ed: &mut Editor, _count: usize, _mode: crate::ops::MotionMode) -> Result<(), crate::core::error::CommandError> { Ok(()) }
         let cmd = MappableCommand::EditorCmd {
             name: Cow::Owned("steel-test-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel command for testing."),
@@ -817,7 +818,7 @@ mod tests {
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
 
-        fn dummy_typed(_ed: &mut Editor, _arg: Option<&str>, _force: bool) {}
+        fn dummy_typed(_ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), crate::core::error::CommandError> { Ok(()) }
         reg.register_typed(TypedCommand {
             name: Cow::Owned("steel-typed-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel typed command for testing."),

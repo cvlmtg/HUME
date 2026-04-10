@@ -926,7 +926,7 @@ fn colon_w_bang_is_rejected() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     for ch in ":w!".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
-    assert_eq!(ed.status_msg.as_deref(), Some("Error: w! is not supported"));
+    assert_eq!(ed.status_msg.as_deref(), Some("w! is not supported"));
     assert!(!ed.should_quit);
 }
 

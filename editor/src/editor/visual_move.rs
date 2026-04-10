@@ -213,11 +213,13 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
 // Public commands
 // ---------------------------------------------------------------------------
 
-pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize, mode: MotionMode) {
+pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize, mode: MotionMode) -> Result<(), crate::core::error::CommandError> {
     apply_visual_vertical(ed, count, true, mode);
+    Ok(())
 }
 
-pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize, mode: MotionMode) {
+pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize, mode: MotionMode) -> Result<(), crate::core::error::CommandError> {
     apply_visual_vertical(ed, count, false, mode);
+    Ok(())
 }
 
