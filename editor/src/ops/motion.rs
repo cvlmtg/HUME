@@ -1,10 +1,18 @@
 use crate::core::buffer::Buffer;
-use crate::editor::FindKind;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::core::selection::{Selection, SelectionSet};
 
 pub(crate) use super::MotionMode;
+
+/// Whether an f/t motion places the cursor on the found character or adjacent to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FindKind {
+    /// `find-forward` / `find-backward`: cursor lands ON the found character.
+    Inclusive,
+    /// `till-forward` / `till-backward`: cursor lands one grapheme before (forward) or after (backward) it.
+    Exclusive,
+}
 
 // ── Motion framework ──────────────────────────────────────────────────────────
 
