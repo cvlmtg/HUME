@@ -16,6 +16,7 @@ use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
 use crate::core::document::Document;
 use crate::io::FileMeta;
+use crate::ops::motion::FindKind;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ops::pair::find_bracket_pair;
@@ -91,15 +92,6 @@ pub(super) enum MacroPending {
 }
 
 // ── Find/till state ───────────────────────────────────────────────────────────
-
-/// Whether an f/t motion places the cursor on the found character or adjacent to it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FindKind {
-    /// `find-forward` / `find-backward`: cursor lands ON the found character.
-    Inclusive,
-    /// `till-forward` / `till-backward`: cursor lands one grapheme before (forward) or after (backward) it.
-    Exclusive,
-}
 
 /// The character and kind stored by the last find/till motion.
 ///

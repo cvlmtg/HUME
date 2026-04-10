@@ -33,7 +33,8 @@ use crate::helpers::is_word_boundary;
 
 use engine::types::EditorMode;
 
-use super::{Editor, FindChar, FindKind, MiniBuffer, Mode, SearchDirection};
+use super::{Editor, FindChar, MiniBuffer, Mode, SearchDirection};
+use crate::ops::motion::FindKind;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
