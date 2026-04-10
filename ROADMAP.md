@@ -1,40 +1,47 @@
-# HUME - Plan
+# HUME - Roadmap
 
-## Tech Stack
+## Decisions
 
-| Component | Choice | Notes |
-|-----------|--------|-------|
-| Language | Rust | Memory-safe, expressive, excellent TUI ecosystem |
-| Terminal I/O | `crossterm` | Cross-platform terminal I/O; kitty keyboard protocol preferred with legacy fallback |
-| Rendering | `ratatui` (diffing only) | Cell-level Buffer/Terminal for double-buffer diffing; no widgets |
-| Text storage | `ropey` | Rope-based buffer with structural sharing; enables tree-structured undo |
-| Scripting | `steel` | Rust-native Scheme; plugins and configuration in the same language |
-| Syntax highlighting | `tree-sitter` | Incremental parsing; also powers text objects and structural navigation |
-| Build system | Cargo | Standard Rust tooling |
-| Testing | `cargo test` + crates | Built-in unit/integration/doc tests. Add `pretty_assertions`, `proptest`, `insta` as needed. |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Language | **Rust** | Memory-safe, zero-cost abstractions, best TUI ecosystem (crossterm + ratatui). Expressive type system with pattern matching, algebraic types, and macros. Ideal for a learning project. |
+| Text storage | **Rope** (via `ropey` crate) | Efficient for large files, O(log n) edits anywhere, built-in line indexing. Undo uses changeset inversion; structural sharing provides cheap cloning at undo-tree branch points. Used by Helix. |
+| Scripting / Config | **Steel** (Rust-native Scheme) | Lisp syntax, designed for embedding in Rust. Helix is adopting it. Used for both plugins and configuration. |
+| LSP architecture | **Hybrid** | Rust core handles transport and JSON-RPC parsing. Steel scripts handle behavior (diagnostics display, completion UX, keybindings). |
+| Syntax highlighting | **Tree-sitter** | Incremental parsing, structural understanding. Enables text objects and structural navigation beyond just colors. Production-proven (Neovim, Helix, Zed, GitHub). |
+| Key mapping | **Command-based** (Helix model) | Keys bind to named commands, not to other keys. No recursive/non-recursive distinction needed. Keymaps defined in Steel config. Supports nested keys for sequences/chords. |
+| Editing model | **Select-then-act** (Helix/Kakoune) | Motions create selections, actions operate on them. Design for multiple selections from day one (`Vec<Selection>`). Selections are always inclusive — `anchor == head` is a 1-char selection, never a zero-width point. Extend-selection variants are named commands orthogonal to motion type. Keybinding is an M3 concern. Text objects and keystroke macros supported. |
+| Extend mode | **`e` toggle (primary) + Ctrl+motion (kitty bonus, deferred to M4)** | A sticky mode where all motions extend the current selection instead of replacing it. Named "extend mode" (not "select mode") because motions already select in normal mode — what changes is that they extend. Bound to `e` (mnemonic: **e**xtend). `x` was previously considered but repurposed for line selection. Ctrl+motion was rejected as a universal modifier: fatal legacy-terminal collisions on 10 of 15 motion keys (`Ctrl+h`=Backspace, `Ctrl+j`=Enter, `Ctrl+[`=ESC, `Ctrl+b` eaten by tmux, etc.). Alt rejected — types accented chars on macOS, physical layout issues on Windows. **Bonus** (deferred to M4): When kitty keyboard protocol is detected, `Ctrl+motion` also triggers extend as a chord shortcut without entering extend mode; gracefully absent in legacy terminals. |
+| Line selection | **`x`/`X` (walk down/up lines)** | `x` selects the full current line including `\n`; repeated `x` walks to the next line. `X` does the same backward. In extend mode (or `Ctrl+x`/`Ctrl+X` with kitty protocol), each press accumulates lines into the selection instead of replacing it. `o` in extend mode flips anchor/head (Vim visual `o`). `mil`/`mal` text objects still available for inner/around line. `x` was freed up from its earlier extend-mode role when the toggle was moved to `e`. |
+| Delete char at cursor | **`d` (no separate binding needed)** | In select-then-act with always-inclusive 1-char selections, `d` (delete selection) on a fresh cursor deletes the char under it — identical to Vim's `x`. No dedicated binding required. `delete_char_forward` in `src/edit.rs` is for insert mode (the Delete key), not normal mode. |
+| Terminal I/O | **crossterm** | Cross-platform terminal I/O. Handles raw mode, key events, escape sequences. |
+| Rendering | **ratatui as diffing engine** | Use ratatui's `Buffer`/`Terminal` for cell-level rendering and double-buffer diffing. No widgets. Immediate mode thinking with retained-mode optimization. |
+| Terminal protocol | **Prefer kitty keyboard, fall back** | Detect kitty keyboard protocol support at startup via a direct TTY probe (`src/os/`): sends `\x1B[?u` + `\x1B[>q` (XTVERSION) + `\x1B[c` (DA1 sentinel) and reads raw bytes from `/dev/tty` (Unix) or Win32 console API (Windows); detects kitty via flags response or XTVERSION name match (fallback for older WezTerm). Use it when available for unambiguous key encoding, modifier reporting, and key release events. Fall back to legacy encoding otherwise (like Helix does). |
+| Documentation | **Markdown + auto-generated command reference** | Hand-written Markdown guides for concepts. Command reference auto-generated from Rust doc comments. In-editor `:help` renders Markdown in a read-only buffer. |
+| Theming | **Hierarchical scopes** (Helix-compatible) | Dot-notation scopes (`keyword.function`, `ui.cursor`) with automatic fallback. Follow Helix scope convention. Read Helix TOML themes natively; Steel themes as primary format. Discoverability via `:theme-debug` and token inspection. |
+| Package manager | **PLUM (PLUgin Manager) — Steel script, swappable** | PLUM is a core Steel plugin (`core:plum`) that handles discovery, installation, and updates. HUME's runtime handles loading and lifecycle independently — it scans plugin directories on startup regardless of which manager put things there. Two namespaces: `core:name` for bundled plugins (shipped with HUME, live in installation dir, never fetched), `username/repo` for third-party (Git-based, no registry). Core plugins have per-plugin defaults (enabled or disabled); users override in config. PLUM is not special-cased — disabling it just removes management commands. Any third-party manager can replace it. |
+| Indent queries | **Helix format** (`indent.scm`) | Reuse Helix's existing per-language indent queries directly. No drawbacks identified; avoids reinventing a query format and gives us a large library of languages for free. |
+| Unicode handling | **Grapheme clusters from day one** | All motions and selections operate on grapheme clusters via `unicode-segmentation`, not bytes or chars. Handles emoji, combining characters, CJK wide chars correctly. Avoids painful retrofitting. |
+| Symbol rename | **LSP-first, tree-sitter fallback** | Use `textDocument/rename` when an LSP server is active — it is scope-aware and works across files. Fall back automatically to a tree-sitter local rename (using `locals.scm` scope queries) when no LSP is available — file-local only, but still scope-correct within the file. Same keybinding in both cases; the degraded fallback is transparent to the user. |
+| Keymap defaults vs config | **Hardcoded defaults, config overrides** | Default keybinds live in Rust as the source of truth. User config (Steel) provides overrides only — not a full copy of all bindings. The editor always works with zero config: missing config file → silent, use defaults. Unparseable config → start with defaults, show warning in status line. Invalid individual entries → skip and warn, load the rest. New commands get their default keybind automatically on upgrade without requiring users to update their config. Principle: the editor must always be usable; config is an additive layer, never a requirement. |
+| Jump-list eligibility | **Flag on `MappableCommand`, not a separate list** | The current `JUMP_COMMANDS` const works for built-in commands, but breaks when Steel plugins register custom motions at runtime (a plugin can't add to a Rust `const`). More importantly, a plugin that moves the cursor by manipulating selections directly (rather than composing built-in commands) bypasses the dispatcher's jump-list logic entirely — large cursor jumps go unrecorded. Making `jump: bool` a field on `MappableCommand` (like `repeatable`) lets every command — Rust or Steel — declare its jump intent at registration time. Deferred to the M5 registry rework (Steel integration), which already requires `String` keys and a mutable registration API. |
+| Register linewise flag | **Heuristic: detect at paste time** | Whether yanked content is linewise (whole lines) vs charwise is determined at paste time: if every value in the register ends with `\n`, treat as linewise. No explicit flag stored. Promote to an explicit flag later if the heuristic proves insufficient. |
+| Paste on selection (`p`/`P`) | **Replace-and-swap, no separate `R` binding** | `p`/`P` on a cursor (1-char selection) inserts normally. `p`/`P` on a multi-char selection replaces it with the register contents, and the displaced text is returned to the caller to write back to the register (swap). This solves the yank-then-delete-then-paste clobber problem without Vim's `"0` yank register or a dedicated `R` keybind. The distinction is `sel.is_cursor()` — intentional selections trigger replace; fresh cursors trigger insert. |
+| Register `'c'` (system clipboard) | **Deferred to M3 (editor layer)** | The `'c'` register requires OS clipboard integration (e.g. `arboard` crate) and belongs in the editor layer, not the core. The `CLIPBOARD_REGISTER` constant reserves the name; actual clipboard read/write will be wired in M3. For now it behaves like any named register. |
+| Read-only registers (`.`, `%`, `#`) | **Deferred, editor-layer concern** | Last inserted text (`.`), current filename (`%`), and alternate filename (`#`) require editor-level state (mode tracking, open file list). Not implementable in the core layer. Deferred entirely until M3. |
+| Register naming scheme | **Mnemonic letters, `0`–`9` named storage** | HUME uses mnemonic single-char names rather than Vim/Helix convention (`"`, `+`, `_`). 10 named registers (`0`–`9`) cover all real workflows, freeing letters for intuitive special names: `c` = clipboard, `b` = black hole, `s` = search, `q` = default macro. The default register (receives all yanks/deletes implicitly) is an internal sentinel (`'"'`) users never type. Named registers also store macros (Vim model); `0`–`9` hold text or keystrokes, last write wins. |
+| Macro model | **Register-based, Vim-style, with `Q`/`q` UX** | Macros are stored in registers (Vim model), not in a single global slot (Helix model). Register `q` is the default macro register. `QQ` starts/stops recording into `q`; `qq` replays from `q`. `Q3` records into register `3`; `q3` replays from `3`. `Q` (uppercase) is used for recording because it is a deliberate, once-off setup action; `q` (lowercase) is used for replay because it is the hot path done repeatedly. Allows multiple saved macros without the full `a`–`z` Vim namespace. Implemented in M3 (editor layer). |
+| Register picker UI | **Deferred to M3 (editor layer)** | When the user presses the register prefix, show a popup listing all registers with descriptions and current contents (like Helix). Makes register names discoverable without memorisation. The naming scheme is learnable but the picker removes the need to memorise it upfront. |
+| Dot-repeat scope | **Action only, no preceding selection** (Helix/Kakoune model) | `.` replays the editing command + insert keystrokes, but NOT the motion/selection that preceded it. On a collapsed cursor after `wc`+"foo"+Esc, `.` deletes the single cursor char and inserts "foo" (not a full word). The user re-selects before pressing `.` (e.g. `w.w.w.`). This matches the select-then-act philosophy: selections and actions are independent steps. Vim's `cw`-style atomic operator+motion recording would require an operator-pending mode, which contradicts the model. Evaluated and rejected: making `.` a no-op on collapsed cursors would break legitimate `d..` (delete successive chars). |
+| Surround operations | **`ms` + smart `r` (select-then-act, no `md`/`mr`)** | `ms` + char selects the surrounding delimiters as two cursor selections, not a combined select+act command. Delete surround = `ms(` → `d`. Replace surround = `ms(` → `r[` (smart `r` maps opening→opening, closing→closing automatically). Change surround = `ms(` → `c`. Add surround = select text → `i` → auto-pairs wrapping. Rejected: Helix-style `md`/`mr` which bake selection+action together, violating select-then-act. Smart `r` for symmetric→asymmetric uses selection index (even=open, odd=close) as tiebreaker. |
+| Word motions (`w`/`b`/`W`/`B`) | **Select whole word (not Helix extend model)** | `w` jumps to the NEXT word and selects it entirely (anchor = first char, head = last char). `b` jumps to the PREVIOUS word and selects it entirely. This keeps the select-then-act model clean: every `w`/`b` press gives a fresh, cleanly-bounded word selection. `e`/`E` are removed as redundant (since `w` already selects to the word end). `w` and `b` cross line boundaries (newlines). `w` on the last word in the buffer and `b` on the first word are no-ops (stay). This diverges from Helix, where `w` extends from the current position to the start of the next word. |
 
-## Architecture (WIP)
+## Open Questions
 
-To be designed. Key components will include:
-- **Core**: Buffer management, text storage, edit operations, selections (`Vec<Selection>` from day one)
-- **Editor**: Mode management, command handling, key mapping (keys → named commands, no key-to-key indirection)
-- **Terminal**: Input handling, rendering, screen management. **Important**: The renderer must iterate over "display lines" (not buffer lines) from day one. A display line is either a real buffer line or a virtual line. Initially every display line maps 1:1 to a buffer line, but this abstraction is required for virtual lines later and is expensive to retrofit.
-- **Layout**: Custom layout system — divides screen `Rect` into sub-regions (tab bar, editor panes, status line, command line). Splits are nested `Rect` divisions.
-- **Overlays**: Completion menus, popups, hover info — rendered last on top of main content. Ratatui diffs handle cleanup on dismiss.
-- **UI**: Tab bar, status line, command line, split panes. The status line follows an **element model** (`StatusElement` enum in `src/ui/statusline.rs`): named elements (`Mode`, `Position`, `FileName`, `Separator`, `DirtyIndicator`, `SearchMatches`, `KittyProtocol`, `MiniBuf`, …) arranged into left / center / right sections via `StatusLineConfig`. The renderer adds edge padding (1-space margin) and boundary-aware spacing between elements. The Steel config layer will expose this to scripting.
-- **Decorations**: Annotation layer for virtual lines/text (diagnostics, ghost text, code lenses, inlay hints, git blame). Buffer-position-anchored, auto-updated on edits, queryable by line. Multiple sources (LSP, plugins, git).
-- **Scripting**: Steel (Scheme) engine for plugins and configuration
-- **LSP**: Rust transport/parsing layer + Steel scripts for behavior and customization
-
-## Testing Strategy
-
-Every editing command, text object, and selection operation must be tested. Approach by layer:
-
-- **Core editing tests (M1)**: Helix-style state triples — `(initial_state, operations, expected_state)` with a compact DSL using markers for cursor and selection (e.g. `-[hello]> world` for forward, `<[hello]- world` for backward). Fast, focused, self-documenting. No UI dependency.
-- **Renderer tests (M2+)**: `insta` inline snapshots — implement `render_to_string()` producing ASCII with cursor/selection markers. Expected output embedded directly in test source (`@"..."`). Auto-updateable via `cargo insta review`.
-- **Property-based tests** (`proptest`): Buffer integrity invariants — random sequences of insert/delete/undo/redo must never corrupt the rope or desync selections.
-- **Integration tests** (`tests/` directory): End-to-end editing sequences — open file, perform edits, verify final state.
-- **`pretty_assertions`**: Better diff output for string/buffer comparisons in all test types.
+| Question | Context |
+|----------|---------|
+| Multiline quote text objects | Quote text objects (`i"`, `i'`, `` i` ``) are line-bounded because the parity scan gives wrong results when earlier lines contain unmatched quotes. Brackets don't have this problem (asymmetric delimiters allow depth tracking). Tree-sitter can resolve the ambiguity — use syntax-aware matching when a grammar is loaded, fall back to line-bounded parity otherwise. |
+| Register paste count mismatch | When yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage. |
 
 ## Milestones
 
@@ -46,8 +53,7 @@ Every editing command, text object, and selection operation must be tested. Appr
 - [x] Decide on editing model: Helix-style select-then-act
 - [x] Initialize Rust project with Cargo
 
-### M1 — Core engine
-Build the core with no UI dependency. Drive entirely from tests.
+### M1 — Core engine (complete)
 - [x] Buffer type: wrap `ropey::Rope` with HUME's buffer API
 - [x] Selection type: `Vec<Selection>` with anchor + head (always inclusive — `anchor == head` is a 1-char selection, never a zero-width point). Single cursor is a vec of length 1
 - [x] Unicode/grapheme cluster handling: all motions and selections operate on grapheme clusters (`unicode-segmentation` crate), not bytes or chars
@@ -64,14 +70,14 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
 - [x] Thorough unit tests for every operation and edge case
 
-### M2 — First render ✓
+### M2 — First render (complete)
 - [x] Display-line abstraction (buffer line or virtual line)
 - [x] Open and display a file with scrolling
 - [x] Line numbers (absolute / relative / hybrid)
 - [x] Status bar with filename and position
 - [x] Quit command
 
-### M3 — Modal editing ✓
+### M3 — Modal editing (complete)
 - [x] Normal mode with cursor movement: `h/l/j/k`, arrows, `w/b/W/B` (select whole word), `Home/End/0/$`, `^` (first non-blank), `{`/`}` (paragraph), `PageUp/PageDown`, `;` (collapse), `,` (keep primary), `(`/`)` (cycle primary), `C` (copy to next line), `d` (delete + yank), `c` (change + yank), `u/U/Ctrl+r` (undo/redo), `i/a` (enter Insert), `q/Ctrl+c` (quit)
 - [x] Yank/paste: `y` (yank), `p` (paste after), `P` (paste before); `d`/`c` yank before deleting; paste on non-cursor selection swaps displaced text back into default register
 - [x] Text objects: `mi`/`ma` + object char — word (`w`/`W`), brackets (`(`/`[`/`{`/`<`), quotes (`"`/`'`/`` ` ``); unrecognized char falls through to normal dispatch
@@ -84,10 +90,7 @@ Build the core with no UI dependency. Drive entirely from tests.
 - [x] Auto-pairs: auto-close brackets/quotes on insert; self-contained, no ordering pressure.
 - [x] f/t/F/T character find motions: `f`/`F` (inclusive), `t`/`T` (exclusive); `=`/`-` repeat with absolute direction (always forward/backward, regardless of original f/F/t/T).
 
-### M4 — Command architecture + search
-
-Theme: replace hardcoded key dispatch with a proper command registry and keymap layer, then add the highest-value editing features that depend on it.
-
+### M4 — Command architecture + search (complete)
 - [x] **Kitty keyboard protocol** (`src/terminal.rs`, `src/os/{unix,windows}.rs`, `Editor::kitty_enabled`): probe at startup with `crate::os::probe_kitty_support()`: sends `\x1B[?u` (kitty flags query), `\x1B[>q` (XTVERSION), and `\x1B[c` (DA1 sentinel) to the terminal, then reads raw response bytes directly from `/dev/tty` (Unix) or the Win32 console API (Windows) — bypasses crossterm's event system entirely to avoid startup timeouts; detects kitty via `ESC [ ? <digits> u` response (flags query) or XTVERSION name matching as a fallback for terminals that support push but not the query (e.g. older WezTerm); push `DISAMBIGUATE_ESCAPE_CODES | REPORT_EVENT_TYPES` flags when supported; pop unconditionally in `restore()` (harmless no-op on legacy terminals); filter `KeyEventKind::Release` in the event loop; store `kitty_enabled: bool` on `Editor`; add Ctrl+h/l/j/k/w/b one-shot extend bindings gated on `kitty_enabled`; status bar shows 🐱 when kitty protocol is active. Graceful fallback to legacy encoding when the terminal doesn't support the protocol.
 - [x] **Command registry** (`src/editor/registry.rs`): typed command descriptors behind string names — `Motion`, `Selection`, and `Edit` variants; `register_defaults()` registers every `cmd_*` function. The `cmd_*` signatures are already the right shape.
 - [x] **Keymap layer** (`src/editor/keymap.rs`): trie-based `KeyEvent` sequence → command name mapping; per-mode keymaps (Normal, Insert, Extend); sparse extend trie for per-key overrides (`o → flip-selections`). `Ctrl+motion` one-shot extend via kitty protocol (strip CONTROL, re-walk, `MotionMode::Extend`). Default keymap in Rust (Steel config is M5).
@@ -100,9 +103,6 @@ Theme: replace hardcoded key dispatch with a proper command registry and keymap 
 - [x] **Surround operations** (`ms` + smart `r`): `ms` + char selects the surrounding delimiters as two cursor selections (e.g. `ms(` places cursors on `(` and `)`), enabling select-then-act composition: `ms(` → `d` deletes parens, `ms(` → `r[` replaces `()` with `[]`, `ms(` → `c` enters insert with two cursors. No separate `md`/`mr` — standard commands compose naturally. Smart `r`: when replacing cursor selections with a pair character, resolves open/close based on the char being replaced (opening→opening, closing→closing; symmetric delimiters use selection index as tiebreaker). "Add surround" is already covered by auto-pairs wrapping in insert mode.
 
 ### M5 — Scripting foundation + polish
-
-Theme: embed the Steel scripting engine and land the most impactful editing polish features. Tree-sitter is deferred to M6.
-
 - [x] **Whitespace rendering + tab expansion**: per-type configurable indicators for spaces, tabs, newlines (`WhitespaceShow` enum `None`/`All`/`Trailing` per type, custom indicator characters, dimmed style). Proper tab-stop expansion in both the renderer and `display_col_width` (tabs previously rendered as 1-column). Renderer change + `display_col_width`/`display_col_in_line` gained `tab_width` parameter.
 - [x] **Soft wrap**: long lines wrap to the next display row. `DisplayLine` gains `is_continuation: bool`. `display_lines()` splits lines exceeding `content_width` into multiple display rows via `wrap_line()` (grapheme-aware, handles CJK double-width and tab expansion). `scroll_offset` stays buffer-line based; `scroll_sub_offset` handles long lines that exceed viewport height. `col_offset` forced to 0 when wrapping. `j/k` remain buffer-line motions (display-line motions deferred). Continuation rows get a blank gutter (no indicator — the text indentation is enough visual cue). Cursor-line highlight extends to continuation rows. Toggled via `:wrap` / `:toggle-soft-wrap`. On by default.
 - [x] **Unify no-wrap horizontal scroll**: replace `display_col_in_line()` in `editor/src/core/grapheme.rs` with a call to `format_buffer_line()`, eliminating the independent grapheme→column code path that doesn't account for whitespace indicators or inline decorations.
@@ -115,15 +115,13 @@ Theme: embed the Steel scripting engine and land the most impactful editing poli
 - [ ] **Helix-compat surround plugin** (Steel): `md` + char deletes surround, `mr` + old + new replaces surround. Implemented as a bundled Steel plugin that composes existing commands (`select-surround` → `delete` / `replace`). Serves as the first real proof-of-concept for the scripting engine and validates that the plugin API is expressive enough for command composition.
 
 ### M6 — Syntax awareness (planned)
+- [ ] **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
+- [ ] **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
+- [ ] **Incremental tree-sitter parsing**: translate document edits (`ChangeSet`) into tree-sitter `InputEdit` operations for incremental re-parsing rather than a full re-parse on each edit. The `SharedBuffer.tree` field already exists; this wires up the update path.
+- [ ] **Multi-layer tree-sitter injections**: support embedded languages (e.g. JavaScript in HTML, code blocks in Markdown) via injection layers with priority ordering.
+- [ ] **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable).
 
-- **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
-- **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
-- **Incremental tree-sitter parsing**: translate document edits (`ChangeSet`) into tree-sitter `InputEdit` operations for incremental re-parsing rather than a full re-parse on each edit. The `SharedBuffer.tree` field already exists; this wires up the update path.
-- **Multi-layer tree-sitter injections**: support embedded languages (e.g. JavaScript in HTML, code blocks in Markdown) via injection layers with priority ordering.
-- **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable).
-
-### Future milestones
-- **Register paste count mismatch**: when yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage.
+### Future
 - **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
 - **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
