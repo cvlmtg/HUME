@@ -448,11 +448,10 @@ fn capital_a_enters_insert_after_end_of_line() {
     assert_eq!(state(&ed), "hello-[\n]>");
 }
 
-/// `I` must jump to the first non-blank character of the line, then enter
-/// Insert mode — "insert before first non-blank".
+/// `I` collapses a multi-char selection to its start and enters Insert mode.
 #[test]
-fn capital_i_enters_insert_at_first_nonblank() {
-    let mut ed = editor_from("  hell-[o]>\n");
+fn capital_i_enters_insert_at_selection_start() {
+    let mut ed = editor_from("  -[hello]>\n");
     ed.handle_key(key('I'));
 
     assert_eq!(ed.mode, Mode::Insert);
@@ -991,6 +990,35 @@ fn write_follows_symlink() {
     assert!(link_path.symlink_metadata().unwrap().file_type().is_symlink());
     // Content was written to the real file.
     assert_eq!(std::fs::read_to_string(real.path()).unwrap(), "hello\n");
+}
+
+// ── insert-at-selection-start / insert-at-selection-end ──────────────────────
+
+/// `I` with a forward selection collapses to the start of the selection.
+#[test]
+fn insert_at_selection_start_forward() {
+    let mut ed = editor_from("foo -[bar]> baz\n");
+    ed.handle_key(key('I'));
+    assert_eq!(state(&ed), "foo -[b]>ar baz\n");
+    assert_eq!(ed.mode, Mode::Insert);
+}
+
+/// `I` with a backward selection also collapses to the start (lower index).
+#[test]
+fn insert_at_selection_start_backward() {
+    let mut ed = editor_from("foo <[bar]- baz\n");
+    ed.handle_key(key('I'));
+    assert_eq!(state(&ed), "foo -[b]>ar baz\n");
+    assert_eq!(ed.mode, Mode::Insert);
+}
+
+/// `I` with a collapsed cursor just enters insert at the same position.
+#[test]
+fn insert_at_selection_start_collapsed() {
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+    ed.handle_key(key('I'));
+    assert_eq!(state(&ed), "foo -[b]>ar baz\n");
+    assert_eq!(ed.mode, Mode::Insert);
 }
 
 // ── Auto-pairs integration tests ──────────────────────────────────────────────

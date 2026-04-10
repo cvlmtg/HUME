@@ -558,7 +558,7 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(':'), cmd!("command-mode"));
     t.bind_leaf(key!('i'), cmd!("insert-before"));
     t.bind_leaf(key!('a'), cmd!("insert-after"));
-    t.bind_leaf(key!('I'), cmd!("insert-at-line-start"));
+    t.bind_leaf(key!('I'), cmd!("insert-at-selection-start"));
     t.bind_leaf(key!('A'), cmd!("insert-at-line-end"));
     // `o` in normal mode: open line below.
     // `o` in extend mode: flip selections (extend pairing in the registry).
