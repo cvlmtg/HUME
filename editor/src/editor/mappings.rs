@@ -90,7 +90,6 @@ impl Editor {
     fn handle_scratch_key(&mut self, key: KeyEvent) {
         use KeyCode::{Char, Esc, Down, Up};
         use crate::ops::motion::{cmd_select_line, cmd_select_line_backward, cmd_goto_first_line, cmd_goto_last_line};
-        use crate::ops::MotionMode;
 
         let sv = self.scratch_view.as_mut().expect("called only when scratch_view is Some");
         match key.code {

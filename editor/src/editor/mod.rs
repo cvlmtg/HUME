@@ -554,9 +554,13 @@ impl Editor {
             vp.height = terminal_height.saturating_sub(1);
         }
 
-        // 2. Sync mode. Scratch view always shows Normal to keep the cursor
-        //    shape correct; no real mode-change is happening.
-        self.engine_view.panes[self.pane_id].mode = self.mode;
+        // 2. Sync mode. Scratch view forces Normal so the cursor shape stays
+        //    correct regardless of the editor's actual mode.
+        self.engine_view.panes[self.pane_id].mode = if self.scratch_view.is_some() {
+            EditorMode::Normal
+        } else {
+            self.mode
+        };
 
         if let Some(ref sv) = self.scratch_view {
             // ── Scratch view path ─────────────────────────────────────────────

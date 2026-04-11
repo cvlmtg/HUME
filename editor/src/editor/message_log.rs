@@ -8,6 +8,8 @@
 //! document in the editor's render and key-dispatch paths. Used by `:messages`;
 //! designed to be reusable for `:help` and similar commands later.
 
+use std::collections::VecDeque;
+
 use crate::core::buffer::Buffer;
 use crate::core::selection::{Selection, SelectionSet};
 
@@ -60,8 +62,9 @@ pub(crate) struct LogEntry {
 
 /// Maximum number of entries kept in the log.
 ///
-/// When the cap is exceeded the oldest entries are dropped so `push` stays
-/// O(1) amortized and a misbehaving plugin cannot grow the log without bound.
+/// When the cap is exceeded the oldest entry is evicted. `VecDeque` makes
+/// both the push and the eviction O(1) amortized, so a misbehaving plugin
+/// flooding the log cannot degrade performance.
 const MAX_ENTRIES: usize = 1000;
 
 /// Persistent, append-only log of messages from the current editing session.
@@ -70,7 +73,9 @@ const MAX_ENTRIES: usize = 1000;
 /// have been reviewed via `:messages`. New entries after a mark bump the
 /// unseen count again, prompting the user to check.
 pub(crate) struct MessageLog {
-    entries: Vec<LogEntry>,
+    // VecDeque so pop_front() (eviction) and push_back() (append) are both
+    // O(1) amortized — a Vec would shift all elements on every eviction.
+    entries: VecDeque<LogEntry>,
     /// Index of the first unseen entry. Everything at `index >= seen_up_to` is
     /// "unread". Updated by `mark_all_seen()`.
     seen_up_to: usize,
@@ -78,24 +83,24 @@ pub(crate) struct MessageLog {
 
 impl MessageLog {
     pub(crate) fn new() -> Self {
-        Self { entries: Vec::new(), seen_up_to: 0 }
+        Self { entries: VecDeque::new(), seen_up_to: 0 }
     }
 
     /// Append an entry to the log. Called by `Editor::report`.
     ///
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest entry is
-    /// dropped and `seen_up_to` is shifted so it stays in bounds.
+    /// evicted and `seen_up_to` is shifted so it stays in bounds.
     pub(crate) fn push(&mut self, severity: Severity, text: String) {
         if self.entries.len() == MAX_ENTRIES {
-            self.entries.remove(0);
+            self.entries.pop_front();
             self.seen_up_to = self.seen_up_to.saturating_sub(1);
         }
-        self.entries.push(LogEntry { severity, text });
+        self.entries.push_back(LogEntry { severity, text });
     }
 
     /// All entries in chronological order.
-    pub(crate) fn entries(&self) -> &[LogEntry] {
-        &self.entries
+    pub(crate) fn entries(&self) -> impl ExactSizeIterator<Item = &LogEntry> {
+        self.entries.iter()
     }
 
     /// Whether there are any entries that have not been seen via `:messages`.
@@ -108,8 +113,7 @@ impl MessageLog {
     /// `Info` entries are never logged; `Trace` entries are not surfaced in
     /// the summary because they are supplemental detail, not actionable items.
     pub(crate) fn unseen_counts(&self) -> (usize, usize) {
-        let unseen = &self.entries[self.seen_up_to..];
-        unseen.iter().fold((0, 0), |(e, w), entry| match entry.severity {
+        self.entries.iter().skip(self.seen_up_to).fold((0, 0), |(e, w), entry| match entry.severity {
             Severity::Error   => (e + 1, w),
             Severity::Warning => (e, w + 1),
             _ => (e, w),
@@ -158,12 +162,11 @@ impl MessageLog {
     /// Each line is prefixed with `[severity]` for scannability. Returns an
     /// empty string if there are no entries.
     pub(crate) fn format_for_display(&self) -> String {
-        let entries = self.entries();
-        if entries.is_empty() {
+        if self.entries.is_empty() {
             return String::new();
         }
         let mut out = String::new();
-        for entry in entries {
+        for entry in &self.entries {
             out.push('[');
             out.push_str(entry.severity.label());
             out.push_str("] ");
@@ -224,7 +227,7 @@ mod tests {
             (Severity::Warning, "first"),
             (Severity::Error,   "second"),
         ]);
-        let entries = log.entries();
+        let entries: Vec<_> = log.entries().collect();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "first");
         assert_eq!(entries[1].severity, Severity::Error);
@@ -363,8 +366,9 @@ mod tests {
         }
         assert_eq!(log.entries().len(), MAX_ENTRIES);
         // The first entry should now be "msg 1" (msg 0 was evicted).
-        assert_eq!(log.entries()[0].text, "msg 1");
-        assert_eq!(log.entries()[MAX_ENTRIES - 1].text, format!("msg {MAX_ENTRIES}"));
+        let entries: Vec<_> = log.entries().collect();
+        assert_eq!(entries[0].text, "msg 1");
+        assert_eq!(entries[MAX_ENTRIES - 1].text, format!("msg {MAX_ENTRIES}"));
     }
 
     #[test]
