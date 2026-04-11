@@ -58,6 +58,12 @@ pub(crate) struct LogEntry {
 
 // ── MessageLog ───────────────────────────────────────────────────────────────
 
+/// Maximum number of entries kept in the log.
+///
+/// When the cap is exceeded the oldest entries are dropped so `push` stays
+/// O(1) amortized and a misbehaving plugin cannot grow the log without bound.
+const MAX_ENTRIES: usize = 1000;
+
 /// Persistent, append-only log of messages from the current editing session.
 ///
 /// Entries accumulate until the session ends; `mark_all_seen` tracks which
@@ -76,7 +82,14 @@ impl MessageLog {
     }
 
     /// Append an entry to the log. Called by `Editor::report`.
+    ///
+    /// When the entry count would exceed [`MAX_ENTRIES`], the oldest entry is
+    /// dropped and `seen_up_to` is shifted so it stays in bounds.
     pub(crate) fn push(&mut self, severity: Severity, text: String) {
+        if self.entries.len() == MAX_ENTRIES {
+            self.entries.remove(0);
+            self.seen_up_to = self.seen_up_to.saturating_sub(1);
+        }
         self.entries.push(LogEntry { severity, text });
     }
 
@@ -96,9 +109,11 @@ impl MessageLog {
     /// the summary because they are supplemental detail, not actionable items.
     pub(crate) fn unseen_counts(&self) -> (usize, usize) {
         let unseen = &self.entries[self.seen_up_to..];
-        let errors   = unseen.iter().filter(|e| e.severity == Severity::Error).count();
-        let warnings = unseen.iter().filter(|e| e.severity == Severity::Warning).count();
-        (errors, warnings)
+        unseen.iter().fold((0, 0), |(e, w), entry| match entry.severity {
+            Severity::Error   => (e + 1, w),
+            Severity::Warning => (e, w + 1),
+            _ => (e, w),
+        })
     }
 
     /// Mark all current entries as seen. Called when the user opens `:messages`.
@@ -337,5 +352,36 @@ mod tests {
             .unwrap_or(0);
         let line_content: String = text[line_start..].chars().take_while(|&c| c != '\n').collect();
         assert_eq!(line_content, "line3");
+    }
+
+    #[test]
+    fn push_respects_cap() {
+        let mut log = MessageLog::new();
+        // Push MAX_ENTRIES + 1 entries; the oldest should be evicted.
+        for i in 0..=MAX_ENTRIES {
+            log.push(Severity::Warning, format!("msg {i}"));
+        }
+        assert_eq!(log.entries().len(), MAX_ENTRIES);
+        // The first entry should now be "msg 1" (msg 0 was evicted).
+        assert_eq!(log.entries()[0].text, "msg 1");
+        assert_eq!(log.entries()[MAX_ENTRIES - 1].text, format!("msg {MAX_ENTRIES}"));
+    }
+
+    #[test]
+    fn push_cap_adjusts_seen_up_to() {
+        let mut log = MessageLog::new();
+        // Push MAX_ENTRIES entries and mark them all seen.
+        for i in 0..MAX_ENTRIES {
+            log.push(Severity::Warning, format!("msg {i}"));
+        }
+        log.mark_all_seen();
+        assert!(!log.has_unseen());
+
+        // Pushing one more evicts the oldest and shifts seen_up_to.
+        log.push(Severity::Error, "overflow".to_string());
+        // The new entry is unseen.
+        assert!(log.has_unseen());
+        let (e, w) = log.unseen_counts();
+        assert_eq!((e, w), (1, 0));
     }
 }
