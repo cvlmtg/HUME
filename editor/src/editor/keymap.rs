@@ -565,9 +565,6 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('o'), cmd!("open-line-below"));
     t.bind_leaf(key!('O'), cmd!("open-line-above"));
 
-    // Ctrl+c quits from normal mode.
-    t.bind_leaf(key!(Ctrl + 'c'), cmd!("force-quit"));
-
     t
 }
 
@@ -911,8 +908,10 @@ mod tests {
     #[test]
     fn ctrl_bindings_in_normal_keymap() {
         let trie = default_normal_keymap();
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "force-quit"),
-            "Ctrl+c should map to force-quit");
+        // Ctrl+c is intentionally unbound in normal mode — force-quit must be
+        // invoked via :quit or :q to avoid accidental data loss.
+        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
+            "Ctrl+c must be unbound in normal mode");
         assert!(matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
             "Ctrl+r should map to redo");
         assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
@@ -931,7 +930,7 @@ mod tests {
             key!('x'), key!('X'), key!('p'), key!('P'),
             key!('f'), key!('t'), key!('F'), key!('T'), key!('r'),
             key!('e'), key!(';'), key!(','),
-            key!(Ctrl + 'c'), key!(Ctrl + 'r'), key!(Ctrl + 'x'),
+            key!(Ctrl + 'r'), key!(Ctrl + 'x'),
             key!(Ctrl + 'o'), key!(Ctrl + 'i'), key!(Tab),
         ];
         for k in must_be_bound {
