@@ -178,12 +178,26 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let colors = EditorColors::default();
         let y = area.y;
 
-        if editor.minibuf.is_none()
-            && let Some(ref msg) = editor.status_msg
-        {
-            fill_row_colors(buf, &colors, area, y);
-            buf.set_string(area.x + 1, y, msg, colors.statusline);
-            return;
+        if editor.minibuf.is_none() {
+            // A fresh status_msg (set this frame) takes priority. Falling back
+            // to the log summary keeps unseen-message context visible between
+            // keypresses, without adding a separate status row.
+            //
+            // Evaluate summary_text lazily to avoid allocating a String every
+            // frame when there is nothing to show.
+            let summary;
+            let display_msg: Option<&str> = if let Some(ref msg) = editor.status_msg {
+                Some(msg.as_str())
+            } else {
+                summary = editor.message_log.summary_text();
+                summary.as_deref()
+            };
+
+            if let Some(msg) = display_msg {
+                fill_row_colors(buf, &colors, area, y);
+                buf.set_string(area.x + 1, y, msg, colors.statusline);
+                return;
+            }
         }
 
         render_statusline(buf, editor, &colors, area, y);
@@ -255,10 +269,14 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
         }
         StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
         StatusElement::FileName => {
-            let name = editor.file_path.as_deref()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("[scratch]");
+            let name: &str = if let Some(ref sv) = editor.scratch_view {
+                sv.label
+            } else {
+                editor.file_path.as_deref()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("[scratch]")
+            };
             (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {

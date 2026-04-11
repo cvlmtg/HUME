@@ -27,6 +27,10 @@ use super::{Editor, Mode};
 impl Editor {
     /// Dispatch a crossterm [`MouseEvent`] to the appropriate handler.
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
+        // Scratch view (`:messages`) is not interactive — ignore all mouse events.
+        if self.scratch_view.is_some() {
+            return;
+        }
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => self.mouse_left_down(mouse.column, mouse.row),
             MouseEventKind::Drag(MouseButton::Left) => self.mouse_left_drag(mouse.column, mouse.row),
