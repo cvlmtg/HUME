@@ -193,7 +193,6 @@ Macros are stored in registers. Register `q` is the default.
 | `o` | Open new line below, enter insert mode |
 | `O` | Open new line above, enter insert mode |
 | `:` | Open command prompt |
-| `Ctrl+c` | Quit (force, no unsaved-changes check) |
 
 ---
 
