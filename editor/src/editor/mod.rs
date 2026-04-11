@@ -30,6 +30,7 @@ mod registry;
 mod commands;
 mod keymap;
 mod mappings;
+mod message_log;
 mod minibuf;
 mod mouse;
 mod search_state;
@@ -40,6 +41,9 @@ pub(crate) use search_state::{SearchDirection, SearchState};
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
+
+pub(crate) use message_log::{Severity, ScratchView};
+use message_log::MessageLog;
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
@@ -152,6 +156,12 @@ pub(crate) struct Editor {
     /// Transient one-line message shown in the statusline after an action
     /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
     pub(crate) status_msg: Option<String>,
+    /// Persistent log of warnings, errors, and trace entries accumulated during
+    /// the session. Reviewed via `:messages`.
+    pub(crate) message_log: MessageLog,
+    /// When `Some`, the editor displays this read-only overlay instead of the
+    /// real document. Dismissed with `q` or Escape. Used by `:messages`.
+    pub(crate) scratch_view: Option<ScratchView>,
     /// Metadata captured from the file at open time (permissions, ownership,
     /// resolved path). `None` for scratch buffers. Used by the write path to
     /// preserve the original file's attributes across atomic saves.
@@ -381,6 +391,8 @@ impl Editor {
             should_quit: false,
             minibuf: None,
             status_msg: None,
+            message_log: MessageLog::new(),
+            scratch_view: None,
             file_meta,
             settings,
             registry: CommandRegistry::with_defaults(),
@@ -457,8 +469,14 @@ impl Editor {
             // draw closure so the lifetime is tied to this stack frame.
             let statusline = crate::ui::statusline::HumeStatusline { editor: self };
 
-            // Split borrows: `engine_view` and `doc` are disjoint fields of `self`.
-            let rope        = self.doc.buf().rope();
+            // Split borrows: `engine_view`, `doc`, and `scratch_view` are
+            // disjoint fields of `self`. Extract the rope to render before
+            // moving `engine_view` into the draw closure.
+            let rope: &ropey::Rope = if let Some(ref sv) = self.scratch_view {
+                sv.buf.rope()
+            } else {
+                self.doc.buf().rope()
+            };
             let buffer_id   = self.buffer_id;
             let engine_view = &self.engine_view;
             term.draw(|frame| {
@@ -536,41 +554,94 @@ impl Editor {
             vp.height = terminal_height.saturating_sub(1);
         }
 
-        // 2. Sync mode.
+        // 2. Sync mode. Scratch view always shows Normal to keep the cursor
+        //    shape correct; no real mode-change is happening.
         self.engine_view.panes[self.pane_id].mode = self.mode;
 
-        // 3. Push char-offset selections to the engine pane (no conversion needed).
-        self.push_selections_to_pane();
-
-        // 4. Push resolved per-buffer settings into the pane so the engine
-        //    always reads the effective values, regardless of overrides.
-        {
+        if let Some(ref sv) = self.scratch_view {
+            // ── Scratch view path ─────────────────────────────────────────────
+            // Push the scratch buffer's selections and use its rope for scroll
+            // calculations. The real document is untouched.
             let pane = &mut self.engine_view.panes[self.pane_id];
-            pane.tab_width = self.doc.overrides.tab_width(&self.settings);
-            pane.wrap_mode = self.doc.overrides.wrap_mode(&self.settings);
-            pane.whitespace = self.doc.overrides.whitespace(&self.settings);
-            let ln_style = self.doc.overrides.line_number_style(&self.settings);
-            pane.providers.sync_line_number_style(ln_style);
-        }
+            pane.selections.clear();
+            pane.selections.push(engine::types::Selection {
+                anchor: sv.sels.primary().anchor,
+                head:   sv.sels.primary().head,
+            });
+            pane.primary_idx = 0;
 
-        // 5. Scroll so the primary cursor stays visible.
-        let cursor_char = self.doc.sels().primary().head;
-        let v_margin = self.settings.scroll_margin;
-        let h_margin = self.settings.scroll_margin_h;
-        {
-            // Destructure `*pane` to split field borrows: `&mut viewport` and
-            // `&wrap_mode`/`&whitespace` are disjoint fields, so the compiler
-            // allows them simultaneously without any cloning.
-            let rope = self.doc.buf().rope();
+            // Settings can stay at their current values (wrap, tab width, etc.)
+            // — scratch content looks fine with the user's current preferences.
+
+            // Scroll so the cursor stays visible.
+            let cursor_char = sv.sels.primary().head;
+            let rope = sv.buf.rope();
+            let v_margin = self.settings.scroll_margin;
+            let h_margin = self.settings.scroll_margin_h;
             let pane = &mut self.engine_view.panes[self.pane_id];
             let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
             scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, v_margin);
             scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, h_margin);
-        }
+            // No highlight updates for scratch view — no search or bracket matches.
+        } else {
+            // ── Normal document path ──────────────────────────────────────────
 
-        // 6. Sync highlight data (search matches, bracket matches) to shared
-        //    Arc buffers read by the highlight providers during rendering.
-        self.update_highlight_providers();
+            // 3. Push char-offset selections to the engine pane (no conversion needed).
+            self.push_selections_to_pane();
+
+            // 4. Push resolved per-buffer settings into the pane so the engine
+            //    always reads the effective values, regardless of overrides.
+            {
+                let pane = &mut self.engine_view.panes[self.pane_id];
+                pane.tab_width = self.doc.overrides.tab_width(&self.settings);
+                pane.wrap_mode = self.doc.overrides.wrap_mode(&self.settings);
+                pane.whitespace = self.doc.overrides.whitespace(&self.settings);
+                let ln_style = self.doc.overrides.line_number_style(&self.settings);
+                pane.providers.sync_line_number_style(ln_style);
+            }
+
+            // 5. Scroll so the primary cursor stays visible.
+            let cursor_char = self.doc.sels().primary().head;
+            let v_margin = self.settings.scroll_margin;
+            let h_margin = self.settings.scroll_margin_h;
+            {
+                // Destructure `*pane` to split field borrows: `&mut viewport` and
+                // `&wrap_mode`/`&whitespace` are disjoint fields, so the compiler
+                // allows them simultaneously without any cloning.
+                let rope = self.doc.buf().rope();
+                let pane = &mut self.engine_view.panes[self.pane_id];
+                let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
+                scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, v_margin);
+                scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, h_margin);
+            }
+
+            // 6. Sync highlight data (search matches, bracket matches) to shared
+            //    Arc buffers read by the highlight providers during rendering.
+            self.update_highlight_providers();
+        }
+    }
+
+    // ── Message reporting ─────────────────────────────────────────────────────
+
+    /// Report a message, routing it based on severity:
+    ///
+    /// - `Info`    → set `status_msg` only (ephemeral, not logged)
+    /// - `Warning` → push to `message_log` AND set `status_msg`
+    /// - `Error`   → push to `message_log` AND set `status_msg`
+    /// - `Trace`   → push to `message_log` only (not shown in statusline)
+    pub(crate) fn report(&mut self, severity: Severity, text: String) {
+        match severity {
+            Severity::Info => {
+                self.status_msg = Some(text);
+            }
+            Severity::Warning | Severity::Error => {
+                self.message_log.push(severity, text.clone());
+                self.status_msg = Some(text);
+            }
+            Severity::Trace => {
+                self.message_log.push(severity, text);
+            }
+        }
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────
@@ -840,6 +911,8 @@ impl Editor {
             should_quit: false,
             minibuf: None,
             status_msg: None,
+            message_log: MessageLog::new(),
+            scratch_view: None,
             file_meta: None,
             settings,
             registry: registry::CommandRegistry::with_defaults(),

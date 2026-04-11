@@ -52,6 +52,15 @@ impl Editor {
     pub(crate) fn handle_key(&mut self, key: KeyEvent) {
         // Any keypress dismisses the previous transient status message.
         self.status_msg = None;
+
+        // ── Scratch view intercept ────────────────────────────────────────────
+        // When a scratch buffer is open (e.g. `:messages`), intercept all keys
+        // for navigation and dismissal. The real document is left untouched.
+        if self.scratch_view.is_some() {
+            self.handle_scratch_key(key);
+            return;
+        }
+
         match self.mode {
             Mode::Normal | Mode::Extend => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
@@ -69,6 +78,38 @@ impl Editor {
             keys.push(key);
         }
         self.skip_macro_record = false;
+    }
+
+    // ── Scratch view mode ─────────────────────────────────────────────────────
+
+    /// Handle a keypress while a scratch buffer (`:messages`, `:help`, …) is open.
+    ///
+    /// Only navigation and dismissal are supported. All other keys are silently
+    /// swallowed so the real document cannot be accidentally modified.
+    fn handle_scratch_key(&mut self, key: KeyEvent) {
+        use KeyCode::{Char, Esc, Down, Up};
+        use crate::ops::motion::{cmd_select_line, cmd_select_line_backward, cmd_goto_first_line, cmd_goto_last_line};
+        use crate::ops::MotionMode;
+
+        let sv = self.scratch_view.as_mut().expect("called only when scratch_view is Some");
+        match key.code {
+            Char('q') | Esc => {
+                self.scratch_view = None;
+            }
+            Char('j') | Down => {
+                sv.sels = cmd_select_line(&sv.buf, sv.sels.clone(), MotionMode::Move);
+            }
+            Char('k') | Up => {
+                sv.sels = cmd_select_line_backward(&sv.buf, sv.sels.clone(), MotionMode::Move);
+            }
+            Char('g') => {
+                sv.sels = cmd_goto_first_line(&sv.buf, sv.sels.clone(), 1, MotionMode::Move);
+            }
+            Char('G') => {
+                sv.sels = cmd_goto_last_line(&sv.buf, sv.sels.clone(), 1, MotionMode::Move);
+            }
+            _ => {} // swallow all other keys
+        }
     }
 
     // ── Normal mode ───────────────────────────────────────────────────────────
@@ -491,7 +532,11 @@ impl Editor {
     /// passed to the command function. The command itself decides what to do
     /// with the mode — motions and selections branch on it; edits ignore it.
     pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool) {
-        if let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() {
+        let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
+            self.report(crate::editor::Severity::Warning, format!("unknown command: {name}"));
+            return;
+        };
+        {
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
@@ -524,7 +569,7 @@ impl Editor {
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     if let Err(e) = fun(self, count, motion_mode) {
-                        self.status_msg = Some(e.0);
+                        self.report(crate::editor::Severity::Error, e.0);
                     }
                 }
             }
@@ -845,7 +890,7 @@ impl Editor {
         if let Some(tc) = self.registry.get_typed(cmd) {
             let fun = tc.fun;
             if let Err(e) = fun(self, arg, force) {
-                self.status_msg = Some(e.0);
+                self.report(crate::editor::Severity::Error, e.0);
             }
         } else if self.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
@@ -854,7 +899,7 @@ impl Editor {
             // `cmd` is already the canonical name — no need to clone the command.
             self.execute_keymap_command(cmd.to_owned().into(), 1, false);
         } else {
-            self.status_msg = Some(format!("Unknown command: {cmd}"));
+            self.report(crate::editor::Severity::Warning, format!("Unknown command: {cmd}"));
         }
     }
 }

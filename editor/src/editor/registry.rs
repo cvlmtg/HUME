@@ -581,6 +581,7 @@ impl CommandRegistry {
         typed_cmd!("write-quit",       "Write changes and quit.",                                 &["wq"],   typed_write_quit);
         typed_cmd!("toggle-soft-wrap", "Toggle soft line wrapping.",                              &["wrap"], typed_toggle_soft_wrap);
         typed_cmd!("set",              "Set a configuration value: :set global|buffer key=value.", &[],     typed_set);
+        typed_cmd!("messages",         "Show the message log in a read-only scratch buffer.",      &["mes"], typed_messages);
     }
 
 }
@@ -616,10 +617,10 @@ mod tests {
     ///    2 jump-list editor commands
     ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
     ///    1 force-quit editor command
-    ///    5 typed commands (quit, write, write-quit, toggle-soft-wrap, set)
+    ///    6 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages)
     ///  ──
-    ///  107 total
-    const EXPECTED_COMMAND_COUNT: usize = 107;
+    ///  108 total
+    const EXPECTED_COMMAND_COUNT: usize = 108;
 
     #[test]
     fn registry_has_expected_count() {
