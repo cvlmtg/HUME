@@ -33,6 +33,8 @@ use crate::helpers::is_word_boundary;
 
 use engine::types::EditorMode;
 
+use super::{Severity, ScratchView};
+
 use super::{Editor, FindChar, MiniBuffer, Mode, SearchDirection};
 use crate::core::error::CommandError;
 use crate::ops::motion::FindKind;
@@ -652,7 +654,7 @@ pub(super) fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force
         ed.viewport_mut().top_row_offset = 0;
     }
     let state = if currently_wrapping { "off" } else { "on" };
-    ed.report(crate::editor::Severity::Info, format!("Soft wrap {state}"));
+    ed.report(Severity::Info, format!("Soft wrap {state}"));
     Ok(())
 }
 
@@ -725,7 +727,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
                 ed.file_path = Some(Arc::new(meta.resolved_path.clone()));
                 ed.file_meta = Some(meta);
                 ed.doc.mark_saved();
-                ed.report(crate::editor::Severity::Info, format!("Written {line_count} lines"));
+                ed.report(Severity::Info, format!("Written {line_count} lines"));
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
@@ -738,7 +740,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         match crate::io::write_file_atomic(&content, meta) {
             Ok(()) => {
                 ed.doc.mark_saved();
-                ed.report(crate::editor::Severity::Info, format!("Written {line_count} lines"));
+                ed.report(Severity::Info, format!("Written {line_count} lines"));
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
@@ -775,10 +777,10 @@ pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode
 pub(super) fn typed_messages(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let content = ed.message_log.format_for_display();
     if content.is_empty() {
-        ed.report(crate::editor::Severity::Info, "No messages".to_string());
+        ed.report(Severity::Info, "No messages".to_string());
         return Ok(());
     }
-    let sv = crate::editor::ScratchView::from_text(&content, "[messages]");
+    let sv = ScratchView::from_text(&content, "[messages]");
     ed.scratch_view = Some(sv);
     ed.message_log.mark_all_seen();
     Ok(())

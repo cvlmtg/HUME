@@ -15,6 +15,7 @@ use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
 
 use super::keymap::WalkResult;
+use super::Severity;
 use engine::types::EditorMode;
 
 use crate::ops::register::MACRO_REGISTER;
@@ -533,7 +534,7 @@ impl Editor {
     /// with the mode — motions and selections branch on it; edits ignore it.
     pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool) {
         let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
-            self.report(crate::editor::Severity::Warning, format!("unknown command: {name}"));
+            self.report(Severity::Warning, format!("unknown command: {name}"));
             return;
         };
         {
@@ -569,7 +570,7 @@ impl Editor {
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     if let Err(e) = fun(self, count, motion_mode) {
-                        self.report(crate::editor::Severity::Error, e.0);
+                        self.report(Severity::Error, e.0);
                     }
                 }
             }
@@ -890,7 +891,7 @@ impl Editor {
         if let Some(tc) = self.registry.get_typed(cmd) {
             let fun = tc.fun;
             if let Err(e) = fun(self, arg, force) {
-                self.report(crate::editor::Severity::Error, e.0);
+                self.report(Severity::Error, e.0);
             }
         } else if self.registry.get_mappable(cmd).is_some() {
             // Any mappable command can be invoked from the command line with
@@ -899,7 +900,7 @@ impl Editor {
             // `cmd` is already the canonical name — no need to clone the command.
             self.execute_keymap_command(cmd.to_owned().into(), 1, false);
         } else {
-            self.report(crate::editor::Severity::Warning, format!("Unknown command: {cmd}"));
+            self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }
     }
 }

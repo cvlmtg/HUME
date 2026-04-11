@@ -579,9 +579,7 @@ impl Editor {
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             let pane = &mut self.engine_view.panes[self.pane_id];
-            let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
-            scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, v_margin);
-            scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, h_margin);
+            scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
             // No highlight updates for scratch view — no search or bracket matches.
         } else {
             // ── Normal document path ──────────────────────────────────────────
@@ -605,14 +603,9 @@ impl Editor {
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             {
-                // Destructure `*pane` to split field borrows: `&mut viewport` and
-                // `&wrap_mode`/`&whitespace` are disjoint fields, so the compiler
-                // allows them simultaneously without any cloning.
                 let rope = self.doc.buf().rope();
                 let pane = &mut self.engine_view.panes[self.pane_id];
-                let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
-                scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, v_margin);
-                scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, &mut ctx.cursor_format, h_margin);
+                scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
             }
 
             // 6. Sync highlight data (search matches, bracket matches) to shared
@@ -951,6 +944,27 @@ impl Editor {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
+
+/// Scroll the pane viewport so `cursor_char` stays within the visible area.
+///
+/// Calls both the vertical and horizontal `ensure_cursor_visible` helpers in
+/// one shot, sharing the pane destructuring. Used by `prepare_frame` for both
+/// the scratch-view path and the normal document path.
+fn scroll_into_view(
+    pane: &mut Pane,
+    rope: &ropey::Rope,
+    cursor_char: usize,
+    scratch: &mut engine::format::FormatScratch,
+    v_margin: usize,
+    h_margin: usize,
+) {
+    // Destructure to split borrows: `&mut viewport` and the read-only fields
+    // (`wrap_mode`, `whitespace`, `tab_width`) are disjoint, so the compiler
+    // allows them simultaneously without any cloning.
+    let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
+    scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
+    scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, h_margin);
+}
 
 /// Convert a char-offset position to a line-relative byte offset.
 ///
