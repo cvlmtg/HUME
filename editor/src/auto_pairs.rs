@@ -52,7 +52,7 @@ pub(crate) fn insert_pair_close(
             // Simple auto-close: insert open + close.
             b.insert_char(open);
             b.insert_char(close);
-            // Cursor on `close` (new_pos is one past close, step back by 1).
+            // Cursor on `close`. new_pos - 1 is safe: we just inserted 2 chars.
             new_sels.push(Selection::collapsed(b.new_pos() - 1));
         } else {
             // Wrap selection: read the selected text, delete it, re-insert
@@ -63,7 +63,7 @@ pub(crate) fn insert_pair_close(
             b.insert_char(open);
             b.insert(&selected);
             b.insert_char(close);
-            // Cursor on the close bracket.
+            // Cursor on the close bracket. new_pos - 1 is safe: we just inserted open + selected + close (≥ 2 chars).
             new_sels.push(Selection::collapsed(b.new_pos() - 1));
         }
     })

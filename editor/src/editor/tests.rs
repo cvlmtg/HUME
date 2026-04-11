@@ -1173,6 +1173,28 @@ fn auto_pairs_close_before_newline() {
     assert_eq!(state(&ed), "foo(-[)]>\n");
 }
 
+/// Multi-cursor skip-close is all-or-nothing: if one cursor is on `)` and
+/// another is not, the whole operation falls back to plain insert for all cursors.
+#[test]
+fn auto_pairs_skip_close_mixed_cursors() {
+    // cursor 1 on `)`, cursor 2 on `b` — not all cursors match skip-close.
+    let mut ed = editor_from("(-[)]>a-[b]>c\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key(')'));            // fallback: inserts `)` at both positions
+    assert_eq!(state(&ed), "()-[)]>a)-[b]>c\n");
+}
+
+/// Multi-cursor delete-pair is all-or-nothing: if one cursor is between a pair
+/// and another is not, backspace falls back to plain delete-char-backward for all.
+#[test]
+fn auto_pairs_auto_delete_mixed_cursors() {
+    // cursor 1 between `()`, cursor 2 between `a`+`b` (not a pair).
+    let mut ed = editor_from("(-[)]>a-[b]>c\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_backspace());     // fallback: each cursor deletes one char backward
+    assert_eq!(state(&ed), "-[)]>-[b]>c\n");
+}
+
 // ── Normal-mode pair-wrap ─────────────────────────────────────────────────────
 
 /// With a selection active, typing `"` in normal mode wraps it with `""`.
@@ -1207,6 +1229,15 @@ fn normal_wrap_multi_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
     ed.handle_key(key('"'));
     assert_eq!(state(&ed), "\"foo-[\"]> \"bar-[\"]>\n");
+}
+
+/// Multi-line selection: wrapping spans the newline cleanly.
+/// The structural trailing `\n` is excluded from the wrap via end_inclusive clamping.
+#[test]
+fn normal_wrap_multi_line_selection() {
+    let mut ed = editor_from("-[foo\nbar]> baz\n");
+    ed.handle_key(key('"'));
+    assert_eq!(state(&ed), "\"foo\nbar-[\"]> baz\n");
 }
 
 /// When auto-pairs is disabled, the pair char is swallowed even with a selection.
