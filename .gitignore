@@ -19,3 +19,6 @@ Thumbs.db
 
 # insta pending-snapshot files (created when a snapshot mismatches during review)
 **/.*.pending-snap
+
+mempalace.yaml
+entities.json
