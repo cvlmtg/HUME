@@ -98,7 +98,8 @@ impl MessageLog {
         self.entries.push_back(LogEntry { severity, text });
     }
 
-    /// All entries in chronological order.
+    /// All entries in chronological order. Used only in tests.
+    #[cfg(test)]
     pub(crate) fn entries(&self) -> impl ExactSizeIterator<Item = &LogEntry> {
         self.entries.iter()
     }
