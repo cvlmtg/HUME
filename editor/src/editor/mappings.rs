@@ -167,7 +167,7 @@ impl Editor {
             if self.mode == EditorMode::Extend {
                 self.mode = EditorMode::Normal;
             }
-            cmd_clear_search(self, 0, MotionMode::Move);
+            let _ = cmd_clear_search(self, 0, MotionMode::Move);
             return;
         }
 
