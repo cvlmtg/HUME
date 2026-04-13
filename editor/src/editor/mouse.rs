@@ -104,7 +104,7 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
         if vp_before != vp_after {
-            cmd_visual_move_up(self, scroll_lines, MotionMode::Move);
+            let _ = cmd_visual_move_up(self, scroll_lines, MotionMode::Move);
         }
     }
 
@@ -126,7 +126,7 @@ impl Editor {
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
         if vp_before != vp_after {
-            cmd_visual_move_down(self, scroll_lines, MotionMode::Move);
+            let _ = cmd_visual_move_down(self, scroll_lines, MotionMode::Move);
         }
     }
 
