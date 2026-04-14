@@ -785,3 +785,26 @@ pub(super) fn typed_messages(ed: &mut Editor, _arg: Option<&str>, _force: bool) 
     ed.message_log.mark_all_seen();
     Ok(())
 }
+
+/// `:reload-plugin <name>` — tear down the named plugin's ledger entries and
+/// re-evaluate its `plugin.scm`.  If the plugin file no longer exists on disk,
+/// teardown still runs but re-eval is silently skipped (same "not on disk →
+/// skip" rule as `load-plugin`).
+pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    let name = arg.ok_or_else(|| CommandError("Usage: :reload-plugin <name>".into()))?;
+    if let Some(host) = ed.scripting.as_mut() {
+        host.reload_plugin(name, &mut ed.settings, &mut ed.keymap)
+            .map_err(CommandError)?;
+        ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
+    }
+    Ok(())
+}
+
+/// `:reload-config` — drop the scripting engine and re-evaluate `init.scm`
+/// from scratch, restoring a clean slate.
+pub(super) fn typed_reload_config(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    ed.scripting = None;
+    ed.init_scripting();
+    ed.report(Severity::Info, "Config reloaded".to_string());
+    Ok(())
+}

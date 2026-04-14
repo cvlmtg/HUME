@@ -29,10 +29,12 @@ use std::sync::{
 
 use steel::steel_vm::engine::Engine;
 
-use crate::editor::keymap::Keymap;
-use crate::settings::EditorSettings;
+use std::borrow::Cow;
 
-use ledger::{LedgerStack, PluginStack};
+use crate::editor::keymap::{BindMode, Keymap};
+use crate::settings::{apply_setting, BufferOverrides, EditorSettings, SettingScope};
+
+use ledger::{LedgerStack, PluginId, PluginStack};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -286,6 +288,263 @@ impl ScriptingHost {
         });
 
         result
+    }
+
+    // ── Plugin teardown / reload ───────────────────────────────────────────────
+
+    /// Unload `plugin_name` by replaying its ledger entries in reverse:
+    /// settings are restored via [`apply_setting`] and keybinds are restored
+    /// (or removed) via [`Keymap::bind_user`] / [`Keymap::unbind_user`].
+    ///
+    /// Called before re-evaluating a plugin file on `:reload-plugin`.
+    /// Also called by the editor command dispatch when a plugin is uninstalled.
+    ///
+    /// Returns `Ok(())` if the plugin had no ledger (was never loaded or had
+    /// no mutations) — unloading an unknown plugin is a no-op.
+    pub(crate) fn teardown_plugin(
+        &mut self,
+        plugin_name: &str,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+    ) -> Result<(), String> {
+        let plugin_id = PluginId::new(plugin_name);
+        let to_restore = self.ctx.ledger_stack.unload(&plugin_id);
+
+        for entry in to_restore {
+            restore_ledger_entry(entry, settings, keymap)?;
+        }
+        Ok(())
+    }
+
+    /// Reload `plugin_name`: tear it down then re-evaluate its file.
+    ///
+    /// If the plugin file is not found on disk (e.g. uninstalled), teardown
+    /// still runs and `Ok(())` is returned — consistent with the load-plugin
+    /// "not on disk → silently skipped" rule.
+    pub(crate) fn reload_plugin(
+        &mut self,
+        plugin_name: &str,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+    ) -> Result<(), String> {
+        self.teardown_plugin(plugin_name, settings, keymap)?;
+
+        let plugin_id = PluginId::new(plugin_name);
+        let path = builtins::plugins::resolve_path_for_name(
+            plugin_name,
+            self.ctx.runtime_dir.as_deref(),
+            &self.ctx.data_dir,
+        ).map_err(|e| format!("reload-plugin: {e}"))?;
+
+        let Some(path) = path else { return Ok(()); };
+        self.eval_plugin_with_attribution(&plugin_id, &path, settings, keymap)
+    }
+
+    /// Evaluate a plugin file with `plugin_id` on the attribution stack.
+    ///
+    /// Unlike [`eval_init`], this always evaluates (no early return on missing
+    /// file), and wraps the eval in a plugin push/pop so mutations are correctly
+    /// attributed to `plugin_id`.
+    ///
+    /// Used by [`reload_plugin`] to re-run a plugin after teardown.
+    fn eval_plugin_with_attribution(
+        &mut self,
+        plugin_id: &PluginId,
+        path: &std::path::Path,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+    ) -> Result<(), String> {
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+
+        // Push the plugin attribution before moving state into TLS so that all
+        // mutations during eval are attributed to `plugin_id`.
+        self.ctx.plugin_stack.push(plugin_id.clone());
+
+        EVAL_CTX.with(|cell| {
+            *cell.borrow_mut() = Some(EvalCtx {
+                settings: std::mem::take(settings),
+                keymap: std::mem::take(keymap),
+                plugin_stack: std::mem::take(&mut self.ctx.plugin_stack),
+                ledger_stack: std::mem::take(&mut self.ctx.ledger_stack),
+                data_dir: self.ctx.data_dir.clone(),
+                runtime_dir: self.ctx.runtime_dir.clone(),
+                declared_plugins: Vec::new(),
+                loaded_plugins: Vec::new(),
+                interrupt_flag: Arc::clone(&self.interrupt_flag),
+            });
+        });
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let flag   = Arc::clone(&self.interrupt_flag);
+            let cancel = Arc::clone(&cancel);
+            let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
+            std::thread::spawn(move || {
+                let deadline = std::time::Instant::now() + budget;
+                loop {
+                    if cancel.load(Ordering::Relaxed) { return; }
+                    if std::time::Instant::now() >= deadline {
+                        flag.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            });
+        }
+
+        let result = self
+            .engine
+            .compile_and_run_raw_program(source)
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+
+        cancel.store(true, Ordering::Relaxed);
+        self.interrupt_flag.store(false, Ordering::Relaxed);
+
+        EVAL_CTX.with(|cell| {
+            if let Some(ctx) = cell.borrow_mut().take() {
+                *settings = ctx.settings;
+                *keymap   = ctx.keymap;
+                self.ctx.plugin_stack  = ctx.plugin_stack;
+                self.ctx.ledger_stack  = ctx.ledger_stack;
+            }
+        });
+
+        // Unconditionally pop the attribution we pushed before the eval, even
+        // if the plugin itself left the stack imbalanced via an error path.
+        self.ctx.plugin_stack.pop();
+
+        result
+    }
+}
+
+// ── Ledger restoration helper ─────────────────────────────────────────────────
+
+/// Apply one ledger entry's restoration to `settings` or `keymap`.
+///
+/// Setting keys are plain strings like `"tab-width"`.
+/// Keymap keys are mode-prefixed: `"normal f"`, `"insert <ctrl-d>"`, etc.
+///
+/// For keybinds: if `prior_value` is empty the binding is removed
+/// (it was unbound before the plugin set it); otherwise it is restored.
+fn restore_ledger_entry(
+    entry: crate::scripting::ledger::LedgerEntry,
+    settings: &mut EditorSettings,
+    keymap: &mut Keymap,
+) -> Result<(), String> {
+    if let Some(mode_and_seq) = keymap_ledger_mode(&entry.key) {
+        let (mode, key_str) = mode_and_seq;
+        let keys = parse_key_sequence_str(key_str)?;
+        if entry.prior_value.is_empty() {
+            keymap.unbind_user(mode, &keys);
+        } else {
+            keymap.bind_user(mode, &keys, Cow::Owned(entry.prior_value));
+        }
+    } else {
+        // Setting key — restore via apply_setting.
+        if !entry.prior_value.is_empty() {
+            let mut dummy = BufferOverrides::default();
+            apply_setting(SettingScope::Global, &entry.key, &entry.prior_value, settings, &mut dummy)
+                .map_err(|e| format!("restoring setting '{}': {e}", entry.key))?;
+        }
+    }
+    Ok(())
+}
+
+/// If `key` is a keymap ledger key (e.g. `"normal f"`, `"insert <ctrl-d>"`),
+/// return `Some((mode, key_sequence_string))`.  Returns `None` for setting keys.
+fn keymap_ledger_mode(key: &str) -> Option<(BindMode, &str)> {
+    if let Some(rest) = key.strip_prefix("normal ") {
+        return Some((BindMode::Normal, rest));
+    }
+    if let Some(rest) = key.strip_prefix("extend ") {
+        return Some((BindMode::Extend, rest));
+    }
+    if let Some(rest) = key.strip_prefix("insert ") {
+        return Some((BindMode::Insert, rest));
+    }
+    None
+}
+
+/// Parse a key-sequence string into `Vec<KeyEvent>` for use in restoration.
+///
+/// Delegates to the same parser used by `(bind-key!)`.
+fn parse_key_sequence_str(s: &str) -> Result<Vec<crossterm::event::KeyEvent>, String> {
+    use crossterm::event::{KeyCode, KeyEvent as CE, KeyModifiers};
+
+    let mut keys = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '<' {
+            let mut token = String::new();
+            let mut closed = false;
+            for ch in chars.by_ref() {
+                if ch == '>' { closed = true; break; }
+                token.push(ch);
+            }
+            if !closed { return Err(format!("unclosed '<' in ledger key '{s}'")); }
+            keys.push(parse_angle_for_restore(&token, s)?);
+        } else {
+            keys.push(CE::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+    }
+    if keys.is_empty() { return Err(format!("empty key sequence in ledger key '{s}'")); }
+    Ok(keys)
+}
+
+fn parse_angle_for_restore(token: &str, full: &str) -> Result<crossterm::event::KeyEvent, String> {
+    // Reuse the same logic as the bind-key! parser.
+    // The key-string format is stable (ledger entries persist across reloads),
+    // so this must stay in sync with builtins::keymap_bind's parser.
+    use crossterm::event::{KeyEvent as CE, KeyModifiers};
+    let lower = token.to_ascii_lowercase();
+    let (code, mods) = if let Some(rest) = lower.strip_prefix("ctrl-") {
+        (map_key_code(rest, full)?, KeyModifiers::CONTROL)
+    } else if let Some(rest) = lower.strip_prefix("shift-") {
+        (map_key_code(rest, full)?, KeyModifiers::SHIFT)
+    } else if let Some(rest) = lower.strip_prefix("alt-") {
+        (map_key_code(rest, full)?, KeyModifiers::ALT)
+    } else {
+        (map_key_code(&lower, full)?, KeyModifiers::NONE)
+    };
+    Ok(CE::new(code, mods))
+}
+
+fn map_key_code(name: &str, full: &str) -> Result<crossterm::event::KeyCode, String> {
+    use crossterm::event::KeyCode;
+    match name {
+        "backspace" | "bs"     => Ok(KeyCode::Backspace),
+        "enter" | "ret" | "cr" => Ok(KeyCode::Enter),
+        "left"                 => Ok(KeyCode::Left),
+        "right"                => Ok(KeyCode::Right),
+        "up"                   => Ok(KeyCode::Up),
+        "down"                 => Ok(KeyCode::Down),
+        "home"                 => Ok(KeyCode::Home),
+        "end"                  => Ok(KeyCode::End),
+        "pageup"  | "pgup"     => Ok(KeyCode::PageUp),
+        "pagedown"| "pgdown"   => Ok(KeyCode::PageDown),
+        "tab"                  => Ok(KeyCode::Tab),
+        "backtab"              => Ok(KeyCode::BackTab),
+        "delete"  | "del"      => Ok(KeyCode::Delete),
+        "insert"  | "ins"      => Ok(KeyCode::Insert),
+        "esc"     | "escape"   => Ok(KeyCode::Esc),
+        "space"                => Ok(KeyCode::Char(' ')),
+        "lt"                   => Ok(KeyCode::Char('<')),
+        "gt"                   => Ok(KeyCode::Char('>')),
+        "f1"  => Ok(KeyCode::F(1)),  "f2"  => Ok(KeyCode::F(2)),
+        "f3"  => Ok(KeyCode::F(3)),  "f4"  => Ok(KeyCode::F(4)),
+        "f5"  => Ok(KeyCode::F(5)),  "f6"  => Ok(KeyCode::F(6)),
+        "f7"  => Ok(KeyCode::F(7)),  "f8"  => Ok(KeyCode::F(8)),
+        "f9"  => Ok(KeyCode::F(9)),  "f10" => Ok(KeyCode::F(10)),
+        "f11" => Ok(KeyCode::F(11)), "f12" => Ok(KeyCode::F(12)),
+        _ => {
+            let mut chars = name.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Ok(KeyCode::Char(c)),
+                _ => Err(format!("unknown key '<{name}>' in ledger key '{full}'")),
+            }
+        }
     }
 }
 
@@ -561,5 +820,122 @@ mod tests {
 
         // Subsequent evals with no flag pre-set should succeed normally.
         h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap();
+    }
+
+    // ── teardown_plugin / reload_plugin ───────────────────────────────────────
+
+    /// Run a mini two-plugin scenario:
+    ///   plugin A sets tab-width to 8 (prior: 4, core)
+    ///   plugin B sets tab-width to 2 (prior: 8, A)
+    /// Unloading A rewrites B's prior to (4, core).
+    /// Unloading B restores tab-width to 4.
+    #[test]
+    fn teardown_restores_setting_when_plugin_is_live_owner() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Simulate plugin A setting tab-width to 8.
+        // We drive via eval_source with the plugin on the attribution stack.
+        h.eval_source(
+            r#"(push-current-plugin! "user/a")
+               (set-option! "tab-width" 8)
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+        assert_eq!(s.tab_width, 8);
+
+        // Tear down plugin A — tab-width should be restored to 4 (prior).
+        h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+        assert_eq!(s.tab_width, 4, "teardown should restore prior tab-width");
+    }
+
+    #[test]
+    fn teardown_splices_chain_when_later_plugin_owns_key() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // A sets tab-width 8, then B sets it to 2.
+        h.eval_source(
+            r#"(push-current-plugin! "user/a")
+               (set-option! "tab-width" 8)
+               (pop-current-plugin!)
+               (push-current-plugin! "user/b")
+               (set-option! "tab-width" 2)
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+        assert_eq!(s.tab_width, 2);
+
+        // Unload A — B still owns tab-width (live value = 2 unchanged).
+        h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+        assert_eq!(s.tab_width, 2, "B's live value must be preserved");
+
+        // Now unload B — B's prior was rewritten by A's teardown to (4, core),
+        // so restoring should give tab-width = 4.
+        h.teardown_plugin("user/b", &mut s, &mut km).unwrap();
+        assert_eq!(s.tab_width, 4, "after both unloads, core default restored");
+    }
+
+    #[test]
+    fn teardown_restores_keybind() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // The default normal keymap has 'h' bound to "move-left".
+        // Plugin A rebinds 'h' to "move-right".
+        h.eval_source(
+            r#"(push-current-plugin! "user/a")
+               (bind-key! "normal" "h" "move-right")
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        use crate::editor::keymap::BindMode;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
+        assert_eq!(km.lookup_command(BindMode::Normal, h_key).as_deref(), Some("move-right"));
+
+        // Tear down plugin A — 'h' should go back to "move-left".
+        h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+        assert_eq!(km.lookup_command(BindMode::Normal, h_key).as_deref(), Some("move-left"),
+                   "teardown should restore prior keybind");
+    }
+
+    #[test]
+    fn teardown_unbinds_when_key_was_previously_unbound() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Bind an unused key (assume 'Q' is not in the default keymap).
+        h.eval_source(
+            r#"(push-current-plugin! "user/a")
+               (bind-key! "normal" "Q" "move-right")
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        use crate::editor::keymap::BindMode;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let q_key = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
+        assert!(km.lookup_command(BindMode::Normal, q_key).is_some());
+
+        // Tear down — 'Q' was unbound before, so it should become unbound again.
+        h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+        assert!(km.lookup_command(BindMode::Normal, q_key).is_none(),
+                "binding for unowned key must be removed on teardown");
+    }
+
+    #[test]
+    fn teardown_unknown_plugin_is_noop() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        // No error, no state change.
+        h.teardown_plugin("user/nonexistent", &mut s, &mut km).unwrap();
+        assert_eq!(s.tab_width, 4);
     }
 }
