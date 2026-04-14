@@ -269,6 +269,54 @@ define_settings! {
     }
 }
 
+// ── serialize_setting ─────────────────────────────────────────────────────────
+
+/// Read the current global value of a setting as a string, mirroring the key
+/// namespace of [`apply_setting`].
+///
+/// Returns `None` for unknown keys. The returned string round-trips through
+/// `apply_setting` — used by the ledger to capture prior values before a
+/// script mutation so they can be restored on plugin unload.
+///
+/// **Must be kept in sync with `apply_setting`:** every key accepted by
+/// `apply_setting(SettingScope::Global, …)` must have a matching arm here.
+pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<String> {
+    Some(match key {
+        "scroll-margin"       => settings.scroll_margin.to_string(),
+        "scroll-margin-h"     => settings.scroll_margin_h.to_string(),
+        "mouse-scroll-lines"  => settings.mouse_scroll_lines.to_string(),
+        "mouse-enabled"       => settings.mouse_enabled.to_string(),
+        "mouse-select"        => settings.mouse_select.to_string(),
+        "jump-list-capacity"  => settings.jump_list_capacity.to_string(),
+        "jump-line-threshold" => settings.jump_line_threshold.to_string(),
+        "tab-width"           => settings.tab_width.to_string(),
+        "wrap-mode"           => match settings.wrap_mode {
+            engine::pane::WrapMode::None                 => "none".to_string(),
+            engine::pane::WrapMode::Soft   { width }     => format!("soft:{width}"),
+            engine::pane::WrapMode::Word   { width }     => format!("word:{width}"),
+            engine::pane::WrapMode::Indent { width }     => format!("indent:{width}"),
+        },
+        "line-number-style" => match settings.line_number_style {
+            engine::builtins::line_number::LineNumberStyle::Absolute => "absolute".to_string(),
+            engine::builtins::line_number::LineNumberStyle::Relative => "relative".to_string(),
+            engine::builtins::line_number::LineNumberStyle::Hybrid   => "hybrid".to_string(),
+        },
+        "auto-pairs-enabled"  => settings.auto_pairs_enabled.to_string(),
+        "whitespace-space"    => whitespace_render_to_str(settings.whitespace.space).to_string(),
+        "whitespace-tab"      => whitespace_render_to_str(settings.whitespace.tab).to_string(),
+        "whitespace-newline"  => whitespace_render_to_str(settings.whitespace.newline).to_string(),
+        _ => return None,
+    })
+}
+
+fn whitespace_render_to_str(r: engine::pane::WhitespaceRender) -> &'static str {
+    match r {
+        engine::pane::WhitespaceRender::None     => "none",
+        engine::pane::WhitespaceRender::All      => "all",
+        engine::pane::WhitespaceRender::Trailing => "trailing",
+    }
+}
+
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
 
 impl BufferOverrides {
@@ -698,5 +746,60 @@ mod tests {
         apply_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
         // Buffer has no override, so it inherits the new global value.
         assert_eq!(ov.tab_width(&global), 2);
+    }
+
+    // ── serialize_setting ─────────────────────────────────────────────────────
+
+    #[test]
+    fn serialize_setting_returns_none_for_unknown_key() {
+        let s = EditorSettings::default();
+        assert!(serialize_setting(&s, "nonexistent").is_none());
+    }
+
+    #[test]
+    fn serialize_setting_round_trips_through_apply() {
+        let s = EditorSettings::default();
+        // Every key known to apply_setting must be serializable.
+        let keys = [
+            "scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
+            "mouse-enabled", "mouse-select", "jump-list-capacity", "jump-line-threshold",
+            "tab-width", "wrap-mode", "line-number-style", "auto-pairs-enabled",
+            "whitespace-space", "whitespace-tab", "whitespace-newline",
+        ];
+        for key in keys {
+            let serialized = serialize_setting(&s, key)
+                .unwrap_or_else(|| panic!("serialize_setting returned None for '{key}'"));
+            // Round-trip: apply the serialized value back and confirm no error.
+            let mut s2 = EditorSettings::default();
+            let mut ov = BufferOverrides::default();
+            apply_setting(SettingScope::Global, key, &serialized, &mut s2, &mut ov)
+                .unwrap_or_else(|e| panic!("round-trip failed for '{key}': {e}"));
+        }
+    }
+
+    #[test]
+    fn serialize_setting_default_tab_width_is_4() {
+        let s = EditorSettings::default();
+        assert_eq!(serialize_setting(&s, "tab-width").unwrap(), "4");
+    }
+
+    #[test]
+    fn serialize_setting_default_mouse_enabled_is_true() {
+        let s = EditorSettings::default();
+        assert_eq!(serialize_setting(&s, "mouse-enabled").unwrap(), "true");
+    }
+
+    #[test]
+    fn serialize_setting_wrap_mode_none() {
+        let mut s = EditorSettings::default();
+        s.wrap_mode = engine::pane::WrapMode::None;
+        assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "none");
+    }
+
+    #[test]
+    fn serialize_setting_wrap_mode_indent() {
+        let mut s = EditorSettings::default();
+        s.wrap_mode = engine::pane::WrapMode::Indent { width: 80 };
+        assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent:80");
     }
 }

@@ -28,7 +28,7 @@ use self::keymap::{Keymap, WaitCharPending};
 
 mod registry;
 mod commands;
-mod keymap;
+pub(crate) mod keymap;
 mod mappings;
 mod message_log;
 mod minibuf;
@@ -668,7 +668,7 @@ impl Editor {
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
         self.report(Severity::Trace, format!("scripting: data dir = {}", host.ctx.data_dir.display()));
-        if let Err(msg) = host.eval_init(&init_path) {
+        if let Err(msg) = host.eval_init(&init_path, &mut self.settings, &mut self.keymap) {
             self.report(Severity::Error, format!("init.scm: {msg}"));
         }
         self.scripting = Some(host);
