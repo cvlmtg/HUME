@@ -12,14 +12,20 @@
 //! - Phase 2 (`ledger.rs`): ownership ledger + `CURRENT_PLUGIN` attribution stack.
 //! - Phase 3 (this file + `builtins/`): mutation builtins (`set-option!`,
 //!   `bind-key!`) and `load-plugin` (Scheme-defined, Rust-backed).
-//! - Phase 4: Steel-backed statusline segments via a `Send+Sync` cache proxy.
-//! - Phase 5: step budget / `Ctrl-C` interruption via a watchdog `AtomicBool`.
+//! - Phase 4 (`builtins/statusline.rs`): `(configure-statusline! left center right)`
+//!   sets `EditorSettings::statusline` declaratively.
+//! - Phase 5 (this file + `builtins/interrupt.rs`): step budget via a watchdog
+//!   thread + `(hume/yield!)` cooperative interruption builtin.
 
 pub(crate) mod builtins;
 pub(crate) mod ledger;
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use steel::steel_vm::engine::Engine;
 
@@ -27,6 +33,16 @@ use crate::editor::keymap::Keymap;
 use crate::settings::EditorSettings;
 
 use ledger::{LedgerStack, PluginStack};
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/// Wall-clock budget for a single `eval_init` call.
+///
+/// If the script is still running after this many seconds, the watchdog thread
+/// sets the interrupt flag.  Scripts that call `(hume/yield!)` in their hot
+/// loops will abort cleanly; scripts that never call it will run to completion
+/// regardless (cooperative interruption only — Steel 0.8.2 has no op-callback).
+pub(crate) const EVAL_BUDGET_SECS: u64 = 10;
 
 // ── EvalCtx ───────────────────────────────────────────────────────────────────
 
@@ -58,6 +74,10 @@ pub(crate) struct EvalCtx {
     pub(crate) declared_plugins: Vec<String>,
     /// Plugins that were both declared and successfully located on disk.
     pub(crate) loaded_plugins: Vec<String>,
+    /// Shared interrupt flag.  `hume/yield!` aborts the script when this is
+    /// `true`.  Set by the watchdog thread on budget expiry, or externally
+    /// for Ctrl-C handling.
+    pub(crate) interrupt_flag: Arc<AtomicBool>,
 }
 
 thread_local! {
@@ -96,6 +116,13 @@ pub(crate) struct ScriptFacingCtx {
 pub(crate) struct ScriptingHost {
     engine: Engine,
     pub(crate) ctx: ScriptFacingCtx,
+    /// Shared interrupt flag.  Set to `true` by the watchdog to signal that
+    /// `(hume/yield!)` calls should abort the running script.  Reset to
+    /// `false` after every `eval_init` call.
+    ///
+    /// The editor can also set this directly (e.g. on `Ctrl-C`) while a
+    /// script is running — future wiring, not yet plumbed.
+    pub(crate) interrupt_flag: Arc<AtomicBool>,
 }
 
 impl ScriptingHost {
@@ -103,6 +130,8 @@ impl ScriptingHost {
     ///
     /// Convenience wrapper for testing.  Mirrors `eval_init` but accepts a
     /// string instead of a path, and always evaluates (never returns early).
+    /// Does not spawn a watchdog thread — tests that need the interrupt flag
+    /// set can do so directly via [`ScriptingHost::interrupt_flag`].
     #[cfg(test)]
     pub(crate) fn eval_source(
         &mut self,
@@ -120,6 +149,7 @@ impl ScriptingHost {
                 runtime_dir: self.ctx.runtime_dir.clone(),
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
+                interrupt_flag: Arc::clone(&self.interrupt_flag),
             });
         });
 
@@ -138,6 +168,9 @@ impl ScriptingHost {
             }
         });
 
+        // Reset the flag so a pre-set interrupt doesn't bleed into the next eval.
+        self.interrupt_flag.store(false, Ordering::Relaxed);
+
         result
     }
 
@@ -155,7 +188,11 @@ impl ScriptingHost {
         };
         let mut engine = Engine::new();
         builtins::register_all(&mut engine);
-        Self { engine, ctx }
+        Self {
+            engine,
+            ctx,
+            interrupt_flag: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     /// Evaluate `init.scm` at `path`, giving builtins access to `settings` and
@@ -195,8 +232,33 @@ impl ScriptingHost {
                 runtime_dir: self.ctx.runtime_dir.clone(),
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
+                interrupt_flag: Arc::clone(&self.interrupt_flag),
             });
         });
+
+        // Watchdog: set the interrupt flag after EVAL_BUDGET_SECS of wall-clock
+        // time.  A cancel flag lets us defuse it quickly once eval returns so
+        // the watchdog never fires against a future eval.
+        //
+        // Interruption is cooperative: scripts must call (hume/yield!) in their
+        // loops.  Steel 0.8.2 has no op-callback for involuntary interruption.
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let flag   = Arc::clone(&self.interrupt_flag);
+            let cancel = Arc::clone(&cancel);
+            let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
+            std::thread::spawn(move || {
+                let deadline = std::time::Instant::now() + budget;
+                loop {
+                    if cancel.load(Ordering::Relaxed) { return; }
+                    if std::time::Instant::now() >= deadline {
+                        flag.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            });
+        }
 
         // compile_and_run_raw_program requires Into<Cow<'static, str>>;
         // passing the owned String satisfies this via Cow::Owned.
@@ -205,6 +267,12 @@ impl ScriptingHost {
             .compile_and_run_raw_program(source)
             .map(|_| ())
             .map_err(|e| e.to_string());
+
+        // Defuse the watchdog and reset the interrupt flag.  Setting cancel
+        // first means the watchdog will exit its loop before it can set the
+        // flag again after we clear it.
+        cancel.store(true, Ordering::Relaxed);
+        self.interrupt_flag.store(false, Ordering::Relaxed);
 
         // Restore all state unconditionally — builtins may have modified
         // settings/keymap, and plugin_stack/ledger_stack accumulate across evals.
@@ -435,5 +503,63 @@ mod tests {
 
         let err = h.eval_source("(configure-statusline! '())", &mut s, &mut km).unwrap_err();
         assert!(!err.is_empty(), "expected arity error");
+    }
+
+    // ── hume/yield! ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn hume_yield_no_interrupt_is_noop() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        // With no interrupt flag set, (hume/yield!) is a transparent no-op.
+        h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap();
+    }
+
+    #[test]
+    fn hume_yield_with_interrupt_errors() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Pre-set the interrupt flag before the eval.
+        h.interrupt_flag.store(true, Ordering::Relaxed);
+        let err = h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
+
+        // eval_source resets the flag after every call.
+        assert!(!h.interrupt_flag.load(Ordering::Relaxed), "flag should be false after eval");
+    }
+
+    #[test]
+    fn hume_yield_stops_loop_when_interrupted() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Pre-set so the loop aborts on the very first yield call.
+        h.interrupt_flag.store(true, Ordering::Relaxed);
+        let err = h.eval_source(
+            // Without the interrupt flag this loop would run forever.
+            "(let loop () (hume/yield!) (loop))",
+            &mut s, &mut km,
+        ).unwrap_err();
+        assert!(err.contains("interrupted"), "got: {err}");
+    }
+
+    #[test]
+    fn interrupt_flag_reset_after_eval() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Pre-set the flag; after eval_source it must be cleared.
+        h.interrupt_flag.store(true, Ordering::Relaxed);
+        let _ = h.eval_source("(hume/yield!)", &mut s, &mut km); // may error — that's fine
+        assert!(!h.interrupt_flag.load(Ordering::Relaxed),
+                "interrupt_flag must be false after eval_source returns");
+
+        // Subsequent evals with no flag pre-set should succeed normally.
+        h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap();
     }
 }
