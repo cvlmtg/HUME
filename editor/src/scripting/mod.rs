@@ -360,4 +360,80 @@ mod tests {
             .unwrap_err();
         assert!(!err.is_empty(), "expected error for malformed plugin name");
     }
+
+    // ── configure-statusline! ─────────────────────────────────────────────────
+
+    #[test]
+    fn configure_statusline_sets_left_section() {
+        use crate::ui::statusline::StatusElement;
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source(
+            r#"(configure-statusline! '("Mode" "FileName") '() '("Position"))"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        assert_eq!(s.statusline.left,   vec![StatusElement::Mode, StatusElement::FileName]);
+        assert_eq!(s.statusline.center, vec![]);
+        assert_eq!(s.statusline.right,  vec![StatusElement::Position]);
+    }
+
+    #[test]
+    fn configure_statusline_all_sections() {
+        use crate::ui::statusline::StatusElement;
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source(
+            r#"(configure-statusline!
+                 '("Position" "FileName" "DirtyIndicator")
+                 '("SearchMatches")
+                 '("Separator" "Mode"))"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        assert_eq!(s.statusline.left,
+            vec![StatusElement::Position, StatusElement::FileName, StatusElement::DirtyIndicator]);
+        assert_eq!(s.statusline.center, vec![StatusElement::SearchMatches]);
+        assert_eq!(s.statusline.right,  vec![StatusElement::Separator, StatusElement::Mode]);
+    }
+
+    #[test]
+    fn configure_statusline_empty_sections() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source("(configure-statusline! '() '() '())", &mut s, &mut km).unwrap();
+
+        assert!(s.statusline.left.is_empty());
+        assert!(s.statusline.center.is_empty());
+        assert!(s.statusline.right.is_empty());
+    }
+
+    #[test]
+    fn configure_statusline_unknown_element_errors() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        let err = h.eval_source(
+            r#"(configure-statusline! '("NotAnElement") '() '())"#,
+            &mut s, &mut km,
+        ).unwrap_err();
+        assert!(err.contains("NotAnElement"), "got: {err}");
+    }
+
+    #[test]
+    fn configure_statusline_wrong_arity_errors() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        let err = h.eval_source("(configure-statusline! '())", &mut s, &mut km).unwrap_err();
+        assert!(!err.is_empty(), "expected arity error");
+    }
 }

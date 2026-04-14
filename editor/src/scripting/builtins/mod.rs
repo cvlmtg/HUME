@@ -7,6 +7,7 @@
 pub(crate) mod keymap_bind;
 pub(crate) mod plugins;
 pub(crate) mod settings;
+pub(crate) mod statusline;
 
 use steel::steel_vm::engine::Engine;
 use steel::rvals::SteelVal;
@@ -58,6 +59,7 @@ const BOOTSTRAP: &str = r#"
 pub(crate) fn register_all(engine: &mut Engine) {
     // Config / settings
     engine.register_value("set-option!", SteelVal::FuncV(settings::set_option));
+    engine.register_value("configure-statusline!", SteelVal::FuncV(statusline::configure_statusline));
 
     // Keymap
     engine.register_value("bind-key!", SteelVal::FuncV(keymap_bind::bind_key));
