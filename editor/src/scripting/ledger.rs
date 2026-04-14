@@ -1,8 +1,9 @@
-// All public items in this module are Phase 2 scaffolding: they are exercised by
-// the #[cfg(test)] tests below and will be called from builtins in Phase 3.
-// The dead_code lint fires in the non-test build pass because #[cfg(test)] usage
-// is invisible there; suppress it here rather than gating the types behind
-// #[cfg(test)] (which would prevent Phase 3 from using them in production code).
+// `owner_of`, `unload`, `LedgerEntry::prior_{value,owner}`, and `Owner::Core`
+// are Phase 3b scaffolding: written or returned in production code paths but
+// only *consumed* by plugin unload / reload, which lands in Phase 3b.
+// `PluginId::as_str` is likewise used by Phase 3b callers.
+// Suppress dead_code here rather than `#[cfg(test)]`-gating items that will
+// be promoted to production in the next phase.
 #![allow(dead_code)]
 
 //! Ownership ledger and `CURRENT_PLUGIN` attribution stack.
@@ -248,6 +249,11 @@ impl PluginStack {
     /// cleanup where the stack may already be empty.
     pub(crate) fn pop(&mut self) {
         self.stack.pop();
+    }
+
+    /// Returns `true` if no plugin is currently executing.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
 
     /// The [`Owner`] to attribute to the next mutation.
