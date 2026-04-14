@@ -4,6 +4,7 @@
 //! the Scheme bootstrap that defines `load-plugin`.  This must be called once
 //! during [`ScriptingHost::new`] before any `eval_init` call.
 
+pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
 pub(crate) mod plugins;
 pub(crate) mod settings;
@@ -60,6 +61,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Config / settings
     engine.register_value("set-option!", SteelVal::FuncV(settings::set_option));
     engine.register_value("configure-statusline!", SteelVal::FuncV(statusline::configure_statusline));
+
+    // Step budget
+    engine.register_value("hume/yield!", SteelVal::FuncV(interrupt::hume_yield));
 
     // Keymap
     engine.register_value("bind-key!", SteelVal::FuncV(keymap_bind::bind_key));
