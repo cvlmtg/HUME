@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 engine = { path = "../engine" }
+steel-core = "0.8.2"
 ropey.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true

@@ -299,6 +299,15 @@ pub(crate) struct Editor {
     /// Anchor char offset set on `MouseButton::Left` down when `mouse_select`
     /// is enabled. Cleared on mouse up.
     pub(super) mouse_drag_anchor: Option<usize>,
+
+    // ── Scripting ────────────────────────────────────────────────────────────
+
+    /// The embedded Steel scripting host.
+    ///
+    /// `None` until [`Editor::init_scripting`] is called (immediately after
+    /// `open()` returns, before the event loop starts). `Some` for the rest
+    /// of the editor's lifetime.
+    pub(super) scripting: Option<crate::scripting::ScriptingHost>,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -418,6 +427,7 @@ impl Editor {
             skip_macro_record: false,
             is_replaying: false,
             mouse_drag_anchor: None,
+            scripting: None,
         })
     }
 
@@ -639,6 +649,29 @@ impl Editor {
                 self.message_log.push(severity, text);
             }
         }
+    }
+
+    // ── Scripting ─────────────────────────────────────────────────────────────
+
+    /// Initialise the Steel scripting host and evaluate `init.scm`.
+    ///
+    /// Must be called once, after `Editor::open` returns and before
+    /// `Editor::run` starts. Any error from `init.scm` is reported as
+    /// `Severity::Error` and shown in the statusline.
+    pub(crate) fn init_scripting(&mut self) {
+        let init_path = crate::os::dirs::config_dir().join("init.scm");
+        let mut host = crate::scripting::ScriptingHost::new();
+        // Trace the resolved directories so they're visible in `:messages`.
+        // A missing runtime dir is a warning because `core:*` plugins need it.
+        match &host.ctx.runtime_dir {
+            Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
+            None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
+        }
+        self.report(Severity::Trace, format!("scripting: data dir = {}", host.ctx.data_dir.display()));
+        if let Err(msg) = host.eval_init(&init_path) {
+            self.report(Severity::Error, format!("init.scm: {msg}"));
+        }
+        self.scripting = Some(host);
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────
@@ -935,6 +968,7 @@ impl Editor {
             skip_macro_record: false,
             is_replaying: false,
             mouse_drag_anchor: None,
+            scripting: None,
         }
     }
 

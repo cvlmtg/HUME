@@ -51,7 +51,7 @@ pub enum HighlightTier {
 /// first provider for each line; providers only append. Each span is
 /// `(byte_start, byte_end, scope)` with byte offsets *relative to the line
 /// start*. Output must be sorted by `byte_start` and non-overlapping.
-pub trait HighlightSource: Send + Sync {
+pub trait HighlightSource {
     fn tier(&self) -> HighlightTier;
 
     /// Append highlight spans for `line_idx` to `out`.
@@ -73,7 +73,7 @@ pub trait HighlightSource: Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
-pub trait GutterColumn: Send + Sync {
+pub trait GutterColumn {
     /// Display width of this column in terminal cells.
     /// `last_line_idx` is the 0-based index of the last line in the file — used to
     /// size line-number columns to fit the largest line number.
@@ -154,7 +154,7 @@ pub struct VirtualLine {
 }
 
 /// Produces virtual display rows (inline diagnostics, code lenses, git blame).
-pub trait VirtualLineSource: Send + Sync {
+pub trait VirtualLineSource {
     fn virtual_lines(
         &self,
         visible_lines: Range<usize>,
@@ -178,7 +178,7 @@ pub struct InlineInsert {
     pub scope: Scope,
 }
 
-pub trait InlineDecoration: Send + Sync {
+pub trait InlineDecoration {
     /// Append inline inserts for `line_idx`. Caller sorts by `byte_offset`.
     fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>);
 }
@@ -189,7 +189,7 @@ pub trait InlineDecoration: Send + Sync {
 
 /// An overlay rendered on top of the content area after the main pipeline.
 /// Writes directly into the ratatui buffer — last registration wins z-order.
-pub trait OverlayProvider: Send + Sync {
+pub trait OverlayProvider {
     fn is_active(&self) -> bool;
 
     fn render(
@@ -206,7 +206,7 @@ pub trait OverlayProvider: Send + Sync {
 
 /// Renders the statusline (bottom row of the terminal area).
 /// The engine reserves one row at the bottom for the statusline when present.
-pub trait StatuslineProvider: Send + Sync {
+pub trait StatuslineProvider {
     fn render(
         &self,
         area: ratatui::layout::Rect,
@@ -217,7 +217,7 @@ pub trait StatuslineProvider: Send + Sync {
 
 /// Renders the tab bar (top row of the terminal area).
 /// The engine reserves one row at the top for the tab bar when present.
-pub trait TabBarProvider: Send + Sync {
+pub trait TabBarProvider {
     fn render(
         &self,
         area: ratatui::layout::Rect,

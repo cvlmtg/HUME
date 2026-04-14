@@ -3,6 +3,8 @@ mod unix;
 #[cfg(windows)]
 mod windows;
 
+pub(crate) mod dirs;
+
 use std::io;
 
 /// Probe the terminal for kitty keyboard protocol support.
