@@ -582,6 +582,8 @@ impl CommandRegistry {
         typed_cmd!("toggle-soft-wrap", "Toggle soft line wrapping.",                              &["wrap"], typed_toggle_soft_wrap);
         typed_cmd!("set",              "Set a configuration value: :set global|buffer key=value.", &[],     typed_set);
         typed_cmd!("messages",         "Show the message log in a read-only scratch buffer.",      &["mes"], typed_messages);
+        typed_cmd!("reload-plugin",    "Reload a plugin by name: :reload-plugin <name>.",          &[],      typed_reload_plugin);
+        typed_cmd!("reload-config",    "Reload init.scm from scratch.",                            &[],      typed_reload_config);
     }
 
 }
@@ -617,10 +619,10 @@ mod tests {
     ///    2 jump-list editor commands
     ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
     ///    1 force-quit editor command
-    ///    6 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages)
+    ///    8 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config)
     ///  ──
-    ///  108 total
-    const EXPECTED_COMMAND_COUNT: usize = 108;
+    ///  110 total
+    const EXPECTED_COMMAND_COUNT: usize = 110;
 
     #[test]
     fn registry_has_expected_count() {

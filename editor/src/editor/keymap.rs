@@ -275,6 +275,23 @@ impl Keymap {
         };
         trie.remove_sequence(keys);
     }
+
+    /// Return the command name currently bound to `keys` in `mode`, or `None`
+    /// if the sequence is unbound.
+    ///
+    /// Used by `(bind-key!)` to capture the prior value before overwriting a
+    /// binding, so the ledger can restore it on plugin unload.
+    pub(crate) fn lookup_command(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<String> {
+        let trie = match mode {
+            BindMode::Normal => &self.normal,
+            BindMode::Extend => &self.extend,
+            BindMode::Insert => &self.insert,
+        };
+        match trie.walk(keys) {
+            WalkResult::Leaf(cmd) => Some(cmd.name.into_owned()),
+            _ => None,
+        }
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

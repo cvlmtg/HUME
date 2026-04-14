@@ -1,11 +1,3 @@
-// `owner_of`, `unload`, `LedgerEntry::prior_{value,owner}`, and `Owner::Core`
-// are Phase 3b scaffolding: written or returned in production code paths but
-// only *consumed* by plugin unload / reload, which lands in Phase 3b.
-// `PluginId::as_str` is likewise used by Phase 3b callers.
-// Suppress dead_code here rather than `#[cfg(test)]`-gating items that will
-// be promoted to production in the next phase.
-#![allow(dead_code)]
-
 //! Ownership ledger and `CURRENT_PLUGIN` attribution stack.
 //!
 //! Every Steel mutation is attributed to an [`Owner`] derived from the
@@ -44,6 +36,7 @@ impl PluginId {
         Self(name.into())
     }
 
+    #[cfg(test)]
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }

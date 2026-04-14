@@ -48,9 +48,12 @@ pub(crate) fn set_option(args: &[SteelVal]) -> SteelResult {
     };
 
     super::with_ctx(|ctx| {
-        // Capture prior value for the ledger before we overwrite it.
+        // Capture prior state for the ledger before we overwrite it.
         let prior_value = serialize_setting(&ctx.settings, &key).unwrap_or_default();
-        let prior_owner = ctx.plugin_stack.current_owner();
+        // prior_owner is who owned the setting *before* this mutation —
+        // derived from the ledger (last-writer-wins), not the current plugin.
+        let prior_owner = ctx.ledger_stack.owner_of(&key);
+        let current_owner = ctx.plugin_stack.current_owner();
 
         let mut dummy_overrides = BufferOverrides::default();
         apply_setting(
@@ -65,13 +68,8 @@ pub(crate) fn set_option(args: &[SteelVal]) -> SteelResult {
         // Only record ledger entries for plugin-attributed mutations.
         // User-level mutations (top-level init.scm) need no ledger entry
         // because `:reload-config` rebuilds everything from scratch.
-        if let Owner::Plugin(ref plugin_id) = prior_owner {
-            ctx.ledger_stack.record(
-                plugin_id,
-                key,
-                prior_owner.clone(),
-                prior_value,
-            );
+        if let Owner::Plugin(ref plugin_id) = current_owner {
+            ctx.ledger_stack.record(plugin_id, key, prior_owner, prior_value);
         }
 
         Ok(SteelVal::Void)

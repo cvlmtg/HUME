@@ -137,33 +137,43 @@ pub(crate) fn pop_current_plugin(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// Pure path resolution: given a plugin name and the runtime / data directories,
+/// return the resolved `PathBuf` if the plugin file exists on disk, or `None`.
+///
+/// Called by both the `resolve-plugin-path` Steel builtin (which uses `with_ctx`
+/// to supply the dirs) and by [`crate::scripting::ScriptingHost::reload_plugin`]
+/// (which accesses the dirs directly on `ScriptFacingCtx`).
+pub(crate) fn resolve_path_for_name(
+    name: &str,
+    runtime_dir: Option<&std::path::Path>,
+    data_dir: &std::path::Path,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let parsed = parse_plugin_name(name)
+        .map_err(|e| e.to_string())?;
+    let path = match parsed {
+        ParsedName::Core(core_name) => {
+            runtime_dir.map(|rt| {
+                rt.join("plugins").join("core").join(&core_name).join("plugin.scm")
+            })
+        }
+        ParsedName::User { user, repo } => Some(
+            data_dir.join("plugins").join(&user).join(&repo).join("plugin.scm"),
+        ),
+    };
+    Ok(path.filter(|p| p.exists()))
+}
+
 /// `(resolve-plugin-path name)` — return the resolved path string if the
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
 pub(crate) fn resolve_plugin_path(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "resolve-plugin-path")?;
-    let parsed = parse_plugin_name(&name)?;
     super::with_ctx(|ctx| {
-        let path = match &parsed {
-            ParsedName::Core(core_name) => {
-                ctx.runtime_dir.as_ref().map(|rt| {
-                    rt.join("plugins").join("core").join(core_name).join("plugin.scm")
-                })
-            }
-            ParsedName::User { user, repo } => Some(
-                ctx.data_dir
-                    .join("plugins")
-                    .join(user)
-                    .join(repo)
-                    .join("plugin.scm"),
-            ),
-        };
+        let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), &ctx.data_dir)
+            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
         match path {
-            Some(p) if p.exists() => {
-                let s: String = p.to_string_lossy().into_owned();
-                Ok(SteelVal::StringV(s.into()))
-            }
-            _ => Ok(SteelVal::BoolV(false)),
+            Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
+            None    => Ok(SteelVal::BoolV(false)),
         }
     })
 }

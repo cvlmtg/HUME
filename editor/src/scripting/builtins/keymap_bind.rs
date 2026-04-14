@@ -164,23 +164,23 @@ pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
 
     super::with_ctx(|ctx| {
-        let prior_owner = ctx.plugin_stack.current_owner();
+        // The ledger key encodes mode + key-sequence so that "normal f" and
+        // "insert f" are tracked independently.  Setting keys never contain
+        // spaces, so the namespace is unambiguous.
+        let ledger_key = format!("{} {}", mode_str.to_ascii_lowercase(), key_str);
+
+        // Capture prior state before overwriting.
+        // prior_value: what command was bound before (empty string = unbound).
+        // prior_owner: who owned the binding before (from ledger, not current plugin).
+        let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
+        let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
+        let current_owner = ctx.plugin_stack.current_owner();
 
         ctx.keymap.bind_user(mode, &keys, Cow::Owned(cmd_name));
 
-        // Record ledger entry for plugin-attributed mutations.
-        if let Owner::Plugin(ref plugin_id) = prior_owner {
-            // Use the key sequence string as the ledger key so the ledger can
-            // identify which binding to restore.  The prior value for a keybind
-            // is stored as an empty string here — Phase 3 records the fact of
-            // the mutation; full keybind restoration (with prior-value) is
-            // implemented in Phase 3b alongside plugin unload.
-            ctx.ledger_stack.record(
-                plugin_id,
-                key_str,
-                prior_owner.clone(),
-                String::new(), // prior keybind value — restored in Phase 3b
-            );
+        // Only record ledger entries for plugin-attributed mutations.
+        if let Owner::Plugin(ref plugin_id) = current_owner {
+            ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
         }
 
         Ok(SteelVal::Void)
