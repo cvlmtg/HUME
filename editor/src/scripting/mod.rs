@@ -153,6 +153,45 @@ pub(crate) struct ScriptFacingCtx {
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
 }
 
+// ── EvalSnapshot ─────────────────────────────────────────────────────────────
+
+/// Captured state for all-or-nothing rollback of a Steel eval on error.
+///
+/// Constructed before an eval via [`EvalSnapshot::capture`]; on success the
+/// snapshot is simply dropped (or ignored). On error, call
+/// [`EvalSnapshot::restore`] to revert every field to its pre-eval value.
+///
+/// Covers the five pieces of mutable state a plugin can touch:
+/// `settings`, `keymap` (passed by `&mut` reference) and the three
+/// [`ScriptFacingCtx`] fields that accumulate across evals.
+struct EvalSnapshot {
+    settings:     EditorSettings,
+    keymap:       Keymap,
+    plugin_stack: PluginStack,
+    ledger_stack: LedgerStack,
+    cmd_owners:   std::collections::HashMap<String, String>,
+}
+
+impl EvalSnapshot {
+    fn capture(settings: &EditorSettings, keymap: &Keymap, ctx: &ScriptFacingCtx) -> Self {
+        Self {
+            settings:     settings.clone(),
+            keymap:       keymap.clone(),
+            plugin_stack: ctx.plugin_stack.clone(),
+            ledger_stack: ctx.ledger_stack.clone(),
+            cmd_owners:   ctx.cmd_owners.clone(),
+        }
+    }
+
+    fn restore(self, settings: &mut EditorSettings, keymap: &mut Keymap, ctx: &mut ScriptFacingCtx) {
+        *settings        = self.settings;
+        *keymap          = self.keymap;
+        ctx.plugin_stack = self.plugin_stack;
+        ctx.ledger_stack = self.ledger_stack;
+        ctx.cmd_owners   = self.cmd_owners;
+    }
+}
+
 // ── ScriptingHost ─────────────────────────────────────────────────────────────
 
 /// The embedded Steel scripting host.
@@ -190,16 +229,12 @@ impl ScriptingHost {
         // to write (matches eval_source_raw; messages are discarded after).
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
-        // Snapshot for rollback on error (mirrors eval_source_raw exactly).
-        let settings_snap     = settings.clone();
-        let keymap_snap       = keymap.clone();
-        let plugin_stack_snap = self.ctx.plugin_stack.clone();
-        let ledger_stack_snap = self.ctx.ledger_stack.clone();
-        let cmd_owners_snap   = self.ctx.cmd_owners.clone();
+        // Snapshot for all-or-nothing rollback on error.
+        let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
 
         // Arm COMMAND_OWNER_CACHE so `(command-plugin …)` works during test evals.
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+            *cell.borrow_mut() = snapshot.cmd_owners.clone();
         });
 
         EVAL_CTX.with(|cell| {
@@ -246,11 +281,7 @@ impl ScriptingHost {
 
         // Rollback on error: restore pre-eval snapshot (all-or-nothing semantics).
         if result.is_err() {
-            *settings              = settings_snap;
-            *keymap                = keymap_snap;
-            self.ctx.plugin_stack  = plugin_stack_snap;
-            self.ctx.ledger_stack  = ledger_stack_snap;
-            self.ctx.cmd_owners    = cmd_owners_snap;
+            snapshot.restore(settings, keymap, &mut self.ctx);
         }
 
         // Reset the flag so a pre-set interrupt doesn't bleed into the next eval.
@@ -438,17 +469,12 @@ impl ScriptingHost {
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
         // Snapshot for all-or-nothing rollback on error.
-        let settings_snap      = settings.clone();
-        let keymap_snap        = keymap.clone();
-        let plugin_stack_snap  = self.ctx.plugin_stack.clone();
-        let ledger_stack_snap  = self.ctx.ledger_stack.clone();
-        let cmd_owners_snap    = self.ctx.cmd_owners.clone();
+        let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
 
         // Expose the current command-owner index so `(command-plugin …)` can
         // answer queries during eval (e.g. a plugin checking for conflicts).
-        // Reuse cmd_owners_snap (already allocated above) instead of cloning again.
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = cmd_owners_snap.clone();
+            *cell.borrow_mut() = snapshot.cmd_owners.clone();
         });
 
         // Move editor state + scripting state into TLS so builtins can access
@@ -519,13 +545,9 @@ impl ScriptingHost {
         });
 
         // Rollback on error: discard partial mutations and restore snapshot.
+        // (steel_cmds is already empty — process_pending_cmds was not called.)
         if result.is_err() {
-            *settings              = settings_snap;
-            *keymap                = keymap_snap;
-            self.ctx.plugin_stack  = plugin_stack_snap;
-            self.ctx.ledger_stack  = ledger_stack_snap;
-            self.ctx.cmd_owners    = cmd_owners_snap;
-            // steel_cmds is already empty — process_pending_cmds was not called.
+            snapshot.restore(settings, keymap, &mut self.ctx);
         }
 
         // Clear COMMAND_OWNER_CACHE — valid only for this eval.
