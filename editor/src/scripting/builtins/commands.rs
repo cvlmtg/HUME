@@ -211,14 +211,7 @@ pub(crate) fn cmd_arg(args: &[SteelVal]) -> SteelResult {
 /// command execution.  Returns `"hume"` for any name not in the owner cache
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(args: &[SteelVal]) -> SteelResult {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "command-plugin expects 1 arg (name), got {}", args.len());
-    }
-    let name = match &args[0] {
-        SteelVal::StringV(s) => s.to_string(),
-        _ => steel::stop!(TypeMismatch =>
-            "command-plugin: arg must be a string, got {:?}", args[0]),
-    };
+    let name = super::one_string(args, "command-plugin")?;
     COMMAND_OWNER_CACHE.with(|cell| {
         let owner = cell.borrow()
             .get(&name)
@@ -339,7 +332,6 @@ mod tests {
         PENDING_CHAR.with(|cell| *cell.borrow_mut() = Some('('));
         let result = pending_char(&[]).unwrap();
         assert_eq!(result, SteelVal::StringV("(".into()));
-        // Clear after test
         PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
     }
 

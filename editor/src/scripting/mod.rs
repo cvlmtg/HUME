@@ -185,11 +185,21 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<(), String> {
-        // Snapshot for rollback on error (same semantics as eval_init).
+        // Arm LOG_QUEUE so `(log! …)` calls during this test eval have somewhere
+        // to write (matches eval_source_raw; messages are discarded after).
+        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
+
+        // Snapshot for rollback on error (mirrors eval_source_raw exactly).
         let settings_snap     = settings.clone();
         let keymap_snap       = keymap.clone();
         let plugin_stack_snap = self.ctx.plugin_stack.clone();
         let ledger_stack_snap = self.ctx.ledger_stack.clone();
+        let cmd_owners_snap   = self.ctx.cmd_owners.clone();
+
+        // Arm COMMAND_OWNER_CACHE so `(command-plugin …)` works during test evals.
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
+            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+        });
 
         EVAL_CTX.with(|cell| {
             *cell.borrow_mut() = Some(EvalCtx {
@@ -213,6 +223,10 @@ impl ScriptingHost {
             .map(|_| ())
             .map_err(|e| e.to_string());
 
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
+        // Drain LOG_QUEUE — messages are discarded in test context.
+        builtins::fs::LOG_QUEUE.with(|q| { q.borrow_mut().take(); });
+
         EVAL_CTX.with(|cell| {
             if let Some(ctx) = cell.borrow_mut().take() {
                 *settings = ctx.settings;
@@ -231,6 +245,7 @@ impl ScriptingHost {
             *keymap                = keymap_snap;
             self.ctx.plugin_stack  = plugin_stack_snap;
             self.ctx.ledger_stack  = ledger_stack_snap;
+            self.ctx.cmd_owners    = cmd_owners_snap;
         }
 
         // Reset the flag so a pre-set interrupt doesn't bleed into the next eval.
@@ -392,9 +407,9 @@ impl ScriptingHost {
         let result = self.eval_source_raw(source, builtin_names, settings, keymap);
 
         // Unconditionally pop the attribution we pushed above, even if eval
-        // errored.  On error the stack was already restored from snapshot
-        // (without the pushed id), so this is a graceful no-op on an empty
-        // stack — `PluginStack::pop` ignores empty.
+        // errored.  `eval_source_raw` snapshots the stack AFTER the push, so
+        // on both success and error the stack still has `plugin_id` on top when
+        // it returns — this pop is real work, not a no-op.
         self.ctx.plugin_stack.pop();
 
         result
@@ -402,14 +417,9 @@ impl ScriptingHost {
 
     /// Core eval machinery shared by [`eval_init`] and [`eval_plugin_with_attribution`].
     ///
-    /// Takes an already-read `source` string and:
-    /// 1. Arms `LOG_QUEUE` and `COMMAND_OWNER_CACHE` TLS.
-    /// 2. Snapshots `settings`, `keymap`, `plugin_stack`, `ledger_stack`, and
-    ///    `cmd_owners` for all-or-nothing rollback on error.
-    /// 3. Moves editor state into `EVAL_CTX` TLS.
-    /// 4. Runs a watchdog thread (10 s budget, cooperative via `hume/yield!`).
-    /// 5. Evaluates `source`, restores TLS state, rollbacks on error.
-    /// 6. Drains `LOG_QUEUE` into `pending_messages`.
+    /// Snapshots all mutable state for all-or-nothing rollback on error, moves
+    /// state into [`EVAL_CTX`] TLS, runs a watchdog thread (cooperative budget
+    /// via `hume/yield!`), then evaluates `source` and drains log messages.
     fn eval_source_raw(
         &mut self,
         source: String,
@@ -429,8 +439,9 @@ impl ScriptingHost {
 
         // Expose the current command-owner index so `(command-plugin …)` can
         // answer queries during eval (e.g. a plugin checking for conflicts).
+        // Reuse cmd_owners_snap (already allocated above) instead of cloning again.
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+            *cell.borrow_mut() = cmd_owners_snap.clone();
         });
 
         // Move editor state + scripting state into TLS so builtins can access
@@ -537,12 +548,7 @@ impl ScriptingHost {
                 );
             }
             // Record the owner string for `(command-plugin …)` introspection.
-            let owner_str = match &cmd.current_owner {
-                ledger::Owner::Core           => "hume".to_string(),
-                ledger::Owner::User           => "user".to_string(),
-                ledger::Owner::Plugin(pid)    => pid.to_string(),
-            };
-            self.ctx.cmd_owners.insert(cmd.name.clone(), owner_str);
+            self.ctx.cmd_owners.insert(cmd.name.clone(), cmd.current_owner.to_string());
             defs.push(SteelCmdDef {
                 name: cmd.name,
                 doc: cmd.doc,
@@ -741,6 +747,36 @@ mod tests {
         );
         assert!(err.is_err(), "expected eval to fail");
         assert_eq!(s.tab_width, 2, "snapshot should have been restored");
+    }
+
+    #[test]
+    fn cmd_owners_rolled_back_on_error() {
+        // A failing eval that defines a command mid-way must not leave a stale
+        // entry in cmd_owners — the snapshot must be restored on error.
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Register a command successfully first so cmd_owners is non-empty.
+        h.eval_source(
+            r#"(push-current-plugin! "user/plugin-a")
+               (define-command! "cmd-a" "a" (lambda () (+ 1 0)))
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+        assert!(h.ctx.cmd_owners.contains_key("cmd-a"), "cmd-a should be registered");
+
+        // Now run a script that defines a second command but then errors.
+        // cmd-b must NOT appear in cmd_owners after rollback.
+        let err = h.eval_source(
+            r#"(push-current-plugin! "user/plugin-b")
+               (define-command! "cmd-b" "b" (lambda () (+ 1 0)))
+               (set-option! "bogus-key" "x")"#,
+            &mut s, &mut km,
+        );
+        assert!(err.is_err(), "expected eval to fail");
+        assert!(h.ctx.cmd_owners.contains_key("cmd-a"), "cmd-a should survive");
+        assert!(!h.ctx.cmd_owners.contains_key("cmd-b"), "cmd-b must be rolled back");
     }
 
     // ── bind-key! ─────────────────────────────────────────────────────────────
