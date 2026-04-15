@@ -20,19 +20,18 @@ use std::{env, path::PathBuf};
 /// Unix, `APPDATA` on Windows). Callers should report and skip scripting
 /// init rather than fall back to a relative path.
 pub(crate) fn config_dir() -> Option<PathBuf> {
+    // XDG_CONFIG_HOME is honoured on all platforms — useful for testing and
+    // for Windows power users who prefer XDG-style overrides.
+    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(xdg).join("hume"));
+    }
     #[cfg(windows)]
     {
         env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("config"))
     }
     #[cfg(not(windows))]
     {
-        if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-            Some(PathBuf::from(xdg).join("hume"))
-        } else if let Ok(home) = env::var("HOME") {
-            Some(PathBuf::from(home).join(".config").join("hume"))
-        } else {
-            None
-        }
+        env::var("HOME").ok().map(|home| PathBuf::from(home).join(".config").join("hume"))
     }
 }
 
@@ -44,19 +43,18 @@ pub(crate) fn config_dir() -> Option<PathBuf> {
 /// Returns `None` only if the relevant env vars are unset. Callers should
 /// disable features that need on-disk storage (PLUM install, user plugins).
 pub(crate) fn data_dir() -> Option<PathBuf> {
+    // XDG_DATA_HOME is honoured on all platforms — useful for testing and
+    // for Windows power users who prefer XDG-style overrides.
+    if let Ok(xdg) = env::var("XDG_DATA_HOME") {
+        return Some(PathBuf::from(xdg).join("hume"));
+    }
     #[cfg(windows)]
     {
         env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("data"))
     }
     #[cfg(not(windows))]
     {
-        if let Ok(xdg) = env::var("XDG_DATA_HOME") {
-            Some(PathBuf::from(xdg).join("hume"))
-        } else if let Ok(home) = env::var("HOME") {
-            Some(PathBuf::from(home).join(".local").join("share").join("hume"))
-        } else {
-            None
-        }
+        env::var("HOME").ok().map(|home| PathBuf::from(home).join(".local").join("share").join("hume"))
     }
 }
 
