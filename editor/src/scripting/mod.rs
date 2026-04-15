@@ -629,7 +629,7 @@ impl ScriptingHost {
     }
 
     /// Invoke a Steel proc by its internal engine name and return the list of
-    /// commands it queued via `(call-command! …)`, plus an optional WaitChar
+    /// commands it queued via `(call! …)`, plus an optional WaitChar
     /// command name requested via `(request-wait-char! …)`.
     ///
     /// Sets up [`builtins::commands::CMD_QUEUE`] and
@@ -645,7 +645,7 @@ impl ScriptingHost {
     /// No rollback on error: `EVAL_CTX` is not armed during this call, so
     /// `(set-option!)`, `(bind-key!)`, and similar builtins cannot be called from
     /// a command body (they raise a Steel error via `with_ctx`).  Commands that queue
-    /// further Rust commands via `(call-command! …)` dispatch those after returning
+    /// further Rust commands via `(call! …)` dispatch those after returning
     /// `Ok`; on error the queue is dropped, so no further dispatch occurs.  This
     /// matches the Rust-side policy: partial effects from commands that ran before
     /// a failure stay applied.
@@ -1433,5 +1433,30 @@ mod tests {
             "error must name the failing builtin; got: {err}");
         // Mutation never happened, so the setting is unchanged.
         assert_eq!(s.tab_width, 4, "tab-width must be untouched");
+    }
+
+    // ── call! alias ───────────────────────────────────────────────────────────
+
+    /// Both `call!` and `call-command!` route to the same builtin.  Verify
+    /// that commands defined with each spelling both queue their sub-commands.
+    #[test]
+    fn call_bang_and_call_command_both_dispatch() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source(
+            r#"
+(define-command! "use-call-bang"    "" (lambda () (call! "move-right")))
+(define-command! "use-call-command" "" (lambda () (call-command! "move-left")))
+"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        let (q1, _) = h.call_steel_cmd("%hume-cmd-use-call-bang",    None, None, &s).unwrap();
+        assert_eq!(q1, vec!["move-right"], "call! should queue the command");
+
+        let (q2, _) = h.call_steel_cmd("%hume-cmd-use-call-command", None, None, &s).unwrap();
+        assert_eq!(q2, vec!["move-left"], "call-command! alias should queue the command");
     }
 }

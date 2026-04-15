@@ -108,6 +108,8 @@ pub(crate) fn register_all(engine: &mut Engine) {
 
     // Steel command definition and composition
     engine.register_value("define-command!",    SteelVal::FuncV(commands::define_command));
+    engine.register_value("call!",              SteelVal::FuncV(commands::call_command));
+    // Back-compat alias — prefer call! in new code.
     engine.register_value("call-command!",      SteelVal::FuncV(commands::call_command));
     engine.register_value("request-wait-char!", SteelVal::FuncV(commands::request_wait_char));
     engine.register_value("pending-char",       SteelVal::FuncV(commands::pending_char));

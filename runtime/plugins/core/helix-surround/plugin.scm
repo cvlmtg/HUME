@@ -38,8 +38,8 @@
   (lambda ()
     (let ((cmd (surround-cmd-for (pending-char))))
       (when cmd
-        (call-command! cmd)
-        (call-command! "delete")))))
+        (call! cmd)
+        (call! "delete")))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
 ;; Select the surround pair with surround-*, then request a wait-char for the
@@ -52,7 +52,7 @@
   (lambda ()
     (let ((cmd (surround-cmd-for (pending-char))))
       (when cmd
-        (call-command! cmd)
+        (call! cmd)
         (request-wait-char! "replace")))))
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
