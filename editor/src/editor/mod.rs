@@ -668,8 +668,24 @@ impl Editor {
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
         self.report(Severity::Trace, format!("scripting: data dir = {}", host.ctx.data_dir.display()));
-        if let Err(msg) = host.eval_init(&init_path, &mut self.settings, &mut self.keymap) {
-            self.report(Severity::Error, format!("init.scm: {msg}"));
+        let builtin_names: std::collections::HashSet<String> =
+            self.registry.names().map(String::from).collect();
+        match host.eval_init(&init_path, &mut self.settings, &mut self.keymap, builtin_names) {
+            Ok(cmds) => {
+                for def in cmds {
+                    if self.registry.get_mappable(&def.name).is_some() {
+                        self.report(Severity::Error, format!(
+                            "define-command!: '{}' conflicts with existing command", def.name));
+                    } else {
+                        self.registry.register(registry::MappableCommand::SteelBacked {
+                            name: def.name.into(),
+                            doc: def.doc.into(),
+                            steel_proc: def.steel_proc,
+                        });
+                    }
+                }
+            }
+            Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
         self.scripting = Some(host);
     }
