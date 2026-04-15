@@ -47,7 +47,7 @@ pub(crate) fn set_option(args: &[SteelVal]) -> SteelResult {
             "set-option!: second arg (value) must be a string, bool, or integer, got {:?}", args[1]),
     };
 
-    super::with_ctx(|ctx| {
+    super::with_ctx("set-option!", |ctx| {
         // Capture prior state for the ledger before we overwrite it.
         let prior_value = serialize_setting(&ctx.settings, &key).unwrap_or_default();
         // prior_owner is who owned the setting *before* this mutation —

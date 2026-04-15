@@ -95,7 +95,7 @@ pub(crate) fn define_command(args: &[SteelVal]) -> SteelResult {
             "define-command!: third arg (proc) must be a callable, got {:?}", args[2]),
     };
 
-    super::with_ctx(|ctx| {
+    super::with_ctx("define-command!", |ctx| {
         // Conflict against core/user built-ins known at eval start.
         if ctx.builtin_cmd_names.contains(&name) {
             steel::stop!(Generic =>

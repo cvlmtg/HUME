@@ -75,7 +75,7 @@ fn parse_bind_args(args: &[SteelVal], fn_name: &str) -> Result<ParsedBindArgs, S
 /// Records a ledger entry when called from a plugin body.
 pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
     let ParsedBindArgs { mode, ledger_key, keys, cmd_name } = parse_bind_args(args, "bind-key!")?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("bind-key!", |ctx| {
         let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
         let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
         let current_owner = ctx.plugin_stack.current_owner();
@@ -99,7 +99,7 @@ pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
 /// Records a ledger entry when called from a plugin body.
 pub(crate) fn bind_wait_char(args: &[SteelVal]) -> SteelResult {
     let ParsedBindArgs { mode, ledger_key, keys, cmd_name } = parse_bind_args(args, "bind-wait-char!")?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("bind-wait-char!", |ctx| {
         let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
         let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
         let current_owner = ctx.plugin_stack.current_owner();

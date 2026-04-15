@@ -30,7 +30,7 @@ pub(crate) fn push_declared_plugin(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "push-declared-plugin!")?;
     // Validate before recording so declared-plugins never contains junk.
     PluginId::parse(&name).map_err(steel_parse_err)?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("push-declared-plugin!", |ctx| {
         if !ctx.declared_plugins.iter().any(|d| d.eq_ignore_ascii_case(&name)) {
             ctx.declared_plugins.push(name);
         }
@@ -42,7 +42,7 @@ pub(crate) fn push_declared_plugin(args: &[SteelVal]) -> SteelResult {
 /// (case-insensitive dedup, no validation — caller already validated).
 pub(crate) fn push_loaded_plugin(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "push-loaded-plugin!")?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("push-loaded-plugin!", |ctx| {
         if !ctx.loaded_plugins.iter().any(|l| l.eq_ignore_ascii_case(&name)) {
             ctx.loaded_plugins.push(name);
         }
@@ -56,7 +56,7 @@ pub(crate) fn push_loaded_plugin(args: &[SteelVal]) -> SteelResult {
 pub(crate) fn push_current_plugin(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "push-current-plugin!")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("push-current-plugin!", |ctx| {
         ctx.plugin_stack.push(plugin_id);
         Ok(SteelVal::Void)
     })
@@ -69,7 +69,7 @@ pub(crate) fn pop_current_plugin(args: &[SteelVal]) -> SteelResult {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "pop-current-plugin! expects 0 args, got {}", args.len());
     }
-    super::with_ctx(|ctx| {
+    super::with_ctx("pop-current-plugin!", |ctx| {
         if ctx.plugin_stack.is_empty() {
             steel::stop!(Generic => "pop-current-plugin!: attribution stack is already empty");
         }
@@ -119,7 +119,7 @@ pub(crate) fn resolve_path_for_name(
 /// malformed names.
 pub(crate) fn resolve_plugin_path(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "resolve-plugin-path")?;
-    super::with_ctx(|ctx| {
+    super::with_ctx("resolve-plugin-path", |ctx| {
         let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), ctx.data_dir.as_deref())
             .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
         match path {
@@ -134,7 +134,7 @@ pub(crate) fn loaded_plugins(args: &[SteelVal]) -> SteelResult {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "loaded-plugins expects 0 args, got {}", args.len());
     }
-    super::with_ctx(|ctx| {
+    super::with_ctx("loaded-plugins", |ctx| {
         let vals: Vec<SteelVal> = ctx
             .loaded_plugins
             .iter()
@@ -150,7 +150,7 @@ pub(crate) fn declared_plugins(args: &[SteelVal]) -> SteelResult {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "declared-plugins expects 0 args, got {}", args.len());
     }
-    super::with_ctx(|ctx| {
+    super::with_ctx("declared-plugins", |ctx| {
         let vals: Vec<SteelVal> = ctx
             .declared_plugins
             .iter()

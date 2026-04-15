@@ -573,10 +573,8 @@ impl Editor {
                     }
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
-                    // Split-borrow: scripting, settings, and keymap are disjoint
-                    // fields, so the borrow checker accepts all three simultaneously.
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(&steel_proc, char_arg, cmd_arg, &mut self.settings, &mut self.keymap) {
+                        match host.call_steel_cmd(&steel_proc, char_arg, cmd_arg, &self.settings) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }
