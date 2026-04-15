@@ -375,7 +375,7 @@ impl ScriptingHost {
         keymap: &mut Keymap,
         builtin_names: std::collections::HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        let source = match std::fs::read_to_string(path) {
+        let source = match crate::os::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display())),
@@ -471,7 +471,7 @@ impl ScriptingHost {
         keymap: &mut Keymap,
         builtin_names: std::collections::HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        let source = std::fs::read_to_string(path)
+        let source = crate::os::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
 
         // Push the plugin attribution before the eval so that all mutations

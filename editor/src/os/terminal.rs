@@ -2,9 +2,11 @@ use std::io::{self, stdout, Stdout, Write};
 
 use crossterm::{
     execute,
+    cursor::SetCursorStyle,
     event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use engine::types::EditorMode;
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 /// A ratatui `Terminal` backed by crossterm on stdout.
@@ -119,4 +121,40 @@ pub(crate) fn install_panic_hook() {
         let _ = restore();
         original(info);
     }));
+}
+
+/// Emit an OSC 12 sequence to set the terminal cursor colour for `mode`.
+///
+/// Command/Search mode positions the cursor in the statusline, which has a
+/// white background — a default (white) cursor would be invisible. We set it
+/// to black so it contrasts. All other modes reset to the terminal default.
+///
+/// OSC 12 (`\x1b]12;COLOR\x07`) is supported by the overwhelming majority of
+/// modern terminal emulators. The reset form (`\x1b]112;\x07`) restores the
+/// user's configured cursor colour.
+pub(crate) fn set_cursor_color_for_mode(mode: EditorMode) -> io::Result<()> {
+    let seq: &[u8] = match mode {
+        EditorMode::Command | EditorMode::Search => b"\x1b]12;black\x07",
+        _ => b"\x1b]112;\x07",
+    };
+    stdout().write_all(seq)
+}
+
+/// Emit a crossterm `SetCursorStyle` escape for the cursor shape appropriate
+/// to `mode`.
+///
+/// Bar modes (Insert, Command, Search, Select) get `SteadyBar`; all others
+/// get `SteadyBlock`. Relies on [`crate::cursor::shape`] for the mode-to-style
+/// mapping.
+pub(crate) fn set_cursor_shape(mode: EditorMode) -> io::Result<()> {
+    execute!(stdout(), crate::cursor::shape(mode))
+}
+
+/// Emit the `DefaultUserShape` escape, restoring whatever cursor shape the
+/// user's terminal is configured to display.
+///
+/// Call this before returning to the shell so the user's preferred cursor is
+/// restored.
+pub(crate) fn reset_cursor_shape() -> io::Result<()> {
+    execute!(stdout(), SetCursorStyle::DefaultUserShape)
 }

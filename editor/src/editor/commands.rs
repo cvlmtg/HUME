@@ -716,9 +716,9 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         let path = std::path::Path::new(path_str);
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
-        let result = match crate::io::read_file_meta(path) {
-            Ok(meta) => crate::io::write_file_atomic(&content, &meta).map(|()| meta),
-            Err(_)   => crate::io::write_file_new(&content, path),
+        let result = match crate::os::io::read_file_meta(path) {
+            Ok(meta) => crate::os::io::write_file_atomic(&content, &meta).map(|()| meta),
+            Err(_)   => crate::os::io::write_file_new(&content, path),
         };
         match result {
             Ok(meta) => {
@@ -737,7 +737,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         let Some(meta) = ed.file_meta.as_ref() else {
             return Err(CommandError("no file name".into()));
         };
-        match crate::io::write_file_atomic(&content, meta) {
+        match crate::os::io::write_file_atomic(&content, meta) {
             Ok(()) => {
                 ed.doc.mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
-use crossterm::execute;
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState};
@@ -15,14 +14,14 @@ use engine::types::{EditorMode, Selection as EngineSelection};
 use crate::core::buffer::Buffer;
 use self::registry::CommandRegistry;
 use crate::core::document::Document;
-use crate::io::FileMeta;
+use crate::os::io::FileMeta;
 use crate::ops::motion::FindKind;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::ops::pair::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::settings::EditorSettings;
-use crate::terminal::Term;
+use crate::os::terminal::Term;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -326,7 +325,7 @@ impl Editor {
     pub(crate) fn open(file_path: Option<PathBuf>) -> io::Result<Self> {
         let (buf, file_meta) = match &file_path {
             Some(path) => {
-                let (content, meta) = crate::io::read_file(path)?;
+                let (content, meta) = crate::os::io::read_file(path)?;
                 (Buffer::from(content.as_str()), Some(meta))
             }
             None => (Buffer::empty(), None),
@@ -502,9 +501,9 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = execute!(std::io::stdout(), crate::cursor::shape(self.mode));
+            let _ = crate::os::terminal::set_cursor_shape(self.mode);
             if last_cursor_color_mode != Some(self.mode) {
-                let _ = crate::cursor::set_color_for_mode(self.mode);
+                let _ = crate::os::terminal::set_cursor_color_for_mode(self.mode);
                 last_cursor_color_mode = Some(self.mode);
             }
 
@@ -543,8 +542,8 @@ impl Editor {
             if self.should_quit { break; }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
-        execute!(std::io::stdout(), crossterm::cursor::SetCursorStyle::DefaultUserShape)?;
-        let _ = crate::cursor::set_color_for_mode(EditorMode::Normal); // emits reset sequence
+        crate::os::terminal::reset_cursor_shape()?;
+        let _ = crate::os::terminal::set_cursor_color_for_mode(EditorMode::Normal); // emits reset sequence
         Ok(())
     }
 

@@ -106,7 +106,7 @@ pub(crate) fn resolve_path_for_name(
     // NotFound → plugin absent (Ok(None)); other errors propagate.
     match path {
         None => Ok(None),
-        Some(p) => match std::fs::metadata(&p) {
+        Some(p) => match crate::os::fs::metadata(&p) {
             Ok(_) => Ok(Some(p)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(format!("cannot stat plugin path '{}': {e}", p.display())),
