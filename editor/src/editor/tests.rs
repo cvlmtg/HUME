@@ -768,7 +768,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let path = tmp.path().to_path_buf();
     // Close the file handle, keep the path alive.
     let tmp_path = tmp.into_temp_path();
-    let (_, meta) = crate::io::read_file(&path).unwrap();
+    let (_, meta) = crate::os::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
     ed.file_path = Some(Arc::new(path));
     ed.file_meta = Some(meta);
@@ -974,7 +974,7 @@ fn write_preserves_permissions() {
     // Set a non-default permission that differs from the tempfile default (0600).
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so file_meta captures the new permissions.
-    let (_, meta) = crate::io::read_file(&tmp).unwrap();
+    let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
     ed.file_meta = Some(meta);
 
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
@@ -999,7 +999,7 @@ fn write_follows_symlink() {
     symlink(real.path(), &link_path).unwrap();
 
     // Open via the symlink — io::read_file should resolve it.
-    let (_, meta) = crate::io::read_file(&link_path).unwrap();
+    let (_, meta) = crate::os::io::read_file(&link_path).unwrap();
     assert_eq!(meta.resolved_path, std::fs::canonicalize(real.path()).unwrap());
 
     let mut ed = editor_from("-[h]>ello\n");

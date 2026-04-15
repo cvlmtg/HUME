@@ -4,8 +4,10 @@ mod unix;
 mod windows;
 
 pub(crate) mod dirs;
-
-use std::io;
+pub(crate) mod fs;
+pub(crate) mod io;
+pub(crate) mod process;
+pub(crate) mod terminal;
 
 /// Probe the terminal for kitty keyboard protocol support.
 ///
@@ -16,7 +18,7 @@ use std::io;
 /// keyboard protocol push, `Ok(false)` otherwise.
 ///
 /// Must be called after `enable_raw_mode()`.
-pub(crate) fn probe_kitty_support() -> io::Result<bool> {
+pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
     #[cfg(unix)]
     {
         unix::probe_kitty_support()

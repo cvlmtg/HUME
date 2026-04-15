@@ -8,7 +8,6 @@
 //! failures are treated as hard errors (never fallbacks).
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
@@ -44,7 +43,7 @@ pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         format!("git-clone: dest has no parent directory: {dest}"),
     ))?;
 
-    let canonical_parent = parent.canonicalize()
+    let canonical_parent = crate::os::fs::canonicalize(parent)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
             format!("git-clone: cannot resolve parent of '{dest}': {e}")))?;
 
@@ -59,9 +58,7 @@ pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     // Log which git we'll invoke — useful for debugging.
     log_trace(format!("git-clone: running `git clone {url} {dest}`"));
 
-    let status = Command::new("git")
-        .args(["clone", "--", &url, &dest])
-        .status()
+    let status = crate::os::process::git_clone(&url, &dest)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
             format!("git-clone: cannot run git: {e}")))?;
 
@@ -88,7 +85,7 @@ pub(crate) fn git_pull(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let dir = string_arg(&args[0], "git-pull", "dir")?;
     let dir_path = PathBuf::from(&dir);
 
-    let canonical = dir_path.canonicalize()
+    let canonical = crate::os::fs::canonicalize(&dir_path)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
             format!("git-pull: cannot resolve '{dir}': {e}")))?;
 
@@ -96,10 +93,7 @@ pub(crate) fn git_pull(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     log_trace(format!("git-pull: running `git pull` in {dir}"));
 
-    let status = Command::new("git")
-        .arg("pull")
-        .current_dir(&canonical)
-        .status()
+    let status = crate::os::process::git_pull_in(&canonical)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
             format!("git-pull: cannot run git: {e}")))?;
 

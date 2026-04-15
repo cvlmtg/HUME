@@ -55,14 +55,14 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
     // when the directory does not exist yet (first run). When data_dir is
     // None (HOME/APPDATA unset), data_plugins is also None and every write
     // sandbox check fails closed.
-    let canonical_data = data_dir.map(|d| d.canonicalize().unwrap_or_else(|_| d));
+    let canonical_data = data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or_else(|_| d));
     let data_plugins = canonical_data.as_ref().map(|d| {
         let p = d.join("plugins");
-        p.canonicalize().unwrap_or_else(|_| p)
+        crate::os::fs::canonicalize(&p).unwrap_or_else(|_| p)
     });
-    let canonical_runtime = runtime_dir.and_then(|rt| rt.canonicalize().ok());
+    let canonical_runtime = runtime_dir.and_then(|rt| crate::os::fs::canonicalize(&rt).ok());
     let runtime_plugins = canonical_runtime.as_ref().and_then(|rt| {
-        rt.join("plugins").canonicalize().ok()
+        crate::os::fs::canonicalize(&rt.join("plugins")).ok()
     });
     // Store only the canonical form; if the runtime dir doesn't exist (or
     // canonicalize fails for any reason), leave it as None rather than storing
@@ -151,13 +151,13 @@ fn canonical_ancestor_join(path: &Path) -> Option<PathBuf> {
     let mut current = path;
     // Walk up until we find a component that exists on disk.
     loop {
-        if current.exists() {
+        if crate::os::fs::exists(current) {
             break;
         }
         suffix.push(current.file_name()?.to_owned());
         current = current.parent()?;
     }
-    let canonical_base = current.canonicalize().ok()?;
+    let canonical_base = crate::os::fs::canonicalize(current).ok()?;
     let mut result = canonical_base;
     for component in suffix.into_iter().rev() {
         result.push(component);
@@ -256,7 +256,7 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     // sandbox check uses a real canonical prefix (handles macOS /var → /private/var).
     // Avoid a pre-flight `.exists()` check — handle NotFound from canonicalize
     // directly so there is no TOCTOU window between the check and the syscall.
-    let (for_sandbox, exists) = match path.canonicalize() {
+    let (for_sandbox, exists) = match crate::os::fs::canonicalize(&path) {
         Ok(canonical) => (canonical, true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let ancestor = canonical_ancestor_join(&path)
@@ -286,7 +286,7 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     // Canonicalize directly; treat NotFound as an empty-list result.
     // Avoids the TOCTOU window between a pre-flight .exists() and canonicalize.
-    let canonical = match path.canonicalize() {
+    let canonical = match crate::os::fs::canonicalize(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Vec::<SteelVal>::new().into_steelval()
@@ -305,7 +305,7 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
     }
 
-    let mut names: Vec<String> = std::fs::read_dir(&canonical)
+    let mut names: Vec<String> = crate::os::fs::read_dir(&canonical)
         .map_err(|e| SteelErr::new(ErrorKind::Generic,
             format!("list-dir: cannot read '{raw}': {e}")))?
         .filter_map(|entry| entry.ok().and_then(|e| e.file_name().into_string().ok()))
@@ -347,7 +347,7 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             "make-dir: path is outside the write sandbox (<data>/plugins/): {}", raw);
     }
 
-    std::fs::create_dir_all(&path)
+    crate::os::fs::create_dir_all(&path)
         .map_err(|e| SteelErr::new(ErrorKind::Generic,
             format!("make-dir: cannot create '{}': {e}", raw)))?;
     Ok(SteelVal::Void)
@@ -367,7 +367,7 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     // Canonicalize directly; treat NotFound as a no-op (idempotent).
     // Hard-fail on any other error — avoids TOCTOU between .exists() and canonicalize.
-    let canonical = match path.canonicalize() {
+    let canonical = match crate::os::fs::canonicalize(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
         Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
@@ -380,7 +380,7 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             canonical.display());
     }
 
-    std::fs::remove_dir_all(&canonical)
+    crate::os::fs::remove_dir_all(&canonical)
         .map_err(|e| SteelErr::new(ErrorKind::Generic,
             format!("delete-dir: cannot remove '{}': {e}", canonical.display())))?;
     Ok(SteelVal::Void)

@@ -108,24 +108,6 @@ pub(crate) fn shape(mode: EditorMode) -> SetCursorStyle {
     if mode.cursor_is_bar() { SetCursorStyle::SteadyBar } else { SetCursorStyle::SteadyBlock }
 }
 
-/// Emit an OSC 12 sequence to set the terminal cursor colour for `mode`.
-///
-/// Command/Search mode positions the cursor in the statusline, which has a
-/// white background — a default (white) cursor would be invisible. We set it
-/// to black so it contrasts. All other modes reset to the terminal default.
-///
-/// OSC 12 (`\x1b]12;COLOR\x07`) is supported by the overwhelming majority of
-/// modern terminal emulators. The reset form (`\x1b]112;\x07`) restores the
-/// user's configured cursor colour.
-pub(crate) fn set_color_for_mode(mode: EditorMode) -> std::io::Result<()> {
-    use std::io::Write;
-    let seq: &[u8] = match mode {
-        EditorMode::Command | EditorMode::Search => b"\x1b]12;black\x07",
-        _ => b"\x1b]112;\x07",
-    };
-    std::io::stdout().write_all(seq)
-}
-
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
