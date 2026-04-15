@@ -16,10 +16,10 @@
 ;; ── Path helpers ──────────────────────────────────────────────────────────────
 
 (define (plum/plugins-dir)
-  (string-append (data-dir) "/plugins"))
+  (path-join (data-dir) "plugins"))
 
 (define (plum/plugin-dir name)
-  (string-append (plum/plugins-dir) "/" name))
+  (path-join (plum/plugins-dir) name))
 
 ;; ── Installed plugin discovery ────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@
              (reverse result))
             (else
              (let* ((user  (car users))
-                    (udir  (string-append pdir "/" user)))
+                    (udir  (path-join pdir user)))
                (let repo-loop ((repos (list-dir udir))
                                (acc result))
                  (cond
@@ -44,7 +44,7 @@
                     (user-loop (cdr users) acc))
                    (else
                     (let* ((repo (car repos))
-                           (scm  (string-append udir "/" repo "/plugin.scm")))
+                           (scm  (path-join udir repo "plugin.scm")))
                       (repo-loop
                         (cdr repos)
                         (if (path-exists? scm)

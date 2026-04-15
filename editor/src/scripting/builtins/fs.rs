@@ -32,9 +32,13 @@ use super::one_string;
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
 struct ScriptDirs {
-    /// `<data>/hume/` — or `None` if HOME/APPDATA is unset.
-    data_dir:        Option<PathBuf>,
-    runtime_dir:     Option<PathBuf>,
+    /// `<data>/hume/` as a *display* (non-UNC) path — what `(data-dir)` returns
+    /// to Scheme.  On Windows the canonical form carries a `\\?\` prefix that
+    /// the NT object manager does not accept with forward slashes, so we expose
+    /// the plain drive-letter form instead (e.g. `C:\Users\…\hume`).
+    data_dir_display:    Option<PathBuf>,
+    /// `<runtime>/` as a display path (same UNC reasoning).
+    runtime_dir_display: Option<PathBuf>,
     /// Canonical `<data>/plugins/` — the write-path sandbox root.
     /// `None` when `data_dir` is `None`; every write sandbox check then fails
     /// closed.
@@ -47,6 +51,37 @@ thread_local! {
     static SCRIPT_DIRS: RefCell<Option<ScriptDirs>> = RefCell::new(None);
 }
 
+// ── UNC prefix stripping ──────────────────────────────────────────────────────
+
+/// Strip the `\\?\` extended-length prefix from a Windows path so that the
+/// result is a plain drive-letter path (e.g. `C:\Users\…\hume`).
+///
+/// Plain drive paths accept forward slashes from Scheme's `string-append`;
+/// `\\?\`-prefixed paths go through the NT object manager directly and are
+/// strict about backslashes.  Scheme plugins build paths via `(path-join …)`
+/// which uses the native separator, but the display form must be prefix-free
+/// so that even old-style string concatenation doesn't produce malformed paths.
+///
+/// Only strips verbatim drive prefixes (`\\?\C:\…`).  Verbatim UNC paths
+/// (`\\?\UNC\…`) are left unchanged; they are rare and the `\\` prefix they
+/// collapse to is already a valid UNC path.
+///
+/// On non-Windows targets this is a no-op.
+#[cfg(windows)]
+fn strip_unc_prefix(p: PathBuf) -> PathBuf {
+    const VERBATIM: &str = r"\\?\";
+    match p.to_str() {
+        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
+            PathBuf::from(&s[VERBATIM.len()..])
+        }
+        _ => p,
+    }
+}
+
+#[cfg(not(windows))]
+#[inline]
+fn strip_unc_prefix(p: PathBuf) -> PathBuf { p }
+
 /// Initialize the directory TLS.  Must be called exactly once during
 /// [`crate::scripting::ScriptingHost::new`] before any builtins are invoked.
 pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
@@ -56,21 +91,24 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
     // None (HOME/APPDATA unset), data_plugins is also None and every write
     // sandbox check fails closed.
     let canonical_data = data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or_else(|_| d));
+    // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
+    // segments on Windows without producing malformed extended-length paths.
+    let data_dir_display = canonical_data.as_ref().map(|d| strip_unc_prefix(d.clone()));
     let data_plugins = canonical_data.as_ref().map(|d| {
         let p = d.join("plugins");
         crate::os::fs::canonicalize(&p).unwrap_or_else(|_| p)
     });
     let canonical_runtime = runtime_dir.and_then(|rt| crate::os::fs::canonicalize(&rt).ok());
+    let runtime_dir_display = canonical_runtime.as_ref().map(|rt| strip_unc_prefix(rt.clone()));
     let runtime_plugins = canonical_runtime.as_ref().and_then(|rt| {
         crate::os::fs::canonicalize(&rt.join("plugins")).ok()
     });
-    // Store only the canonical form; if the runtime dir doesn't exist (or
-    // canonicalize fails for any reason), leave it as None rather than storing
-    // an unresolved path that would make the field inconsistently typed.
+    // Store canonical forms for sandbox prefix checks; display forms for Scheme
+    // consumption.  If the runtime dir doesn't exist leave it as None.
     SCRIPT_DIRS.with(|cell| {
         *cell.borrow_mut() = Some(ScriptDirs {
-            data_dir:        canonical_data,
-            runtime_dir:     canonical_runtime,
+            data_dir_display,
+            runtime_dir_display,
             data_plugins,
             runtime_plugins,
         });
@@ -216,11 +254,15 @@ pub(crate) fn log_msg(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(data-dir)` — returns the HUME data directory as a string, or `#f` if
 /// HOME/APPDATA is unset.
+///
+/// The returned path is the display form (no `\\?\` extended-length prefix on
+/// Windows) so Scheme plugins can safely join segments with `(path-join …)`
+/// or, if necessary, plain string concatenation.
 pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "data-dir expects 0 args, got {}", args.len());
     }
-    with_dirs(|dirs| match &dirs.data_dir {
+    with_dirs(|dirs| match &dirs.data_dir_display {
         Some(p) => p.to_string_lossy().as_ref()
             .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
@@ -230,16 +272,47 @@ pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(runtime-dir)` — returns the HUME runtime directory as a string, or `#f`
 /// if no runtime directory was found.
+///
+/// The returned path is the display form (no `\\?\` extended-length prefix on
+/// Windows).
 pub(crate) fn runtime_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "runtime-dir expects 0 args, got {}", args.len());
     }
-    with_dirs(|dirs| match &dirs.runtime_dir {
+    with_dirs(|dirs| match &dirs.runtime_dir_display {
         Some(p) => p.to_string_lossy().as_ref()
             .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
         None => Ok(SteelVal::BoolV(false)),
     })
+}
+
+// ── path-join ─────────────────────────────────────────────────────────────────
+
+/// `(path-join seg1 seg2 …)` — join path segments using the OS-native
+/// separator and return the result as a string.
+///
+/// Uses `PathBuf::push` semantics: if any segment is an absolute path it
+/// replaces everything to the left (the same rule as `Path::join`).  This
+/// lets plugins build paths portably without hard-coding `"/"` or `"\\"`.
+///
+/// No sandbox check — this is a pure string-construction helper that does not
+/// access the filesystem.
+pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    if args.is_empty() {
+        steel::stop!(ArityMismatch => "path-join expects at least 1 arg, got 0");
+    }
+    let mut result = PathBuf::new();
+    for (i, arg) in args.iter().enumerate() {
+        match arg {
+            SteelVal::StringV(s) => result.push(s.as_str()),
+            _ => steel::stop!(TypeMismatch =>
+                "path-join: arg {} must be a string, got {:?}", i, arg),
+        }
+    }
+    result.to_string_lossy().as_ref()
+        .into_steelval()
+        .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()))
 }
 
 // ── path-exists? ─────────────────────────────────────────────────────────────
@@ -567,6 +640,63 @@ mod tests {
             SteelVal::StringV("msg".into()),
         ];
         assert!(log_msg(&args).is_err());
+    }
+
+    // ── path-join ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn path_join_two_segments() {
+        let args = vec![
+            SteelVal::StringV("foo".into()),
+            SteelVal::StringV("bar".into()),
+        ];
+        let result = path_join(&args).unwrap();
+        let s = match result {
+            SteelVal::StringV(s) => s.to_string(),
+            other => panic!("expected string, got {other:?}"),
+        };
+        // The joined path must contain both components separated by the OS separator.
+        let expected = std::path::PathBuf::from("foo").join("bar");
+        assert_eq!(s, expected.to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn path_join_single_segment() {
+        let args = vec![SteelVal::StringV("only".into())];
+        let result = path_join(&args).unwrap();
+        assert!(matches!(result, SteelVal::StringV(s) if s.as_str() == "only"));
+    }
+
+    #[test]
+    fn path_join_no_args_errors() {
+        assert!(path_join(&[]).is_err());
+    }
+
+    #[test]
+    fn path_join_type_error() {
+        let args = vec![SteelVal::IntV(42)];
+        assert!(path_join(&args).is_err());
+    }
+
+    // ── data-dir display (no UNC prefix) ─────────────────────────────────────
+
+    /// On all platforms `(data-dir)` must return a string that does not begin
+    /// with the Windows extended-length prefix `\\?\`.  On Unix this prefix
+    /// never appears, so the test is platform-neutral.
+    #[test]
+    fn data_dir_no_unc_prefix() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        let result = data_dir(&[]).unwrap();
+        let s = match result {
+            SteelVal::StringV(s) => s.to_string(),
+            other => panic!("expected string, got {other:?}"),
+        };
+        assert!(
+            !s.starts_with(r"\\?\"),
+            "data-dir must not return an extended-length UNC path, got: {s}"
+        );
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────
