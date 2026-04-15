@@ -81,8 +81,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("declared-plugins", SteelVal::FuncV(plugins::declared_plugins));
 
     // Steel command definition and composition
-    engine.register_value("define-command!", SteelVal::FuncV(commands::define_command));
-    engine.register_value("call-command!",   SteelVal::FuncV(commands::call_command));
+    engine.register_value("define-command!",    SteelVal::FuncV(commands::define_command));
+    engine.register_value("call-command!",      SteelVal::FuncV(commands::call_command));
+    engine.register_value("request-wait-char!", SteelVal::FuncV(commands::request_wait_char));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm, with no TLS context — safe because the

@@ -14,7 +14,7 @@ use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
 
-use super::keymap::WalkResult;
+use super::keymap::{WaitCharPending, WalkResult};
 use super::Severity;
 use engine::types::EditorMode;
 
@@ -573,9 +573,9 @@ impl Editor {
                     }
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
-                    let queue = if let Some(host) = self.scripting.as_mut() {
+                    let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
                         match host.call_steel_cmd(&steel_proc) {
-                            Ok(q) => q,
+                            Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }
                     } else {
@@ -583,6 +583,12 @@ impl Editor {
                     };
                     for cmd_name in queue {
                         self.execute_keymap_command(cmd_name.into(), count, extend);
+                    }
+                    if let Some(wc) = wait_char_cmd {
+                        self.wait_char = Some(WaitCharPending {
+                            cmd_name: wc.into(),
+                            ctrl_extend: false,
+                        });
                     }
                 }
             }

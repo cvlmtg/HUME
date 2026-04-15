@@ -1,10 +1,15 @@
-//! `(define-command! name doc proc)` and `(call-command! name)` builtins.
+//! `(define-command! name doc proc)`, `(call-command! name)`, and
+//! `(request-wait-char! cmd)` builtins.
 //!
 //! Steel commands are defined as zero-argument lambdas and composed via
 //! `call-command!`, which queues named commands for dispatch after the
 //! Steel proc returns.  The actual execution happens in
 //! [`crate::scripting::ScriptingHost::call_steel_cmd`], which drains the
 //! queue through the normal `execute_keymap_command` path.
+//!
+//! `request-wait-char!` allows a Steel command to request that after the
+//! queue is drained, the editor enters WaitChar mode for the named command.
+//! This enables multi-step compositions like `mr` + old_char + new_char.
 
 use std::cell::RefCell;
 
@@ -15,7 +20,7 @@ use crate::scripting::PendingSteelCmd;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-// ── CMD_QUEUE ─────────────────────────────────────────────────────────────────
+// ── TLS slots ─────────────────────────────────────────────────────────────────
 
 thread_local! {
     /// Commands queued by `(call-command! …)` during a Steel command invocation.
@@ -23,6 +28,13 @@ thread_local! {
     /// `Some(queue)` while a `SteelBacked` command is executing; `None` otherwise.
     /// Accessing this outside a Steel command invocation raises a Steel error.
     pub(crate) static CMD_QUEUE: RefCell<Option<Vec<String>>> = RefCell::new(None);
+
+    /// WaitChar command requested by `(request-wait-char! cmd)`.
+    ///
+    /// `Some(None)` = inside invocation, no request yet.
+    /// `Some(Some(name))` = request pending for `name`.
+    /// `None` = outside invocation (error if accessed).
+    pub(crate) static WAIT_CHAR_REQUEST: RefCell<Option<Option<String>>> = RefCell::new(None);
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
@@ -116,6 +128,39 @@ pub(crate) fn call_command(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// `(request-wait-char! cmd-name)`
+///
+/// Requests that after the current Steel command's queue is fully drained,
+/// the editor enters WaitChar mode for `cmd-name`.  The next character the
+/// user types becomes `pending_char` and `cmd-name` is dispatched.
+///
+/// Typical use: composing surround-select with replace.
+///   `(call-command! "surround-paren") (request-wait-char! "replace")`
+/// selects the surrounding `()` pair, then waits for the replacement char.
+///
+/// Only valid inside a `SteelBacked` command invocation.
+pub(crate) fn request_wait_char(args: &[SteelVal]) -> SteelResult {
+    if args.len() != 1 {
+        steel::stop!(ArityMismatch =>
+            "request-wait-char! expects 1 arg (cmd-name), got {}", args.len());
+    }
+    let cmd = match &args[0] {
+        SteelVal::StringV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "request-wait-char!: arg must be a string, got {:?}", args[0]),
+    };
+
+    WAIT_CHAR_REQUEST.with(|cell| {
+        match cell.borrow_mut().as_mut() {
+            Some(slot) => { *slot = Some(cmd); Ok(SteelVal::Void) }
+            None => Err(SteelErr::new(
+                ErrorKind::Generic,
+                "request-wait-char!: not inside a Steel command invocation".to_string(),
+            )),
+        }
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -147,5 +192,31 @@ mod tests {
         call_command(&[SteelVal::StringV("move-right".into())]).unwrap();
         let queue = CMD_QUEUE.with(|cell| cell.borrow_mut().take().unwrap());
         assert_eq!(queue, vec!["move-right"]);
+    }
+
+    #[test]
+    fn request_wait_char_arity_error() {
+        let err = request_wait_char(&[]).unwrap_err();
+        assert!(err.to_string().contains("expects 1 arg"), "got: {err}");
+    }
+
+    #[test]
+    fn request_wait_char_type_error() {
+        let err = request_wait_char(&[SteelVal::IntV(1)]).unwrap_err();
+        assert!(err.to_string().contains("string"), "got: {err}");
+    }
+
+    #[test]
+    fn request_wait_char_outside_invocation_errors() {
+        let err = request_wait_char(&[SteelVal::StringV("replace".into())]).unwrap_err();
+        assert!(err.to_string().contains("not inside"), "got: {err}");
+    }
+
+    #[test]
+    fn request_wait_char_stores_cmd() {
+        WAIT_CHAR_REQUEST.with(|cell| *cell.borrow_mut() = Some(None));
+        request_wait_char(&[SteelVal::StringV("replace".into())]).unwrap();
+        let result = WAIT_CHAR_REQUEST.with(|cell| cell.borrow_mut().take().flatten());
+        assert_eq!(result, Some("replace".to_string()));
     }
 }

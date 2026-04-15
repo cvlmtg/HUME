@@ -520,15 +520,23 @@ impl ScriptingHost {
     }
 
     /// Invoke a Steel proc by its internal engine name and return the list of
-    /// commands it queued via `(call-command! …)`.
+    /// commands it queued via `(call-command! …)`, plus an optional WaitChar
+    /// command name requested via `(request-wait-char! …)`.
     ///
-    /// Sets up [`builtins::commands::CMD_QUEUE`] before the call and drains it
-    /// afterwards.  The caller (the `SteelBacked` dispatch arm in
-    /// `editor/mappings.rs`) executes the returned commands via
-    /// `execute_keymap_command`.
-    pub(crate) fn call_steel_cmd(&mut self, steel_proc: &str) -> Result<Vec<String>, String> {
+    /// Sets up [`builtins::commands::CMD_QUEUE`] and
+    /// [`builtins::commands::WAIT_CHAR_REQUEST`] before the call and drains
+    /// them afterwards.  The caller (`SteelBacked` dispatch arm in
+    /// `editor/mappings.rs`) executes the returned commands and, if a
+    /// wait-char was requested, enters WaitChar mode for that command.
+    pub(crate) fn call_steel_cmd(
+        &mut self,
+        steel_proc: &str,
+    ) -> Result<(Vec<String>, Option<String>), String> {
         builtins::commands::CMD_QUEUE.with(|cell| {
             *cell.borrow_mut() = Some(Vec::new());
+        });
+        builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
+            *cell.borrow_mut() = Some(None);
         });
 
         let result = self
@@ -540,9 +548,12 @@ impl ScriptingHost {
         let queue = builtins::commands::CMD_QUEUE.with(|cell| {
             cell.borrow_mut().take().unwrap_or_default()
         });
+        let wait_char = builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
+            cell.borrow_mut().take().flatten()
+        });
 
         result?;
-        Ok(queue)
+        Ok((queue, wait_char))
     }
 }
 
