@@ -1,6 +1,8 @@
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
-use std::os::unix::io::AsRawFd;
+use std::os::fd::AsFd;
+
+use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 /// Probe for kitty keyboard protocol support by querying the terminal directly.
 ///
@@ -16,7 +18,6 @@ use std::os::unix::io::AsRawFd;
 /// Must be called after `enable_raw_mode()`.
 pub(super) fn probe_kitty_support() -> io::Result<bool> {
     let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
-    let fd = tty.as_raw_fd();
 
     // Send three queries together:
     //   \x1B[?u   — kitty keyboard protocol flags query
@@ -44,11 +45,8 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
     // the terminal starts responding.
     let mut timeout_ms: i32 = 500;
     loop {
-        // SAFETY: poll is safe to call with a valid fd and a properly initialised pollfd.
-        let ready = unsafe {
-            let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
-            libc::poll(&mut pfd, 1, timeout_ms)
-        };
+        let mut pfds = [PollFd::new(tty.as_fd(), PollFlags::POLLIN)];
+        let ready = poll(&mut pfds, PollTimeout::from(timeout_ms as u16)).unwrap_or(0);
 
         if ready <= 0 {
             break; // timeout or error — stop reading

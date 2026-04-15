@@ -794,7 +794,7 @@ dependencies = [
  "crossterm",
  "engine",
  "insta",
- "libc",
+ "nix",
  "pretty_assertions",
  "proptest",
  "ratatui",
