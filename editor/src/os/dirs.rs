@@ -3,50 +3,59 @@
 //! Follows XDG Base Directory conventions on Unix and macOS, and uses
 //! `%APPDATA%\hume\` on Windows native. All three roots are documented
 //! in STEEL.md §"Three root directories".
+//!
+//! All resolvers return `Option<PathBuf>`: `None` means the platform-specific
+//! env vars are unset (no silent fallback to `.config/hume` or `.local/share/hume`).
+//! Callers decide how to handle the missing directory — PLUM disables itself,
+//! `init.scm` loading is skipped, etc. Fail-fast over silent-wrong.
 
 use std::{env, path::PathBuf};
 
-/// Returns the configuration directory for HUME.
+/// Returns the configuration directory for HUME, if it can be resolved.
 ///
-/// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `~/.config/hume/`
+/// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `$HOME/.config/hume/`
 /// - Windows: `%APPDATA%\hume\config\`
-pub(crate) fn config_dir() -> PathBuf {
+///
+/// Returns `None` only if both the relevant env vars are unset (`HOME` on
+/// Unix, `APPDATA` on Windows). Callers should report and skip scripting
+/// init rather than fall back to a relative path.
+pub(crate) fn config_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        let base = env::var("APPDATA").unwrap_or_else(|_| ".".into());
-        PathBuf::from(base).join("hume").join("config")
+        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("config"))
     }
     #[cfg(not(windows))]
     {
         if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-            PathBuf::from(xdg).join("hume")
+            Some(PathBuf::from(xdg).join("hume"))
         } else if let Ok(home) = env::var("HOME") {
-            PathBuf::from(home).join(".config").join("hume")
+            Some(PathBuf::from(home).join(".config").join("hume"))
         } else {
-            // Last-resort fallback; should not happen in practice.
-            PathBuf::from(".config/hume")
+            None
         }
     }
 }
 
-/// Returns the data directory for HUME.
+/// Returns the data directory for HUME, if it can be resolved.
 ///
-/// - Unix / macOS: `$XDG_DATA_HOME/hume/` → `~/.local/share/hume/`
+/// - Unix / macOS: `$XDG_DATA_HOME/hume/` → `$HOME/.local/share/hume/`
 /// - Windows: `%APPDATA%\hume\data\`
-pub(crate) fn data_dir() -> PathBuf {
+///
+/// Returns `None` only if the relevant env vars are unset. Callers should
+/// disable features that need on-disk storage (PLUM install, user plugins).
+pub(crate) fn data_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        let base = env::var("APPDATA").unwrap_or_else(|_| ".".into());
-        PathBuf::from(base).join("hume").join("data")
+        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("data"))
     }
     #[cfg(not(windows))]
     {
         if let Ok(xdg) = env::var("XDG_DATA_HOME") {
-            PathBuf::from(xdg).join("hume")
+            Some(PathBuf::from(xdg).join("hume"))
         } else if let Ok(home) = env::var("HOME") {
-            PathBuf::from(home).join(".local").join("share").join("hume")
+            Some(PathBuf::from(home).join(".local").join("share").join("hume"))
         } else {
-            PathBuf::from(".local/share/hume")
+            None
         }
     }
 }
@@ -99,7 +108,7 @@ mod tests {
         unsafe { env::set_var("XDG_CONFIG_HOME", tmp.path()); }
 
         let result = config_dir();
-        assert_eq!(result, tmp.path().join("hume"));
+        assert_eq!(result, Some(tmp.path().join("hume")));
 
         unsafe {
             match prev {
@@ -116,7 +125,7 @@ mod tests {
         unsafe { env::set_var("XDG_DATA_HOME", tmp.path()); }
 
         let result = data_dir();
-        assert_eq!(result, tmp.path().join("hume"));
+        assert_eq!(result, Some(tmp.path().join("hume")));
 
         unsafe {
             match prev {

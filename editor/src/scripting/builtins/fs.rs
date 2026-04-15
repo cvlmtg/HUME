@@ -12,7 +12,7 @@
 //!
 //! | Steel name      | Signature                      | Notes                              |
 //! |-----------------|--------------------------------|------------------------------------|
-//! | `data-dir`      | `() → string`                  | HUME data directory (XDG)          |
+//! | `data-dir`      | `() → string \| #f`            | HUME data directory (XDG), or `#f` if HOME/APPDATA unset |
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent     |
 //! | `path-exists?`  | `string → bool`                | Sandboxed read                     |
 //! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only |
@@ -32,10 +32,13 @@ use super::one_string;
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
 struct ScriptDirs {
-    data_dir:        PathBuf,
+    /// `<data>/hume/` — or `None` if HOME/APPDATA is unset.
+    data_dir:        Option<PathBuf>,
     runtime_dir:     Option<PathBuf>,
     /// Canonical `<data>/plugins/` — the write-path sandbox root.
-    data_plugins:    PathBuf,
+    /// `None` when `data_dir` is `None`; every write sandbox check then fails
+    /// closed.
+    data_plugins:    Option<PathBuf>,
     /// Canonical `<runtime>/plugins/` — allowed for read-path ops only.
     runtime_plugins: Option<PathBuf>,
 }
@@ -46,16 +49,18 @@ thread_local! {
 
 /// Initialize the directory TLS.  Must be called exactly once during
 /// [`crate::scripting::ScriptingHost::new`] before any builtins are invoked.
-pub(crate) fn init_dirs(data_dir: PathBuf, runtime_dir: Option<PathBuf>) {
-    // Canonicalize data_dir first so that every subsequent path comparison
-    // (starts_with, etc.) works correctly even on macOS where /tmp → /private/tmp.
-    // Falls back to the raw path if data_dir doesn't exist yet (first run).
-    let canonical_data = data_dir.canonicalize().unwrap_or_else(|_| data_dir.clone());
-    let data_plugins = {
-        let p = canonical_data.join("plugins");
+pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
+    // Canonicalize eagerly so all subsequent starts_with comparisons are
+    // reliable (e.g. macOS /tmp → /private/tmp). Falls back to the raw path
+    // when the directory does not exist yet (first run). When data_dir is
+    // None (HOME/APPDATA unset), data_plugins is also None and every write
+    // sandbox check fails closed.
+    let canonical_data = data_dir.map(|d| d.canonicalize().unwrap_or_else(|_| d));
+    let data_plugins = canonical_data.as_ref().map(|d| {
+        let p = d.join("plugins");
         p.canonicalize().unwrap_or_else(|_| p)
-    };
-    let canonical_runtime = runtime_dir.as_ref().and_then(|rt| rt.canonicalize().ok());
+    });
+    let canonical_runtime = runtime_dir.and_then(|rt| rt.canonicalize().ok());
     let runtime_plugins = canonical_runtime.as_ref().and_then(|rt| {
         rt.join("plugins").canonicalize().ok()
     });
@@ -64,8 +69,8 @@ pub(crate) fn init_dirs(data_dir: PathBuf, runtime_dir: Option<PathBuf>) {
     // an unresolved path that would make the field inconsistently typed.
     SCRIPT_DIRS.with(|cell| {
         *cell.borrow_mut() = Some(ScriptDirs {
-            data_dir: canonical_data,
-            runtime_dir: canonical_runtime,
+            data_dir:        canonical_data,
+            runtime_dir:     canonical_runtime,
             data_plugins,
             runtime_plugins,
         });
@@ -82,21 +87,27 @@ fn with_dirs<R>(f: impl FnOnce(&ScriptDirs) -> R) -> R {
 
 /// Call `f` with the canonical write-sandbox root (`<data>/plugins/`).
 /// Used by `shell.rs` to sandbox git operations.
-pub(crate) fn with_data_plugins<R>(f: impl FnOnce(&Path) -> R) -> R {
-    with_dirs(|dirs| f(&dirs.data_plugins))
+///
+/// Returns `Err` when no data directory is available (HOME/APPDATA unset),
+/// which fails the write sandbox check closed rather than silently permitting it.
+pub(crate) fn with_data_plugins<R>(f: impl FnOnce(&Path) -> R) -> Result<R, SteelErr> {
+    with_dirs(|dirs| match dirs.data_plugins.as_deref() {
+        Some(p) => Ok(f(p)),
+        None => Err(SteelErr::new(ErrorKind::Generic,
+            "no data directory — HOME/APPDATA unset; write operations unavailable".to_string())),
+    })
 }
 
 // ── Sandbox predicates ────────────────────────────────────────────────────────
 
 fn is_under_write_sandbox(canonical: &Path) -> bool {
-    with_dirs(|dirs| canonical.starts_with(&dirs.data_plugins))
+    with_dirs(|dirs| dirs.data_plugins.as_deref().map_or(false, |p| canonical.starts_with(p)))
 }
 
 fn is_under_read_sandbox(canonical: &Path) -> bool {
     with_dirs(|dirs| {
-        canonical.starts_with(&dirs.data_plugins)
-            || dirs.runtime_plugins.as_deref()
-                   .map_or(false, |rp| canonical.starts_with(rp))
+        dirs.data_plugins.as_deref().map_or(false, |p| canonical.starts_with(p))
+            || dirs.runtime_plugins.as_deref().map_or(false, |rp| canonical.starts_with(rp))
     })
 }
 
@@ -203,15 +214,17 @@ pub(crate) fn log_msg(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
-/// `(data-dir)` — returns the HUME data directory as a string.
+/// `(data-dir)` — returns the HUME data directory as a string, or `#f` if
+/// HOME/APPDATA is unset.
 pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "data-dir expects 0 args, got {}", args.len());
     }
-    with_dirs(|dirs| {
-        dirs.data_dir.to_string_lossy().as_ref()
+    with_dirs(|dirs| match &dirs.data_dir {
+        Some(p) => p.to_string_lossy().as_ref()
             .into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()))
+            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
+        None => Ok(SteelVal::BoolV(false)),
     })
 }
 
@@ -387,7 +400,7 @@ mod tests {
         let data_dir = tmp.path().join("hume");
         let plugins  = data_dir.join("plugins");
         fs::create_dir_all(&plugins).unwrap();
-        init_dirs(data_dir, None);
+        init_dirs(Some(data_dir), None);
         plugins
     }
 

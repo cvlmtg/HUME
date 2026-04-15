@@ -672,7 +672,14 @@ impl Editor {
     /// `Editor::run` starts. Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self) {
-        let init_path = crate::os::dirs::config_dir().join("init.scm");
+        // Resolve the config path up front. `None` means neither XDG_CONFIG_HOME
+        // nor HOME (APPDATA on Windows) is set — there is no meaningful place
+        // to look for init.scm, so we skip scripting entirely and log a warning.
+        let Some(config_dir) = crate::os::dirs::config_dir() else {
+            self.report(Severity::Warning, "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into());
+            return;
+        };
+        let init_path = config_dir.join("init.scm");
         let mut host = crate::scripting::ScriptingHost::new();
         // Trace the resolved directories so they're visible in `:messages`.
         // A missing runtime dir is a warning because `core:*` plugins need it.
@@ -680,7 +687,10 @@ impl Editor {
             Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
-        self.report(Severity::Trace, format!("scripting: data dir = {}", host.ctx.data_dir.display()));
+        match &host.ctx.data_dir {
+            Some(d) => self.report(Severity::Trace, format!("scripting: data dir = {}", d.display())),
+            None => self.report(Severity::Warning, "scripting: no data directory — HOME/APPDATA unset; user plugins unavailable".into()),
+        }
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
         match host.eval_init(&init_path, &mut self.settings, &mut self.keymap, builtin_names) {

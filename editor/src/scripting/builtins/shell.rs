@@ -133,7 +133,7 @@ fn sandbox_write_check(canonical_path: &std::path::Path, raw: &str) -> Result<()
         } else {
             Ok(())
         }
-    })
+    })?
 }
 
 /// Push a trace message to `LOG_QUEUE` if it is active.
@@ -156,7 +156,7 @@ mod tests {
     fn setup(tmp: &TempDir) {
         let data_dir = tmp.path().join("hume");
         fs::create_dir_all(data_dir.join("plugins")).unwrap();
-        super::super::fs::init_dirs(data_dir, None);
+        super::super::fs::init_dirs(Some(data_dir), None);
     }
 
     #[test]

@@ -134,7 +134,7 @@ pub(crate) fn pop_current_plugin(args: &[SteelVal]) -> SteelResult {
 pub(crate) fn resolve_path_for_name(
     name: &str,
     runtime_dir: Option<&std::path::Path>,
-    data_dir: &std::path::Path,
+    data_dir: Option<&std::path::Path>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     let parsed = parse_plugin_name(name)
         .map_err(|e| e.to_string())?;
@@ -144,9 +144,11 @@ pub(crate) fn resolve_path_for_name(
                 rt.join("plugins").join("core").join(&core_name).join("plugin.scm")
             })
         }
-        ParsedName::User { user, repo } => Some(
-            data_dir.join("plugins").join(&user).join(&repo).join("plugin.scm"),
-        ),
+        // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
+        // resolved — return None rather than panicking.
+        ParsedName::User { user, repo } => data_dir.map(|d| {
+            d.join("plugins").join(&user).join(&repo).join("plugin.scm")
+        }),
     };
     Ok(path.filter(|p| p.exists()))
 }
@@ -157,7 +159,7 @@ pub(crate) fn resolve_path_for_name(
 pub(crate) fn resolve_plugin_path(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "resolve-plugin-path")?;
     super::with_ctx(|ctx| {
-        let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), &ctx.data_dir)
+        let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), ctx.data_dir.as_deref())
             .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
         match path {
             Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
