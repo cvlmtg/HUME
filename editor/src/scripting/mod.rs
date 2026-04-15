@@ -94,7 +94,9 @@ pub(crate) struct EvalCtx {
     /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
     pub(crate) ledger_stack: LedgerStack,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
-    pub(crate) data_dir: PathBuf,
+    /// `None` if HOME/APPDATA is unset — no user plugins will resolve and
+    /// every sandbox write path is rejected.
+    pub(crate) data_dir: Option<PathBuf>,
     /// Where core plugins, themes, and docs live.  `None` if not found on disk.
     pub(crate) runtime_dir: Option<PathBuf>,
     /// Every plugin name passed to `(load-plugin …)`, including absent ones.
@@ -128,7 +130,9 @@ thread_local! {
 /// retains ledger + attribution state across multiple evaluations.
 pub(crate) struct ScriptFacingCtx {
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
-    pub(crate) data_dir: PathBuf,
+    /// `None` if HOME/APPDATA is unset; user plugins cannot be resolved in
+    /// that case and every write-sandbox op is rejected.
+    pub(crate) data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if not
     /// found.  Absent in some dev setups; the editor still works, but
     /// `core:*` plugins cannot be loaded.
@@ -408,7 +412,7 @@ impl ScriptingHost {
         let path = builtins::plugins::resolve_path_for_name(
             plugin_name,
             self.ctx.runtime_dir.as_deref(),
-            &self.ctx.data_dir,
+            self.ctx.data_dir.as_deref(),
         ).map_err(|e| format!("reload-plugin: {e}"))?;
 
         let new_cmds = match path {
