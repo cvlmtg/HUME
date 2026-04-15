@@ -35,6 +35,7 @@
 | Dot-repeat scope | **Action only, no preceding selection** (Helix/Kakoune model) | `.` replays the editing command + insert keystrokes, but NOT the motion/selection that preceded it. On a collapsed cursor after `wc`+"foo"+Esc, `.` deletes the single cursor char and inserts "foo" (not a full word). The user re-selects before pressing `.` (e.g. `w.w.w.`). This matches the select-then-act philosophy: selections and actions are independent steps. Vim's `cw`-style atomic operator+motion recording would require an operator-pending mode, which contradicts the model. Evaluated and rejected: making `.` a no-op on collapsed cursors would break legitimate `d..` (delete successive chars). |
 | Surround operations | **`ms` + smart `r` (select-then-act, no `md`/`mr`)** | `ms` + char selects the surrounding delimiters as two cursor selections, not a combined select+act command. Delete surround = `ms(` → `d`. Replace surround = `ms(` → `r[` (smart `r` maps opening→opening, closing→closing automatically). Change surround = `ms(` → `c`. Add surround = select text → `i` → auto-pairs wrapping. Rejected: Helix-style `md`/`mr` which bake selection+action together, violating select-then-act. Smart `r` for symmetric→asymmetric uses selection index (even=open, odd=close) as tiebreaker. |
 | Word motions (`w`/`b`/`W`/`B`) | **Select whole word (not Helix extend model)** | `w` jumps to the NEXT word and selects it entirely (anchor = first char, head = last char). `b` jumps to the PREVIOUS word and selects it entirely. This keeps the select-then-act model clean: every `w`/`b` press gives a fresh, cleanly-bounded word selection. `e`/`E` are removed as redundant (since `w` already selects to the word end). `w` and `b` cross line boundaries (newlines). `w` on the last word in the buffer and `b` on the first word are no-ops (stay). This diverges from Helix, where `w` extends from the current position to the start of the next word. |
+| Multi-buffer scope (M7) | **List + switch only; no splits or tab UI** | M7 introduces multiple open buffers, `:e`/`:bnext`/`:bprev`/`:buffers`/`:bd`, and the supporting `buffers: SlotMap<BufferHandle, BufferSlot>` refactor on `Editor`. Split panes and a visible bufferline/tabline are deferred — they require a layout engine that is out of scope for a usability milestone. The engine's `buffers` slotmap already supports multiple buffers; only the editor wrapper is being extended. |
 
 ## Open Questions
 
@@ -122,7 +123,20 @@
 - [x] **PLUM plugin manager** (`core:plum`): design and implement the bundled Steel plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace. PLUM is declared in `init.scm` like any other plugin — disabling it just removes management commands.
 - [x] **`load-plugin` pipeline**: Rust-side `load-plugin` implementation with per-plugin isolation. Each plugin gets its own `eval_init` call; conflicts (command name shadowing, alias collision) abort that plugin's registration and roll back its side effects. The loading order follows declaration order in `init.scm`. Conflict errors surface via the message log with clear attribution (e.g. "plugin X: command 'foo' conflicts with plugin Y, plugin X not loaded").
 
-### M7 — Syntax awareness (planned)
+### M7 — Daily usability (planned)
+- [ ] **Multi-buffer model refactor**: replace `Editor.{doc, file_path, file_meta, buffer_id}` singletons with `buffers: SlotMap<BufferHandle, BufferSlot>` + `current: BufferHandle`. Add `ed.doc()` / `ed.doc_mut()` / `ed.current_slot()` accessors; migrate all call sites. Keep `pane_id` singular (no splits). Jump list stays per-editor.
+- [ ] **`:e` / `:edit <path>`**: open a file into a new buffer, make it current. `:e!` reloads current buffer from disk (discards unsaved changes). `:e` with no arg = reload current.
+- [ ] **`:bnext` / `:bprev` / `:buffers` / `:bd` / `:bd!`**: navigate the buffer list. `:buffers` shows list in a `ScratchView`. `:bd` guards dirty; `:bd!` force-closes.
+- [ ] **Tab completion in minibuffer**: `complete(input, cursor) -> Vec<Completion>` engine. Per-command completers: path (`:e`, `:w`), buffer-name (`:bd`, `:b`), command-name (bare `:`). Popup rendered above statusline. `Tab` / `Shift-Tab` cycle; `Enter` accepts; `Esc` dismisses.
+- [ ] **Command history (session-only)**: in-memory `Vec<String>` per ring (`:` and `/`). Up/Down arrows in minibuffer recall prior entries.
+- [ ] **`%`/`#` expansion in command args**: `%` = current file path, `#` = alternate buffer path. Pre-processing step in `execute_command`.
+- [ ] **Alternate buffer `#`**: `Option<BufferHandle>` updated on buffer switch. Enables `#` in expansion above.
+- [ ] **`:w!` force-write**: currently hard-rejected; allow chmod-retry path for readonly targets.
+- [ ] **Statusline: line-ending + pwd indicators**: new `StatusElement` variants (`LineEnding`, `Cwd`) exposing `Buffer::line_ending()` and current working directory. Configurable via `configure-statusline!`.
+- [ ] **`:cd <path>`**: change working directory and refresh `Editor.cwd`; required for relative-path `:e` to feel natural.
+- [ ] **System clipboard register `'c'`**: wire `CLIPBOARD_REGISTER` to `arboard`. Reads OS clipboard on paste-from-`'c'`; writes on yank-into-`'c'`. Falls back to in-memory storage (with a `MessageLog` warning) when `arboard` can't reach the clipboard (headless CI/SSH).
+
+### M8 — Syntax awareness (planned)
 - [ ] **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
 - [ ] **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
 - [ ] **Incremental tree-sitter parsing**: translate document edits (`ChangeSet`) into tree-sitter `InputEdit` operations for incremental re-parsing rather than a full re-parse on each edit. The `SharedBuffer.tree` field already exists; this wires up the update path.
@@ -139,8 +153,8 @@
   4. **`set-buffer-option!` builtin** in `builtins/settings.rs`: same shape as `set-option!` but calls `apply_setting(SettingScope::Buffer, …)` on `ctx.active_overrides`. Valid only during `call_steel_cmd` (where a buffer is active); raise an error if called at init time.
   Note: meaningful only after multi-buffer lands (M6+); the "active buffer" concept is currently singular. Defer until there is a real per-filetype use case (e.g. `(set-buffer-option! "tab-width" 2)` from a Rust LSP plugin).
 
-- **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
-- **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
+- **Splits / multiple panes**: multi-buffer (M7) introduces the buffer list; a layout engine for side-by-side panes is the next step. Tab UI pairs with this.
+- **File picker / fuzzy finder** (Helix-style picker): depends on split/pane layout for comfortable rendering. Deferred until post-splits.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
