@@ -59,10 +59,13 @@ pub(crate) fn init_dirs(data_dir: PathBuf, runtime_dir: Option<PathBuf>) {
     let runtime_plugins = canonical_runtime.as_ref().and_then(|rt| {
         rt.join("plugins").canonicalize().ok()
     });
+    // Store only the canonical form; if the runtime dir doesn't exist (or
+    // canonicalize fails for any reason), leave it as None rather than storing
+    // an unresolved path that would make the field inconsistently typed.
     SCRIPT_DIRS.with(|cell| {
         *cell.borrow_mut() = Some(ScriptDirs {
             data_dir: canonical_data,
-            runtime_dir: canonical_runtime.or(runtime_dir),
+            runtime_dir: canonical_runtime,
             data_plugins,
             runtime_plugins,
         });
@@ -235,23 +238,26 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "path-exists?")?;
     let path = PathBuf::from(&raw);
 
-    // Compute a canonical-ish path for the sandbox check.  If the path exists,
-    // resolve symlinks fully.  If not, canonicalize the deepest existing
-    // ancestor and rejoin the suffix — still gives us symbol-link resolution
-    // on the prefix while handling non-existent targets correctly (e.g. macOS
-    // /var → /private/var).
-    let for_sandbox = if path.exists() {
-        path.canonicalize()
-            .map_err(|e| SteelErr::new(ErrorKind::Generic,
-                format!("path-exists?: cannot canonicalize '{}': {e}", raw)))?
-    } else {
-        canonical_ancestor_join(&path).unwrap_or_else(|| normalize_lexical(&path))
+    // Resolve symlinks fully when the path exists; when it doesn't, canonicalize
+    // the deepest existing ancestor and rejoin the suffix.  Either way the
+    // sandbox check uses a real canonical prefix (handles macOS /var → /private/var).
+    // Avoid a pre-flight `.exists()` check — handle NotFound from canonicalize
+    // directly so there is no TOCTOU window between the check and the syscall.
+    let (for_sandbox, exists) = match path.canonicalize() {
+        Ok(canonical) => (canonical, true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let ancestor = canonical_ancestor_join(&path)
+                .unwrap_or_else(|| normalize_lexical(&path));
+            (ancestor, false)
+        }
+        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
+            format!("path-exists?: cannot canonicalize '{}': {e}", raw))),
     };
 
     if !is_under_read_sandbox(&for_sandbox) {
         steel::stop!(Generic => "path-exists?: path is outside the allowed sandbox: {}", raw);
     }
-    Ok(SteelVal::BoolV(path.exists()))
+    Ok(SteelVal::BoolV(exists))
 }
 
 // ── list-dir ─────────────────────────────────────────────────────────────────
@@ -265,14 +271,17 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "list-dir")?;
     let path = PathBuf::from(&raw);
 
-    if !path.exists() {
-        return Vec::<SteelVal>::new().into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
-    }
-
-    let canonical = path.canonicalize()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic,
-            format!("list-dir: cannot canonicalize '{raw}': {e}")))?;
+    // Canonicalize directly; treat NotFound as an empty-list result.
+    // Avoids the TOCTOU window between a pre-flight .exists() and canonicalize.
+    let canonical = match path.canonicalize() {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Vec::<SteelVal>::new().into_steelval()
+                .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
+        }
+        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
+            format!("list-dir: cannot canonicalize '{raw}': {e}"))),
+    };
 
     if !is_under_read_sandbox(&canonical) {
         steel::stop!(Generic => "list-dir: path is outside the allowed sandbox: {}", raw);
@@ -343,15 +352,14 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "delete-dir")?;
     let path = PathBuf::from(&raw);
 
-    if !path.exists() {
-        // Already gone — idempotent.
-        return Ok(SteelVal::Void);
-    }
-
-    // Hard-fail on canonicalize error (feedback_security_canonicalize).
-    let canonical = path.canonicalize()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic,
-            format!("delete-dir: cannot resolve path '{raw}': {e}")))?;
+    // Canonicalize directly; treat NotFound as a no-op (idempotent).
+    // Hard-fail on any other error — avoids TOCTOU between .exists() and canonicalize.
+    let canonical = match path.canonicalize() {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
+        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
+            format!("delete-dir: cannot resolve path '{raw}': {e}"))),
+    };
 
     if !is_under_write_sandbox(&canonical) {
         steel::stop!(Generic =>

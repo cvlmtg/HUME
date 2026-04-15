@@ -343,7 +343,7 @@ impl ScriptingHost {
         // Drain any `(log! …)` messages accumulated during the eval into
         // `pending_messages`.  The caller (e.g. `init_scripting`) will
         // flush these into `Editor::report` after we return.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
 
         result.map(|()| steel_cmds)
@@ -493,7 +493,7 @@ impl ScriptingHost {
         });
 
         // Drain log messages into pending_messages for the caller to flush.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
 
         // Unconditionally pop the attribution we pushed before the eval, even
@@ -563,13 +563,13 @@ impl ScriptingHost {
             .map_err(|e| e.to_string());
 
         let queue = builtins::commands::CMD_QUEUE.with(|cell| {
-            cell.borrow_mut().take().unwrap_or_default()
+            cell.borrow_mut().take().expect("CMD_QUEUE was armed above")
         });
         let wait_char = builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
             cell.borrow_mut().take().flatten()
         });
         // Drain log messages into pending_messages regardless of success/failure.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
 
         result?;
