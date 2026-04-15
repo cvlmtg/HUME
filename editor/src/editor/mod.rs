@@ -651,6 +651,19 @@ impl Editor {
         }
     }
 
+    /// Drain any pending `(log! …)` messages from the scripting host and
+    /// report each one.  Collected into a temporary vec first to satisfy the
+    /// borrow checker (both `self.scripting` and `self` are `&mut`).
+    pub(crate) fn flush_script_messages(&mut self) {
+        let msgs = self.scripting
+            .as_mut()
+            .map(|h| h.ctx.pending_messages.drain(..).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for (sev, text) in msgs {
+            self.report(sev, text);
+        }
+    }
+
     // ── Scripting ─────────────────────────────────────────────────────────────
 
     /// Initialise the Steel scripting host and evaluate `init.scm`.

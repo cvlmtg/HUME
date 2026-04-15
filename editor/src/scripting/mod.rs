@@ -266,11 +266,11 @@ impl ScriptingHost {
         keymap: &mut Keymap,
         builtin_names: std::collections::HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        if !path.exists() {
-            return Ok(Vec::new());
-        }
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let source = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(format!("reading {}: {e}", path.display())),
+        };
 
         // Arm the LOG_QUEUE so `(log! …)` calls during this eval have
         // somewhere to write.  Drained after eval returns.
@@ -308,20 +308,13 @@ impl ScriptingHost {
             let cancel = Arc::clone(&cancel);
             let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
             std::thread::spawn(move || {
-                let deadline = std::time::Instant::now() + budget;
-                loop {
-                    if cancel.load(Ordering::Relaxed) { return; }
-                    if std::time::Instant::now() >= deadline {
-                        flag.store(true, Ordering::Relaxed);
-                        return;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(budget);
+                if !cancel.load(Ordering::Relaxed) {
+                    flag.store(true, Ordering::Relaxed);
                 }
             });
         }
 
-        // compile_and_run_raw_program requires Into<Cow<'static, str>>;
-        // passing the owned String satisfies this via Cow::Owned.
         let result = self
             .engine
             .compile_and_run_raw_program(source)
@@ -472,14 +465,9 @@ impl ScriptingHost {
             let cancel = Arc::clone(&cancel);
             let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
             std::thread::spawn(move || {
-                let deadline = std::time::Instant::now() + budget;
-                loop {
-                    if cancel.load(Ordering::Relaxed) { return; }
-                    if std::time::Instant::now() >= deadline {
-                        flag.store(true, Ordering::Relaxed);
-                        return;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(budget);
+                if !cancel.load(Ordering::Relaxed) {
+                    flag.store(true, Ordering::Relaxed);
                 }
             });
         }
@@ -637,85 +625,12 @@ fn keymap_ledger_mode(key: &str) -> Option<(BindMode, &str)> {
     None
 }
 
-/// Parse a key-sequence string into `Vec<KeyEvent>` for use in restoration.
+/// Parse a key-sequence string into `Vec<KeyEvent>` for ledger restoration.
 ///
-/// Delegates to the same parser used by `(bind-key!)`.
+/// Delegates to the same parser used by `(bind-key!)` so the two are always
+/// in sync — ledger entries persist across reloads and must round-trip cleanly.
 fn parse_key_sequence_str(s: &str) -> Result<Vec<crossterm::event::KeyEvent>, String> {
-    use crossterm::event::{KeyCode, KeyEvent as CE, KeyModifiers};
-
-    let mut keys = Vec::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '<' {
-            let mut token = String::new();
-            let mut closed = false;
-            for ch in chars.by_ref() {
-                if ch == '>' { closed = true; break; }
-                token.push(ch);
-            }
-            if !closed { return Err(format!("unclosed '<' in ledger key '{s}'")); }
-            keys.push(parse_angle_for_restore(&token, s)?);
-        } else {
-            keys.push(CE::new(KeyCode::Char(c), KeyModifiers::NONE));
-        }
-    }
-    if keys.is_empty() { return Err(format!("empty key sequence in ledger key '{s}'")); }
-    Ok(keys)
-}
-
-fn parse_angle_for_restore(token: &str, full: &str) -> Result<crossterm::event::KeyEvent, String> {
-    // Reuse the same logic as the bind-key! parser.
-    // The key-string format is stable (ledger entries persist across reloads),
-    // so this must stay in sync with builtins::keymap_bind's parser.
-    use crossterm::event::{KeyEvent as CE, KeyModifiers};
-    let lower = token.to_ascii_lowercase();
-    let (code, mods) = if let Some(rest) = lower.strip_prefix("ctrl-") {
-        (map_key_code(rest, full)?, KeyModifiers::CONTROL)
-    } else if let Some(rest) = lower.strip_prefix("shift-") {
-        (map_key_code(rest, full)?, KeyModifiers::SHIFT)
-    } else if let Some(rest) = lower.strip_prefix("alt-") {
-        (map_key_code(rest, full)?, KeyModifiers::ALT)
-    } else {
-        (map_key_code(&lower, full)?, KeyModifiers::NONE)
-    };
-    Ok(CE::new(code, mods))
-}
-
-fn map_key_code(name: &str, full: &str) -> Result<crossterm::event::KeyCode, String> {
-    use crossterm::event::KeyCode;
-    match name {
-        "backspace" | "bs"     => Ok(KeyCode::Backspace),
-        "enter" | "ret" | "cr" => Ok(KeyCode::Enter),
-        "left"                 => Ok(KeyCode::Left),
-        "right"                => Ok(KeyCode::Right),
-        "up"                   => Ok(KeyCode::Up),
-        "down"                 => Ok(KeyCode::Down),
-        "home"                 => Ok(KeyCode::Home),
-        "end"                  => Ok(KeyCode::End),
-        "pageup"  | "pgup"     => Ok(KeyCode::PageUp),
-        "pagedown"| "pgdown"   => Ok(KeyCode::PageDown),
-        "tab"                  => Ok(KeyCode::Tab),
-        "backtab"              => Ok(KeyCode::BackTab),
-        "delete"  | "del"      => Ok(KeyCode::Delete),
-        "insert"  | "ins"      => Ok(KeyCode::Insert),
-        "esc"     | "escape"   => Ok(KeyCode::Esc),
-        "space"                => Ok(KeyCode::Char(' ')),
-        "lt"                   => Ok(KeyCode::Char('<')),
-        "gt"                   => Ok(KeyCode::Char('>')),
-        "f1"  => Ok(KeyCode::F(1)),  "f2"  => Ok(KeyCode::F(2)),
-        "f3"  => Ok(KeyCode::F(3)),  "f4"  => Ok(KeyCode::F(4)),
-        "f5"  => Ok(KeyCode::F(5)),  "f6"  => Ok(KeyCode::F(6)),
-        "f7"  => Ok(KeyCode::F(7)),  "f8"  => Ok(KeyCode::F(8)),
-        "f9"  => Ok(KeyCode::F(9)),  "f10" => Ok(KeyCode::F(10)),
-        "f11" => Ok(KeyCode::F(11)), "f12" => Ok(KeyCode::F(12)),
-        _ => {
-            let mut chars = name.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => Ok(KeyCode::Char(c)),
-                _ => Err(format!("unknown key '<{name}>' in ledger key '{full}'")),
-            }
-        }
-    }
+    builtins::keymap_bind::parse_key_sequence(s)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

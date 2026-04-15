@@ -581,15 +581,7 @@ impl Editor {
                     } else {
                         return;
                     };
-                    // Flush any `(log! …)` messages produced during this command.
-                    // Collect first to avoid holding &mut self.scripting and
-                    // &mut self simultaneously.
-                    let pending_msgs = self.scripting.as_mut()
-                        .map(|h| h.ctx.pending_messages.drain(..).collect::<Vec<_>>())
-                        .unwrap_or_default();
-                    for (sev, text) in pending_msgs {
-                        self.report(sev, text);
-                    }
+                    self.flush_script_messages();
                     for cmd_name in queue {
                         self.execute_keymap_command(cmd_name.into(), count, extend);
                     }

@@ -27,6 +27,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
 
 use crate::editor::Severity;
+use super::one_string;
 
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
@@ -362,18 +363,6 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         .map_err(|e| SteelErr::new(ErrorKind::Generic,
             format!("delete-dir: cannot remove '{}': {e}", canonical.display())))?;
     Ok(SteelVal::Void)
-}
-
-// ── Shared arg-parsing helper ─────────────────────────────────────────────────
-
-fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "{name} expects 1 arg, got {}", args.len());
-    }
-    match &args[0] {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{name}: expected a string, got {:?}", args[0]),
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
