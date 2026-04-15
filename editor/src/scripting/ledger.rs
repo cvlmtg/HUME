@@ -48,6 +48,16 @@ impl fmt::Display for PluginId {
     }
 }
 
+impl fmt::Display for Owner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Owner::Core        => f.write_str("hume"),
+            Owner::User        => f.write_str("user"),
+            Owner::Plugin(pid) => fmt::Display::fmt(pid, f),
+        }
+    }
+}
+
 /// Case-insensitive equality (ASCII fold only — plugin names are ASCII by design).
 impl PartialEq for PluginId {
     fn eq(&self, other: &Self) -> bool {
