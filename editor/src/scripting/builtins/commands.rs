@@ -35,6 +35,14 @@ thread_local! {
     /// `Some(Some(name))` = request pending for `name`.
     /// `None` = outside invocation (error if accessed).
     pub(crate) static WAIT_CHAR_REQUEST: RefCell<Option<Option<String>>> = RefCell::new(None);
+
+    /// The pending character passed to the current Steel command from a WaitChar
+    /// keymap node (e.g. `md` + `(` sets `pending_char = '('`).
+    ///
+    /// `Some(ch)` while a `SteelBacked` command is executing with a pending char;
+    /// `None` if no char was waiting (or outside a command invocation).
+    /// Accessible via the `(pending-char)` Steel builtin.
+    pub(crate) static PENDING_CHAR: RefCell<Option<char>> = RefCell::new(None);
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
@@ -161,6 +169,25 @@ pub(crate) fn request_wait_char(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// `(pending-char)` — return the pending character as a one-character string,
+/// or `#f` if no character is waiting.
+///
+/// Only meaningful inside a `SteelBacked` command invocation reached via a
+/// WaitChar keymap node (e.g. `bind-wait-char!`).  Returns `#f` at any other
+/// call site (top-level init.scm, commands not triggered via WaitChar, etc.).
+pub(crate) fn pending_char(args: &[SteelVal]) -> SteelResult {
+    if !args.is_empty() {
+        steel::stop!(ArityMismatch => "pending-char expects 0 args, got {}", args.len());
+    }
+    PENDING_CHAR.with(|cell| match *cell.borrow() {
+        Some(ch) => {
+            let s = ch.to_string();
+            Ok(SteelVal::StringV(s.into()))
+        }
+        None => Ok(SteelVal::BoolV(false)),
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -218,5 +245,27 @@ mod tests {
         request_wait_char(&[SteelVal::StringV("replace".into())]).unwrap();
         let result = WAIT_CHAR_REQUEST.with(|cell| cell.borrow_mut().take().flatten());
         assert_eq!(result, Some("replace".to_string()));
+    }
+
+    #[test]
+    fn pending_char_returns_false_when_none() {
+        PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
+        let result = pending_char(&[]).unwrap();
+        assert_eq!(result, SteelVal::BoolV(false));
+    }
+
+    #[test]
+    fn pending_char_returns_string_when_set() {
+        PENDING_CHAR.with(|cell| *cell.borrow_mut() = Some('('));
+        let result = pending_char(&[]).unwrap();
+        assert_eq!(result, SteelVal::StringV("(".into()));
+        // Clear after test
+        PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
+    }
+
+    #[test]
+    fn pending_char_arity_error() {
+        let err = pending_char(&[SteelVal::BoolV(false)]).unwrap_err();
+        assert!(err.to_string().contains("expects 0 args"), "got: {err}");
     }
 }

@@ -84,7 +84,8 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("hume/yield!", SteelVal::FuncV(interrupt::hume_yield));
 
     // Keymap
-    engine.register_value("bind-key!", SteelVal::FuncV(keymap_bind::bind_key));
+    engine.register_value("bind-key!",       SteelVal::FuncV(keymap_bind::bind_key));
+    engine.register_value("bind-wait-char!", SteelVal::FuncV(keymap_bind::bind_wait_char));
 
     // Plugin lifecycle (called from the Scheme-side load-plugin)
     engine.register_value("push-declared-plugin!", SteelVal::FuncV(plugins::push_declared_plugin));
@@ -101,6 +102,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("define-command!",    SteelVal::FuncV(commands::define_command));
     engine.register_value("call-command!",      SteelVal::FuncV(commands::call_command));
     engine.register_value("request-wait-char!", SteelVal::FuncV(commands::request_wait_char));
+    engine.register_value("pending-char",       SteelVal::FuncV(commands::pending_char));
 
     // Filesystem and directory access (sandboxed to <data>/plugins/ and <runtime>/plugins/)
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));

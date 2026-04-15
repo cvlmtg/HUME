@@ -574,7 +574,7 @@ impl Editor {
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(&steel_proc) {
+                        match host.call_steel_cmd(&steel_proc, char_arg) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }
