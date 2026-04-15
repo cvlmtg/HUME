@@ -231,8 +231,10 @@ define_settings! {
         "mouse-scroll-lines"  => mouse_scroll_lines:  usize = 3,    parser: usize;
         "mouse-enabled"       => mouse_enabled:       bool  = true, parser: bool;
         "mouse-select"        => mouse_select:        bool  = false, parser: bool;
-        "jump-list-capacity"  => jump_list_capacity:  usize = 100,  parser: usize_nonzero;
-        "jump-line-threshold" => jump_line_threshold: usize = 5,    parser: usize;
+        "jump-list-capacity"      => jump_list_capacity:      usize = 100,    parser: usize_nonzero;
+        "jump-line-threshold"     => jump_line_threshold:     usize = 5,      parser: usize;
+        "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
+        "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
     }
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
@@ -288,8 +290,10 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "mouse-scroll-lines"  => settings.mouse_scroll_lines.to_string(),
         "mouse-enabled"       => settings.mouse_enabled.to_string(),
         "mouse-select"        => settings.mouse_select.to_string(),
-        "jump-list-capacity"  => settings.jump_list_capacity.to_string(),
-        "jump-line-threshold" => settings.jump_line_threshold.to_string(),
+        "jump-list-capacity"      => settings.jump_list_capacity.to_string(),
+        "jump-line-threshold"     => settings.jump_line_threshold.to_string(),
+        "steel-init-budget-ms"    => settings.steel_init_budget_ms.to_string(),
+        "steel-command-budget-ms" => settings.steel_command_budget_ms.to_string(),
         "tab-width"           => settings.tab_width.to_string(),
         "wrap-mode"           => match settings.wrap_mode {
             engine::pane::WrapMode::None                 => "none".to_string(),

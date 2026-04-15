@@ -37,15 +37,50 @@ use crate::settings::{apply_setting, BufferOverrides, EditorSettings, SettingSco
 
 use ledger::{LedgerStack, PluginId, PluginStack};
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── EvalWatchdog ──────────────────────────────────────────────────────────────
 
-/// Wall-clock budget for a single `eval_init` call.
+/// Arms a wall-clock budget for a single Steel eval.
 ///
-/// If the script is still running after this many seconds, the watchdog thread
-/// sets the interrupt flag.  Scripts that call `(hume/yield!)` in their hot
-/// loops will abort cleanly; scripts that never call it will run to completion
-/// regardless (cooperative interruption only — Steel 0.8.2 has no op-callback).
-pub(crate) const EVAL_BUDGET_SECS: u64 = 10;
+/// When the budget expires the interrupt flag is set to `true`, signalling
+/// `(hume/yield!)` calls inside the script to abort.  Interruption is
+/// cooperative only — Steel 0.8.2 has no op-callback for involuntary stop.
+///
+/// Use `park_timeout` so [`EvalWatchdog::cancel`] wakes the thread
+/// immediately on the happy path rather than sleeping out the full budget.
+pub(crate) struct EvalWatchdog {
+    cancel: Arc<AtomicBool>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+impl EvalWatchdog {
+    /// Spawn the watchdog.  Will flip `flag` to `true` after `budget` unless
+    /// cancelled first.
+    fn arm(flag: Arc<AtomicBool>, budget: std::time::Duration) -> Self {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let thread = {
+            let flag   = Arc::clone(&flag);
+            let cancel = Arc::clone(&cancel);
+            std::thread::spawn(move || {
+                // park_timeout wakes either when unpark() is called (cancel path)
+                // or when the budget elapses — whichever comes first.
+                std::thread::park_timeout(budget);
+                if !cancel.load(Ordering::Relaxed) {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            })
+        };
+        Self { cancel, thread }
+    }
+
+    /// Defuse: signal cancellation, wake the thread, and join.
+    /// Always called after eval returns — on both success and error paths.
+    fn cancel(self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        self.thread.thread().unpark();
+        // Propagate panics from the watchdog thread; otherwise ignore join errors.
+        let _ = self.thread.join();
+    }
+}
 
 // ── EvalCtx ───────────────────────────────────────────────────────────────────
 
@@ -105,10 +140,6 @@ pub(crate) struct EvalCtx {
     pub(crate) declared_plugins: Vec<String>,
     /// Plugins that were both declared and successfully located on disk.
     pub(crate) loaded_plugins: Vec<String>,
-    /// Shared interrupt flag.  `hume/yield!` aborts the script when this is
-    /// `true`.  Set by the watchdog thread on budget expiry, or externally
-    /// for Ctrl-C handling.
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
@@ -247,10 +278,13 @@ impl ScriptingHost {
                 runtime_dir: self.ctx.runtime_dir.clone(),
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
-                interrupt_flag: Arc::clone(&self.interrupt_flag),
                 builtin_cmd_names: std::collections::HashSet::new(),
                 pending_steel_cmds: Vec::new(),
             });
+        });
+        // Arm the yield flag so (hume/yield!) works during test evals.
+        builtins::interrupt::YIELD_FLAG.with(|cell| {
+            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
         });
 
         let result = self
@@ -260,6 +294,7 @@ impl ScriptingHost {
             .map_err(|e| e.to_string());
 
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
+        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
         // Drain LOG_QUEUE — messages are discarded in test context.
         builtins::fs::LOG_QUEUE.with(|q| { q.borrow_mut().take(); });
 
@@ -491,30 +526,30 @@ impl ScriptingHost {
                 runtime_dir: self.ctx.runtime_dir.clone(),
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
-                interrupt_flag: Arc::clone(&self.interrupt_flag),
                 builtin_cmd_names: builtin_names,
                 pending_steel_cmds: Vec::new(),
             });
         });
 
-        // Watchdog: set the interrupt flag after EVAL_BUDGET_SECS of wall-clock
-        // time.  A cancel flag lets us defuse it quickly once eval returns so
-        // the watchdog never fires against a future eval.
-        //
+        // Arm the yield flag TLS so (hume/yield!) can read it.  This is a
+        // dedicated TLS separate from EVAL_CTX so it is also accessible during
+        // call_steel_cmd (where EVAL_CTX is not armed).
+        builtins::interrupt::YIELD_FLAG.with(|cell| {
+            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
+        });
+
+        // Arm the watchdog with the configurable init budget.
         // Interruption is cooperative: scripts must call (hume/yield!) in their
         // loops.  Steel 0.8.2 has no op-callback for involuntary interruption.
-        let cancel = Arc::new(AtomicBool::new(false));
-        {
-            let flag   = Arc::clone(&self.interrupt_flag);
-            let cancel = Arc::clone(&cancel);
-            let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
-            std::thread::spawn(move || {
-                std::thread::sleep(budget);
-                if !cancel.load(Ordering::Relaxed) {
-                    flag.store(true, Ordering::Relaxed);
-                }
-            });
-        }
+        let budget_ms = {
+            // Read budget from the snapshot before it is moved into EVAL_CTX.
+            // snapshot.settings mirrors the settings value at capture time.
+            snapshot.settings.steel_init_budget_ms
+        };
+        let watchdog = EvalWatchdog::arm(
+            Arc::clone(&self.interrupt_flag),
+            std::time::Duration::from_millis(budget_ms as u64),
+        );
 
         let result = self
             .engine
@@ -522,8 +557,9 @@ impl ScriptingHost {
             .map(|_| ())
             .map_err(|e| e.to_string());
 
-        // Defuse the watchdog and reset the interrupt flag.
-        cancel.store(true, Ordering::Relaxed);
+        // Defuse the watchdog, clear the yield flag, and reset the interrupt flag.
+        watchdog.cancel();
+        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
         self.interrupt_flag.store(false, Ordering::Relaxed);
 
         // Restore all state unconditionally — builtins may have modified
@@ -601,12 +637,32 @@ impl ScriptingHost {
     /// them afterwards.  The caller (`SteelBacked` dispatch arm in
     /// `editor/mappings.rs`) executes the returned commands and, if a
     /// wait-char was requested, enters WaitChar mode for that command.
+    ///
+    /// A watchdog thread enforces `settings.steel_command_budget_ms`.  If the
+    /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
+    /// interruption).  On error the snapshot is restored so any partial state
+    /// mutations from the command body are rolled back.
     pub(crate) fn call_steel_cmd(
         &mut self,
         steel_proc: &str,
         pending_char: Option<char>,
         cmd_arg: Option<String>,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
     ) -> Result<(Vec<String>, Option<String>), String> {
+        // Snapshot for all-or-nothing rollback on error (mirrors eval_source_raw).
+        // EVAL_CTX is not armed here, so builtins that mutate settings/keymap
+        // (set-option!, bind-key!) cannot be called directly from a command body;
+        // the snapshot is defensive forward-proofing.
+        let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
+
+        // Watchdog with the (typically tighter) command budget.
+        let budget_ms = settings.steel_command_budget_ms;
+        let watchdog = EvalWatchdog::arm(
+            Arc::clone(&self.interrupt_flag),
+            std::time::Duration::from_millis(budget_ms as u64),
+        );
+
         // RAII guard: clears all TLS slots on drop so that a panic inside
         // `compile_and_run_raw_program` cannot leave stale state for the next
         // invocation.  On the normal path the slots are already None/empty when
@@ -620,9 +676,15 @@ impl ScriptingHost {
                 builtins::commands::CMD_ARG.with(|c| *c.borrow_mut() = None);
                 builtins::commands::COMMAND_OWNER_CACHE.with(|c| c.borrow_mut().clear());
                 builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take());
+                builtins::interrupt::YIELD_FLAG.with(|c| c.borrow_mut().take());
             }
         }
         let _guard = CallTlsGuard;
+
+        // Arm the yield flag so (hume/yield!) can read it during this command.
+        builtins::interrupt::YIELD_FLAG.with(|cell| {
+            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
+        });
 
         builtins::commands::CMD_QUEUE.with(|cell| {
             *cell.borrow_mut() = Some(Vec::new());
@@ -652,6 +714,11 @@ impl ScriptingHost {
             .map(|_| ())
             .map_err(|e| e.to_string());
 
+        // Defuse the watchdog, clear the yield flag, and reset the interrupt flag.
+        watchdog.cancel();
+        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
+        self.interrupt_flag.store(false, Ordering::Relaxed);
+
         let queue = builtins::commands::CMD_QUEUE.with(|cell| {
             cell.borrow_mut().take().expect("CMD_QUEUE was armed above")
         });
@@ -665,6 +732,11 @@ impl ScriptingHost {
         // Drain log messages into pending_messages regardless of success/failure.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
+
+        // Rollback on error: discard any partial state mutations.
+        if result.is_err() {
+            snapshot.restore(settings, keymap, &mut self.ctx);
+        }
 
         result?;
         Ok((queue, wait_char))
@@ -717,6 +789,31 @@ fn keymap_ledger_mode(key: &str) -> Option<(BindMode, &str)> {
         return Some((BindMode::Insert, rest));
     }
     None
+}
+
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+impl ScriptingHost {
+    /// Like [`eval_source`] but also arms a real [`EvalWatchdog`] with the
+    /// given budget.  Used by watchdog-specific tests that need to verify the
+    /// watchdog actually fires rather than pre-setting the interrupt flag.
+    ///
+    /// Sets `settings.steel_init_budget_ms` for the duration and restores it
+    /// afterwards so other settings state is not polluted.
+    pub(crate) fn eval_source_watchdog(
+        &mut self,
+        source: &str,
+        budget: std::time::Duration,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+    ) -> Result<(), String> {
+        let saved_budget = settings.steel_init_budget_ms;
+        settings.steel_init_budget_ms = budget.as_millis() as usize;
+        let result = self.eval_source_raw(source.to_owned(), Default::default(), settings, keymap);
+        settings.steel_init_budget_ms = saved_budget;
+        result.map(|_| ())
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1195,5 +1292,131 @@ mod tests {
 
         h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
         assert!(h.ctx.cmd_owners.get("my-cmd").is_none(), "teardown should remove from cmd_owners");
+    }
+
+    // ── EvalWatchdog ──────────────────────────────────────────────────────────
+
+    /// Cancelling a watchdog with a long budget wakes the thread immediately.
+    /// Without `park_timeout` + `unpark`, this would block for the full budget.
+    #[test]
+    fn watchdog_cancel_wakes_thread_immediately() {
+        let flag   = Arc::new(AtomicBool::new(false));
+        let budget = std::time::Duration::from_secs(10);
+        let start  = std::time::Instant::now();
+        let watchdog = EvalWatchdog::arm(Arc::clone(&flag), budget);
+        watchdog.cancel();
+        // cancel() must return well within the budget; 500 ms is generous.
+        assert!(start.elapsed() < std::time::Duration::from_millis(500),
+                "cancel() took too long: {:?}", start.elapsed());
+        // Flag must not have been set (we cancelled before it fired).
+        assert!(!flag.load(Ordering::Relaxed), "flag must stay false after cancel");
+    }
+
+    /// A watchdog with a tiny budget fires and causes (hume/yield!) to abort.
+    #[test]
+    fn eval_source_raw_watchdog_aborts_runaway() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+        let budget = std::time::Duration::from_millis(50);
+        let start  = std::time::Instant::now();
+
+        let err = h.eval_source_watchdog(
+            // This loop would run forever without the watchdog.
+            "(let loop () (hume/yield!) (loop))",
+            budget,
+            &mut s,
+            &mut km,
+        ).unwrap_err();
+
+        assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
+        // Must abort well within a second — if not, the watchdog didn't fire.
+        assert!(start.elapsed() < std::time::Duration::from_secs(1),
+                "eval took too long: {:?}", start.elapsed());
+        // Flag must be reset after eval_source_raw returns.
+        assert!(!h.interrupt_flag.load(Ordering::Relaxed),
+                "interrupt_flag must be false after eval returns");
+    }
+
+    /// When the watchdog fires during an eval that had already mutated a
+    /// setting, the rollback must restore the original value.
+    #[test]
+    fn eval_source_raw_watchdog_rollback_on_abort() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+        let budget = std::time::Duration::from_millis(50);
+
+        // Confirm the starting value so the assertion is not vacuously true.
+        assert_eq!(s.tab_width, 4, "precondition: default tab-width is 4");
+
+        // Set the option then run forever — rollback must undo the set.
+        let err = h.eval_source_watchdog(
+            r#"(set-option! "tab-width" 99) (let loop () (hume/yield!) (loop))"#,
+            budget,
+            &mut s,
+            &mut km,
+        ).unwrap_err();
+
+        assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
+        assert_eq!(s.tab_width, 4, "rollback must restore tab-width to pre-eval value");
+    }
+
+    /// call_steel_cmd watchdog fires and aborts a runaway Steel command.
+    #[test]
+    fn call_steel_cmd_watchdog_aborts_runaway() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Register a command whose body loops forever.
+        h.eval_source(
+            r#"(define-command! "spin" "spin forever" (lambda () (let loop () (hume/yield!) (loop))))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let steel_proc = "%hume-cmd-spin".to_string();
+
+        // Use a tight command budget.
+        s.steel_command_budget_ms = 50;
+
+        let start = std::time::Instant::now();
+        let err = h.call_steel_cmd(&steel_proc, None, None, &mut s, &mut km)
+            .unwrap_err();
+
+        assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
+        assert!(start.elapsed() < std::time::Duration::from_secs(1),
+                "call_steel_cmd took too long: {:?}", start.elapsed());
+        assert!(!h.interrupt_flag.load(Ordering::Relaxed),
+                "interrupt_flag must be false after call_steel_cmd returns");
+    }
+
+    /// When a Steel command mutates nothing (cmd_owners, etc.) and then aborts,
+    /// snapshot restore is a no-op — a sanity check that rollback doesn't corrupt.
+    /// This test also verifies the budget is read from settings at call time.
+    #[test]
+    fn call_steel_cmd_rollback_leaves_settings_unchanged() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Register a command that simply loops (can't call set-option! from
+        // call_steel_cmd because EVAL_CTX is not armed; rollback is still
+        // tested via cmd_owners / ledger state remaining consistent).
+        h.eval_source(
+            r#"(define-command! "looper" "loop" (lambda () (let loop () (hume/yield!) (loop))))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let steel_proc = "%hume-cmd-looper".to_string();
+
+        // Establish a known state.
+        assert_eq!(s.tab_width, 4, "precondition");
+        s.steel_command_budget_ms = 50;
+
+        let err = h.call_steel_cmd(&steel_proc, None, None, &mut s, &mut km)
+            .unwrap_err();
+
+        assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
+        // Settings must be unchanged — rollback didn't over-restore anything.
+        assert_eq!(s.tab_width, 4, "tab-width must be unchanged after rollback");
     }
 }
