@@ -92,6 +92,7 @@ pub(super) enum WalkResult {
 /// Maps [`KeyEvent`] values to either a sub-trie (interior node) or a leaf
 /// command. The trie is built once at startup and never mutated during editing
 /// (the Steel config layer will support user overrides).
+#[derive(Clone)]
 pub(super) struct KeyTrie {
     /// Human-readable name shown in the statusline when the user is mid-sequence
     /// at this node (e.g. `"match"` after pressing `m`, `"goto"` after `g`).
@@ -99,6 +100,7 @@ pub(super) struct KeyTrie {
     map: HashMap<KeyEvent, KeyTrieNode>,
 }
 
+#[derive(Clone)]
 enum KeyTrieNode {
     /// Terminal node — execute this command.
     Leaf(KeymapCommand),
@@ -244,6 +246,7 @@ pub(crate) enum BindMode {
 /// Per-mode keymap container. One instance lives on the [`Editor`].
 ///
 /// [`Editor`]: super::Editor
+#[derive(Clone)]
 pub(crate) struct Keymap {
     pub(super) normal: KeyTrie,
     /// Sparse extend-mode overrides (e.g. `o → flip-selections`).
