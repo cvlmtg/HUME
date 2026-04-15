@@ -759,7 +759,7 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        h.eval_source("(bind-key! \"normal\" \"gh\" \"move-right\")", &mut s, &mut km).unwrap();
+        h.eval_source("(bind-key! \"normal\" \"g h\" \"move-right\")", &mut s, &mut km).unwrap();
     }
 
     #[test]
@@ -777,9 +777,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(bind-key! \"normal\" \"<bogus>\" \"cmd\")", &mut s, &mut km)
+        let err = h.eval_source("(bind-key! \"normal\" \"boguskey\" \"cmd\")", &mut s, &mut km)
             .unwrap_err();
-        assert!(!err.is_empty(), "expected error for unknown key '<bogus>'");
+        assert!(!err.is_empty(), "expected error for unknown key 'boguskey'");
     }
 
     // ── load-plugin path resolution ────────────────────────────────────────────

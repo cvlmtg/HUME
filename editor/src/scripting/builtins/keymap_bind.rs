@@ -1,12 +1,28 @@
 //! `(bind-key! mode key-sequence command-name)` builtin and key-string parser.
 //!
-//! Key strings use Helix-inspired notation:
-//! - Single printable character: `"f"` → Char('f')
-//! - Special names wrapped in `<…>`: `"<esc>"`, `"<ctrl-d>"`, `"<tab>"`, etc.
-//! - Multi-key sequences: `"gd"` → [g, d]; `"g<esc>"` → [g, Esc]
+//! Key strings use a space-separated token format:
 //!
-//! The full sequence is produced left-to-right, mixing plain chars and
-//! angle-bracket tokens freely.
+//! ```text
+//! [modifier-]* key_name
+//! ```
+//!
+//! - Modifiers: `ctrl-`, `shift-`, `alt-` (case-insensitive; order doesn't matter)
+//! - Named keys: `esc`, `tab`, `enter`, `space`, `backspace`, `delete`, `insert`,
+//!   `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12`
+//! - Single character: any single Unicode character (e.g. `f`, `G`, `<`, `>`)
+//! - Multi-key sequences: space-separated tokens, e.g. `"g h"`, `"m d"`
+//!
+//! ## Examples
+//!
+//! ```text
+//! "f"         → [Char('f')]
+//! "G"         → [Char('G')]
+//! "ctrl-x"    → [Char('x') | CONTROL]
+//! "shift-tab" → [BackTab | SHIFT]
+//! "esc"       → [Esc]
+//! "g h"       → [Char('g'), Char('h')]
+//! "m d"       → [Char('m'), Char('d')]
+//! ```
 
 use std::borrow::Cow;
 
@@ -21,104 +37,117 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Key string parser ─────────────────────────────────────────────────────────
 
-/// Parse a key-sequence string like `"f"`, `"gd"`, `"<ctrl-d>"`, or
-/// `"g<esc>"` into a `Vec<KeyEvent>`.
+/// Parse a key-sequence string into a `Vec<KeyEvent>`.
 ///
-/// Returns an error string on unrecognised tokens.
+/// The string is a whitespace-separated list of key tokens.  Each token has
+/// the form `[modifier-]* key_name` where modifiers are `ctrl-`, `shift-`,
+/// or `alt-` (case-insensitive) and `key_name` is either a named key or a
+/// single Unicode character.
+///
+/// Returns an error string if the sequence is empty or any token is
+/// unrecognised.
 pub(crate) fn parse_key_sequence(s: &str) -> Result<Vec<KeyEvent>, String> {
-    let mut keys = Vec::new();
-    let mut chars = s.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '<' {
-            // Consume up to the matching '>'.
-            let mut token = String::new();
-            let mut closed = false;
-            for ch in chars.by_ref() {
-                if ch == '>' {
-                    closed = true;
-                    break;
-                }
-                token.push(ch);
-            }
-            if !closed {
-                return Err(format!("unclosed '<' in key sequence '{s}'"));
-            }
-            keys.push(parse_angle_token(&token, s)?);
-        } else {
-            keys.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
-        }
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("key sequence must not be empty".to_string());
     }
-
-    if keys.is_empty() {
-        return Err(format!("empty key sequence"));
-    }
-    Ok(keys)
+    s.split_whitespace().map(parse_single_key).collect()
 }
 
-/// Parse the content of a `<…>` token (the text between `<` and `>`).
-fn parse_angle_token(token: &str, full_seq: &str) -> Result<KeyEvent, String> {
+/// Parse a single key token (no spaces) into a [`KeyEvent`].
+fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
+    // Lowercase a copy for modifier-prefix stripping; key name is recovered
+    // from the original token so that single-char case is preserved
+    // ("G" stays 'G', not 'g').
     let lower = token.to_ascii_lowercase();
+    let mut modifiers = KeyModifiers::NONE;
+    let mut rest_lower = lower.as_str();
 
-    // ctrl-X: modifer + key
-    if let Some(rest) = lower.strip_prefix("ctrl-") {
-        let code = simple_key_code(rest, full_seq)?;
-        // For Ctrl+char, crossterm expects the lowercase character.
-        return Ok(KeyEvent::new(code, KeyModifiers::CONTROL));
-    }
-    if let Some(rest) = lower.strip_prefix("shift-") {
-        let code = simple_key_code(rest, full_seq)?;
-        return Ok(KeyEvent::new(code, KeyModifiers::SHIFT));
-    }
-    if let Some(rest) = lower.strip_prefix("alt-") {
-        let code = simple_key_code(rest, full_seq)?;
-        return Ok(KeyEvent::new(code, KeyModifiers::ALT));
-    }
-
-    // Plain special key
-    let code = simple_key_code(&lower, full_seq)?;
-    Ok(KeyEvent::new(code, KeyModifiers::NONE))
-}
-
-/// Map a lowercase key name to a `KeyCode`.
-fn simple_key_code(name: &str, full_seq: &str) -> Result<KeyCode, String> {
-    match name {
-        "backspace" | "bs"        => Ok(KeyCode::Backspace),
-        "enter" | "ret" | "cr"    => Ok(KeyCode::Enter),
-        "left"                    => Ok(KeyCode::Left),
-        "right"                   => Ok(KeyCode::Right),
-        "up"                      => Ok(KeyCode::Up),
-        "down"                    => Ok(KeyCode::Down),
-        "home"                    => Ok(KeyCode::Home),
-        "end"                     => Ok(KeyCode::End),
-        "pageup" | "pgup"         => Ok(KeyCode::PageUp),
-        "pagedown" | "pgdown"     => Ok(KeyCode::PageDown),
-        "tab"                     => Ok(KeyCode::Tab),
-        "backtab"                 => Ok(KeyCode::BackTab),
-        "delete" | "del"          => Ok(KeyCode::Delete),
-        "insert" | "ins"          => Ok(KeyCode::Insert),
-        "esc" | "escape"          => Ok(KeyCode::Esc),
-        "space"                   => Ok(KeyCode::Char(' ')),
-        "lt"                      => Ok(KeyCode::Char('<')),
-        "gt"                      => Ok(KeyCode::Char('>')),
-        "f1"  => Ok(KeyCode::F(1)),  "f2"  => Ok(KeyCode::F(2)),
-        "f3"  => Ok(KeyCode::F(3)),  "f4"  => Ok(KeyCode::F(4)),
-        "f5"  => Ok(KeyCode::F(5)),  "f6"  => Ok(KeyCode::F(6)),
-        "f7"  => Ok(KeyCode::F(7)),  "f8"  => Ok(KeyCode::F(8)),
-        "f9"  => Ok(KeyCode::F(9)),  "f10" => Ok(KeyCode::F(10)),
-        "f11" => Ok(KeyCode::F(11)), "f12" => Ok(KeyCode::F(12)),
-        _ => {
-            // Single character
-            let mut chars = name.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => Ok(KeyCode::Char(c)),
-                _ => Err(format!("unknown key '<{name}>' in sequence '{full_seq}'")),
-            }
+    // Strip all modifier prefixes — order doesn't matter.
+    loop {
+        if let Some(tail) = rest_lower.strip_prefix("ctrl-") {
+            modifiers |= KeyModifiers::CONTROL;
+            rest_lower = tail;
+        } else if let Some(tail) = rest_lower.strip_prefix("shift-") {
+            modifiers |= KeyModifiers::SHIFT;
+            rest_lower = tail;
+        } else if let Some(tail) = rest_lower.strip_prefix("alt-") {
+            modifiers |= KeyModifiers::ALT;
+            rest_lower = tail;
+        } else {
+            break;
         }
     }
+
+    // Recover the original-case key name by measuring how many bytes the
+    // modifier prefixes consumed from the start of `token`.
+    let consumed = token.len() - rest_lower.len();
+    let key_name = &token[consumed..];
+
+    if key_name.is_empty() {
+        return Err(format!("key token '{token}' has no key name after modifiers"));
+    }
+
+    let code = parse_key_code(key_name)?;
+    // `shift-tab` is conventionally represented as BackTab in crossterm.
+    let (code, modifiers) = normalise_shift_tab(code, modifiers);
+    Ok(KeyEvent::new(code, modifiers))
 }
 
-// ── Builtin ───────────────────────────────────────────────────────────────────
+/// Map a bare key name to a [`KeyCode`].
+///
+/// Named keys are matched case-insensitively via the already-lowercased
+/// `key_name`.  Single-character keys preserve the original case so that
+/// `"G"` → `Char('G')` and `"g"` → `Char('g')` remain distinct.
+fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
+    let lower = key_name.to_ascii_lowercase();
+    match lower.as_str() {
+        "space"                        => return Ok(KeyCode::Char(' ')),
+        "tab"                          => return Ok(KeyCode::Tab),
+        "enter" | "return" | "cr"      => return Ok(KeyCode::Enter),
+        "esc"   | "escape"             => return Ok(KeyCode::Esc),
+        "backspace" | "bs"             => return Ok(KeyCode::Backspace),
+        "delete" | "del"               => return Ok(KeyCode::Delete),
+        "insert" | "ins"               => return Ok(KeyCode::Insert),
+        "home"                         => return Ok(KeyCode::Home),
+        "end"                          => return Ok(KeyCode::End),
+        "pageup"                       => return Ok(KeyCode::PageUp),
+        "pagedown"                     => return Ok(KeyCode::PageDown),
+        "up"                           => return Ok(KeyCode::Up),
+        "down"                         => return Ok(KeyCode::Down),
+        "left"                         => return Ok(KeyCode::Left),
+        "right"                        => return Ok(KeyCode::Right),
+        _ => {}
+    }
+
+    // F-keys: f1 … f12.
+    if let Some(n) = lower
+        .strip_prefix('f')
+        .and_then(|s| s.parse::<u8>().ok())
+        .filter(|&n| (1..=12).contains(&n))
+    {
+        return Ok(KeyCode::F(n));
+    }
+
+    // Single Unicode character — must be exactly one char.
+    let mut chars = key_name.chars();
+    let ch = chars.next().expect("key_name non-empty checked above");
+    if chars.next().is_some() {
+        return Err(format!("unrecognised key name '{key_name}'"));
+    }
+    Ok(KeyCode::Char(ch))
+}
+
+/// Crossterm uses `BackTab` (not `Tab | SHIFT`) for Shift+Tab.
+fn normalise_shift_tab(code: KeyCode, mods: KeyModifiers) -> (KeyCode, KeyModifiers) {
+    if code == KeyCode::Tab && mods.contains(KeyModifiers::SHIFT) {
+        (KeyCode::BackTab, mods)
+    } else {
+        (code, mods)
+    }
+}
+
+// ── Builtins ──────────────────────────────────────────────────────────────────
 
 /// `(bind-key! mode key-sequence command-name)`
 ///
@@ -165,20 +194,15 @@ pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
 
     super::with_ctx(|ctx| {
         // The ledger key encodes mode + key-sequence so that "normal f" and
-        // "insert f" are tracked independently.  Setting keys never contain
-        // spaces, so the namespace is unambiguous.
+        // "insert f" are tracked independently.
         let ledger_key = format!("{} {}", mode_str.to_ascii_lowercase(), key_str);
 
-        // Capture prior state before overwriting.
-        // prior_value: what command was bound before (empty string = unbound).
-        // prior_owner: who owned the binding before (from ledger, not current plugin).
         let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
         let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
         let current_owner = ctx.plugin_stack.current_owner();
 
         ctx.keymap.bind_user(mode, &keys, Cow::Owned(cmd_name));
 
-        // Only record ledger entries for plugin-attributed mutations.
         if let Owner::Plugin(ref plugin_id) = current_owner {
             ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
         }
@@ -193,7 +217,7 @@ pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
 /// the sequence, the next character is stored in `pending_char` and
 /// `command-name` is dispatched.
 ///
-/// Example: `(bind-wait-char! "normal" "md" "helix-delete-surround")` makes
+/// Example: `(bind-wait-char! "normal" "m d" "helix-delete-surround")` makes
 /// `m d <char>` dispatch `helix-delete-surround` with `(pending-char)` = char.
 ///
 /// Records a ledger entry when called from a plugin body.
@@ -236,7 +260,7 @@ pub(crate) fn bind_wait_char(args: &[SteelVal]) -> SteelResult {
         let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
         let current_owner = ctx.plugin_stack.current_owner();
 
-        ctx.keymap.bind_wait_char_user(mode, &keys, std::borrow::Cow::Owned(cmd_name));
+        ctx.keymap.bind_wait_char_user(mode, &keys, Cow::Owned(cmd_name));
 
         if let Owner::Plugin(ref plugin_id) = current_owner {
             ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
@@ -262,6 +286,12 @@ mod tests {
     fn ctrl(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::CONTROL)
     }
+    fn shift(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::SHIFT)
+    }
+    fn alt(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::ALT)
+    }
 
     #[test]
     fn single_char() {
@@ -270,54 +300,135 @@ mod tests {
     }
 
     #[test]
-    fn multi_char_sequence() {
+    fn uppercase_char_preserved() {
+        assert_eq!(parse("G").unwrap(), vec![key(KeyCode::Char('G'))]);
+    }
+
+    #[test]
+    fn multi_key_sequence() {
         assert_eq!(
-            parse("gd").unwrap(),
-            vec![key(KeyCode::Char('g')), key(KeyCode::Char('d'))],
+            parse("g h").unwrap(),
+            vec![key(KeyCode::Char('g')), key(KeyCode::Char('h'))],
         );
     }
 
     #[test]
-    fn special_key_esc() {
-        assert_eq!(parse("<esc>").unwrap(), vec![key(KeyCode::Esc)]);
+    fn three_key_sequence() {
+        assert_eq!(
+            parse("m a w").unwrap(),
+            vec![
+                key(KeyCode::Char('m')),
+                key(KeyCode::Char('a')),
+                key(KeyCode::Char('w')),
+            ],
+        );
+    }
+
+    #[test]
+    fn named_key_esc() {
+        assert_eq!(parse("esc").unwrap(), vec![key(KeyCode::Esc)]);
+        assert_eq!(parse("escape").unwrap(), vec![key(KeyCode::Esc)]);
+    }
+
+    #[test]
+    fn named_key_enter() {
+        assert_eq!(parse("enter").unwrap(), vec![key(KeyCode::Enter)]);
+        assert_eq!(parse("cr").unwrap(), vec![key(KeyCode::Enter)]);
+    }
+
+    #[test]
+    fn named_key_space() {
+        assert_eq!(parse("space").unwrap(), vec![key(KeyCode::Char(' '))]);
+    }
+
+    #[test]
+    fn named_key_backspace() {
+        assert_eq!(parse("backspace").unwrap(), vec![key(KeyCode::Backspace)]);
+        assert_eq!(parse("bs").unwrap(), vec![key(KeyCode::Backspace)]);
+    }
+
+    #[test]
+    fn named_key_arrows() {
+        assert_eq!(parse("up").unwrap(),    vec![key(KeyCode::Up)]);
+        assert_eq!(parse("down").unwrap(),  vec![key(KeyCode::Down)]);
+        assert_eq!(parse("left").unwrap(),  vec![key(KeyCode::Left)]);
+        assert_eq!(parse("right").unwrap(), vec![key(KeyCode::Right)]);
+    }
+
+    #[test]
+    fn function_keys() {
+        assert_eq!(parse("f1").unwrap(),  vec![key(KeyCode::F(1))]);
+        assert_eq!(parse("f12").unwrap(), vec![key(KeyCode::F(12))]);
+    }
+
+    #[test]
+    fn f_key_out_of_range_errors() {
+        assert!(parse("f0").is_err());
+        assert!(parse("f13").is_err());
     }
 
     #[test]
     fn ctrl_modifier() {
-        assert_eq!(parse("<ctrl-d>").unwrap(), vec![ctrl(KeyCode::Char('d'))]);
+        assert_eq!(parse("ctrl-x").unwrap(), vec![ctrl(KeyCode::Char('x'))]);
+        assert_eq!(parse("ctrl-d").unwrap(), vec![ctrl(KeyCode::Char('d'))]);
     }
 
     #[test]
-    fn mixed_sequence() {
+    fn shift_modifier() {
+        assert_eq!(parse("shift-k").unwrap(), vec![shift(KeyCode::Char('k'))]);
+    }
+
+    #[test]
+    fn alt_modifier() {
+        assert_eq!(parse("alt-b").unwrap(), vec![alt(KeyCode::Char('b'))]);
+    }
+
+    #[test]
+    fn ctrl_shift_combo() {
+        let expected = vec![KeyEvent::new(
+            KeyCode::Char('k'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        )];
+        assert_eq!(parse("ctrl-shift-k").unwrap(), expected);
+    }
+
+    #[test]
+    fn shift_tab_normalises_to_backtab() {
         assert_eq!(
-            parse("g<esc>").unwrap(),
+            parse("shift-tab").unwrap(),
+            vec![shift(KeyCode::BackTab)],
+        );
+    }
+
+    #[test]
+    fn angle_brackets_are_plain_chars() {
+        // In the new format, < and > are just characters — no special quoting needed.
+        assert_eq!(parse("<").unwrap(), vec![key(KeyCode::Char('<'))]);
+        assert_eq!(parse(">").unwrap(), vec![key(KeyCode::Char('>'))]);
+    }
+
+    #[test]
+    fn mixed_named_and_char_sequence() {
+        assert_eq!(
+            parse("g esc").unwrap(),
             vec![key(KeyCode::Char('g')), key(KeyCode::Esc)],
         );
     }
 
     #[test]
-    fn space_key() {
-        assert_eq!(parse("<space>").unwrap(), vec![key(KeyCode::Char(' '))]);
-    }
-
-    #[test]
-    fn function_keys() {
-        assert_eq!(parse("<f1>").unwrap(), vec![key(KeyCode::F(1))]);
-        assert_eq!(parse("<f12>").unwrap(), vec![key(KeyCode::F(12))]);
-    }
-
-    #[test]
     fn unknown_key_errors() {
-        assert!(parse("<bogus>").is_err());
+        assert!(parse("boguskey").is_err());
     }
 
     #[test]
-    fn unclosed_angle_errors() {
-        assert!(parse("<esc").is_err());
+    fn bare_modifier_prefix_errors() {
+        assert!(parse("ctrl-").is_err());
+        assert!(parse("shift-").is_err());
     }
 
     #[test]
     fn empty_sequence_errors() {
         assert!(parse("").is_err());
+        assert!(parse("   ").is_err());
     }
 }
