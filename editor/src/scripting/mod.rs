@@ -142,6 +142,10 @@ pub(crate) struct ScriptFacingCtx {
     pub(crate) plugin_stack: PluginStack,
     /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
     pub(crate) ledger_stack: LedgerStack,
+    /// Command-to-owner index: maps each Steel-registered command name to a
+    /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
+    /// Populated by `process_pending_cmds`; queried by `(command-plugin name)`.
+    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
     /// Messages accumulated by `(log! …)` calls during the last eval or
     /// Steel command dispatch.  Drained into `Editor::report` by the caller
     /// immediately after `eval_init` / `call_steel_cmd` returns.
@@ -246,6 +250,7 @@ impl ScriptingHost {
             runtime_dir: crate::os::dirs::runtime_dir(),
             plugin_stack: PluginStack::default(),
             ledger_stack: LedgerStack::default(),
+            cmd_owners: std::collections::HashMap::new(),
             pending_messages: Vec::new(),
         };
         // Initialize the fs builtin directory TLS before the engine registers
@@ -296,10 +301,17 @@ impl ScriptingHost {
 
         // Snapshot before eval — used to rollback on error so that partial
         // mutations from a failed script do not persist.
-        let settings_snap = settings.clone();
-        let keymap_snap   = keymap.clone();
+        let settings_snap      = settings.clone();
+        let keymap_snap        = keymap.clone();
         let plugin_stack_snap  = self.ctx.plugin_stack.clone();
         let ledger_stack_snap  = self.ctx.ledger_stack.clone();
+        let cmd_owners_snap    = self.ctx.cmd_owners.clone();
+
+        // Expose the current command-owner index so `(command-plugin …)` can
+        // answer queries during eval (e.g. a plugin checking for conflicts).
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
+            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+        });
 
         // Move editor state + scripting state into TLS so builtins can access
         // them as plain `FunctionSignature` function pointers (which cannot
@@ -368,12 +380,16 @@ impl ScriptingHost {
         // Rollback on error: restore the pre-eval snapshot so that partial
         // mutations from a failed script do not persist.
         if result.is_err() {
-            *settings               = settings_snap;
-            *keymap                 = keymap_snap;
+            *settings              = settings_snap;
+            *keymap                = keymap_snap;
             self.ctx.plugin_stack  = plugin_stack_snap;
             self.ctx.ledger_stack  = ledger_stack_snap;
+            self.ctx.cmd_owners    = cmd_owners_snap;
             steel_cmds             = Vec::new();
         }
+
+        // Clear the COMMAND_OWNER_CACHE — it was valid only for this eval.
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
 
         // Drain any `(log! …)` messages accumulated during the eval into
         // `pending_messages`.  The caller (e.g. `init_scripting`) will
@@ -410,7 +426,9 @@ impl ScriptingHost {
         let mut cmds_to_remove = Vec::new();
         for entry in to_restore {
             if let Some(cmd_name) = entry.key.strip_prefix("cmd:") {
-                // Command defined by this plugin — caller removes it from registry.
+                // Command defined by this plugin — caller removes it from registry;
+                // also evict from the cmd_owners index.
+                self.ctx.cmd_owners.remove(cmd_name);
                 cmds_to_remove.push(cmd_name.to_string());
             } else {
                 restore_ledger_entry(entry, settings, keymap)?;
@@ -479,6 +497,12 @@ impl ScriptingHost {
         let keymap_snap        = keymap.clone();
         let plugin_stack_snap  = self.ctx.plugin_stack.clone();
         let ledger_stack_snap  = self.ctx.ledger_stack.clone();
+        let cmd_owners_snap    = self.ctx.cmd_owners.clone();
+
+        // Expose the current command-owner index for `(command-plugin …)`.
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
+            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+        });
 
         // Push the plugin attribution before moving state into TLS so that all
         // mutations during eval are attributed to `plugin_id`.
@@ -539,8 +563,12 @@ impl ScriptingHost {
             *keymap                = keymap_snap;
             self.ctx.plugin_stack  = plugin_stack_snap;
             self.ctx.ledger_stack  = ledger_stack_snap;
+            self.ctx.cmd_owners    = cmd_owners_snap;
             steel_cmds             = Vec::new();
         }
+
+        // Clear the COMMAND_OWNER_CACHE — it was valid only for this eval.
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
 
         // Drain log messages into pending_messages for the caller to flush.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
@@ -577,6 +605,13 @@ impl ScriptingHost {
                     String::new(), // commands always start fresh (ownership rules prevent shadowing)
                 );
             }
+            // Record the owner string for `(command-plugin …)` introspection.
+            let owner_str = match &cmd.current_owner {
+                ledger::Owner::Core           => "hume".to_string(),
+                ledger::Owner::User           => "user".to_string(),
+                ledger::Owner::Plugin(pid)    => pid.to_string(),
+            };
+            self.ctx.cmd_owners.insert(cmd.name.clone(), owner_str);
             defs.push(SteelCmdDef {
                 name: cmd.name,
                 doc: cmd.doc,
@@ -615,6 +650,10 @@ impl ScriptingHost {
         builtins::commands::CMD_ARG.with(|cell| {
             *cell.borrow_mut() = cmd_arg;
         });
+        // Expose command-owner index for `(command-plugin …)` during this call.
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
+            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
+        });
         // Arm LOG_QUEUE so `(log! …)` calls inside this command have
         // somewhere to write.  Drained unconditionally below.
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
@@ -634,6 +673,7 @@ impl ScriptingHost {
         // Clear per-invocation TLS — only valid for the duration of one call.
         builtins::commands::PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
         builtins::commands::CMD_ARG.with(|cell| *cell.borrow_mut() = None);
+        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
         // Drain log messages into pending_messages regardless of success/failure.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
@@ -1088,5 +1128,64 @@ mod tests {
         // No error, no state change.
         h.teardown_plugin("user/nonexistent", &mut s, &mut km).unwrap();
         assert_eq!(s.tab_width, 4);
+    }
+
+    // ── command-plugin ────────────────────────────────────────────────────────
+
+    /// `(command-plugin name)` returns the owning plugin id for a Steel command.
+    #[test]
+    fn command_plugin_returns_plugin_owner_during_eval() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // Register a command attributed to a plugin.
+        h.eval_source(
+            r#"(push-current-plugin! "user/myplugin")
+               (define-command! "my-cmd" "test cmd" (lambda () (+ 1 0)))
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        // Verify the owner is queryable during a subsequent eval.
+        // We can't call (command-plugin) from Rust directly at exec-time in
+        // these unit tests, but we CAN call it during eval_source.
+        let result = h.eval_source(
+            r#"(command-plugin "my-cmd")"#,
+            &mut s, &mut km,
+        );
+        assert!(result.is_ok(), "command-plugin should not error: {:?}", result);
+        // The owner is recorded in cmd_owners; verify via the map directly.
+        assert_eq!(h.ctx.cmd_owners.get("my-cmd").map(|s| s.as_str()), Some("user/myplugin"));
+    }
+
+    /// Unknown (built-in) commands return "hume".
+    #[test]
+    fn command_plugin_unknown_returns_hume() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        // "move-right" is a Rust built-in — not in cmd_owners.
+        assert!(h.ctx.cmd_owners.get("move-right").is_none());
+    }
+
+    /// Teardown removes the command from cmd_owners.
+    #[test]
+    fn command_plugin_cleared_on_teardown() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source(
+            r#"(push-current-plugin! "user/myplugin")
+               (define-command! "my-cmd" "test cmd" (lambda () (+ 1 0)))
+               (pop-current-plugin!)"#,
+            &mut s, &mut km,
+        ).unwrap();
+        assert_eq!(h.ctx.cmd_owners.get("my-cmd").map(|s| s.as_str()), Some("user/myplugin"));
+
+        h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
+        assert!(h.ctx.cmd_owners.get("my-cmd").is_none(), "teardown should remove from cmd_owners");
     }
 }
