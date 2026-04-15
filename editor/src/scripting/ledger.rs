@@ -21,30 +21,78 @@ use std::hash::{Hash, Hasher};
 
 // ── PluginId ──────────────────────────────────────────────────────────────────
 
-/// A plugin identity: case-preserving for display and disk paths,
+/// A validated plugin identity: case-preserving for display and disk paths,
 /// case-insensitive for equality and hashing.
 ///
-/// `"SomeUser/CoolPlugin"` and `"someuser/coolplugin"` resolve to the same
-/// plugin on case-insensitive file systems (default APFS, NTFS) while
-/// preserving the original casing for display and path construction.
-/// Name formats: `core:<name>` (bundled) or `<user>/<repo>` (third-party).
+/// Two valid forms:
+/// - `Core(name)` — a bundled core plugin: `core:<name>`
+/// - `User { user, repo }` — a third-party plugin: `<user>/<repo>`
+///
+/// `"SomeUser/CoolPlugin"` and `"someuser/coolplugin"` are equal on
+/// case-insensitive filesystems (APFS, NTFS) while the original casing is
+/// preserved for display and path construction.
 #[derive(Debug, Clone)]
-pub(crate) struct PluginId(String);
+pub(crate) enum PluginId {
+    Core(String),
+    User { user: String, repo: String },
+}
 
 impl PluginId {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
+    /// Parse and validate a plugin name string.
+    ///
+    /// Valid forms:
+    /// - `core:<name>` — bundled core plugin
+    /// - `<user>/<repo>` — third-party plugin (exactly one `/`)
+    ///
+    /// Segments must be non-empty, must not be `.` or `..`, and must not
+    /// contain `/`, `\`, or NUL — ensuring the components are safe to use as
+    /// filesystem path segments.
+    ///
+    /// Returns `Err(message)` for any other form.
+    pub(crate) fn parse(name: &str) -> Result<Self, String> {
+        if let Some(core_name) = name.strip_prefix("core:") {
+            if !is_valid_segment(core_name) {
+                return Err(format!(
+                    "invalid plugin name '{name}': core name must be a non-empty path segment"
+                ));
+            }
+            return Ok(PluginId::Core(core_name.to_string()));
+        }
+        if let Some((user, repo)) = name.split_once('/') {
+            if repo.contains('/') {
+                return Err(format!(
+                    "invalid plugin name '{name}': expected user/repo with exactly one slash"
+                ));
+            }
+            if !is_valid_segment(user) || !is_valid_segment(repo) {
+                return Err(format!(
+                    "invalid plugin name '{name}': user and repo must be non-empty valid path segments"
+                ));
+            }
+            return Ok(PluginId::User { user: user.to_string(), repo: repo.to_string() });
+        }
+        Err(format!("invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'"))
     }
+}
 
-    #[cfg(test)]
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
+/// A valid path segment is non-empty, not `.` or `..`, and contains no
+/// `/`, `\`, or NUL.  Dots elsewhere are permitted (e.g. `v1.2`).
+///
+/// Used by [`PluginId::parse`] to validate each name component before storing
+/// it — ensures all stored strings are safe to use as filesystem path segments.
+fn is_valid_segment(s: &str) -> bool {
+    if s.is_empty() || s == "." || s == ".." {
+        return false;
     }
+    s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
 }
 
 impl fmt::Display for PluginId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        match self {
+            PluginId::Core(name)          => write!(f, "core:{name}"),
+            PluginId::User { user, repo } => write!(f, "{user}/{repo}"),
+        }
     }
 }
 
@@ -58,10 +106,19 @@ impl fmt::Display for Owner {
     }
 }
 
-/// Case-insensitive equality (ASCII fold only — plugin names are ASCII by design).
+/// Case-insensitive equality (ASCII fold — plugin names are ASCII by design).
+///
+/// `Core("PLUM") == Core("plum")`, `User { "Alice", "Bar" } == User { "alice", "bar" }`.
+/// Different variants are never equal.
 impl PartialEq for PluginId {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq_ignore_ascii_case(&other.0)
+        match (self, other) {
+            (PluginId::Core(a), PluginId::Core(b)) =>
+                a.eq_ignore_ascii_case(b),
+            (PluginId::User { user: ua, repo: ra }, PluginId::User { user: ub, repo: rb }) =>
+                ua.eq_ignore_ascii_case(ub) && ra.eq_ignore_ascii_case(rb),
+            _ => false,
+        }
     }
 }
 
@@ -70,8 +127,18 @@ impl Eq for PluginId {}
 /// Hash must be consistent with `PartialEq`: equal IDs → equal hashes.
 impl Hash for PluginId {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for c in self.0.chars() {
-            c.to_ascii_lowercase().hash(state);
+        // Discriminant is hashed implicitly via the match — different variants
+        // hash differently even if the inner strings happen to be the same.
+        match self {
+            PluginId::Core(name) => {
+                0u8.hash(state);
+                for c in name.chars() { c.to_ascii_lowercase().hash(state); }
+            }
+            PluginId::User { user, repo } => {
+                1u8.hash(state);
+                for c in user.chars() { c.to_ascii_lowercase().hash(state); }
+                for c in repo.chars() { c.to_ascii_lowercase().hash(state); }
+            }
         }
     }
 }
@@ -274,20 +341,67 @@ impl PluginStack {
 mod tests {
     use super::*;
 
-    // ── PluginId ─────────────────────────────────────────────────────────────
+    /// Convenience: parse a known-valid plugin name in tests.
+    fn pid(s: &str) -> PluginId {
+        PluginId::parse(s).expect("valid plugin id in test")
+    }
+
+    // ── PluginId::parse ───────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_core_plugin() {
+        let id = PluginId::parse("core:plum").unwrap();
+        assert!(matches!(id, PluginId::Core(ref n) if n == "plum"));
+        assert_eq!(id.to_string(), "core:plum");
+    }
+
+    #[test]
+    fn parse_user_plugin() {
+        let id = PluginId::parse("alice/bar").unwrap();
+        assert!(matches!(&id, PluginId::User { user, repo } if user == "alice" && repo == "bar"));
+        assert_eq!(id.to_string(), "alice/bar");
+    }
+
+    #[test]
+    fn parse_just_a_name_errors() {
+        assert!(PluginId::parse("just-a-name").is_err());
+    }
+
+    #[test]
+    fn parse_dotdot_segment_errors() {
+        assert!(PluginId::parse("../evil").is_err());
+        assert!(PluginId::parse("core:../evil").is_err());  // dotdot core name
+        assert!(PluginId::parse("core:..").is_err());
+        assert!(PluginId::parse("../evil").is_err());
+    }
+
+    #[test]
+    fn parse_empty_segment_errors() {
+        assert!(PluginId::parse("core:").is_err());
+        assert!(PluginId::parse("/repo").is_err());
+        assert!(PluginId::parse("user/").is_err());
+    }
+
+    #[test]
+    fn parse_too_many_slashes_errors() {
+        assert!(PluginId::parse("a/b/c").is_err());
+    }
+
+    // ── PluginId equality and hashing ─────────────────────────────────────────
 
     #[test]
     fn plugin_id_case_insensitive_equality() {
-        assert_eq!(PluginId::new("Foo/Bar"), PluginId::new("foo/bar"));
-        assert_eq!(PluginId::new("CORE:PLUM"), PluginId::new("core:plum"));
-        assert_ne!(PluginId::new("foo/bar"), PluginId::new("foo/baz"));
+        assert_eq!(pid("foo/bar"), pid("FOO/BAR"));
+        assert_eq!(pid("core:plum"), pid("core:PLUM"));
+        assert_ne!(pid("foo/bar"), pid("foo/baz"));
+        // Different variants are never equal.
+        assert_ne!(pid("core:bar"), pid("foo/bar"));
     }
 
     #[test]
     fn plugin_id_preserves_case_in_display() {
-        let id = PluginId::new("SomeUser/CoolPlugin");
-        assert_eq!(id.as_str(), "SomeUser/CoolPlugin");
-        assert_eq!(id.to_string(), "SomeUser/CoolPlugin");
+        assert_eq!(pid("SomeUser/CoolPlugin").to_string(), "SomeUser/CoolPlugin");
+        assert_eq!(pid("core:helix-surround").to_string(), "core:helix-surround");
     }
 
     #[test]
@@ -298,10 +412,8 @@ mod tests {
             id.hash(&mut h);
             h.finish()
         };
-        assert_eq!(
-            hash_of(&PluginId::new("Foo/Bar")),
-            hash_of(&PluginId::new("foo/bar")),
-        );
+        assert_eq!(hash_of(&pid("Foo/Bar")), hash_of(&pid("foo/bar")));
+        assert_eq!(hash_of(&pid("core:PLUM")), hash_of(&pid("core:plum")));
     }
 
     // ── LedgerStack — basic ───────────────────────────────────────────────────
@@ -315,8 +427,8 @@ mod tests {
     #[test]
     fn owner_of_returns_last_writer() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
+        let x = pid("user/x");
+        let y = pid("user/y");
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
         stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
         assert_eq!(stack.owner_of("f"), Owner::Plugin(y));
@@ -325,7 +437,7 @@ mod tests {
     #[test]
     fn record_deduplicates_key_within_plugin() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
+        let x = pid("user/x");
         // First record — should be stored.
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
         // Second record for the same key by the same plugin — should be ignored.
@@ -340,7 +452,7 @@ mod tests {
     #[test]
     fn unload_no_later_writer_returns_entry_to_restore() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
+        let x = pid("user/x");
         stack.record(&x, "tab-size".into(), Owner::Core, "2".into());
 
         let to_restore = stack.unload(&x);
@@ -361,8 +473,8 @@ mod tests {
     #[test]
     fn unload_later_writer_rewrites_prior_not_live() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
+        let x = pid("user/x");
+        let y = pid("user/y");
         // X: f was find-char / Core
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
         // Y: f was foo / X
@@ -382,8 +494,8 @@ mod tests {
     #[test]
     fn unload_mixed_keys_separates_restore_from_rewrite() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
+        let x = pid("user/x");
+        let y = pid("user/y");
         // X owns both; Y later takes `f` but never touches `tab-size`.
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
         stack.record(&x, "tab-size".into(), Owner::Core, "2".into());
@@ -400,8 +512,8 @@ mod tests {
     #[test]
     fn unload_unknown_plugin_is_noop() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
+        let x = pid("user/x");
+        let y = pid("user/y");
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
 
         let to_restore = stack.unload(&y); // y has no ledger
@@ -416,9 +528,9 @@ mod tests {
     #[test]
     fn three_plugin_chain_rewrites_correctly() {
         let mut stack = LedgerStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
-        let z = PluginId::new("user/z");
+        let x = pid("user/x");
+        let y = pid("user/y");
+        let z = pid("user/z");
         stack.record(&x, "f".into(), Owner::Core, "find-char".into());
         stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
         stack.record(&z, "f".into(), Owner::Plugin(y.clone()), "bar".into());
@@ -451,7 +563,7 @@ mod tests {
     #[test]
     fn plugin_stack_push_makes_plugin_owner() {
         let mut stack = PluginStack::default();
-        let x = PluginId::new("user/x");
+        let x = pid("user/x");
         stack.push(x.clone());
         assert_eq!(stack.current_owner(), Owner::Plugin(x));
     }
@@ -459,7 +571,7 @@ mod tests {
     #[test]
     fn plugin_stack_pop_returns_to_user() {
         let mut stack = PluginStack::default();
-        stack.push(PluginId::new("user/x"));
+        stack.push(pid("user/x"));
         stack.pop();
         assert_eq!(stack.current_owner(), Owner::User);
     }
@@ -467,13 +579,13 @@ mod tests {
     #[test]
     fn plugin_stack_nested_plugins() {
         let mut stack = PluginStack::default();
-        let x = PluginId::new("user/x");
-        let y = PluginId::new("user/y");
+        let x = pid("user/x");
+        let y = pid("user/y");
         stack.push(x);
         stack.push(y.clone());
         assert_eq!(stack.current_owner(), Owner::Plugin(y));
         stack.pop();
-        assert_eq!(stack.current_owner(), Owner::Plugin(PluginId::new("user/x")));
+        assert_eq!(stack.current_owner(), Owner::Plugin(pid("user/x")));
     }
 
     #[test]

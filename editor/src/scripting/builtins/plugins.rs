@@ -15,57 +15,9 @@ use super::one_string;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-// ── Plugin name validation ────────────────────────────────────────────────────
-
-enum ParsedName {
-    Core(String),
-    User { user: String, repo: String },
-}
-
-/// A valid path segment must be non-empty, not `.` or `..`, and contain no
-/// `/`, `\`, or NUL characters.  Dots elsewhere are permitted (e.g. `v1.2`).
-fn is_valid_segment(s: &str) -> bool {
-    // Reject `.` and `..` explicitly before the char scan — dots are otherwise
-    // allowed, so without this check `..` would pass the char loop.
-    if s.is_empty() || s == "." || s == ".." {
-        return false;
-    }
-    s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
-}
-
-/// Parse and validate a plugin name.
-///
-/// Valid forms:
-/// - `core:<name>` — core plugin in the runtime directory
-/// - `<user>/<repo>` — third-party plugin in the data directory
-///
-/// Returns a Steel error for any other form.
-fn parse_plugin_name(name: &str) -> Result<ParsedName, SteelErr> {
-    if let Some(core_name) = name.strip_prefix("core:") {
-        // Case-insensitive prefix match handled by strip_prefix("core:") since
-        // the caller normalises. Actually, the STEEL.md requires case-preserving
-        // storage but case-insensitive identity — we validate the segment only.
-        if !is_valid_segment(core_name) {
-            return Err(SteelErr::new(ErrorKind::Generic,
-                format!("invalid plugin name '{name}': core name must be a non-empty path segment")));
-        }
-        return Ok(ParsedName::Core(core_name.to_string()));
-    }
-    // Try "user/repo" form — exactly one slash separating two valid segments.
-    if let Some((user, repo)) = name.split_once('/') {
-        // repo must not contain further slashes
-        if repo.contains('/') {
-            return Err(SteelErr::new(ErrorKind::Generic,
-                format!("invalid plugin name '{name}': expected user/repo with exactly one slash")));
-        }
-        if !is_valid_segment(user) || !is_valid_segment(repo) {
-            return Err(SteelErr::new(ErrorKind::Generic,
-                format!("invalid plugin name '{name}': user and repo must be non-empty valid path segments")));
-        }
-        return Ok(ParsedName::User { user: user.to_string(), repo: repo.to_string() });
-    }
-    Err(SteelErr::new(ErrorKind::Generic,
-        format!("invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'")))
+/// Convert a `PluginId::parse` error string into a Steel `Generic` error.
+fn steel_parse_err(e: String) -> SteelErr {
+    SteelErr::new(ErrorKind::Generic, e)
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
@@ -77,7 +29,7 @@ fn parse_plugin_name(name: &str) -> Result<ParsedName, SteelErr> {
 pub(crate) fn push_declared_plugin(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "push-declared-plugin!")?;
     // Validate before recording so declared-plugins never contains junk.
-    parse_plugin_name(&name)?;
+    PluginId::parse(&name).map_err(steel_parse_err)?;
     super::with_ctx(|ctx| {
         if !ctx.declared_plugins.iter().any(|d| d.eq_ignore_ascii_case(&name)) {
             ctx.declared_plugins.push(name);
@@ -103,8 +55,9 @@ pub(crate) fn push_loaded_plugin(args: &[SteelVal]) -> SteelResult {
 /// the Scheme-side `load-plugin`.
 pub(crate) fn push_current_plugin(args: &[SteelVal]) -> SteelResult {
     let name = one_string(args, "push-current-plugin!")?;
+    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
     super::with_ctx(|ctx| {
-        ctx.plugin_stack.push(PluginId::new(name));
+        ctx.plugin_stack.push(plugin_id);
         Ok(SteelVal::Void)
     })
 }
@@ -136,17 +89,16 @@ pub(crate) fn resolve_path_for_name(
     runtime_dir: Option<&std::path::Path>,
     data_dir: Option<&std::path::Path>,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    let parsed = parse_plugin_name(name)
-        .map_err(|e| e.to_string())?;
-    let path = match parsed {
-        ParsedName::Core(core_name) => {
+    let plugin_id = PluginId::parse(name)?;
+    let path = match plugin_id {
+        PluginId::Core(core_name) => {
             runtime_dir.map(|rt| {
                 rt.join("plugins").join("core").join(&core_name).join("plugin.scm")
             })
         }
         // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
         // resolved — return None rather than panicking.
-        ParsedName::User { user, repo } => data_dir.map(|d| {
+        PluginId::User { user, repo } => data_dir.map(|d| {
             d.join("plugins").join(&user).join(&repo).join("plugin.scm")
         }),
     };
@@ -210,48 +162,53 @@ pub(crate) fn declared_plugins(args: &[SteelVal]) -> SteelResult {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+//
+// Parsing tests (valid/invalid plugin names, segments) live in
+// `scripting::ledger::tests` alongside `PluginId::parse`.  The tests here
+// cover only the builtins' Steel-facing behaviour.
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn valid_core_segment() {
-        assert!(is_valid_segment("helix-surround"));
-        assert!(is_valid_segment("plum"));
-        assert!(is_valid_segment("v1.2.3"));
-    }
-
-    #[test]
-    fn invalid_segments() {
-        assert!(!is_valid_segment(""));
-        assert!(!is_valid_segment("."));
-        assert!(!is_valid_segment(".."));
-        assert!(!is_valid_segment("a/b"));
-        assert!(!is_valid_segment("a\\b"));
-        assert!(!is_valid_segment("a\0b"));
-    }
-
-    #[test]
     fn parse_core_plugin_name() {
-        let p = parse_plugin_name("core:helix-surround").unwrap();
-        assert!(matches!(p, ParsedName::Core(n) if n == "helix-surround"));
+        let id = PluginId::parse("core:helix-surround").unwrap();
+        assert!(matches!(id, PluginId::Core(n) if n == "helix-surround"));
     }
 
     #[test]
     fn parse_user_plugin_name() {
-        let p = parse_plugin_name("user/repo").unwrap();
-        assert!(matches!(p, ParsedName::User { user, repo } if user == "user" && repo == "repo"));
+        let id = PluginId::parse("user/repo").unwrap();
+        assert!(matches!(id, PluginId::User { ref user, ref repo } if user == "user" && repo == "repo"));
     }
 
     #[test]
     fn parse_invalid_names() {
-        assert!(parse_plugin_name("bad").is_err());
-        assert!(parse_plugin_name("core:").is_err());
-        assert!(parse_plugin_name("a/b/c").is_err());
-        assert!(parse_plugin_name("/repo").is_err());
-        assert!(parse_plugin_name("user/").is_err());
-        assert!(parse_plugin_name("core:..").is_err());
-        assert!(parse_plugin_name("../evil").is_err());
+        assert!(PluginId::parse("bad").is_err());
+        assert!(PluginId::parse("core:").is_err());
+        assert!(PluginId::parse("a/b/c").is_err());
+        assert!(PluginId::parse("/repo").is_err());
+        assert!(PluginId::parse("user/").is_err());
+        assert!(PluginId::parse("core:..").is_err());
+        assert!(PluginId::parse("../evil").is_err());
+    }
+
+    #[test]
+    fn valid_core_segment() {
+        // Segments that should pass through PluginId::parse successfully.
+        assert!(PluginId::parse("core:helix-surround").is_ok());
+        assert!(PluginId::parse("core:plum").is_ok());
+        assert!(PluginId::parse("core:v1.2.3").is_ok());
+    }
+
+    #[test]
+    fn invalid_segments() {
+        // Segment validation exercised via PluginId::parse.
+        assert!(PluginId::parse("core:").is_err());       // empty
+        assert!(PluginId::parse("core:.").is_err());      // dot
+        assert!(PluginId::parse("core:..").is_err());     // dotdot
+        assert!(PluginId::parse("./b").is_err());         // slash without user
+        assert!(PluginId::parse("a\0b/repo").is_err());   // NUL in user
     }
 }
