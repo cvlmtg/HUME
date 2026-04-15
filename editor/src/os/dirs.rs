@@ -1,8 +1,10 @@
 //! Platform-aware base directory resolution for HUME.
 //!
-//! Follows XDG Base Directory conventions on Unix and macOS, and uses
-//! `%APPDATA%\hume\` on Windows native. All three roots are documented
-//! in STEEL.md §"Three root directories".
+//! Follows XDG Base Directory conventions on Unix and macOS. On Windows:
+//! - Config lives under `%APPDATA%\hume\` (Roaming — syncs across domain machines,
+//!   appropriate for user-edited config files).
+//! - Data lives under `%LOCALAPPDATA%\hume\` (Local — machine-specific, appropriate
+//!   for plugin binaries and caches that must not roam between machines).
 //!
 //! All resolvers return `Option<PathBuf>`: `None` means the platform-specific
 //! env vars are unset (no silent fallback to `.config/hume` or `.local/share/hume`).
@@ -14,7 +16,7 @@ use std::{env, path::PathBuf};
 /// Returns the configuration directory for HUME, if it can be resolved.
 ///
 /// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `$HOME/.config/hume/`
-/// - Windows: `%APPDATA%\hume\config\`
+/// - Windows: `%APPDATA%\hume\`
 ///
 /// Returns `None` only if both the relevant env vars are unset (`HOME` on
 /// Unix, `APPDATA` on Windows). Callers should report and skip scripting
@@ -22,7 +24,7 @@ use std::{env, path::PathBuf};
 pub(crate) fn config_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("config"))
+        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume"))
     }
     #[cfg(not(windows))]
     {
@@ -39,14 +41,21 @@ pub(crate) fn config_dir() -> Option<PathBuf> {
 /// Returns the data directory for HUME, if it can be resolved.
 ///
 /// - Unix / macOS: `$XDG_DATA_HOME/hume/` → `$HOME/.local/share/hume/`
-/// - Windows: `%APPDATA%\hume\data\`
+/// - Windows: `%LOCALAPPDATA%\hume\` (falls back to `%APPDATA%\hume\` if `LOCALAPPDATA` is unset)
 ///
 /// Returns `None` only if the relevant env vars are unset. Callers should
 /// disable features that need on-disk storage (PLUM install, user plugins).
 pub(crate) fn data_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume").join("data"))
+        // Prefer LOCALAPPDATA (machine-local) for plugin binaries and caches;
+        // roaming them via APPDATA across domain machines risks arch mismatches
+        // and stale paths. Fall back to APPDATA in environments where LOCALAPPDATA
+        // is not populated (stripped CI images, some service accounts).
+        env::var("LOCALAPPDATA")
+            .or_else(|_| env::var("APPDATA"))
+            .ok()
+            .map(|base| PathBuf::from(base).join("hume"))
     }
     #[cfg(not(windows))]
     {
