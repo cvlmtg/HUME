@@ -5,10 +5,12 @@
 //! during [`ScriptingHost::new`] before any `eval_init` call.
 
 pub(crate) mod commands;
+pub(crate) mod fs;
 pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
 pub(crate) mod plugins;
 pub(crate) mod settings;
+pub(crate) mod shell;
 pub(crate) mod statusline;
 
 use steel::steel_vm::engine::Engine;
@@ -84,6 +86,21 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("define-command!",    SteelVal::FuncV(commands::define_command));
     engine.register_value("call-command!",      SteelVal::FuncV(commands::call_command));
     engine.register_value("request-wait-char!", SteelVal::FuncV(commands::request_wait_char));
+
+    // Filesystem and directory access (sandboxed to <data>/plugins/ and <runtime>/plugins/)
+    engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
+    engine.register_value("runtime-dir",  SteelVal::FuncV(fs::runtime_dir));
+    engine.register_value("path-exists?", SteelVal::FuncV(fs::path_exists));
+    engine.register_value("list-dir",     SteelVal::FuncV(fs::list_dir));
+    engine.register_value("make-dir",     SteelVal::FuncV(fs::make_dir));
+    engine.register_value("delete-dir",   SteelVal::FuncV(fs::delete_dir));
+
+    // Shell — narrow git wrappers only (no generic run-process)
+    engine.register_value("git-clone", SteelVal::FuncV(shell::git_clone));
+    engine.register_value("git-pull",  SteelVal::FuncV(shell::git_pull));
+
+    // Logging — push messages to the editor message log
+    engine.register_value("log!", SteelVal::FuncV(fs::log_msg));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm, with no TLS context — safe because the

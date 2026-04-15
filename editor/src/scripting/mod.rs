@@ -138,6 +138,10 @@ pub(crate) struct ScriptFacingCtx {
     pub(crate) plugin_stack: PluginStack,
     /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
     pub(crate) ledger_stack: LedgerStack,
+    /// Messages accumulated by `(log! …)` calls during the last eval or
+    /// Steel command dispatch.  Drained into `Editor::report` by the caller
+    /// immediately after `eval_init` / `call_steel_cmd` returns.
+    pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
 }
 
 // ── ScriptingHost ─────────────────────────────────────────────────────────────
@@ -224,7 +228,12 @@ impl ScriptingHost {
             runtime_dir: crate::os::dirs::runtime_dir(),
             plugin_stack: PluginStack::default(),
             ledger_stack: LedgerStack::default(),
+            pending_messages: Vec::new(),
         };
+        // Initialize the fs builtin directory TLS before the engine registers
+        // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
+        // from this TLS whenever they are called.
+        builtins::fs::init_dirs(ctx.data_dir.clone(), ctx.runtime_dir.clone());
         let mut engine = Engine::new();
         builtins::register_all(&mut engine);
         Self {
@@ -262,6 +271,10 @@ impl ScriptingHost {
         }
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
+
+        // Arm the LOG_QUEUE so `(log! …)` calls during this eval have
+        // somewhere to write.  Drained after eval returns.
+        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
         // Move editor state + scripting state into TLS so builtins can access
         // them as plain `FunctionSignature` function pointers (which cannot
@@ -333,6 +346,12 @@ impl ScriptingHost {
                 steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
+
+        // Drain any `(log! …)` messages accumulated during the eval into
+        // `pending_messages`.  The caller (e.g. `init_scripting`) will
+        // flush these into `Editor::report` after we return.
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        self.ctx.pending_messages.extend(log_msgs);
 
         result.map(|()| steel_cmds)
     }
@@ -424,6 +443,9 @@ impl ScriptingHost {
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
 
+        // Arm LOG_QUEUE for `(log! …)` calls in this plugin eval.
+        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
+
         // Push the plugin attribution before moving state into TLS so that all
         // mutations during eval are attributed to `plugin_id`.
         self.ctx.plugin_stack.push(plugin_id.clone());
@@ -482,6 +504,10 @@ impl ScriptingHost {
             }
         });
 
+        // Drain log messages into pending_messages for the caller to flush.
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        self.ctx.pending_messages.extend(log_msgs);
+
         // Unconditionally pop the attribution we pushed before the eval, even
         // if the plugin itself left the stack imbalanced via an error path.
         self.ctx.plugin_stack.pop();
@@ -538,6 +564,9 @@ impl ScriptingHost {
         builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
             *cell.borrow_mut() = Some(None);
         });
+        // Arm LOG_QUEUE so `(log! …)` calls inside this command have
+        // somewhere to write.  Drained unconditionally below.
+        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
         let result = self
             .engine
@@ -551,6 +580,9 @@ impl ScriptingHost {
         let wait_char = builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
             cell.borrow_mut().take().flatten()
         });
+        // Drain log messages into pending_messages regardless of success/failure.
+        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap_or_default());
+        self.ctx.pending_messages.extend(log_msgs);
 
         result?;
         Ok((queue, wait_char))
