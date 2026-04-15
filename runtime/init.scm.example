@@ -58,7 +58,8 @@
 ;;
 ;; (define-command! name doc-string (lambda () body...))
 ;; The command becomes available as ":name" in the command bar.
-;; Use (call! "other-command") to compose built-in commands.
+;; Use (call! "other-command") to invoke any command — built-in or
+;; defined by you / another plugin.  All command invocation is by name.
 ;; (call-command! is a back-compat alias; prefer call!)
 ;; Use (log! severity message) to post messages to :messages.
 ;;   severity — 'trace 'info 'warning 'error

@@ -12,6 +12,24 @@
 //! `request-wait-char!` allows a Steel command to request that after the
 //! queue is drained, the editor enters WaitChar mode for the named command.
 //! This enables multi-step compositions like `mr` + old_char + new_char.
+//!
+//! ## Invocation contract
+//!
+//! All commands — Rust built-ins and `define-command!`-registered Steel
+//! lambdas alike — are invoked uniformly by string name:
+//!
+//! ```scheme
+//! (call! "collapse-selection")   ; built-in
+//! (call! "my-plugin-cmd")        ; defined by another (or the same) plugin
+//! ```
+//!
+//! Steel lambdas registered via `define-command!` are intentionally **not**
+//! exposed as bare Scheme identifiers (they live under a private mangled
+//! name in the engine namespace).  This keeps the call site symmetric with
+//! built-ins (which are Rust `MappableCommand` variants and have no Scheme
+//! binding), and ensures every invocation goes through the registry path
+//! that owns ledger attribution, watchdog protection, and dispatch parity
+//! with `:cmd` and `bind-key!`.
 
 use std::cell::RefCell;
 
