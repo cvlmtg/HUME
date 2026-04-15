@@ -48,6 +48,32 @@ pub(crate) const EVAL_BUDGET_SECS: u64 = 10;
 
 // ── EvalCtx ───────────────────────────────────────────────────────────────────
 
+/// A `(define-command! …)` call captured during `eval_init`, to be processed
+/// after the eval completes.
+pub(crate) struct PendingSteelCmd {
+    pub(crate) name: String,
+    pub(crate) doc: String,
+    /// The Steel lambda, captured at `define-command!` call time.
+    pub(crate) proc: steel::rvals::SteelVal,
+    /// Attribution owner at call time (for ledger recording).
+    pub(crate) current_owner: ledger::Owner,
+}
+
+/// A Steel command that has been fully registered in the engine and is ready
+/// to be inserted into the `CommandRegistry`.
+///
+/// Returned by [`ScriptingHost::eval_init`] and
+/// [`ScriptingHost::eval_plugin_with_attribution`]; the editor layer registers
+/// the commands after a successful eval.
+pub(crate) struct SteelCmdDef {
+    pub(crate) name: String,
+    pub(crate) doc: String,
+    /// Name under which the lambda is bound in Steel's global namespace
+    /// (e.g. `"%hume-cmd-my-command"`).  Used by
+    /// [`crate::scripting::ScriptingHost::call_steel_cmd`] at dispatch time.
+    pub(crate) steel_proc: String,
+}
+
 /// Editor state moved into thread-local storage for the duration of
 /// [`ScriptingHost::eval_init`].
 ///
@@ -80,6 +106,12 @@ pub(crate) struct EvalCtx {
     /// `true`.  Set by the watchdog thread on budget expiry, or externally
     /// for Ctrl-C handling.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
+    /// Built-in command names known at eval start.  `define-command!` checks
+    /// against this to prevent shadowing core commands.
+    pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
+    /// `(define-command! …)` calls accumulated during this eval.  Processed
+    /// after eval completes in [`ScriptingHost::process_pending_cmds`].
+    pub(crate) pending_steel_cmds: Vec<PendingSteelCmd>,
 }
 
 thread_local! {
@@ -152,6 +184,8 @@ impl ScriptingHost {
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
                 interrupt_flag: Arc::clone(&self.interrupt_flag),
+                builtin_cmd_names: std::collections::HashSet::new(),
+                pending_steel_cmds: Vec::new(),
             });
         });
 
@@ -167,6 +201,9 @@ impl ScriptingHost {
                 *keymap = ctx.keymap;
                 self.ctx.plugin_stack = ctx.plugin_stack;
                 self.ctx.ledger_stack = ctx.ledger_stack;
+                // Pending Steel commands from eval_source are processed but
+                // discarded — test callers don't supply a CommandRegistry.
+                self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
 
@@ -200,22 +237,28 @@ impl ScriptingHost {
     /// Evaluate `init.scm` at `path`, giving builtins access to `settings` and
     /// `keymap` for the duration of the call.
     ///
-    /// - Returns `Ok(())` if the file does not exist (missing config is normal).
+    /// - Returns `Ok(defs)` if the file does not exist (empty defs, missing
+    ///   config is normal) or if eval succeeds.  `defs` is the list of Steel
+    ///   commands defined during eval; the caller registers them in the
+    ///   `CommandRegistry`.
     /// - Returns `Err(message)` if the file exists but fails to parse or
-    ///   evaluate.  The caller is responsible for surfacing the error to the
-    ///   user.
+    ///   evaluate.  The caller is responsible for surfacing the error.
     ///
     /// `settings` and `keymap` are moved into the TLS [`EvalCtx`] before
     /// evaluation and restored afterwards — even on error.  Builtins such as
     /// `set-option!` and `bind-key!` mutate them through the TLS handle.
+    ///
+    /// `builtin_names` is the set of all command names currently in the
+    /// registry.  `define-command!` checks against this to prevent shadowing.
     pub(crate) fn eval_init(
         &mut self,
         path: &Path,
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
-    ) -> Result<(), String> {
+        builtin_names: std::collections::HashSet<String>,
+    ) -> Result<Vec<SteelCmdDef>, String> {
         if !path.exists() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
@@ -235,6 +278,8 @@ impl ScriptingHost {
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
                 interrupt_flag: Arc::clone(&self.interrupt_flag),
+                builtin_cmd_names: builtin_names,
+                pending_steel_cmds: Vec::new(),
             });
         });
 
@@ -278,16 +323,18 @@ impl ScriptingHost {
 
         // Restore all state unconditionally — builtins may have modified
         // settings/keymap, and plugin_stack/ledger_stack accumulate across evals.
+        let mut steel_cmds = Vec::new();
         EVAL_CTX.with(|cell| {
             if let Some(ctx) = cell.borrow_mut().take() {
                 *settings = ctx.settings;
                 *keymap = ctx.keymap;
                 self.ctx.plugin_stack = ctx.plugin_stack;
                 self.ctx.ledger_stack = ctx.ledger_stack;
+                steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
 
-        result
+        result.map(|()| steel_cmds)
     }
 
     // ── Plugin teardown / reload ───────────────────────────────────────────────
@@ -296,38 +343,54 @@ impl ScriptingHost {
     /// settings are restored via [`apply_setting`] and keybinds are restored
     /// (or removed) via [`Keymap::bind_user`] / [`Keymap::unbind_user`].
     ///
-    /// Called before re-evaluating a plugin file on `:reload-plugin`.
-    /// Also called by the editor command dispatch when a plugin is uninstalled.
+    /// Ledger entries with key `"cmd:<name>"` represent commands the plugin
+    /// defined.  These are not restored here (there is no prior command to
+    /// restore to); instead their names are returned so the caller can
+    /// unregister them from the `CommandRegistry`.
     ///
-    /// Returns `Ok(())` if the plugin had no ledger (was never loaded or had
-    /// no mutations) — unloading an unknown plugin is a no-op.
+    /// Returns `Ok(names)` where `names` is the list of command names to
+    /// remove, or `Ok([])` if the plugin had no ledger — no-op for unknown
+    /// plugins.
     pub(crate) fn teardown_plugin(
         &mut self,
         plugin_name: &str,
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<String>, String> {
         let plugin_id = PluginId::new(plugin_name);
         let to_restore = self.ctx.ledger_stack.unload(&plugin_id);
 
+        let mut cmds_to_remove = Vec::new();
         for entry in to_restore {
-            restore_ledger_entry(entry, settings, keymap)?;
+            if let Some(cmd_name) = entry.key.strip_prefix("cmd:") {
+                // Command defined by this plugin — caller removes it from registry.
+                cmds_to_remove.push(cmd_name.to_string());
+            } else {
+                restore_ledger_entry(entry, settings, keymap)?;
+            }
         }
-        Ok(())
+        Ok(cmds_to_remove)
     }
 
     /// Reload `plugin_name`: tear it down then re-evaluate its file.
     ///
+    /// Returns `(cmds_to_remove, new_cmds)`:
+    /// - `cmds_to_remove`: command names the old plugin version defined
+    ///   (caller calls `registry.unregister` for each).
+    /// - `new_cmds`: Steel commands the new plugin version defines
+    ///   (caller calls `registry.register` for each).
+    ///
     /// If the plugin file is not found on disk (e.g. uninstalled), teardown
-    /// still runs and `Ok(())` is returned — consistent with the load-plugin
-    /// "not on disk → silently skipped" rule.
+    /// still runs and an empty `new_cmds` list is returned — consistent with
+    /// the `load-plugin` "not on disk → silently skipped" rule.
     pub(crate) fn reload_plugin(
         &mut self,
         plugin_name: &str,
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
-    ) -> Result<(), String> {
-        self.teardown_plugin(plugin_name, settings, keymap)?;
+        builtin_names: std::collections::HashSet<String>,
+    ) -> Result<(Vec<String>, Vec<SteelCmdDef>), String> {
+        let cmds_to_remove = self.teardown_plugin(plugin_name, settings, keymap)?;
 
         let plugin_id = PluginId::new(plugin_name);
         let path = builtins::plugins::resolve_path_for_name(
@@ -336,8 +399,11 @@ impl ScriptingHost {
             &self.ctx.data_dir,
         ).map_err(|e| format!("reload-plugin: {e}"))?;
 
-        let Some(path) = path else { return Ok(()); };
-        self.eval_plugin_with_attribution(&plugin_id, &path, settings, keymap)
+        let new_cmds = match path {
+            Some(p) => self.eval_plugin_with_attribution(&plugin_id, &p, settings, keymap, builtin_names)?,
+            None    => Vec::new(),
+        };
+        Ok((cmds_to_remove, new_cmds))
     }
 
     /// Evaluate a plugin file with `plugin_id` on the attribution stack.
@@ -353,7 +419,8 @@ impl ScriptingHost {
         path: &std::path::Path,
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
-    ) -> Result<(), String> {
+        builtin_names: std::collections::HashSet<String>,
+    ) -> Result<Vec<SteelCmdDef>, String> {
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
 
@@ -372,6 +439,8 @@ impl ScriptingHost {
                 declared_plugins: Vec::new(),
                 loaded_plugins: Vec::new(),
                 interrupt_flag: Arc::clone(&self.interrupt_flag),
+                builtin_cmd_names: builtin_names,
+                pending_steel_cmds: Vec::new(),
             });
         });
 
@@ -402,12 +471,14 @@ impl ScriptingHost {
         cancel.store(true, Ordering::Relaxed);
         self.interrupt_flag.store(false, Ordering::Relaxed);
 
+        let mut steel_cmds = Vec::new();
         EVAL_CTX.with(|cell| {
             if let Some(ctx) = cell.borrow_mut().take() {
                 *settings = ctx.settings;
                 *keymap   = ctx.keymap;
                 self.ctx.plugin_stack  = ctx.plugin_stack;
                 self.ctx.ledger_stack  = ctx.ledger_stack;
+                steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
 
@@ -415,7 +486,63 @@ impl ScriptingHost {
         // if the plugin itself left the stack imbalanced via an error path.
         self.ctx.plugin_stack.pop();
 
-        result
+        result.map(|()| steel_cmds)
+    }
+
+    /// Process `PendingSteelCmd`s collected during an eval:
+    /// register each lambda in the engine's global namespace and record a
+    /// ledger entry.  Returns the `SteelCmdDef`s for the caller to register
+    /// in the `CommandRegistry`.
+    fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {
+        let mut defs = Vec::new();
+        for cmd in pending {
+            let steel_proc = format!("%hume-cmd-{}", cmd.name);
+            // Register (or overwrite) the lambda under its internal name.
+            self.engine.register_value(&steel_proc, cmd.proc);
+            // Record a ledger entry so teardown knows to remove this command.
+            let ledger_key = format!("cmd:{}", cmd.name);
+            let prior_owner = self.ctx.ledger_stack.owner_of(&ledger_key);
+            if let ledger::Owner::Plugin(ref plugin_id) = cmd.current_owner {
+                self.ctx.ledger_stack.record(
+                    plugin_id,
+                    ledger_key,
+                    prior_owner,
+                    String::new(), // commands always start fresh (ownership rules prevent shadowing)
+                );
+            }
+            defs.push(SteelCmdDef {
+                name: cmd.name,
+                doc: cmd.doc,
+                steel_proc,
+            });
+        }
+        defs
+    }
+
+    /// Invoke a Steel proc by its internal engine name and return the list of
+    /// commands it queued via `(call-command! …)`.
+    ///
+    /// Sets up [`builtins::commands::CMD_QUEUE`] before the call and drains it
+    /// afterwards.  The caller (the `SteelBacked` dispatch arm in
+    /// `editor/mappings.rs`) executes the returned commands via
+    /// `execute_keymap_command`.
+    pub(crate) fn call_steel_cmd(&mut self, steel_proc: &str) -> Result<Vec<String>, String> {
+        builtins::commands::CMD_QUEUE.with(|cell| {
+            *cell.borrow_mut() = Some(Vec::new());
+        });
+
+        let result = self
+            .engine
+            .compile_and_run_raw_program(format!("({steel_proc})"))
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+
+        let queue = builtins::commands::CMD_QUEUE.with(|cell| {
+            cell.borrow_mut().take().unwrap_or_default()
+        });
+
+        result?;
+        Ok(queue)
     }
 }
 

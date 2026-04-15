@@ -142,6 +142,21 @@ pub(crate) enum MappableCommand {
         /// extendable (implicit). Only EditorCmd needs an explicit flag.
         extendable: bool,
     },
+    /// A command implemented as a Steel (Scheme) lambda.
+    ///
+    /// `steel_proc` is the name under which the lambda is registered in the
+    /// Steel engine's global namespace (e.g. `"%hume-cmd-my-command"`).
+    /// Dispatched by [`crate::scripting::ScriptingHost::call_steel_cmd`], which
+    /// evaluates `(steel_proc)` and drains the resulting `CMD_QUEUE`.
+    ///
+    /// Not repeatable, not jump, not visual-line, not extendable — these can be
+    /// added as optional flags once the use-cases emerge.
+    SteelBacked {
+        name: Cow<'static, str>,
+        doc: Cow<'static, str>,
+        /// Name of the lambda in Steel's global namespace.
+        steel_proc: String,
+    },
 }
 
 impl MappableCommand {
@@ -151,7 +166,8 @@ impl MappableCommand {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
-            | Self::EditorCmd { name, .. } => name.as_ref(),
+            | Self::EditorCmd { name, .. }
+            | Self::SteelBacked { name, .. } => name.as_ref(),
         }
     }
 
@@ -162,7 +178,8 @@ impl MappableCommand {
             Self::Motion { doc, .. }
             | Self::Selection { doc, .. }
             | Self::Edit { doc, .. }
-            | Self::EditorCmd { doc, .. } => doc.as_ref(),
+            | Self::EditorCmd { doc, .. }
+            | Self::SteelBacked { doc, .. } => doc.as_ref(),
         }
     }
 
@@ -172,7 +189,7 @@ impl MappableCommand {
     /// buffer. Edit and EditorCmd commands opt in explicitly at registration.
     pub(crate) fn is_repeatable(&self) -> bool {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } => false,
+            Self::Motion { .. } | Self::Selection { .. } | Self::SteelBacked { .. } => false,
             Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
         }
     }
@@ -185,7 +202,7 @@ impl MappableCommand {
     pub(crate) fn is_jump(&self) -> bool {
         match self {
             Self::Motion { jump, .. } | Self::EditorCmd { jump, .. } => *jump,
-            Self::Selection { .. } | Self::Edit { .. } => false,
+            Self::Selection { .. } | Self::Edit { .. } | Self::SteelBacked { .. } => false,
         }
     }
 
@@ -208,7 +225,7 @@ impl MappableCommand {
     pub(crate) fn is_extendable(&self) -> bool {
         match self {
             Self::Motion { .. } | Self::Selection { .. } => true,
-            Self::Edit { .. } => false,
+            Self::Edit { .. } | Self::SteelBacked { .. } => false,
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
@@ -295,9 +312,19 @@ impl CommandRegistry {
             MappableCommand::Motion { name, .. }
             | MappableCommand::Selection { name, .. }
             | MappableCommand::Edit { name, .. }
-            | MappableCommand::EditorCmd { name, .. } => name.clone(),
+            | MappableCommand::EditorCmd { name, .. }
+            | MappableCommand::SteelBacked { name, .. } => name.clone(),
         };
         self.commands.insert(key, Command::Mappable(cmd));
+    }
+
+    /// Remove a mappable command by name.  No-op if absent or if the name
+    /// resolves to a typed command.  Used when a plugin is unloaded to remove
+    /// the commands it defined via `(define-command! …)`.
+    pub(crate) fn unregister(&mut self, name: &str) {
+        if matches!(self.commands.get(name), Some(Command::Mappable(_))) {
+            self.commands.remove(name);
+        }
     }
 
     /// Register a typed command.

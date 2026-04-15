@@ -572,6 +572,19 @@ impl Editor {
                         self.report(Severity::Error, e.0);
                     }
                 }
+                MappableCommand::SteelBacked { ref steel_proc, .. } => {
+                    let queue = if let Some(host) = self.scripting.as_mut() {
+                        match host.call_steel_cmd(&steel_proc) {
+                            Ok(q) => q,
+                            Err(e) => { self.report(Severity::Error, e); return; }
+                        }
+                    } else {
+                        return;
+                    };
+                    for cmd_name in queue {
+                        self.execute_keymap_command(cmd_name.into(), count, extend);
+                    }
+                }
             }
 
             // ── Jump list: record if this was a jump ─────────────────────────

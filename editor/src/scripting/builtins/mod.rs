@@ -4,6 +4,7 @@
 //! the Scheme bootstrap that defines `load-plugin`.  This must be called once
 //! during [`ScriptingHost::new`] before any `eval_init` call.
 
+pub(crate) mod commands;
 pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
 pub(crate) mod plugins;
@@ -78,6 +79,10 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Plugin introspection
     engine.register_value("loaded-plugins",   SteelVal::FuncV(plugins::loaded_plugins));
     engine.register_value("declared-plugins", SteelVal::FuncV(plugins::declared_plugins));
+
+    // Steel command definition and composition
+    engine.register_value("define-command!", SteelVal::FuncV(commands::define_command));
+    engine.register_value("call-command!",   SteelVal::FuncV(commands::call_command));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm, with no TLS context — safe because the

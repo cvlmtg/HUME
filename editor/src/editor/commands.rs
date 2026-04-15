@@ -793,8 +793,26 @@ pub(super) fn typed_messages(ed: &mut Editor, _arg: Option<&str>, _force: bool) 
 pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let name = arg.ok_or_else(|| CommandError("Usage: :reload-plugin <name>".into()))?;
     if let Some(host) = ed.scripting.as_mut() {
-        host.reload_plugin(name, &mut ed.settings, &mut ed.keymap)
-            .map_err(CommandError)?;
+        let builtin_names: std::collections::HashSet<String> =
+            ed.registry.names().map(String::from).collect();
+        let (cmds_to_remove, new_cmds) =
+            host.reload_plugin(name, &mut ed.settings, &mut ed.keymap, builtin_names)
+                .map_err(CommandError)?;
+        for cmd_name in cmds_to_remove {
+            ed.registry.unregister(&cmd_name);
+        }
+        for def in new_cmds {
+            if ed.registry.get_mappable(&def.name).is_some() {
+                ed.report(Severity::Error, format!(
+                    "define-command!: '{}' conflicts with existing command", def.name));
+            } else {
+                ed.registry.register(super::registry::MappableCommand::SteelBacked {
+                    name: def.name.into(),
+                    doc: def.doc.into(),
+                    steel_proc: def.steel_proc,
+                });
+            }
+        }
         ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
     }
     Ok(())
