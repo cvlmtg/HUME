@@ -29,6 +29,14 @@ thread_local! {
     /// Accessing this outside a Steel command invocation raises a Steel error.
     pub(crate) static CMD_QUEUE: RefCell<Option<Vec<String>>> = RefCell::new(None);
 
+    /// Snapshot of the command-owner index for the current eval or command
+    /// invocation.  Populated from `ScriptFacingCtx::cmd_owners` before each
+    /// eval and before each `call_steel_cmd`.  Cleared afterwards.
+    ///
+    /// Maps command name → owner display string (`"hume"`, `"user"`, plugin id).
+    pub(crate) static COMMAND_OWNER_CACHE: RefCell<std::collections::HashMap<String, String>> =
+        RefCell::new(std::collections::HashMap::new());
+
     /// WaitChar command requested by `(request-wait-char! cmd)`.
     ///
     /// `Some(None)` = inside invocation, no request yet.
@@ -193,6 +201,33 @@ pub(crate) fn cmd_arg(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// `(command-plugin name)` — return the owner of command `name` as a string.
+///
+/// Returns the plugin id string (e.g. `"core:plum"`, `"user/repo"`) if the
+/// command was registered by a plugin, `"user"` if registered from top-level
+/// `init.scm`, or `"hume"` for built-in Rust commands (not Steel-registered).
+///
+/// Valid during both eval (e.g. conflict detection in `load-plugin`) and
+/// command execution.  Returns `"hume"` for any name not in the owner cache
+/// (unknown commands are implicitly built-in).
+pub(crate) fn command_plugin(args: &[SteelVal]) -> SteelResult {
+    if args.len() != 1 {
+        steel::stop!(ArityMismatch => "command-plugin expects 1 arg (name), got {}", args.len());
+    }
+    let name = match &args[0] {
+        SteelVal::StringV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "command-plugin: arg must be a string, got {:?}", args[0]),
+    };
+    COMMAND_OWNER_CACHE.with(|cell| {
+        let owner = cell.borrow()
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| "hume".to_string());
+        Ok(SteelVal::StringV(owner.into()))
+    })
+}
+
 /// `(pending-char)` — return the pending character as a one-character string,
 /// or `#f` if no character is waiting.
 ///
@@ -312,5 +347,35 @@ mod tests {
     fn pending_char_arity_error() {
         let err = pending_char(&[SteelVal::BoolV(false)]).unwrap_err();
         assert!(err.to_string().contains("expects 0 args"), "got: {err}");
+    }
+
+    #[test]
+    fn command_plugin_arity_error() {
+        let err = command_plugin(&[]).unwrap_err();
+        assert!(err.to_string().contains("expects 1 arg"), "got: {err}");
+    }
+
+    #[test]
+    fn command_plugin_type_error() {
+        let err = command_plugin(&[SteelVal::IntV(1)]).unwrap_err();
+        assert!(err.to_string().contains("string"), "got: {err}");
+    }
+
+    #[test]
+    fn command_plugin_unknown_returns_hume() {
+        // Empty cache — any name not in the cache returns "hume".
+        COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
+        let result = command_plugin(&[SteelVal::StringV("move-right".into())]).unwrap();
+        assert_eq!(result, SteelVal::StringV("hume".into()));
+    }
+
+    #[test]
+    fn command_plugin_known_returns_owner() {
+        COMMAND_OWNER_CACHE.with(|cell| {
+            cell.borrow_mut().insert("my-cmd".to_string(), "core:plum".to_string());
+        });
+        let result = command_plugin(&[SteelVal::StringV("my-cmd".into())]).unwrap();
+        assert_eq!(result, SteelVal::StringV("core:plum".into()));
+        COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
     }
 }
