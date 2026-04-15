@@ -107,12 +107,11 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()
     // own files even if the group-change portion is rejected.
     #[cfg(unix)]
     {
-        use std::os::unix::io::AsRawFd;
         use nix::unistd::{fchown, Gid, Uid};
         // Best-effort: succeeds only as root or matching uid; ignore errors so
         // a non-privileged user can still save their own files.
         let _ = fchown(
-            tmp.as_file().as_raw_fd(),
+            tmp.as_file(),
             Some(Uid::from_raw(meta.uid)),
             Some(Gid::from_raw(meta.gid)),
         );
