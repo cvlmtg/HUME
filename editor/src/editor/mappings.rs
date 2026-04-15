@@ -150,7 +150,7 @@ impl Editor {
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
                 let extend = (self.mode == EditorMode::Extend) || wc.ctrl_extend;
-                self.execute_keymap_command(wc.cmd_name.clone(), count, extend);
+                self.execute_keymap_command(wc.cmd_name.clone(), count, extend, None);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -306,7 +306,7 @@ impl Editor {
                     self.pending_keys.clear();
                     let count = self.count.take().unwrap_or(1);
                     self.explicit_count = false;
-                    self.execute_keymap_command(cmd.name.clone(), count, false);
+                    self.execute_keymap_command(cmd.name.clone(), count, false, None);
                     return;
                 }
                 WalkResult::Interior { .. } => {
@@ -410,7 +410,7 @@ impl Editor {
                 let raw_count = self.count.take();
                 self.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
-                self.execute_keymap_command(cmd.name.clone(), count, extend);
+                self.execute_keymap_command(cmd.name.clone(), count, extend, None);
                 self.explicit_count = false;
             }
             WalkResult::WaitChar(mut wc) => {
@@ -455,7 +455,7 @@ impl Editor {
         let trie_result = self.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                self.execute_keymap_command(cmd.name.clone(), 1, false);
+                self.execute_keymap_command(cmd.name.clone(), 1, false, None);
                 return;
             }
             WalkResult::NoMatch => {}
@@ -531,7 +531,7 @@ impl Editor {
     /// `extend` is converted to `MotionMode::Extend` / `MotionMode::Move` and
     /// passed to the command function. The command itself decides what to do
     /// with the mode — motions and selections branch on it; edits ignore it.
-    pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool) {
+    pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool, cmd_arg: Option<String>) {
         let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
             return;
@@ -574,7 +574,7 @@ impl Editor {
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(&steel_proc, char_arg) {
+                        match host.call_steel_cmd(&steel_proc, char_arg, cmd_arg) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }
@@ -583,7 +583,7 @@ impl Editor {
                     };
                     self.flush_script_messages();
                     for cmd_name in queue {
-                        self.execute_keymap_command(cmd_name.into(), count, extend);
+                        self.execute_keymap_command(cmd_name.into(), count, extend, None);
                     }
                     if let Some(wc) = wait_char_cmd {
                         self.wait_char = Some(WaitCharPending {
@@ -917,7 +917,11 @@ impl Editor {
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers.
             // `cmd` is already the canonical name — no need to clone the command.
-            self.execute_keymap_command(cmd.to_owned().into(), 1, false);
+            // Pass the arg string so Steel commands can read it via `(cmd-arg)`.
+            self.execute_keymap_command(
+                cmd.to_owned().into(), 1, false,
+                arg.map(|s| s.to_owned()),
+            );
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }

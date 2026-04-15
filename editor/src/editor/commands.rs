@@ -313,7 +313,7 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize, _mode: MotionMode) -> Re
     // extend=false because the replayed command was already resolved to its
     // final form (the resolved name is what gets stored in RepeatableAction).
     // Clone the name while `action` is locally owned (moved out via `.take()`).
-    ed.execute_keymap_command(action.command.clone(), effective_count, false);
+    ed.execute_keymap_command(action.command.clone(), effective_count, false, None);
 
     // Feed recorded insert keystrokes through the normal insert handler.
     // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.

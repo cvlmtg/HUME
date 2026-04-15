@@ -43,6 +43,14 @@ thread_local! {
     /// `None` if no char was waiting (or outside a command invocation).
     /// Accessible via the `(pending-char)` Steel builtin.
     pub(crate) static PENDING_CHAR: RefCell<Option<char>> = RefCell::new(None);
+
+    /// The command-line argument string for the current Steel command
+    /// (e.g. `:plum-install user/repo` sets arg to `"user/repo"`).
+    ///
+    /// `Some(arg)` when the command was invoked via `:cmd arg` in the mini-buffer;
+    /// `None` when invoked via a key binding (no arg) or outside a command invocation.
+    /// Accessible via the `(cmd-arg)` Steel builtin.
+    pub(crate) static CMD_ARG: RefCell<Option<String>> = RefCell::new(None);
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
@@ -169,6 +177,22 @@ pub(crate) fn request_wait_char(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// `(cmd-arg)` — return the command-line argument string as a string,
+/// or `#f` if no argument was supplied.
+///
+/// Meaningful only when the command was invoked via `:cmd arg` in the
+/// mini-buffer.  Returns `#f` when invoked via a key binding or from
+/// top-level `init.scm`.
+pub(crate) fn cmd_arg(args: &[SteelVal]) -> SteelResult {
+    if !args.is_empty() {
+        steel::stop!(ArityMismatch => "cmd-arg expects 0 args, got {}", args.len());
+    }
+    CMD_ARG.with(|cell| match cell.borrow().as_deref() {
+        Some(s) => Ok(SteelVal::StringV(s.to_owned().into())),
+        None    => Ok(SteelVal::BoolV(false)),
+    })
+}
+
 /// `(pending-char)` — return the pending character as a one-character string,
 /// or `#f` if no character is waiting.
 ///
@@ -245,6 +269,27 @@ mod tests {
         request_wait_char(&[SteelVal::StringV("replace".into())]).unwrap();
         let result = WAIT_CHAR_REQUEST.with(|cell| cell.borrow_mut().take().flatten());
         assert_eq!(result, Some("replace".to_string()));
+    }
+
+    #[test]
+    fn cmd_arg_returns_false_when_none() {
+        CMD_ARG.with(|cell| *cell.borrow_mut() = None);
+        let result = cmd_arg(&[]).unwrap();
+        assert_eq!(result, SteelVal::BoolV(false));
+    }
+
+    #[test]
+    fn cmd_arg_returns_string_when_set() {
+        CMD_ARG.with(|cell| *cell.borrow_mut() = Some("user/repo".to_string()));
+        let result = cmd_arg(&[]).unwrap();
+        assert_eq!(result, SteelVal::StringV("user/repo".into()));
+        CMD_ARG.with(|cell| *cell.borrow_mut() = None);
+    }
+
+    #[test]
+    fn cmd_arg_arity_error() {
+        let err = cmd_arg(&[SteelVal::BoolV(false)]).unwrap_err();
+        assert!(err.to_string().contains("expects 0 args"), "got: {err}");
     }
 
     #[test]
