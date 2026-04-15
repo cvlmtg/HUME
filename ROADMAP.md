@@ -127,6 +127,15 @@
 - [ ] **Tree-sitter structural features**: text objects (`locals.scm`, `textobjects.scm`), scope-aware local rename (fallback when LSP unavailable).
 
 ### Future
+
+- **`(set-buffer-option! key value)` Steel builtin**: lets init.scm and plugins set per-buffer options (e.g. `tab-width` per filetype) rather than always clobbering the global default.
+  Required pieces:
+  1. **Active-buffer `BufferOverrides` in `EvalCtx`**: add `active_overrides: BufferOverrides` to `EvalCtx` (and a corresponding field on `ScriptFacingCtx` so it survives between evals). The builtin writes there; `set-option!` continues to write to `EditorSettings`.
+  2. **Per-buffer override storage**: `Document` (or `Editor`) needs a persistent `BufferOverrides` slot so the overrides set during one command invocation survive to the next frame. Existing `BufferOverrides` is currently computed fresh each call — it needs to be stored on the buffer and merged at render/edit time.
+  3. **Ledger encoding for buffer-scoped keys**: the ledger key must encode both the setting name and the target buffer (e.g. `"buf:tab-width"` — or a richer key once multi-buffer lands). `teardown_plugin` and `restore_ledger_entry` in `scripting/mod.rs` must handle a new `buf:…` prefix alongside `cmd:…` and plain setting keys.
+  4. **`set-buffer-option!` builtin** in `builtins/settings.rs`: same shape as `set-option!` but calls `apply_setting(SettingScope::Buffer, …)` on `ctx.active_overrides`. Valid only during `call_steel_cmd` (where a buffer is active); raise an error if called at init time.
+  Note: meaningful only after multi-buffer lands (M6+); the "active buffer" concept is currently singular. Defer until there is a real per-filetype use case (e.g. `(set-buffer-option! "tab-width" 2)` from a Rust LSP plugin).
+
 - **Multiple buffers / splits**: large layout/architecture work; single-document model is fine until then.
 - **File picker / fuzzy finder** (Helix-style picker): depends on multiple buffers.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
