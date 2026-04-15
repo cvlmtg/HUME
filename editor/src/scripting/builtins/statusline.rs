@@ -87,7 +87,7 @@ pub(crate) fn configure_statusline(args: &[SteelVal]) -> SteelResult {
     let center = parse_element_list(&args[1], "center")?;
     let right  = parse_element_list(&args[2], "right")?;
 
-    super::with_ctx(|ctx| {
+    super::with_ctx("configure-statusline!", |ctx| {
         ctx.settings.statusline = StatusLineConfig { left, center, right };
         Ok(SteelVal::Void)
     })

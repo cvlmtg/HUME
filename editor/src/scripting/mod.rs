@@ -640,22 +640,22 @@ impl ScriptingHost {
     ///
     /// A watchdog thread enforces `settings.steel_command_budget_ms`.  If the
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
-    /// interruption).  On error the snapshot is restored so any partial state
-    /// mutations from the command body are rolled back.
+    /// interruption).
+    ///
+    /// No rollback on error: `EVAL_CTX` is not armed during this call, so
+    /// `(set-option!)`, `(bind-key!)`, and similar builtins cannot be called from
+    /// a command body (they raise a Steel error via `with_ctx`).  Commands that queue
+    /// further Rust commands via `(call-command! …)` dispatch those after returning
+    /// `Ok`; on error the queue is dropped, so no further dispatch occurs.  This
+    /// matches the Rust-side policy: partial effects from commands that ran before
+    /// a failure stay applied.
     pub(crate) fn call_steel_cmd(
         &mut self,
         steel_proc: &str,
         pending_char: Option<char>,
         cmd_arg: Option<String>,
-        settings: &mut EditorSettings,
-        keymap: &mut Keymap,
+        settings: &EditorSettings,
     ) -> Result<(Vec<String>, Option<String>), String> {
-        // Snapshot for all-or-nothing rollback on error (mirrors eval_source_raw).
-        // EVAL_CTX is not armed here, so builtins that mutate settings/keymap
-        // (set-option!, bind-key!) cannot be called directly from a command body;
-        // the snapshot is defensive forward-proofing.
-        let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
-
         // Watchdog with the (typically tighter) command budget.
         let budget_ms = settings.steel_command_budget_ms;
         let watchdog = EvalWatchdog::arm(
@@ -732,11 +732,6 @@ impl ScriptingHost {
         // Drain log messages into pending_messages regardless of success/failure.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
-
-        // Rollback on error: discard any partial state mutations.
-        if result.is_err() {
-            snapshot.restore(settings, keymap, &mut self.ctx);
-        }
 
         result?;
         Ok((queue, wait_char))
@@ -1380,7 +1375,7 @@ mod tests {
         s.steel_command_budget_ms = 50;
 
         let start = std::time::Instant::now();
-        let err = h.call_steel_cmd(&steel_proc, None, None, &mut s, &mut km)
+        let err = h.call_steel_cmd(&steel_proc, None, None, &s)
             .unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
@@ -1390,33 +1385,53 @@ mod tests {
                 "interrupt_flag must be false after call_steel_cmd returns");
     }
 
-    /// When a Steel command mutates nothing (cmd_owners, etc.) and then aborts,
-    /// snapshot restore is a no-op — a sanity check that rollback doesn't corrupt.
-    /// This test also verifies the budget is read from settings at call time.
+    /// Command bodies cannot mutate settings/keymap (EVAL_CTX is not armed during
+    /// call_steel_cmd; with_ctx would panic).  This test verifies that after a
+    /// watchdog interrupt the settings remain at their pre-call values — not because
+    /// of rollback, but because no mutation was possible in the first place.
+    /// Also verifies the budget is read from settings at call time.
     #[test]
-    fn call_steel_cmd_rollback_leaves_settings_unchanged() {
+    fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
         let mut h  = host();
         let mut s  = EditorSettings::default();
         let mut km = Keymap::default();
 
-        // Register a command that simply loops (can't call set-option! from
-        // call_steel_cmd because EVAL_CTX is not armed; rollback is still
-        // tested via cmd_owners / ledger state remaining consistent).
         h.eval_source(
             r#"(define-command! "looper" "loop" (lambda () (let loop () (hume/yield!) (loop))))"#,
             &mut s, &mut km,
         ).unwrap();
         let steel_proc = "%hume-cmd-looper".to_string();
 
-        // Establish a known state.
         assert_eq!(s.tab_width, 4, "precondition");
         s.steel_command_budget_ms = 50;
 
-        let err = h.call_steel_cmd(&steel_proc, None, None, &mut s, &mut km)
+        let err = h.call_steel_cmd(&steel_proc, None, None, &s)
             .unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
-        // Settings must be unchanged — rollback didn't over-restore anything.
-        assert_eq!(s.tab_width, 4, "tab-width must be unchanged after rollback");
+        assert_eq!(s.tab_width, 4, "tab-width must be unchanged after interrupt");
+    }
+
+    /// Calling an EVAL_CTX-dependent builtin from a Steel command body must
+    /// raise a Steel error — not panic — since EVAL_CTX is None during
+    /// call_steel_cmd.  This test would have panicked before with_ctx was fixed.
+    #[test]
+    fn call_steel_cmd_set_option_from_body_returns_steel_error() {
+        let mut h  = host();
+        let mut s  = EditorSettings::default();
+        let mut km = Keymap::default();
+
+        h.eval_source(
+            r#"(define-command! "try-set" "" (lambda () (set-option! "tab-width" 8)))"#,
+            &mut s, &mut km,
+        ).unwrap();
+
+        let err = h.call_steel_cmd("%hume-cmd-try-set", None, None, &s)
+            .unwrap_err();
+
+        assert!(err.contains("set-option!"),
+            "error must name the failing builtin; got: {err}");
+        // Mutation never happened, so the setting is unchanged.
+        assert_eq!(s.tab_width, 4, "tab-width must be untouched");
     }
 }

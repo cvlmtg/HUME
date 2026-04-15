@@ -37,16 +37,24 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 
 /// Call `f` with a mutable reference to the current eval context.
 ///
-/// Every builtin uses this to access editor state.  Panics if called outside
-/// a [`ScriptingHost::eval_init`] call — i.e., when the TLS slot is `None`.
-/// In practice this only happens if someone calls a builtin from a context
-/// that is not an active eval (programming error).
-pub(crate) fn with_ctx<R>(f: impl FnOnce(&mut EvalCtx) -> R) -> R {
-    super::EVAL_CTX.with(|cell| {
-        f(cell
-            .borrow_mut()
-            .as_mut()
-            .expect("scripting builtin called outside eval_init"))
+/// `name` is the builtin's Steel name (e.g. `"set-option!"`) and is included
+/// in the error message when `EVAL_CTX` is not armed.
+///
+/// Returns a Steel error when `EVAL_CTX` is `None`, which happens when a
+/// builtin is called from a `SteelBacked` command body at keystroke time
+/// (only `YIELD_FLAG` and the per-call TLS slots are armed then; `EVAL_CTX`
+/// is only live during `eval_source_raw`, i.e. init.scm and plugin loads).
+/// This turns an otherwise unavoidable process panic into a recoverable error
+/// that surfaces via the normal message log.
+pub(crate) fn with_ctx(
+    name: &'static str,
+    f: impl FnOnce(&mut EvalCtx) -> Result<SteelVal, SteelErr>,
+) -> Result<SteelVal, SteelErr> {
+    super::EVAL_CTX.with(|cell| match cell.borrow_mut().as_mut() {
+        Some(ctx) => f(ctx),
+        None => steel::stop!(Generic =>
+            "{}: only valid during init.scm or plugin load, not from a Steel command body",
+            name),
     })
 }
 
