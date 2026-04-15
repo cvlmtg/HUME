@@ -58,7 +58,7 @@
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
 ;; md + char → delete surround (any recognised delimiter)
-(bind-wait-char! "normal" "md" "helix-delete-surround")
+(bind-wait-char! "normal" "m d" "helix-delete-surround")
 
 ;; mr + char → replace surround (select old pair, then wait for new char)
-(bind-wait-char! "normal" "mr" "helix-replace-surround")
+(bind-wait-char! "normal" "m r" "helix-replace-surround")
