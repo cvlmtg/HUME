@@ -48,7 +48,13 @@ pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
             format!("git-clone: cannot resolve parent of '{dest}': {e}")))?;
 
-    sandbox_write_check(&canonical_parent.join(dest_path.file_name().unwrap_or_default()), &dest)?;
+    // file_name() is None for paths ending in "." (CurDir); has_dotdot() only
+    // rejects ".." (ParentDir).  Hard-error rather than silently joining "".
+    let file_name = dest_path.file_name().ok_or_else(|| SteelErr::new(
+        steel::rerrs::ErrorKind::Generic,
+        format!("git-clone: dest has no file name component: {dest}"),
+    ))?;
+    sandbox_write_check(&canonical_parent.join(file_name), &dest)?;
 
     // Log which git we'll invoke — useful for debugging.
     log_trace(format!("git-clone: running `git clone {url} {dest}`"));
