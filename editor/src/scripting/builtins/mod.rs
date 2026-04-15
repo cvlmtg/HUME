@@ -103,6 +103,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("call-command!",      SteelVal::FuncV(commands::call_command));
     engine.register_value("request-wait-char!", SteelVal::FuncV(commands::request_wait_char));
     engine.register_value("pending-char",       SteelVal::FuncV(commands::pending_char));
+    engine.register_value("cmd-arg",            SteelVal::FuncV(commands::cmd_arg));
 
     // Filesystem and directory access (sandboxed to <data>/plugins/ and <runtime>/plugins/)
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
