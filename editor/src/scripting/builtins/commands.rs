@@ -1,11 +1,13 @@
-//! `(define-command! name doc proc)`, `(call-command! name)`, and
+//! `(define-command! name doc proc)`, `(call! name)`, and
 //! `(request-wait-char! cmd)` builtins.
 //!
 //! Steel commands are defined as zero-argument lambdas and composed via
-//! `call-command!`, which queues named commands for dispatch after the
-//! Steel proc returns.  The actual execution happens in
+//! `call!`, which queues named commands for dispatch after the Steel proc
+//! returns.  The actual execution happens in
 //! [`crate::scripting::ScriptingHost::call_steel_cmd`], which drains the
 //! queue through the normal `execute_keymap_command` path.
+//!
+//! `call-command!` is a back-compat alias for `call!`; prefer `call!` in new code.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
 //! queue is drained, the editor enters WaitChar mode for the named command.
@@ -23,7 +25,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 // ── TLS slots ─────────────────────────────────────────────────────────────────
 
 thread_local! {
-    /// Commands queued by `(call-command! …)` during a Steel command invocation.
+    /// Commands queued by `(call! …)` (or its alias `call-command!`) during a Steel command invocation.
     ///
     /// `Some(queue)` while a `SteelBacked` command is executing; `None` otherwise.
     /// Accessing this outside a Steel command invocation raises a Steel error.
@@ -119,7 +121,7 @@ pub(crate) fn define_command(args: &[SteelVal]) -> SteelResult {
     })
 }
 
-/// `(call-command! name)`
+/// `(call! name)` — also available as `(call-command! name)` (back-compat alias)
 ///
 /// Queues `name` for execution after the current Steel command proc returns.
 /// Commands are dispatched in order through the normal keymap path, which
@@ -130,12 +132,12 @@ pub(crate) fn define_command(args: &[SteelVal]) -> SteelResult {
 pub(crate) fn call_command(args: &[SteelVal]) -> SteelResult {
     if args.len() != 1 {
         steel::stop!(ArityMismatch =>
-            "call-command! expects 1 arg (name), got {}", args.len());
+            "call! expects 1 arg (name), got {}", args.len());
     }
     let name = match &args[0] {
         SteelVal::StringV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch =>
-            "call-command!: arg must be a string, got {:?}", args[0]),
+            "call!: arg must be a string, got {:?}", args[0]),
     };
 
     CMD_QUEUE.with(|cell| {
@@ -146,7 +148,7 @@ pub(crate) fn call_command(args: &[SteelVal]) -> SteelResult {
             }
             None => Err(SteelErr::new(
                 ErrorKind::Generic,
-                "call-command!: not inside a Steel command invocation".to_string(),
+                "call!: not inside a Steel command invocation".to_string(),
             )),
         }
     })
@@ -159,7 +161,7 @@ pub(crate) fn call_command(args: &[SteelVal]) -> SteelResult {
 /// user types becomes `pending_char` and `cmd-name` is dispatched.
 ///
 /// Typical use: composing surround-select with replace.
-///   `(call-command! "surround-paren") (request-wait-char! "replace")`
+///   `(call! "surround-paren") (request-wait-char! "replace")`
 /// selects the surrounding `()` pair, then waits for the replacement char.
 ///
 /// Only valid inside a `SteelBacked` command invocation.
@@ -249,7 +251,7 @@ mod tests {
     #[test]
     fn call_command_arity_error() {
         let err = call_command(&[]).unwrap_err();
-        assert!(err.to_string().contains("expects 1 arg"), "got: {err}");
+        assert!(err.to_string().contains("call! expects 1 arg"), "got: {err}");
     }
 
     #[test]
@@ -271,6 +273,18 @@ mod tests {
         call_command(&[SteelVal::StringV("move-right".into())]).unwrap();
         let queue = CMD_QUEUE.with(|cell| cell.borrow_mut().take().unwrap());
         assert_eq!(queue, vec!["move-right"]);
+    }
+
+    /// Both `call!` and `call-command!` route to the same Rust function, so
+    /// calling it twice (once per alias) queues both names correctly.
+    #[test]
+    fn call_bang_alias_queues_same_as_call_command() {
+        CMD_QUEUE.with(|cell| *cell.borrow_mut() = Some(Vec::new()));
+        // Simulate `(call! "move-right")` — both aliases call the same fn.
+        call_command(&[SteelVal::StringV("move-right".into())]).unwrap();
+        call_command(&[SteelVal::StringV("move-left".into())]).unwrap();
+        let queue = CMD_QUEUE.with(|cell| cell.borrow_mut().take().unwrap());
+        assert_eq!(queue, vec!["move-right", "move-left"]);
     }
 
     #[test]
