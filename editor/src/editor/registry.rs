@@ -327,6 +327,24 @@ impl CommandRegistry {
         }
     }
 
+    /// Collect the canonical names of every currently-registered Steel-backed
+    /// command.  Used by `:reload-config` to clear stale `SteelBacked` entries
+    /// from the registry before re-evaluating `init.scm` with a fresh engine —
+    /// otherwise those names would appear in `builtin_cmd_names` and cause
+    /// every `(define-command!)` in the re-run init to raise a phantom
+    /// "conflicts with a built-in command" error.
+    pub(crate) fn steel_backed_names(&self) -> Vec<String> {
+        self.commands
+            .values()
+            .filter_map(|cmd| match cmd {
+                Command::Mappable(MappableCommand::SteelBacked { name, .. }) => {
+                    Some(name.as_ref().to_string())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into
@@ -865,5 +883,60 @@ mod tests {
         assert_eq!(reg.get_typed("stc").unwrap().name, "steel-typed-cmd");
         // Not reachable as a mappable command.
         assert!(reg.get_mappable("steel-typed-cmd").is_none());
+    }
+
+    #[test]
+    fn steel_backed_names_filters_by_variant() {
+        let mut reg = CommandRegistry::with_defaults();
+        // Defaults contain no SteelBacked commands — every built-in is
+        // Motion / Selection / Edit / EditorCmd / Typed.
+        assert!(reg.steel_backed_names().is_empty());
+
+        // Register two SteelBacked commands alongside a non-SteelBacked one.
+        reg.register(MappableCommand::SteelBacked {
+            name: Cow::Owned("my-steel-cmd".to_string()),
+            doc: Cow::Borrowed("doc"),
+            steel_proc: "%hume-cmd-my-steel-cmd".to_string(),
+        });
+        reg.register(MappableCommand::SteelBacked {
+            name: Cow::Owned("another-steel-cmd".to_string()),
+            doc: Cow::Borrowed("doc"),
+            steel_proc: "%hume-cmd-another-steel-cmd".to_string(),
+        });
+        // An EditorCmd with a name that could be mistaken for a Steel proc —
+        // the helper must still filter it out by variant, not by name shape.
+        fn noop(_ed: &mut super::super::Editor, _count: usize, _mode: crate::ops::MotionMode)
+            -> Result<(), crate::core::error::CommandError> { Ok(()) }
+        reg.register(MappableCommand::EditorCmd {
+            name: Cow::Owned("%hume-cmd-decoy".to_string()),
+            doc: Cow::Borrowed("doc"),
+            fun: noop,
+            repeatable: false,
+            jump: false,
+            visual_move: false,
+            extendable: false,
+        });
+
+        let mut names = reg.steel_backed_names();
+        names.sort();
+        assert_eq!(names, vec!["another-steel-cmd".to_string(), "my-steel-cmd".to_string()]);
+    }
+
+    #[test]
+    fn unregister_after_steel_backed_names_clears_them() {
+        let mut reg = CommandRegistry::with_defaults();
+        reg.register(MappableCommand::SteelBacked {
+            name: Cow::Owned("plugin-cmd".to_string()),
+            doc: Cow::Borrowed("doc"),
+            steel_proc: "%hume-cmd-plugin-cmd".to_string(),
+        });
+        assert_eq!(reg.steel_backed_names(), vec!["plugin-cmd".to_string()]);
+
+        // The :reload-config cleanup pattern: collect names, then unregister.
+        for name in reg.steel_backed_names() {
+            reg.unregister(&name);
+        }
+        assert!(reg.steel_backed_names().is_empty());
+        assert!(reg.get_mappable("plugin-cmd").is_none());
     }
 }

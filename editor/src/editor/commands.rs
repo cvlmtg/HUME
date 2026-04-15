@@ -820,8 +820,19 @@ pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bo
 
 /// `:reload-config` — drop the scripting engine and re-evaluate `init.scm`
 /// from scratch, restoring a clean slate.
+///
+/// Stale `SteelBacked` entries from the previous init must be removed from the
+/// registry before `init_scripting()` runs: otherwise the new `builtin_names`
+/// set (built from `registry.names()`) would contain every Steel command from
+/// the prior load, and every `(define-command!)` in the re-evaluated
+/// `init.scm` would fail the builtin-conflict check in
+/// `editor/src/scripting/builtins/commands.rs` with "conflicts with a built-in
+/// command and cannot be redefined".
 pub(super) fn typed_reload_config(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     ed.scripting = None;
+    for name in ed.registry.steel_backed_names() {
+        ed.registry.unregister(&name);
+    }
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
     Ok(())
