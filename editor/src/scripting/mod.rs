@@ -18,6 +18,7 @@
 //!   thread + `(hume/yield!)` cooperative interruption builtin.
 
 pub(crate) mod builtins;
+pub(crate) mod keys;
 pub(crate) mod ledger;
 
 use std::cell::RefCell;
@@ -233,9 +234,13 @@ impl ScriptingHost {
                 *keymap = ctx.keymap;
                 self.ctx.plugin_stack = ctx.plugin_stack;
                 self.ctx.ledger_stack = ctx.ledger_stack;
-                // Pending Steel commands from eval_source are processed but
-                // discarded — test callers don't supply a CommandRegistry.
-                self.process_pending_cmds(ctx.pending_steel_cmds);
+                // Only process pending commands on success — on error the snapshot
+                // rolls back all state; skipping this avoids orphaned lambdas in
+                // the Steel engine. Test callers don't supply a CommandRegistry so
+                // the return value is always discarded here anyway.
+                if result.is_ok() {
+                    self.process_pending_cmds(ctx.pending_steel_cmds);
+                }
             }
         });
 
@@ -332,7 +337,8 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<Vec<String>, String> {
-        let plugin_id = PluginId::new(plugin_name);
+        let plugin_id = PluginId::parse(plugin_name)
+            .map_err(|e| format!("teardown-plugin: {e}"))?;
         let to_restore = self.ctx.ledger_stack.unload(&plugin_id);
 
         let mut cmds_to_remove = Vec::new();
@@ -369,7 +375,8 @@ impl ScriptingHost {
     ) -> Result<(Vec<String>, Vec<SteelCmdDef>), String> {
         let cmds_to_remove = self.teardown_plugin(plugin_name, settings, keymap)?;
 
-        let plugin_id = PluginId::new(plugin_name);
+        let plugin_id = PluginId::parse(plugin_name)
+            .map_err(|e| format!("reload-plugin: {e}"))?;
         let path = builtins::plugins::resolve_path_for_name(
             plugin_name,
             self.ctx.runtime_dir.as_deref(),
@@ -502,7 +509,12 @@ impl ScriptingHost {
                 *keymap = ctx.keymap;
                 self.ctx.plugin_stack = ctx.plugin_stack;
                 self.ctx.ledger_stack = ctx.ledger_stack;
-                steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
+                // Only process pending commands on success — skipping on error
+                // avoids registering orphaned lambdas in the Steel engine that
+                // the snapshot cannot reach and undo.
+                if result.is_ok() {
+                    steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
+                }
             }
         });
 
@@ -513,7 +525,7 @@ impl ScriptingHost {
             self.ctx.plugin_stack  = plugin_stack_snap;
             self.ctx.ledger_stack  = ledger_stack_snap;
             self.ctx.cmd_owners    = cmd_owners_snap;
-            steel_cmds             = Vec::new();
+            // steel_cmds is already empty — process_pending_cmds was not called.
         }
 
         // Clear COMMAND_OWNER_CACHE — valid only for this eval.
@@ -573,6 +585,23 @@ impl ScriptingHost {
         pending_char: Option<char>,
         cmd_arg: Option<String>,
     ) -> Result<(Vec<String>, Option<String>), String> {
+        // RAII guard: clears all TLS slots on drop so that a panic inside
+        // `compile_and_run_raw_program` cannot leave stale state for the next
+        // invocation.  On the normal path the slots are already None/empty when
+        // the guard fires, so the drop is a no-op.
+        struct CallTlsGuard;
+        impl Drop for CallTlsGuard {
+            fn drop(&mut self) {
+                builtins::commands::CMD_QUEUE.with(|c| c.borrow_mut().take());
+                builtins::commands::WAIT_CHAR_REQUEST.with(|c| c.borrow_mut().take());
+                builtins::commands::PENDING_CHAR.with(|c| *c.borrow_mut() = None);
+                builtins::commands::CMD_ARG.with(|c| *c.borrow_mut() = None);
+                builtins::commands::COMMAND_OWNER_CACHE.with(|c| c.borrow_mut().clear());
+                builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take());
+            }
+        }
+        let _guard = CallTlsGuard;
+
         builtins::commands::CMD_QUEUE.with(|cell| {
             *cell.borrow_mut() = Some(Vec::new());
         });
@@ -636,7 +665,7 @@ fn restore_ledger_entry(
 ) -> Result<(), String> {
     if let Some(mode_and_seq) = keymap_ledger_mode(&entry.key) {
         let (mode, key_str) = mode_and_seq;
-        let keys = parse_key_sequence_str(key_str)?;
+        let keys = keys::parse_key_sequence(key_str)?;
         if entry.prior_value.is_empty() {
             keymap.unbind_user(mode, &keys);
         } else {
@@ -666,14 +695,6 @@ fn keymap_ledger_mode(key: &str) -> Option<(BindMode, &str)> {
         return Some((BindMode::Insert, rest));
     }
     None
-}
-
-/// Parse a key-sequence string into `Vec<KeyEvent>` for ledger restoration.
-///
-/// Delegates to the same parser used by `(bind-key!)` so the two are always
-/// in sync — ledger entries persist across reloads and must round-trip cleanly.
-fn parse_key_sequence_str(s: &str) -> Result<Vec<crossterm::event::KeyEvent>, String> {
-    builtins::keymap_bind::parse_key_sequence(s)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1129,9 +1150,7 @@ mod tests {
     /// Unknown (built-in) commands return "hume".
     #[test]
     fn command_plugin_unknown_returns_hume() {
-        let mut h = host();
-        let mut s = EditorSettings::default();
-        let mut km = Keymap::default();
+        let h = host();
 
         // "move-right" is a Rust built-in — not in cmd_owners.
         assert!(h.ctx.cmd_owners.get("move-right").is_none());

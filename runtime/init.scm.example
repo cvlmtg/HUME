@@ -1,0 +1,87 @@
+;;; init.scm.example — HUME Steel configuration reference
+;;;
+;;; Copy this file to ~/.config/hume/init.scm (or $XDG_CONFIG_HOME/hume/init.scm)
+;;; and edit to taste.  HUME evaluates it once at startup; use :reload-config
+;;; to apply changes without restarting.
+;;;
+;;; Steel is a Scheme dialect — Scheme syntax applies throughout.
+;;; See LEARNING.md for language basics; see ROADMAP.md for built-in commands.
+
+;; ── Settings ──────────────────────────────────────────────────────────────────
+;;
+;; (set-option! key value)
+;; Valid keys and their defaults:
+;;   "tab-width"          integer   4        — spaces per indent level
+;;   "auto-pairs-enabled" bool      #t       — insert matching close delimiter
+;;   "line-number-style"  string    "hybrid" — "absolute", "relative", "hybrid"
+;;   "wrap-mode"          string    "indent" — "none", "word", "indent"
+;;   "scroll-margin"      integer   3        — lines kept above/below cursor
+;;   "mouse-enabled"      bool      #t       — enable mouse support
+;;   "mouse-select"       bool      #f       — mouse drag creates a selection
+
+(set-option! "tab-width" 2)
+;; (set-option! "auto-pairs-enabled" #f)
+;; (set-option! "line-number-style" "relative")
+
+;; ── Statusline ────────────────────────────────────────────────────────────────
+;;
+;; (configure-statusline! left center right)
+;; Each section is a list of element name strings.  Valid names:
+;;   "Mode"  "Separator"  "FileName"  "Position"  "Selections"
+;;   "DirtyIndicator"  "SearchMatches"  "MiniBuf"  "MacroRecording"
+;;   "KittyProtocol"
+;;
+;; The call below reproduces the default layout.
+(configure-statusline!
+  '("Mode" "DirtyIndicator" "Separator" "FileName")  ; left
+  '()                                                  ; center
+  '("Position" "Selections" "MiniBuf" "MacroRecording"))  ; right
+
+;; ── Key bindings ──────────────────────────────────────────────────────────────
+;;
+;; (bind-key! mode key-sequence command-name)
+;;   mode          — "normal", "insert", or "extend"
+;;   key-sequence  — space-separated tokens: "g h", "ctrl-f", "alt-x", "f1"
+;;   command-name  — any command name visible in :commands
+;;
+;; (bind-wait-char! mode key-sequence command-name)
+;;   Like bind-key! but the next key pressed is passed as (pending-char) to the
+;;   command.  Used for surround-style "verb + char" bindings.
+
+;; Re-map 'U' in normal mode to undo for muscle-memory from other editors.
+;; (bind-key! "normal" "U" "undo")
+
+;; Open a new line below and enter insert mode with Ctrl-Enter.
+;; (bind-key! "normal" "ctrl-enter" "open_below")
+
+;; ── Custom commands ───────────────────────────────────────────────────────────
+;;
+;; (define-command! name doc-string (lambda () body...))
+;; The command becomes available as ":name" in the command bar.
+;; Use (call-command! "other-command") to compose built-in commands.
+;; Use (log! severity message) to post messages to :messages.
+;;   severity — 'trace 'info 'warning 'error
+
+(define-command! "hello"
+  "Log a greeting to the message log."
+  (lambda ()
+    (log! 'info "Hello from init.scm!")))
+
+;; ── Plugins ───────────────────────────────────────────────────────────────────
+;;
+;; (load-plugin "core:name")      — load a bundled core plugin
+;; (load-plugin "user/repo")      — load a third-party plugin from
+;;                                   <data>/plugins/user/repo/plugin.scm
+;;
+;; core:plum   — plugin manager (:plum-install, :plum-update, :plum-cleanup)
+;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
+;;
+;; Load plum first so it can install other declared plugins on the next
+;; :plum-install run.
+
+;; (load-plugin "core:plum")
+;; (load-plugin "core:helix-surround")
+
+;; Declare third-party plugins to be installed by :plum-install:
+;; (load-plugin "alice/my-theme")
+;; (load-plugin "bob/rust-extras")
