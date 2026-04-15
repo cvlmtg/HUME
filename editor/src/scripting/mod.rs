@@ -181,6 +181,12 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<(), String> {
+        // Snapshot for rollback on error (same semantics as eval_init).
+        let settings_snap     = settings.clone();
+        let keymap_snap       = keymap.clone();
+        let plugin_stack_snap = self.ctx.plugin_stack.clone();
+        let ledger_stack_snap = self.ctx.ledger_stack.clone();
+
         EVAL_CTX.with(|cell| {
             *cell.borrow_mut() = Some(EvalCtx {
                 settings: std::mem::take(settings),
@@ -214,6 +220,14 @@ impl ScriptingHost {
                 self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
+
+        // Rollback on error: restore pre-eval snapshot (all-or-nothing semantics).
+        if result.is_err() {
+            *settings              = settings_snap;
+            *keymap                = keymap_snap;
+            self.ctx.plugin_stack  = plugin_stack_snap;
+            self.ctx.ledger_stack  = ledger_stack_snap;
+        }
 
         // Reset the flag so a pre-set interrupt doesn't bleed into the next eval.
         self.interrupt_flag.store(false, Ordering::Relaxed);
@@ -280,6 +294,13 @@ impl ScriptingHost {
         // somewhere to write.  Drained after eval returns.
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
+        // Snapshot before eval — used to rollback on error so that partial
+        // mutations from a failed script do not persist.
+        let settings_snap = settings.clone();
+        let keymap_snap   = keymap.clone();
+        let plugin_stack_snap  = self.ctx.plugin_stack.clone();
+        let ledger_stack_snap  = self.ctx.ledger_stack.clone();
+
         // Move editor state + scripting state into TLS so builtins can access
         // them as plain `FunctionSignature` function pointers (which cannot
         // capture variables).  `std::mem::take` replaces each field with its
@@ -343,6 +364,16 @@ impl ScriptingHost {
                 steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
+
+        // Rollback on error: restore the pre-eval snapshot so that partial
+        // mutations from a failed script do not persist.
+        if result.is_err() {
+            *settings               = settings_snap;
+            *keymap                 = keymap_snap;
+            self.ctx.plugin_stack  = plugin_stack_snap;
+            self.ctx.ledger_stack  = ledger_stack_snap;
+            steel_cmds             = Vec::new();
+        }
 
         // Drain any `(log! …)` messages accumulated during the eval into
         // `pending_messages`.  The caller (e.g. `init_scripting`) will
@@ -443,6 +474,12 @@ impl ScriptingHost {
         // Arm LOG_QUEUE for `(log! …)` calls in this plugin eval.
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
+        // Snapshot before eval for rollback on error.
+        let settings_snap      = settings.clone();
+        let keymap_snap        = keymap.clone();
+        let plugin_stack_snap  = self.ctx.plugin_stack.clone();
+        let ledger_stack_snap  = self.ctx.ledger_stack.clone();
+
         // Push the plugin attribution before moving state into TLS so that all
         // mutations during eval are attributed to `plugin_id`.
         self.ctx.plugin_stack.push(plugin_id.clone());
@@ -496,12 +533,24 @@ impl ScriptingHost {
             }
         });
 
+        // Rollback on error: discard partial mutations and restore snapshot.
+        if result.is_err() {
+            *settings              = settings_snap;
+            *keymap                = keymap_snap;
+            self.ctx.plugin_stack  = plugin_stack_snap;
+            self.ctx.ledger_stack  = ledger_stack_snap;
+            steel_cmds             = Vec::new();
+        }
+
         // Drain log messages into pending_messages for the caller to flush.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
 
         // Unconditionally pop the attribution we pushed before the eval, even
         // if the plugin itself left the stack imbalanced via an error path.
+        // On error: the stack was already restored from snapshot (without the
+        // pushed id), so this pop is a no-op on an empty stack — safe because
+        // PluginStack::pop gracefully ignores empty.
         self.ctx.plugin_stack.pop();
 
         result.map(|()| steel_cmds)
@@ -705,7 +754,7 @@ mod tests {
 
     #[test]
     fn set_option_settings_restored_on_error() {
-        // On error, settings should be back in their pre-eval state.
+        // On error, settings are rolled back to their pre-eval state (all-or-nothing).
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
@@ -713,14 +762,14 @@ mod tests {
         h.eval_source("(set-option! \"tab-width\" 2)", &mut s, &mut km).unwrap();
         assert_eq!(s.tab_width, 2);
         // Then run a script that errors mid-way: tab-width is set to 8, then a
-        // bad setting that raises. The eval errors, but settings should be returned
-        // (with the partial mutation intact — fail-fast, no per-statement rollback).
-        let _ = h.eval_source(
+        // bad setting that raises. The eval errors and the snapshot is restored:
+        // tab-width goes back to 2, not left at the partial 8.
+        let err = h.eval_source(
             "(set-option! \"tab-width\" 8)\n(set-option! \"bogus\" \"x\")",
             &mut s, &mut km,
         );
-        // Settings are back in our hands (not stuck in TLS).
-        let _ = s.tab_width; // accessible = test doesn't hang/panic
+        assert!(err.is_err(), "expected eval to fail");
+        assert_eq!(s.tab_width, 2, "snapshot should have been restored");
     }
 
     // ── bind-key! ─────────────────────────────────────────────────────────────

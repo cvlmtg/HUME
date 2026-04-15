@@ -119,6 +119,7 @@ macro_rules! define_settings {
         ///
         /// The [`Default`] impl exactly reproduces the values that were
         /// previously hardcoded as constants across the codebase.
+        #[derive(Clone)]
         pub(crate) struct EditorSettings {
             $( pub $gname: $gtype, )*
             $( pub $bname: $btype, )*

@@ -110,7 +110,7 @@ pub(crate) struct LedgerEntry {
 /// At most one entry exists per key — subsequent mutations of the same key by
 /// the same plugin are silently deduplicated because the *first* entry already
 /// captures "what existed before this plugin touched it."
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Ledger {
     pub(crate) plugin: PluginId,
     pub(crate) entries: Vec<LedgerEntry>,
@@ -123,7 +123,7 @@ pub(crate) struct Ledger {
 /// Each plugin gets exactly one [`Ledger`], created on its first mutation and
 /// removed when the plugin is unloaded. Activation order is preserved: the
 /// ledger for the first-activated plugin is always at index 0.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct LedgerStack {
     /// Ordered by plugin activation time (oldest first).
     pub(crate) ledgers: Vec<Ledger>,
@@ -225,7 +225,7 @@ impl LedgerStack {
 /// plugin body is executing; `None` means top-level `init.scm` (→ [`Owner::User`]).
 /// Core state is never mutated through the scripting layer — [`Owner::Core`] is
 /// only ever a *prior*, never the active attribution.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct PluginStack {
     stack: Vec<PluginId>,
 }
