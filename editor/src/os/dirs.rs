@@ -13,6 +13,10 @@
 
 use std::{env, path::PathBuf};
 
+fn env_var(key: &str) -> Option<String> {
+    env::var(key).ok()
+}
+
 /// Returns the configuration directory for HUME, if it can be resolved.
 ///
 /// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `$HOME/.config/hume/`
@@ -22,19 +26,20 @@ use std::{env, path::PathBuf};
 /// Unix, `APPDATA` on Windows). Callers should report and skip scripting
 /// init rather than fall back to a relative path.
 pub(crate) fn config_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        env::var("APPDATA").ok().map(|base| PathBuf::from(base).join("hume"))
-    }
-    #[cfg(not(windows))]
-    {
-        if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-            Some(PathBuf::from(xdg).join("hume"))
-        } else if let Ok(home) = env::var("HOME") {
-            Some(PathBuf::from(home).join(".config").join("hume"))
-        } else {
-            None
-        }
+    config_dir_with(env_var)
+}
+
+#[cfg(windows)]
+fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    env("APPDATA").map(|base| PathBuf::from(base).join("hume"))
+}
+
+#[cfg(not(windows))]
+fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(xdg) = env("XDG_CONFIG_HOME") {
+        Some(PathBuf::from(xdg).join("hume"))
+    } else {
+        env("HOME").map(|h| PathBuf::from(h).join(".config").join("hume"))
     }
 }
 
@@ -46,26 +51,26 @@ pub(crate) fn config_dir() -> Option<PathBuf> {
 /// Returns `None` only if the relevant env vars are unset. Callers should
 /// disable features that need on-disk storage (PLUM install, user plugins).
 pub(crate) fn data_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        // Prefer LOCALAPPDATA (machine-local) for plugin binaries and caches;
-        // roaming them via APPDATA across domain machines risks arch mismatches
-        // and stale paths. Fall back to APPDATA in environments where LOCALAPPDATA
-        // is not populated (stripped CI images, some service accounts).
-        env::var("LOCALAPPDATA")
-            .or_else(|_| env::var("APPDATA"))
-            .ok()
-            .map(|base| PathBuf::from(base).join("hume"))
-    }
-    #[cfg(not(windows))]
-    {
-        if let Ok(xdg) = env::var("XDG_DATA_HOME") {
-            Some(PathBuf::from(xdg).join("hume"))
-        } else if let Ok(home) = env::var("HOME") {
-            Some(PathBuf::from(home).join(".local").join("share").join("hume"))
-        } else {
-            None
-        }
+    data_dir_with(env_var)
+}
+
+#[cfg(windows)]
+fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    // Prefer LOCALAPPDATA (machine-local) for plugin binaries and caches;
+    // roaming them via APPDATA across domain machines risks arch mismatches
+    // and stale paths. Fall back to APPDATA in environments where LOCALAPPDATA
+    // is not populated (stripped CI images, some service accounts).
+    env("LOCALAPPDATA")
+        .or_else(|| env("APPDATA"))
+        .map(|base| PathBuf::from(base).join("hume"))
+}
+
+#[cfg(not(windows))]
+fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(xdg) = env("XDG_DATA_HOME") {
+        Some(PathBuf::from(xdg).join("hume"))
+    } else {
+        env("HOME").map(|h| PathBuf::from(h).join(".local").join("share").join("hume"))
     }
 }
 
@@ -79,7 +84,11 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
 ///
 /// Returns `None` if no candidate path exists on disk.
 pub(crate) fn runtime_dir() -> Option<PathBuf> {
-    if let Ok(rt) = env::var("HUME_RUNTIME") {
+    runtime_dir_with(env_var)
+}
+
+fn runtime_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(rt) = env("HUME_RUNTIME") {
         return Some(PathBuf::from(rt));
     }
 
@@ -106,54 +115,39 @@ pub(crate) fn runtime_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     #[test]
     #[cfg(not(windows))]
     fn config_dir_respects_xdg_config_home() {
-        // Temporarily set XDG_CONFIG_HOME.
-        // Test-only env mutation; tests run sequentially in this module.
         let tmp = tempfile::tempdir().unwrap();
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        unsafe { env::set_var("XDG_CONFIG_HOME", tmp.path()); }
-
-        let result = config_dir();
+        let xdg = tmp.path().to_string_lossy().into_owned();
+        let result = config_dir_with(|k| match k {
+            "XDG_CONFIG_HOME" => Some(xdg.clone()),
+            _ => None,
+        });
         assert_eq!(result, Some(tmp.path().join("hume")));
-
-        unsafe {
-            match prev {
-                Some(v) => env::set_var("XDG_CONFIG_HOME", v),
-                None => env::remove_var("XDG_CONFIG_HOME"),
-            }
-        }
     }
 
     #[test]
     #[cfg(not(windows))]
     fn data_dir_respects_xdg_data_home() {
         let tmp = tempfile::tempdir().unwrap();
-        let prev = env::var("XDG_DATA_HOME").ok();
-        unsafe { env::set_var("XDG_DATA_HOME", tmp.path()); }
-
-        let result = data_dir();
+        let xdg = tmp.path().to_string_lossy().into_owned();
+        let result = data_dir_with(|k| match k {
+            "XDG_DATA_HOME" => Some(xdg.clone()),
+            _ => None,
+        });
         assert_eq!(result, Some(tmp.path().join("hume")));
-
-        unsafe {
-            match prev {
-                Some(v) => env::set_var("XDG_DATA_HOME", v),
-                None => env::remove_var("XDG_DATA_HOME"),
-            }
-        }
     }
 
     #[test]
     fn runtime_dir_respects_hume_runtime() {
         let tmp = tempfile::tempdir().unwrap();
-        unsafe { env::set_var("HUME_RUNTIME", tmp.path()); }
-
-        let result = runtime_dir();
+        let rt = tmp.path().to_string_lossy().into_owned();
+        let result = runtime_dir_with(|k| match k {
+            "HUME_RUNTIME" => Some(rt.clone()),
+            _ => None,
+        });
         assert_eq!(result, Some(tmp.path().to_path_buf()));
-
-        unsafe { env::remove_var("HUME_RUNTIME"); }
     }
 }

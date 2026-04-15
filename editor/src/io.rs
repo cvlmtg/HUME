@@ -108,11 +108,14 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()
     #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;
-        // SAFETY: fchown is a safe POSIX syscall. We pass the fd of our own
-        // temp file and ignore the return value intentionally (best-effort).
-        unsafe {
-            libc::fchown(tmp.as_file().as_raw_fd(), meta.uid, meta.gid);
-        }
+        use nix::unistd::{fchown, Gid, Uid};
+        // Best-effort: succeeds only as root or matching uid; ignore errors so
+        // a non-privileged user can still save their own files.
+        let _ = fchown(
+            tmp.as_file().as_raw_fd(),
+            Some(Uid::from_raw(meta.uid)),
+            Some(Gid::from_raw(meta.gid)),
+        );
     }
 
     tmp.persist(target).map_err(|e| e.error)?;

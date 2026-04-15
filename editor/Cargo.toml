@@ -15,7 +15,7 @@ tempfile = "3"
 regex-cursor = "0.1.5"
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+nix = { version = "0.29", default-features = false, features = ["poll", "user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
