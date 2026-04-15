@@ -102,7 +102,7 @@
 - [x] **Jump list**: Vec+cursor of cursor positions; record on search jumps, goto, and motions > 5 lines; `Ctrl-o` / `Ctrl-i` (`Tab`) navigate.
 - [x] **Surround operations** (`ms` + smart `r`): `ms` + char selects the surrounding delimiters as two cursor selections (e.g. `ms(` places cursors on `(` and `)`), enabling select-then-act composition: `ms(` → `d` deletes parens, `ms(` → `r[` replaces `()` with `[]`, `ms(` → `c` enters insert with two cursors. No separate `md`/`mr` — standard commands compose naturally. Smart `r`: when replacing cursor selections with a pair character, resolves open/close based on the char being replaced (opening→opening, closing→closing; symmetric delimiters use selection index as tiebreaker). "Add surround" is already covered by auto-pairs wrapping in insert mode.
 
-### M5 — Scripting foundation + polish
+### M5 — Scripting foundation + polish (complete)
 - [x] **Whitespace rendering + tab expansion**: per-type configurable indicators for spaces, tabs, newlines (`WhitespaceShow` enum `None`/`All`/`Trailing` per type, custom indicator characters, dimmed style). Proper tab-stop expansion in both the renderer and `display_col_width` (tabs previously rendered as 1-column). Renderer change + `display_col_width`/`display_col_in_line` gained `tab_width` parameter.
 - [x] **Soft wrap**: long lines wrap to the next display row. `DisplayLine` gains `is_continuation: bool`. `display_lines()` splits lines exceeding `content_width` into multiple display rows via `wrap_line()` (grapheme-aware, handles CJK double-width and tab expansion). `scroll_offset` stays buffer-line based; `scroll_sub_offset` handles long lines that exceed viewport height. `col_offset` forced to 0 when wrapping. `j/k` remain buffer-line motions (display-line motions deferred). Continuation rows get a blank gutter (no indicator — the text indentation is enough visual cue). Cursor-line highlight extends to continuation rows. Toggled via `:wrap` / `:toggle-soft-wrap`. On by default.
 - [x] **Unify no-wrap horizontal scroll**: replace `display_col_in_line()` in `editor/src/core/grapheme.rs` with a call to `format_buffer_line()`, eliminating the independent grapheme→column code path that doesn't account for whitespace indicators or inline decorations.
@@ -117,7 +117,7 @@
   - Deferred: **Ctrl-C-during-Steel wiring** — requires a polling thread or signal handler plus terminal raw-mode coordination; separate milestone.
   - Deferred: **involuntary interruption** — requires upstream Steel op-callback API; track as upstream ask.
 
-### M6 — Plugin infrastructure (planned)
+### M6 — Plugin infrastructure (complete)
 - [x] **Message log**: persistent `MessageLog` on `Editor` (severity-routed: `Info` shown only, `Warning`/`Error` logged + shown). Statusline shows a summary (e.g. "2 warnings — :messages for details") that persists until reviewed. `:messages` (alias `:mes`) opens the full log in a read-only scratch buffer (dismissed with `q`/Escape, navigated with `j`/`k`/`g`/`G`). Replaces fire-and-forget `status_msg` for config errors, Steel errors, and unknown commands.
 - [x] **PLUM plugin manager** (`core:plum`): design and implement the bundled Steel plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace. PLUM is declared in `init.scm` like any other plugin — disabling it just removes management commands.
 - [x] **`load-plugin` pipeline**: Rust-side `load-plugin` implementation with per-plugin isolation. Each plugin gets its own `eval_init` call; conflicts (command name shadowing, alias collision) abort that plugin's registration and roll back its side effects. The loading order follows declaration order in `init.scm`. Conflict errors surface via the message log with clear attribution (e.g. "plugin X: command 'foo' conflicts with plugin Y, plugin X not loaded").
@@ -149,4 +149,3 @@
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
 - Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
-- **PLUM plugin manager** (Steel): `core:plum` bundled plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace (shipped with HUME, never fetched). HUME runtime loads plugins independently — PLUM is swappable.
