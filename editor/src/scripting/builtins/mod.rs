@@ -119,6 +119,8 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Filesystem and directory access (sandboxed to <data>/plugins/ and <runtime>/plugins/)
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
     engine.register_value("runtime-dir",  SteelVal::FuncV(fs::runtime_dir));
+    // Pure path construction — no sandbox check, no filesystem access.
+    engine.register_value("path-join",    SteelVal::FuncV(fs::path_join));
     engine.register_value("path-exists?", SteelVal::FuncV(fs::path_exists));
     engine.register_value("list-dir",     SteelVal::FuncV(fs::list_dir));
     engine.register_value("make-dir",     SteelVal::FuncV(fs::make_dir));
