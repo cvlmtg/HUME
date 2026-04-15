@@ -25,7 +25,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// `"g<esc>"` into a `Vec<KeyEvent>`.
 ///
 /// Returns an error string on unrecognised tokens.
-fn parse_key_sequence(s: &str) -> Result<Vec<KeyEvent>, String> {
+pub(crate) fn parse_key_sequence(s: &str) -> Result<Vec<KeyEvent>, String> {
     let mut keys = Vec::new();
     let mut chars = s.chars().peekable();
 

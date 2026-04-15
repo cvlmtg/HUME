@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn config_dir_respects_xdg_config_home() {
         // Temporarily set XDG_CONFIG_HOME.
-        // SAFETY: test-only env mutation; tests run sequentially in this module.
+        // Test-only env mutation; tests run sequentially in this module.
         let tmp = tempfile::tempdir().unwrap();
         let prev = env::var("XDG_CONFIG_HOME").ok();
         unsafe { env::set_var("XDG_CONFIG_HOME", tmp.path()); }

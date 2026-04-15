@@ -815,13 +815,7 @@ pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bo
         }
         ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
     }
-    // Flush any `(log! …)` messages produced during the reload.
-    let pending_msgs = ed.scripting.as_mut()
-        .map(|h| h.ctx.pending_messages.drain(..).collect::<Vec<_>>())
-        .unwrap_or_default();
-    for (sev, text) in pending_msgs {
-        ed.report(sev, text);
-    }
+    ed.flush_script_messages();
     Ok(())
 }
 
@@ -837,9 +831,7 @@ pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bo
 /// command and cannot be redefined".
 pub(super) fn typed_reload_config(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     ed.scripting = None;
-    for name in ed.registry.steel_backed_names() {
-        ed.registry.unregister(&name);
-    }
+    ed.registry.unregister_all_steel_backed();
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
     Ok(())

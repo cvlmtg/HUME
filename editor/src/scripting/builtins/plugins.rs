@@ -9,23 +9,11 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
 
 use crate::scripting::ledger::PluginId;
+use super::one_string;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-/// Extract the single string argument from `args`, returning a Steel error on
-/// arity or type mismatch.
-fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "{name} expects 1 arg, got {}", args.len());
-    }
-    match &args[0] {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        _ => Err(SteelErr::new(ErrorKind::TypeMismatch,
-                format!("{name}: expected a string, got {:?}", args[0]))),
-    }
-}
 
 // ── Plugin name validation ────────────────────────────────────────────────────
 

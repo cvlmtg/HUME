@@ -327,22 +327,16 @@ impl CommandRegistry {
         }
     }
 
-    /// Collect the canonical names of every currently-registered Steel-backed
-    /// command.  Used by `:reload-config` to clear stale `SteelBacked` entries
-    /// from the registry before re-evaluating `init.scm` with a fresh engine —
-    /// otherwise those names would appear in `builtin_cmd_names` and cause
-    /// every `(define-command!)` in the re-run init to raise a phantom
-    /// "conflicts with a built-in command" error.
-    pub(crate) fn steel_backed_names(&self) -> Vec<String> {
-        self.commands
-            .values()
-            .filter_map(|cmd| match cmd {
-                Command::Mappable(MappableCommand::SteelBacked { name, .. }) => {
-                    Some(name.as_ref().to_string())
-                }
-                _ => None,
-            })
-            .collect()
+    /// Remove every `SteelBacked` mappable command in one pass.
+    ///
+    /// Used by `:reload-config` to clear stale entries before re-evaluating
+    /// `init.scm` with a fresh engine — otherwise those names would appear in
+    /// `builtin_cmd_names` and cause every `(define-command!)` to raise a
+    /// phantom "conflicts with a built-in command" error.
+    pub(crate) fn unregister_all_steel_backed(&mut self) {
+        self.commands.retain(|_, cmd| {
+            !matches!(cmd, Command::Mappable(MappableCommand::SteelBacked { .. }))
+        });
     }
 
     /// Register a typed command.
@@ -631,6 +625,25 @@ impl CommandRegistry {
         typed_cmd!("reload-config",    "Reload init.scm from scratch.",                            &[],      typed_reload_config);
     }
 
+}
+
+// ── Test-only helpers ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+impl CommandRegistry {
+    /// Collect the canonical names of every `SteelBacked` command.
+    /// Only used in tests — production code uses `unregister_all_steel_backed`.
+    pub(crate) fn steel_backed_names(&self) -> Vec<String> {
+        self.commands
+            .values()
+            .filter_map(|cmd| match cmd {
+                Command::Mappable(MappableCommand::SteelBacked { name, .. }) => {
+                    Some(name.as_ref().to_string())
+                }
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -923,20 +936,26 @@ mod tests {
     }
 
     #[test]
-    fn unregister_after_steel_backed_names_clears_them() {
+    fn unregister_all_steel_backed_clears_them() {
         let mut reg = CommandRegistry::with_defaults();
         reg.register(MappableCommand::SteelBacked {
-            name: Cow::Owned("plugin-cmd".to_string()),
+            name: Cow::Owned("plugin-cmd-a".to_string()),
             doc: Cow::Borrowed("doc"),
-            steel_proc: "%hume-cmd-plugin-cmd".to_string(),
+            steel_proc: "%hume-cmd-plugin-cmd-a".to_string(),
         });
-        assert_eq!(reg.steel_backed_names(), vec!["plugin-cmd".to_string()]);
+        reg.register(MappableCommand::SteelBacked {
+            name: Cow::Owned("plugin-cmd-b".to_string()),
+            doc: Cow::Borrowed("doc"),
+            steel_proc: "%hume-cmd-plugin-cmd-b".to_string(),
+        });
+        assert!(!reg.steel_backed_names().is_empty());
 
-        // The :reload-config cleanup pattern: collect names, then unregister.
-        for name in reg.steel_backed_names() {
-            reg.unregister(&name);
-        }
+        reg.unregister_all_steel_backed();
+
         assert!(reg.steel_backed_names().is_empty());
-        assert!(reg.get_mappable("plugin-cmd").is_none());
+        assert!(reg.get_mappable("plugin-cmd-a").is_none());
+        assert!(reg.get_mappable("plugin-cmd-b").is_none());
+        // Built-in commands are untouched.
+        assert!(reg.get_mappable("move-left").is_some());
     }
 }

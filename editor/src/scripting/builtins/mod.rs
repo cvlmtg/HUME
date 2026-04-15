@@ -15,8 +15,23 @@ pub(crate) mod statusline;
 
 use steel::steel_vm::engine::Engine;
 use steel::rvals::SteelVal;
+use steel::rerrs::SteelErr;
 
 use super::EvalCtx;
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/// Extract the single string argument from `args`, returning a Steel error on
+/// arity or type mismatch.  Used by multiple builtin sub-modules.
+pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {
+    if args.len() != 1 {
+        steel::stop!(ArityMismatch => "{name} expects 1 arg, got {}", args.len());
+    }
+    match &args[0] {
+        SteelVal::StringV(s) => Ok(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "{name}: expected a string, got {:?}", args[0]),
+    }
+}
 
 // ── with_ctx helper (used by all builtin sub-modules) ─────────────────────────
 
