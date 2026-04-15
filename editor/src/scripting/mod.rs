@@ -294,110 +294,7 @@ impl ScriptingHost {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display())),
         };
-
-        // Arm the LOG_QUEUE so `(log! …)` calls during this eval have
-        // somewhere to write.  Drained after eval returns.
-        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-
-        // Snapshot before eval — used to rollback on error so that partial
-        // mutations from a failed script do not persist.
-        let settings_snap      = settings.clone();
-        let keymap_snap        = keymap.clone();
-        let plugin_stack_snap  = self.ctx.plugin_stack.clone();
-        let ledger_stack_snap  = self.ctx.ledger_stack.clone();
-        let cmd_owners_snap    = self.ctx.cmd_owners.clone();
-
-        // Expose the current command-owner index so `(command-plugin …)` can
-        // answer queries during eval (e.g. a plugin checking for conflicts).
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
-        });
-
-        // Move editor state + scripting state into TLS so builtins can access
-        // them as plain `FunctionSignature` function pointers (which cannot
-        // capture variables).  `std::mem::take` replaces each field with its
-        // `Default` as a harmless placeholder for the duration.
-        EVAL_CTX.with(|cell| {
-            *cell.borrow_mut() = Some(EvalCtx {
-                settings: std::mem::take(settings),
-                keymap: std::mem::take(keymap),
-                plugin_stack: std::mem::take(&mut self.ctx.plugin_stack),
-                ledger_stack: std::mem::take(&mut self.ctx.ledger_stack),
-                data_dir: self.ctx.data_dir.clone(),
-                runtime_dir: self.ctx.runtime_dir.clone(),
-                declared_plugins: Vec::new(),
-                loaded_plugins: Vec::new(),
-                interrupt_flag: Arc::clone(&self.interrupt_flag),
-                builtin_cmd_names: builtin_names,
-                pending_steel_cmds: Vec::new(),
-            });
-        });
-
-        // Watchdog: set the interrupt flag after EVAL_BUDGET_SECS of wall-clock
-        // time.  A cancel flag lets us defuse it quickly once eval returns so
-        // the watchdog never fires against a future eval.
-        //
-        // Interruption is cooperative: scripts must call (hume/yield!) in their
-        // loops.  Steel 0.8.2 has no op-callback for involuntary interruption.
-        let cancel = Arc::new(AtomicBool::new(false));
-        {
-            let flag   = Arc::clone(&self.interrupt_flag);
-            let cancel = Arc::clone(&cancel);
-            let budget = std::time::Duration::from_secs(EVAL_BUDGET_SECS);
-            std::thread::spawn(move || {
-                std::thread::sleep(budget);
-                if !cancel.load(Ordering::Relaxed) {
-                    flag.store(true, Ordering::Relaxed);
-                }
-            });
-        }
-
-        let result = self
-            .engine
-            .compile_and_run_raw_program(source)
-            .map(|_| ())
-            .map_err(|e| e.to_string());
-
-        // Defuse the watchdog and reset the interrupt flag.  Setting cancel
-        // first means the watchdog will exit its loop before it can set the
-        // flag again after we clear it.
-        cancel.store(true, Ordering::Relaxed);
-        self.interrupt_flag.store(false, Ordering::Relaxed);
-
-        // Restore all state unconditionally — builtins may have modified
-        // settings/keymap, and plugin_stack/ledger_stack accumulate across evals.
-        let mut steel_cmds = Vec::new();
-        EVAL_CTX.with(|cell| {
-            if let Some(ctx) = cell.borrow_mut().take() {
-                *settings = ctx.settings;
-                *keymap = ctx.keymap;
-                self.ctx.plugin_stack = ctx.plugin_stack;
-                self.ctx.ledger_stack = ctx.ledger_stack;
-                steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
-            }
-        });
-
-        // Rollback on error: restore the pre-eval snapshot so that partial
-        // mutations from a failed script do not persist.
-        if result.is_err() {
-            *settings              = settings_snap;
-            *keymap                = keymap_snap;
-            self.ctx.plugin_stack  = plugin_stack_snap;
-            self.ctx.ledger_stack  = ledger_stack_snap;
-            self.ctx.cmd_owners    = cmd_owners_snap;
-            steel_cmds             = Vec::new();
-        }
-
-        // Clear the COMMAND_OWNER_CACHE — it was valid only for this eval.
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
-
-        // Drain any `(log! …)` messages accumulated during the eval into
-        // `pending_messages`.  The caller (e.g. `init_scripting`) will
-        // flush these into `Editor::report` after we return.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
-        self.ctx.pending_messages.extend(log_msgs);
-
-        result.map(|()| steel_cmds)
+        self.eval_source_raw(source, builtin_names, settings, keymap)
     }
 
     // ── Plugin teardown / reload ───────────────────────────────────────────────
@@ -489,25 +386,57 @@ impl ScriptingHost {
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
 
-        // Arm LOG_QUEUE for `(log! …)` calls in this plugin eval.
+        // Push the plugin attribution before the eval so that all mutations
+        // are attributed to `plugin_id`.
+        self.ctx.plugin_stack.push(plugin_id.clone());
+        let result = self.eval_source_raw(source, builtin_names, settings, keymap);
+
+        // Unconditionally pop the attribution we pushed above, even if eval
+        // errored.  On error the stack was already restored from snapshot
+        // (without the pushed id), so this is a graceful no-op on an empty
+        // stack — `PluginStack::pop` ignores empty.
+        self.ctx.plugin_stack.pop();
+
+        result
+    }
+
+    /// Core eval machinery shared by [`eval_init`] and [`eval_plugin_with_attribution`].
+    ///
+    /// Takes an already-read `source` string and:
+    /// 1. Arms `LOG_QUEUE` and `COMMAND_OWNER_CACHE` TLS.
+    /// 2. Snapshots `settings`, `keymap`, `plugin_stack`, `ledger_stack`, and
+    ///    `cmd_owners` for all-or-nothing rollback on error.
+    /// 3. Moves editor state into `EVAL_CTX` TLS.
+    /// 4. Runs a watchdog thread (10 s budget, cooperative via `hume/yield!`).
+    /// 5. Evaluates `source`, restores TLS state, rollbacks on error.
+    /// 6. Drains `LOG_QUEUE` into `pending_messages`.
+    fn eval_source_raw(
+        &mut self,
+        source: String,
+        builtin_names: std::collections::HashSet<String>,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+    ) -> Result<Vec<SteelCmdDef>, String> {
+        // Arm LOG_QUEUE so `(log! …)` calls during this eval have somewhere to write.
         builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
 
-        // Snapshot before eval for rollback on error.
+        // Snapshot for all-or-nothing rollback on error.
         let settings_snap      = settings.clone();
         let keymap_snap        = keymap.clone();
         let plugin_stack_snap  = self.ctx.plugin_stack.clone();
         let ledger_stack_snap  = self.ctx.ledger_stack.clone();
         let cmd_owners_snap    = self.ctx.cmd_owners.clone();
 
-        // Expose the current command-owner index for `(command-plugin …)`.
+        // Expose the current command-owner index so `(command-plugin …)` can
+        // answer queries during eval (e.g. a plugin checking for conflicts).
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
             *cell.borrow_mut() = self.ctx.cmd_owners.clone();
         });
 
-        // Push the plugin attribution before moving state into TLS so that all
-        // mutations during eval are attributed to `plugin_id`.
-        self.ctx.plugin_stack.push(plugin_id.clone());
-
+        // Move editor state + scripting state into TLS so builtins can access
+        // them as plain `FunctionSignature` function pointers (which cannot
+        // capture variables).  `std::mem::take` replaces each field with its
+        // `Default` as a harmless placeholder for the duration.
         EVAL_CTX.with(|cell| {
             *cell.borrow_mut() = Some(EvalCtx {
                 settings: std::mem::take(settings),
@@ -524,6 +453,12 @@ impl ScriptingHost {
             });
         });
 
+        // Watchdog: set the interrupt flag after EVAL_BUDGET_SECS of wall-clock
+        // time.  A cancel flag lets us defuse it quickly once eval returns so
+        // the watchdog never fires against a future eval.
+        //
+        // Interruption is cooperative: scripts must call (hume/yield!) in their
+        // loops.  Steel 0.8.2 has no op-callback for involuntary interruption.
         let cancel = Arc::new(AtomicBool::new(false));
         {
             let flag   = Arc::clone(&self.interrupt_flag);
@@ -543,16 +478,19 @@ impl ScriptingHost {
             .map(|_| ())
             .map_err(|e| e.to_string());
 
+        // Defuse the watchdog and reset the interrupt flag.
         cancel.store(true, Ordering::Relaxed);
         self.interrupt_flag.store(false, Ordering::Relaxed);
 
+        // Restore all state unconditionally — builtins may have modified
+        // settings/keymap, and plugin_stack/ledger_stack accumulate across evals.
         let mut steel_cmds = Vec::new();
         EVAL_CTX.with(|cell| {
             if let Some(ctx) = cell.borrow_mut().take() {
                 *settings = ctx.settings;
-                *keymap   = ctx.keymap;
-                self.ctx.plugin_stack  = ctx.plugin_stack;
-                self.ctx.ledger_stack  = ctx.ledger_stack;
+                *keymap = ctx.keymap;
+                self.ctx.plugin_stack = ctx.plugin_stack;
+                self.ctx.ledger_stack = ctx.ledger_stack;
                 steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
             }
         });
@@ -567,19 +505,12 @@ impl ScriptingHost {
             steel_cmds             = Vec::new();
         }
 
-        // Clear the COMMAND_OWNER_CACHE — it was valid only for this eval.
+        // Clear COMMAND_OWNER_CACHE — valid only for this eval.
         builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
 
         // Drain log messages into pending_messages for the caller to flush.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);
-
-        // Unconditionally pop the attribution we pushed before the eval, even
-        // if the plugin itself left the stack imbalanced via an error path.
-        // On error: the stack was already restored from snapshot (without the
-        // pushed id), so this pop is a no-op on an empty stack — safe because
-        // PluginStack::pop gracefully ignores empty.
-        self.ctx.plugin_stack.pop();
 
         result.map(|()| steel_cmds)
     }
