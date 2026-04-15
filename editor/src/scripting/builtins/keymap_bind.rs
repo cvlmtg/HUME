@@ -187,6 +187,65 @@ pub(crate) fn bind_key(args: &[SteelVal]) -> SteelResult {
     })
 }
 
+/// `(bind-wait-char! mode key-sequence command-name)`
+///
+/// Binds a key sequence to a WaitChar node so that after the user completes
+/// the sequence, the next character is stored in `pending_char` and
+/// `command-name` is dispatched.
+///
+/// Example: `(bind-wait-char! "normal" "md" "helix-delete-surround")` makes
+/// `m d <char>` dispatch `helix-delete-surround` with `(pending-char)` = char.
+///
+/// Records a ledger entry when called from a plugin body.
+pub(crate) fn bind_wait_char(args: &[SteelVal]) -> SteelResult {
+    if args.len() != 3 {
+        steel::stop!(ArityMismatch =>
+            "bind-wait-char! expects 3 args (mode key-sequence command-name), got {}", args.len());
+    }
+
+    let mode_str = match &args[0] {
+        SteelVal::StringV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "bind-wait-char!: first arg (mode) must be a string, got {:?}", args[0]),
+    };
+    let key_str = match &args[1] {
+        SteelVal::StringV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "bind-wait-char!: second arg (key-sequence) must be a string, got {:?}", args[1]),
+    };
+    let cmd_name = match &args[2] {
+        SteelVal::StringV(s) => s.to_string(),
+        _ => steel::stop!(TypeMismatch =>
+            "bind-wait-char!: third arg (command-name) must be a string, got {:?}", args[2]),
+    };
+
+    let mode = match mode_str.to_ascii_lowercase().as_str() {
+        "normal" => BindMode::Normal,
+        "extend" => BindMode::Extend,
+        "insert" => BindMode::Insert,
+        _ => steel::stop!(Generic =>
+            "bind-wait-char!: unknown mode '{}'; expected normal, extend, or insert", mode_str),
+    };
+
+    let keys = parse_key_sequence(&key_str)
+        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+
+    super::with_ctx(|ctx| {
+        let ledger_key = format!("{} {}", mode_str.to_ascii_lowercase(), key_str);
+        let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
+        let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
+        let current_owner = ctx.plugin_stack.current_owner();
+
+        ctx.keymap.bind_wait_char_user(mode, &keys, std::borrow::Cow::Owned(cmd_name));
+
+        if let Owner::Plugin(ref plugin_id) = current_owner {
+            ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
+        }
+
+        Ok(SteelVal::Void)
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

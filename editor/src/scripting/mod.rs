@@ -549,12 +549,17 @@ impl ScriptingHost {
     pub(crate) fn call_steel_cmd(
         &mut self,
         steel_proc: &str,
+        pending_char: Option<char>,
     ) -> Result<(Vec<String>, Option<String>), String> {
         builtins::commands::CMD_QUEUE.with(|cell| {
             *cell.borrow_mut() = Some(Vec::new());
         });
         builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
             *cell.borrow_mut() = Some(None);
+        });
+        // Arm the pending-char TLS so `(pending-char)` reads it during this call.
+        builtins::commands::PENDING_CHAR.with(|cell| {
+            *cell.borrow_mut() = pending_char;
         });
         // Arm LOG_QUEUE so `(log! …)` calls inside this command have
         // somewhere to write.  Drained unconditionally below.
@@ -572,6 +577,8 @@ impl ScriptingHost {
         let wait_char = builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
             cell.borrow_mut().take().flatten()
         });
+        // Clear pending-char — it is only valid for the duration of one invocation.
+        builtins::commands::PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
         // Drain log messages into pending_messages regardless of success/failure.
         let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
         self.ctx.pending_messages.extend(log_msgs);

@@ -16,94 +16,49 @@
 ;;; Usage in init.scm:
 ;;;   (load-plugin "core:helix-surround")
 
-;; ── delete-surround ──────────────────────────────────────────────────────────
+;; ── Delimiter dispatch ────────────────────────────────────────────────────────
 
-(define-command! "delete-surround-paren"
-  "Delete surrounding () delimiters (md( or md))."
-  (lambda () (call-command! "surround-paren") (call-command! "delete")))
+;; Map a delimiter character to the appropriate surround-* command name.
+;; Returns #f for unrecognised chars so callers can skip gracefully.
+(define (surround-cmd-for ch)
+  (cond
+    ((or (equal? ch "(") (equal? ch ")")) "surround-paren")
+    ((or (equal? ch "[") (equal? ch "]")) "surround-bracket")
+    ((or (equal? ch "{") (equal? ch "}")) "surround-brace")
+    ((or (equal? ch "<") (equal? ch ">")) "surround-angle")
+    ((equal? ch "\"")                     "surround-double-quote")
+    ((equal? ch "'")                      "surround-single-quote")
+    ((equal? ch "`")                      "surround-backtick")
+    (else #f)))
 
-(define-command! "delete-surround-bracket"
-  "Delete surrounding [] delimiters (md[ or md])."
-  (lambda () (call-command! "surround-bracket") (call-command! "delete")))
+;; ── delete-surround ───────────────────────────────────────────────────────────
 
-(define-command! "delete-surround-brace"
-  "Delete surrounding {} delimiters (md{ or md})."
-  (lambda () (call-command! "surround-brace") (call-command! "delete")))
-
-(define-command! "delete-surround-angle"
-  "Delete surrounding <> delimiters (md< or md>)."
-  (lambda () (call-command! "surround-angle") (call-command! "delete")))
-
-(define-command! "delete-surround-double-quote"
-  "Delete surrounding \"\" delimiters (md\")."
-  (lambda () (call-command! "surround-double-quote") (call-command! "delete")))
-
-(define-command! "delete-surround-single-quote"
-  "Delete surrounding '' delimiters (md')."
-  (lambda () (call-command! "surround-single-quote") (call-command! "delete")))
-
-(define-command! "delete-surround-backtick"
-  "Delete surrounding `` delimiters (md`)."
-  (lambda () (call-command! "surround-backtick") (call-command! "delete")))
+(define-command! "helix-delete-surround"
+  "Delete the surrounding delimiter pair (md + char)."
+  (lambda ()
+    (let ((cmd (surround-cmd-for (pending-char))))
+      (when cmd
+        (call-command! cmd)
+        (call-command! "delete")))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
-;; After selecting the surround pair with surround-*, request a wait-char for
-;; the built-in `replace` command.  The next key pressed becomes pending_char
-;; for `replace`, which uses smart replacement:
+;; Select the surround pair with surround-*, then request a wait-char for the
+;; built-in `replace` command.  The next key pressed becomes pending_char for
+;; `replace`, which uses smart replacement:
 ;;   `(` on a `(` cursor gives `[`, `)` gives `]` (open→open, close→close).
 
-(define-command! "replace-surround-paren"
-  "Replace surrounding () — press the new delimiter (mr( or mr))."
-  (lambda () (call-command! "surround-paren") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-bracket"
-  "Replace surrounding [] — press the new delimiter (mr[ or mr])."
-  (lambda () (call-command! "surround-bracket") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-brace"
-  "Replace surrounding {} — press the new delimiter (mr{ or mr})."
-  (lambda () (call-command! "surround-brace") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-angle"
-  "Replace surrounding <> — press the new delimiter (mr< or mr>)."
-  (lambda () (call-command! "surround-angle") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-double-quote"
-  "Replace surrounding \"\" — press the new delimiter (mr\")."
-  (lambda () (call-command! "surround-double-quote") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-single-quote"
-  "Replace surrounding '' — press the new delimiter (mr')."
-  (lambda () (call-command! "surround-single-quote") (request-wait-char! "replace")))
-
-(define-command! "replace-surround-backtick"
-  "Replace surrounding `` — press the new delimiter (mr`)."
-  (lambda () (call-command! "surround-backtick") (request-wait-char! "replace")))
+(define-command! "helix-replace-surround"
+  "Replace the surrounding delimiter pair (mr + old_char + new_char)."
+  (lambda ()
+    (let ((cmd (surround-cmd-for (pending-char))))
+      (when cmd
+        (call-command! cmd)
+        (request-wait-char! "replace")))))
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
-;; md + char → delete surround
-(bind-key! "normal" "md("     "delete-surround-paren")
-(bind-key! "normal" "md)"     "delete-surround-paren")
-(bind-key! "normal" "md["     "delete-surround-bracket")
-(bind-key! "normal" "md]"     "delete-surround-bracket")
-(bind-key! "normal" "md{"     "delete-surround-brace")
-(bind-key! "normal" "md}"     "delete-surround-brace")
-(bind-key! "normal" "md<lt>"  "delete-surround-angle")
-(bind-key! "normal" "md<gt>"  "delete-surround-angle")
-(bind-key! "normal" "md\""    "delete-surround-double-quote")
-(bind-key! "normal" "md'"     "delete-surround-single-quote")
-(bind-key! "normal" "md`"     "delete-surround-backtick")
+;; md + char → delete surround (any recognised delimiter)
+(bind-wait-char! "normal" "md" "helix-delete-surround")
 
-;; mr + char → replace surround (waits for replacement char after surround-select)
-(bind-key! "normal" "mr("     "replace-surround-paren")
-(bind-key! "normal" "mr)"     "replace-surround-paren")
-(bind-key! "normal" "mr["     "replace-surround-bracket")
-(bind-key! "normal" "mr]"     "replace-surround-bracket")
-(bind-key! "normal" "mr{"     "replace-surround-brace")
-(bind-key! "normal" "mr}"     "replace-surround-brace")
-(bind-key! "normal" "mr<lt>"  "replace-surround-angle")
-(bind-key! "normal" "mr<gt>"  "replace-surround-angle")
-(bind-key! "normal" "mr\""    "replace-surround-double-quote")
-(bind-key! "normal" "mr'"     "replace-surround-single-quote")
-(bind-key! "normal" "mr`"     "replace-surround-backtick")
+;; mr + char → replace surround (select old pair, then wait for new char)
+(bind-wait-char! "normal" "mr" "helix-replace-surround")

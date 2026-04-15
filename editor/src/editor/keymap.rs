@@ -121,6 +121,28 @@ impl KeyTrie {
         self.bind(key, KeyTrieNode::Leaf(cmd));
     }
 
+    /// Bind a multi-key sequence prefix to a WaitChar node, creating interior
+    /// nodes as needed. The next character the user presses after the sequence
+    /// will be stored in `pending_char` and `wc.cmd_name` will be dispatched.
+    ///
+    /// Called by [`Keymap::bind_wait_char_user`] at runtime (e.g. from Steel config).
+    pub(crate) fn bind_wait_char_sequence(&mut self, keys: &[KeyEvent], wc: WaitCharPending) {
+        debug_assert!(!keys.is_empty());
+        if keys.len() == 1 {
+            self.bind(keys[0], KeyTrieNode::WaitChar(wc));
+            return;
+        }
+        let entry = self.map.entry(keys[0]).or_insert_with(|| {
+            KeyTrieNode::Node(KeyTrie::new("user"))
+        });
+        if !matches!(entry, KeyTrieNode::Node(_)) {
+            *entry = KeyTrieNode::Node(KeyTrie::new("user"));
+        }
+        if let KeyTrieNode::Node(sub) = entry {
+            sub.bind_wait_char_sequence(&keys[1..], wc);
+        }
+    }
+
     /// Bind a multi-key sequence to a leaf command, creating interior nodes as
     /// needed. Single-key sequences insert directly as a `Leaf`.
     ///
@@ -245,6 +267,21 @@ impl Default for Keymap {
 }
 
 impl Keymap {
+    /// Bind a key sequence to a WaitChar node in the given mode.
+    ///
+    /// After the user completes `keys`, the next character is stored in
+    /// `pending_char` and `command` is dispatched.  Interior nodes are created
+    /// as needed.  `keys` must not be empty.
+    pub(crate) fn bind_wait_char_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
+        debug_assert!(!keys.is_empty(), "bind_wait_char_user called with empty key sequence");
+        let trie = match mode {
+            BindMode::Normal => &mut self.normal,
+            BindMode::Extend => &mut self.extend,
+            BindMode::Insert => &mut self.insert,
+        };
+        trie.bind_wait_char_sequence(keys, WaitCharPending { cmd_name: command, ctrl_extend: false });
+    }
+
     /// Bind a key sequence to a command name in the given mode.
     ///
     /// Overwrites any existing binding for the same sequence. Single-key
