@@ -687,6 +687,10 @@ impl Editor {
             }
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
+        // Flush any `(log! …)` messages produced during init.scm evaluation.
+        for (sev, text) in host.ctx.pending_messages.drain(..) {
+            self.report(sev, text);
+        }
         self.scripting = Some(host);
     }
 

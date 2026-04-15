@@ -815,6 +815,13 @@ pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bo
         }
         ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
     }
+    // Flush any `(log! …)` messages produced during the reload.
+    let pending_msgs = ed.scripting.as_mut()
+        .map(|h| h.ctx.pending_messages.drain(..).collect::<Vec<_>>())
+        .unwrap_or_default();
+    for (sev, text) in pending_msgs {
+        ed.report(sev, text);
+    }
     Ok(())
 }
 
