@@ -1939,7 +1939,7 @@ fn select_within_enters_select_mode() {
     let mut ed = editor_from("-[hello world]>\n");
     ed.handle_key(key('s'));
     assert_eq!(ed.mode, Mode::Select);
-    assert!(ed.pane_transient[ed.pane_id].pre_select_sels.is_some());
+    assert!(ed.pane_transient[ed.focused_pane_id].pre_select_sels.is_some());
     assert!(ed.minibuf.is_some());
     assert_eq!(ed.minibuf.as_ref().unwrap().prompt, '⫽');
 }
@@ -1954,7 +1954,7 @@ fn select_within_confirm_replaces_selections() {
     ed.handle_key(key_enter());
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.pane_transient[ed.pane_id].pre_select_sels.is_none());
+    assert!(ed.pane_transient[ed.focused_pane_id].pre_select_sels.is_none());
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);
     assert_eq!(ed.current_selections().primary().anchor, 0);
@@ -2737,7 +2737,7 @@ fn surround_no_match_is_noop() {
 /// Return the pane's primary cursor as an absolute char offset — the engine's
 /// representation after Phase 2 unified the selection types.
 fn pane_head(ed: &Editor) -> usize {
-    ed.engine_view.panes[ed.pane_id].selections[0].head
+    ed.engine_view.panes[ed.focused_pane_id].selections[0].head
 }
 
 /// After `c` (change): the selection is deleted and Insert mode entered.
@@ -2811,7 +2811,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     ed.push_selections_to_pane();
 
     // Selections are passed in sorted document order; primary_idx identifies the primary.
-    let pane = &ed.engine_view.panes[ed.pane_id];
+    let pane = &ed.engine_view.panes[ed.focused_pane_id];
     assert_eq!(
         pane.selections[0].head, 0,
         "pane.selections[0] is the earliest in document order (char 0, 'a')"
@@ -2854,7 +2854,7 @@ fn pane_selections_sorted_by_head_not_start() {
 
     ed.push_selections_to_pane();
 
-    let pane = &ed.engine_view.panes[ed.pane_id];
+    let pane = &ed.engine_view.panes[ed.focused_pane_id];
     // After sort-by-head: [A(head=3), B(head=8)]
     assert_eq!(pane.selections[0].head, 3, "first in head order is A");
     assert_eq!(pane.selections[1].head, 8, "second in head order is B");
@@ -3739,7 +3739,7 @@ fn d1_selections_are_pane_owned() {
 
     let mut ed = editor_from("-[h]>ello world\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
 
     let pid_b = ed.open_pane(bid);
 
@@ -3768,7 +3768,7 @@ fn d4a_search_pattern_is_per_buffer() {
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Both panes see Buffer.search_pattern — it's a single field on `doc`.
@@ -3847,7 +3847,7 @@ fn d4b_sticky_col_is_per_selection() {
 fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Pane A insert session: type 'X' at the start.
@@ -3889,7 +3889,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     let sels_a = SelectionSet::single(Selection::collapsed(1));
@@ -3926,7 +3926,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Position pane B's cursor at char 9 ('j').
@@ -3955,7 +3955,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Position pane B at char 9.
@@ -3991,7 +3991,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     // "abcde\n" — 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.buffer_id;
-    let pid_a = ed.pane_id;
+    let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
@@ -4030,7 +4030,7 @@ fn p6_open_buffer_seeds_pane_state() {
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
     // pane_state should be seeded for bid2 on the focused pane.
-    assert!(ed.selections_for(ed.pane_id, bid2).is_some(), "pane_state seeded for new buffer");
+    assert!(ed.selections_for(ed.focused_pane_id, bid2).is_some(), "pane_state seeded for new buffer");
 }
 
 /// `close_buffer` with one other buffer redirects panes and frees the slot.
@@ -4279,7 +4279,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     assert_ne!(buf1, buf2);
 
     // Close file1 — its jump entries should be pruned from pane_jumps.
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     ed.close_buffer(buf1);
     // The jump list for this pane must not contain any file1 entries.
     let has_buf1_entry = ed.pane_jumps[pid].entries_for_buffer(buf1);

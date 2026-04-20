@@ -45,7 +45,7 @@ impl Editor {
 
     fn mouse_left_down(&mut self, col: u16, row: u16) {
         // Clicks in the statusline (last terminal row) are ignored.
-        let vp_height = self.engine_view.panes[self.pane_id].viewport.height;
+        let vp_height = self.engine_view.panes[self.focused_pane_id].viewport.height;
         if row >= vp_height {
             return;
         }
@@ -74,7 +74,7 @@ impl Editor {
         // Drag events are only received when `mouse_select = true` (mode 1002).
         let Some(anchor) = self.mouse_drag_anchor else { return };
 
-        let vp_height = self.engine_view.panes[self.pane_id].viewport.height;
+        let vp_height = self.engine_view.panes[self.focused_pane_id].viewport.height;
         if row >= vp_height {
             return;
         }
@@ -90,7 +90,7 @@ impl Editor {
     fn mouse_scroll_up(&mut self) {
         let scroll_lines = self.settings.mouse_scroll_lines;
         let vp_before = {
-            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         {
@@ -99,11 +99,11 @@ impl Editor {
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             let buf_id = self.buffer_id;
             let rope = self.buffers.get(buf_id).text().rope();
-            let pane = &mut self.engine_view.panes[self.pane_id];
+            let pane = &mut self.engine_view.panes[self.focused_pane_id];
             scroll_viewport_up(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
-            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
@@ -115,7 +115,7 @@ impl Editor {
     fn mouse_scroll_down(&mut self) {
         let scroll_lines = self.settings.mouse_scroll_lines;
         let vp_before = {
-            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         {
@@ -125,11 +125,11 @@ impl Editor {
             let buf_id = self.buffer_id;
             let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
-            let pane = &mut self.engine_view.panes[self.pane_id];
+            let pane = &mut self.engine_view.panes[self.focused_pane_id];
             scroll_viewport_down(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
-            let vp = &self.engine_view.panes[self.pane_id].viewport;
+            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
@@ -143,7 +143,7 @@ impl Editor {
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let buf_id = self.buffer_id;
         let (vp, gutter_w) = {
-            let pane = &self.engine_view.panes[self.pane_id];
+            let pane = &self.engine_view.panes[self.focused_pane_id];
             let gw = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());
             (pane.viewport.clone(), gw)
         };

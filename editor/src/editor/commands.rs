@@ -380,7 +380,7 @@ pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     let pre_sels = ed.current_selections().clone();
     let extend = ed.mode == EditorMode::Extend;
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     ed.search.direction = SearchDirection::Forward;
     // Capture extend state before mode becomes Search — live search uses it.
     ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
@@ -394,7 +394,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMo
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     let pre_sels = ed.current_selections().clone();
     let extend = ed.mode == EditorMode::Extend;
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     ed.search.direction = SearchDirection::Backward;
     // Capture extend state before mode becomes Search — live search uses it.
     ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
@@ -583,7 +583,7 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMod
         return Ok(());
     }
     let pre_sels = ed.current_selections().clone();
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     ed.pane_transient[pid].pre_select_sels = Some(pre_sels);
     ed.set_mode(Mode::Select);
     ed.minibuf = Some(MiniBuffer { prompt: '⫽', input: String::new(), cursor: 0 });
@@ -792,7 +792,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
 pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     let current = ed.current_jump_entry();
     let nav = ed.pane_jumps[pid].backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
@@ -806,7 +806,7 @@ pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMod
 }
 
 pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let pid = ed.pane_id;
+    let pid = ed.focused_pane_id;
     let nav = ed.pane_jumps[pid].forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {
