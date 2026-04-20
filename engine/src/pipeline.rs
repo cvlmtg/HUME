@@ -1,12 +1,12 @@
 use slotmap::{SlotMap, new_key_type};
 
 use crate::format::FormatScratch;
-use crate::pane::Pane;
+use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{GutterCell, InlineInsert, StatuslineProvider, TabBarProvider, VirtualLineAnchor};
 use crate::render::ComposeCtx;
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
-use crate::types::{DisplayRow, ResolvedStyle, RowKind};
+use crate::types::{DisplayRow, EditorMode, ResolvedStyle, RowKind};
 
 new_key_type! {
     /// Opaque handle to a buffer.
@@ -251,6 +251,7 @@ impl EngineView {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: Option<&dyn StatuslineProvider>,
         ctx: &mut RenderContext,
     ) {
@@ -299,13 +300,13 @@ impl EngineView {
 
             scratch.clear();
 
-            // The unsafe-free approach: extract what we need before the call.
             let pane_ctx = PaneRenderCtx {
                 pane,
                 rope,
                 tree: buffer.tree.as_ref(),
                 theme: &self.theme,
                 rect,
+                settings: get_pane_settings(pane_id),
             };
             render_pane(&pane_ctx, scratch, buf);
         }
@@ -322,6 +323,31 @@ impl EngineView {
     }
 }
 
+/// Per-pane render settings supplied by the editor at render time.
+///
+/// Mode, wrap, tab-width, and whitespace are editor-domain facts (they depend
+/// on global settings and per-buffer overrides). Storing them on the engine
+/// `Pane` would duplicate state and require frame-by-frame sync. Instead the
+/// editor resolves them once per frame and passes them via this bundle.
+#[derive(Clone)]
+pub struct PaneRenderSettings {
+    pub mode: EditorMode,
+    pub wrap_mode: WrapMode,
+    pub tab_width: u8,
+    pub whitespace: WhitespaceConfig,
+}
+
+impl Default for PaneRenderSettings {
+    fn default() -> Self {
+        Self {
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        }
+    }
+}
+
 /// Transient bundle of borrows needed to render one pane. Avoids passing a
 /// dozen separate parameters through the call stack.
 pub(crate) struct PaneRenderCtx<'a> {
@@ -332,6 +358,7 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub tree: Option<&'a tree_sitter::Tree>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
+    pub settings: PaneRenderSettings,
 }
 
 // ---------------------------------------------------------------------------
@@ -400,7 +427,7 @@ pub(crate) fn render_pane(
     let visible = layout::compute_viewport(
         pane_ctx.rope,
         &pane_ctx.pane.viewport,
-        &pane_ctx.pane.wrap_mode,
+        &pane_ctx.settings.wrap_mode,
         &pane_ctx.pane.providers.gutter_columns,
     );
 
@@ -431,9 +458,9 @@ pub(crate) fn render_pane(
         gutter_columns: &pane_ctx.pane.providers.gutter_columns,
         visible: &visible,
         viewport: &pane_ctx.pane.viewport,
-        mode: pane_ctx.pane.mode,
+        mode: pane_ctx.settings.mode,
         primary_head_line: pane_ctx.pane.primary_head_line(pane_ctx.rope),
-        tab_width: pane_ctx.pane.tab_width,
+        tab_width: pane_ctx.settings.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text.into(),
         indent_guide_style: pane_ctx.theme.ui.indent_guide.into(),
         pane_rect: pane_ctx.rect,
@@ -526,9 +553,9 @@ fn render_buffer_line(
         format::format_buffer_line(
             pane_ctx.rope,
             line_idx,
-            pane_ctx.pane.tab_width,
-            &pane_ctx.pane.whitespace,
-            &pane_ctx.pane.wrap_mode,
+            pane_ctx.settings.tab_width,
+            &pane_ctx.settings.whitespace,
+            &pane_ctx.settings.wrap_mode,
             &scratch.inline_inserts,
             &mut scratch.format,
         );
@@ -564,7 +591,7 @@ fn render_buffer_line(
                 line_start_char,
                 line_end_char,
                 is_head_line,
-                pane_ctx.pane.mode,
+                pane_ctx.settings.mode,
                 pane_ctx.theme,
                 &mut scratch.style,
             );

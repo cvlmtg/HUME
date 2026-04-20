@@ -482,6 +482,18 @@ fn build_goto_trie() -> KeyTrie {
     t
 }
 
+// ── Window (Ctrl+w) sub-trie ──────────────────────────────────────────────────
+
+fn build_window_trie() -> KeyTrie {
+    let mut t = KeyTrie::new("window");
+    t.bind_leaf(key!('w'), cmd!("pane-focus-next"));
+    t.bind_leaf(key!('h'), cmd!("pane-focus-left"));
+    t.bind_leaf(key!('j'), cmd!("pane-focus-down"));
+    t.bind_leaf(key!('k'), cmd!("pane-focus-up"));
+    t.bind_leaf(key!('l'), cmd!("pane-focus-right"));
+    t
+}
+
 // ── Default Normal keymap ─────────────────────────────────────────────────────
 
 fn default_normal_keymap() -> KeyTrie {
@@ -602,6 +614,11 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('N'), cmd!("search-prev"));
     t.bind_leaf(key!('s'), cmd!("select-within"));
     t.bind_leaf(key!('*'), cmd!("use-selection-as-search"));
+
+    // ── Window prefix (Ctrl+w) ────────────────────────────────────────────────
+    // `Ctrl+w` → second key (pane navigation). Works in both kitty and legacy.
+    // This binding takes priority over the kitty one-shot extend for `w`.
+    t.bind(key!(Ctrl + 'w'), KeyTrieNode::Node(build_window_trie()));
 
     // ── Goto prefix ───────────────────────────────────────────────────────────
     // `g` → second key (goto commands, 2-key sequence).

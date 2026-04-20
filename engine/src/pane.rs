@@ -4,7 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
-use crate::types::{EditorMode, Selection};
+use crate::types::Selection;
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
@@ -191,14 +191,6 @@ pub struct Pane {
     pub selections: Vec<Selection>,
     /// Index of the primary selection within `selections`.
     pub primary_idx: usize,
-    /// Current editor mode.
-    pub mode: EditorMode,
-    /// Wrap mode for the content area.
-    pub wrap_mode: WrapMode,
-    /// Tab stop width.
-    pub tab_width: u8,
-    /// Whitespace indicator configuration.
-    pub whitespace: WhitespaceConfig,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
 }
@@ -206,8 +198,7 @@ pub struct Pane {
 impl Pane {
     /// Create a new pane viewing `buffer_id` with default settings.
     ///
-    /// Callers that need custom wrap_mode / tab_width / whitespace / providers
-    /// should construct with `Pane { ..Pane::new(bid) }` or set fields after.
+    /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid) }`.
     pub fn new(buffer_id: BufferId) -> Self {
         Self {
             buffer_id,
@@ -215,10 +206,6 @@ impl Pane {
             saved_scrolls: SecondaryMap::new(),
             selections: vec![Selection { anchor: 0, head: 0 }],
             primary_idx: 0,
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
             providers: ProviderSet::new(),
         }
     }

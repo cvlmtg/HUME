@@ -94,10 +94,13 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
+            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let tab_width = self.doc().overrides.tab_width(&self.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.settings);
             let buf_id = self.buffer_id;
             let rope = self.buffers.get(buf_id).text().rope();
             let pane = &mut self.engine_view.panes[self.pane_id];
-            scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, scroll_lines, &mut self.motion_format_scratch);
+            scroll_viewport_up(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -116,11 +119,14 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
+            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let tab_width = self.doc().overrides.tab_width(&self.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.settings);
             let buf_id = self.buffer_id;
             let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
             let pane = &mut self.engine_view.panes[self.pane_id];
-            scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
+            scroll_viewport_down(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.pane_id].viewport;
@@ -136,24 +142,17 @@ impl Editor {
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let buf_id = self.buffer_id;
-        let pane = &self.engine_view.panes[self.pane_id];
-        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());
-        let (vp, wrap_mode, tab_width, whitespace) = (
-            pane.viewport.clone(),
-            pane.wrap_mode.clone(),
-            pane.tab_width,
-            pane.whitespace.clone(),
-        );
+        let (vp, gutter_w) = {
+            let pane = &self.engine_view.panes[self.pane_id];
+            let gw = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());
+            (pane.viewport.clone(), gw)
+        };
+        let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+        let tab_width = self.doc().overrides.tab_width(&self.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.settings);
         let rope = self.buffers.get(buf_id).text().rope();
         cursor::screen_to_char_offset(
-            col,
-            row,
-            gutter_w,
-            &vp,
-            rope,
-            &wrap_mode,
-            tab_width,
-            &whitespace,
+            col, row, gutter_w, &vp, rope, &wrap_mode, tab_width, &whitespace,
             &mut self.motion_format_scratch,
         )
     }

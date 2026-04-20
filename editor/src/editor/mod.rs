@@ -7,8 +7,8 @@ use std::sync::{Arc, RwLock};
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
-use engine::pane::{Pane, ViewportState};
-use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, RenderContext, SharedBuffer};
+use engine::pane::{Pane, ViewportState, WhitespaceConfig, WrapMode};
+use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, PaneRenderSettings, RenderContext, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
 use slotmap::SecondaryMap;
@@ -357,13 +357,7 @@ impl Editor {
 
         let settings = EditorSettings::default();
 
-        let pane = Pane {
-            wrap_mode: settings.wrap_mode.clone(),
-            tab_width: settings.tab_width,
-            whitespace: settings.whitespace.clone(),
-            providers,
-            ..Pane::new(buffer_id)
-        };
+        let pane = Pane { providers, ..Pane::new(buffer_id) };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
@@ -461,11 +455,14 @@ impl Editor {
             } else if self.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
                 let cursor_char = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
-                let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
+                let (vp, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
                     let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc().text().len_lines());
-                    (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)
+                    (pane.viewport.clone(), gw)
                 };
+                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+                let tab_width = self.doc().overrides.tab_width(&self.settings);
+                let whitespace = self.doc().overrides.whitespace(&self.settings);
                 crate::cursor::screen_pos(
                     &vp, self.doc().text().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
@@ -480,19 +477,33 @@ impl Editor {
             let statusline = crate::ui::statusline::HumeStatusline { editor: self };
 
             // Split borrows: `engine_view`, `doc`, and `scratch_view` are
-            // disjoint fields of `self`. Extract the rope to render before
-            // moving `engine_view` into the draw closure.
+            // disjoint fields of `self`. Extract the rope and pane settings
+            // to render before moving `engine_view` into the draw closure.
             let rope: &ropey::Rope = if let Some(ref sv) = self.scratch_view {
                 sv.buf.rope()
             } else {
                 self.doc().text().rope()
             };
-            let buffer_id   = self.buffer_id;
+            let buffer_id = self.buffer_id;
+            let pane_id   = self.pane_id;
+            // Resolve mode and display settings once — passed to the engine via
+            // closure so the engine never stores editor-domain state on Pane.
+            let pane_settings = {
+                let mode = if self.scratch_view.is_some() { EditorMode::Normal } else { self.mode };
+                let wrap_mode  = self.doc().overrides.wrap_mode(&self.settings);
+                let tab_width  = self.doc().overrides.tab_width(&self.settings);
+                let whitespace = self.doc().overrides.whitespace(&self.settings);
+                PaneRenderSettings { mode, wrap_mode, tab_width, whitespace }
+            };
             let engine_view = &self.engine_view;
             term.draw(|frame| {
-                engine_view.render(frame.area(), frame.buffer_mut(), |bid| {
-                    if bid == buffer_id { Some(rope) } else { None }
-                }, Some(&statusline), &mut ctx);
+                engine_view.render(
+                    frame.area(), frame.buffer_mut(),
+                    |bid| if bid == buffer_id { Some(rope) } else { None },
+                    |pid| if pid == pane_id { pane_settings.clone() } else { PaneRenderSettings::default() },
+                    Some(&statusline),
+                    &mut ctx,
+                );
                 if let Some((col, row)) = cursor_screen {
                     frame.set_cursor_position((col, row));
                 }
@@ -552,9 +563,10 @@ impl Editor {
     /// state in one place, once per frame.
     ///
     /// This is the **single sync point** between the editor and the engine.
-    /// No other code path should write to `pane.mode`, `pane.selections`, or
-    /// the highlight/statusline shared buffers — all such writes happen here,
-    /// immediately before every `render()` call.
+    /// No other code path should write to `pane.selections` or the highlight/
+    /// statusline shared buffers — all such writes happen here, immediately
+    /// before every `render()` call. Mode and display settings are resolved
+    /// lazily via the `get_pane_settings` closure passed to `render()`.
     fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16, ctx: &mut RenderContext) {
         // 1. Sync viewport dimensions.
         // Engine reserves 1 row for the statusline; the pane gets the rest.
@@ -563,14 +575,6 @@ impl Editor {
             vp.width  = terminal_width;
             vp.height = terminal_height.saturating_sub(1);
         }
-
-        // 2. Sync mode. Scratch view forces Normal so the cursor shape stays
-        //    correct regardless of the editor's actual mode.
-        self.engine_view.panes[self.pane_id].mode = if self.scratch_view.is_some() {
-            EditorMode::Normal
-        } else {
-            self.mode
-        };
 
         if let Some(ref sv) = self.scratch_view {
             // ── Scratch view path ─────────────────────────────────────────────
@@ -584,49 +588,45 @@ impl Editor {
             });
             pane.primary_idx = 0;
 
-            // Settings can stay at their current values (wrap, tab width, etc.)
-            // — scratch content looks fine with the user's current preferences.
-
-            // Scroll so the cursor stays visible.
+            // Scroll so the cursor stays visible using global settings (no
+            // buffer-specific overrides for the scratch/messages view).
             let cursor_char = sv.sels.primary().head;
             let rope = sv.buf.rope();
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
+            let wrap_mode = self.settings.wrap_mode.clone();
+            let tab_width = self.settings.tab_width;
+            let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.pane_id];
-            scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
+            scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, &wrap_mode, tab_width, &whitespace, v_margin, h_margin);
             // No highlight updates for scratch view — no search or bracket matches.
         } else {
             // ── Normal document path ──────────────────────────────────────────
 
-            // 3. Push char-offset selections to the engine pane (no conversion needed).
+            // 2. Push char-offset selections to the engine pane (no conversion needed).
             self.push_selections_to_pane();
 
-            // 4. Push resolved per-buffer settings into the pane so the engine
-            //    always reads the effective values, regardless of overrides.
+            // 3. Sync line-number style provider (depends on buffer overrides).
             {
-                let tab_width = self.doc().overrides.tab_width(&self.settings);
-                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
-                let whitespace = self.doc().overrides.whitespace(&self.settings);
-                let ln_style  = self.doc().overrides.line_number_style(&self.settings);
-                let pane = &mut self.engine_view.panes[self.pane_id];
-                pane.tab_width = tab_width;
-                pane.wrap_mode = wrap_mode;
-                pane.whitespace = whitespace;
-                pane.providers.sync_line_number_style(ln_style);
+                let ln_style = self.doc().overrides.line_number_style(&self.settings);
+                self.engine_view.panes[self.pane_id].providers.sync_line_number_style(ln_style);
             }
 
-            // 5. Scroll so the primary cursor stays visible.
+            // 4. Scroll so the primary cursor stays visible.
             let cursor_char = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
+            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let tab_width = self.doc().overrides.tab_width(&self.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.settings);
             {
                 let buf_id = self.buffer_id;
                 let rope = self.buffers.get(buf_id).text().rope();
                 let pane = &mut self.engine_view.panes[self.pane_id];
-                scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
+                scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, &wrap_mode, tab_width, &whitespace, v_margin, h_margin);
             }
 
-            // 6. Sync highlight data (search matches, bracket matches) to shared
+            // 5. Sync highlight data (search matches, bracket matches) to shared
             //    Arc buffers read by the highlight providers during rendering.
             self.update_highlight_providers();
         }
@@ -768,6 +768,7 @@ impl Editor {
     }
 
     /// Accessor for the focused buffer's match cache.
+    #[cfg(test)]
     pub(crate) fn search_matches(&self) -> &SearchMatches {
         &self.buffers.get(self.buffer_id).search_matches
     }
@@ -1296,13 +1297,7 @@ impl Editor {
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
-        let pane = Pane {
-            wrap_mode: settings.wrap_mode.clone(),
-            tab_width: settings.tab_width,
-            whitespace: settings.whitespace.clone(),
-            providers: engine::providers::ProviderSet::new(),
-            ..Pane::new(buffer_id)
-        };
+        let pane = Pane::new(buffer_id);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
@@ -1483,22 +1478,21 @@ impl Editor {
 /// Scroll the pane viewport so `cursor_char` stays within the visible area.
 ///
 /// Calls both the vertical and horizontal `ensure_cursor_visible` helpers in
-/// one shot, sharing the pane destructuring. Used by `prepare_frame` for both
-/// the scratch-view path and the normal document path.
+/// one shot. Used by `prepare_frame` for both the scratch-view path and the
+/// normal document path.
 fn scroll_into_view(
     pane: &mut Pane,
     rope: &ropey::Rope,
     cursor_char: usize,
     scratch: &mut engine::format::FormatScratch,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
     v_margin: usize,
     h_margin: usize,
 ) {
-    // Destructure to split borrows: `&mut viewport` and the read-only fields
-    // (`wrap_mode`, `whitespace`, `tab_width`) are disjoint, so the compiler
-    // allows them simultaneously without any cloning.
-    let Pane { ref mut viewport, ref wrap_mode, tab_width, ref whitespace, .. } = *pane;
-    scroll::ensure_cursor_visible(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
-    scroll::ensure_cursor_visible_horizontal(viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, h_margin);
+    scroll::ensure_cursor_visible(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
+    scroll::ensure_cursor_visible_horizontal(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, h_margin);
 }
 
 /// Convert a char-offset position to a line-relative byte offset.
