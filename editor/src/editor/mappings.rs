@@ -607,7 +607,7 @@ impl Editor {
             if let Some((pre_sels, pre_line)) = pre_jump {
                 let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
-                    self.pane_jumps[self.pane_id].push(JumpEntry { buffer_id: self.buffer_id, selections: pre_sels, primary_line: pre_line });
+                    self.pane_jumps[self.focused_pane_id].push(JumpEntry { buffer_id: self.buffer_id, selections: pre_sels, primary_line: pre_line });
                 }
             }
 
@@ -687,7 +687,7 @@ impl Editor {
 
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
         if let Some(ref sels) = self.pane_transient[pid].pre_search_sels {
             let sels = sels.clone();
             self.set_current_selections(sels);
@@ -696,7 +696,7 @@ impl Editor {
 
     /// Restore selections from the select-mode snapshot without consuming it.
     fn restore_select_snapshot(&mut self) {
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
         if let Some(ref sels) = self.pane_transient[pid].pre_select_sels {
             let sels = sels.clone();
             self.set_current_selections(sels);
@@ -718,11 +718,11 @@ impl Editor {
                 self.registers.write_text(SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
-                let pid = self.pane_id;
+                let pid = self.focused_pane_id;
                 if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
                     let bid = self.buffer_id;
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
-                    self.pane_jumps[self.pane_id].push(entry);
+                    self.pane_jumps[self.focused_pane_id].push(entry);
                 }
                 // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
@@ -742,7 +742,7 @@ impl Editor {
 
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
         if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
@@ -770,7 +770,7 @@ impl Editor {
         };
 
         let direction = self.search.direction;
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
 
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
@@ -825,7 +825,7 @@ impl Editor {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
             MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
-                let pid = self.pane_id;
+                let pid = self.focused_pane_id;
                 self.pane_transient[pid].pre_select_sels = None;
                 // Do NOT write to SEARCH_REGISTER or clear search state —
                 // select-within is a selection op, not a search. The previous
@@ -845,7 +845,7 @@ impl Editor {
 
     /// Cancel select mode: restore original selections, return to Normal.
     fn cancel_select(&mut self) {
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
         if let Some(sels) = self.pane_transient[pid].pre_select_sels.take() {
             self.set_current_selections(sels);
         }
@@ -871,7 +871,7 @@ impl Editor {
 
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
-        let pid = self.pane_id;
+        let pid = self.focused_pane_id;
         let result = self.pane_transient[pid].pre_select_sels.as_ref().and_then(|sels| {
             select_matches_within(self.doc().text(), sels, &regex)
         });
