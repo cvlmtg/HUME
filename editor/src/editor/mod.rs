@@ -226,6 +226,9 @@ pub(crate) struct Editor {
     /// Navigable history of cursor positions before large movements.
     /// `jump-backward` / `jump-forward` traverse the list.
     pub(super) jump_list: crate::core::jump_list::JumpList,
+    /// Per-pane jump lists (Phase 7: replaces `jump_list`; seeded alongside choke-points).
+    #[allow(dead_code)] // Phase 7: Ctrl+O/I wired here
+    pub(super) pane_jumps: SecondaryMap<PaneId, crate::core::jump_list::JumpList>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -370,15 +373,11 @@ impl Editor {
         let settings = EditorSettings::default();
 
         let pane = Pane {
-            buffer_id,
-            viewport: ViewportState::new(80, 24),
-            selections: vec![EngineSelection { anchor: 0, head: 0 }],
-            primary_idx: 0,
-            mode: EditorMode::Normal,
             wrap_mode: settings.wrap_mode.clone(),
             tab_width: settings.tab_width,
             whitespace: settings.whitespace.clone(),
             providers,
+            ..Pane::new(buffer_id)
         };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
@@ -426,6 +425,11 @@ impl Editor {
             search: SearchState::default(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
+            pane_jumps: {
+                let mut m = SecondaryMap::new();
+                m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
+                m
+            },
             pane_state,
             pane_transient,
             engine_view,
@@ -1037,15 +1041,11 @@ impl Editor {
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let pane = Pane {
-            buffer_id,
-            viewport: ViewportState::new(80, 24),
-            selections: vec![EngineSelection { anchor: 0, head: 0 }],
-            primary_idx: 0,
-            mode: EditorMode::Normal,
             wrap_mode: settings.wrap_mode.clone(),
             tab_width: settings.tab_width,
             whitespace: settings.whitespace.clone(),
             providers: engine::providers::ProviderSet::new(),
+            ..Pane::new(buffer_id)
         };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
@@ -1087,6 +1087,11 @@ impl Editor {
             search: SearchState::default(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
+            pane_jumps: {
+                let mut m = SecondaryMap::new();
+                m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
+                m
+            },
             pane_state,
             pane_transient,
             engine_view,
@@ -1109,6 +1114,68 @@ impl Editor {
         self.search.set_regex(regex_cursor::engines::meta::Regex::new(pattern).ok());
         self.update_search_cache();
         self
+    }
+
+    // ── Phase 4b — Pane choke-points (test-gated until Phase 9) ──────────────
+
+    /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
+    pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
+        let pid = self.engine_view.panes.insert(Pane::new(buffer_id));
+        let mut inner: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
+        inner.insert(buffer_id, PaneBufferState {
+            selections: self.doc.initial_sels(),
+            ..PaneBufferState::default()
+        });
+        self.pane_state.insert(pid, inner);
+        self.pane_transient.insert(pid, PaneTransient::default());
+        self.pane_jumps.insert(pid, crate::core::jump_list::JumpList::new(
+            self.settings.jump_list_capacity,
+        ));
+        pid
+    }
+
+    /// Switch focus to `target`, seeding its per-pane maps if not yet present.
+    pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
+        self.pane_id = target;
+        if !self.pane_state.contains_key(target) {
+            self.pane_state.insert(target, SecondaryMap::new());
+        }
+        if !self.pane_transient.contains_key(target) {
+            self.pane_transient.insert(target, PaneTransient::default());
+        }
+        if !self.pane_jumps.contains_key(target) {
+            self.pane_jumps.insert(
+                target,
+                crate::core::jump_list::JumpList::new(self.settings.jump_list_capacity),
+            );
+        }
+        let bid = self.buffer_id;
+        if !self.pane_state[target].contains_key(bid) {
+            self.pane_state[target].insert(bid, PaneBufferState {
+                selections: self.doc.initial_sels(),
+                ..PaneBufferState::default()
+            });
+        }
+    }
+
+    /// Remove pane `target` and all its per-pane state.
+    ///
+    /// Precondition: at least one other pane exists. Callers must switch focus
+    /// away before calling this if `target` is the focused pane.
+    pub(crate) fn close_pane(&mut self, target: PaneId) {
+        self.engine_view.panes.remove(target);
+        self.pane_state.remove(target);
+        self.pane_transient.remove(target);
+        self.pane_jumps.remove(target);
+    }
+
+    /// Read-only accessor used by tests to inspect any pane's selections.
+    pub(crate) fn selections_for(
+        &self,
+        pane: PaneId,
+        buf: BufferId,
+    ) -> Option<&crate::core::selection::SelectionSet> {
+        self.pane_state.get(pane).and_then(|m| m.get(buf)).map(|s| &s.selections)
     }
 }
 
