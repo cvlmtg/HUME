@@ -23,9 +23,9 @@
 //!
 //! # Mappable command variants
 //!
-//! 1. **Motion** — pure `fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet`
-//! 2. **Selection** — pure `fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet`
-//! 3. **Edit** — pure `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
+//! 1. **Motion** — pure `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
+//! 2. **Selection** — pure `fn(&Text, SelectionSet, MotionMode) -> SelectionSet`
+//! 3. **Edit** — pure `fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet)`
 //! 4. **EditorCmd** — `fn(&mut Editor, usize, MotionMode)` for composite/side-effectful
 //!    operations (mode changes, registers, undo groups, parameterized motions).
 //!    Implemented in `editor/commands.rs`; stored and dispatched as a
@@ -34,7 +34,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::error::CommandError;
 use crate::core::changeset::ChangeSet;
 use crate::ops::MotionMode;
@@ -77,38 +77,38 @@ use crate::ops::text_object::{
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
-    /// Signature: `fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet`
+    /// Signature: `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
     /// semantics at dispatch time — no separate extend-variant functions needed.
     Motion {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet,
+        fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
     },
     /// Selection or text-object operation (no count).
     ///
-    /// Signature: `fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet`
+    /// Signature: `fn(&Text, SelectionSet, MotionMode) -> SelectionSet`
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
     /// `_mode` and ignore it; extendable text objects branch on it.
     Selection {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet,
+        fun: fn(&Text, SelectionSet, MotionMode) -> SelectionSet,
     },
-    /// Buffer-modifying edit with no extra arguments.
+    /// Text-modifying edit with no extra arguments.
     ///
-    /// Signature: `fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet)`
+    /// Signature: `fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet)`
     ///
     /// Edits are never extendable — they don't carry `MotionMode`.
     Edit {
         name: Cow<'static, str>,
         doc: Cow<'static, str>,
-        fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
+        fun: fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
         /// for internal primitives like `delete-char-backward`.
@@ -452,7 +452,7 @@ impl CommandRegistry {
         ecmd("move-down", "Move cursors down one visual line.", cmd_visual_move_down).extendable().visual_move().reg(self);
         ecmd("move-up",   "Move cursors up one visual line.",   cmd_visual_move_up  ).extendable().visual_move().reg(self);
 
-        // ── Buffer-level goto motions ─────────────────────────────────────────
+        // ── Text-level goto motions ─────────────────────────────────────────
         motion!("goto-first-line", "Move cursors to the first character of the buffer.",    cmd_goto_first_line, jump);
         motion!("goto-last-line",  "Move cursors to the first character of the last line.", cmd_goto_last_line,  jump);
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::selection::SelectionSet;
 
 // ── Register name constants ────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ impl RegisterSet {
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
 /// internally `buf.slice(start..end+1)`.
-pub(crate) fn yank_selections(buf: &Buffer, sels: &SelectionSet) -> Vec<String> {
+pub(crate) fn yank_selections(buf: &Text, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
         .map(|sel| {
             // end_inclusive() gives the last codepoint of the final grapheme

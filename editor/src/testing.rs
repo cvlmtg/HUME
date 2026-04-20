@@ -36,50 +36,50 @@
 ///
 /// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
 /// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::changeset::ChangeSet;
 use crate::core::selection::{Selection, SelectionSet};
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 
-/// Convert a command's return value into `(Buffer, SelectionSet)` for
+/// Convert a command's return value into `(Text, SelectionSet)` for
 /// assertion purposes.
 ///
 /// Commands have two distinct signature families:
 ///
 /// - **Non-mutating** (motions, text objects, selection commands): take
-///   `&Buffer`, return `SelectionSet`. The buffer is unchanged — the macro
+///   `&Text`, return `SelectionSet`. The buffer is unchanged — the macro
 ///   provides its clone via `original_buf`.
-/// - **Mutating** (edits): take `Buffer` by value, return
-///   `(Buffer, SelectionSet, ChangeSet[, Vec<String>])`. The returned buffer
+/// - **Mutating** (edits): take `Text` by value, return
+///   `(Text, SelectionSet, ChangeSet[, Vec<String>])`. The returned buffer
 ///   is the edited one — `original_buf` is ignored.
 ///
 /// This trait lets `assert_state!` accept both families without change.
 pub(crate) trait IntoTestResult {
-    fn into_test_result(self, original_buf: Buffer) -> (Buffer, SelectionSet);
+    fn into_test_result(self, original_buf: Text) -> (Text, SelectionSet);
 }
 
 /// Non-mutating commands return only the new `SelectionSet`.
 /// The buffer didn't change, so we pair it with the caller's clone.
 impl IntoTestResult for SelectionSet {
-    fn into_test_result(self, original_buf: Buffer) -> (Buffer, SelectionSet) {
+    fn into_test_result(self, original_buf: Text) -> (Text, SelectionSet) {
         (original_buf, self)
     }
 }
 
-/// Legacy `(Buffer, SelectionSet)` — still emitted by internal helpers.
-impl IntoTestResult for (Buffer, SelectionSet) {
-    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { self }
+/// Legacy `(Text, SelectionSet)` — still emitted by internal helpers.
+impl IntoTestResult for (Text, SelectionSet) {
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { self }
 }
 
 /// Standard edit commands.
-impl IntoTestResult for (Buffer, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { (self.0, self.1) }
+impl IntoTestResult for (Text, SelectionSet, ChangeSet) {
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { (self.0, self.1) }
 }
 
 /// Paste commands (return displaced text alongside the edited buffer).
-impl IntoTestResult for (Buffer, SelectionSet, ChangeSet, Vec<String>) {
-    fn into_test_result(self, _original_buf: Buffer) -> (Buffer, SelectionSet) { (self.0, self.1) }
+impl IntoTestResult for (Text, SelectionSet, ChangeSet, Vec<String>) {
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { (self.0, self.1) }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,12 +96,12 @@ fn char_count(s: &str) -> usize {
 
 // ── State parsing ─────────────────────────────────────────────────────────────
 
-/// Parse a marker-annotated string into `(Buffer, SelectionSet)`.
+/// Parse a marker-annotated string into `(Text, SelectionSet)`.
 ///
 /// The markers are stripped from the returned buffer. Panics with a
 /// descriptive message if the string contains no selection markers, or if a
 /// marker is malformed (e.g. a `-[` with no matching `]>`).
-pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
+pub(crate) fn parse_state(input: &str) -> (Text, SelectionSet) {
     // We scan the input one char at a time, building up:
     //   - `text`:       the raw buffer content (markers removed)
     //   - `selections`: the parsed Selection values
@@ -231,16 +231,16 @@ pub(crate) fn parse_state(input: &str) -> (Buffer, SelectionSet) {
         input
     );
 
-    let buf = Buffer::from(text.as_str());
+    let buf = Text::from(text.as_str());
     let sel_set = SelectionSet::from_vec(selections, 0);
     (buf, sel_set)
 }
 
-/// Serialize `(Buffer, SelectionSet)` back to the marker format.
+/// Serialize `(Text, SelectionSet)` back to the marker format.
 ///
 /// This is the inverse of `parse_state`. It is used in assertions so that
 /// diffs show the annotated marker text rather than raw char offsets.
-pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
+pub(crate) fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
     let full = buf.to_string();
     // Include the structural trailing \n in the serialized output so that
     // DSL strings are explicit about buffer content. Every valid buffer ends
@@ -290,9 +290,9 @@ pub(crate) fn serialize_state(buf: &Buffer, sels: &SelectionSet) -> String {
 /// the state described by `$expected`.
 ///
 /// Both `$initial` and `$expected` are marker-annotated strings (see module
-/// docs for the format). `$op` is a closure that takes `(Buffer, SelectionSet)`
+/// docs for the format). `$op` is a closure that takes `(Text, SelectionSet)`
 /// and returns either:
-/// - `(Buffer, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
+/// - `(Text, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
 ///   that modify the buffer, or
 /// - `SelectionSet` — for motion/selection commands that only move cursors.
 ///
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn serialize_cursor_at_start() {
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let sels = SelectionSet::single(Selection::collapsed(0));
         assert_eq!(serialize_state(&buf, &sels), "-[h]>ello\n");
     }
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     fn serialize_cursor_at_end() {
         // cursor at 5 = on the structural trailing \n.
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let sels = SelectionSet::single(Selection::collapsed(5));
         assert_eq!(serialize_state(&buf, &sels), "hello-[\n]>");
     }
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn serialize_forward_selection() {
         // anchor=0, head=3 — selects "hell" (positions 0..=3).
-        let buf = Buffer::from("hello world");
+        let buf = Text::from("hello world");
         let sels = SelectionSet::single(Selection::new(0, 3));
         assert_eq!(serialize_state(&buf, &sels), "-[hell]>o world\n");
     }
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn serialize_backward_selection() {
         // anchor=3, head=0 — selects "hell" (positions 0..=3), cursor on 'h'.
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let sels = SelectionSet::single(Selection::new(3, 0));
         assert_eq!(serialize_state(&buf, &sels), "<[hell]-o\n");
     }
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn serialize_forward_selection_head_at_eof() {
         // head=5 is the trailing \n in "hello\n". Selects "hello\n".
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let sels = SelectionSet::single(Selection::new(0, 5));
         assert_eq!(serialize_state(&buf, &sels), "-[hello\n]>");
     }

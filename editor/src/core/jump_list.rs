@@ -13,7 +13,7 @@
 
 use std::collections::VecDeque;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::selection::SelectionSet;
 
 /// Default capacity — kept here so tests can construct jump lists without
@@ -33,7 +33,7 @@ pub(crate) struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, buf: &Buffer) -> Self {
+    pub(crate) fn new(selections: SelectionSet, buf: &Text) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head);
         Self { selections, primary_line }
     }
@@ -129,7 +129,7 @@ mod tests {
     use crate::core::selection::{Selection, SelectionSet};
 
     /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
-    /// Bypasses `JumpEntry::new` since unit tests don't have a Buffer.
+    /// Bypasses `JumpEntry::new` since unit tests don't have a Text.
     fn entry(char_pos: usize, line: usize) -> JumpEntry {
         JumpEntry {
             selections: SelectionSet::single(Selection::collapsed(char_pos)),

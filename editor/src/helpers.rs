@@ -1,4 +1,4 @@
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 
 #[cfg(test)]
@@ -184,7 +184,7 @@ mod tests {
 
 /// Exclusive end of `line`: char offset of the first char on the *next* line,
 /// or `buf.len_chars()` for the last line.
-pub(crate) fn line_end_exclusive(buf: &Buffer, line: usize) -> usize {
+pub(crate) fn line_end_exclusive(buf: &Text, line: usize) -> usize {
     if line + 1 < buf.len_lines() {
         buf.line_to_char(line + 1)
     } else {
@@ -196,7 +196,7 @@ pub(crate) fn line_end_exclusive(buf: &Buffer, line: usize) -> usize {
 /// walking forward from `line_start`. Used by vertical motions after computing
 /// a char-offset column target, ensuring the cursor always lands on a cluster
 /// boundary.
-pub(crate) fn snap_to_grapheme_boundary(buf: &Buffer, line_start: usize, target: usize) -> usize {
+pub(crate) fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -> usize {
     let mut pos = line_start;
     loop {
         let next = next_grapheme_boundary(buf, pos);
@@ -214,7 +214,7 @@ pub(crate) fn snap_to_grapheme_boundary(buf: &Buffer, line_start: usize, target:
 /// line is empty (no other character to sit on). This is the single
 /// authoritative implementation — shared by `goto_line_end` in `motion.rs`
 /// and the multi-line expand/shrink commands in `selection_cmd.rs`.
-pub(crate) fn line_content_end(buf: &Buffer, line: usize) -> usize {
+pub(crate) fn line_content_end(buf: &Text, line: usize) -> usize {
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);
 

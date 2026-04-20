@@ -1,6 +1,6 @@
 use regex_cursor::engines::meta::Regex;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::core::selection::{Selection, SelectionSet};
@@ -15,7 +15,7 @@ use super::MotionMode;
 /// character (the cursor position). Uses `map_and_merge` because two
 /// overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
-pub(crate) fn cmd_collapse_selection(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_collapse_selection(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let new_sels = sels.map_and_merge(|s| Selection::collapsed(s.head));
     new_sels.debug_assert_valid(buf);
     new_sels
@@ -26,7 +26,7 @@ pub(crate) fn cmd_collapse_selection(buf: &Buffer, sels: SelectionSet, _mode: Mo
 /// A forward selection (anchor ≤ head) becomes backward, and vice versa.
 /// Does not change any range bounds, so overlaps cannot arise — uses plain
 /// `map` (no merge needed).
-pub(crate) fn cmd_flip_selections(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_flip_selections(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     // `flip` only swaps anchor/head — no range change → no new overlaps.
     let new_sels = sels.map(|s| s.flip());
     new_sels.debug_assert_valid(buf);
@@ -38,7 +38,7 @@ pub(crate) fn cmd_flip_selections(buf: &Buffer, sels: SelectionSet, _mode: Motio
 /// Replaces all selections with a single selection spanning from the first
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom — consistent with Helix `%`.
-pub(crate) fn cmd_select_all(buf: &Buffer, _sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_all(buf: &Text, _sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let end = buf.len_chars().saturating_sub(1);
     let sels = SelectionSet::single(Selection::new(0, end));
     sels.debug_assert_valid(buf);
@@ -49,7 +49,7 @@ pub(crate) fn cmd_select_all(buf: &Buffer, _sels: SelectionSet, _mode: MotionMod
 ///
 /// The result is a single-selection set. This is a destructive reduction —
 /// any non-primary cursors or ranges are lost.
-pub(crate) fn cmd_keep_primary_selection(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_keep_primary_selection(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let new_sels = sels.keep_primary();
     new_sels.debug_assert_valid(buf);
     new_sels
@@ -60,7 +60,7 @@ pub(crate) fn cmd_keep_primary_selection(buf: &Buffer, sels: SelectionSet, _mode
 /// If there is only one selection, this is a no-op (the set can never be
 /// empty). After removal the primary wraps to the start if it was the last
 /// selection in document order.
-pub(crate) fn cmd_remove_primary_selection(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_remove_primary_selection(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let idx = sels.primary_index();
     let new_sels = sels.remove(idx); // no-op when len == 1
     new_sels.debug_assert_valid(buf);
@@ -68,20 +68,20 @@ pub(crate) fn cmd_remove_primary_selection(buf: &Buffer, sels: SelectionSet, _mo
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
-pub(crate) fn cmd_cycle_primary_forward(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_cycle_primary_forward(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let new_sels = sels.cycle_primary(1);
     new_sels.debug_assert_valid(buf);
     new_sels
 }
 
 /// Move the primary selection to the previous one in document order, wrapping.
-pub(crate) fn cmd_cycle_primary_backward(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_cycle_primary_backward(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
     let new_sels = sels.cycle_primary(-1);
     new_sels.debug_assert_valid(buf);
     new_sels
 }
 
-// ── Buffer-aware selection commands ───────────────────────────────────────────
+// ── Text-aware selection commands ───────────────────────────────────────────
 
 /// Split each multi-line selection into one selection per line.
 ///
@@ -95,7 +95,7 @@ pub(crate) fn cmd_cycle_primary_backward(buf: &Buffer, sels: SelectionSet, _mode
 /// The direction (forward/backward) of the original selection is preserved on
 /// every piece. The primary becomes the first piece of the original primary.
 pub(crate) fn cmd_split_selection_on_newlines(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
@@ -161,7 +161,7 @@ pub(crate) fn cmd_split_selection_on_newlines(
 /// Returns `None` when no matches are found in any selection — the caller
 /// should keep the original selections unchanged.
 pub(crate) fn select_matches_within(
-    buf: &Buffer,
+    buf: &Text,
     sels: &SelectionSet,
     regex: &Regex,
 ) -> Option<SelectionSet> {
@@ -203,7 +203,7 @@ pub(crate) fn select_matches_within(
 /// the entire selection is whitespace the selection collapses to a cursor at
 /// the original `head`.
 pub(crate) fn cmd_trim_selection_whitespace(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
@@ -251,7 +251,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
 /// The primary advances to the newly added copy of the original primary. If
 /// no copy was added (last-line edge case) the primary stays on the original.
 pub(crate) fn cmd_copy_selection_on_next_line(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
@@ -262,7 +262,7 @@ pub(crate) fn cmd_copy_selection_on_next_line(
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
 pub(crate) fn cmd_copy_selection_on_prev_line(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
@@ -273,7 +273,7 @@ pub(crate) fn cmd_copy_selection_on_prev_line(
 
 /// Core implementation for copy-to-next/prev-line. `direction` is `1` for
 /// down and `-1` for up.
-fn copy_selection_vertically(buf: &Buffer, sels: SelectionSet, direction: isize) -> SelectionSet {
+fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -> SelectionSet {
     let primary_idx = sels.primary_index();
     // Collect originals into `all_sels`. Copies are appended below.
     let mut all_sels: Vec<Selection> = sels.iter_sorted().copied().collect();
@@ -328,7 +328,7 @@ fn copy_selection_vertically(buf: &Buffer, sels: SelectionSet, direction: isize)
 /// line by `delta` lines, preserving the char-offset column and clamping to
 /// the target line's content.
 fn column_on_shifted_line(
-    buf: &Buffer,
+    buf: &Text,
     pos: usize,
     pos_line: usize,
     delta: isize,
@@ -340,7 +340,7 @@ fn column_on_shifted_line(
 
 /// Place the cursor at `col` chars from the start of `line`, clamping to the
 /// last content character and snapping to a grapheme boundary.
-fn place_column(buf: &Buffer, line: usize, col: usize) -> usize {
+fn place_column(buf: &Text, line: usize, col: usize) -> usize {
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);
     let target = line_start + col;
@@ -555,7 +555,7 @@ mod tests {
         // After split: "foo" on line 0, "bar" on line 1.
         let (buf, sels) = parse_state("-[foo\nbar]>\n");
         let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
-        // Buffer unchanged (pure op).
+        // Text unchanged (pure op).
         assert_eq!(buf.to_string(), "foo\nbar\n");
         // Two selections.
         assert_eq!(sels_out.len(), 2);
@@ -731,7 +731,7 @@ mod tests {
     fn collapse_two_selections_same_head_merges() {
         // Two selections with different anchors but the same head collapse to
         // one cursor — map_and_merge must reduce the count.
-        let buf = crate::core::buffer::Buffer::from("hello\n");
+        let buf = crate::core::text::Text::from("hello\n");
         let sels = crate::core::selection::SelectionSet::from_vec(
             vec![
                 crate::core::selection::Selection::new(0, 3), // head at 3
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn copy_next_line_count_3() {
         // repeat(3, ...) copies the cursor to 3 consecutive lines below.
-        // Buffer: "a\nb\nc\nd\ne\n". Cursor on 'a'(0).
+        // Text: "a\nb\nc\nd\ne\n". Cursor on 'a'(0).
         // After 3 copies: cursors on 'a'(0), 'b'(2), 'c'(4), 'd'(6).
         use crate::ops::edit::repeat;
         assert_state!(
@@ -962,7 +962,7 @@ mod tests {
         // Only matches within the selection range should be found.
         // "ab" appears at (0,1) and (4,5) in "abcdab\n", but selection
         // covers only chars 2..3 ("cd") — no matches.
-        let buf = Buffer::from("abcdab\n");
+        let buf = Text::from("abcdab\n");
         let sels = SelectionSet::single(Selection::new(2, 3));
         let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
         assert!(select_matches_within(&buf, &sels, &regex).is_none());
@@ -971,7 +971,7 @@ mod tests {
     #[test]
     fn select_matches_multiple_selections() {
         // Two selections, each containing one "ab".
-        let buf = Buffer::from("ab cd ab\n");
+        let buf = Text::from("ab cd ab\n");
         let sel0 = Selection::new(0, 1); // "ab"
         let sel1 = Selection::new(6, 7); // "ab"
         let sels = SelectionSet::from_vec(vec![sel0, sel1], 0);
@@ -983,7 +983,7 @@ mod tests {
     #[test]
     fn select_matches_backward_selection() {
         // Backward selection (anchor > head) should work identically.
-        let buf = Buffer::from("aababab\n");
+        let buf = Text::from("aababab\n");
         let sels = SelectionSet::single(Selection::new(6, 0)); // backward
         let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
@@ -1009,7 +1009,7 @@ mod tests {
         // "café\n" where 'é' is e + U+0301 (2 codepoints at chars 3,4).
         // Selection covers the whole word. Matching "é" should produce a
         // selection spanning both codepoints (3,4).
-        let buf = Buffer::from("caf\u{0065}\u{0301}\n");
+        let buf = Text::from("caf\u{0065}\u{0301}\n");
         let sels = SelectionSet::single(Selection::new(0, 4));
         let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
         let result = select_matches_within(&buf, &sels, &regex).unwrap();

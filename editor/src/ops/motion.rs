@@ -1,4 +1,4 @@
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, snap_to_grapheme_boundary, CharClass};
 use crate::core::selection::{Selection, SelectionSet};
@@ -18,7 +18,7 @@ pub(crate) enum FindKind {
 
 /// Apply an inner motion to every selection in the set, repeated `count` times.
 ///
-/// `motion` is a plain function `fn(&Buffer, head) -> new_head`. It knows
+/// `motion` is a plain function `fn(&Text, head) -> new_head`. It knows
 /// nothing about anchors or multi-cursor — it computes exactly one new
 /// position from one old position. `apply_motion` handles the anchor
 /// semantics (via `mode`) and multi-cursor bookkeeping.
@@ -33,11 +33,11 @@ pub(crate) enum FindKind {
 /// Uses `map_and_merge` so that selections which converge to the same position
 /// after the motion are automatically merged.
 pub(crate) fn apply_motion(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
-    motion: impl Fn(&Buffer, usize) -> usize,
+    motion: impl Fn(&Text, usize) -> usize,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         // Apply the motion `count` times, feeding each result as the next
@@ -58,7 +58,7 @@ pub(crate) fn apply_motion(
 ///
 /// Clamps to `buf.len_chars() - 1` so the cursor never moves past the
 /// trailing `\n` (which is always the last character in the buffer).
-fn move_right(buf: &Buffer, head: usize) -> usize {
+fn move_right(buf: &Text, head: usize) -> usize {
     let next = next_grapheme_boundary(buf, head);
     // len_chars() - 1 is safe: the buffer always has at least one char (\n).
     next.min(buf.len_chars() - 1)
@@ -67,14 +67,14 @@ fn move_right(buf: &Buffer, head: usize) -> usize {
 /// Move one grapheme cluster to the left.
 ///
 /// Returns `0` when already at the start of the buffer.
-fn move_left(buf: &Buffer, head: usize) -> usize {
+fn move_left(buf: &Text, head: usize) -> usize {
     prev_grapheme_boundary(buf, head)
 }
 
-// ── Buffer-level goto motions (inner) ────────────────────────────────────────
+// ── Text-level goto motions (inner) ────────────────────────────────────────
 
 /// Jump to the first character of the buffer.
-fn goto_first_line(_buf: &Buffer, _head: usize) -> usize {
+fn goto_first_line(_buf: &Text, _head: usize) -> usize {
     0
 }
 
@@ -83,7 +83,7 @@ fn goto_first_line(_buf: &Buffer, _head: usize) -> usize {
 /// `ropey`'s `len_lines()` counts the empty "ghost" line that follows every
 /// trailing `\n`, so the last content line is always at index `len_lines() - 2`.
 /// For the minimal buffer (`"\n"`) that yields index 0, which is correct.
-fn goto_last_line(buf: &Buffer, _head: usize) -> usize {
+fn goto_last_line(buf: &Text, _head: usize) -> usize {
     let last_line = buf.len_lines().saturating_sub(2);
     buf.line_to_char(last_line)
 }
@@ -91,7 +91,7 @@ fn goto_last_line(buf: &Buffer, _head: usize) -> usize {
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
-fn goto_line_start(buf: &Buffer, head: usize) -> usize {
+fn goto_line_start(buf: &Text, head: usize) -> usize {
     buf.line_to_char(buf.char_to_line(head))
 }
 
@@ -99,7 +99,7 @@ fn goto_line_start(buf: &Buffer, head: usize) -> usize {
 ///
 /// On an empty line (containing only `\n`), the cursor stays on the newline —
 /// there is no other character to land on.
-fn goto_line_end(buf: &Buffer, head: usize) -> usize {
+fn goto_line_end(buf: &Text, head: usize) -> usize {
     // The core logic lives in helpers::line_content_end, which is also used by
     // selection_cmd.rs — one implementation, two callers.
     line_content_end(buf, buf.char_to_line(head))
@@ -110,7 +110,7 @@ fn goto_line_end(buf: &Buffer, head: usize) -> usize {
 /// "Blank" means ASCII space or tab. If no non-blank character exists on the
 /// line (e.g. a line of only spaces), the motion is a no-op and the cursor
 /// stays at its current position.
-fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
+fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
     let line = buf.char_to_line(head);
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);
@@ -137,7 +137,7 @@ fn goto_first_nonblank(buf: &Buffer, head: usize) -> usize {
 /// **Column model (current simplification):** column is a char offset from line
 /// start, not a display column. This is correct for ASCII. When the renderer
 /// adds tab/wide-char support, vertical motions will switch to display columns.
-fn move_down_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> usize {
+fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
     let line = buf.char_to_line(head);
     if line + 1 >= buf.len_lines() {
         return head; // already on the last line
@@ -167,7 +167,7 @@ fn move_down_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> u
 /// Move the cursor up one line, preserving the char-offset column.
 ///
 /// See `move_down_inner` for the column model and `preferred_col` semantics.
-fn move_up_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> usize {
+fn move_up_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
     let line = buf.char_to_line(head);
     if line == 0 {
         return head; // already on the first line
@@ -196,7 +196,7 @@ fn move_up_inner(buf: &Buffer, head: usize, preferred_col: Option<usize>) -> usi
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
 /// `is_WORD_boundary` for `W`.
 fn next_word_start(
-    buf: &Buffer,
+    buf: &Text,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -233,7 +233,7 @@ fn next_word_start(
 /// Two-phase backward scan: skip Space/Eol backward, then skip backward while
 /// in the same category, landing on the first char of that group.
 fn prev_word_start(
-    buf: &Buffer,
+    buf: &Text,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -288,7 +288,7 @@ fn prev_word_start(
 /// This is Phase 2 of `next_word_end` run from a known starting position,
 /// without the initial skip-whitespace step.
 fn find_word_end_from(
-    buf: &Buffer,
+    buf: &Text,
     start: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -327,7 +327,7 @@ fn find_word_end_from(
 /// scan lands on a newline between lines, it calls `next_word_start` a second
 /// time from the newline to reach the first word on the next line.
 fn select_next_word(
-    buf: &Buffer,
+    buf: &Text,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
@@ -370,7 +370,7 @@ fn select_next_word(
 /// the start of the current word). If `pos` is in whitespace or at the start
 /// of a word, we jump to the preceding word.
 fn select_prev_word(
-    buf: &Buffer,
+    buf: &Text,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
@@ -418,10 +418,10 @@ fn select_prev_word(
 /// If `motion` returns `None` (no next/previous word), the iteration stops
 /// early for that selection and the last selection is kept unchanged.
 fn apply_word_select(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     count: usize,
-    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
@@ -444,10 +444,10 @@ fn apply_word_select(
 /// *ahead* of the current selection, regardless of how far it already extends.
 /// If `motion` returns `None`, iteration stops early and the last selection is kept.
 fn apply_word_select_extend_forward(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     count: usize,
-    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
@@ -478,10 +478,10 @@ fn apply_word_select_extend_forward(
 /// Without this, `select_prev_word(sel.head)` finds a word already inside the
 /// selection, making union a no-op.
 fn apply_word_select_extend_backward(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     count: usize,
-    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
@@ -507,7 +507,7 @@ fn apply_word_select_extend_backward(
 
 /// Returns `true` if `line` is an empty line — either zero chars or exactly
 /// one newline. Whitespace-only lines are NOT empty (matching Helix semantics).
-fn is_empty_line(buf: &Buffer, line: usize) -> bool {
+fn is_empty_line(buf: &Text, line: usize) -> bool {
     let start = buf.line_to_char(line);
     let end = line_end_exclusive(buf, line);
     // Zero chars (last line of an empty buffer) or exactly one '\n'.
@@ -524,7 +524,7 @@ fn is_empty_line(buf: &Buffer, line: usize) -> bool {
 ///
 /// Lands on the first char of the next paragraph, or `len_chars()` if there is
 /// no paragraph below (EOF). At EOF already: no-op.
-fn next_paragraph(buf: &Buffer, head: usize) -> usize {
+fn next_paragraph(buf: &Text, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
     let total = buf.len_lines();
 
@@ -555,7 +555,7 @@ fn next_paragraph(buf: &Buffer, head: usize) -> usize {
 ///
 /// Lands on the first (topmost) empty line of the gap above, or line 0 if
 /// there is no paragraph above. At line 0 already: no-op.
-fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
+fn prev_paragraph(buf: &Text, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
 
     // Phase 1: skip empty lines backward (handles starting inside a gap).
@@ -576,8 +576,8 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 
 // ── Named commands (public API) ───────────────────────────────────────────────
 //
-// Named commands follow the edit convention — `(Buffer, SelectionSet) ->
-// (Buffer, SelectionSet)` — so they can be used directly with `assert_state!`
+// Named commands follow the edit convention — `(Text, SelectionSet) ->
+// (Text, SelectionSet)` — so they can be used directly with `assert_state!`
 // and, eventually, the command dispatch table.
 //
 // Pure motions do not modify the buffer, so `buf` passes through unchanged.
@@ -591,7 +591,7 @@ fn prev_paragraph(buf: &Buffer, head: usize) -> usize {
 ///
 /// Two arms handle the two motion shapes that exist in this codebase:
 ///
-/// **Direct** — the motion function takes only `(&Buffer, head)`:
+/// **Direct** — the motion function takes only `(&Text, head)`:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
@@ -619,15 +619,15 @@ macro_rules! motion_cmd {
     ($(#[$attr:meta])* $name:ident, $inner:ident($arg:expr)) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
             apply_motion(buf, sels, mode, count, |b, h| $inner(b, h, $arg))
         }
     };
-    // Direct arm: motion function takes only (&Buffer, head).
+    // Direct arm: motion function takes only (&Text, head).
     ($(#[$attr:meta])* $name:ident, $motion:expr) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
             apply_motion(buf, sels, mode, count, $motion)
         }
     };
@@ -671,7 +671,7 @@ motion_cmd!(/// Move or extend cursors up one line, preserving the char-offset c
 /// `Move` — re-anchors on each press (fresh forward selection spanning the word).
 /// `Extend` — unions the next word range with the existing selection.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_word(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_next_word(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
     match mode {
         MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary)),
         MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary)),
@@ -680,7 +680,7 @@ pub(crate) fn cmd_select_next_word(buf: &Buffer, sels: SelectionSet, count: usiz
 
 /// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_next_WORD(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
     match mode {
         MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary)),
         MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary)),
@@ -689,7 +689,7 @@ pub(crate) fn cmd_select_next_WORD(buf: &Buffer, sels: SelectionSet, count: usiz
 
 /// Select or extend to the previous word (`b`): branches on `mode`.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_prev_word(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
     match mode {
         MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary)),
         MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary)),
@@ -698,7 +698,7 @@ pub(crate) fn cmd_select_prev_word(buf: &Buffer, sels: SelectionSet, count: usiz
 
 /// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_WORD(buf: &Buffer, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_prev_WORD(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
     match mode {
         MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary)),
         MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary)),
@@ -723,7 +723,7 @@ motion_cmd!(/// Move or extend cursors to the first empty line above the current
 /// `Extend` — grows the selection to cover the current line. If the selection
 /// already ends on a `\n`, accumulates the next line instead. Always produces a
 /// forward selection (anchor=start, head=`\n`).
-pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         match mode {
             MotionMode::Move => {
@@ -772,7 +772,7 @@ pub(crate) fn cmd_select_line(buf: &Buffer, sels: SelectionSet, mode: MotionMode
 /// `Extend` — grows the selection upward to cover the current line. If the selection
 /// already starts at a line boundary, accumulates the previous line. Always produces
 /// a backward selection (anchor=bottom `\n`, head=top start).
-pub(crate) fn cmd_select_line_backward(buf: &Buffer, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_line_backward(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         match mode {
             MotionMode::Move => {
@@ -820,7 +820,7 @@ pub(crate) fn cmd_select_line_backward(buf: &Buffer, sels: SelectionSet, mode: M
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line's terminating `\n`. The newline itself is never matched — it is a
 /// structural boundary, not content.
-fn find_char_on_line_forward(buf: &Buffer, head: usize, ch: char) -> Option<usize> {
+fn find_char_on_line_forward(buf: &Text, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
     // Exclude the '\n': stop iteration once pos reaches the newline position.
     // The buffer always ends with '\n', so line_end_exclusive >= 1.
@@ -839,7 +839,7 @@ fn find_char_on_line_forward(buf: &Buffer, head: usize, ch: char) -> Option<usiz
 ///
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line start.
-fn find_char_on_line_backward(buf: &Buffer, head: usize, ch: char) -> Option<usize> {
+fn find_char_on_line_backward(buf: &Text, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
     let line_start = buf.line_to_char(line);
     if head == line_start {
@@ -869,7 +869,7 @@ fn find_char_on_line_backward(buf: &Buffer, head: usize, ch: char) -> Option<usi
 /// `count` is supported via `apply_motion`'s fold: `3fa` skips to the 3rd `a`.
 /// No-op per selection if `ch` is not found.
 pub(crate) fn find_char_forward(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
@@ -898,7 +898,7 @@ pub(crate) fn find_char_forward(
 ///
 /// No-op per selection if `ch` is not found.
 pub(crate) fn find_char_backward(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
@@ -1495,7 +1495,7 @@ mod tests {
 
     #[test]
     fn select_next_word_skips_combining_grapheme() {
-        // Buffer: "cafe\u{0301} world\n" — graphemes: {c}{a}{f}{e◌́}{ }{w}{o}{r}{l}{d}{\n}
+        // Text: "cafe\u{0301} world\n" — graphemes: {c}{a}{f}{e◌́}{ }{w}{o}{r}{l}{d}{\n}
         // The combining codepoint U+0301 (offset 4) must not create a false word
         // boundary inside the grapheme cluster {e◌́}. w selects "world".
         assert_state!(
@@ -1507,7 +1507,7 @@ mod tests {
 
     #[test]
     fn select_prev_word_skips_combining_grapheme() {
-        // Buffer: "cafe\u{0301} world\n", cursor on 'w'.
+        // Text: "cafe\u{0301} world\n", cursor on 'w'.
         // b must step over the combining grapheme {e◌́} as a unit (Word class)
         // and select all of "cafe\u{0301}" as one word.
         assert_state!(
@@ -1705,7 +1705,7 @@ mod tests {
 
     #[test]
     fn move_right_count_grapheme_cluster() {
-        // Buffer: "e◌́x\n". Grapheme clusters: {e◌́}(0..2), {x}(2), {\n}(3).
+        // Text: "e◌́x\n". Grapheme clusters: {e◌́}(0..2), {x}(2), {\n}(3).
         // count=2 from offset 0: step1 → 2 (x), step2 → 3 (\n). Clamped to len-1=3.
         assert_state!(
             "-[e\u{0301}]>x\n",
@@ -1813,7 +1813,7 @@ mod tests {
     fn move_up_multi_cursor_merge() {
         // Line 0 is "a\n" (1 content char). Two cursors on line 1 at cols 0 and 2.
         // Both move up: col 0 → 'a'(0); col 2 → clamps to 'a'(0). They merge.
-        // Buffer content "a\norld\n" is unchanged; only one cursor remains.
+        // Text content "a\norld\n" is unchanged; only one cursor remains.
         assert_state!(
             "a\n-[o]>r-[l]>d\n",
             |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
@@ -1887,7 +1887,7 @@ mod tests {
 
     #[test]
     fn extend_first_nonblank_from_indent() {
-        // Buffer "  hello\n" (2 spaces), cursor at ' '(0); extend to 'h'(2).
+        // Text "  hello\n" (2 spaces), cursor at ' '(0); extend to 'h'(2).
         // anchor stays at 0, head = 2 → selection covers "  h".
         // Serialized with ]> after head: "-[  h]>ello\n".
         assert_state!(
@@ -2185,16 +2185,16 @@ mod tests {
     // ── find_char_forward / find_char_backward ────────────────────────────────
 
     // Helper wrappers with fixed mode so assert_state! closures stay tidy.
-    fn fwd(buf: Buffer, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+    fn fwd(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
         find_char_forward(&buf, sels, MotionMode::Move, 1, ch, kind)
     }
-    fn bwd(buf: Buffer, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+    fn bwd(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
         find_char_backward(&buf, sels, MotionMode::Move, 1, ch, kind)
     }
-    fn fwd_ext(buf: Buffer, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+    fn fwd_ext(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
         find_char_forward(&buf, sels, MotionMode::Extend, 1, ch, kind)
     }
-    fn fwd_count(buf: Buffer, sels: SelectionSet, ch: char, kind: FindKind, n: usize) -> SelectionSet {
+    fn fwd_count(buf: Text, sels: SelectionSet, ch: char, kind: FindKind, n: usize) -> SelectionSet {
         find_char_forward(&buf, sels, MotionMode::Move, n, ch, kind)
     }
 

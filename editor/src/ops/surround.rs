@@ -6,7 +6,7 @@
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ops::pair::{find_bracket_pair, find_quote_pair};
 use crate::ops::MotionMode;
@@ -81,9 +81,9 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 /// Shared implementation: map each selection to two cursors on the pair
 /// endpoints, or preserve unchanged on no-match.
 fn select_surround(
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
-    find_pair: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
+    find_pair: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let primary_idx = sels.primary_index();
     let mut new_sels = Vec::with_capacity(sels.len() * 2);
@@ -115,12 +115,12 @@ fn select_surround(
 
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
-        pub(crate) fn $name(buf: &Buffer, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $name(buf: &Text, sels: SelectionSet, _mode: MotionMode) -> SelectionSet {
             select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
@@ -139,7 +139,7 @@ surround_cmd!(cmd_surround_backtick,     quote,   '`');
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::buffer::Buffer;
+    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
 
     /// Helper: make a buffer + single-cursor SelectionSet and run a surround
@@ -147,9 +147,9 @@ mod tests {
     fn run_surround(
         text: &str,
         cursor_pos: usize,
-        f: impl Fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet,
+        f: impl Fn(&Text, SelectionSet, MotionMode) -> SelectionSet,
     ) -> Vec<(usize, usize)> {
-        let buf = Buffer::from(text);
+        let buf = Text::from(text);
         let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
         let result = f(&buf, sels, MotionMode::Move);
         result.iter_sorted().map(|s| (s.anchor, s.head)).collect()
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn surround_multi_cursor_different_pairs() {
         // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
-        let buf = Buffer::from("(a) [b]\n");
+        let buf = Text::from("(a) [b]\n");
         let sels = SelectionSet::from_vec(
             vec![Selection::collapsed(1), Selection::collapsed(5)],
             0,
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn surround_multi_cursor_same_pair_merges() {
         // (hello) — two cursors both inside the same parens (pos 1 and 3).
-        let buf = Buffer::from("(hello)\n");
+        let buf = Text::from("(hello)\n");
         let sels = SelectionSet::from_vec(
             vec![Selection::collapsed(1), Selection::collapsed(3)],
             0,
@@ -259,7 +259,7 @@ mod tests {
     fn surround_with_range_selection_uses_head() {
         // (hello) — range selection spanning 'ell' (anchor=2, head=4).
         // find_bracket_pair searches from head (pos 4), finds the enclosing ().
-        let buf = Buffer::from("(hello)\n");
+        let buf = Text::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(2, 4));
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
@@ -270,7 +270,7 @@ mod tests {
     fn surround_with_backward_range_selection() {
         // (hello) — backward selection (anchor=4, head=2).
         // head is at pos 2, still inside the parens.
-        let buf = Buffer::from("(hello)\n");
+        let buf = Text::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(4, 2));
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();

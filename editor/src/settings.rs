@@ -11,7 +11,7 @@
 //! impl reproduces today's hardcoded defaults, so the editor behaves identically
 //! with no explicit configuration.
 //!
-//! [`BufferOverrides`] lives on each [`crate::core::document::Document`] and
+//! [`BufferOverrides`] lives on each [`crate::editor::buffer::Text`] and
 //! stores `Option<T>` for every per-buffer-overridable setting. `None` means
 //! "inherit from global". Resolution happens at call time via the accessor
 //! methods on [`BufferOverrides`] — no pre-merged copy is kept.
@@ -43,12 +43,12 @@ use crate::ui::statusline::StatusLineConfig;
 /// Scope for a `:set` command.
 ///
 /// `Global` applies to editor-wide defaults (written to [`EditorSettings`]).
-/// `Buffer` overrides a setting for the active buffer only (written to
+/// `Text` overrides a setting for the active buffer only (written to
 /// [`BufferOverrides`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingScope {
     Global,
-    Buffer,
+    Text,
 }
 
 // ── Parser helper ─────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ macro_rules! define_settings {
         /// Apply a setting mutation from a `:set scope key=value` command.
         ///
         /// - `Global` scope writes to `settings` (always valid for all keys)
-        /// - `Buffer` scope writes to `overrides` (rejected for global-only
+        /// - `Text` scope writes to `overrides` (rejected for global-only
         ///   keys)
         ///
         /// Returns `Err(message)` on unknown key, wrong-scope key, or invalid
@@ -187,12 +187,12 @@ macro_rules! define_settings {
                 $( (SettingScope::Global, $bkey) => {
                     settings.$bname = parse_setting!(value, key, $bparser)?;
                 } )*
-                // Per-buffer settings: Buffer scope writes to override
-                $( (SettingScope::Buffer, $bkey) => {
+                // Per-buffer settings: Text scope writes to override
+                $( (SettingScope::Text, $bkey) => {
                     overrides.$bname = Some(parse_setting!(value, key, $bparser)?);
                 } )*
-                // Global-only settings rejected when scope is Buffer
-                $( (SettingScope::Buffer, $gkey) => {
+                // Global-only settings rejected when scope is Text
+                $( (SettingScope::Text, $gkey) => {
                     return Err(format!(
                         "'{key}' is a global-only setting — use :set global {key}=…"
                     ));
@@ -208,13 +208,13 @@ macro_rules! define_settings {
                 (SettingScope::Global, "whitespace-newline") => {
                     settings.whitespace.newline = value.parse()?;
                 }
-                (SettingScope::Buffer, "whitespace-space") => {
+                (SettingScope::Text, "whitespace-space") => {
                     overrides.whitespace_space = Some(value.parse()?);
                 }
-                (SettingScope::Buffer, "whitespace-tab") => {
+                (SettingScope::Text, "whitespace-tab") => {
                     overrides.whitespace_tab = Some(value.parse()?);
                 }
-                (SettingScope::Buffer, "whitespace-newline") => {
+                (SettingScope::Text, "whitespace-newline") => {
                     overrides.whitespace_newline = Some(value.parse()?);
                 }
                 _ => return Err(format!("unknown setting '{key}'")),
@@ -505,7 +505,7 @@ mod tests {
     fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        apply_setting(SettingScope::Buffer, key, value, &mut s, &mut ov)?;
+        apply_setting(SettingScope::Text, key, value, &mut s, &mut ov)?;
         Ok(ov)
     }
 
@@ -626,7 +626,7 @@ mod tests {
         assert!(global("mouse-enabled", "").is_err());
     }
 
-    // ── apply_setting: Buffer scope ───────────────────────────────────────────
+    // ── apply_setting: Text scope ───────────────────────────────────────────
 
     #[test]
     fn set_buffer_tab_width() {
@@ -698,7 +698,7 @@ mod tests {
     fn set_buffer_global_only_setting_errors() {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        let err = apply_setting(SettingScope::Buffer, "scroll-margin", "3", &mut s, &mut ov)
+        let err = apply_setting(SettingScope::Text, "scroll-margin", "3", &mut s, &mut ov)
             .unwrap_err();
         assert!(err.contains("global-only"), "expected 'global-only' in error: {err}");
     }
@@ -716,7 +716,7 @@ mod tests {
             "jump-list-capacity",
             "jump-line-threshold",
         ] {
-            let err = apply_setting(SettingScope::Buffer, key, "1", &mut s, &mut ov)
+            let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov)
                 .unwrap_err();
             assert!(
                 err.contains("global-only"),
@@ -749,7 +749,7 @@ mod tests {
         let mut global = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         apply_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
-        // Buffer has no override, so it inherits the new global value.
+        // Text has no override, so it inherits the new global value.
         assert_eq!(ov.tab_width(&global), 2);
     }
 
