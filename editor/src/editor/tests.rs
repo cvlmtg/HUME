@@ -4183,7 +4183,7 @@ fn p6_edit_force_reloads_current_file() {
     std::fs::write(&path, "original\n").unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
-    let _ = ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     // Dirty the buffer.
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));

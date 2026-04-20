@@ -21,7 +21,6 @@ pub(crate) mod builtins;
 pub(crate) mod keys;
 pub(crate) mod ledger;
 
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc,
@@ -29,6 +28,8 @@ use std::sync::{
 };
 
 use steel::steel_vm::engine::Engine;
+use steel::gc::unsafe_erased_pointers::CustomReference;
+use steel::rvals::SteelVal;
 
 use std::borrow::Cow;
 
@@ -36,6 +37,13 @@ use crate::editor::keymap::{BindMode, Keymap};
 use crate::settings::{apply_setting, BufferOverrides, EditorSettings, SettingScope};
 
 use ledger::{LedgerStack, PluginId, PluginStack};
+
+// ── HUME_CTX global name ──────────────────────────────────────────────────────
+
+/// Name of the Steel global that holds the `&mut SteelCtx` reference during
+/// each eval or command call.  Builtins registered with
+/// `register_fn_with_ctx(HUME_CTX, …)` receive this value as their first arg.
+pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 
 // ── EvalWatchdog ──────────────────────────────────────────────────────────────
 
@@ -82,7 +90,7 @@ impl EvalWatchdog {
     }
 }
 
-// ── EvalCtx ───────────────────────────────────────────────────────────────────
+// ── SteelCtx ──────────────────────────────────────────────────────────────────
 
 /// A `(define-command! …)` call captured during `eval_init`, to be processed
 /// after the eval completes.
@@ -110,56 +118,95 @@ pub(crate) struct SteelCmdDef {
     pub(crate) steel_proc: String,
 }
 
-/// Editor state moved into thread-local storage for the duration of
-/// [`ScriptingHost::eval_init`].
+/// Context struct borrowed into the Steel engine for the duration of each eval
+/// or command call via Steel's `with_mut_reference` API.
 ///
-/// Every builtin function accesses this via [`EVAL_CTX`] (through
-/// [`builtins::with_ctx`]).  The TLS move-in/move-out pattern lets us use
-/// plain `FunctionSignature` function pointers (which cannot capture state)
-/// while still giving builtins access to the editor's mutable fields.
-///
-/// Fields are restored to their original locations unconditionally after
-/// `eval_init` returns, even on error.
-pub(crate) struct EvalCtx {
-    /// Editor settings being mutated by `(set-option! …)`.
+/// Replaces the old `EvalCtx` + TLS move-in/move-out pattern. Builtins
+/// registered with `register_fn_with_ctx(HUME_CTX, …)` receive `&mut SteelCtx`
+/// as their first argument, injected automatically by Steel.
+pub(crate) struct SteelCtx {
+    /// Editor settings — mutated by `(set-option! …)`.
     pub(crate) settings: EditorSettings,
-    /// Keymap being mutated by `(bind-key! …)`.
+    /// Keymap — mutated by `(bind-key! …)`.
     pub(crate) keymap: Keymap,
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: PluginStack,
     /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
     pub(crate) ledger_stack: LedgerStack,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
-    /// `None` if HOME/APPDATA is unset — no user plugins will resolve and
-    /// every sandbox write path is rejected.
     pub(crate) data_dir: Option<PathBuf>,
-    /// Where core plugins, themes, and docs live.  `None` if not found on disk.
+    /// Where core plugins, themes, and docs live.
     pub(crate) runtime_dir: Option<PathBuf>,
     /// Every plugin name passed to `(load-plugin …)`, including absent ones.
-    /// Used by PLUM's `:plum-install` to discover what to install.
     pub(crate) declared_plugins: Vec<String>,
     /// Plugins that were both declared and successfully located on disk.
     pub(crate) loaded_plugins: Vec<String>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
-    /// `(define-command! …)` calls accumulated during this eval.  Processed
-    /// after eval completes in [`ScriptingHost::process_pending_cmds`].
+    /// `(define-command! …)` calls accumulated during this eval.
     pub(crate) pending_steel_cmds: Vec<PendingSteelCmd>,
+    /// Command-owner index snapshot for `(command-plugin …)`.
+    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
+    /// Messages accumulated by `(log! …)`.  Drained into the editor after eval.
+    pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
+    /// Interrupt flag shared with the `EvalWatchdog`.
+    pub(crate) interrupt_flag: Arc<AtomicBool>,
+    // ── Command-mode fields (meaningful only when is_init = false) ────────────
+    /// Commands queued by `(call! …)`.
+    pub(crate) cmd_queue: Vec<String>,
+    /// WaitChar command requested by `(request-wait-char! …)`.
+    pub(crate) wait_char_request: Option<String>,
+    /// Pending char from a WaitChar keymap node.
+    pub(crate) pending_char: Option<char>,
+    /// Command-line argument from `:cmd arg` invocation.
+    pub(crate) cmd_arg: Option<String>,
+    // ── Mode discriminant ────────────────────────────────────────────────────
+    /// `true` during `eval_source_raw` (init.scm / plugin load);
+    /// `false` during `call_steel_cmd` (command dispatch).
+    /// Builtins that mutate config (`set-option!`, `bind-key!`, etc.) check
+    /// this and raise a Steel error when called from command bodies.
+    pub(crate) is_init: bool,
 }
 
-thread_local! {
-    /// TLS slot for [`EvalCtx`].  `Some` only during [`ScriptingHost::eval_init`].
-    pub(crate) static EVAL_CTX: RefCell<Option<EvalCtx>> = RefCell::new(None);
+impl CustomReference for SteelCtx {}
+steel::custom_reference!(SteelCtx);
+
+#[cfg(test)]
+impl SteelCtx {
+    /// Minimal valid instance for unit tests.  `is_init = false` (command mode).
+    pub(crate) fn for_testing() -> Self {
+        Self {
+            settings:           EditorSettings::default(),
+            keymap:             Keymap::default(),
+            plugin_stack:       PluginStack::default(),
+            ledger_stack:       LedgerStack::default(),
+            data_dir:           None,
+            runtime_dir:        None,
+            declared_plugins:   Vec::new(),
+            loaded_plugins:     Vec::new(),
+            builtin_cmd_names:  std::collections::HashSet::new(),
+            pending_steel_cmds: Vec::new(),
+            cmd_owners:         std::collections::HashMap::new(),
+            pending_messages:   Vec::new(),
+            interrupt_flag:     Arc::new(AtomicBool::new(false)),
+            cmd_queue:          Vec::new(),
+            wait_char_request:  None,
+            pending_char:       None,
+            cmd_arg:            None,
+            is_init:            false,
+        }
+    }
 }
 
 // ── ScriptFacingCtx ───────────────────────────────────────────────────────────
 
 /// Permanent scripting state held on [`ScriptingHost`] between evals.
 ///
-/// Fields are moved into [`EvalCtx`] at the start of each `eval_init` call and
-/// restored afterwards.  Between calls they live here so the `ScriptingHost`
-/// retains ledger + attribution state across multiple evaluations.
+/// Relevant fields are snapshotted into a [`SteelCtx`] at the start of each
+/// eval or command call and written back afterwards.  Between calls they live
+/// here so the `ScriptingHost` retains ledger + attribution state across
+/// multiple evaluations.
 pub(crate) struct ScriptFacingCtx {
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     /// `None` if HOME/APPDATA is unset; user plugins cannot be resolved in
@@ -245,10 +292,9 @@ pub(crate) struct ScriptingHost {
 impl ScriptingHost {
     /// Evaluate a Steel source string directly, without a file.
     ///
-    /// Convenience wrapper for testing.  Mirrors `eval_init` but accepts a
-    /// string instead of a path, and always evaluates (never returns early).
-    /// Does not spawn a watchdog thread — tests that need the interrupt flag
-    /// set can do so directly via [`ScriptingHost::interrupt_flag`].
+    /// Convenience wrapper for testing.  Delegates to `eval_source_raw` with
+    /// empty `builtin_names`, which arms a watchdog using the default 10-second
+    /// budget (harmless for normal tests that complete quickly).
     #[cfg(test)]
     pub(crate) fn eval_source(
         &mut self,
@@ -256,73 +302,8 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<(), String> {
-        // Arm LOG_QUEUE so `(log! …)` calls during this test eval have somewhere
-        // to write (matches eval_source_raw; messages are discarded after).
-        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-
-        // Snapshot for all-or-nothing rollback on error.
-        let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
-
-        // Arm COMMAND_OWNER_CACHE so `(command-plugin …)` works during test evals.
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = snapshot.cmd_owners.clone();
-        });
-
-        EVAL_CTX.with(|cell| {
-            *cell.borrow_mut() = Some(EvalCtx {
-                settings: std::mem::take(settings),
-                keymap: std::mem::take(keymap),
-                plugin_stack: std::mem::take(&mut self.ctx.plugin_stack),
-                ledger_stack: std::mem::take(&mut self.ctx.ledger_stack),
-                data_dir: self.ctx.data_dir.clone(),
-                runtime_dir: self.ctx.runtime_dir.clone(),
-                declared_plugins: Vec::new(),
-                loaded_plugins: Vec::new(),
-                builtin_cmd_names: std::collections::HashSet::new(),
-                pending_steel_cmds: Vec::new(),
-            });
-        });
-        // Arm the yield flag so (hume/yield!) works during test evals.
-        builtins::interrupt::YIELD_FLAG.with(|cell| {
-            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
-        });
-
-        let result = self
-            .engine
-            .compile_and_run_raw_program(source.to_owned())
+        self.eval_source_raw(source.to_owned(), Default::default(), settings, keymap)
             .map(|_| ())
-            .map_err(|e| e.to_string());
-
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
-        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
-        // Drain LOG_QUEUE — messages are discarded in test context.
-        builtins::fs::LOG_QUEUE.with(|q| { q.borrow_mut().take(); });
-
-        EVAL_CTX.with(|cell| {
-            if let Some(ctx) = cell.borrow_mut().take() {
-                *settings = ctx.settings;
-                *keymap = ctx.keymap;
-                self.ctx.plugin_stack = ctx.plugin_stack;
-                self.ctx.ledger_stack = ctx.ledger_stack;
-                // Only process pending commands on success — on error the snapshot
-                // rolls back all state; skipping this avoids orphaned lambdas in
-                // the Steel engine. Test callers don't supply a CommandRegistry so
-                // the return value is always discarded here anyway.
-                if result.is_ok() {
-                    self.process_pending_cmds(ctx.pending_steel_cmds);
-                }
-            }
-        });
-
-        // Rollback on error: restore pre-eval snapshot (all-or-nothing semantics).
-        if result.is_err() {
-            snapshot.restore(settings, keymap, &mut self.ctx);
-        }
-
-        // Reset the flag so a pre-set interrupt doesn't bleed into the next eval.
-        self.interrupt_flag.store(false, Ordering::Relaxed);
-
-        result
     }
 
     /// Create a new scripting host with the Steel standard library and all HUME
@@ -362,9 +343,9 @@ impl ScriptingHost {
     /// - Returns `Err(message)` if the file exists but fails to parse or
     ///   evaluate.  The caller is responsible for surfacing the error.
     ///
-    /// `settings` and `keymap` are moved into the TLS [`EvalCtx`] before
-    /// evaluation and restored afterwards — even on error.  Builtins such as
-    /// `set-option!` and `bind-key!` mutate them through the TLS handle.
+    /// `settings` and `keymap` are moved into a [`SteelCtx`] before evaluation
+    /// and restored afterwards — even on error.  Builtins such as `set-option!`
+    /// and `bind-key!` mutate them through the borrowed reference.
     ///
     /// `builtin_names` is the set of all command names currently in the
     /// registry.  `define-command!` checks against this to prevent shadowing.
@@ -490,9 +471,10 @@ impl ScriptingHost {
 
     /// Core eval machinery shared by [`eval_init`] and [`eval_plugin_with_attribution`].
     ///
-    /// Snapshots all mutable state for all-or-nothing rollback on error, moves
-    /// state into [`EVAL_CTX`] TLS, runs a watchdog thread (cooperative budget
-    /// via `hume/yield!`), then evaluates `source` and drains log messages.
+    /// Snapshots all mutable state for all-or-nothing rollback on error, borrows
+    /// state into a [`SteelCtx`] via Steel's `with_mut_reference` API, runs a
+    /// watchdog thread (cooperative budget via `hume/yield!`), then evaluates
+    /// `source` and drains log messages.
     fn eval_source_raw(
         &mut self,
         source: String,
@@ -500,98 +482,68 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        // Arm LOG_QUEUE so `(log! …)` calls during this eval have somewhere to write.
-        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-
         // Snapshot for all-or-nothing rollback on error.
         let snapshot = EvalSnapshot::capture(settings, keymap, &self.ctx);
 
-        // Expose the current command-owner index so `(command-plugin …)` can
-        // answer queries during eval (e.g. a plugin checking for conflicts).
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = snapshot.cmd_owners.clone();
-        });
+        let budget_ms = snapshot.settings.steel_init_budget_ms;
 
-        // Move editor state + scripting state into TLS so builtins can access
-        // them as plain `FunctionSignature` function pointers (which cannot
-        // capture variables).  `std::mem::take` replaces each field with its
-        // `Default` as a harmless placeholder for the duration.
-        EVAL_CTX.with(|cell| {
-            *cell.borrow_mut() = Some(EvalCtx {
-                settings: std::mem::take(settings),
-                keymap: std::mem::take(keymap),
-                plugin_stack: std::mem::take(&mut self.ctx.plugin_stack),
-                ledger_stack: std::mem::take(&mut self.ctx.ledger_stack),
-                data_dir: self.ctx.data_dir.clone(),
-                runtime_dir: self.ctx.runtime_dir.clone(),
-                declared_plugins: Vec::new(),
-                loaded_plugins: Vec::new(),
-                builtin_cmd_names: builtin_names,
-                pending_steel_cmds: Vec::new(),
-            });
-        });
-
-        // Arm the yield flag TLS so (hume/yield!) can read it.  This is a
-        // dedicated TLS separate from EVAL_CTX so it is also accessible during
-        // call_steel_cmd (where EVAL_CTX is not armed).
-        builtins::interrupt::YIELD_FLAG.with(|cell| {
-            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
-        });
-
-        // Arm the watchdog with the configurable init budget.
-        // Interruption is cooperative: scripts must call (hume/yield!) in their
-        // loops.  Steel 0.8.2 has no op-callback for involuntary interruption.
-        let budget_ms = {
-            // Read budget from the snapshot before it is moved into EVAL_CTX.
-            // snapshot.settings mirrors the settings value at capture time.
-            snapshot.settings.steel_init_budget_ms
+        let mut steel_ctx = SteelCtx {
+            settings:           std::mem::take(settings),
+            keymap:             std::mem::take(keymap),
+            plugin_stack:       std::mem::take(&mut self.ctx.plugin_stack),
+            ledger_stack:       std::mem::take(&mut self.ctx.ledger_stack),
+            data_dir:           self.ctx.data_dir.clone(),
+            runtime_dir:        self.ctx.runtime_dir.clone(),
+            declared_plugins:   Vec::new(),
+            loaded_plugins:     Vec::new(),
+            builtin_cmd_names:  builtin_names,
+            pending_steel_cmds: Vec::new(),
+            cmd_owners:         snapshot.cmd_owners.clone(),
+            pending_messages:   Vec::new(),
+            interrupt_flag:     Arc::clone(&self.interrupt_flag),
+            cmd_queue:          Vec::new(),
+            wait_char_request:  None,
+            pending_char:       None,
+            cmd_arg:            None,
+            is_init:            true,
         };
+
         let watchdog = EvalWatchdog::arm(
             Arc::clone(&self.interrupt_flag),
             std::time::Duration::from_millis(budget_ms as u64),
         );
 
-        let result = self
-            .engine
-            .compile_and_run_raw_program(source)
+        let result = self.engine
+            .with_mut_reference::<SteelCtx, SteelCtx>(&mut steel_ctx)
+            .consume_once(|engine, args| {
+                let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
+                engine.update_value(HUME_CTX, ctx_val);
+                let res = engine.compile_and_run_raw_program(source);
+                engine.update_value(HUME_CTX, SteelVal::Void);
+                res
+            })
             .map(|_| ())
             .map_err(|e| e.to_string());
 
-        // Defuse the watchdog, clear the yield flag, and reset the interrupt flag.
         watchdog.cancel();
-        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
         self.interrupt_flag.store(false, Ordering::Relaxed);
 
-        // Restore all state unconditionally — builtins may have modified
+        // Write modified state back unconditionally — builtins may have mutated
         // settings/keymap, and plugin_stack/ledger_stack accumulate across evals.
-        let mut steel_cmds = Vec::new();
-        EVAL_CTX.with(|cell| {
-            if let Some(ctx) = cell.borrow_mut().take() {
-                *settings = ctx.settings;
-                *keymap = ctx.keymap;
-                self.ctx.plugin_stack = ctx.plugin_stack;
-                self.ctx.ledger_stack = ctx.ledger_stack;
-                // Only process pending commands on success — skipping on error
-                // avoids registering orphaned lambdas in the Steel engine that
-                // the snapshot cannot reach and undo.
-                if result.is_ok() {
-                    steel_cmds = self.process_pending_cmds(ctx.pending_steel_cmds);
-                }
-            }
-        });
+        *settings = steel_ctx.settings;
+        *keymap   = steel_ctx.keymap;
+        self.ctx.plugin_stack = steel_ctx.plugin_stack;
+        self.ctx.ledger_stack = steel_ctx.ledger_stack;
 
-        // Rollback on error: discard partial mutations and restore snapshot.
-        // (steel_cmds is already empty — process_pending_cmds was not called.)
-        if result.is_err() {
+        let steel_cmds = if result.is_ok() {
+            self.process_pending_cmds(steel_ctx.pending_steel_cmds)
+        } else {
+            // Rollback: discard partial mutations and restore pre-eval snapshot.
             snapshot.restore(settings, keymap, &mut self.ctx);
-        }
+            Vec::new()
+        };
 
-        // Clear COMMAND_OWNER_CACHE — valid only for this eval.
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
-
-        // Drain log messages into pending_messages for the caller to flush.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
-        self.ctx.pending_messages.extend(log_msgs);
+        self.ctx.pending_messages.extend(steel_ctx.pending_messages);
 
         result.map(|()| steel_cmds)
     }
@@ -632,23 +584,19 @@ impl ScriptingHost {
     /// commands it queued via `(call! …)`, plus an optional WaitChar
     /// command name requested via `(request-wait-char! …)`.
     ///
-    /// Sets up [`builtins::commands::CMD_QUEUE`] and
-    /// [`builtins::commands::WAIT_CHAR_REQUEST`] before the call and drains
-    /// them afterwards.  The caller (`SteelBacked` dispatch arm in
-    /// `editor/mappings.rs`) executes the returned commands and, if a
-    /// wait-char was requested, enters WaitChar mode for that command.
+    /// The caller (`SteelBacked` dispatch arm in `editor/mappings.rs`) executes
+    /// the returned commands and, if a wait-char was requested, enters WaitChar
+    /// mode for that command.
     ///
     /// A watchdog thread enforces `settings.steel_command_budget_ms`.  If the
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
     /// interruption).
     ///
-    /// No rollback on error: `EVAL_CTX` is not armed during this call, so
-    /// `(set-option!)`, `(bind-key!)`, and similar builtins cannot be called from
-    /// a command body (they raise a Steel error via `with_ctx`).  Commands that queue
-    /// further Rust commands via `(call! …)` dispatch those after returning
-    /// `Ok`; on error the queue is dropped, so no further dispatch occurs.  This
-    /// matches the Rust-side policy: partial effects from commands that ran before
-    /// a failure stay applied.
+    /// No rollback on error: `is_init` is `false` during this call, so
+    /// `(set-option!)`, `(bind-key!)`, and similar init-only builtins raise a
+    /// Steel error when called from a command body.  Commands that queue further
+    /// Rust commands via `(call! …)` dispatch those after returning `Ok`; on
+    /// error the queue is dropped, so no further dispatch occurs.
     pub(crate) fn call_steel_cmd(
         &mut self,
         steel_proc: &str,
@@ -656,85 +604,53 @@ impl ScriptingHost {
         cmd_arg: Option<String>,
         settings: &EditorSettings,
     ) -> Result<(Vec<String>, Option<String>), String> {
-        // Watchdog with the (typically tighter) command budget.
         let budget_ms = settings.steel_command_budget_ms;
         let watchdog = EvalWatchdog::arm(
             Arc::clone(&self.interrupt_flag),
             std::time::Duration::from_millis(budget_ms as u64),
         );
 
-        // RAII guard: clears all TLS slots on drop so that a panic inside
-        // `compile_and_run_raw_program` cannot leave stale state for the next
-        // invocation.  On the normal path the slots are already None/empty when
-        // the guard fires, so the drop is a no-op.
-        struct CallTlsGuard;
-        impl Drop for CallTlsGuard {
-            fn drop(&mut self) {
-                builtins::commands::CMD_QUEUE.with(|c| c.borrow_mut().take());
-                builtins::commands::WAIT_CHAR_REQUEST.with(|c| c.borrow_mut().take());
-                builtins::commands::PENDING_CHAR.with(|c| *c.borrow_mut() = None);
-                builtins::commands::CMD_ARG.with(|c| *c.borrow_mut() = None);
-                builtins::commands::COMMAND_OWNER_CACHE.with(|c| c.borrow_mut().clear());
-                builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take());
-                builtins::interrupt::YIELD_FLAG.with(|c| c.borrow_mut().take());
-            }
-        }
-        let _guard = CallTlsGuard;
+        let mut steel_ctx = SteelCtx {
+            settings:           settings.clone(),
+            keymap:             Keymap::default(),
+            plugin_stack:       PluginStack::default(),
+            ledger_stack:       LedgerStack::default(),
+            data_dir:           self.ctx.data_dir.clone(),
+            runtime_dir:        self.ctx.runtime_dir.clone(),
+            declared_plugins:   Vec::new(),
+            loaded_plugins:     Vec::new(),
+            builtin_cmd_names:  std::collections::HashSet::new(),
+            pending_steel_cmds: Vec::new(),
+            cmd_owners:         self.ctx.cmd_owners.clone(),
+            pending_messages:   Vec::new(),
+            interrupt_flag:     Arc::clone(&self.interrupt_flag),
+            cmd_queue:          Vec::new(),
+            wait_char_request:  None,
+            pending_char,
+            cmd_arg,
+            is_init:            false,
+        };
 
-        // Arm the yield flag so (hume/yield!) can read it during this command.
-        builtins::interrupt::YIELD_FLAG.with(|cell| {
-            *cell.borrow_mut() = Some(Arc::clone(&self.interrupt_flag));
-        });
-
-        builtins::commands::CMD_QUEUE.with(|cell| {
-            *cell.borrow_mut() = Some(Vec::new());
-        });
-        builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
-            *cell.borrow_mut() = Some(None);
-        });
-        // Arm the pending-char TLS so `(pending-char)` reads it during this call.
-        builtins::commands::PENDING_CHAR.with(|cell| {
-            *cell.borrow_mut() = pending_char;
-        });
-        // Arm the cmd-arg TLS so `(cmd-arg)` reads it during this call.
-        builtins::commands::CMD_ARG.with(|cell| {
-            *cell.borrow_mut() = cmd_arg;
-        });
-        // Expose command-owner index for `(command-plugin …)` during this call.
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| {
-            *cell.borrow_mut() = self.ctx.cmd_owners.clone();
-        });
-        // Arm LOG_QUEUE so `(log! …)` calls inside this command have
-        // somewhere to write.  Drained unconditionally below.
-        builtins::fs::LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-
-        let result = self
-            .engine
-            .compile_and_run_raw_program(format!("({steel_proc})"))
+        let invocation = format!("({steel_proc})");
+        let result = self.engine
+            .with_mut_reference::<SteelCtx, SteelCtx>(&mut steel_ctx)
+            .consume_once(|engine, args| {
+                let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
+                engine.update_value(HUME_CTX, ctx_val);
+                let res = engine.compile_and_run_raw_program(invocation);
+                engine.update_value(HUME_CTX, SteelVal::Void);
+                res
+            })
             .map(|_| ())
             .map_err(|e| e.to_string());
 
-        // Defuse the watchdog, clear the yield flag, and reset the interrupt flag.
         watchdog.cancel();
-        builtins::interrupt::YIELD_FLAG.with(|cell| cell.borrow_mut().take());
         self.interrupt_flag.store(false, Ordering::Relaxed);
 
-        let queue = builtins::commands::CMD_QUEUE.with(|cell| {
-            cell.borrow_mut().take().expect("CMD_QUEUE was armed above")
-        });
-        let wait_char = builtins::commands::WAIT_CHAR_REQUEST.with(|cell| {
-            cell.borrow_mut().take().flatten()
-        });
-        // Clear per-invocation TLS — only valid for the duration of one call.
-        builtins::commands::PENDING_CHAR.with(|cell| *cell.borrow_mut() = None);
-        builtins::commands::CMD_ARG.with(|cell| *cell.borrow_mut() = None);
-        builtins::commands::COMMAND_OWNER_CACHE.with(|cell| cell.borrow_mut().clear());
-        // Drain log messages into pending_messages regardless of success/failure.
-        let log_msgs = builtins::fs::LOG_QUEUE.with(|q| q.borrow_mut().take().expect("LOG_QUEUE was armed above"));
-        self.ctx.pending_messages.extend(log_msgs);
+        self.ctx.pending_messages.extend(steel_ctx.pending_messages);
 
         result?;
-        Ok((queue, wait_char))
+        Ok((steel_ctx.cmd_queue, steel_ctx.wait_char_request))
     }
 }
 
@@ -1267,7 +1183,7 @@ mod tests {
         let h = host();
 
         // "move-right" is a Rust built-in — not in cmd_owners.
-        assert!(h.ctx.cmd_owners.get("move-right").is_none());
+        assert!(!h.ctx.cmd_owners.contains_key("move-right"));
     }
 
     /// Teardown removes the command from cmd_owners.
@@ -1286,7 +1202,7 @@ mod tests {
         assert_eq!(h.ctx.cmd_owners.get("my-cmd").map(|s| s.as_str()), Some("user/myplugin"));
 
         h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
-        assert!(h.ctx.cmd_owners.get("my-cmd").is_none(), "teardown should remove from cmd_owners");
+        assert!(!h.ctx.cmd_owners.contains_key("my-cmd"), "teardown should remove from cmd_owners");
     }
 
     // ── EvalWatchdog ──────────────────────────────────────────────────────────
@@ -1385,10 +1301,9 @@ mod tests {
                 "interrupt_flag must be false after call_steel_cmd returns");
     }
 
-    /// Command bodies cannot mutate settings/keymap (EVAL_CTX is not armed during
-    /// call_steel_cmd; with_ctx would panic).  This test verifies that after a
-    /// watchdog interrupt the settings remain at their pre-call values — not because
-    /// of rollback, but because no mutation was possible in the first place.
+    /// Command bodies cannot mutate settings/keymap (is_init = false during
+    /// call_steel_cmd; init-only builtins raise Steel errors).  This test verifies
+    /// that after a watchdog interrupt the settings remain at their pre-call values.
     /// Also verifies the budget is read from settings at call time.
     #[test]
     fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
@@ -1412,9 +1327,9 @@ mod tests {
         assert_eq!(s.tab_width, 4, "tab-width must be unchanged after interrupt");
     }
 
-    /// Calling an EVAL_CTX-dependent builtin from a Steel command body must
-    /// raise a Steel error — not panic — since EVAL_CTX is None during
-    /// call_steel_cmd.  This test would have panicked before with_ctx was fixed.
+    /// Calling an init-only builtin from a Steel command body must raise a Steel
+    /// error (not panic).  `is_init = false` during call_steel_cmd, and init-only
+    /// builtins check this flag.
     #[test]
     fn call_steel_cmd_set_option_from_body_returns_steel_error() {
         let mut h  = host();

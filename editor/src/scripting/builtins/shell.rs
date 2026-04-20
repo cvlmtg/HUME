@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
 
-use super::fs::LOG_QUEUE;
 use crate::editor::Severity;
+use crate::scripting::SteelCtx;
 
 // ── git-clone ─────────────────────────────────────────────────────────────────
 
@@ -24,13 +24,7 @@ use crate::editor::Severity;
 ///
 /// On success, returns `#<void>`.  On failure (git not found, non-zero exit,
 /// sandbox violation), raises a Steel error.
-pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    if args.len() != 2 {
-        steel::stop!(ArityMismatch => "git-clone expects 2 args (url dest), got {}", args.len());
-    }
-    let url  = string_arg(&args[0], "git-clone", "url")?;
-    let dest = string_arg(&args[1], "git-clone", "dest")?;
-
+pub(crate) fn git_clone(ctx: &mut SteelCtx, url: String, dest: String) -> Result<SteelVal, SteelErr> {
     let dest_path = PathBuf::from(&dest);
 
     // The destination doesn't exist yet (git creates it). Sandbox-check the
@@ -56,7 +50,7 @@ pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     sandbox_write_check(&canonical_parent.join(file_name), &dest)?;
 
     // Log which git we'll invoke — useful for debugging.
-    log_trace(format!("git-clone: running `git clone {url} {dest}`"));
+    ctx.pending_messages.push((Severity::Trace, format!("git-clone: running `git clone {url} {dest}`")));
 
     let status = crate::os::process::git_clone(&url, &dest)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
@@ -78,11 +72,7 @@ pub(crate) fn git_clone(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// failure is a hard error.
 ///
 /// On success, returns `#<void>`.  On failure raises a Steel error.
-pub(crate) fn git_pull(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "git-pull expects 1 arg (dir), got {}", args.len());
-    }
-    let dir = string_arg(&args[0], "git-pull", "dir")?;
+pub(crate) fn git_pull(ctx: &mut SteelCtx, dir: String) -> Result<SteelVal, SteelErr> {
     let dir_path = PathBuf::from(&dir);
 
     let canonical = crate::os::fs::canonicalize(&dir_path)
@@ -91,7 +81,7 @@ pub(crate) fn git_pull(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     sandbox_write_check(&canonical, &dir)?;
 
-    log_trace(format!("git-pull: running `git pull` in {dir}"));
+    ctx.pending_messages.push((Severity::Trace, format!("git-pull: running `git pull` in {dir}")));
 
     let status = crate::os::process::git_pull_in(&canonical)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
@@ -107,14 +97,6 @@ pub(crate) fn git_pull(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-fn string_arg(val: &SteelVal, fn_name: &'static str, arg_name: &'static str) -> Result<String, SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch =>
-            "{fn_name}: {arg_name} must be a string, got {:?}", val),
-    }
-}
-
 /// Check that `canonical_path` is inside `<data>/plugins/`.
 ///
 /// `raw` is the original unresolved path string, used only for error messages.
@@ -128,15 +110,6 @@ fn sandbox_write_check(canonical_path: &std::path::Path, raw: &str) -> Result<()
             Ok(())
         }
     })?
-}
-
-/// Push a trace message to `LOG_QUEUE` if it is active.
-fn log_trace(msg: String) {
-    LOG_QUEUE.with(|cell| {
-        if let Some(queue) = cell.borrow_mut().as_mut() {
-            queue.push((Severity::Trace, msg));
-        }
-    });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -160,11 +133,9 @@ mod tests {
 
         // Parent is tmp root (outside sandbox), dest is tmp/evil.
         let dest = tmp.path().join("evil").to_string_lossy().to_string();
-        let args = vec![
-            SteelVal::StringV("https://example.com/repo.git".into()),
-            SteelVal::StringV(dest.into()),
-        ];
-        let err = git_clone(&args).unwrap_err();
+        let mut ctx = SteelCtx::for_testing();
+        let err = git_clone(&mut ctx, "https://example.com/repo.git".into(), dest)
+            .unwrap_err();
         assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
     }
 
@@ -175,8 +146,8 @@ mod tests {
 
         // Use the tmp root itself — it exists but is outside the sandbox.
         let dir = tmp.path().to_string_lossy().to_string();
-        let args = vec![SteelVal::StringV(dir.into())];
-        let err = git_pull(&args).unwrap_err();
+        let mut ctx = SteelCtx::for_testing();
+        let err = git_pull(&mut ctx, dir).unwrap_err();
         assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
     }
 
@@ -186,11 +157,8 @@ mod tests {
         setup(&tmp);
 
         let dest = format!("{}/hume/plugins/user/../../../evil", tmp.path().display());
-        let args = vec![
-            SteelVal::StringV("https://example.com/repo.git".into()),
-            SteelVal::StringV(dest.into()),
-        ];
-        assert!(git_clone(&args).is_err());
+        let mut ctx = SteelCtx::for_testing();
+        assert!(git_clone(&mut ctx, "https://example.com/repo.git".into(), dest).is_err());
     }
 
     // Note: Tests that actually run `git clone` / `git pull` would require a

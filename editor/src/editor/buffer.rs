@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn undo_delete_char_forward() {
         let mut d = doc("-[h]>ello\n");
-        d.apply_edit(|b, s| delete_char_forward(b, s));
+        d.apply_edit(delete_char_forward);
         assert_eq!(state(&d), "-[e]>llo\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>ello\n");
@@ -427,7 +427,7 @@ mod tests {
     #[test]
     fn undo_delete_char_backward() {
         let mut d = doc("hel-[l]>o\n");
-        d.apply_edit(|b, s| delete_char_backward(b, s));
+        d.apply_edit(delete_char_backward);
         assert_eq!(state(&d), "he-[l]>o\n");
         d.undo();
         assert_eq!(state(&d), "hel-[l]>o\n");
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn undo_delete_selection() {
         let mut d = doc("-[hell]>o\n");
-        d.apply_edit(|b, s| delete_selection(b, s));
+        d.apply_edit(delete_selection);
         assert_eq!(state(&d), "-[o]>\n");
         d.undo();
         assert_eq!(state(&d), "-[hell]>o\n");
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn undo_restores_selection_anchor_and_head() {
         let mut d = doc("-[hell]>o\n");
-        d.apply_edit(|b, s| delete_char_forward(b, s));
+        d.apply_edit(delete_char_forward);
         d.undo();
         assert_eq!(state(&d), "-[hell]>o\n");
     }
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn undo_restores_backward_selection() {
         let mut d = doc("<[hell]-o\n");
-        d.apply_edit(|b, s| delete_char_forward(b, s));
+        d.apply_edit(delete_char_forward);
         d.undo();
         assert_eq!(state(&d), "<[hell]-o\n");
     }
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn undo_multi_cursor_delete() {
         let mut d = doc("-[h]>el-[l]>o\n");
-        d.apply_edit(|b, s| delete_char_forward(b, s));
+        d.apply_edit(delete_char_forward);
         assert_eq!(state(&d), "-[e]>l-[o]>\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>el-[l]>o\n");
@@ -705,7 +705,7 @@ mod tests {
         d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
         d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
         d.apply_edit_grouped(|b, s| insert_char(b, s, 'x'));
-        d.apply_edit_grouped(|b, s| delete_char_backward(b, s));
+        d.apply_edit_grouped(delete_char_backward);
         d.apply_edit_grouped(|b, s| insert_char(b, s, 'c'));
         d.commit_edit_group();
         assert_eq!(state(&d), "abc-[h]>ello\n");

@@ -17,32 +17,15 @@
 //! **Limitation:** interruption is cooperative only.  A script without
 //! `(hume/yield!)` calls will run to completion regardless of the budget.
 //! Steel 0.8.2 does not expose an op-callback hook for involuntary interruption.
-//!
-//! ## TLS design
-//!
-//! `(hume/yield!)` is callable from both `eval_source_raw` (where `EVAL_CTX`
-//! is armed) and `call_steel_cmd` (where it is not — only the command dispatch
-//! TLS slots are armed).  Using a dedicated `YIELD_FLAG` TLS decouples the
-//! yield check from the full `EvalCtx` and makes it work in both contexts.
 
-use std::cell::RefCell;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
 
-type SteelResult = Result<SteelVal, SteelErr>;
+use crate::scripting::SteelCtx;
 
-thread_local! {
-    /// The interrupt flag for the current Steel eval or command invocation.
-    ///
-    /// Armed by `eval_source_raw` and `call_steel_cmd` before calling into
-    /// Steel, cleared afterwards.  `hume_yield` reads from this TLS so it
-    /// works in both contexts (unlike reading through `EVAL_CTX`, which is
-    /// `None` during `call_steel_cmd`).
-    pub(crate) static YIELD_FLAG: RefCell<Option<Arc<AtomicBool>>> = RefCell::new(None);
-}
+type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(hume/yield!)` — check the interrupt flag and abort if it is set.
 ///
@@ -57,18 +40,11 @@ thread_local! {
 ///
 /// Returns `#<void>` normally.  Raises a Steel error (aborting the script)
 /// when the interrupt flag is set.
-pub(crate) fn hume_yield(args: &[SteelVal]) -> SteelResult {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "hume/yield! expects 0 args, got {}", args.len());
+pub(crate) fn hume_yield(ctx: &mut SteelCtx) -> SteelResult {
+    if ctx.interrupt_flag.load(Ordering::Relaxed) {
+        steel::stop!(Generic =>
+            "hume/yield!: script interrupted \
+             (step budget exceeded or editor requested cancellation)");
     }
-    YIELD_FLAG.with(|cell| {
-        if let Some(flag) = cell.borrow().as_ref() {
-            if flag.load(Ordering::Relaxed) {
-                steel::stop!(Generic =>
-                    "hume/yield!: script interrupted \
-                     (step budget exceeded or editor requested cancellation)");
-            }
-        }
-        Ok(SteelVal::Void)
-    })
+    Ok(SteelVal::Void)
 }
