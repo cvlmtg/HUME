@@ -901,22 +901,42 @@ impl Editor {
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
 
+    /// Propagate a committed ChangeSet to all non-acting panes viewing `buf_id`.
+    ///
+    /// `rope_pre` is the buffer text **before** the edit — required by
+    /// `translate_in_place` to identify which line each head was on before
+    /// mapping, so it can decide whether to reset `Selection.horiz`.
+    fn propagate_cs_to_panes(&mut self, buf_id: BufferId, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+        let focused = self.pane_id;
+        for (pane_id, buf_map) in self.pane_state.iter_mut() {
+            if pane_id == focused { continue; }
+            if let Some(state) = buf_map.get_mut(buf_id) {
+                state.selections.translate_in_place(cs, rope_pre);
+            }
+        }
+    }
+
     /// Apply an ungrouped edit: read selections from pane_state, call
-    /// `doc.apply_edit`, write new selections back. Returns `(displaced, cs)`.
+    /// `doc.apply_edit`, write new selections back, propagate CS to other panes.
+    /// Returns `(displaced, cs)`.
     pub(super) fn doc_edit<R: IntoApplyResult>(
         &mut self,
         cmd: impl FnOnce(Text, SelectionSet) -> R,
     ) -> (Option<Vec<String>>, ChangeSet) {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
+        // Snapshot pre-edit rope (O(1) — ropey uses structural sharing).
+        let rope_pre = self.doc.text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
         let (new_sels, displaced, cs) = self.doc.apply_edit(sels, cmd);
         self.pane_state[pane_id][buf_id].selections = new_sels;
+        self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
         (displaced, cs)
     }
 
     /// Apply a grouped edit (inside an insert session). Reads and writes
-    /// selections via pane_state. Returns `(displaced, cs)`.
+    /// selections via pane_state, propagates CS to other panes.
+    /// Returns `(displaced, cs)`.
     ///
     /// The split borrow (`&mut self.doc` ∥ `&mut pane_state[..].edit_group`)
     /// is safe because `doc` and `pane_state` are disjoint fields of `Editor`.
@@ -926,12 +946,40 @@ impl Editor {
     ) -> (Option<Vec<String>>, ChangeSet) {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
+        let rope_pre = self.doc.text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
         let doc = &mut self.doc;
         let pbs = &mut self.pane_state[pane_id][buf_id];
         let (new_sels, displaced, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
         pbs.selections = new_sels;
+        // propagate_cs_to_panes needs &mut self; the split borrows above have ended.
+        self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
         (displaced, cs)
+    }
+
+    /// Apply undo to the focused buffer and propagate the inverse CS to other panes.
+    pub(super) fn doc_undo(&mut self) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        // rope_pre for undo is the *current* (post-edit) text: undo's CS maps
+        // post-edit positions back to pre-edit, so non-acting panes' heads (which
+        // live in post-edit space) must be translated through that CS.
+        let rope_pre = self.doc.text().rope().clone();
+        if let Some((new_sels, cs)) = self.doc.undo() {
+            self.pane_state[pane_id][buf_id].selections = new_sels;
+            self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
+        }
+    }
+
+    /// Apply redo to the focused buffer and propagate the forward CS to other panes.
+    pub(super) fn doc_redo(&mut self) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        let rope_pre = self.doc.text().rope().clone();
+        if let Some((new_sels, cs)) = self.doc.redo() {
+            self.pane_state[pane_id][buf_id].selections = new_sels;
+            self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
+        }
     }
 
     fn is_group_open_current(&self) -> bool {
@@ -1162,6 +1210,7 @@ impl Editor {
     ///
     /// Precondition: at least one other pane exists. Callers must switch focus
     /// away before calling this if `target` is the focused pane.
+    #[allow(dead_code)] // Phase 9: wired to :close/:only/:split-close
     pub(crate) fn close_pane(&mut self, target: PaneId) {
         self.engine_view.panes.remove(target);
         self.pane_state.remove(target);

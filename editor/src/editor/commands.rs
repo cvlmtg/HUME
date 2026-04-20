@@ -186,16 +186,12 @@ pub(super) fn cmd_paste_before(ed: &mut Editor, _count: usize, _mode: MotionMode
 }
 
 pub(super) fn cmd_undo(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    if let Some((sels, _cs)) = ed.doc.undo() {
-        ed.set_current_selections(sels);
-    }
+    ed.doc_undo();
     Ok(())
 }
 
 pub(super) fn cmd_redo(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    if let Some((sels, _cs)) = ed.doc.redo() {
-        ed.set_current_selections(sels);
-    }
+    ed.doc_redo();
     Ok(())
 }
 
