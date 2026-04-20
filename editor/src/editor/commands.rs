@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::grapheme::next_grapheme_boundary;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::ops::edit::{delete_selection, insert_char};
@@ -98,7 +98,7 @@ pub(super) fn cmd_open_line_below(ed: &mut Editor, _count: usize, _mode: MotionM
     ed.begin_insert_session();
     ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move));
     ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
-    ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
+    ed.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
     Ok(())
 }
 
@@ -106,7 +106,7 @@ pub(super) fn cmd_open_line_below(ed: &mut Editor, _count: usize, _mode: MotionM
 pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     ed.begin_insert_session();
     ed.apply_motion(|b, s| cmd_goto_line_start(b, s, 1, MotionMode::Move));
-    ed.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
+    ed.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
     ed.apply_motion(|b, s| cmd_move_left(b, s, 1, MotionMode::Move));
     Ok(())
 }
@@ -126,8 +126,8 @@ pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize, _mode: MotionMode)
 
 /// Yank selections into the default register, then delete them.
 pub(super) fn cmd_delete(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
-    ed.doc.apply_edit(delete_selection);
+    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
+    ed.doc_edit(delete_selection);
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
     Ok(())
 }
@@ -137,16 +137,16 @@ pub(super) fn cmd_delete(ed: &mut Editor, _count: usize, _mode: MotionMode) -> R
 /// `begin_insert_session` opens the group so the delete and everything typed
 /// before Esc form one undo step.
 pub(super) fn cmd_change(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
+    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
     ed.begin_insert_session();
-    ed.doc.apply_edit_grouped(delete_selection);
+    ed.doc_edit_grouped(delete_selection);
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
     Ok(())
 }
 
 /// Yank selections into the default register without deleting.
 pub(super) fn cmd_yank(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.buf(), ed.doc.sels());
+    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
     Ok(())
 }
@@ -155,15 +155,17 @@ pub(super) fn cmd_yank(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Res
 /// then write displaced text back if any selection was non-cursor (replace-and-swap).
 fn do_paste(
     ed: &mut Editor,
-    paste_fn: impl Fn(Buffer, SelectionSet, &[String]) -> (Buffer, SelectionSet, crate::core::changeset::ChangeSet, Vec<String>),
+    paste_fn: impl Fn(Text, SelectionSet, &[String]) -> (Text, SelectionSet, crate::core::changeset::ChangeSet, Vec<String>),
 ) {
     if let Some(reg) = ed.registers.read(DEFAULT_REGISTER)
         && let Some(values) = reg.as_text()
     {
         let values = values.to_vec();
-        let displaced = ed.doc.apply_edit(|b, s| paste_fn(b, s, &values));
-        if displaced.iter().any(|s| !s.is_empty()) {
-            ed.registers.write_text(DEFAULT_REGISTER, displaced);
+        let (displaced, _cs) = ed.doc_edit(|b, s| paste_fn(b, s, &values));
+        if let Some(displaced) = displaced {
+            if displaced.iter().any(|s| !s.is_empty()) {
+                ed.registers.write_text(DEFAULT_REGISTER, displaced);
+            }
         }
     }
 }
@@ -184,12 +186,16 @@ pub(super) fn cmd_paste_before(ed: &mut Editor, _count: usize, _mode: MotionMode
 }
 
 pub(super) fn cmd_undo(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.doc.undo();
+    if let Some((sels, _cs)) = ed.doc.undo() {
+        ed.set_current_selections(sels);
+    }
     Ok(())
 }
 
 pub(super) fn cmd_redo(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.doc.redo();
+    if let Some((sels, _cs)) = ed.doc.redo() {
+        ed.set_current_selections(sels);
+    }
     Ok(())
 }
 
@@ -225,7 +231,7 @@ fn find_char(
     count: usize,
     mode: MotionMode,
     kind: FindKind,
-    find_fn: fn(&Buffer, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
+    find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(ch) = ed.pending_char.take() {
         ed.apply_motion(|b, s| find_fn(b, s, mode, count, ch, kind));
@@ -257,7 +263,7 @@ fn repeat_find(
     ed: &mut Editor,
     count: usize,
     mode: MotionMode,
-    find_fn: fn(&Buffer, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
+    find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(FindChar { ch, kind }) = ed.last_find {
         ed.apply_motion(|b, s| find_fn(b, s, mode, count, ch, kind));
@@ -281,7 +287,7 @@ pub(super) fn cmd_repeat_find_backward(ed: &mut Editor, count: usize, mode: Moti
 pub(super) fn cmd_replace(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     use crate::ops::edit::replace_selections;
     if let Some(ch) = ed.pending_char.take() {
-        ed.doc.apply_edit(|b, s| replace_selections(b, s, ch));
+        ed.doc_edit(|b, s| replace_selections(b, s, ch));
     }
     Ok(())
 }
@@ -307,7 +313,7 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize, _mode: MotionMode) -> Re
     // redundant `begin_edit_group` call and keystroke recording when the group
     // is already open. For non-insert commands the group stays empty and the
     // commit below is a no-op.
-    ed.doc.begin_edit_group();
+    ed.begin_edit_group_current();
 
     // Re-execute the original command through the normal dispatch path.
     // extend=false because the replayed command was already resolved to its
@@ -331,7 +337,7 @@ pub(super) fn cmd_repeat(ed: &mut Editor, count: usize, _mode: MotionMode) -> Re
     if ed.mode == EditorMode::Insert {
         ed.end_insert_session();
     } else {
-        ed.doc.commit_edit_group();
+        ed.commit_edit_group_current();
     }
 
     // Restore the original action so `.` can be pressed again.
@@ -375,7 +381,7 @@ pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 /// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `/` prompt.
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.search.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search.pre_search_sels = Some(ed.current_selections().clone());
     ed.search.direction = SearchDirection::Forward;
     // Capture extend state before mode becomes Search — live search uses it.
     ed.search.extend = ed.mode == EditorMode::Extend;
@@ -386,7 +392,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMo
 
 /// Enter backward search mode.
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.search.pre_search_sels = Some(ed.doc.sels().clone());
+    ed.search.pre_search_sels = Some(ed.current_selections().clone());
     ed.search.direction = SearchDirection::Backward;
     // Capture extend state before mode becomes Search — live search uses it.
     ed.search.extend = ed.mode == EditorMode::Extend;
@@ -443,8 +449,8 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
-        let buf = ed.doc.buf();
-        let primary = ed.doc.sels().primary();
+        let buf = ed.doc.text();
+        let primary = ed.current_selections().primary();
         let from = match direction {
             // Step past the current match so we don't re-find it on the first jump.
             SearchDirection::Forward => next_grapheme_boundary(buf, primary.end_inclusive(buf)),
@@ -468,14 +474,14 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
         let result = if use_cache {
             find_match_from_cache(&ed.search.matches, from_char, direction)
         } else {
-            find_next_match(ed.doc.buf(), regex, from_char, direction)
+            find_next_match(ed.doc.text(), regex, from_char, direction)
         };
         match result {
             Some((start, end_incl, wrapped)) => {
                 any_wrapped |= wrapped;
                 last_match = Some((start, end_incl));
                 from_char = match direction {
-                    SearchDirection::Forward => next_grapheme_boundary(ed.doc.buf(), end_incl),
+                    SearchDirection::Forward => next_grapheme_boundary(ed.doc.text(), end_incl),
                     // For backward: next search must land before the current match start.
                     SearchDirection::Backward => start,
                 };
@@ -527,13 +533,13 @@ pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: Moti
     if !ensure_search_regex(ed) { return Ok(()); }
     let Some(regex) = &ed.search.regex else { return Ok(()) };
 
-    let matches = find_all_matches(ed.doc.buf(), regex);
+    let matches = find_all_matches(ed.doc.text(), regex);
     if matches.is_empty() {
         return Err(CommandError("no matches".into()));
     }
 
     let sels: Vec<Selection> = matches.into_iter().map(|(s, e)| Selection::new(s, e)).collect();
-    ed.doc.set_selections(SelectionSet::from_vec(sels, 0));
+    ed.set_current_selections(SelectionSet::from_vec(sels, 0));
     Ok(())
 }
 
@@ -546,10 +552,10 @@ pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: Moti
 /// within the current selections become new selections (live preview).
 pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     // Nothing meaningful to search within a single-char selection.
-    if ed.doc.sels().iter_sorted().all(Selection::is_collapsed) {
+    if ed.current_selections().iter_sorted().all(Selection::is_collapsed) {
         return Ok(());
     }
-    ed.pre_select_sels = Some(ed.doc.sels().clone());
+    ed.pre_select_sels = Some(ed.current_selections().clone());
     ed.set_mode(Mode::Select);
     ed.minibuf = Some(MiniBuffer { prompt: '⫽', input: String::new(), cursor: 0 });
     Ok(())
@@ -563,8 +569,8 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMod
 /// the cursor first (same as Helix). The escaped text is compiled as a search
 /// regex, stored in the `'s'` register, and search highlights appear immediately.
 pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let buf = ed.doc.buf();
-    let primary = ed.doc.sels().primary();
+    let buf = ed.doc.text();
+    let primary = ed.current_selections().primary();
 
     // If cursor (1-char selection), expand to inner word first.
     let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
@@ -675,7 +681,7 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
             key, value, &mut ed.settings, &mut ed.doc.overrides,
         ),
         "buffer" => crate::settings::apply_setting(
-            crate::settings::SettingScope::Buffer,
+            crate::settings::SettingScope::Text,
             key, value, &mut ed.settings, &mut ed.doc.overrides,
         ),
         _ => Err(format!("unknown scope '{scope}': expected 'global' or 'buffer'")),
@@ -696,10 +702,10 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
 /// Returns `Ok(())` on success, `Err(CommandError)` on any error.
 fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
     let (content, line_count) = {
-        let buf = ed.doc.buf();
+        let buf = ed.doc.text();
         // The rope is always stored LF-normalized; restore CRLF for files that
         // originally used it so we don't silently change line endings on save.
-        let content = if buf.line_ending() == crate::core::buffer::LineEnding::CrLf {
+        let content = if buf.line_ending() == crate::core::text::LineEnding::CrLf {
             buf.to_string().replace('\n', "\r\n")
         } else {
             buf.to_string()
@@ -751,10 +757,10 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
 pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let current = crate::core::jump_list::JumpEntry::new(ed.doc.sels().clone(), ed.doc.buf());
+    let current = crate::core::jump_list::JumpEntry::new(ed.current_selections().clone(), ed.doc.text());
     if let Some(entry) = ed.jump_list.backward(current) {
         let sels = entry.selections.clone();
-        ed.doc.set_selections(sels);
+        ed.set_current_selections(sels);
     }
     Ok(())
 }
@@ -762,7 +768,7 @@ pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMod
 pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     if let Some(entry) = ed.jump_list.forward() {
         let sels = entry.selections.clone();
-        ed.doc.set_selections(sels);
+        ed.set_current_selections(sels);
     }
     Ok(())
 }

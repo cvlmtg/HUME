@@ -79,7 +79,7 @@ struct Revision {
 ///
 /// ## What History does NOT own
 ///
-/// Buffers. The caller ([`crate::core::document::Document`]) holds the current
+/// Buffers. The caller ([`crate::editor::buffer::Buffer`]) holds the current
 /// buffer. History stores only Transactions (changeset + selections). This
 /// keeps History a pure data structure with no Buffer dependency.
 pub(crate) struct History {
@@ -167,7 +167,7 @@ impl History {
     ///
     /// Returns an owned `Transaction` (cloned from the arena) rather than a
     /// reference, to avoid lifetime conflicts when the caller also holds a
-    /// reference to other fields of the owning struct (e.g. `Document::buf`).
+    /// reference to other fields of the owning struct (e.g. `Buffer::text`).
     /// `Transaction` is cheap to clone: its ChangeSet is a `Vec<Operation>`.
     pub(crate) fn undo(&mut self) -> Option<Transaction> {
         let old_current = self.current;
@@ -215,6 +215,14 @@ impl History {
     /// The currently active revision.
     pub(crate) fn current_id(&self) -> RevisionId {
         self.current
+    }
+
+    /// The initial selections stored in the root revision.
+    ///
+    /// Used by `Buffer::initial_sels()` to seed `PaneBufferState` when a pane
+    /// first views this buffer or when `:e!` reloads it.
+    pub(crate) fn initial_sels(&self) -> &SelectionSet {
+        self.revisions[0].forward.selection()
     }
 
     /// Parent of a revision. `None` for the root.

@@ -2,10 +2,8 @@
 //!
 //! When soft-wrap is active, `j`/`k` move by one display row rather than one
 //! buffer line. These commands need access to `wrap_mode`, `tab_width`, and a
-//! `FormatScratch` — unavailable in the pure `(&Buffer, SelectionSet) ->
+//! `FormatScratch` — unavailable in the pure `(&Text, SelectionSet) ->
 //! SelectionSet` motion signature — so they live here instead of `ops/motion`.
-
-use std::collections::HashMap;
 
 use crate::core::selection::Selection;
 use crate::cursor::format_row_col;
@@ -148,8 +146,8 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
     let whitespace = pane.whitespace.clone();
 
     if !wrap_mode.is_wrapping() {
-        // No wrapping — fall back to buffer-line movement and clear sticky cols.
-        ed.preferred_display_cols.clear();
+        // No wrapping — fall back to buffer-line movement.
+        // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
         match down {
             true  => ed.apply_motion(|b, s| cmd_move_down(b, s, count, mode)),
             false => ed.apply_motion(|b, s| cmd_move_up(b, s, count, mode)),
@@ -157,21 +155,14 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         return;
     }
 
-    let rope = ed.doc.buf().rope().clone();
-    let sels = ed.doc.sels().clone();
+    let rope = ed.doc.text().rope().clone();
+    let sels = ed.current_selections().clone();
 
-    // Pass 1: resolve each selection's sticky display column.
-    //
-    // Separate pass required because `format_row_col` needs `&mut scratch`,
-    // which cannot be borrowed inside a closure that also captures `ed`.
-    //
-    // On the first j/k press `preferred_display_cols` is empty, so we compute
-    // each head's current display column and latch it. On subsequent consecutive
-    // j/k presses the stored value is reused so cursors can return to their
-    // original column after passing through shorter rows.
+    // Pass 1: resolve each selection's sticky display column from sel.horiz,
+    // computing it fresh on the first j/k press (when horiz is None).
     let target_cols: Vec<u16> = sels.iter_sorted().map(|sel| {
-        if let Some(&col) = ed.preferred_display_cols.get(&sel.head) {
-            col
+        if let Some(col) = sel.horiz {
+            col as u16
         } else {
             let line = rope.char_to_line(sel.head);
             let (_, col) = format_row_col(
@@ -182,17 +173,12 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         }
     }).collect();
 
-    // Pass 2: move each selection by `count` display rows and rebuild the
-    // per-selection column map from the resulting head positions.
-    //
-    // The new map is keyed by post-movement head position. If two selections
-    // happen to land on the same head they will be merged by `merge_overlapping`
-    // — one column entry is correct for one surviving selection.
-    let mut new_cols: HashMap<usize, u16> = HashMap::new();
+    // Pass 2: move each selection by `count` display rows, preserving the
+    // sticky column in sel.horiz so consecutive j/k presses reuse it.
     let mut col_iter = target_cols.iter();
     let scratch = &mut ed.motion_format_scratch;
     let new_sels = sels.map_and_merge(|sel| {
-        let &target_col = col_iter.next().unwrap(); // same iter_sorted order as Pass 1
+        let &target_col = col_iter.next().unwrap();
         let mut head = sel.head;
         for _ in 0..count {
             head = if down {
@@ -201,12 +187,11 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
                 visual_move_up_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
             };
         }
-        new_cols.insert(head, target_col);
-        if mode == MotionMode::Extend { Selection::new(sel.anchor, head) } else { Selection::collapsed(head) }
+        let anchor = if mode == MotionMode::Extend { sel.anchor } else { head };
+        Selection::with_horiz(anchor, head, target_col as u32)
     });
 
-    ed.preferred_display_cols = new_cols;
-    ed.doc.set_selections(new_sels);
+    ed.set_current_selections(new_sels);
 }
 
 // ---------------------------------------------------------------------------

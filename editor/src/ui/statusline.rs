@@ -280,8 +280,8 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {
-            let buf = editor.doc.buf();
-            let head = editor.doc.sels().primary().head;
+            let buf = editor.doc.text();
+            let head = editor.current_selections().primary().head;
             let head_line = buf.char_to_line(head);
             let col_0 = grapheme_col_in_line(buf, head_line, head);
             (Cow::Owned(format!("{}:{}", head_line + 1, col_0 + 1)), colors.statusline)
@@ -427,11 +427,11 @@ mod tests {
     // ── MacroRecording element ────────────────────────────────────────────────
 
     fn test_editor() -> crate::editor::Editor {
-        use crate::core::{buffer::Buffer, selection::{Selection, SelectionSet}};
-        use crate::core::document::Document;
-        let buf = Buffer::from("hello\n");
+        use crate::core::{text::Text, selection::{Selection, SelectionSet}};
+        use crate::editor::buffer::Buffer;
+        let text = Text::from("hello\n");
         let sels = SelectionSet::single(Selection::collapsed(0));
-        crate::editor::Editor::for_testing(Document::new(buf, sels))
+        crate::editor::Editor::for_testing(Buffer::new(text, sels))
     }
 
     #[test]

@@ -58,7 +58,7 @@ impl Editor {
             }
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);
-            self.doc.set_selections(SelectionSet::single(sel));
+            self.set_current_selections(SelectionSet::single(sel));
             // Record anchor for potential drag-select.
             self.mouse_drag_anchor = Some(char_off);
             // Clear any pending key sequence so the click is a clean state reset.
@@ -81,7 +81,7 @@ impl Editor {
 
         if let Some(head) = self.click_to_char(col, row) {
             let sel = Selection::new(anchor, head);
-            self.doc.set_selections(SelectionSet::single(sel));
+            self.set_current_selections(SelectionSet::single(sel));
         }
     }
 
@@ -95,7 +95,7 @@ impl Editor {
         };
         {
             let pane = &mut self.engine_view.panes[self.pane_id];
-            let rope = self.doc.buf().rope();
+            let rope = self.doc.text().rope();
             scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
@@ -116,7 +116,7 @@ impl Editor {
         };
         {
             let pane = &mut self.engine_view.panes[self.pane_id];
-            let rope = self.doc.buf().rope();
+            let rope = self.doc.text().rope();
             let total_lines = rope.len_lines();
             scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
         }
@@ -134,14 +134,14 @@ impl Editor {
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let pane = &self.engine_view.panes[self.pane_id];
-        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.doc.buf().len_lines());
+        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.doc.text().len_lines());
         let (vp, wrap_mode, tab_width, whitespace) = (
             pane.viewport.clone(),
             pane.wrap_mode.clone(),
             pane.tab_width,
             pane.whitespace.clone(),
         );
-        let rope = self.doc.buf().rope();
+        let rope = self.doc.text().rope();
         cursor::screen_to_char_offset(
             col,
             row,

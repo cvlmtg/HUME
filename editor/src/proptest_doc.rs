@@ -1,4 +1,4 @@
-/// Property-based tests for Document-level invariants.
+/// Property-based tests for Text-level invariants.
 ///
 /// These tests complement the unit tests in individual modules and the
 /// ChangeSet-level proptests in `changeset.rs`. They verify that:
@@ -13,8 +13,9 @@
 mod tests {
     use proptest::prelude::*;
 
-    use crate::core::buffer::Buffer;
-    use crate::core::document::Document;
+    use crate::core::text::Text;
+    use crate::editor::buffer::{Buffer, IntoApplyResult};
+    use crate::editor::pane_state::EditGroup;
     use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
@@ -31,21 +32,46 @@ mod tests {
     };
     use crate::ops::text_object::{cmd_around_word, cmd_inner_line, cmd_inner_word};
 
+    // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
+
+    struct DocHelper {
+        buf: Buffer,
+        sels: SelectionSet,
+    }
+
+    impl DocHelper {
+        fn new(text: Text, sels: SelectionSet) -> Self {
+            let buf = Buffer::new(text, sels.clone());
+            Self { buf, sels }
+        }
+        fn text(&self) -> &Text { self.buf.text() }
+        fn apply_edit<R: IntoApplyResult>(&mut self, cmd: impl FnOnce(Text, SelectionSet) -> R) {
+            let (new_sels, _, _) = self.buf.apply_edit(self.sels.clone(), cmd);
+            self.sels = new_sels;
+        }
+        fn undo(&mut self) {
+            if let Some((sels, _cs)) = self.buf.undo() { self.sels = sels; }
+        }
+        fn redo(&mut self) {
+            if let Some((sels, _cs)) = self.buf.redo() { self.sels = sels; }
+        }
+    }
+
     // ── Invariant checker ─────────────────────────────────────────────────────
 
     /// Assert all buffer and selection invariants after any operation.
     ///
     /// Called after every operation in every proptest. A panic here means the
     /// code under test produced an invalid state.
-    fn assert_invariants(buf: &Buffer, sels: &SelectionSet) {
-        // Buffer invariant 1: always ends with structural '\n'.
+    fn assert_invariants(buf: &Text, sels: &SelectionSet) {
+        // Text invariant 1: always ends with structural '\n'.
         assert!(
             buf.to_string().ends_with('\n'),
             "buffer must end with \\n, got: {:?}",
             buf.to_string()
         );
 
-        // Buffer invariant 2: len_chars > 0 (at minimum the structural '\n').
+        // Text invariant 2: len_chars > 0 (at minimum the structural '\n').
         let len = buf.len_chars();
         assert!(len > 0, "buffer must have at least 1 char");
 
@@ -97,12 +123,12 @@ mod tests {
 
     // ── Strategies ────────────────────────────────────────────────────────────
 
-    /// Generate a random Buffer with content up to `max_len` chars.
+    /// Generate a random Text with content up to `max_len` chars.
     ///
-    /// Uses a small ASCII alphabet plus spaces and newlines. `Buffer::from`
+    /// Uses a small ASCII alphabet plus spaces and newlines. `Text::from`
     /// normalises CRLF and appends the structural trailing `\n` if missing, so
     /// every generated buffer already satisfies the buffer invariant.
-    fn arb_buffer(max_len: usize) -> impl Strategy<Value = Buffer> {
+    fn arb_buffer(max_len: usize) -> impl Strategy<Value = Text> {
         proptest::collection::vec(
             prop_oneof![
                 3 => b'a'..=b'z',  // letters are most common
@@ -112,7 +138,7 @@ mod tests {
             ],
             0..=max_len,
         )
-        .prop_map(|bytes| Buffer::from(String::from_utf8(bytes).unwrap().as_str()))
+        .prop_map(|bytes| Text::from(String::from_utf8(bytes).unwrap().as_str()))
     }
 
     /// Generate a `SelectionSet` with 1..=`max_sels` valid, non-overlapping
@@ -165,8 +191,8 @@ mod tests {
             .boxed()
     }
 
-    /// Generate a random `(Buffer, SelectionSet)` pair.
-    fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (Buffer, SelectionSet)> {
+    /// Generate a random `(Text, SelectionSet)` pair.
+    fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (Text, SelectionSet)> {
         arb_buffer(max_buf_len).prop_flat_map(|buf| {
             let buf_len = buf.len_chars();
             arb_selection_set(buf_len, 3).prop_map(move |sels| (buf.clone(), sels))
@@ -175,7 +201,7 @@ mod tests {
 
     // ── Operation enums ───────────────────────────────────────────────────────
 
-    /// Edit operations that go through `Document::apply_edit` and are recorded
+    /// Edit operations that go through `Text::apply_edit` and are recorded
     /// in the undo history.
     #[derive(Debug, Clone)]
     enum EditOp {
@@ -203,8 +229,8 @@ mod tests {
         ]
     }
 
-    /// Apply an `EditOp` to a `Document`, mutating it in place.
-    fn apply_edit_op(doc: &mut Document, op: &EditOp) {
+    /// Apply an `EditOp` to a `DocHelper`, mutating it in place.
+    fn apply_edit_op(doc: &mut DocHelper, op: &EditOp) {
         match op {
             EditOp::InsertChar(ch) => {
                 let ch = *ch;
@@ -224,7 +250,7 @@ mod tests {
         }
     }
 
-    /// Pure operations that transform `(Buffer, SelectionSet)` without
+    /// Pure operations that transform `(Text, SelectionSet)` without
     /// touching the undo history.
     #[derive(Debug, Clone)]
     enum PureOp {
@@ -277,7 +303,7 @@ mod tests {
 
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
-    fn apply_pure_op(buf: &Buffer, sels: SelectionSet, op: &PureOp, mode: MotionMode) -> SelectionSet {
+    fn apply_pure_op(buf: &Text, sels: SelectionSet, op: &PureOp, mode: MotionMode) -> SelectionSet {
         match op {
             PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
             PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),
@@ -305,19 +331,19 @@ mod tests {
 
     proptest! {
         /// A random sequence of edit operations (including undo and redo)
-        /// applied to a Document must never violate buffer or selection
+        /// applied to a Text must never violate buffer or selection
         /// invariants at any point in the sequence.
         #[test]
         fn prop_random_edit_sequence_preserves_invariants(
             (buf, sels) in arb_initial_state(30),
             ops in proptest::collection::vec(arb_edit_op(), 1..=25),
         ) {
-            let mut doc = Document::new(buf, sels);
-            assert_invariants(doc.buf(), doc.sels());
+            let mut doc = DocHelper::new(buf, sels);
+            assert_invariants(doc.text(), &doc.sels);
 
             for op in &ops {
                 apply_edit_op(&mut doc, op);
-                assert_invariants(doc.buf(), doc.sels());
+                assert_invariants(doc.text(), &doc.sels);
             }
         }
 
@@ -358,12 +384,12 @@ mod tests {
             let original_content = buf.to_string();
             let original_sels = sels.clone();
 
-            let mut doc = Document::new(buf, sels);
+            let mut doc = DocHelper::new(buf, sels);
             apply_edit_op(&mut doc, &op);
             doc.undo();
 
-            prop_assert_eq!(doc.buf().to_string(), original_content);
-            prop_assert_eq!(doc.sels().clone(), original_sels);
+            prop_assert_eq!(doc.text().to_string(), original_content);
+            prop_assert_eq!(doc.sels.clone(), original_sels);
         }
 
         /// Applying an edit, undoing it, then redoing it must produce the same
@@ -380,17 +406,17 @@ mod tests {
                 Just(EditOp::DeleteSelection),
             ],
         ) {
-            let mut doc = Document::new(buf, sels);
+            let mut doc = DocHelper::new(buf, sels);
             apply_edit_op(&mut doc, &op);
 
-            let after_content = doc.buf().to_string();
-            let after_sels = doc.sels().clone();
+            let after_content = doc.text().to_string();
+            let after_sels = doc.sels.clone();
 
             doc.undo();
             doc.redo();
 
-            prop_assert_eq!(doc.buf().to_string(), after_content);
-            prop_assert_eq!(doc.sels().clone(), after_sels);
+            prop_assert_eq!(doc.text().to_string(), after_content);
+            prop_assert_eq!(doc.sels.clone(), after_sels);
         }
 
         /// Applying N edits then undoing N times must restore the exact
@@ -414,7 +440,7 @@ mod tests {
             let original_content = buf.to_string();
             let original_sels = sels.clone();
 
-            let mut doc = Document::new(buf, sels);
+            let mut doc = DocHelper::new(buf, sels);
             let n = ops.len();
 
             for op in &ops {
@@ -424,8 +450,8 @@ mod tests {
                 doc.undo();
             }
 
-            prop_assert_eq!(doc.buf().to_string(), original_content);
-            prop_assert_eq!(doc.sels().clone(), original_sels);
+            prop_assert_eq!(doc.text().to_string(), original_content);
+            prop_assert_eq!(doc.sels.clone(), original_sels);
         }
 
         /// Interleaved edits and undos must never violate invariants at any
@@ -437,12 +463,12 @@ mod tests {
             (buf, sels) in arb_initial_state(30),
             ops in proptest::collection::vec(arb_edit_op(), 1..=30),
         ) {
-            let mut doc = Document::new(buf, sels);
-            assert_invariants(doc.buf(), doc.sels());
+            let mut doc = DocHelper::new(buf, sels);
+            assert_invariants(doc.text(), &doc.sels);
 
             for op in &ops {
                 apply_edit_op(&mut doc, op);
-                assert_invariants(doc.buf(), doc.sels());
+                assert_invariants(doc.text(), &doc.sels);
             }
         }
     }
