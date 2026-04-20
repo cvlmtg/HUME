@@ -1877,15 +1877,15 @@ fn extend_search_next_extends_selection() {
 fn esc_in_normal_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search.regex.is_some(), "pre-condition: search regex is set");
-    assert!(ed.search.match_count.is_some(), "pre-condition: cache is populated");
+    assert!(ed.search_pattern().is_some(), "pre-condition: search pattern is set");
+    assert!(ed.current_search_cursor().match_count.is_some(), "pre-condition: cache is populated");
 
     ed.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    ed.update_search_cache();
+    ed.sync_search_cache();
 
-    assert!(ed.search.regex.is_none(), "search.regex should be cleared by Esc");
-    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by Esc");
-    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by Esc");
+    assert!(ed.search_pattern().is_none(), "search pattern should be cleared by Esc");
+    assert!(ed.current_search_cursor().match_count.is_none(), "match_count should be cleared by Esc");
+    assert!(ed.search_matches().matches.is_empty(), "matches should be cleared by Esc");
 }
 
 /// `:clear-search` in Command mode clears the active search regex and its cached state.
@@ -1893,7 +1893,7 @@ fn esc_in_normal_clears_search() {
 fn command_clear_search_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search.regex.is_some(), "pre-condition: search regex is set");
+    assert!(ed.search_pattern().is_some(), "pre-condition: search pattern is set");
 
     // :clear-search (canonical name)
     ed.handle_key(key(':'));
@@ -1901,12 +1901,12 @@ fn command_clear_search_clears_search() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    ed.update_search_cache();
+    ed.sync_search_cache();
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.search.regex.is_none(), "search.regex should be cleared by :clear-search");
-    assert!(ed.search.match_count.is_none(), "search.match_count should be cleared by :clear-search");
-    assert!(ed.search.matches.is_empty(), "search.matches should be cleared by :clear-search");
+    assert!(ed.search_pattern().is_none(), "search pattern should be cleared by :clear-search");
+    assert!(ed.current_search_cursor().match_count.is_none(), "match_count should be cleared by :clear-search");
+    assert!(ed.search_matches().matches.is_empty(), "matches should be cleared by :clear-search");
 
 }
 
@@ -1927,7 +1927,7 @@ fn select_within_enters_select_mode() {
     let mut ed = editor_from("-[hello world]>\n");
     ed.handle_key(key('s'));
     assert_eq!(ed.mode, Mode::Select);
-    assert!(ed.pre_select_sels.is_some());
+    assert!(ed.pane_transient[ed.pane_id].pre_select_sels.is_some());
     assert!(ed.minibuf.is_some());
     assert_eq!(ed.minibuf.as_ref().unwrap().prompt, '⫽');
 }
@@ -1942,7 +1942,7 @@ fn select_within_confirm_replaces_selections() {
     ed.handle_key(key_enter());
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.pre_select_sels.is_none());
+    assert!(ed.pane_transient[ed.pane_id].pre_select_sels.is_none());
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);
     assert_eq!(ed.current_selections().primary().anchor, 0);
@@ -2001,7 +2001,7 @@ fn select_within_does_not_set_search_regex() {
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
-    assert!(ed.search.regex.is_none());
+    assert!(ed.search_pattern().is_none());
 }
 
 /// `s` with no matches restores original selections on each keystroke.
@@ -2217,34 +2217,30 @@ fn search_n_after_cancelled_select_within_uses_original_search() {
     );
 }
 
-/// A prior `search.regex` must survive a select-within confirm.
+/// A prior search pattern must survive a select-within confirm.
 #[test]
 fn search_regex_survives_select_within_confirm() {
-    use crate::ops::search::compile_search_regex;
-    let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.search.set_regex(compile_search_regex("cd"));
-    assert!(ed.search.regex.is_some());
+    let mut ed = editor_from("-[ab cd ab]>\n").with_search_regex("cd");
+    assert!(ed.search_pattern().is_some());
 
     ed.handle_key(key('s'));
     for ch in "ab".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
-    assert!(ed.search.regex.is_some(), "search.regex should survive select-within confirm");
+    assert!(ed.search_pattern().is_some(), "search pattern should survive select-within confirm");
 }
 
-/// A prior `search.regex` must survive a select-within cancel.
+/// A prior search pattern must survive a select-within cancel.
 #[test]
 fn search_regex_survives_select_within_cancel() {
-    use crate::ops::search::compile_search_regex;
-    let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.search.set_regex(compile_search_regex("cd"));
-    assert!(ed.search.regex.is_some());
+    let mut ed = editor_from("-[ab cd ab]>\n").with_search_regex("cd");
+    assert!(ed.search_pattern().is_some());
 
     ed.handle_key(key('s'));
     for ch in "ab".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_esc());
 
-    assert!(ed.search.regex.is_some(), "search.regex should survive select-within cancel");
+    assert!(ed.search_pattern().is_some(), "search pattern should survive select-within cancel");
 }
 
 /// `s` + confirm with no prior search — pressing `n` afterward should be a
@@ -2252,7 +2248,7 @@ fn search_regex_survives_select_within_cancel() {
 #[test]
 fn search_n_after_select_within_with_no_prior_search() {
     let mut ed = editor_from("-[ab cd ab]>\n");
-    assert!(ed.search.regex.is_none());
+    assert!(ed.search_pattern().is_none());
     assert!(reg(&ed, 's').is_empty());
 
     ed.handle_key(key('s'));
@@ -2347,7 +2343,7 @@ fn select_all_matches_uses_search_register_fallback() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.registers.write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
     // No live regex — forces register fallback.
-    assert!(ed.search.regex.is_none());
+    assert!(ed.search_pattern().is_none());
 
     ed.handle_key(key(':'));
     for ch in "select-all-matches".chars() {
@@ -2381,7 +2377,7 @@ fn star_on_cursor_expands_to_word() {
     assert_eq!(reg(&ed, 's'), vec!["hello"]);
     // Search direction set to forward.
     assert_eq!(ed.search.direction, super::SearchDirection::Forward);
-    assert!(ed.search.regex.is_some());
+    assert!(ed.search_pattern().is_some());
 }
 
 /// `*` on a non-cursor selection uses the selected text literally.

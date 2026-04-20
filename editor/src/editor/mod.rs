@@ -43,6 +43,8 @@ pub(super) mod scroll;
 mod visual_move;
 
 pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
+use crate::core::search_state::{SearchPattern, SearchMatches};
+use crate::editor::pane_state::SearchCursor;
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
@@ -192,11 +194,6 @@ pub(crate) struct Editor {
     // ── Search ────────────────────────────────────────────────────────────────
     pub(super) search: SearchState,
 
-    // ── Select (s) ───────────────────────────────────────────────────────────
-    /// Snapshot of selections taken when entering Select mode (`select-within`).
-    /// Restored on cancel; discarded on confirm.
-    pub(super) pre_select_sels: Option<SelectionSet>,
-
     // ── Per-pane state ─────────────────────────────────────────────────────────
     /// Per-(pane, buffer) state: selections, search cursor, in-progress edit group.
     ///
@@ -204,7 +201,6 @@ pub(crate) struct Editor {
     /// one entry per buffer that this pane has ever focused. Seeded in `open()`.
     pub(super) pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     /// Per-pane transient state: pre-search and pre-select selection snapshots.
-    #[allow(dead_code)] // Phase 5: search/select transients migrate from Editor fields
     pub(super) pane_transient: SecondaryMap<PaneId, PaneTransient>,
 
     // ── Engine rendering state ────────────────────────────────────────────────
@@ -412,7 +408,6 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
-            pre_select_sels: None,
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
@@ -520,7 +515,7 @@ impl Editor {
                 // Repeat (held key). Without kitty all events are Press anyway.
                 Event::Key(key) if key.kind != KeyEventKind::Release => {
                     self.handle_key(key);
-                    self.update_search_cache();
+                    self.sync_search_cache();
                 }
                 Event::Key(_) => {}
                 Event::Mouse(mouse) => {
@@ -544,7 +539,7 @@ impl Editor {
             // One cache update covers the entire replay batch — the search
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
-            self.update_search_cache();
+            self.sync_search_cache();
             if self.should_quit { break; }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
@@ -767,37 +762,106 @@ impl Editor {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /// Recompute and cache the match list and current/total count.
-    ///
-    /// Called once after each `handle_key` so the render path reads
-    /// pre-computed values and does zero regex work.
-    /// Skipped when no search is active and the cache is already clear.
-    pub(super) fn update_search_cache(&mut self) {
-        let Some(regex) = self.search.regex.clone() else {
-            // No active search. The cache was already zeroed by clear() or was
-            // never populated; nothing to do.
-            return;
-        };
+    /// Accessor for the focused buffer's active search pattern.
+    pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
+        self.buffers.get(self.buffer_id).search_pattern.as_ref()
+    }
 
-        let revision = self.doc().revision_id();
-        let head = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
+    /// Accessor for the focused buffer's match cache.
+    pub(crate) fn search_matches(&self) -> &SearchMatches {
+        &self.buffers.get(self.buffer_id).search_matches
+    }
 
-        // Recompute the full match list only when the buffer content changed.
-        if revision != self.search.cache_revision {
-            self.search.matches = find_all_matches(self.doc().text(), &regex);
-            self.search.cache_revision = revision;
-            // Head may not have changed, but match_count depends on the (now
-            // stale) match list, so force it to recompute below.
-            self.search.cache_head = usize::MAX;
-        }
+    /// Accessor for the focused pane's search cursor (match count, wrapped flag).
+    pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
+        &self.pane_state[self.pane_id][self.buffer_id].search_cursor
+    }
 
-        // Recompute the current/total count only when the cursor moved.
-        if head != self.search.cache_head {
-            self.search.match_count = Some(search_match_info(&self.search.matches, head));
-            self.search.cache_head = head;
+    /// Mutable accessor for the focused pane's search cursor.
+    pub(crate) fn current_search_cursor_mut(&mut self) -> &mut SearchCursor {
+        &mut self.pane_state[self.pane_id][self.buffer_id].search_cursor
+    }
+
+    /// Clear the active search state for buffer `bid`: drop the pattern,
+    /// reset the match cache, and reset every pane's search cursor.
+    pub(crate) fn clear_buffer_search(&mut self, bid: BufferId) {
+        let buf = self.buffers.get_mut(bid);
+        buf.search_pattern = None;
+        buf.search_matches = SearchMatches::default();
+        for buf_map in self.pane_state.values_mut() {
+            if let Some(state) = buf_map.get_mut(bid) {
+                state.search_cursor = SearchCursor::default();
+            }
         }
     }
 
+    /// Recompute the match list for `bid` if the pattern or revision changed.
+    ///
+    /// No-op when no search is active. Designed so calling it per-key is cheap —
+    /// the cache check short-circuits before any regex work when nothing changed.
+    pub(super) fn update_buffer_matches(&mut self, bid: BufferId) {
+        let Some((pattern_str, regex, revision)) = (|| {
+            let buf = self.buffers.get(bid);
+            let sp = buf.search_pattern.as_ref()?;
+            Some((sp.pattern_str.clone(), Arc::clone(&sp.regex), buf.revision_id()))
+        })() else { return; };
+
+        {
+            let sm = &self.buffers.get(bid).search_matches;
+            if sm.cache_revision == Some(revision)
+                && sm.cache_pattern.as_deref() == Some(pattern_str.as_str()) {
+                return;
+            }
+        }
+
+        let matches = find_all_matches(self.buffers.get(bid).text(), &regex);
+        let sm = &mut self.buffers.get_mut(bid).search_matches;
+        sm.matches = matches;
+        sm.cache_revision = Some(revision);
+        sm.cache_pattern = Some(pattern_str);
+    }
+
+    /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
+    ///
+    /// Short-circuits when head position, match-list revision, and pattern
+    /// all match the cached values — zero regex work on cache hit.
+    pub(super) fn update_pane_cursor(&mut self, pid: PaneId, bid: BufferId) {
+        let head = self.pane_state[pid][bid].selections.primary().head;
+        {
+            let sm = &self.buffers.get(bid).search_matches;
+            let cur = &self.pane_state[pid][bid].search_cursor;
+            if cur.cache_head == Some(head)
+                && cur.cache_matches_rev == sm.cache_revision
+                && cur.cache_matches_pattern.as_deref() == sm.cache_pattern.as_deref() {
+                return;
+            }
+        }
+
+        let (match_count, cache_rev, cache_pat) = {
+            let sm = &self.buffers.get(bid).search_matches;
+            if sm.cache_revision.is_none() {
+                // Buffer has no active search — cursor should be default.
+                return;
+            }
+            let count = search_match_info(&sm.matches, head);
+            (Some(count), sm.cache_revision, sm.cache_pattern.clone())
+        };
+
+        let cursor = &mut self.pane_state[pid][bid].search_cursor;
+        cursor.match_count = match_count;
+        cursor.cache_head = Some(head);
+        cursor.cache_matches_rev = cache_rev;
+        cursor.cache_matches_pattern = cache_pat;
+    }
+
+    /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for the
+    /// focused pane/buffer. Replaces the old `update_search_cache`.
+    pub(super) fn sync_search_cache(&mut self) {
+        let bid = self.buffer_id;
+        let pid = self.pane_id;
+        self.update_buffer_matches(bid);
+        self.update_pane_cursor(pid, bid);
+    }
 
     /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
     /// read by `BracketMatchHighlighter` and `SearchMatchHighlighter`.
@@ -822,7 +886,7 @@ impl Editor {
                 // Matches are sorted by document order. Binary-search to the first
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
-                let matches = self.search.matches();
+                let matches = &self.buffers.get(self.buffer_id).search_matches.matches;
                 let first = matches.partition_point(|&(start, _)| start < top_char);
                 for &(start, end_incl) in &matches[first..] {
                     let (line, byte_start) = char_to_line_byte(buf, start);
@@ -880,14 +944,6 @@ impl Editor {
     }
 
     // ── Buffer accessors ──────────────────────────────────────────────────────
-
-    /// ID of the buffer currently viewed by the focused pane.
-    ///
-    /// In M7 (single pane) this always equals `self.buffer_id`. Phase 9 will
-    /// promote this to read from `engine_view.panes[pane_id].buffer_id`.
-    pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.buffer_id
-    }
 
     /// Shared reference to the focused buffer.
     pub(crate) fn doc(&self) -> &Buffer {
@@ -1286,7 +1342,6 @@ impl Editor {
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
-            pre_select_sels: None,
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
@@ -1311,8 +1366,15 @@ impl Editor {
     }
 
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
-        self.search.set_regex(regex_cursor::engines::meta::Regex::new(pattern).ok());
-        self.update_search_cache();
+        if let Ok(regex) = regex_cursor::engines::meta::Regex::new(pattern) {
+            let bid = self.buffer_id;
+            self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+                direction: self.search.direction,
+                regex: Arc::new(regex),
+                pattern_str: pattern.to_string(),
+            });
+        }
+        self.sync_search_cache();
         self
     }
 

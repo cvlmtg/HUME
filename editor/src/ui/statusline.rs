@@ -296,11 +296,11 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::SearchMatches => {
-            if let Some((current, total)) = editor.search.match_count() {
+            if let Some((current, total)) = editor.current_search_cursor().match_count {
                 if total == 0 {
                     (Cow::Borrowed(""), colors.statusline)
                 } else {
-                    let w = if editor.search.wrapped() { "W " } else { "" };
+                    let w = if editor.current_search_cursor().wrapped { "W " } else { "" };
                     (Cow::Owned(format!("{w}[{current}/{total}]")), colors.statusline)
                 }
             } else {

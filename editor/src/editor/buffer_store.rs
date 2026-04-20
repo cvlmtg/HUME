@@ -106,11 +106,6 @@ impl BufferStore {
         self.order.get(prev).copied().unwrap_or(current)
     }
 
-    /// Iterate all buffers in open-order.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
-        self.order.iter().filter_map(|&id| self.buffers.get(id).map(|b| (id, b)))
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.buffers.len()
     }
