@@ -17,8 +17,8 @@ use crate::core::changeset::ChangeSet;
 use crate::core::text::Text;
 use self::registry::CommandRegistry;
 use crate::editor::buffer::{Buffer, IntoApplyResult};
+use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
-use crate::os::io::FileMeta;
 use crate::ops::motion::FindKind;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
@@ -30,6 +30,7 @@ use crate::os::terminal::Term;
 use self::keymap::{Keymap, WaitCharPending};
 
 pub(crate) mod buffer;
+pub(crate) mod buffer_store;
 pub(crate) mod pane_state;
 mod registry;
 mod commands;
@@ -126,8 +127,9 @@ pub(crate) use engine::types::EditorMode as Mode;
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
-    pub(crate) doc: Buffer,
-    pub(crate) file_path: Option<Arc<PathBuf>>,
+    /// All open buffers. SSOT for buffer content, history, and file metadata.
+    /// The focused buffer is `buffers.get(buffer_id)`.
+    pub(crate) buffers: BufferStore,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state (previously a separate `extend: bool` field). Mode is the single
     /// source of truth — `extend: bool` has been removed.
@@ -166,10 +168,6 @@ pub(crate) struct Editor {
     /// When `Some`, the editor displays this read-only overlay instead of the
     /// real document. Dismissed with `q` or Escape. Used by `:messages`.
     pub(crate) scratch_view: Option<ScratchView>,
-    /// Metadata captured from the file at open time (permissions, ownership,
-    /// resolved path). `None` for scratch buffers. Used by the write path to
-    /// preserve the original file's attributes across atomic saves.
-    pub(super) file_meta: Option<FileMeta>,
     /// All editor settings — global defaults and per-buffer-overridable values.
     ///
     /// This is the single source of truth for every configurable setting.
@@ -223,11 +221,8 @@ pub(crate) struct Editor {
     pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
 
     // ── Jump list ────────────────────────────────────────────────────────────
-    /// Navigable history of cursor positions before large movements.
-    /// `jump-backward` / `jump-forward` traverse the list.
-    pub(super) jump_list: crate::core::jump_list::JumpList,
-    /// Per-pane jump lists (Phase 7: replaces `jump_list`; seeded alongside choke-points).
-    #[allow(dead_code)] // Phase 7: Ctrl+O/I wired here
+    /// Per-pane navigable history of cursor positions before large movements.
+    /// `jump-backward` (Ctrl+O) / `jump-forward` (Ctrl+I) traverse each pane's list.
     pub(super) pane_jumps: SecondaryMap<PaneId, crate::core::jump_list::JumpList>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
@@ -318,7 +313,7 @@ pub(crate) struct Editor {
 #[cfg(test)]
 impl std::fmt::Debug for Editor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Editor(buf={:?}, mode={:?})", self.doc.text().to_string(), self.mode)
+        write!(f, "Editor(buf={:?}, mode={:?})", self.doc().text().to_string(), self.mode)
     }
 }
 
@@ -328,16 +323,10 @@ impl Editor {
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
     /// placeholder values replaced on the first event-loop iteration.
     pub(crate) fn open(file_path: Option<PathBuf>) -> io::Result<Self> {
-        let (buf, file_meta) = match &file_path {
-            Some(path) => {
-                let (content, meta) = crate::os::io::read_file(path)?;
-                (Text::from(content.as_str()), Some(meta))
-            }
-            None => (Text::empty(), None),
+        let doc = match file_path {
+            Some(ref path) => Buffer::from_file(path)?,
+            None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
         };
-
-        let sels = SelectionSet::single(Selection::collapsed(0));
-        let doc = Buffer::new(buf, sels);
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::ui::theme::build_default_theme();
@@ -382,7 +371,6 @@ impl Editor {
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
-        let file_path_arc: Option<Arc<PathBuf>> = file_path.map(Arc::new);
         let jump_list_capacity = settings.jump_list_capacity;
 
         // Seed per-pane state from the buffer's history-root selections.
@@ -399,9 +387,11 @@ impl Editor {
         // Bake theme now that all scopes are interned.
         engine_view.theme.bake(&engine_view.registry);
 
+        let mut buffers = BufferStore::new();
+        buffers.open(buffer_id, doc);
+
         Ok(Self {
-            doc,
-            file_path: file_path_arc,
+            buffers,
             mode: Mode::Normal,
             pending_keys: Vec::new(),
             count: None,
@@ -413,7 +403,6 @@ impl Editor {
             status_msg: None,
             message_log: MessageLog::new(),
             scratch_view: None,
-            file_meta,
             settings,
             registry: CommandRegistry::with_defaults(),
             keymap: Keymap::default(),
@@ -424,7 +413,6 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
-            jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
@@ -480,11 +468,11 @@ impl Editor {
                 let cursor_char = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
                 let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
-                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc.text().len_lines());
+                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc().text().len_lines());
                     (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)
                 };
                 crate::cursor::screen_pos(
-                    &vp, self.doc.text().rope(), cursor_char,
+                    &vp, self.doc().text().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
                     &mut ctx,
                 ).map(|(col, row)| (col + gutter_w, row))
@@ -502,7 +490,7 @@ impl Editor {
             let rope: &ropey::Rope = if let Some(ref sv) = self.scratch_view {
                 sv.buf.rope()
             } else {
-                self.doc.text().rope()
+                self.doc().text().rope()
             };
             let buffer_id   = self.buffer_id;
             let engine_view = &self.engine_view;
@@ -621,11 +609,14 @@ impl Editor {
             // 4. Push resolved per-buffer settings into the pane so the engine
             //    always reads the effective values, regardless of overrides.
             {
+                let tab_width = self.doc().overrides.tab_width(&self.settings);
+                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+                let whitespace = self.doc().overrides.whitespace(&self.settings);
+                let ln_style  = self.doc().overrides.line_number_style(&self.settings);
                 let pane = &mut self.engine_view.panes[self.pane_id];
-                pane.tab_width = self.doc.overrides.tab_width(&self.settings);
-                pane.wrap_mode = self.doc.overrides.wrap_mode(&self.settings);
-                pane.whitespace = self.doc.overrides.whitespace(&self.settings);
-                let ln_style = self.doc.overrides.line_number_style(&self.settings);
+                pane.tab_width = tab_width;
+                pane.wrap_mode = wrap_mode;
+                pane.whitespace = whitespace;
                 pane.providers.sync_line_number_style(ln_style);
             }
 
@@ -634,7 +625,8 @@ impl Editor {
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             {
-                let rope = self.doc.text().rope();
+                let buf_id = self.buffer_id;
+                let rope = self.buffers.get(buf_id).text().rope();
                 let pane = &mut self.engine_view.panes[self.pane_id];
                 scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
             }
@@ -787,12 +779,12 @@ impl Editor {
             return;
         };
 
-        let revision = self.doc.revision_id();
+        let revision = self.doc().revision_id();
         let head = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
 
         // Recompute the full match list only when the buffer content changed.
         if revision != self.search.cache_revision {
-            self.search.matches = find_all_matches(self.doc.text(), &regex);
+            self.search.matches = find_all_matches(self.doc().text(), &regex);
             self.search.cache_revision = revision;
             // Head may not have changed, but match_count depends on the (now
             // stale) match list, so force it to recompute below.
@@ -813,7 +805,7 @@ impl Editor {
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode.
     pub(super) fn update_highlight_providers(&mut self) {
-        let buf = self.doc.text();
+        let buf = self.doc().text();
 
         // Visible line range — skip matches outside the viewport (search matches
         // are sorted by document order, so we can break early past the bottom).
@@ -887,6 +879,30 @@ impl Editor {
         self.mode = mode;
     }
 
+    // ── Buffer accessors ──────────────────────────────────────────────────────
+
+    /// ID of the buffer currently viewed by the focused pane.
+    ///
+    /// In M7 (single pane) this always equals `self.buffer_id`. Phase 9 will
+    /// promote this to read from `engine_view.panes[pane_id].buffer_id`.
+    pub(crate) fn focused_buffer_id(&self) -> BufferId {
+        self.buffer_id
+    }
+
+    /// Shared reference to the focused buffer.
+    pub(crate) fn doc(&self) -> &Buffer {
+        self.buffers.get(self.buffer_id)
+    }
+
+    /// Mutable reference to the focused buffer.
+    ///
+    /// Uses a split borrow — `buffers` and other fields on `Editor` are
+    /// disjoint, so you can hold this reference while reading e.g. `self.settings`.
+    /// Do NOT keep this reference live across a call that also borrows `self`.
+    pub(crate) fn doc_mut(&mut self) -> &mut Buffer {
+        self.buffers.get_mut(self.buffer_id)
+    }
+
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
     /// The focused pane's selections for the current buffer.
@@ -926,9 +942,9 @@ impl Editor {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
         // Snapshot pre-edit rope (O(1) — ropey uses structural sharing).
-        let rope_pre = self.doc.text().rope().clone();
+        let rope_pre = self.buffers.get(buf_id).text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
-        let (new_sels, displaced, cs) = self.doc.apply_edit(sels, cmd);
+        let (new_sels, displaced, cs) = self.buffers.get_mut(buf_id).apply_edit(sels, cmd);
         self.pane_state[pane_id][buf_id].selections = new_sels;
         self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
         (displaced, cs)
@@ -946,9 +962,10 @@ impl Editor {
     ) -> (Option<Vec<String>>, ChangeSet) {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
-        let rope_pre = self.doc.text().rope().clone();
+        let rope_pre = self.buffers.get(buf_id).text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
-        let doc = &mut self.doc;
+        // Split borrow: self.buffers and self.pane_state are disjoint fields.
+        let doc = self.buffers.get_mut(buf_id);
         let pbs = &mut self.pane_state[pane_id][buf_id];
         let (new_sels, displaced, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
         pbs.selections = new_sels;
@@ -964,8 +981,8 @@ impl Editor {
         // rope_pre for undo is the *current* (post-edit) text: undo's CS maps
         // post-edit positions back to pre-edit, so non-acting panes' heads (which
         // live in post-edit space) must be translated through that CS.
-        let rope_pre = self.doc.text().rope().clone();
-        if let Some((new_sels, cs)) = self.doc.undo() {
+        let rope_pre = self.buffers.get(buf_id).text().rope().clone();
+        if let Some((new_sels, cs)) = self.buffers.get_mut(buf_id).undo() {
             self.pane_state[pane_id][buf_id].selections = new_sels;
             self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
         }
@@ -975,8 +992,8 @@ impl Editor {
     pub(super) fn doc_redo(&mut self) {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
-        let rope_pre = self.doc.text().rope().clone();
-        if let Some((new_sels, cs)) = self.doc.redo() {
+        let rope_pre = self.buffers.get(buf_id).text().rope().clone();
+        if let Some((new_sels, cs)) = self.buffers.get_mut(buf_id).redo() {
             self.pane_state[pane_id][buf_id].selections = new_sels;
             self.propagate_cs_to_panes(buf_id, &cs, &rope_pre);
         }
@@ -990,7 +1007,7 @@ impl Editor {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
-        let doc = &mut self.doc;
+        let doc = self.buffers.get_mut(buf_id);
         let pbs = &mut self.pane_state[pane_id][buf_id];
         doc.begin_edit_group(&mut pbs.edit_group, sels);
     }
@@ -999,7 +1016,7 @@ impl Editor {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
-        let doc = &mut self.doc;
+        let doc = self.buffers.get_mut(buf_id);
         let pbs = &mut self.pane_state[pane_id][buf_id];
         doc.commit_edit_group(&mut pbs.edit_group, sels);
     }
@@ -1045,7 +1062,7 @@ impl Editor {
         let pane_id = self.pane_id;
         let buf_id = self.buffer_id;
         let new_sels = {
-            let buf = self.doc.text();
+            let buf = self.doc().text();
             let sels = self.pane_state[pane_id][buf_id].selections.clone();
             f(buf, sels)
         };
@@ -1069,6 +1086,141 @@ impl Editor {
         }
         self.is_replaying = false;
         self.last_action = saved_action;
+    }
+
+    // ── Phase 6 — Buffer choke-points ────────────────────────────────────────
+
+    /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
+    /// `pane_state`, and return the allocated `BufferId`.
+    pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
+        let bid = self.engine_view.buffers.insert(engine::pipeline::SharedBuffer::new());
+        let initial_sels = doc.initial_sels();
+        self.buffers.open(bid, doc);
+        let pid = self.pane_id;
+        self.pane_state[pid].insert(bid, PaneBufferState {
+            selections: initial_sels,
+            ..PaneBufferState::default()
+        });
+        bid
+    }
+
+    /// Remove buffer `id`, handling the three cases:
+    ///
+    /// - **Case A/B** — at least one other buffer exists: redirect every pane
+    ///   viewing `id` to the MRU replacement, then free the slot.
+    /// - **Case C** — `id` is the only buffer: replace in-place with scratch.
+    pub(crate) fn close_buffer(&mut self, id: BufferId) {
+        match self.buffers.mru_excluding(id) {
+            Some(next) => {
+                // Collect panes viewing `id` (can't iterate while mutating).
+                let panes_to_redirect: Vec<PaneId> = self.engine_view.panes
+                    .iter()
+                    .filter(|(_, p)| p.buffer_id == id)
+                    .map(|(pid, _)| pid)
+                    .collect();
+                for pid in panes_to_redirect {
+                    self.switch_pane_to_buffer_without_jump(pid, next);
+                }
+                // Sync denormalized buffer_id from the focused pane.
+                self.buffer_id = self.engine_view.panes[self.pane_id].buffer_id;
+                self.buffers.close(id);
+                self.engine_view.buffers.remove(id);
+                self.forget_buffer_in_all_panes(id);
+            }
+            None => {
+                // Case C: only buffer — replace in-place with scratch.
+                self.replace_buffer_in_place(id, Buffer::scratch());
+            }
+        }
+    }
+
+    /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
+    ///
+    /// Used by `:e!` reload. Caller contract: `new_doc.search_pattern` must be `None`
+    /// (enforced by debug_assert — `Buffer::from_file` satisfies this by construction).
+    pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
+        debug_assert!(new_doc.search_pattern.is_none(),
+            "replace_buffer_in_place: new_doc must have no active search state");
+        let initial_sels = new_doc.initial_sels();
+        *self.buffers.get_mut(id) = new_doc;
+        // Re-seed every pane currently viewing this buffer.
+        let pane_ids: Vec<PaneId> = self.engine_view.panes
+            .iter()
+            .filter(|(_, p)| p.buffer_id == id)
+            .map(|(pid, _)| pid)
+            .collect();
+        for pid in pane_ids {
+            self.pane_state[pid].insert(id, PaneBufferState {
+                selections: initial_sels.clone(),
+                ..PaneBufferState::default()
+            });
+        }
+        for jumps in self.pane_jumps.values_mut() {
+            jumps.prune_buffer(id);
+        }
+        for pane in self.engine_view.panes.values_mut() {
+            pane.forget_buffer(id);
+        }
+    }
+
+    /// Clear all per-pane state for `id` across every pane.
+    ///
+    /// Called after `buffers.close(id)` — the id is no longer valid at this point.
+    fn forget_buffer_in_all_panes(&mut self, id: BufferId) {
+        for pane in self.engine_view.panes.values_mut() {
+            pane.forget_buffer(id);
+        }
+        for buf_state in self.pane_state.values_mut() {
+            buf_state.remove(id);
+        }
+        for jumps in self.pane_jumps.values_mut() {
+            jumps.prune_buffer(id);
+        }
+    }
+
+    /// Redirect pane `pid` to buffer `target` without recording a jump.
+    ///
+    /// Saves the pane's scroll on the old buffer, loads the target's saved
+    /// scroll (0 on first visit), and seeds `pane_state` for the target if
+    /// this pane hasn't viewed it before.
+    pub(crate) fn switch_pane_to_buffer_without_jump(&mut self, pid: PaneId, target: BufferId) {
+        self.engine_view.panes[pid].remember_scroll();
+        self.engine_view.panes[pid].buffer_id = target;
+        self.engine_view.panes[pid].recall_scroll(target);
+        if !self.pane_state[pid].contains_key(target) {
+            let initial_sels = self.buffers.get(target).initial_sels();
+            self.pane_state[pid].insert(target, PaneBufferState {
+                selections: initial_sels,
+                ..PaneBufferState::default()
+            });
+        }
+    }
+
+    /// Redirect the focused pane to `target` without recording a jump.
+    pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
+        let pid = self.pane_id;
+        self.switch_pane_to_buffer_without_jump(pid, target);
+        self.buffer_id = target;
+    }
+
+    /// Redirect the focused pane to `target`, recording the outgoing position
+    /// in `pane_jumps[focused_pane]`.
+    ///
+    /// Caller contract: all fallible steps (path resolution, file read, etc.)
+    /// must succeed before calling this — `push()` truncates forward history.
+    pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
+        let entry = self.current_jump_entry();
+        self.pane_jumps[self.pane_id].push(entry);
+        self.switch_to_buffer_without_jump(target);
+    }
+
+    /// Snapshot the focused pane's current cursor as a `JumpEntry`.
+    pub(crate) fn current_jump_entry(&self) -> crate::core::jump_list::JumpEntry {
+        use crate::core::jump_list::JumpEntry;
+        let pid = self.pane_id;
+        let bid = self.buffer_id;
+        let sels = self.pane_state[pid][bid].selections.clone();
+        JumpEntry::new(sels, self.buffers.get(bid).text(), bid)
     }
 }
 
@@ -1109,9 +1261,11 @@ impl Editor {
         let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
         pane_transient.insert(pane_id, PaneTransient::default());
 
+        let mut buffers = BufferStore::new();
+        buffers.open(buffer_id, doc);
+
         Self {
-            doc,
-            file_path: None,
+            buffers,
             mode: Mode::Normal,
             pending_keys: Vec::new(),
             count: None,
@@ -1123,7 +1277,6 @@ impl Editor {
             status_msg: None,
             message_log: MessageLog::new(),
             scratch_view: None,
-            file_meta: None,
             settings,
             registry: registry::CommandRegistry::with_defaults(),
             keymap: keymap::Keymap::default(),
@@ -1134,7 +1287,6 @@ impl Editor {
             explicit_count: false,
             search: SearchState::default(),
             pre_select_sels: None,
-            jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
@@ -1169,9 +1321,10 @@ impl Editor {
     /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
         let pid = self.engine_view.panes.insert(Pane::new(buffer_id));
+        let initial_sels = self.buffers.get(buffer_id).initial_sels();
         let mut inner: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
         inner.insert(buffer_id, PaneBufferState {
-            selections: self.doc.initial_sels(),
+            selections: initial_sels,
             ..PaneBufferState::default()
         });
         self.pane_state.insert(pid, inner);
@@ -1185,6 +1338,7 @@ impl Editor {
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
         self.pane_id = target;
+        self.buffer_id = self.engine_view.panes[target].buffer_id;
         if !self.pane_state.contains_key(target) {
             self.pane_state.insert(target, SecondaryMap::new());
         }
@@ -1199,8 +1353,9 @@ impl Editor {
         }
         let bid = self.buffer_id;
         if !self.pane_state[target].contains_key(bid) {
+            let initial_sels = self.buffers.get(bid).initial_sels();
             self.pane_state[target].insert(bid, PaneBufferState {
-                selections: self.doc.initial_sels(),
+                selections: initial_sels,
                 ..PaneBufferState::default()
             });
         }
@@ -1225,6 +1380,37 @@ impl Editor {
         buf: BufferId,
     ) -> Option<&crate::core::selection::SelectionSet> {
         self.pane_state.get(pane).and_then(|m| m.get(buf)).map(|s| &s.selections)
+    }
+
+    /// Execute a typed command string (e.g. `"bd"`, `"e! path"`) programmatically.
+    ///
+    /// Parses the trailing `!` as `force=true` and splits `cmd_with_arg` on the
+    /// first space to extract the optional argument. Returns the command result.
+    pub(crate) fn execute_typed(
+        &mut self,
+        cmd_with_arg: &str,
+        extra_arg: Option<&str>,
+    ) -> Result<(), crate::core::error::CommandError> {
+        use crate::editor::Severity;
+        let (cmd_raw, inline_arg) = match cmd_with_arg.split_once(' ') {
+            Some((c, a)) => (c, Some(a.trim())),
+            None => (cmd_with_arg, None),
+        };
+        let (cmd, force) = match cmd_raw.strip_suffix('!') {
+            Some(base) => (base, true),
+            None => (cmd_raw, false),
+        };
+        let arg = inline_arg.or(extra_arg);
+        if let Some(tc) = self.registry.get_typed(cmd) {
+            let fun = tc.fun;
+            let result = fun(self, arg, force);
+            if let Err(ref e) = result {
+                self.report(Severity::Error, e.0.clone());
+            }
+            result
+        } else {
+            Err(crate::core::error::CommandError(format!("unknown command: {cmd}")))
+        }
     }
 }
 

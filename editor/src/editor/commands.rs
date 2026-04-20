@@ -126,7 +126,7 @@ pub(super) fn cmd_exit_insert(ed: &mut Editor, _count: usize, _mode: MotionMode)
 
 /// Yank selections into the default register, then delete them.
 pub(super) fn cmd_delete(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
+    let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.doc_edit(delete_selection);
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
     Ok(())
@@ -137,7 +137,7 @@ pub(super) fn cmd_delete(ed: &mut Editor, _count: usize, _mode: MotionMode) -> R
 /// `begin_insert_session` opens the group so the delete and everything typed
 /// before Esc form one undo step.
 pub(super) fn cmd_change(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
+    let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.begin_insert_session();
     ed.doc_edit_grouped(delete_selection);
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
@@ -146,7 +146,7 @@ pub(super) fn cmd_change(ed: &mut Editor, _count: usize, _mode: MotionMode) -> R
 
 /// Yank selections into the default register without deleting.
 pub(super) fn cmd_yank(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let yanked = yank_selections(ed.doc.text(), ed.current_selections());
+    let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.registers.write_text(DEFAULT_REGISTER, yanked);
     Ok(())
 }
@@ -445,7 +445,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
-        let buf = ed.doc.text();
+        let buf = ed.doc().text();
         let primary = ed.current_selections().primary();
         let from = match direction {
             // Step past the current match so we don't re-find it on the first jump.
@@ -470,14 +470,14 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
         let result = if use_cache {
             find_match_from_cache(&ed.search.matches, from_char, direction)
         } else {
-            find_next_match(ed.doc.text(), regex, from_char, direction)
+            find_next_match(ed.doc().text(), regex, from_char, direction)
         };
         match result {
             Some((start, end_incl, wrapped)) => {
                 any_wrapped |= wrapped;
                 last_match = Some((start, end_incl));
                 from_char = match direction {
-                    SearchDirection::Forward => next_grapheme_boundary(ed.doc.text(), end_incl),
+                    SearchDirection::Forward => next_grapheme_boundary(ed.doc().text(), end_incl),
                     // For backward: next search must land before the current match start.
                     SearchDirection::Backward => start,
                 };
@@ -529,7 +529,7 @@ pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: Moti
     if !ensure_search_regex(ed) { return Ok(()); }
     let Some(regex) = &ed.search.regex else { return Ok(()) };
 
-    let matches = find_all_matches(ed.doc.text(), regex);
+    let matches = find_all_matches(ed.doc().text(), regex);
     if matches.is_empty() {
         return Err(CommandError("no matches".into()));
     }
@@ -565,7 +565,7 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMod
 /// the cursor first (same as Helix). The escaped text is compiled as a search
 /// regex, stored in the `'s'` register, and search highlights appear immediately.
 pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let buf = ed.doc.text();
+    let buf = ed.doc().text();
     let primary = ed.current_selections().primary();
 
     // If cursor (1-char selection), expand to inner word first.
@@ -614,7 +614,7 @@ pub(super) fn cmd_quit(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Res
 // (`:` command line). They are `pub(super)` so `registry.rs` can import them.
 
 pub(super) fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<(), CommandError> {
-    if !force && ed.doc.is_dirty() {
+    if !force && ed.doc().is_dirty() {
         Err(CommandError("Unsaved changes (add ! to override)".into()))
     } else {
         ed.should_quit = true;
@@ -641,9 +641,9 @@ pub(super) fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) 
 
 pub(super) fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     use engine::pane::WrapMode;
-    let currently_wrapping = ed.doc.overrides.wrap_mode(&ed.settings).is_wrapping();
+    let currently_wrapping = ed.doc().overrides.wrap_mode(&ed.settings).is_wrapping();
     if currently_wrapping {
-        ed.doc.overrides.wrap_mode = Some(WrapMode::None);
+        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
         // Estimate gutter width (line numbers + separator). The engine will
@@ -651,7 +651,7 @@ pub(super) fn typed_toggle_soft_wrap(ed: &mut Editor, _arg: Option<&str>, _force
         // enough for a reasonable default wrap column.
         const GUTTER_WIDTH_ESTIMATE: u16 = 4;
         let content_w = ed.viewport().width.saturating_sub(GUTTER_WIDTH_ESTIMATE).max(1);
-        ed.doc.overrides.wrap_mode = Some(WrapMode::Indent { width: content_w });
+        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::Indent { width: content_w });
         ed.viewport_mut().horizontal_offset = 0;
         ed.viewport_mut().top_row_offset = 0;
     }
@@ -671,14 +671,15 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
     let Some((key, value)) = rest.split_once('=') else {
         return Err(CommandError("Expected key=value".into()));
     };
+    let bid = ed.buffer_id;
     let result = match scope {
         "global" => crate::settings::apply_setting(
             crate::settings::SettingScope::Global,
-            key, value, &mut ed.settings, &mut ed.doc.overrides,
+            key, value, &mut ed.settings, &mut ed.buffers.get_mut(bid).overrides,
         ),
         "buffer" => crate::settings::apply_setting(
             crate::settings::SettingScope::Text,
-            key, value, &mut ed.settings, &mut ed.doc.overrides,
+            key, value, &mut ed.settings, &mut ed.buffers.get_mut(bid).overrides,
         ),
         _ => Err(format!("unknown scope '{scope}': expected 'global' or 'buffer'")),
     };
@@ -694,11 +695,11 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
 /// If `arg` is `None`, writes to the current file. Errors with
 /// "no file name" if the buffer is a scratch buffer with no path.
 ///
-/// On success, calls `ed.doc.mark_saved()` and sets a status message.
+/// On success, calls `ed.doc_mut().mark_saved()` and sets a status message.
 /// Returns `Ok(())` on success, `Err(CommandError)` on any error.
 fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
     let (content, line_count) = {
-        let buf = ed.doc.text();
+        let buf = ed.doc().text();
         // The rope is always stored LF-normalized; restore CRLF for files that
         // originally used it so we don't silently change line endings on save.
         let content = if buf.line_ending() == crate::core::text::LineEnding::CrLf {
@@ -726,9 +727,9 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
             Ok(meta) => {
                 // Store the canonicalized path so file_path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
-                ed.file_path = Some(Arc::new(meta.resolved_path.clone()));
-                ed.file_meta = Some(meta);
-                ed.doc.mark_saved();
+                ed.doc_mut().path = Some(Arc::new(meta.resolved_path.clone()));
+                ed.doc_mut().file_meta = Some(meta);
+                ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
                 Ok(())
             }
@@ -736,12 +737,12 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         }
     } else {
         // Write to the current file.
-        let Some(meta) = ed.file_meta.as_ref() else {
+        let Some(meta) = ed.doc().file_meta.as_ref() else {
             return Err(CommandError("no file name".into()));
         };
         match crate::os::io::write_file_atomic(&content, meta) {
             Ok(()) => {
-                ed.doc.mark_saved();
+                ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
                 Ok(())
             }
@@ -753,17 +754,27 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
 pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let current = crate::core::jump_list::JumpEntry::new(ed.current_selections().clone(), ed.doc.text());
-    if let Some(entry) = ed.jump_list.backward(current) {
-        let sels = entry.selections.clone();
+    let pid = ed.pane_id;
+    let current = ed.current_jump_entry();
+    let nav = ed.pane_jumps[pid].backward(current)
+        .map(|e| (e.buffer_id, e.selections.clone()));
+    if let Some((target_buf, sels)) = nav {
+        if target_buf != ed.buffer_id {
+            ed.switch_to_buffer_without_jump(target_buf);
+        }
         ed.set_current_selections(sels);
     }
     Ok(())
 }
 
 pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    if let Some(entry) = ed.jump_list.forward() {
-        let sels = entry.selections.clone();
+    let pid = ed.pane_id;
+    let nav = ed.pane_jumps[pid].forward()
+        .map(|e| (e.buffer_id, e.selections.clone()));
+    if let Some((target_buf, sels)) = nav {
+        if target_buf != ed.buffer_id {
+            ed.switch_to_buffer_without_jump(target_buf);
+        }
         ed.set_current_selections(sels);
     }
     Ok(())
@@ -836,5 +847,100 @@ pub(super) fn typed_reload_config(ed: &mut Editor, _arg: Option<&str>, _force: b
     ed.registry.unregister_all_steel_backed();
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
+    Ok(())
+}
+
+// ── Multi-buffer typed commands ───────────────────────────────────────────────
+
+/// `:e [path]` — open a file in the current window.
+///
+/// - No `path`: reload current file from disk (`:e!` discards unsaved changes).
+/// - `path` given and already open: switch to the existing buffer.
+/// - `path` given and not open: read from disk, open a new buffer, switch to it.
+///
+/// Dedup uses `find_by_path` (canonical path comparison). `:e!` (`force=true`)
+/// reloads even if the buffer is dirty.
+pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+    use std::path::Path;
+
+    if let Some(path_str) = arg {
+        let path = Path::new(path_str);
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+        // Dedup: if already open, just switch.
+        if let Some(existing) = ed.buffers.find_by_path(&canonical) {
+            if existing != ed.buffer_id {
+                ed.switch_to_buffer_with_jump(existing);
+            }
+            return Ok(());
+        }
+        // New buffer: read from disk, open, switch.
+        let doc = crate::editor::buffer::Buffer::from_file(&canonical)
+            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+        let name = canonical.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path_str)
+            .to_string();
+        let bid = ed.open_buffer(doc);
+        ed.switch_to_buffer_with_jump(bid);
+        ed.report(Severity::Info, format!("Opened {name}"));
+        Ok(())
+    } else {
+        // Reload current file.
+        let Some(path) = ed.doc().path.clone() else {
+            if force {
+                // :e! on scratch: replace with fresh scratch.
+                let id = ed.buffer_id;
+                ed.replace_buffer_in_place(id, crate::editor::buffer::Buffer::scratch());
+                return Ok(());
+            }
+            return Err(CommandError("no file name".into()));
+        };
+        if ed.doc().is_dirty() && !force {
+            return Err(CommandError(
+                "unsaved changes (use :e! to force)".into()
+            ));
+        }
+        let doc = crate::editor::buffer::Buffer::from_file(&path)
+            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+        let id = ed.buffer_id;
+        ed.replace_buffer_in_place(id, doc);
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        ed.report(Severity::Info, format!("Reloaded {name}"));
+        Ok(())
+    }
+}
+
+/// `:bd` — delete (close) the focused buffer.
+///
+/// If the buffer is dirty and `force` is false, returns an error.
+/// If it is the only buffer, it is replaced with a scratch buffer.
+pub(super) fn typed_buffer_delete(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+    if ed.doc().is_dirty() && !force {
+        return Err(CommandError("unsaved changes (use :bd! to force)".into()));
+    }
+    let id = ed.buffer_id;
+    ed.close_buffer(id);
+    Ok(())
+}
+
+/// `:bnext` / `:bn` — switch to the next buffer in open-order.
+pub(super) fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    let target = ed.buffers.next(ed.buffer_id);
+    if target != ed.buffer_id {
+        ed.switch_to_buffer_with_jump(target);
+    }
+    Ok(())
+}
+
+/// `:bprev` / `:bp` — switch to the previous buffer in open-order.
+pub(super) fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    let target = ed.buffers.prev(ed.buffer_id);
+    if target != ed.buffer_id {
+        ed.switch_to_buffer_with_jump(target);
+    }
     Ok(())
 }

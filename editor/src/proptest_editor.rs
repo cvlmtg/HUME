@@ -18,7 +18,7 @@ mod tests {
     // ── Invariant checker ─────────────────────────────────────────────────────
 
     fn assert_editor_invariants(ed: &Editor) {
-        let buf = ed.doc.text();
+        let buf = ed.doc().text();
         let sels = ed.current_selections();
 
         // Text always ends with structural '\n'.

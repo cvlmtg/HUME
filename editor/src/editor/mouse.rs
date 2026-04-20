@@ -94,8 +94,9 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
+            let buf_id = self.buffer_id;
+            let rope = self.buffers.get(buf_id).text().rope();
             let pane = &mut self.engine_view.panes[self.pane_id];
-            let rope = self.doc.text().rope();
             scroll_viewport_up(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
@@ -115,9 +116,10 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
-            let pane = &mut self.engine_view.panes[self.pane_id];
-            let rope = self.doc.text().rope();
+            let buf_id = self.buffer_id;
+            let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
+            let pane = &mut self.engine_view.panes[self.pane_id];
             scroll_viewport_down(&mut pane.viewport, rope, &pane.wrap_mode, pane.tab_width, &pane.whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
         }
         let vp_after = {
@@ -133,15 +135,16 @@ impl Editor {
     // ── Coordinate conversion ─────────────────────────────────────────────────
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
+        let buf_id = self.buffer_id;
         let pane = &self.engine_view.panes[self.pane_id];
-        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.doc.text().len_lines());
+        let gutter_w = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());
         let (vp, wrap_mode, tab_width, whitespace) = (
             pane.viewport.clone(),
             pane.wrap_mode.clone(),
             pane.tab_width,
             pane.whitespace.clone(),
         );
-        let rope = self.doc.text().rope();
+        let rope = self.buffers.get(buf_id).text().rope();
         cursor::screen_to_char_offset(
             col,
             row,

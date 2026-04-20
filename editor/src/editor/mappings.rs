@@ -430,7 +430,7 @@ impl Editor {
                 // Pair-wrap: unbound pair-open key with a non-collapsed selection → wrap.
                 if let KeyCode::Char(ch) = key.code {
                     if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                        let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                        let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
                         if ap_enabled {
                             if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
                                 let has_selection = self.current_selections().iter_sorted().any(|s| !s.is_collapsed());
@@ -474,7 +474,7 @@ impl Editor {
         // ── Character input ───────────────────────────────────────────────────
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
                 if ap_enabled {
                     if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
@@ -509,7 +509,7 @@ impl Editor {
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
+                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
                 if ap_enabled && self.is_between_pair(ap_pairs) {
                     self.doc_edit_grouped(delete_pair);
                 } else {
@@ -546,7 +546,7 @@ impl Editor {
             let is_explicit_jump = reg_cmd.is_jump();
             let is_vertical_visual = reg_cmd.is_visual_move();
             let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
-                let line = self.doc.text().char_to_line(self.current_selections().primary().head);
+                let line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 Some((self.current_selections().clone(), line))
             } else {
                 None
@@ -596,9 +596,9 @@ impl Editor {
 
             // ── Jump list: record if this was a jump ─────────────────────────
             if let Some((pre_sels, pre_line)) = pre_jump {
-                let post_line = self.doc.text().char_to_line(self.current_selections().primary().head);
+                let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
-                    self.jump_list.push(JumpEntry { selections: pre_sels, primary_line: pre_line });
+                    self.pane_jumps[self.pane_id].push(JumpEntry { buffer_id: self.buffer_id, selections: pre_sels, primary_line: pre_line });
                 }
             }
 
@@ -625,7 +625,7 @@ impl Editor {
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
         self.current_selections().iter_sorted().all(|sel| {
-            sel.is_collapsed() && self.doc.text().char_at(sel.head) == Some(ch)
+            sel.is_collapsed() && self.doc().text().char_at(sel.head) == Some(ch)
         })
     }
 
@@ -634,7 +634,7 @@ impl Editor {
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
     fn is_between_pair(&self, pairs: &[crate::auto_pairs::Pair]) -> bool {
-        let buf = self.doc.text();
+        let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head == 0 {
                 return false;
@@ -655,7 +655,7 @@ impl Editor {
     /// selections. All-or-nothing: every collapsed selection must satisfy the
     /// context rules; non-collapsed selections always pass (they wrap).
     fn should_auto_pair(&self, pair: &crate::auto_pairs::Pair, ap_pairs: &[crate::auto_pairs::Pair]) -> bool {
-        let buf = self.doc.text();
+        let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
                 || crate::auto_pairs::should_auto_pair_at(buf, sel.head, pair, ap_pairs)
@@ -706,7 +706,9 @@ impl Editor {
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 if let Some(sels) = self.search.pre_search_sels.take() {
-                    self.jump_list.push(JumpEntry::new(sels, self.doc.text()));
+                    let bid = self.buffer_id;
+                    let entry = JumpEntry::new(sels, self.doc().text(), bid);
+                    self.pane_jumps[self.pane_id].push(entry);
                 }
                 // search.regex stays alive for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
@@ -755,7 +757,7 @@ impl Editor {
         // so each additional character refines from the same anchor point.
         let from_char = match &self.search.pre_search_sels {
             Some(sels) => {
-                let buf = self.doc.text();
+                let buf = self.doc().text();
                 let primary = sels.primary();
                 match direction {
                     SearchDirection::Forward => primary.start(),
@@ -765,7 +767,7 @@ impl Editor {
             None => 0,
         };
 
-        match find_next_match(self.doc.text(), &regex, from_char, direction) {
+        match find_next_match(self.doc().text(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
                 let anchor = if self.search.extend {
                     // Extend from the original anchor.
@@ -841,7 +843,7 @@ impl Editor {
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
         let result = self.pre_select_sels.as_ref().and_then(|sels| {
-            select_matches_within(self.doc.text(), sels, &regex)
+            select_matches_within(self.doc().text(), sels, &regex)
         });
 
         match result {

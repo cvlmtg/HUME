@@ -155,7 +155,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         return;
     }
 
-    let rope = ed.doc.text().rope().clone();
+    let rope = ed.doc().text().rope().clone();
     let sels = ed.current_selections().clone();
 
     // Pass 1: resolve each selection's sticky display column from sel.horiz,
