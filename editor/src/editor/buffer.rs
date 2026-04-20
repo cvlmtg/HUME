@@ -66,11 +66,9 @@ pub(crate) struct Buffer {
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
     /// fully-valid — invalid regexes leave this as `None`.
-    #[allow(dead_code)] // Phase 8: search migration from SearchState to per-buffer
     pub(crate) search_pattern: Option<SearchPattern>,
     /// Cached match list for `search_pattern`. Invalidated by revision change
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
-    #[allow(dead_code)] // Phase 8: search migration from SearchState to per-buffer
     pub(crate) search_matches: SearchMatches,
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::settings::EditorSettings`].

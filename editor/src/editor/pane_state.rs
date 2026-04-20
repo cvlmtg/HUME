@@ -15,7 +15,6 @@
 //! without per-buffer group bookkeeping.
 
 use crate::core::changeset::ChangeSet;
-use crate::core::history::RevisionId;
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 
@@ -53,7 +52,6 @@ pub(crate) struct PaneBufferState {
     /// The focused pane's cursor / selection state for this buffer.
     pub selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
-    #[allow(dead_code)] // Phase 5: update_search_cache migrated to pane-aware form
     pub search_cursor: SearchCursor,
     /// Some only while this pane is in Insert mode for this buffer.
     pub edit_group: Option<EditGroup>,
@@ -61,25 +59,7 @@ pub(crate) struct PaneBufferState {
 
 // ── SearchCursor ─────────────────────────────────────────────────────────────
 
-/// Per-(pane, buffer) cursor through the buffer's shared match list.
-///
-/// `SearchMatches` (on `Buffer`) holds the full list; `SearchCursor` holds this
-/// pane's position within that list plus the cache keys needed to detect staleness.
-#[derive(Default)]
-#[allow(dead_code)] // Phase 5: per-pane search cursor replaces SearchState.match_count
-pub(crate) struct SearchCursor {
-    /// `(current_1based_idx, total)` derived from `SearchMatches` + primary head.
-    /// `None` when no search is active.
-    pub match_count: Option<(usize, usize)>,
-    /// `true` when the last search-next/prev jump wrapped around the buffer boundary.
-    pub wrapped: bool,
-    /// Head position when `match_count` was last computed. `None` = never computed.
-    pub cache_head: Option<usize>,
-    /// `SearchMatches::cache_revision` value when `match_count` was last computed.
-    pub cache_matches_rev: Option<RevisionId>,
-    /// `SearchMatches::cache_pattern` value when `match_count` was last computed.
-    pub cache_matches_pattern: Option<String>,
-}
+pub(crate) use crate::core::search_state::SearchCursor;
 
 // ── PaneTransient ────────────────────────────────────────────────────────────
 
@@ -91,7 +71,6 @@ pub(crate) struct SearchCursor {
 /// state to restore if the user cancels Search mode — it belongs to the pane
 /// that entered Search mode, independent of which buffer that pane is viewing.
 #[derive(Default)]
-#[allow(dead_code)] // Phase 5: search.pre_search_sels and pre_select_sels migrate here
 pub(crate) struct PaneTransient {
     /// Snapshot of selections taken when this pane entered Search mode.
     /// Restored on cancel; discarded on confirm. `None` when not in Search mode.

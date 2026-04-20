@@ -15,6 +15,7 @@
 
 use std::sync::Arc;
 
+use crate::core::search_state::SearchPattern;
 use crate::core::text::Text;
 use crate::core::grapheme::next_grapheme_boundary;
 use crate::core::selection::{Selection, SelectionSet};
@@ -377,10 +378,13 @@ pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 /// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `/` prompt.
 pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.search.pre_search_sels = Some(ed.current_selections().clone());
+    let pre_sels = ed.current_selections().clone();
+    let extend = ed.mode == EditorMode::Extend;
+    let pid = ed.pane_id;
     ed.search.direction = SearchDirection::Forward;
     // Capture extend state before mode becomes Search — live search uses it.
-    ed.search.extend = ed.mode == EditorMode::Extend;
+    ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
+    ed.pane_transient[pid].search_extend = extend;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
     Ok(())
@@ -388,10 +392,13 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMo
 
 /// Enter backward search mode.
 pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.search.pre_search_sels = Some(ed.current_selections().clone());
+    let pre_sels = ed.current_selections().clone();
+    let extend = ed.mode == EditorMode::Extend;
+    let pid = ed.pane_id;
     ed.search.direction = SearchDirection::Backward;
     // Capture extend state before mode becomes Search — live search uses it.
-    ed.search.extend = ed.mode == EditorMode::Extend;
+    ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
+    ed.pane_transient[pid].search_extend = extend;
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new(), cursor: 0 });
     Ok(())
@@ -417,10 +424,11 @@ pub(super) fn search_sel(
     }
 }
 
-/// Ensure `ed.search.regex` is populated, compiling from `SEARCH_REGISTER` if
-/// needed. Returns `true` if a usable regex is now in place, `false` otherwise.
+/// Ensure the focused buffer has an active search pattern, compiling from
+/// `SEARCH_REGISTER` if needed. Returns `true` if a usable pattern is now
+/// in place, `false` otherwise.
 fn ensure_search_regex(ed: &mut Editor) -> bool {
-    if ed.search.regex.is_some() { return true; }
+    if ed.search_pattern().is_some() { return true; }
     let pattern = ed
         .registers
         .read(SEARCH_REGISTER)
@@ -428,7 +436,15 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
         .unwrap_or_default();
     if pattern.is_empty() { return false; }
     match compile_search_regex(&pattern) {
-        Some(r) => { ed.search.set_regex(Some(r)); true }
+        Some(r) => {
+            let bid = ed.buffer_id;
+            ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+                direction: ed.search.direction,
+                regex: Arc::new(r),
+                pattern_str: pattern,
+            });
+            true
+        }
         None => false,
     }
 }
@@ -441,7 +457,14 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
 /// selection depending on `extend`.
 fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: MotionMode) -> Result<(), CommandError> {
     if !ensure_search_regex(ed) { return Ok(()); }
-    let Some(regex) = &ed.search.regex else { return Ok(()) };
+
+    let regex = {
+        let bid = ed.buffer_id;
+        match ed.buffers.get(bid).search_pattern.as_ref() {
+            Some(sp) => Arc::clone(&sp.regex),
+            None => return Ok(()),
+        }
+    };
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
@@ -464,13 +487,19 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
     let count = count.max(1);
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
-    let use_cache = !ed.search.matches.is_empty();
+    let bid = ed.buffer_id;
+    let use_cache = !ed.buffers.get(bid).search_matches.matches.is_empty();
+    let cached_matches: Vec<(usize, usize)> = if use_cache {
+        ed.buffers.get(bid).search_matches.matches.clone()
+    } else {
+        Vec::new()
+    };
 
     for _ in 0..count {
         let result = if use_cache {
-            find_match_from_cache(&ed.search.matches, from_char, direction)
+            find_match_from_cache(&cached_matches, from_char, direction)
         } else {
-            find_next_match(ed.doc().text(), regex, from_char, direction)
+            find_next_match(ed.doc().text(), &regex, from_char, direction)
         };
         match result {
             Some((start, end_incl, wrapped)) => {
@@ -491,7 +520,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
 
     match last_match {
         Some((start, end_incl)) => {
-            ed.search.wrapped = any_wrapped;
+            ed.current_search_cursor_mut().wrapped = any_wrapped;
             let new_sel = search_sel(start, end_incl, anchor, direction);
             ed.set_primary_selection(new_sel);
             Ok(())
@@ -504,10 +533,8 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
 ///
 /// Also invocable as `:clear-search` / `:cs` in command mode.
 pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    ed.search.clear();
-    // update_search_cache() is called by the event loop after handle_key returns,
-    // but search.clear() already zeroes the cache fields directly, so the render
-    // path sees a clean state immediately regardless of event-loop ordering.
+    let bid = ed.buffer_id;
+    ed.clear_buffer_search(bid);
     Ok(())
 }
 
@@ -527,9 +554,13 @@ pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize, mode: MotionMode) -
 /// The first match becomes primary.
 pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     if !ensure_search_regex(ed) { return Ok(()); }
-    let Some(regex) = &ed.search.regex else { return Ok(()) };
+    let bid = ed.buffer_id;
+    let regex = match ed.buffers.get(bid).search_pattern.as_ref() {
+        Some(sp) => Arc::clone(&sp.regex),
+        None => return Ok(()),
+    };
 
-    let matches = find_all_matches(ed.doc().text(), regex);
+    let matches = find_all_matches(ed.doc().text(), &regex);
     if matches.is_empty() {
         return Err(CommandError("no matches".into()));
     }
@@ -551,7 +582,9 @@ pub(super) fn cmd_select_within(ed: &mut Editor, _count: usize, _mode: MotionMod
     if ed.current_selections().iter_sorted().all(Selection::is_collapsed) {
         return Ok(());
     }
-    ed.pre_select_sels = Some(ed.current_selections().clone());
+    let pre_sels = ed.current_selections().clone();
+    let pid = ed.pane_id;
+    ed.pane_transient[pid].pre_select_sels = Some(pre_sels);
     ed.set_mode(Mode::Select);
     ed.minibuf = Some(MiniBuffer { prompt: '⫽', input: String::new(), cursor: 0 });
     Ok(())
@@ -595,9 +628,14 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize, _mode:
     };
 
     // Store in search register and set as active search.
-    ed.registers.write_text(SEARCH_REGISTER, vec![escaped]);
+    ed.registers.write_text(SEARCH_REGISTER, vec![escaped.clone()]);
     ed.search.direction = SearchDirection::Forward;
-    ed.search.set_regex(Some(regex));
+    let bid = ed.buffer_id;
+    ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+        direction: SearchDirection::Forward,
+        regex: Arc::new(regex),
+        pattern_str: escaped,
+    });
     Ok(())
 }
 

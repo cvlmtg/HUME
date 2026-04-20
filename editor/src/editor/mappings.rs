@@ -2,8 +2,11 @@ use std::borrow::Cow;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use std::sync::Arc;
+
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::core::jump_list::JumpEntry;
+use crate::core::search_state::SearchPattern;
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
 use crate::core::selection::Selection;
@@ -678,15 +681,19 @@ impl Editor {
 
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
-        if let Some(ref sels) = self.search.pre_search_sels {
-            self.set_current_selections(sels.clone());
+        let pid = self.pane_id;
+        if let Some(ref sels) = self.pane_transient[pid].pre_search_sels {
+            let sels = sels.clone();
+            self.set_current_selections(sels);
         }
     }
 
     /// Restore selections from the select-mode snapshot without consuming it.
     fn restore_select_snapshot(&mut self) {
-        if let Some(ref sels) = self.pre_select_sels {
-            self.set_current_selections(sels.clone());
+        let pid = self.pane_id;
+        if let Some(ref sels) = self.pane_transient[pid].pre_select_sels {
+            let sels = sels.clone();
+            self.set_current_selections(sels);
         }
     }
 
@@ -705,12 +712,13 @@ impl Editor {
                 self.registers.write_text(SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
-                if let Some(sels) = self.search.pre_search_sels.take() {
+                let pid = self.pane_id;
+                if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
                     let bid = self.buffer_id;
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
                     self.pane_jumps[self.pane_id].push(entry);
                 }
-                // search.regex stays alive for immediate n/N without recompile.
+                // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
                 self.set_mode(Mode::Normal);
                 self.minibuf = None;
@@ -718,7 +726,8 @@ impl Editor {
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore position when pattern is fully erased, but stay in Search mode.
                 self.restore_search_snapshot();
-                self.search.set_regex(None);
+                let bid = self.buffer_id;
+                self.clear_buffer_search(bid);
             }
             MiniBufferEvent::Edited => self.update_live_search(),
             MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
@@ -727,10 +736,12 @@ impl Editor {
 
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
-        if let Some(sels) = self.search.pre_search_sels.take() {
+        let pid = self.pane_id;
+        if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
-        self.search.clear();
+        let bid = self.buffer_id;
+        self.clear_buffer_search(bid);
         self.mode = Mode::Normal;
         self.minibuf = None;
     }
@@ -746,32 +757,37 @@ impl Editor {
         };
 
         let Some(regex) = compile_search_regex(&pattern) else {
-            // Invalid regex in progress — don't move; just clear cached regex.
-            self.search.set_regex(None);
+            // Invalid regex in progress — clear pattern so highlights disappear.
+            let bid = self.buffer_id;
+            self.clear_buffer_search(bid);
             return;
         };
 
         let direction = self.search.direction;
+        let pid = self.pane_id;
 
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
-        let from_char = match &self.search.pre_search_sels {
-            Some(sels) => {
-                let buf = self.doc().text();
-                let primary = sels.primary();
-                match direction {
-                    SearchDirection::Forward => primary.start(),
-                    SearchDirection::Backward => primary.end_inclusive(buf),
+        let from_char = {
+            let pt = &self.pane_transient[pid];
+            match &pt.pre_search_sels {
+                Some(sels) => {
+                    let buf = self.doc().text();
+                    let primary = sels.primary();
+                    match direction {
+                        SearchDirection::Forward => primary.start(),
+                        SearchDirection::Backward => primary.end_inclusive(buf),
+                    }
                 }
+                None => 0,
             }
-            None => 0,
         };
 
         match find_next_match(self.doc().text(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
-                let anchor = if self.search.extend {
+                let anchor = if self.pane_transient[pid].search_extend {
                     // Extend from the original anchor.
-                    Some(self.search.pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
+                    Some(self.pane_transient[pid].pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
                 } else {
                     None
                 };
@@ -783,7 +799,12 @@ impl Editor {
             }
         }
 
-        self.search.set_regex(Some(regex));
+        let bid = self.buffer_id;
+        self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+            direction,
+            regex: Arc::new(regex),
+            pattern_str: pattern,
+        });
     }
 
     // ── Select mode (s) ────────────────────────────────────────────────────────
@@ -798,7 +819,8 @@ impl Editor {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
             MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
-                self.pre_select_sels = None;
+                let pid = self.pane_id;
+                self.pane_transient[pid].pre_select_sels = None;
                 // Do NOT write to SEARCH_REGISTER or clear search state —
                 // select-within is a selection op, not a search. The previous
                 // search pattern and its highlights should be preserved so that
@@ -817,7 +839,8 @@ impl Editor {
 
     /// Cancel select mode: restore original selections, return to Normal.
     fn cancel_select(&mut self) {
-        if let Some(sels) = self.pre_select_sels.take() {
+        let pid = self.pane_id;
+        if let Some(sels) = self.pane_transient[pid].pre_select_sels.take() {
             self.set_current_selections(sels);
         }
         // Do not clear search state — the previous search should survive a
@@ -842,7 +865,8 @@ impl Editor {
 
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
-        let result = self.pre_select_sels.as_ref().and_then(|sels| {
+        let pid = self.pane_id;
+        let result = self.pane_transient[pid].pre_select_sels.as_ref().and_then(|sels| {
             select_matches_within(self.doc().text(), sels, &regex)
         });
 
