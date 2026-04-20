@@ -982,3 +982,35 @@ pub(super) fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> 
     }
     Ok(())
 }
+
+// ── Pane focus (Phase 9 stubs) ────────────────────────────────────────────────
+
+pub(super) fn cmd_pane_focus_next(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+pub(super) fn cmd_pane_focus_left(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+pub(super) fn cmd_pane_focus_right(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+pub(super) fn cmd_pane_focus_up(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+pub(super) fn cmd_pane_focus_down(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+// ── :split / :vsplit typed stubs ──────────────────────────────────────────────
+
+pub(super) fn typed_split(_ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    Err(CommandError(":split not yet implemented".into()))
+}
+
+pub(super) fn typed_vsplit(_ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    Err(CommandError(":vsplit not yet implemented".into()))
+}

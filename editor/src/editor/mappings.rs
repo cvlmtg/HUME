@@ -386,12 +386,18 @@ impl Editor {
                     WalkResult::NoMatch => return, // Legacy: no-op.
                     // Explicit Ctrl+letter binding. Treat as extend if the command
                     // is extendable (e.g. Ctrl+x → select-line always extends).
+                    // Interior: the Ctrl+key starts a multi-key sequence (e.g.
+                    // Ctrl+w → window prefix); save it in pending_keys so the
+                    // follow-up keypress can complete the trie walk.
                     matched => {
                         let ctrl_extend = match &matched {
                             WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).map_or(false, |r| r.is_extendable()),
                             WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |r| r.is_extendable()),
                             _ => false,
                         };
+                        if matches!(matched, WalkResult::Interior { .. }) {
+                            self.pending_keys.push(key);
+                        }
                         (matched, ctrl_extend)
                     }
                 }

@@ -603,6 +603,13 @@ impl CommandRegistry {
         // ── Editor commands — misc ────────────────────────────────────────────
         ecmd("force-quit", "Quit without checking for unsaved changes.", cmd_quit).reg(self);
 
+        // ── Editor commands — pane focus (Phase 9 stubs) ─────────────────────
+        ecmd("pane-focus-next",  "Focus the next pane.",      cmd_pane_focus_next ).reg(self);
+        ecmd("pane-focus-left",  "Focus the pane to the left.",  cmd_pane_focus_left ).reg(self);
+        ecmd("pane-focus-right", "Focus the pane to the right.", cmd_pane_focus_right).reg(self);
+        ecmd("pane-focus-up",    "Focus the pane above.",     cmd_pane_focus_up   ).reg(self);
+        ecmd("pane-focus-down",  "Focus the pane below.",     cmd_pane_focus_down ).reg(self);
+
         // ── Typed commands (`:` command line) ─────────────────────────────────
         macro_rules! typed_cmd {
             ($name:literal, $doc:literal, $aliases:expr, $fun:expr) => {
@@ -627,6 +634,8 @@ impl CommandRegistry {
         typed_cmd!("buffer-delete",    "Close the focused buffer.",                                &["bd"],  typed_buffer_delete);
         typed_cmd!("bnext",            "Switch to next buffer in open-order.",                     &["bn"],  typed_bnext);
         typed_cmd!("bprev",            "Switch to previous buffer in open-order.",                 &["bp"],  typed_bprev);
+        typed_cmd!("split",            "Split the current pane horizontally.",                     &["sp"],  typed_split);
+        typed_cmd!("vsplit",           "Split the current pane vertically.",                       &["vsp"], typed_vsplit);
     }
 
 }
@@ -681,10 +690,11 @@ mod tests {
     ///    2 jump-list editor commands
     ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
     ///    1 force-quit editor command
-    ///    8 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config)
+    ///    5 pane-focus editor commands (next, left, right, up, down — Phase 9 stubs)
+    ///   14 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config, edit, buffer-delete, bnext, bprev, split, vsplit)
     ///  ──
-    ///  114 total
-    const EXPECTED_COMMAND_COUNT: usize = 114;
+    ///  121 total
+    const EXPECTED_COMMAND_COUNT: usize = 121;
 
     #[test]
     fn registry_has_expected_count() {

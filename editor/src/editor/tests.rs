@@ -1403,14 +1403,26 @@ fn kitty_ctrl_k_extends_up() {
     assert_eq!(state(&ed), "<[hello\nw]-orld\n");
 }
 
-/// Ctrl+w extends to the next word via union semantics (kitty mode only).
-/// Starting from a cursor at 'h', select_next_word finds "world" (6,10).
-/// Union with current pos (0,0): min(0,6)=0, max(0,10)=10 → "hello world".
+/// Ctrl+w is the window prefix — pressing it alone waits for a second key.
+/// The state is unchanged after just Ctrl+w (Interior node, not a leaf).
 #[test]
-fn kitty_ctrl_w_extends_next_word() {
+fn ctrl_w_starts_window_prefix() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
     ed.handle_key(key_ctrl('w'));
-    assert_eq!(state(&ed), "-[hello world]>\n");
+    assert_eq!(state(&ed), "-[h]>ello world\n", "Ctrl+w alone must not change state");
+}
+
+/// Ctrl+w, w → pane-focus-next stub (not yet implemented).
+#[test]
+fn ctrl_w_w_is_pane_focus_next_stub() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    ed.handle_key(key_ctrl('w'));
+    ed.handle_key(key('w'));
+    assert_eq!(state(&ed), "-[h]>ello world\n", "stub must not move cursor");
+    assert!(
+        ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
+        "stub must report not-yet-implemented: {:?}", ed.status_msg,
+    );
 }
 
 /// Ctrl+b extends to the previous word via union semantics (kitty mode only).
@@ -1433,7 +1445,7 @@ fn legacy_ctrl_h_is_noop() {
     assert_eq!(state(&ed), "-[hello]>world\n");
 }
 
-/// Without kitty, Ctrl+w is a no-op (same rationale as Ctrl+h above).
+/// Without kitty, Ctrl+w starts the window prefix but leaves state unchanged.
 #[test]
 fn legacy_ctrl_w_is_noop() {
     let mut ed = editor_from("-[hello]> world foo\n");
@@ -2964,8 +2976,8 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
 #[test]
 fn visual_move_no_wrap_falls_back_to_buffer_line() {
     let mut ed = visual_test_editor(0);
-    // Set pane directly: tests don't call prepare_frame, so overrides aren't synced.
-    ed.engine_view.panes[ed.pane_id].wrap_mode = engine::pane::WrapMode::None;
+    // Override via buffer: apply_visual_vertical reads overrides at call time.
+    ed.doc_mut().overrides.wrap_mode = Some(engine::pane::WrapMode::None);
 
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
@@ -3094,8 +3106,8 @@ fn page_test_editor() -> Editor {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    // Set pane directly: tests don't call prepare_frame, so overrides aren't synced.
-    ed.engine_view.panes[ed.pane_id].wrap_mode = engine::pane::WrapMode::None;
+    // Override via buffer: scroll logic reads overrides at call time.
+    ed.doc_mut().overrides.wrap_mode = Some(engine::pane::WrapMode::None);
     ed
 }
 

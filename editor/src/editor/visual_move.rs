@@ -140,10 +140,9 @@ fn visual_move_up_one(
 /// When wrapping is off every buffer line is exactly one display row, so we
 /// fall back to the pure buffer-line motions to avoid any overhead.
 fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: MotionMode) {
-    let pane = &ed.engine_view.panes[ed.pane_id];
-    let wrap_mode = pane.wrap_mode.clone();
-    let tab_width = pane.tab_width;
-    let whitespace = pane.whitespace.clone();
+    let wrap_mode = ed.doc().overrides.wrap_mode(&ed.settings);
+    let tab_width = ed.doc().overrides.tab_width(&ed.settings);
+    let whitespace = ed.doc().overrides.whitespace(&ed.settings);
 
     if !wrap_mode.is_wrapping() {
         // No wrapping — fall back to buffer-line movement.

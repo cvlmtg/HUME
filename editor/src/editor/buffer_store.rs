@@ -65,6 +65,7 @@ impl BufferStore {
     }
 
     /// Non-panicking getter — `None` for stale jump-list entries.
+    #[cfg(test)]
     pub(crate) fn try_get(&self, id: BufferId) -> Option<&Buffer> {
         self.buffers.get(id)
     }
@@ -106,6 +107,7 @@ impl BufferStore {
         self.order.get(prev).copied().unwrap_or(current)
     }
 
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.buffers.len()
     }
