@@ -492,7 +492,6 @@ impl SelectionSet {
     /// Merged selections get `horiz: None` regardless of their pre-merge values
     /// because the merged `head` is semantically a new position — the column it
     /// corresponds to was never latched by a vertical motion.
-    #[allow(dead_code)] // called by translate_in_place (Phase 5 propagation)
     pub(crate) fn merge_overlapping_in_place(&mut self) {
         if self.selections.len() <= 1 {
             return;
@@ -554,7 +553,6 @@ impl SelectionSet {
     ///
     /// `rope_pre` must be the buffer text **before** the edit — the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
-    #[allow(dead_code)] // Phase 5: propagate_cs_to_panes for non-acting panes
     pub(crate) fn translate_in_place(&mut self, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         for sel in &mut self.selections {
             let pre_line = rope_pre.char_to_line(sel.head);

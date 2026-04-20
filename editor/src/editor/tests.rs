@@ -3907,3 +3907,103 @@ fn d6_search_mode_snapshot_is_per_pane() {
     assert!(ed.pane_transient[pid_a].pre_search_sels.is_none());
     assert!(ed.pane_transient[pid_b].pre_search_sels.is_some(), "pane B unaffected");
 }
+
+/// D2 — An edit in the focused pane translates non-acting pane selections via the CS.
+///
+/// Pane A deletes char 0; pane B's cursor at position 9 must slide to 8.
+#[test]
+fn d2_edit_in_pane_a_translates_pane_b_selections() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
+    let mut ed = editor_from("-[a]>bcdefghij\n");
+    let bid = ed.buffer_id;
+    let pid_a = ed.pane_id;
+    let pid_b = ed.open_pane(bid);
+
+    // Position pane B's cursor at char 9 ('j').
+    ed.switch_focused_pane(pid_b);
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(9)));
+
+    // Switch to pane A and delete char 0 ('a').
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key('d')); // delete selection (covers 'a')
+
+    // Pane A's cursor is now at 0 (post-delete); pane B's should be at 8.
+    assert_eq!(
+        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        8,
+        "pane B selection translated by forward CS"
+    );
+}
+
+/// D3 — Undo in the focused pane propagates the inverse CS to non-acting panes.
+///
+/// After the D2 edit (delete 'a'), undo restores 'a'; pane B's cursor at 8
+/// must ride the inverse CS back to 9.
+#[test]
+fn d3_undo_restores_acting_pane_and_translates_others() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    let mut ed = editor_from("-[a]>bcdefghij\n");
+    let bid = ed.buffer_id;
+    let pid_a = ed.pane_id;
+    let pid_b = ed.open_pane(bid);
+
+    // Position pane B at char 9.
+    ed.switch_focused_pane(pid_b);
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(9)));
+
+    // Pane A: delete 'a', then undo.
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key('d'));
+    // After delete: pane B at 8. Undo restores 'a'.
+    ed.handle_key(key('u'));
+
+    // Pane A's cursor is restored to pre-delete position.
+    assert_eq!(
+        ed.current_selections().primary().head,
+        0,
+        "pane A cursor restored by undo"
+    );
+    // Pane B's cursor is translated back to 9 by the inverse CS.
+    assert_eq!(
+        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        9,
+        "pane B selection translated by inverse CS (undo)"
+    );
+}
+
+/// Multi-cursor propagation: a deletion that spans two selections in pane B
+/// merges them into one (proves translate_in_place calls merge_overlapping_in_place).
+#[test]
+fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    // "abcde\n" — 6 chars.
+    let mut ed = editor_from("-[a]>bcde\n");
+    let bid = ed.buffer_id;
+    let pid_a = ed.pane_id;
+    let pid_b = ed.open_pane(bid);
+
+    // Pane B: two cursors at positions 2 ('c') and 4 ('e').
+    ed.switch_focused_pane(pid_b);
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![Selection::collapsed(2), Selection::collapsed(4)],
+        0,
+    ));
+
+    // Pane A: select chars 1–4 ("bcde") and delete.
+    // First put pane A's selection on 'b'-'e'.
+    ed.switch_focused_pane(pid_a);
+    // Select 'a' then extend to 'e': use 'v' to enter Select then motion.
+    // Simplest: directly set selections and do a delete.
+    ed.set_current_selections(SelectionSet::single(Selection::new(1, 4)));
+    ed.handle_key(key('d'));
+
+    // After deleting chars 1-4, pane B's two cursors at 2 and 4 both map to
+    // the deletion point (1); they must merge into a single cursor at 1.
+    let pane_b_sels = ed.selections_for(pid_b, bid).unwrap();
+    assert_eq!(pane_b_sels.len(), 1, "collapsed selections must merge after propagation");
+    assert_eq!(pane_b_sels.primary().head, 1, "merged cursor at deletion point");
+}

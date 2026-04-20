@@ -344,7 +344,6 @@ mod tests {
         fn is_dirty(&self) -> bool { self.buf.is_dirty() }
         fn mark_saved(&mut self) { self.buf.mark_saved(); }
         fn can_undo(&self) -> bool { self.buf.can_undo() }
-        fn can_redo(&self) -> bool { self.buf.can_redo() }
     }
 
     fn state(d: &DocHelper) -> String {

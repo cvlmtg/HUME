@@ -323,7 +323,6 @@ impl ChangeSet {
     ///
     /// `rope_pre` must be the buffer text *before* the edit (the same snapshot
     /// passed to `translate_in_place`).
-    #[allow(dead_code)] // used by SelectionSet::translate_in_place (Phase 5 propagation)
     pub(crate) fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
         let line_start = rope_pre.line_to_char(line);
         let line_end = if line + 1 < rope_pre.len_lines() {
