@@ -13,6 +13,8 @@
 
 use std::collections::VecDeque;
 
+use engine::pipeline::BufferId;
+
 use crate::core::text::Text;
 use crate::core::selection::SelectionSet;
 
@@ -24,6 +26,8 @@ pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct JumpEntry {
+    /// Buffer this position belongs to — needed for cross-buffer Ctrl+O/I.
+    pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
     pub selections: SelectionSet,
     /// Line number of the primary selection's head — cached for O(1) dedup.
@@ -33,9 +37,9 @@ pub(crate) struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, buf: &Text) -> Self {
+    pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head);
-        Self { selections, primary_line }
+        Self { buffer_id, selections, primary_line }
     }
 }
 
@@ -65,8 +69,10 @@ impl JumpList {
     pub(crate) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
-        // Deduplicate: if the last entry is on the same line, replace it.
-        if let Some(last) = self.entries.back_mut().filter(|l| l.primary_line == entry.primary_line) {
+        // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
+        if let Some(last) = self.entries.back_mut()
+            .filter(|l| l.primary_line == entry.primary_line && l.buffer_id == entry.buffer_id)
+        {
             *last = entry;
             return;
         }
@@ -78,6 +84,18 @@ impl JumpList {
         }
 
         self.cursor = self.entries.len();
+    }
+
+    /// Remove all entries for `id`. Adjusts the cursor so its relative position
+    /// in the remaining entries is preserved; clamps to `entries.len()` if the
+    /// cursor falls past the end (which means "at the present").
+    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
+        let removed_before = self.entries.iter()
+            .take(self.cursor)
+            .filter(|e| e.buffer_id == id)
+            .count();
+        self.entries.retain(|e| e.buffer_id != id);
+        self.cursor = self.cursor.saturating_sub(removed_before).min(self.entries.len());
     }
 
     /// Navigate backward. If at the present, saves `current` first so that
@@ -119,6 +137,12 @@ impl JumpList {
     fn len(&self) -> usize {
         self.entries.len()
     }
+
+    /// Returns `true` if any entry in the list belongs to `id`.
+    #[cfg(test)]
+    pub(crate) fn entries_for_buffer(&self, id: BufferId) -> bool {
+        self.entries.iter().any(|e| e.buffer_id == id)
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -132,6 +156,7 @@ mod tests {
     /// Bypasses `JumpEntry::new` since unit tests don't have a Text.
     fn entry(char_pos: usize, line: usize) -> JumpEntry {
         JumpEntry {
+            buffer_id: engine::pipeline::BufferId::default(),
             selections: SelectionSet::single(Selection::collapsed(char_pos)),
             primary_line: line,
         }

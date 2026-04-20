@@ -25,7 +25,7 @@ fn editor_from_kitty(input: &str) -> Editor {
 
 /// Serialize the editor's current buffer + selection state.
 fn state(ed: &Editor) -> String {
-    serialize_state(ed.doc.text(), ed.current_selections())
+    serialize_state(ed.doc().text(), ed.current_selections())
 }
 
 /// A normal (no modifier) character key event.
@@ -82,14 +82,14 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     // Exit Insert — commits the group.
     ed.handle_key(key_esc());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.text().to_string(), "hio\n");
+    assert_eq!(ed.doc().text().to_string(), "hio\n");
 
     // One undo should restore the original word entirely.
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "-[hell]>o\n");
 
     // Only one revision was recorded.
-    assert!(!ed.doc.can_undo());
+    assert!(!ed.doc().can_undo());
 }
 
 // ── `d` yanks into the default register ────────────────────────────────────
@@ -104,7 +104,7 @@ fn d_yanks_selection_into_register_before_deleting() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('d'));
 
-    assert_eq!(ed.doc.text().to_string(), "o\n", "buffer after delete");
+    assert_eq!(ed.doc().text().to_string(), "o\n", "buffer after delete");
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register after delete");
 }
 
@@ -139,7 +139,7 @@ fn p_over_selection_swaps_displaced_text_into_register() {
 
     ed.handle_key(key('p'));
 
-    assert_eq!(ed.doc.text().to_string(), "XYo\n", "pasted text in buffer");
+    assert_eq!(ed.doc().text().to_string(), "XYo\n", "pasted text in buffer");
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "displaced text in register");
 }
 
@@ -406,7 +406,7 @@ fn o_opens_line_below_and_enters_insert() {
     ed.handle_key(key('o'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.text().to_string(), "hello\n\n");
+    assert_eq!(ed.doc().text().to_string(), "hello\n\n");
     // Cursor should be on the new blank line (the second '\n').
     assert_eq!(state(&ed), "hello\n-[\n]>");
 }
@@ -419,7 +419,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
     ed.handle_key(key('O'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.text().to_string(), "foo\n\nbar\n");
+    assert_eq!(ed.doc().text().to_string(), "foo\n\nbar\n");
     // Cursor on the new blank line between "foo" and "bar".
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
@@ -545,7 +545,7 @@ fn o_in_normal_mode_still_opens_line_below() {
     ed.handle_key(key('o'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.text().to_string(), "hello\n\n");
+    assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
 // ── `;` collapses selection AND clears extend mode ─────────────────────────
@@ -585,11 +585,11 @@ fn o_groups_newline_and_insert_session_into_one_undo_step() {
     ed.handle_key(key('d'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.text().to_string(), "hello\nworld\n");
+    assert_eq!(ed.doc().text().to_string(), "hello\nworld\n");
 
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "-[h]>ello\n");
-    assert!(!ed.doc.can_undo());
+    assert!(!ed.doc().can_undo());
 }
 
 /// Same undo-grouping invariant for `O` (open line above).
@@ -605,11 +605,11 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
     ed.handle_key(key('w'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.text().to_string(), "foo\nnew\nbar\n");
+    assert_eq!(ed.doc().text().to_string(), "foo\nnew\nbar\n");
 
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "foo\n-[b]>ar\n");
-    assert!(!ed.doc.can_undo());
+    assert!(!ed.doc().can_undo());
 }
 
 // ── Plain insert session groups all chars into one undo step ──────────────
@@ -624,7 +624,7 @@ fn i_collapses_selection_to_start() {
     assert_eq!(ed.mode, Mode::Insert);
     // Cursor collapsed to 'h' — nothing deleted.
     assert_eq!(state(&ed), "-[h]>ello\n");
-    assert_eq!(ed.doc.text().to_string(), "hello\n");
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
 }
 
 /// `i` + typing + `Esc` must commit as one undo step, just like `c`. A single
@@ -641,14 +641,14 @@ fn i_groups_insert_session_into_one_undo_step() {
 
     ed.handle_key(key_esc());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.text().to_string(), "XYhello\n");
+    assert_eq!(ed.doc().text().to_string(), "XYhello\n");
 
     // One undo restores the original state completely.
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "-[h]>ello\n");
 
     // Only one revision was recorded.
-    assert!(!ed.doc.can_undo());
+    assert!(!ed.doc().can_undo());
 }
 
 // ── Line text objects (mil / mal) ─────────────────────────────────────────────
@@ -770,8 +770,8 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let tmp_path = tmp.into_temp_path();
     let (_, meta) = crate::os::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.file_path = Some(Arc::new(path));
-    ed.file_meta = Some(meta);
+    ed.doc_mut().path = Some(Arc::new(path));
+    ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)
 }
 
@@ -824,7 +824,7 @@ fn status_msg_cleared_on_next_keypress() {
 #[test]
 fn fresh_editor_is_not_dirty() {
     let ed = editor_from("-[h]>ello\n");
-    assert!(!ed.doc.is_dirty());
+    assert!(!ed.doc().is_dirty());
 }
 
 #[test]
@@ -833,7 +833,7 @@ fn typing_in_insert_mode_makes_dirty() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc.is_dirty());
+    assert!(ed.doc().is_dirty());
 }
 
 #[test]
@@ -843,11 +843,11 @@ fn colon_w_marks_buffer_clean() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc.is_dirty());
+    assert!(ed.doc().is_dirty());
     // Write — should clear dirty flag.
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
-    assert!(!ed.doc.is_dirty());
+    assert!(!ed.doc().is_dirty());
 }
 
 #[test]
@@ -901,9 +901,9 @@ fn colon_w_path_creates_new_file() {
     assert!(new_path.exists());
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
     // file_path should be updated.
-    assert!(ed.file_path.is_some());
+    assert!(ed.doc_mut().path.is_some());
     // Text should now be clean.
-    assert!(!ed.doc.is_dirty());
+    assert!(!ed.doc().is_dirty());
 }
 
 #[test]
@@ -916,7 +916,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     let cmd = format!(":w {}", new_path.display());
     for ch in cmd.chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
-    assert!(ed.file_meta.is_some());
+    assert!(ed.doc_mut().file_meta.is_some());
 
     // Make dirty again and write without a path — should use the new path.
     ed.handle_key(key('i'));
@@ -925,7 +925,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
     assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
-    assert!(!ed.doc.is_dirty());
+    assert!(!ed.doc().is_dirty());
 }
 
 #[test]
@@ -975,7 +975,7 @@ fn write_preserves_permissions() {
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so file_meta captures the new permissions.
     let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
-    ed.file_meta = Some(meta);
+    ed.doc_mut().file_meta = Some(meta);
 
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
@@ -1003,8 +1003,8 @@ fn write_follows_symlink() {
     assert_eq!(meta.resolved_path, std::fs::canonicalize(real.path()).unwrap());
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.file_path = Some(Arc::new(link_path.clone()));
-    ed.file_meta = Some(meta);
+    ed.doc_mut().path = Some(Arc::new(link_path.clone()));
+    ed.doc_mut().file_meta = Some(meta);
 
     for ch in ":w".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
@@ -1448,10 +1448,10 @@ fn kitty_ctrl_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
     // Make an edit so undo would have something to revert.
     ed.handle_key(key('d'));
-    assert_eq!(ed.doc.text().to_string(), "ello\n");
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
     // Ctrl+u should NOT run undo — it's a no-op because "undo" has no extend variant.
     ed.handle_key(key_ctrl('u'));
-    assert_eq!(ed.doc.text().to_string(), "ello\n", "Ctrl+u should be a no-op in kitty mode");
+    assert_eq!(ed.doc().text().to_string(), "ello\n", "Ctrl+u should be a no-op in kitty mode");
 }
 
 /// Ctrl+} extends to the next paragraph (kitty mode).
@@ -1489,12 +1489,12 @@ fn kitty_ctrl_0_extends_line_start() {
 fn kitty_ctrl_shift_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
     ed.handle_key(key('d'));
-    assert_eq!(ed.doc.text().to_string(), "ello\n");
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
     ed.handle_key(key('u'));    // regular undo
-    assert_eq!(ed.doc.text().to_string(), "hello\n");
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
     // Ctrl+U should NOT run redo.
     ed.handle_key(key_ctrl('U'));
-    assert_eq!(ed.doc.text().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
+    assert_eq!(ed.doc().text().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
 }
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -1506,11 +1506,11 @@ fn dot_repeats_delete() {
     // Then from the space at pos 0, `w` selects "bar" (the next word). `.` deletes it.
     let mut ed = editor_from("-[foo]> bar\n");
     ed.handle_key(key('d'));           // delete "foo" → " bar\n", cursor at 0 (space)
-    assert_eq!(ed.doc.text().to_string(), " bar\n");
+    assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     ed.handle_key(key('w'));           // from space, select "bar"
     ed.handle_key(key('.'));           // repeat delete
-    assert_eq!(ed.doc.text().to_string(), " \n");
+    assert_eq!(ed.doc().text().to_string(), " \n");
 }
 
 /// `c` + typed text + Esc should be replayable: the replacement text is reused.
@@ -1523,13 +1523,13 @@ fn dot_repeats_change_with_insert() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "hi bar"
 
-    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
+    assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
     // Move to "bar" and repeat.
     ed.handle_key(key('w'));           // select "bar"
     ed.handle_key(key('.'));           // repeat: delete "bar", insert "hi"
 
-    assert_eq!(ed.doc.text().to_string(), "hi hi\n");
+    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
 }
 
 /// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
@@ -1542,13 +1542,13 @@ fn dot_repeats_insert_before() {
     ed.handle_key(key('b'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "abx"
 
-    assert_eq!(ed.doc.text().to_string(), "abx\n");
+    assert_eq!(ed.doc().text().to_string(), "abx\n");
 
     // Move to 'x' and repeat.
     ed.handle_key(key('w'));           // select 'x'
     ed.handle_key(key('.'));           // repeat insert "ab" before 'x'
 
-    assert_eq!(ed.doc.text().to_string(), "ababx\n");
+    assert_eq!(ed.doc().text().to_string(), "ababx\n");
 }
 
 /// `r` + char replaces every character in the selection. `.` should replay with
@@ -1561,13 +1561,13 @@ fn dot_repeats_replace() {
     ed.handle_key(key('r'));           // wait-char
     ed.handle_key(key('x'));           // replace "ab" → "xx cd\n"
 
-    assert_eq!(ed.doc.text().to_string(), "xx cd\n");
+    assert_eq!(ed.doc().text().to_string(), "xx cd\n");
 
     // `w` from the "xx" selection (head at pos 1) selects the next word "cd".
     ed.handle_key(key('w'));
     ed.handle_key(key('.'));           // repeat replace with 'x' → "xx xx\n"
 
-    assert_eq!(ed.doc.text().to_string(), "xx xx\n");
+    assert_eq!(ed.doc().text().to_string(), "xx xx\n");
 }
 
 /// When `.` is given an explicit count, that count overrides the one stored in
@@ -1596,7 +1596,7 @@ fn dot_with_explicit_count_overrides() {
     ed.handle_key(key('2'));
     ed.handle_key(key('.'));
     // Just verify it doesn't panic and the buffer changed.
-    assert!(!ed.doc.text().to_string().contains('c'));
+    assert!(!ed.doc().text().to_string().contains('c'));
 }
 
 /// When `.` is pressed without a count, the original action's count is reused.
@@ -1620,7 +1620,7 @@ fn dot_without_count_uses_original() {
     // last_action.count should still be 1 after replay.
     assert_eq!(ed.last_action.as_ref().unwrap().count, 1);
     // The delete should have happened.
-    assert!(!ed.doc.text().to_string().contains("world"));
+    assert!(!ed.doc().text().to_string().contains("world"));
 }
 
 /// After `.`, a single `u` should undo the entire replayed action as one step.
@@ -1633,16 +1633,16 @@ fn dot_is_single_undo_step() {
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
+    assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
     // Move to "bar" and repeat.
     ed.handle_key(key('w'));
     ed.handle_key(key('.'));
-    assert_eq!(ed.doc.text().to_string(), "hi hi\n");
+    assert_eq!(ed.doc().text().to_string(), "hi hi\n");
 
     // One undo undoes the `.` replay entirely.
     ed.handle_key(key('u'));
-    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
+    assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 }
 
 /// Pressing `.` before any edit has been recorded should be a no-op.
@@ -1663,14 +1663,14 @@ fn dot_repeats_open_line_below() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "a\nx\nb"
 
-    assert_eq!(ed.doc.text().to_string(), "a\nx\nb\n");
+    assert_eq!(ed.doc().text().to_string(), "a\nx\nb\n");
 
     // Move cursor to "b" and repeat.
     ed.handle_key(key('j'));           // move down to 'x'
     ed.handle_key(key('j'));           // move down to 'b'
     ed.handle_key(key('.'));           // repeat: open line below "b", insert "x"
 
-    assert_eq!(ed.doc.text().to_string(), "a\nx\nb\nx\n");
+    assert_eq!(ed.doc().text().to_string(), "a\nx\nb\nx\n");
 }
 
 /// `p` (paste-after) is repeatable: the register contents are pasted again.
@@ -1688,7 +1688,7 @@ fn dot_repeats_paste_after() {
     ed.handle_key(key('w'));           // select "cd" or next word
     ed.handle_key(key('.'));           // paste again
     // Just verify no panic and paste happened twice (content contains "ab" twice).
-    let buf = ed.doc.text().to_string();
+    let buf = ed.doc().text().to_string();
     let count = buf.matches("ab").count();
     assert!(count >= 2, "expected at least 2 occurrences of 'ab', got: {buf:?}");
 }
@@ -2047,10 +2047,10 @@ fn select_within_multiple_selections_finds_matches_in_each() {
     // First match: chars 0..1 ("aa" in first selection).
     let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
     assert_eq!(sels[0].start(), 0);
-    assert_eq!(sels[0].end_inclusive(ed.doc.text()), 1);
+    assert_eq!(sels[0].end_inclusive(ed.doc().text()), 1);
     // Second match: chars 6..7 ("aa" in second selection).
     assert_eq!(sels[1].start(), 6);
-    assert_eq!(sels[1].end_inclusive(ed.doc.text()), 7);
+    assert_eq!(sels[1].end_inclusive(ed.doc().text()), 7);
 }
 
 /// When one selection has matches and another does not, only the matching
@@ -2077,7 +2077,7 @@ fn select_within_drops_selections_with_no_match() {
     // Only one match (from the first selection).
     assert_eq!(ed.current_selections().len(), 1);
     assert_eq!(ed.current_selections().primary().start(), 0);
-    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc.text()), 1);
+    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc().text()), 1);
 }
 
 /// When NO selection contains a match, the original selections are restored.
@@ -2302,7 +2302,7 @@ fn search_n_merges_with_overlapping_secondary() {
     // After merge: one selection covering the second "ab".
     assert_eq!(ed.current_selections().len(), 1, "overlapping selections must merge");
     assert_eq!(ed.current_selections().primary().start(), 6);
-    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc.text()), 7);
+    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc().text()), 7);
 }
 
 // ── select-all-matches ────────────────────────────────────────────────────────
@@ -2418,7 +2418,7 @@ fn star_escapes_metacharacters() {
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::new(0, 6),
     );
-    ed.doc = crate::editor::buffer::Buffer::new(buf, sels.clone());
+    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
     ed.set_current_selections(sels);
 
     ed.handle_key(key('*'));
@@ -2453,7 +2453,7 @@ fn goto_first_line_records_jump() {
     // `gg` — goto first line.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
-    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 0);
+    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 0);
 
     // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
@@ -2522,7 +2522,7 @@ fn large_motion_records_jump() {
     ed.handle_key(key('1'));
     ed.handle_key(key('0'));
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 10);
+    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 10);
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
@@ -2541,7 +2541,7 @@ fn search_confirm_records_jump() {
     }
     ed.handle_key(key_enter());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 15);
+    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 15);
 
     // jump-backward should return to line 0.
     ed.handle_key(key_ctrl('o'));
@@ -3402,7 +3402,7 @@ fn macro_replay_with_count() {
     ed.handle_key(key('g'));
 
     let start = ed.current_selections().primary().head;
-    let start_line = ed.doc.text().char_to_line(start);
+    let start_line = ed.doc().text().char_to_line(start);
     assert_eq!(start_line, 0, "cursor should be on line 0 before replay");
 
     // `3qq` — count 3, replay from register 'q'.
@@ -3411,7 +3411,7 @@ fn macro_replay_with_count() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    let end_line = ed.doc.text().char_to_line(ed.current_selections().primary().head);
+    let end_line = ed.doc().text().char_to_line(ed.current_selections().primary().head);
     assert_eq!(end_line, 3, "expected cursor on line 3, got line {}", end_line);
 }
 
@@ -3464,7 +3464,7 @@ fn macro_with_find_char() {
     ed.handle_key(key('l'));  // step right to 'c'
 
     let before_pos = ed.current_selections().primary().head;
-    let before_char = ed.doc.text().char_at(before_pos);
+    let before_char = ed.doc().text().char_at(before_pos);
 
     // Replay: `f x` from 'c' should land on the second 'x'.
     ed.handle_key(key('q'));
@@ -3473,7 +3473,7 @@ fn macro_with_find_char() {
 
     let after_pos = ed.current_selections().primary().head;
     assert!(after_pos > before_pos, "cursor should have moved right");
-    assert_eq!(ed.doc.text().char_at(after_pos), Some('x'), "cursor should be on 'x' after replay");
+    assert_eq!(ed.doc().text().char_at(after_pos), Some('x'), "cursor should be on 'x' after replay");
     let _ = before_char;
 }
 
@@ -3501,7 +3501,7 @@ fn macro_insert_mode_round_trip() {
 
     let after = state(&ed);
     assert_ne!(after, before, "replay should have modified the buffer");
-    assert!(ed.doc.text().to_string().matches('x').count() == 2,
+    assert!(ed.doc().text().to_string().matches('x').count() == 2,
         "there should be two 'x' chars — one from recording, one from replay");
 }
 
@@ -3851,7 +3851,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     ed.handle_key(key_esc());
     assert!(ed.pane_state[pid_a][bid].edit_group.is_none(), "group committed on Esc");
 
-    let rev_after_a = ed.doc.revision_id();
+    let rev_after_a = ed.doc().revision_id();
 
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
@@ -3862,7 +3862,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     ed.handle_key(key_esc());
     assert!(ed.pane_state[pid_b][bid].edit_group.is_none(), "pane B group committed");
 
-    let rev_after_b = ed.doc.revision_id();
+    let rev_after_b = ed.doc().revision_id();
 
     // Each session produced a distinct revision.
     assert_ne!(rev_after_a, rev_after_b, "pane B produced a new revision");
@@ -3871,7 +3871,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     ed.switch_focused_pane(pid_a);
     ed.handle_key(key('u'));
     ed.handle_key(key('u'));
-    assert_eq!(ed.doc.text().to_string(), "abc\n", "two undos restore original");
+    assert_eq!(ed.doc().text().to_string(), "abc\n", "two undos restore original");
 }
 
 /// D6 — `pane_transient[pid]` snapshots are per-pane and never aliased.
@@ -4006,4 +4006,274 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     let pane_b_sels = ed.selections_for(pid_b, bid).unwrap();
     assert_eq!(pane_b_sels.len(), 1, "collapsed selections must merge after propagation");
     assert_eq!(pane_b_sels.primary().head, 1, "merged cursor at deletion point");
+}
+
+// ── Phase 6 — BufferStore + buffer choke-points ───────────────────────────────
+
+use crate::core::text::Text;
+use crate::core::selection::SelectionSet;
+
+/// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
+#[test]
+fn p6_open_buffer_seeds_pane_state() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
+    let initial_bid = ed.buffer_id;
+    let doc2 = Buffer::new(Text::from("world\n"), SelectionSet::default());
+    let bid2 = ed.open_buffer(doc2);
+    assert_ne!(bid2, initial_bid);
+    // pane_state should be seeded for bid2 on the focused pane.
+    assert!(ed.selections_for(ed.pane_id, bid2).is_some(), "pane_state seeded for new buffer");
+}
+
+/// `close_buffer` with one other buffer redirects panes and frees the slot.
+#[test]
+fn p6_close_buffer_redirects_to_mru() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("alpha\n"), SelectionSet::default()));
+    let bid_alpha = ed.buffer_id;
+    let doc_beta = Buffer::new(Text::from("beta\n"), SelectionSet::default());
+    let bid_beta = ed.open_buffer(doc_beta);
+    ed.switch_to_buffer_with_jump(bid_beta);
+    assert_eq!(ed.buffer_id, bid_beta);
+    // Close beta — should redirect focused pane back to alpha.
+    ed.close_buffer(bid_beta);
+    assert_eq!(ed.buffer_id, bid_alpha, "focused pane redirected to alpha after closing beta");
+    assert!(ed.buffers.try_get(bid_beta).is_none(), "beta slot freed from BufferStore");
+}
+
+/// `close_buffer` on the last buffer replaces it with scratch (Case C).
+#[test]
+fn p6_close_last_buffer_becomes_scratch() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("only\n"), SelectionSet::default()));
+    let bid = ed.buffer_id;
+    ed.close_buffer(bid);
+    // Buffer id stays valid but content is now scratch.
+    assert_eq!(ed.buffer_id, bid, "same buffer id after scratch replacement");
+    assert_eq!(ed.doc().text().to_string(), "\n", "scratch buffer has structural newline only");
+}
+
+/// `replace_buffer_in_place` reseeds selections and clears scrolls.
+#[test]
+fn p6_replace_buffer_in_place_reseeds() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("old content\n"), SelectionSet::default()));
+    let bid = ed.buffer_id;
+    // Move the cursor somewhere non-zero.
+    ed.apply_motion(|b, _sels| {
+        let head = b.len_chars().saturating_sub(2);
+        SelectionSet::single(crate::core::selection::Selection::collapsed(head))
+    });
+    let replacement = Buffer::new(Text::from("new content\n"), SelectionSet::default());
+    ed.replace_buffer_in_place(bid, replacement);
+    // Selections should be reset to initial (cursor at 0).
+    let sels = ed.current_selections();
+    assert_eq!(sels.primary().head, 0, "selections reset after replace_buffer_in_place");
+    assert_eq!(ed.doc().text().to_string(), "new content\n");
+}
+
+/// `:bnext` / `:bprev` cycle through buffers in open-order.
+#[test]
+fn p6_bnext_bprev_cycle() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("a\n"), SelectionSet::default()));
+    let bid_a = ed.buffer_id;
+    let bid_b = ed.open_buffer(Buffer::new(Text::from("b\n"), SelectionSet::default()));
+    let bid_c = ed.open_buffer(Buffer::new(Text::from("c\n"), SelectionSet::default()));
+    // Still focused on a. bnext → b.
+    let _ = ed.execute_typed("bn", None);
+    assert_eq!(ed.buffer_id, bid_b, "bnext advances to b");
+    let _ = ed.execute_typed("bn", None);
+    assert_eq!(ed.buffer_id, bid_c, "bnext advances to c");
+    let _ = ed.execute_typed("bn", None);
+    assert_eq!(ed.buffer_id, bid_a, "bnext wraps to a");
+    // bprev from a → c.
+    let _ = ed.execute_typed("bp", None);
+    assert_eq!(ed.buffer_id, bid_c, "bprev wraps to c");
+    let _ = ed.execute_typed("bp", None);
+    assert_eq!(ed.buffer_id, bid_b, "bprev to b");
+}
+
+/// `:bd` closes the current buffer.
+#[test]
+fn p6_bd_closes_focused_buffer() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("first\n"), SelectionSet::default()));
+    let bid_first = ed.buffer_id;
+    let bid_second = ed.open_buffer(Buffer::new(Text::from("second\n"), SelectionSet::default()));
+    ed.switch_to_buffer_with_jump(bid_second);
+    let _ = ed.execute_typed("bd", None);
+    assert_eq!(ed.buffer_id, bid_first, "bd closed second, focused pane moved to first");
+    assert!(ed.buffers.try_get(bid_second).is_none(), "second buffer freed");
+}
+
+/// `:bd!` closes a dirty buffer without error.
+#[test]
+fn p6_bd_force_closes_dirty_buffer() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("clean\n"), SelectionSet::default()));
+    let bid_clean = ed.buffer_id;
+    let bid_dirty = ed.open_buffer(Buffer::new(Text::from("dirty\n"), SelectionSet::default()));
+    ed.switch_to_buffer_with_jump(bid_dirty);
+    // Make it dirty by inserting a character.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "buffer should be dirty after edit");
+    // :bd without force should fail.
+    let result = ed.execute_typed("bd", None);
+    assert!(result.is_err(), ":bd on dirty buffer without force should fail");
+    // :bd! should succeed.
+    let result = ed.execute_typed("bd!", None);
+    assert!(result.is_ok(), ":bd! should close dirty buffer");
+    assert_eq!(ed.buffer_id, bid_clean);
+}
+
+/// `:e path` opens a new buffer when the file is not already open.
+#[test]
+#[cfg(not(windows))]
+fn p6_edit_opens_new_buffer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test.txt");
+    std::fs::write(&path, "file content\n").unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    let initial_bid = ed.buffer_id;
+    let canonical = std::fs::canonicalize(&path).unwrap();
+    let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
+    assert!(result.is_ok(), ":e should succeed for readable file");
+    assert_ne!(ed.buffer_id, initial_bid, ":e opened a new buffer");
+    assert_eq!(ed.doc().text().to_string(), "file content\n");
+    // Path stored correctly.
+    assert_eq!(ed.doc().path.as_deref().map(|p| p.as_path()), Some(canonical.as_path()));
+}
+
+/// `:e path` deduplicates: switching to an already-open file doesn't create a new buffer.
+#[test]
+#[cfg(not(windows))]
+fn p6_edit_deduplicates_open_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("dedup.txt");
+    std::fs::write(&path, "dedup\n").unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    // Open the file once.
+    let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
+    assert!(r1.is_ok());
+    let bid_first_open = ed.buffer_id;
+    let count_after_first = ed.buffers.len();
+    // Switch back to scratch.
+    let scratch_bid = ed.buffers.prev(bid_first_open);
+    ed.switch_to_buffer_without_jump(scratch_bid);
+    // Open the same file again — should switch to existing buffer, not create new.
+    let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
+    assert!(r2.is_ok());
+    assert_eq!(ed.buffer_id, bid_first_open, "dedup: switched to existing buffer");
+    assert_eq!(ed.buffers.len(), count_after_first, "no new buffer created on dedup");
+}
+
+/// `:e!` reloads the current file even when dirty.
+#[test]
+#[cfg(not(windows))]
+fn p6_edit_force_reloads_current_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reload.txt");
+    std::fs::write(&path, "original\n").unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    let _ = ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    // Dirty the buffer.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty());
+    // :e without force should fail.
+    let r = ed.execute_typed("e", None);
+    assert!(r.is_err(), ":e on dirty buffer should fail without !");
+    // :e! should reload.
+    let r = ed.execute_typed("e!", None);
+    assert!(r.is_ok(), ":e! should reload");
+    assert_eq!(ed.doc().text().to_string(), "original\n", "reloaded from disk");
+    assert!(!ed.doc().is_dirty(), "not dirty after reload");
+}
+
+// ── Phase 7: per-pane pane_jumps ─────────────────────────────────────────────
+
+/// Ctrl+O navigates backward in the per-pane jump list (not a global list).
+#[test]
+fn p7_pane_jumps_ctrl_o_backward() {
+    let mut ed = jump_editor(10);
+    let before = state(&ed);
+
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 0);
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before, "Ctrl+O returns to pre-jump position");
+}
+
+/// Ctrl+I navigates forward in the per-pane jump list.
+#[test]
+fn p7_pane_jumps_ctrl_i_forward() {
+    let mut ed = jump_editor(10);
+
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    ed.handle_key(key_ctrl('o'));
+    assert_ne!(state(&ed), at_top);
+
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(state(&ed), at_top, "Ctrl+I returns to top position");
+}
+
+/// Ctrl+O across buffers: `:e file2`, large motion in file2, Ctrl+O lands back in file1.
+#[test]
+fn p7_cross_buffer_ctrl_o() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("file1.txt");
+    let file2 = dir.path().join("file2.txt");
+    // 20 lines in each file so large motions are valid.
+    let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
+    std::fs::write(&file1, &content).unwrap();
+    std::fs::write(&file2, &content).unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    let buf1 = ed.buffer_id;
+    let line0_state_f1 = state(&ed);
+
+    // Open file2 — switch_to_buffer_with_jump records {file1, line 0} before switching.
+    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    let buf2 = ed.buffer_id;
+    assert_ne!(buf1, buf2, "different buffers");
+    // Now in file2, cursor at line 0. Jump list: [{scratch}, {file1}], cursor = 2.
+
+    // Ctrl+O: saves current (file2, line 0) then goes to entries[1] = {file1, line 0}.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(ed.buffer_id, buf1, "Ctrl+O crossed back to file1");
+    assert_eq!(state(&ed), line0_state_f1, "cursor restored in file1");
+}
+
+/// Closing a buffer prunes its entries from pane_jumps.
+#[test]
+fn p7_close_buffer_prunes_pane_jumps() {
+    let dir = tempfile::tempdir().unwrap();
+    let file1 = dir.path().join("prune1.txt");
+    let file2 = dir.path().join("prune2.txt");
+    let content: String = (0..20).map(|i| format!("row {i}\n")).collect();
+    std::fs::write(&file1, &content).unwrap();
+    std::fs::write(&file2, &content).unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    let buf1 = ed.buffer_id;
+
+    // Open file2, recording a jump from file1→file2.
+    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    let buf2 = ed.buffer_id;
+    assert_ne!(buf1, buf2);
+
+    // Close file1 — its jump entries should be pruned from pane_jumps.
+    let pid = ed.pane_id;
+    ed.close_buffer(buf1);
+    // The jump list for this pane must not contain any file1 entries.
+    let has_buf1_entry = ed.pane_jumps[pid].entries_for_buffer(buf1);
+    assert!(!has_buf1_entry, "pane_jumps should not contain closed buffer entries");
 }

@@ -623,6 +623,10 @@ impl CommandRegistry {
         typed_cmd!("messages",         "Show the message log in a read-only scratch buffer.",      &["mes"], typed_messages);
         typed_cmd!("reload-plugin",    "Reload a plugin by name: :reload-plugin <name>.",          &[],      typed_reload_plugin);
         typed_cmd!("reload-config",    "Reload init.scm from scratch.",                            &[],      typed_reload_config);
+        typed_cmd!("edit",             "Open a file or reload current file.",                      &["e"],   typed_edit);
+        typed_cmd!("buffer-delete",    "Close the focused buffer.",                                &["bd"],  typed_buffer_delete);
+        typed_cmd!("bnext",            "Switch to next buffer in open-order.",                     &["bn"],  typed_bnext);
+        typed_cmd!("bprev",            "Switch to previous buffer in open-order.",                 &["bp"],  typed_bprev);
     }
 
 }
@@ -679,8 +683,8 @@ mod tests {
     ///    1 force-quit editor command
     ///    8 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config)
     ///  ──
-    ///  110 total
-    const EXPECTED_COMMAND_COUNT: usize = 110;
+    ///  114 total
+    const EXPECTED_COMMAND_COUNT: usize = 114;
 
     #[test]
     fn registry_has_expected_count() {

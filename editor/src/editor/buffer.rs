@@ -1,9 +1,14 @@
+use std::io;
+use std::path::Path;
+use std::sync::Arc;
+
 use crate::core::changeset::ChangeSet;
 use crate::core::history::{History, RevisionId};
 use crate::core::search_state::{SearchMatches, SearchPattern};
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 use crate::editor::pane_state::EditGroup;
+use crate::os::io::FileMeta;
 use crate::settings::BufferOverrides;
 
 // ── IntoApplyResult ───────────────────────────────────────────────────────────
@@ -53,14 +58,19 @@ pub(crate) struct Buffer {
     history: History,
     /// The revision at which the buffer was last saved (or first opened).
     saved_revision: RevisionId,
+    /// Canonical file path (after symlink resolution). `None` for scratch buffers.
+    pub(crate) path: Option<Arc<std::path::PathBuf>>,
+    /// File metadata captured at open/save time (permissions, uid/gid).
+    /// `None` for scratch buffers; populated after a successful save.
+    pub(crate) file_meta: Option<FileMeta>,
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
     /// fully-valid — invalid regexes leave this as `None`.
-    #[allow(dead_code)] // Phase 5: search migration from SearchState to per-buffer
+    #[allow(dead_code)] // Phase 8: search migration from SearchState to per-buffer
     pub(crate) search_pattern: Option<SearchPattern>,
     /// Cached match list for `search_pattern`. Invalidated by revision change
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
-    #[allow(dead_code)] // Phase 5: search migration from SearchState to per-buffer
+    #[allow(dead_code)] // Phase 8: search migration from SearchState to per-buffer
     pub(crate) search_matches: SearchMatches,
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::settings::EditorSettings`].
@@ -80,17 +90,34 @@ impl Buffer {
             text,
             history,
             saved_revision,
+            path: None,
+            file_meta: None,
             search_pattern: None,
             search_matches: SearchMatches::default(),
             overrides: BufferOverrides::default(),
         }
     }
 
+    /// Load a file from disk, returning a ready-to-use `Buffer`.
+    ///
+    /// Sets `path` and `file_meta` from the resolved filesystem metadata.
+    /// `search_pattern` and `search_matches` are left at their defaults
+    /// (no active search) — caller contract for `replace_buffer_in_place`.
+    pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
+        let (content, meta) = crate::os::io::read_file(path)?;
+        let text = Text::from(content.as_str());
+        let sels = SelectionSet::default();
+        let mut buf = Self::new(text, sels);
+        buf.path = Some(Arc::new(meta.resolved_path.clone()));
+        buf.file_meta = Some(meta);
+        Ok(buf)
+    }
+
     /// Empty scratch buffer (single structural `\n`, no path, default overrides).
     ///
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"
     /// invariant without leaving the editor in an invalid state.
-    #[allow(dead_code)] // used when closing the last buffer in multi-buffer (Phase 4b+)
+    #[allow(dead_code)] // used when closing the last buffer in multi-buffer
     pub(crate) fn scratch() -> Self {
         Self::new(Text::empty(), SelectionSet::default())
     }

@@ -272,7 +272,7 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             let name: &str = if let Some(ref sv) = editor.scratch_view {
                 sv.label
             } else {
-                editor.file_path.as_deref()
+                editor.doc().path.as_deref()
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
                     .unwrap_or("[scratch]")
@@ -280,7 +280,7 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             (Cow::Owned(name.to_string()), colors.statusline)
         }
         StatusElement::Position => {
-            let buf = editor.doc.text();
+            let buf = editor.doc().text();
             let head = editor.current_selections().primary().head;
             let head_line = buf.char_to_line(head);
             let col_0 = grapheme_col_in_line(buf, head_line, head);
@@ -292,7 +292,7 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
         }
         StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
         StatusElement::DirtyIndicator => {
-            let label = if editor.doc.is_dirty() { "[+]" } else { "" };
+            let label = if editor.doc().is_dirty() { "[+]" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::SearchMatches => {
