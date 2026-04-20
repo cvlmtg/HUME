@@ -15,7 +15,6 @@ mod tests {
 
     use crate::core::text::Text;
     use crate::editor::buffer::{Buffer, IntoApplyResult};
-    use crate::editor::pane_state::EditGroup;
     use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };

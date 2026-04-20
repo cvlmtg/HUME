@@ -1,5 +1,8 @@
 use std::str::FromStr;
 
+use slotmap::SecondaryMap;
+
+use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::{EditorMode, Selection};
 use ropey::Rope;
@@ -34,6 +37,21 @@ impl ViewportState {
             height,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Scroll position  (per-pane, per-buffer scroll memory)
+// ---------------------------------------------------------------------------
+
+/// Saved scroll position for one (pane, buffer) pair.
+///
+/// Stored in `Pane::saved_scrolls` so each pane remembers where it was in a
+/// buffer when it switches away. Restored by `recall_scroll` on switch-back.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScrollPosition {
+    pub top_line: usize,
+    pub top_row_offset: u16,
+    pub horizontal_offset: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -163,9 +181,12 @@ impl Default for WhitespaceConfig {
 /// A single editor pane — an independent view into a buffer.
 pub struct Pane {
     /// Which buffer this pane views.
-    pub buffer_id: crate::pipeline::BufferId,
+    pub buffer_id: BufferId,
     /// Scroll and size state.
     pub viewport: ViewportState,
+    /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
+    /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
+    pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
     /// All active selections, sorted in ascending document order.
     pub selections: Vec<Selection>,
     /// Index of the primary selection within `selections`.
@@ -183,6 +204,47 @@ pub struct Pane {
 }
 
 impl Pane {
+    /// Create a new pane viewing `buffer_id` with default settings.
+    ///
+    /// Callers that need custom wrap_mode / tab_width / whitespace / providers
+    /// should construct with `Pane { ..Pane::new(bid) }` or set fields after.
+    pub fn new(buffer_id: BufferId) -> Self {
+        Self {
+            buffer_id,
+            viewport: ViewportState::new(80, 24),
+            saved_scrolls: SecondaryMap::new(),
+            selections: vec![Selection { anchor: 0, head: 0 }],
+            primary_idx: 0,
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+            providers: ProviderSet::new(),
+        }
+    }
+
+    /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.
+    pub fn remember_scroll(&mut self) {
+        self.saved_scrolls.insert(self.buffer_id, ScrollPosition {
+            top_line: self.viewport.top_line,
+            top_row_offset: self.viewport.top_row_offset,
+            horizontal_offset: self.viewport.horizontal_offset,
+        });
+    }
+
+    /// Restore the saved scroll for `id`, or reset to top on first visit.
+    pub fn recall_scroll(&mut self, id: BufferId) {
+        let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
+        self.viewport.top_line = sp.top_line;
+        self.viewport.top_row_offset = sp.top_row_offset;
+        self.viewport.horizontal_offset = sp.horizontal_offset;
+    }
+
+    /// Drop the saved scroll entry for `id` (called when the buffer is closed).
+    pub fn forget_buffer(&mut self, id: BufferId) {
+        self.saved_scrolls.remove(id);
+    }
+
     /// Line index of the primary selection head, resolved via the rope.
     ///
     /// Called once per frame from the pipeline — O(log n) rope lookup.
@@ -306,15 +368,8 @@ mod tests {
 
     fn make_pane_at_char(head_char: usize) -> Pane {
         Pane {
-            buffer_id: crate::pipeline::BufferId::default(),
-            viewport: ViewportState::new(80, 24),
             selections: vec![Selection { anchor: head_char, head: head_char }],
-            primary_idx: 0,
-            mode: crate::types::EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            providers: crate::providers::ProviderSet::new(),
+            ..Pane::new(crate::pipeline::BufferId::default())
         }
     }
 
