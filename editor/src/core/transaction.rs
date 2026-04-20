@@ -1,4 +1,4 @@
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::changeset::ChangeSet;
 use crate::core::error::TransactionError;
 use crate::core::selection::SelectionSet;
@@ -70,12 +70,20 @@ impl Transaction {
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
     /// The selection state after this transaction.
-    #[cfg(test)]
     pub(crate) fn selection(&self) -> &SelectionSet {
         &self.selection
     }
 
-    pub(crate) fn apply(&self, buf: &Buffer) -> Result<(Buffer, SelectionSet), TransactionError> {
+    /// Consume this transaction and return just the `ChangeSet`.
+    ///
+    /// Used by `Buffer::undo` / `Buffer::redo` to extract the CS for
+    /// propagation to non-acting panes after `apply` has already validated and
+    /// applied the transaction.
+    pub(crate) fn into_changes(self) -> ChangeSet {
+        self.changes
+    }
+
+    pub(crate) fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
         let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
         Ok((new_buf, self.selection.clone()))
@@ -96,7 +104,7 @@ mod tests {
     #[test]
     fn transaction_apply() {
         // "hello\n" = 6 chars; insert "!" at start → "!hello\n".
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let mut b = ChangeSetBuilder::new(6);
         b.insert("!");
         b.retain_rest();
@@ -113,7 +121,7 @@ mod tests {
     #[test]
     fn transaction_apply_rejects_out_of_bounds_selection() {
         // "hi\n" = 3 chars; a no-op changeset; but selection points to index 99.
-        let buf = Buffer::from("hi");
+        let buf = Text::from("hi");
         let mut b = ChangeSetBuilder::new(3);
         b.retain_rest();
         let cs = b.finish();
@@ -138,7 +146,7 @@ mod tests {
     #[test]
     fn transaction_apply_rejects_length_mismatch() {
         // Changeset built for 10 chars, but buffer is 3 chars.
-        let buf = Buffer::from("hi");
+        let buf = Text::from("hi");
         let mut b = ChangeSetBuilder::new(10);
         b.retain_rest();
         let cs = b.finish();

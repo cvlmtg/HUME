@@ -3,7 +3,7 @@
 /// Feeds random sequences of plausible key events to `Editor::handle_key` and
 /// asserts that no sequence ever panics or leaves the editor in an invalid state.
 ///
-/// This complements the `proptest_doc` tests (which target `Document` and pure
+/// This complements the `proptest_doc` tests (which target `Text` and pure
 /// ops) by exercising the whole editor: mode transitions, minibuffer, search,
 /// select-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
@@ -11,17 +11,17 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use proptest::prelude::*;
 
-    use crate::core::document::Document;
+    use crate::editor::buffer::Buffer;
     use crate::editor::Editor;
     use crate::testing::parse_state;
 
     // ── Invariant checker ─────────────────────────────────────────────────────
 
     fn assert_editor_invariants(ed: &Editor) {
-        let buf = ed.doc.buf();
-        let sels = ed.doc.sels();
+        let buf = ed.doc.text();
+        let sels = ed.current_selections();
 
-        // Buffer always ends with structural '\n'.
+        // Text always ends with structural '\n'.
         assert!(
             buf.to_string().ends_with('\n'),
             "buffer must end with \\n, got: {:?}",
@@ -128,7 +128,7 @@ mod tests {
         ]
         .prop_map(|s| {
             let (buf, sels) = parse_state(s);
-            Editor::for_testing(Document::new(buf, sels))
+            Editor::for_testing(Buffer::new(buf, sels))
         })
     }
 
@@ -139,7 +139,7 @@ mod tests {
         /// panic and must leave the buffer and selections in a valid state.
         ///
         /// Invariants checked after every key:
-        /// - Buffer always ends with `\n`.
+        /// - Text always ends with `\n`.
         /// - SelectionSet is non-empty and all positions are in-bounds.
         #[test]
         fn prop_random_keys_never_panic(

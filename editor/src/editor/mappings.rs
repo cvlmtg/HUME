@@ -433,10 +433,10 @@ impl Editor {
                         let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
                         if ap_enabled {
                             if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
-                                let has_selection = self.doc.sels().iter_sorted().any(|s| !s.is_collapsed());
+                                let has_selection = self.current_selections().iter_sorted().any(|s| !s.is_collapsed());
                                 if has_selection {
                                     let (open, close) = (pair.open, pair.close);
-                                    self.doc.apply_edit(|b, s| insert_pair_close(b, s, open, close));
+                                    self.doc_edit(|b, s| insert_pair_close(b, s, open, close));
                                 }
                             }
                         }
@@ -483,11 +483,11 @@ impl Editor {
                             self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
-                            self.doc.apply_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
+                            self.doc_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
                         } else {
                             // Next char is a word char (or symmetric prev is word char):
                             // insert only the typed character.
-                            self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                            self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
                         }
                     } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                         && self.should_skip_close(ch)
@@ -495,29 +495,29 @@ impl Editor {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
                         self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
                     } else {
-                        self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                        self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
                     }
                 } else {
-                    self.doc.apply_edit_grouped(|b, s| insert_char(b, s, ch));
+                    self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
                 }
             }
 
             // ── Newline ───────────────────────────────────────────────────────
             KeyCode::Enter => {
-                self.doc.apply_edit_grouped(|b, s| insert_char(b, s, '\n'));
+                self.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
             }
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) = self.doc.overrides.auto_pairs_ref(&self.settings);
                 if ap_enabled && self.is_between_pair(ap_pairs) {
-                    self.doc.apply_edit_grouped(delete_pair);
+                    self.doc_edit_grouped(delete_pair);
                 } else {
-                    self.doc.apply_edit_grouped(delete_char_backward);
+                    self.doc_edit_grouped(delete_char_backward);
                 }
             }
             KeyCode::Delete => {
-                self.doc.apply_edit_grouped(delete_char_forward);
+                self.doc_edit_grouped(delete_char_forward);
             }
 
             _ => {}
@@ -546,8 +546,8 @@ impl Editor {
             let is_explicit_jump = reg_cmd.is_jump();
             let is_vertical_visual = reg_cmd.is_visual_move();
             let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
-                let line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
-                Some((self.doc.sels().clone(), line))
+                let line = self.doc.text().char_to_line(self.current_selections().primary().head);
+                Some((self.current_selections().clone(), line))
             } else {
                 None
             };
@@ -565,7 +565,7 @@ impl Editor {
                     self.apply_motion(|b, s| fun(b, s, motion_mode));
                 }
                 MappableCommand::Edit { fun, .. } => {
-                    self.doc.apply_edit(fun);
+                    self.doc_edit(fun);
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     if let Err(e) = fun(self, count, motion_mode) {
@@ -596,17 +596,10 @@ impl Editor {
 
             // ── Jump list: record if this was a jump ─────────────────────────
             if let Some((pre_sels, pre_line)) = pre_jump {
-                let post_line = self.doc.buf().char_to_line(self.doc.sels().primary().head);
+                let post_line = self.doc.text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
                     self.jump_list.push(JumpEntry { selections: pre_sels, primary_line: pre_line });
                 }
-            }
-
-            // Reset the sticky display column unless this was a vertical visual-line command.
-            // Any horizontal motion, edit, or mode change should clear it so the next
-            // j/k press re-latches to the cursor's actual position.
-            if !is_vertical_visual {
-                self.preferred_display_cols.clear();
             }
 
             // Record repeatable actions for `.` replay.
@@ -631,8 +624,8 @@ impl Editor {
     /// All-or-nothing: if even one cursor doesn't match, the whole operation
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
-        self.doc.sels().iter_sorted().all(|sel| {
-            sel.is_collapsed() && self.doc.buf().char_at(sel.head) == Some(ch)
+        self.current_selections().iter_sorted().all(|sel| {
+            sel.is_collapsed() && self.doc.text().char_at(sel.head) == Some(ch)
         })
     }
 
@@ -641,8 +634,8 @@ impl Editor {
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
     fn is_between_pair(&self, pairs: &[crate::auto_pairs::Pair]) -> bool {
-        let buf = self.doc.buf();
-        self.doc.sels().iter_sorted().all(|sel| {
+        let buf = self.doc.text();
+        self.current_selections().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head == 0 {
                 return false;
             }
@@ -662,8 +655,8 @@ impl Editor {
     /// selections. All-or-nothing: every collapsed selection must satisfy the
     /// context rules; non-collapsed selections always pass (they wrap).
     fn should_auto_pair(&self, pair: &crate::auto_pairs::Pair, ap_pairs: &[crate::auto_pairs::Pair]) -> bool {
-        let buf = self.doc.buf();
-        self.doc.sels().iter_sorted().all(|sel| {
+        let buf = self.doc.text();
+        self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
                 || crate::auto_pairs::should_auto_pair_at(buf, sel.head, pair, ap_pairs)
         })
@@ -676,9 +669,9 @@ impl Editor {
     /// If the new selection overlaps an existing secondary, both are merged
     /// into one — so the total selection count may decrease.
     pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
-        let idx = self.doc.sels().primary_index();
-        let new_sels = self.doc.sels().clone().replace(idx, new_sel).merge_overlapping();
-        self.doc.set_selections(new_sels);
+        let idx = self.current_selections().primary_index();
+        let new_sels = self.current_selections().clone().replace(idx, new_sel).merge_overlapping();
+        self.set_current_selections(new_sels);
     }
 
     // ── Snapshot restore helpers ────────────────────────────────────────────────
@@ -686,14 +679,14 @@ impl Editor {
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
         if let Some(ref sels) = self.search.pre_search_sels {
-            self.doc.set_selections(sels.clone());
+            self.set_current_selections(sels.clone());
         }
     }
 
     /// Restore selections from the select-mode snapshot without consuming it.
     fn restore_select_snapshot(&mut self) {
         if let Some(ref sels) = self.pre_select_sels {
-            self.doc.set_selections(sels.clone());
+            self.set_current_selections(sels.clone());
         }
     }
 
@@ -713,7 +706,7 @@ impl Editor {
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 if let Some(sels) = self.search.pre_search_sels.take() {
-                    self.jump_list.push(JumpEntry::new(sels, self.doc.buf()));
+                    self.jump_list.push(JumpEntry::new(sels, self.doc.text()));
                 }
                 // search.regex stays alive for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
@@ -733,7 +726,7 @@ impl Editor {
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
         if let Some(sels) = self.search.pre_search_sels.take() {
-            self.doc.set_selections(sels);
+            self.set_current_selections(sels);
         }
         self.search.clear();
         self.mode = Mode::Normal;
@@ -762,7 +755,7 @@ impl Editor {
         // so each additional character refines from the same anchor point.
         let from_char = match &self.search.pre_search_sels {
             Some(sels) => {
-                let buf = self.doc.buf();
+                let buf = self.doc.text();
                 let primary = sels.primary();
                 match direction {
                     SearchDirection::Forward => primary.start(),
@@ -772,7 +765,7 @@ impl Editor {
             None => 0,
         };
 
-        match find_next_match(self.doc.buf(), &regex, from_char, direction) {
+        match find_next_match(self.doc.text(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
                 let anchor = if self.search.extend {
                     // Extend from the original anchor.
@@ -823,7 +816,7 @@ impl Editor {
     /// Cancel select mode: restore original selections, return to Normal.
     fn cancel_select(&mut self) {
         if let Some(sels) = self.pre_select_sels.take() {
-            self.doc.set_selections(sels);
+            self.set_current_selections(sels);
         }
         // Do not clear search state — the previous search should survive a
         // cancelled select-within.
@@ -848,11 +841,11 @@ impl Editor {
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
         let result = self.pre_select_sels.as_ref().and_then(|sels| {
-            select_matches_within(self.doc.buf(), sels, &regex)
+            select_matches_within(self.doc.text(), sels, &regex)
         });
 
         match result {
-            Some(new_sels) => self.doc.set_selections(new_sels),
+            Some(new_sels) => self.set_current_selections(new_sels),
             None => self.restore_select_snapshot(),
         }
     }

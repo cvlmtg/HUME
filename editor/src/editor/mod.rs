@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -11,9 +11,13 @@ use engine::pane::{Pane, ViewportState};
 use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, RenderContext, SharedBuffer};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
-use crate::core::buffer::Buffer;
+use slotmap::SecondaryMap;
+
+use crate::core::changeset::ChangeSet;
+use crate::core::text::Text;
 use self::registry::CommandRegistry;
-use crate::core::document::Document;
+use crate::editor::buffer::{Buffer, IntoApplyResult};
+use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::os::io::FileMeta;
 use crate::ops::motion::FindKind;
 use crate::ops::register::RegisterSet;
@@ -25,6 +29,8 @@ use crate::os::terminal::Term;
 
 use self::keymap::{Keymap, WaitCharPending};
 
+pub(crate) mod buffer;
+pub(crate) mod pane_state;
 mod registry;
 mod commands;
 pub(crate) mod keymap;
@@ -32,11 +38,10 @@ mod mappings;
 mod message_log;
 mod minibuf;
 mod mouse;
-mod search_state;
 pub(super) mod scroll;
 mod visual_move;
 
-pub(crate) use search_state::{SearchDirection, SearchState};
+pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
@@ -121,7 +126,7 @@ pub(crate) use engine::types::EditorMode as Mode;
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
-    pub(crate) doc: Document,
+    pub(crate) doc: Buffer,
     pub(crate) file_path: Option<Arc<PathBuf>>,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state (previously a separate `extend: bool` field). Mode is the single
@@ -168,7 +173,7 @@ pub(crate) struct Editor {
     /// All editor settings — global defaults and per-buffer-overridable values.
     ///
     /// This is the single source of truth for every configurable setting.
-    /// Per-buffer overrides live on [`Document::overrides`]; resolution happens
+    /// Per-buffer overrides live on [`Buffer::overrides`]; resolution happens
     /// at read time via [`crate::settings::BufferOverrides`] accessor methods.
     pub(crate) settings: EditorSettings,
     /// Registry of all mappable commands (motions, selections, edits).
@@ -193,6 +198,16 @@ pub(crate) struct Editor {
     /// Snapshot of selections taken when entering Select mode (`select-within`).
     /// Restored on cancel; discarded on confirm.
     pub(super) pre_select_sels: Option<SelectionSet>,
+
+    // ── Per-pane state ─────────────────────────────────────────────────────────
+    /// Per-(pane, buffer) state: selections, search cursor, in-progress edit group.
+    ///
+    /// Keyed first by `PaneId`, then by `BufferId`. The inner map holds exactly
+    /// one entry per buffer that this pane has ever focused. Seeded in `open()`.
+    pub(super) pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    /// Per-pane transient state: pre-search and pre-select selection snapshots.
+    #[allow(dead_code)] // Phase 5: search/select transients migrate from Editor fields
+    pub(super) pane_transient: SecondaryMap<PaneId, PaneTransient>,
 
     // ── Engine rendering state ────────────────────────────────────────────────
     /// The engine's rendering state: layout, panes, buffers, theme.
@@ -219,19 +234,6 @@ pub(crate) struct Editor {
     pub(crate) kitty_enabled: bool,
 
     // ── Visual-line movement ──────────────────────────────────────────────────
-
-    /// Per-selection sticky display columns for visual-line j/k movement.
-    ///
-    /// Keyed by each selection's `head` char offset. On the first j/k press
-    /// an entry is computed and inserted for every selection; on subsequent
-    /// consecutive presses the stored value is reused so each cursor can
-    /// return to its original column after passing through shorter rows.
-    /// Cleared on any non-vertical command.
-    ///
-    /// Using head position as the key avoids coupling display concerns to the
-    /// core `Selection` type. After `merge_overlapping`, all head positions
-    /// are unique, so the key space is always valid.
-    pub(super) preferred_display_cols: HashMap<usize, u16>,
 
     /// Reusable scratch buffer for format operations in visual-line movement.
     ///
@@ -313,7 +315,7 @@ pub(crate) struct Editor {
 #[cfg(test)]
 impl std::fmt::Debug for Editor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Editor(buf={:?}, mode={:?})", self.doc.buf().to_string(), self.mode)
+        write!(f, "Editor(buf={:?}, mode={:?})", self.doc.text().to_string(), self.mode)
     }
 }
 
@@ -326,13 +328,13 @@ impl Editor {
         let (buf, file_meta) = match &file_path {
             Some(path) => {
                 let (content, meta) = crate::os::io::read_file(path)?;
-                (Buffer::from(content.as_str()), Some(meta))
+                (Text::from(content.as_str()), Some(meta))
             }
-            None => (Buffer::empty(), None),
+            None => (Text::empty(), None),
         };
 
         let sels = SelectionSet::single(Selection::collapsed(0));
-        let doc = Document::new(buf, sels);
+        let doc = Buffer::new(buf, sels);
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::ui::theme::build_default_theme();
@@ -384,6 +386,17 @@ impl Editor {
         let file_path_arc: Option<Arc<PathBuf>> = file_path.map(Arc::new);
         let jump_list_capacity = settings.jump_list_capacity;
 
+        // Seed per-pane state from the buffer's history-root selections.
+        let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
+        per_pane_bufs.insert(buffer_id, PaneBufferState {
+            selections: doc.initial_sels(),
+            ..PaneBufferState::default()
+        });
+        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
+        pane_state.insert(pane_id, per_pane_bufs);
+        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
+        pane_transient.insert(pane_id, PaneTransient::default());
+
         // Bake theme now that all scopes are interned.
         engine_view.theme.bake(&engine_view.registry);
 
@@ -413,12 +426,13 @@ impl Editor {
             search: SearchState::default(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
+            pane_state,
+            pane_transient,
             engine_view,
             pane_id,
             buffer_id,
             bracket_hl_data,
             search_hl_data,
-            preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
             macro_recording: None,
             macro_pending: None,
@@ -459,14 +473,14 @@ impl Editor {
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.doc.sels().primary().head;
+                let cursor_char = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
                 let (vp, wrap_mode, tab_width, whitespace, gutter_w) = {
                     let pane = &self.engine_view.panes[self.pane_id];
-                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc.buf().len_lines());
+                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc.text().len_lines());
                     (pane.viewport.clone(), pane.wrap_mode.clone(), pane.tab_width, pane.whitespace.clone(), gw)
                 };
                 crate::cursor::screen_pos(
-                    &vp, self.doc.buf().rope(), cursor_char,
+                    &vp, self.doc.text().rope(), cursor_char,
                     &wrap_mode, tab_width, &whitespace,
                     &mut ctx,
                 ).map(|(col, row)| (col + gutter_w, row))
@@ -484,7 +498,7 @@ impl Editor {
             let rope: &ropey::Rope = if let Some(ref sv) = self.scratch_view {
                 sv.buf.rope()
             } else {
-                self.doc.buf().rope()
+                self.doc.text().rope()
             };
             let buffer_id   = self.buffer_id;
             let engine_view = &self.engine_view;
@@ -612,11 +626,11 @@ impl Editor {
             }
 
             // 5. Scroll so the primary cursor stays visible.
-            let cursor_char = self.doc.sels().primary().head;
+            let cursor_char = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             {
-                let rope = self.doc.buf().rope();
+                let rope = self.doc.text().rope();
                 let pane = &mut self.engine_view.panes[self.pane_id];
                 scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, v_margin, h_margin);
             }
@@ -733,29 +747,25 @@ impl Editor {
     /// `head` for the engine (which requires head-order); `primary_idx` is updated
     /// to track the primary selection's position in that order.
     pub(crate) fn push_selections_to_pane(&mut self) {
-        // The engine now uses the same char-offset representation as the editor,
-        // so this is a direct copy with no rope lookups. The engine resolves char
-        // offsets to line/column coordinates during rendering via `Grapheme::char_offset`.
-        //
-        // Borrow `doc` (immutable) and `engine_view` (mutable) simultaneously —
-        // they are disjoint fields, so the compiler allows it.
-        let primary_idx = self.doc.sels().primary_index();
-        let pane = &mut self.engine_view.panes[self.pane_id];
-        pane.selections.clear();
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
 
-        // The engine requires selections sorted by `head`. The editor stores them
-        // sorted by `start()` (min of anchor/head), which differs when selections
-        // are backward (head < anchor). Collect with original indices, re-sort by
-        // head, then find where the primary landed.
-        let mut engine_sels: Vec<(usize, EngineSelection)> = self.doc.sels()
+        // Collect from pane_state before mutably borrowing engine_view.
+        // pane_state[..] and engine_view are disjoint fields; borrows end at `;`.
+        let primary_idx = self.pane_state[pane_id][buf_id].selections.primary_index();
+        let mut engine_sels: Vec<(usize, EngineSelection)> = self.pane_state[pane_id][buf_id].selections
             .iter_sorted()
             .enumerate()
             .map(|(i, sel)| (i, EngineSelection { anchor: sel.anchor, head: sel.head }))
             .collect();
         engine_sels.sort_by_key(|(_, s)| s.head);
-        pane.primary_idx = engine_sels.iter()
+        let primary_in_sorted = engine_sels.iter()
             .position(|(orig_i, _)| *orig_i == primary_idx)
             .unwrap_or(0);
+
+        let pane = &mut self.engine_view.panes[pane_id];
+        pane.selections.clear();
+        pane.primary_idx = primary_in_sorted;
         pane.selections.extend(engine_sels.into_iter().map(|(_, s)| s));
     }
 
@@ -774,11 +784,11 @@ impl Editor {
         };
 
         let revision = self.doc.revision_id();
-        let head = self.doc.sels().primary().head;
+        let head = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
 
         // Recompute the full match list only when the buffer content changed.
         if revision != self.search.cache_revision {
-            self.search.matches = find_all_matches(self.doc.buf(), &regex);
+            self.search.matches = find_all_matches(self.doc.text(), &regex);
             self.search.cache_revision = revision;
             // Head may not have changed, but match_count depends on the (now
             // stale) match list, so force it to recompute below.
@@ -799,7 +809,7 @@ impl Editor {
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode.
     pub(super) fn update_highlight_providers(&mut self) {
-        let buf = self.doc.buf();
+        let buf = self.doc.text();
 
         // Visible line range — skip matches outside the viewport (search matches
         // are sorted by document order, so we can break early past the bottom).
@@ -835,7 +845,7 @@ impl Editor {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.mode != EditorMode::Insert {
-                let head = self.doc.sels().primary().head;
+                let head = self.pane_state[self.pane_id][self.buffer_id].selections.primary().head;
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
@@ -873,6 +883,77 @@ impl Editor {
         self.mode = mode;
     }
 
+    // ── Pane-state accessors ──────────────────────────────────────────────────
+
+    /// The focused pane's selections for the current buffer.
+    pub(super) fn current_selections(&self) -> &SelectionSet {
+        &self.pane_state[self.pane_id][self.buffer_id].selections
+    }
+
+    /// Replace the focused pane's selections for the current buffer.
+    pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
+        self.pane_state[self.pane_id][self.buffer_id].selections = sels;
+    }
+
+    // ── Doc-edit wrappers ─────────────────────────────────────────────────────
+
+    /// Apply an ungrouped edit: read selections from pane_state, call
+    /// `doc.apply_edit`, write new selections back. Returns `(displaced, cs)`.
+    pub(super) fn doc_edit<R: IntoApplyResult>(
+        &mut self,
+        cmd: impl FnOnce(Text, SelectionSet) -> R,
+    ) -> (Option<Vec<String>>, ChangeSet) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        let sels = self.pane_state[pane_id][buf_id].selections.clone();
+        let (new_sels, displaced, cs) = self.doc.apply_edit(sels, cmd);
+        self.pane_state[pane_id][buf_id].selections = new_sels;
+        (displaced, cs)
+    }
+
+    /// Apply a grouped edit (inside an insert session). Reads and writes
+    /// selections via pane_state. Returns `(displaced, cs)`.
+    ///
+    /// The split borrow (`&mut self.doc` ∥ `&mut pane_state[..].edit_group`)
+    /// is safe because `doc` and `pane_state` are disjoint fields of `Editor`.
+    pub(super) fn doc_edit_grouped<R: IntoApplyResult>(
+        &mut self,
+        cmd: impl FnOnce(Text, SelectionSet) -> R,
+    ) -> (Option<Vec<String>>, ChangeSet) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        let sels = self.pane_state[pane_id][buf_id].selections.clone();
+        let doc = &mut self.doc;
+        let pbs = &mut self.pane_state[pane_id][buf_id];
+        let (new_sels, displaced, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
+        pbs.selections = new_sels;
+        (displaced, cs)
+    }
+
+    fn is_group_open_current(&self) -> bool {
+        self.pane_state[self.pane_id][self.buffer_id].edit_group.is_some()
+    }
+
+    fn begin_edit_group_current(&mut self) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        let sels = self.pane_state[pane_id][buf_id].selections.clone();
+        let doc = &mut self.doc;
+        let pbs = &mut self.pane_state[pane_id][buf_id];
+        doc.begin_edit_group(&mut pbs.edit_group, sels);
+    }
+
+    fn commit_edit_group_current(&mut self) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
+        let sels = self.pane_state[pane_id][buf_id].selections.clone();
+        let doc = &mut self.doc;
+        let pbs = &mut self.pane_state[pane_id][buf_id];
+        doc.commit_edit_group(&mut pbs.edit_group, sels);
+    }
+
+    // ── Mode transitions ──────────────────────────────────────────────────────
+
     /// Enter Insert mode as a repeatable insert action.
     ///
     /// Opens a new undo edit group and starts keystroke recording for
@@ -884,8 +965,8 @@ impl Editor {
     /// original command, so that the re-executed command's call here becomes a
     /// no-op for undo/repeat purposes — only the cursor motion takes effect.
     pub(super) fn begin_insert_session(&mut self) {
-        if !self.doc.is_group_open() {
-            self.doc.begin_edit_group();
+        if !self.is_group_open_current() {
+            self.begin_edit_group_current();
             self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
         }
         self.mode = Mode::Insert;
@@ -897,7 +978,7 @@ impl Editor {
     /// insert session) and moves the recorded keystrokes into `last_action`
     /// for dot-repeat, then sets the mode to Normal.
     pub(super) fn end_insert_session(&mut self) {
-        self.doc.commit_edit_group();
+        self.commit_edit_group_current();
         if let (Some(session), Some(action)) =
             (self.insert_session.take(), self.last_action.as_mut())
         {
@@ -908,17 +989,15 @@ impl Editor {
     }
 
     /// Apply a motion command and store the resulting selection.
-    ///
-    /// The explicit block ensures the immutable borrow of `self.doc.buf()`
-    /// ends before the mutable `set_selections` call — a requirement of the
-    /// borrow checker even with NLL.
-    pub(super) fn apply_motion(&mut self, f: impl FnOnce(&Buffer, SelectionSet) -> SelectionSet) {
+    pub(super) fn apply_motion(&mut self, f: impl FnOnce(&Text, SelectionSet) -> SelectionSet) {
+        let pane_id = self.pane_id;
+        let buf_id = self.buffer_id;
         let new_sels = {
-            let buf = self.doc.buf();
-            let sels = self.doc.sels().clone();
+            let buf = self.doc.text();
+            let sels = self.pane_state[pane_id][buf_id].selections.clone();
             f(buf, sels)
         };
-        self.doc.set_selections(new_sels);
+        self.pane_state[pane_id][buf_id].selections = new_sels;
     }
 
     /// Drain the macro replay queue, executing each key in order.
@@ -950,7 +1029,7 @@ impl Editor {
     /// Only `doc` and `view` are meaningful — all other fields are set to
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
-    pub(crate) fn for_testing(doc: Document) -> Self {
+    pub(crate) fn for_testing(doc: Buffer) -> Self {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::ui::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
@@ -971,6 +1050,17 @@ impl Editor {
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
+
+        let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
+        per_pane_bufs.insert(buffer_id, PaneBufferState {
+            selections: doc.initial_sels(),
+            ..PaneBufferState::default()
+        });
+        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
+        pane_state.insert(pane_id, per_pane_bufs);
+        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
+        pane_transient.insert(pane_id, PaneTransient::default());
+
         Self {
             doc,
             file_path: None,
@@ -997,12 +1087,13 @@ impl Editor {
             search: SearchState::default(),
             pre_select_sels: None,
             jump_list: crate::core::jump_list::JumpList::new(jump_list_capacity),
+            pane_state,
+            pane_transient,
             engine_view,
             pane_id,
             buffer_id,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
-            preferred_display_cols: HashMap::new(),
             motion_format_scratch: engine::format::FormatScratch::new(),
             macro_recording: None,
             macro_pending: None,
@@ -1051,7 +1142,7 @@ fn scroll_into_view(
 /// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
 /// from the start of the line — suitable for building highlight spans that the
 /// engine expects in line-relative byte coordinates.
-fn char_to_line_byte(buf: &Buffer, char_pos: usize) -> (usize, usize) {
+fn char_to_line_byte(buf: &Text, char_pos: usize) -> (usize, usize) {
     let line = buf.char_to_line(char_pos);
     let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
     let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);

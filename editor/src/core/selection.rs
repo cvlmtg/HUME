@@ -1,4 +1,5 @@
-use crate::core::buffer::Buffer;
+use crate::core::changeset::{Assoc, ChangeSet};
+use crate::core::text::Text;
 use crate::core::error::ValidationError;
 use crate::core::grapheme::next_grapheme_boundary;
 
@@ -30,18 +31,32 @@ pub(crate) struct Selection {
     pub anchor: usize,
     /// The moving end / cursor position.
     pub head: usize,
+    /// Sticky display column for visual j/k motion. `None` means "not latched
+    /// — recompute on next vertical move." Any horizontal motion or edit that
+    /// touches this selection's line resets this to `None` by construction
+    /// (constructors set it to `None`; only `with_horiz` preserves it).
+    pub horiz: Option<u32>,
 }
 
 impl Selection {
-    /// A collapsed selection at `pos` (anchor == head == pos).
+    /// A collapsed selection at `pos` (anchor == head == pos). `horiz: None`.
     pub(crate) fn collapsed(pos: usize) -> Self {
-        Self { anchor: pos, head: pos }
+        Self { anchor: pos, head: pos, horiz: None }
     }
 
-    /// A directional range from `anchor` to `head`.
+    /// A directional range from `anchor` to `head`. `horiz: None`.
     /// Passing `anchor == head` produces a single-character selection.
     pub(crate) fn new(anchor: usize, head: usize) -> Self {
-        Self { anchor, head }
+        Self { anchor, head, horiz: None }
+    }
+
+    /// A directional selection with a preserved sticky display column.
+    ///
+    /// Used *only* by visual j/k motion to carry the column across consecutive
+    /// vertical moves. All other code uses [`new`] or [`collapsed`] which reset
+    /// `horiz` to `None` by construction.
+    pub(crate) fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
+        Self { anchor, head, horiz: Some(horiz) }
     }
 
     /// Create a selection spanning `[start, end]` with an explicit direction.
@@ -97,17 +112,18 @@ impl Selection {
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
-    pub(crate) fn end_inclusive(&self, buf: &Buffer) -> usize {
+    pub(crate) fn end_inclusive(&self, buf: &Text) -> usize {
         // next_grapheme_boundary returns one past the cluster; subtract 1 to
         // get the last codepoint index (inclusive upper bound for the range).
         next_grapheme_boundary(buf, self.end()).saturating_sub(1)
     }
 
     /// Swap anchor and head. A forward selection becomes backward and vice
-    /// versa. Useful for `flip selection` commands.
+    /// versa. Useful for `flip selection` commands. `horiz` is cleared since
+    /// the head moved to a potentially different column.
     #[must_use]
     pub(crate) fn flip(self) -> Self {
-        Self { anchor: self.head, head: self.anchor }
+        Self { anchor: self.head, head: self.anchor, horiz: None }
     }
 
     /// Move both anchor and head by `delta` chars (positive = forward).
@@ -130,7 +146,9 @@ impl Selection {
             .expect("shift underflow: anchor cannot go below zero");
         let head = self.head.checked_add_signed(delta)
             .expect("shift underflow: head cannot go below zero");
-        Self { anchor, head }
+        // Shifting changes the absolute position but not the column relationship,
+        // so preserve horiz.
+        Self { anchor, head, horiz: self.horiz }
     }
 }
 
@@ -157,6 +175,18 @@ pub(crate) struct SelectionSet {
     /// and used for operations that act on a single selection (e.g.,
     /// `cmd_keep_primary_selection`).
     primary: usize,
+}
+
+impl Default for SelectionSet {
+    /// Minimal-valid state: a single collapsed cursor at offset 0.
+    ///
+    /// Required so `std::mem::take` produces a structurally valid `SelectionSet`
+    /// (an empty vec + `primary: 0` would violate the "primary indexes into
+    /// selections" invariant). Matches the stdlib pattern — `Default` is always
+    /// a valid state.
+    fn default() -> Self {
+        Self { selections: vec![Selection::collapsed(0)], primary: 0 }
+    }
 }
 
 impl SelectionSet {
@@ -397,15 +427,15 @@ impl SelectionSet {
     /// are zero-indexed and must not point past the last character (the
     /// structural trailing `\n`).
     ///
-    /// Call this at every chokepoint where a `(Buffer, SelectionSet)` pair is
+    /// Call this at every chokepoint where a `(Text, SelectionSet)` pair is
     /// produced: edit operations, motions, and `Transaction::apply`.
     #[inline]
-    pub(crate) fn debug_assert_valid(&self, buf: &Buffer) {
+    pub(crate) fn debug_assert_valid(&self, buf: &Text) {
         let buf_len = buf.len_chars();
-        debug_assert!(buf_len > 0, "Buffer must have at least 1 char (the structural \\n)");
+        debug_assert!(buf_len > 0, "Text must have at least 1 char (the structural \\n)");
         debug_assert!(
             buf.char_at(buf_len - 1) == Some('\n'),
-            "Buffer must end with structural '\\n', but last char is {:?}",
+            "Text must end with structural '\\n', but last char is {:?}",
             buf.char_at(buf_len - 1),
         );
         for (i, sel) in self.selections.iter().enumerate() {
@@ -454,9 +484,93 @@ impl SelectionSet {
         }
         Ok(())
     }
+
+    // ── In-place propagation ──────────────────────────────────────────────────
+
+    /// Merge overlapping or adjacent selections in place, updating `primary`.
+    ///
+    /// Merged selections get `horiz: None` regardless of their pre-merge values
+    /// because the merged `head` is semantically a new position — the column it
+    /// corresponds to was never latched by a vertical motion.
+    #[allow(dead_code)] // called by translate_in_place (Phase 5 propagation)
+    pub(crate) fn merge_overlapping_in_place(&mut self) {
+        if self.selections.len() <= 1 {
+            return;
+        }
+
+        let primary_before = self.selections[self.primary];
+        self.selections.sort_by_key(|s| s.start());
+
+        let mut write = 0;
+        let mut new_primary = 0;
+
+        for read in 1..self.selections.len() {
+            let sel = self.selections[read];
+            let last = &mut self.selections[write];
+
+            if sel.start() <= last.end() {
+                if sel.end() > last.end() {
+                    if sel.head <= sel.anchor {
+                        last.head = last.start().min(sel.head);
+                        last.anchor = sel.end();
+                    } else {
+                        last.anchor = last.start();
+                        last.head = sel.end();
+                    }
+                    // Merged — reset horiz since neither side's column is valid.
+                    last.horiz = None;
+                }
+                if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
+                    new_primary = write;
+                }
+            } else {
+                let done = &self.selections[write];
+                if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
+                    new_primary = write;
+                }
+                write += 1;
+                self.selections[write] = sel;
+            }
+        }
+
+        let done = &self.selections[write];
+        if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
+            new_primary = write;
+        }
+
+        self.selections.truncate(write + 1);
+        self.primary = new_primary;
+    }
+
+    /// Propagate a `ChangeSet` through all selections in place.
+    ///
+    /// This is the non-acting-pane propagation primitive. For each selection:
+    /// - Maps `anchor` and `head` through `cs.map_pos(_, Assoc::After)`.
+    /// - Resets `horiz` to `None` if the edit touched the head's pre-edit line
+    ///   (the display column is stale when the line's content changed).
+    /// - After all selections are mapped, calls `merge_overlapping_in_place` so
+    ///   the no-overlap invariant is restored (a deletion spanning multiple
+    ///   selections can collapse them).
+    ///
+    /// `rope_pre` must be the buffer text **before** the edit — the pre-edit line
+    /// map is needed to identify which line each head resided on before mapping.
+    #[allow(dead_code)] // Phase 5: propagate_cs_to_panes for non-acting panes
+    pub(crate) fn translate_in_place(&mut self, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+        for sel in &mut self.selections {
+            let pre_line = rope_pre.char_to_line(sel.head);
+            sel.anchor = cs.map_pos(sel.anchor, Assoc::After);
+            sel.head   = cs.map_pos(sel.head,   Assoc::After);
+            if cs.touches_line(rope_pre, pre_line) {
+                sel.horiz = None;
+            }
+        }
+        if self.selections.len() > 1 {
+            self.merge_overlapping_in_place();
+        }
+    }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

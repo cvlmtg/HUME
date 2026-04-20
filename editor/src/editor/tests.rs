@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pretty_assertions::assert_eq;
 
-use crate::core::document::Document;
+use crate::editor::buffer::Buffer;
 use crate::testing::{parse_state, serialize_state};
 
 use super::{Editor, Mode};
@@ -13,7 +13,7 @@ use super::{Editor, Mode};
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
     let (buf, sels) = parse_state(input);
-    Editor::for_testing(Document::new(buf, sels))
+    Editor::for_testing(Buffer::new(buf, sels))
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
@@ -25,7 +25,7 @@ fn editor_from_kitty(input: &str) -> Editor {
 
 /// Serialize the editor's current buffer + selection state.
 fn state(ed: &Editor) -> String {
-    serialize_state(ed.doc.buf(), ed.doc.sels())
+    serialize_state(ed.doc.text(), ed.current_selections())
 }
 
 /// A normal (no modifier) character key event.
@@ -82,7 +82,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     // Exit Insert — commits the group.
     ed.handle_key(key_esc());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.buf().to_string(), "hio\n");
+    assert_eq!(ed.doc.text().to_string(), "hio\n");
 
     // One undo should restore the original word entirely.
     ed.handle_key(key('u'));
@@ -104,7 +104,7 @@ fn d_yanks_selection_into_register_before_deleting() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('d'));
 
-    assert_eq!(ed.doc.buf().to_string(), "o\n", "buffer after delete");
+    assert_eq!(ed.doc.text().to_string(), "o\n", "buffer after delete");
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register after delete");
 }
 
@@ -139,7 +139,7 @@ fn p_over_selection_swaps_displaced_text_into_register() {
 
     ed.handle_key(key('p'));
 
-    assert_eq!(ed.doc.buf().to_string(), "XYo\n", "pasted text in buffer");
+    assert_eq!(ed.doc.text().to_string(), "XYo\n", "pasted text in buffer");
     assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "displaced text in register");
 }
 
@@ -406,7 +406,7 @@ fn o_opens_line_below_and_enters_insert() {
     ed.handle_key(key('o'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.buf().to_string(), "hello\n\n");
+    assert_eq!(ed.doc.text().to_string(), "hello\n\n");
     // Cursor should be on the new blank line (the second '\n').
     assert_eq!(state(&ed), "hello\n-[\n]>");
 }
@@ -419,7 +419,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
     ed.handle_key(key('O'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.buf().to_string(), "foo\n\nbar\n");
+    assert_eq!(ed.doc.text().to_string(), "foo\n\nbar\n");
     // Cursor on the new blank line between "foo" and "bar".
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
@@ -545,7 +545,7 @@ fn o_in_normal_mode_still_opens_line_below() {
     ed.handle_key(key('o'));
 
     assert_eq!(ed.mode, Mode::Insert);
-    assert_eq!(ed.doc.buf().to_string(), "hello\n\n");
+    assert_eq!(ed.doc.text().to_string(), "hello\n\n");
 }
 
 // ── `;` collapses selection AND clears extend mode ─────────────────────────
@@ -585,7 +585,7 @@ fn o_groups_newline_and_insert_session_into_one_undo_step() {
     ed.handle_key(key('d'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.buf().to_string(), "hello\nworld\n");
+    assert_eq!(ed.doc.text().to_string(), "hello\nworld\n");
 
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "-[h]>ello\n");
@@ -605,7 +605,7 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
     ed.handle_key(key('w'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.buf().to_string(), "foo\nnew\nbar\n");
+    assert_eq!(ed.doc.text().to_string(), "foo\nnew\nbar\n");
 
     ed.handle_key(key('u'));
     assert_eq!(state(&ed), "foo\n-[b]>ar\n");
@@ -624,7 +624,7 @@ fn i_collapses_selection_to_start() {
     assert_eq!(ed.mode, Mode::Insert);
     // Cursor collapsed to 'h' — nothing deleted.
     assert_eq!(state(&ed), "-[h]>ello\n");
-    assert_eq!(ed.doc.buf().to_string(), "hello\n");
+    assert_eq!(ed.doc.text().to_string(), "hello\n");
 }
 
 /// `i` + typing + `Esc` must commit as one undo step, just like `c`. A single
@@ -641,7 +641,7 @@ fn i_groups_insert_session_into_one_undo_step() {
 
     ed.handle_key(key_esc());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.buf().to_string(), "XYhello\n");
+    assert_eq!(ed.doc.text().to_string(), "XYhello\n");
 
     // One undo restores the original state completely.
     ed.handle_key(key('u'));
@@ -880,7 +880,7 @@ fn colon_q_bang_on_dirty_buffer_quits() {
 #[test]
 fn colon_q_on_clean_buffer_quits() {
     let mut ed = editor_from("-[h]>ello\n");
-    // Buffer is fresh (not dirty) — :q should quit.
+    // Text is fresh (not dirty) — :q should quit.
     for ch in ":q".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
     assert!(ed.should_quit);
@@ -902,7 +902,7 @@ fn colon_w_path_creates_new_file() {
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
     // file_path should be updated.
     assert!(ed.file_path.is_some());
-    // Buffer should now be clean.
+    // Text should now be clean.
     assert!(!ed.doc.is_dirty());
 }
 
@@ -1448,10 +1448,10 @@ fn kitty_ctrl_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
     // Make an edit so undo would have something to revert.
     ed.handle_key(key('d'));
-    assert_eq!(ed.doc.buf().to_string(), "ello\n");
+    assert_eq!(ed.doc.text().to_string(), "ello\n");
     // Ctrl+u should NOT run undo — it's a no-op because "undo" has no extend variant.
     ed.handle_key(key_ctrl('u'));
-    assert_eq!(ed.doc.buf().to_string(), "ello\n", "Ctrl+u should be a no-op in kitty mode");
+    assert_eq!(ed.doc.text().to_string(), "ello\n", "Ctrl+u should be a no-op in kitty mode");
 }
 
 /// Ctrl+} extends to the next paragraph (kitty mode).
@@ -1489,12 +1489,12 @@ fn kitty_ctrl_0_extends_line_start() {
 fn kitty_ctrl_shift_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
     ed.handle_key(key('d'));
-    assert_eq!(ed.doc.buf().to_string(), "ello\n");
+    assert_eq!(ed.doc.text().to_string(), "ello\n");
     ed.handle_key(key('u'));    // regular undo
-    assert_eq!(ed.doc.buf().to_string(), "hello\n");
+    assert_eq!(ed.doc.text().to_string(), "hello\n");
     // Ctrl+U should NOT run redo.
     ed.handle_key(key_ctrl('U'));
-    assert_eq!(ed.doc.buf().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
+    assert_eq!(ed.doc.text().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
 }
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -1506,11 +1506,11 @@ fn dot_repeats_delete() {
     // Then from the space at pos 0, `w` selects "bar" (the next word). `.` deletes it.
     let mut ed = editor_from("-[foo]> bar\n");
     ed.handle_key(key('d'));           // delete "foo" → " bar\n", cursor at 0 (space)
-    assert_eq!(ed.doc.buf().to_string(), " bar\n");
+    assert_eq!(ed.doc.text().to_string(), " bar\n");
 
     ed.handle_key(key('w'));           // from space, select "bar"
     ed.handle_key(key('.'));           // repeat delete
-    assert_eq!(ed.doc.buf().to_string(), " \n");
+    assert_eq!(ed.doc.text().to_string(), " \n");
 }
 
 /// `c` + typed text + Esc should be replayable: the replacement text is reused.
@@ -1523,13 +1523,13 @@ fn dot_repeats_change_with_insert() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "hi bar"
 
-    assert_eq!(ed.doc.buf().to_string(), "hi bar\n");
+    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
 
     // Move to "bar" and repeat.
     ed.handle_key(key('w'));           // select "bar"
     ed.handle_key(key('.'));           // repeat: delete "bar", insert "hi"
 
-    assert_eq!(ed.doc.buf().to_string(), "hi hi\n");
+    assert_eq!(ed.doc.text().to_string(), "hi hi\n");
 }
 
 /// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
@@ -1542,13 +1542,13 @@ fn dot_repeats_insert_before() {
     ed.handle_key(key('b'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "abx"
 
-    assert_eq!(ed.doc.buf().to_string(), "abx\n");
+    assert_eq!(ed.doc.text().to_string(), "abx\n");
 
     // Move to 'x' and repeat.
     ed.handle_key(key('w'));           // select 'x'
     ed.handle_key(key('.'));           // repeat insert "ab" before 'x'
 
-    assert_eq!(ed.doc.buf().to_string(), "ababx\n");
+    assert_eq!(ed.doc.text().to_string(), "ababx\n");
 }
 
 /// `r` + char replaces every character in the selection. `.` should replay with
@@ -1561,13 +1561,13 @@ fn dot_repeats_replace() {
     ed.handle_key(key('r'));           // wait-char
     ed.handle_key(key('x'));           // replace "ab" → "xx cd\n"
 
-    assert_eq!(ed.doc.buf().to_string(), "xx cd\n");
+    assert_eq!(ed.doc.text().to_string(), "xx cd\n");
 
     // `w` from the "xx" selection (head at pos 1) selects the next word "cd".
     ed.handle_key(key('w'));
     ed.handle_key(key('.'));           // repeat replace with 'x' → "xx xx\n"
 
-    assert_eq!(ed.doc.buf().to_string(), "xx xx\n");
+    assert_eq!(ed.doc.text().to_string(), "xx xx\n");
 }
 
 /// When `.` is given an explicit count, that count overrides the one stored in
@@ -1596,7 +1596,7 @@ fn dot_with_explicit_count_overrides() {
     ed.handle_key(key('2'));
     ed.handle_key(key('.'));
     // Just verify it doesn't panic and the buffer changed.
-    assert!(!ed.doc.buf().to_string().contains('c'));
+    assert!(!ed.doc.text().to_string().contains('c'));
 }
 
 /// When `.` is pressed without a count, the original action's count is reused.
@@ -1620,7 +1620,7 @@ fn dot_without_count_uses_original() {
     // last_action.count should still be 1 after replay.
     assert_eq!(ed.last_action.as_ref().unwrap().count, 1);
     // The delete should have happened.
-    assert!(!ed.doc.buf().to_string().contains("world"));
+    assert!(!ed.doc.text().to_string().contains("world"));
 }
 
 /// After `.`, a single `u` should undo the entire replayed action as one step.
@@ -1633,16 +1633,16 @@ fn dot_is_single_undo_step() {
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.buf().to_string(), "hi bar\n");
+    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
 
     // Move to "bar" and repeat.
     ed.handle_key(key('w'));
     ed.handle_key(key('.'));
-    assert_eq!(ed.doc.buf().to_string(), "hi hi\n");
+    assert_eq!(ed.doc.text().to_string(), "hi hi\n");
 
     // One undo undoes the `.` replay entirely.
     ed.handle_key(key('u'));
-    assert_eq!(ed.doc.buf().to_string(), "hi bar\n");
+    assert_eq!(ed.doc.text().to_string(), "hi bar\n");
 }
 
 /// Pressing `.` before any edit has been recorded should be a no-op.
@@ -1663,14 +1663,14 @@ fn dot_repeats_open_line_below() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());          // back to Normal; buffer is "a\nx\nb"
 
-    assert_eq!(ed.doc.buf().to_string(), "a\nx\nb\n");
+    assert_eq!(ed.doc.text().to_string(), "a\nx\nb\n");
 
     // Move cursor to "b" and repeat.
     ed.handle_key(key('j'));           // move down to 'x'
     ed.handle_key(key('j'));           // move down to 'b'
     ed.handle_key(key('.'));           // repeat: open line below "b", insert "x"
 
-    assert_eq!(ed.doc.buf().to_string(), "a\nx\nb\nx\n");
+    assert_eq!(ed.doc.text().to_string(), "a\nx\nb\nx\n");
 }
 
 /// `p` (paste-after) is repeatable: the register contents are pasted again.
@@ -1688,7 +1688,7 @@ fn dot_repeats_paste_after() {
     ed.handle_key(key('w'));           // select "cd" or next word
     ed.handle_key(key('.'));           // paste again
     // Just verify no panic and paste happened twice (content contains "ab" twice).
-    let buf = ed.doc.buf().to_string();
+    let buf = ed.doc.text().to_string();
     let count = buf.matches("ab").count();
     assert!(count >= 2, "expected at least 2 occurrences of 'ab', got: {buf:?}");
 }
@@ -1944,9 +1944,9 @@ fn select_within_confirm_replaces_selections() {
     assert_eq!(ed.mode, Mode::Normal);
     assert!(ed.pre_select_sels.is_none());
     // Two "ab" matches within the original selection.
-    assert_eq!(ed.doc.sels().len(), 2);
-    assert_eq!(ed.doc.sels().primary().anchor, 0);
-    assert_eq!(ed.doc.sels().primary().head, 1);
+    assert_eq!(ed.current_selections().len(), 2);
+    assert_eq!(ed.current_selections().primary().anchor, 0);
+    assert_eq!(ed.current_selections().primary().head, 1);
 }
 
 /// `s` + Esc restores original selections.
@@ -2036,21 +2036,21 @@ fn select_within_multiple_selections_finds_matches_in_each() {
         ],
         0,
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
     for ch in "aa".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
     // One "aa" from each original selection → 2 selections total.
-    assert_eq!(ed.doc.sels().len(), 2);
+    assert_eq!(ed.current_selections().len(), 2);
     // First match: chars 0..1 ("aa" in first selection).
-    let sels: Vec<_> = ed.doc.sels().iter_sorted().collect();
+    let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
     assert_eq!(sels[0].start(), 0);
-    assert_eq!(sels[0].end_inclusive(ed.doc.buf()), 1);
+    assert_eq!(sels[0].end_inclusive(ed.doc.text()), 1);
     // Second match: chars 6..7 ("aa" in second selection).
     assert_eq!(sels[1].start(), 6);
-    assert_eq!(sels[1].end_inclusive(ed.doc.buf()), 7);
+    assert_eq!(sels[1].end_inclusive(ed.doc.text()), 7);
 }
 
 /// When one selection has matches and another does not, only the matching
@@ -2068,16 +2068,16 @@ fn select_within_drops_selections_with_no_match() {
         ],
         0,
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
     for ch in "aa".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
     // Only one match (from the first selection).
-    assert_eq!(ed.doc.sels().len(), 1);
-    assert_eq!(ed.doc.sels().primary().start(), 0);
-    assert_eq!(ed.doc.sels().primary().end_inclusive(ed.doc.buf()), 1);
+    assert_eq!(ed.current_selections().len(), 1);
+    assert_eq!(ed.current_selections().primary().start(), 0);
+    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc.text()), 1);
 }
 
 /// When NO selection contains a match, the original selections are restored.
@@ -2092,7 +2092,7 @@ fn select_within_multiple_selections_no_match_restores_all() {
         ],
         0,
     );
-    ed.doc.set_selections(two_sels.clone());
+    ed.set_current_selections(two_sels.clone());
 
     let original = state(&ed);
     ed.handle_key(key('s'));
@@ -2102,7 +2102,7 @@ fn select_within_multiple_selections_no_match_restores_all() {
     // Confirm with a non-empty pattern that has no matches. Live preview already
     // restored the originals, so confirm keeps them in place.
     ed.handle_key(key_enter());
-    assert_eq!(ed.doc.sels().len(), 2, "original two selections should be restored");
+    assert_eq!(ed.current_selections().len(), 2, "original two selections should be restored");
 }
 
 /// Primary index after select-within tracks to the first match within the
@@ -2119,15 +2119,15 @@ fn select_within_primary_tracks_original_primary() {
         ],
         1,
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
     for ch in "aa".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.doc.sels().len(), 2);
+    assert_eq!(ed.current_selections().len(), 2);
     // Primary must be the match from the original primary selection (6..7).
-    let primary = ed.doc.sels().primary();
+    let primary = ed.current_selections().primary();
     assert_eq!(primary.start(), 6, "primary should come from the original primary selection");
 }
 
@@ -2147,7 +2147,7 @@ fn select_within_esc_restores_multiple_selections() {
         ],
         0,
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
     let original = state(&ed);
 
     ed.handle_key(key('s'));
@@ -2156,7 +2156,7 @@ fn select_within_esc_restores_multiple_selections() {
     assert_ne!(state(&ed), original);
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.doc.sels().len(), 2, "both original selections restored");
+    assert_eq!(ed.current_selections().len(), 2, "both original selections restored");
     assert_eq!(state(&ed), original);
 }
 
@@ -2292,17 +2292,17 @@ fn search_n_merges_with_overlapping_secondary() {
         ],
         0,
     );
-    ed.doc.set_selections(sels);
-    assert_eq!(ed.doc.sels().len(), 2);
+    ed.set_current_selections(sels);
+    assert_eq!(ed.current_selections().len(), 2);
 
     // `n` moves primary from first "ab" to second "ab", which already has a
     // secondary selection there → they must merge.
     ed.handle_key(key('n'));
 
     // After merge: one selection covering the second "ab".
-    assert_eq!(ed.doc.sels().len(), 1, "overlapping selections must merge");
-    assert_eq!(ed.doc.sels().primary().start(), 6);
-    assert_eq!(ed.doc.sels().primary().end_inclusive(ed.doc.buf()), 7);
+    assert_eq!(ed.current_selections().len(), 1, "overlapping selections must merge");
+    assert_eq!(ed.current_selections().primary().start(), 6);
+    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc.text()), 7);
 }
 
 // ── select-all-matches ────────────────────────────────────────────────────────
@@ -2319,8 +2319,8 @@ fn select_all_matches_creates_selection_per_match() {
     }
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.doc.sels().len(), 2, "one selection per 'ab' match");
-    let sels: Vec<_> = ed.doc.sels().iter_sorted().collect();
+    assert_eq!(ed.current_selections().len(), 2, "one selection per 'ab' match");
+    let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
     assert_eq!(sels[0].start(), 0);
     assert_eq!(sels[1].start(), 6);
 }
@@ -2355,7 +2355,7 @@ fn select_all_matches_uses_search_register_fallback() {
     }
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.doc.sels().len(), 2);
+    assert_eq!(ed.current_selections().len(), 2);
 }
 
 /// `m/` keybind reaches `select-all-matches` (tests the keymap path, not just `:select-all-matches`).
@@ -2364,7 +2364,7 @@ fn select_all_matches_via_m_slash_keybind() {
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
     ed.handle_key(key('m'));
     ed.handle_key(key('/'));
-    assert_eq!(ed.doc.sels().len(), 2, "m/ should select all 'ab' matches");
+    assert_eq!(ed.current_selections().len(), 2, "m/ should select all 'ab' matches");
 }
 
 // ── Use selection as search (*) ──────────────────────────────────────────────
@@ -2414,11 +2414,12 @@ fn star_escapes_metacharacters() {
     let mut ed = editor_from("-[f]>oo.bar\n");
     // Select "foo.bar" first via `v$` equivalent — use the whole line.
     // Easier: just set up a selection covering "foo.bar".
-    let buf = crate::core::buffer::Buffer::from("foo.bar\n");
+    let buf = crate::core::text::Text::from("foo.bar\n");
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::new(0, 6),
     );
-    ed.doc = crate::core::document::Document::new(buf, sels);
+    ed.doc = crate::editor::buffer::Buffer::new(buf, sels.clone());
+    ed.set_current_selections(sels);
 
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec!["foo\\.bar"]);
@@ -2430,13 +2431,13 @@ fn star_escapes_metacharacters() {
 fn jump_editor(cursor_line: usize) -> Editor {
     // 20 lines: "line 0\n", "line 1\n", ..., "line 19\n"
     let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
-    let buf = crate::core::buffer::Buffer::from(text.as_str());
+    let buf = crate::core::text::Text::from(text.as_str());
     // Place cursor at the start of the requested line.
     let pos = buf.line_to_char(cursor_line);
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::collapsed(pos),
     );
-    let doc = crate::core::document::Document::new(buf, sels);
+    let doc = crate::editor::buffer::Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
     // Ensure we start in Normal mode.
     ed.mode = Mode::Normal;
@@ -2452,7 +2453,7 @@ fn goto_first_line_records_jump() {
     // `gg` — goto first line.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
-    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 0);
+    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 0);
 
     // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
@@ -2521,7 +2522,7 @@ fn large_motion_records_jump() {
     ed.handle_key(key('1'));
     ed.handle_key(key('0'));
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 10);
+    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 10);
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
@@ -2540,7 +2541,7 @@ fn search_confirm_records_jump() {
     }
     ed.handle_key(key_enter());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc.buf().char_to_line(ed.doc.sels().primary().head), 15);
+    assert_eq!(ed.doc.text().char_to_line(ed.current_selections().primary().head), 15);
 
     // jump-backward should return to line 0.
     ed.handle_key(key_ctrl('o'));
@@ -2596,11 +2597,11 @@ fn search_next_records_jump() {
 fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = "the editor and the editor\nother line\n";
-    let buf = crate::core::buffer::Buffer::from(text);
+    let buf = crate::core::text::Text::from(text);
     let sels = crate::core::selection::SelectionSet::single(
         crate::core::selection::Selection::collapsed(0),
     );
-    let doc = crate::core::document::Document::new(buf, sels);
+    let doc = crate::editor::buffer::Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
     ed.kitty_enabled = true;
 
@@ -2757,7 +2758,7 @@ fn pane_selections_synced_after_insert_typing() {
 
     ed.push_selections_to_pane();
 
-    // Buffer is now "xb\n"; cursor sits after 'x', at byte offset 1.
+    // Text is now "xb\n"; cursor sits after 'x', at byte offset 1.
     assert_eq!(pane_head(&ed), 1, "pane head must be at char 1 after typing 'x'");
 }
 
@@ -2796,7 +2797,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
         ],
         1,
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
 
     // Simulate the per-frame sync.
     ed.push_selections_to_pane();
@@ -2827,7 +2828,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
 fn pane_selections_sorted_by_head_not_start() {
     use crate::core::selection::{Selection, SelectionSet};
 
-    // Buffer needs at least 11 chars. The -[h]> marker satisfies editor_from's
+    // Text needs at least 11 chars. The -[h]> marker satisfies editor_from's
     // requirement; we replace the selection set immediately after.
     let mut ed = editor_from("-[h]>ello world\n");
 
@@ -2836,12 +2837,12 @@ fn pane_selections_sorted_by_head_not_start() {
     // In start() order: [B, A].  In head order: [A, B].
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection { anchor: 10, head: 3 }, // A — primary
-            Selection { anchor: 0,  head: 8 }, // B
+            Selection { anchor: 10, head: 3, horiz: None }, // A — primary
+            Selection { anchor: 0,  head: 8, horiz: None }, // B
         ],
         0, // primary is A
     );
-    ed.doc.set_selections(two_sels);
+    ed.set_current_selections(two_sels);
 
     ed.push_selections_to_pane();
 
@@ -2876,11 +2877,11 @@ fn visual_test_editor(head: usize) -> Editor {
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
     // Build manually so we can place the cursor at an exact char offset.
-    use crate::core::buffer::Buffer;
+    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
-    let buf = Buffer::from(content.as_str());
+    let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(head));
-    Editor::for_testing(Document::new(buf, sels))
+    Editor::for_testing(Buffer::new(buf, sels))
 }
 
 /// j moves from sub-row 0 to sub-row 1 of the same buffer line.
@@ -2888,8 +2889,8 @@ fn visual_test_editor(head: usize) -> Editor {
 fn visual_move_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.sels().primary().head, 76, "j: sub-row 0 → sub-row 1, col 0 → char 76");
-    assert_eq!(ed.preferred_display_cols.get(&76), Some(&0), "sticky col latched on first j");
+    assert_eq!(ed.current_selections().primary().head, 76, "j: sub-row 0 → sub-row 1, col 0 → char 76");
+    assert_eq!(ed.current_selections().primary().horiz, Some(0), "sticky col latched on first j");
 }
 
 /// j on the last sub-row crosses to the next buffer line.
@@ -2897,7 +2898,7 @@ fn visual_move_down_within_wrapped_line() {
 fn visual_move_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.sels().primary().head, 81, "j: last sub-row → first char of next buffer line");
+    assert_eq!(ed.current_selections().primary().head, 81, "j: last sub-row → first char of next buffer line");
 }
 
 /// k from the first row of a buffer line enters the last sub-row of the previous line.
@@ -2905,7 +2906,7 @@ fn visual_move_down_crosses_buffer_line() {
 fn visual_move_up_enters_last_subrow_of_previous_line() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('k'));
-    assert_eq!(ed.doc.sels().primary().head, 76, "k: buffer line n+1 → last sub-row of line n, col 0 → char 76");
+    assert_eq!(ed.current_selections().primary().head, 76, "k: buffer line n+1 → last sub-row of line n, col 0 → char 76");
 }
 
 /// k on sub-row 1 retreats to sub-row 0 of the same buffer line.
@@ -2913,7 +2914,7 @@ fn visual_move_up_enters_last_subrow_of_previous_line() {
 fn visual_move_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('k'));
-    assert_eq!(ed.doc.sels().primary().head, 0, "k: sub-row 1 → sub-row 0, col 0 → char 0");
+    assert_eq!(ed.current_selections().primary().head, 0, "k: sub-row 1 → sub-row 0, col 0 → char 0");
 }
 
 /// k on the first sub-row of the first line stays put.
@@ -2921,7 +2922,7 @@ fn visual_move_up_within_wrapped_line() {
 fn visual_move_up_at_top_stays_put() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('k'));
-    assert_eq!(ed.doc.sels().primary().head, 0, "k at first row: no-op");
+    assert_eq!(ed.current_selections().primary().head, 0, "k at first row: no-op");
 }
 
 /// j on the last sub-row of the last line stays put.
@@ -2930,7 +2931,7 @@ fn visual_move_down_at_bottom_stays_put() {
     // Place cursor at "short" (line 1 is last). Line 1 has only 1 sub-row.
     let mut ed = visual_test_editor(81);
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.sels().primary().head, 81, "j at last row: no-op");
+    assert_eq!(ed.current_selections().primary().head, 81, "j at last row: no-op");
 }
 
 /// The preferred display column is preserved across consecutive j/k presses
@@ -2943,24 +2944,24 @@ fn visual_preferred_col_stickiness() {
     // j: target_col = 40, sub-row 1 has only 4 chars (cols 0..3).
     // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.sels().primary().head, 79, "j: clamped to last char on short sub-row");
-    assert_eq!(ed.preferred_display_cols.get(&79), Some(&40), "sticky col stays at 40");
+    assert_eq!(ed.current_selections().primary().head, 79, "j: clamped to last char on short sub-row");
+    assert_eq!(ed.current_selections().primary().horiz, Some(40), "sticky col stays at 40");
 
     // j again: cross to "short\n" (line 1). target_col=40, "short" has cols 0..4.
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc.sels().primary().head, 85, "j: clamped to last char on short second line");
-    assert_eq!(ed.preferred_display_cols.get(&85), Some(&40), "sticky col still 40");
+    assert_eq!(ed.current_selections().primary().head, 85, "j: clamped to last char on short second line");
+    assert_eq!(ed.current_selections().primary().horiz, Some(40), "sticky col still 40");
 }
 
 /// Any non-vertical command resets preferred_display_col.
 #[test]
 fn visual_preferred_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
-    ed.handle_key(key('j')); // sets preferred_display_cols
-    assert!(!ed.preferred_display_cols.is_empty());
-    ed.handle_key(key('l')); // horizontal motion
-    assert!(ed.preferred_display_cols.is_empty(), "l resets preferred_display_cols");
+    ed.handle_key(key('j')); // latches horiz on the selection
+    assert!(ed.current_selections().primary().horiz.is_some(), "j latches sticky col");
+    ed.handle_key(key('l')); // horizontal motion — Selection::new() clears horiz
+    assert!(ed.current_selections().primary().horiz.is_none(), "l resets sticky col");
 }
 
 /// WrapMode::None falls back to buffer-line movement.
@@ -2972,8 +2973,8 @@ fn visual_move_no_wrap_falls_back_to_buffer_line() {
 
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
-    assert_eq!(ed.doc.sels().primary().head, 81, "WrapMode::None: j moves by buffer line");
-    assert!(ed.preferred_display_cols.is_empty(), "no sticky col in non-wrap mode");
+    assert_eq!(ed.current_selections().primary().head, 81, "WrapMode::None: j moves by buffer line");
+    assert!(ed.current_selections().primary().horiz.is_none(), "no sticky col in non-wrap mode");
 }
 
 /// count prefix: 2j moves two visual rows.
@@ -2983,12 +2984,12 @@ fn visual_move_down_with_count() {
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
     // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
-    assert_eq!(ed.doc.sels().primary().head, 81, "2j: two visual rows from sub-row 0");
+    assert_eq!(ed.current_selections().primary().head, 81, "2j: two visual rows from sub-row 0");
 }
 
 /// Each cursor uses its own sticky column in multi-cursor j/k.
 ///
-/// Buffer layout (visual_test_editor):
+/// Text layout (visual_test_editor):
 ///   sub-row 0: chars  0..76 (cols 0..75)
 ///   sub-row 1: chars 76..80 (cols 0..3)  ← two cursors placed here
 ///   line 1:    chars 81..86 "short\n"
@@ -3002,7 +3003,7 @@ fn visual_move_per_selection_sticky_col() {
 
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
-    let buf = crate::core::buffer::Buffer::from(content.as_str());
+    let buf = crate::core::text::Text::from(content.as_str());
     // A at col 0, B at col 3 (primary).
     let sels = SelectionSet::from_vec(
         vec![
@@ -3011,11 +3012,11 @@ fn visual_move_per_selection_sticky_col() {
         ],
         1, // primary is B
     );
-    let mut ed = Editor::for_testing(Document::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));
-    let sels = ed.doc.sels().clone();
+    let sels = ed.current_selections().clone();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
     // Sorted by start(): A is first.
     let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
@@ -3024,7 +3025,7 @@ fn visual_move_per_selection_sticky_col() {
 
     // k: sticky cols should bring each cursor back to its original column.
     ed.handle_key(key('k'));
-    let sels = ed.doc.sels().clone();
+    let sels = ed.current_selections().clone();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
     let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
     assert_eq!(heads[0], 76, "A returns to col 0 = char 76 on sub-row 1");
@@ -3043,7 +3044,7 @@ fn visual_extend_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('e')); // enter extend mode
     ed.handle_key(key('j'));
-    let sel = ed.doc.sels().primary();
+    let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 0,  "anchor fixed at sub-row 0 col 0");
     assert_eq!(sel.head,   76, "head extends to sub-row 1 col 0");
 }
@@ -3054,7 +3055,7 @@ fn visual_extend_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // last sub-row of line 0
     ed.handle_key(key('e'));
     ed.handle_key(key('j'));
-    let sel = ed.doc.sels().primary();
+    let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 76, "anchor fixed at last sub-row");
     assert_eq!(sel.head,   81, "head crosses to first char of next buffer line");
 }
@@ -3065,7 +3066,7 @@ fn visual_extend_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
-    let sel = ed.doc.sels().primary();
+    let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 76, "anchor fixed at sub-row 1");
     assert_eq!(sel.head,   0,  "head retreats to sub-row 0 col 0");
 }
@@ -3076,7 +3077,7 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
-    let sel = ed.doc.sels().primary();
+    let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 81, "anchor fixed at line 1 start");
     assert_eq!(sel.head,   76, "head enters last sub-row of previous buffer line");
 }
@@ -3087,16 +3088,16 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
 // EditorCmd dispatch. These tests verify they still move by the right distance.
 //
 // Viewport height in for_testing = 24 → page = 24, half = 12.
-// Buffer: 30 single-char lines "a\n" (60 chars total). No wrap needed.
+// Text: 30 single-char lines "a\n" (60 chars total). No wrap needed.
 // Line N starts at char 2*N.
 
 fn page_test_editor() -> Editor {
-    use crate::core::buffer::Buffer;
+    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
     let content = "a\n".repeat(30);
-    let buf = Buffer::from(content.as_str());
+    let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Document::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Set pane directly: tests don't call prepare_frame, so overrides aren't synced.
     ed.engine_view.panes[ed.pane_id].wrap_mode = engine::pane::WrapMode::None;
     ed
@@ -3116,7 +3117,7 @@ fn half_page_down_moves_half_viewport() {
     let mut ed = page_test_editor();
     ed.handle_key(key_ctrl('d'));
     // half = 24/2 = 12 lines → line 12 → char 24
-    assert_eq!(ed.doc.sels().primary().head, 24, "half-page-down from line 0: cursor at line 12");
+    assert_eq!(ed.current_selections().primary().head, 24, "half-page-down from line 0: cursor at line 12");
 }
 
 /// Ctrl+u (half-page-up) moves cursor up by half the viewport height.
@@ -3125,9 +3126,9 @@ fn half_page_up_moves_half_viewport() {
     let mut ed = page_test_editor();
     // Place cursor at line 12 first.
     ed.handle_key(key_ctrl('d'));
-    assert_eq!(ed.doc.sels().primary().head, 24);
+    assert_eq!(ed.current_selections().primary().head, 24);
     ed.handle_key(key_ctrl('u'));
-    assert_eq!(ed.doc.sels().primary().head, 0, "half-page-up returns to line 0");
+    assert_eq!(ed.current_selections().primary().head, 0, "half-page-up returns to line 0");
 }
 
 /// PageDown moves cursor down by a full viewport height (24 lines).
@@ -3136,7 +3137,7 @@ fn page_down_moves_full_viewport() {
     let mut ed = page_test_editor();
     ed.handle_key(key_page_down());
     // page = 24 lines → line 24 → char 48
-    assert_eq!(ed.doc.sels().primary().head, 48, "page-down from line 0: cursor at line 24");
+    assert_eq!(ed.current_selections().primary().head, 48, "page-down from line 0: cursor at line 24");
 }
 
 /// PageUp moves cursor up by a full viewport height.
@@ -3145,9 +3146,9 @@ fn page_up_moves_full_viewport() {
     let mut ed = page_test_editor();
     // Place cursor at line 24 first.
     ed.handle_key(key_page_down());
-    assert_eq!(ed.doc.sels().primary().head, 48);
+    assert_eq!(ed.current_selections().primary().head, 48);
     ed.handle_key(key_page_up());
-    assert_eq!(ed.doc.sels().primary().head, 0, "page-up returns to line 0");
+    assert_eq!(ed.current_selections().primary().head, 0, "page-up returns to line 0");
 }
 
 // ── Keyboard macros ───────────────────────────────────────────────────────────
@@ -3232,7 +3233,7 @@ fn macro_big_q_replays_from_register() {
     ed.handle_key(key('j'));
     ed.handle_key(key('Q'));
 
-    let before = ed.doc.sels().primary().head;
+    let before = ed.current_selections().primary().head;
 
     // `qq` replays from the default register — no extra key needed.
     ed.handle_key(key('q'));
@@ -3240,7 +3241,7 @@ fn macro_big_q_replays_from_register() {
 
     ed.drain_replay_queue();
 
-    let after = ed.doc.sels().primary().head;
+    let after = ed.current_selections().primary().head;
     assert!(after > before, "cursor should have moved down after replay");
 }
 
@@ -3255,7 +3256,7 @@ fn macro_big_q_non_register_key_cancels() {
     ed.handle_key(key('j'));
     ed.handle_key(key('Q'));
 
-    let before = ed.doc.sels().primary().head;
+    let before = ed.current_selections().primary().head;
 
     // `q` then `Q` (uppercase, not a valid register) — cancelled, cursor stays put.
     ed.handle_key(key('q'));
@@ -3263,7 +3264,7 @@ fn macro_big_q_non_register_key_cancels() {
 
     ed.drain_replay_queue();
 
-    let after = ed.doc.sels().primary().head;
+    let after = ed.current_selections().primary().head;
     assert_eq!(before, after, "cancelled replay should not move cursor");
 }
 
@@ -3400,8 +3401,8 @@ fn macro_replay_with_count() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
 
-    let start = ed.doc.sels().primary().head;
-    let start_line = ed.doc.buf().char_to_line(start);
+    let start = ed.current_selections().primary().head;
+    let start_line = ed.doc.text().char_to_line(start);
     assert_eq!(start_line, 0, "cursor should be on line 0 before replay");
 
     // `3qq` — count 3, replay from register 'q'.
@@ -3410,7 +3411,7 @@ fn macro_replay_with_count() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    let end_line = ed.doc.buf().char_to_line(ed.doc.sels().primary().head);
+    let end_line = ed.doc.text().char_to_line(ed.current_selections().primary().head);
     assert_eq!(end_line, 3, "expected cursor on line 3, got line {}", end_line);
 }
 
@@ -3462,17 +3463,17 @@ fn macro_with_find_char() {
     // After recording, cursor is on first 'x'. Move to 'c' so replay can find next 'x'.
     ed.handle_key(key('l'));  // step right to 'c'
 
-    let before_pos = ed.doc.sels().primary().head;
-    let before_char = ed.doc.buf().char_at(before_pos);
+    let before_pos = ed.current_selections().primary().head;
+    let before_char = ed.doc.text().char_at(before_pos);
 
     // Replay: `f x` from 'c' should land on the second 'x'.
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    let after_pos = ed.doc.sels().primary().head;
+    let after_pos = ed.current_selections().primary().head;
     assert!(after_pos > before_pos, "cursor should have moved right");
-    assert_eq!(ed.doc.buf().char_at(after_pos), Some('x'), "cursor should be on 'x' after replay");
+    assert_eq!(ed.doc.text().char_at(after_pos), Some('x'), "cursor should be on 'x' after replay");
     let _ = before_char;
 }
 
@@ -3500,7 +3501,7 @@ fn macro_insert_mode_round_trip() {
 
     let after = state(&ed);
     assert_ne!(after, before, "replay should have modified the buffer");
-    assert!(ed.doc.buf().to_string().matches('x').count() == 2,
+    assert!(ed.doc.text().to_string().matches('x').count() == 2,
         "there should be two 'x' chars — one from recording, one from replay");
 }
 
