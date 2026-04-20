@@ -581,7 +581,15 @@ impl Editor {
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(steel_proc, char_arg, cmd_arg, &self.settings) {
+                        let focused_pane_id = self.focused_pane_id;
+                        let focused_buffer_id = self.buffer_id;
+                        match host.call_steel_cmd(
+                            steel_proc, char_arg, cmd_arg, &self.settings,
+                            focused_pane_id, focused_buffer_id,
+                            Some(&mut self.buffers),
+                            Some(&mut self.engine_view),
+                            Some(&mut self.pane_state),
+                        ) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }
