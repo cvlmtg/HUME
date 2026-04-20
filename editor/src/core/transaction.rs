@@ -69,6 +69,7 @@ impl Transaction {
     ///   (length mismatch or deleted the structural trailing `\n`).
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
+    ///
     /// The selection state after this transaction.
     pub(crate) fn selection(&self) -> &SelectionSet {
         &self.selection

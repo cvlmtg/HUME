@@ -372,8 +372,8 @@ impl Editor {
                         self.pending_keys.push(bare);
                         let result = self.keymap.normal.walk(&self.pending_keys);
                         let is_extendable = match &result {
-                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).map_or(false, |r| r.is_extendable()),
-                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).is_some_and(|r| r.is_extendable()),
+                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).is_some_and(|r| r.is_extendable()),
                             _ => false,
                         };
                         if !is_extendable {
@@ -391,8 +391,8 @@ impl Editor {
                     // follow-up keypress can complete the trie walk.
                     matched => {
                         let ctrl_extend = match &matched {
-                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).map_or(false, |r| r.is_extendable()),
-                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).map_or(false, |r| r.is_extendable()),
+                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).is_some_and(|r| r.is_extendable()),
+                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).is_some_and(|r| r.is_extendable()),
                             _ => false,
                         };
                         if matches!(matched, WalkResult::Interior { .. }) {
@@ -437,18 +437,16 @@ impl Editor {
                 self.count = None;
 
                 // Pair-wrap: unbound pair-open key with a non-collapsed selection → wrap.
-                if let KeyCode::Char(ch) = key.code {
-                    if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                        let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
-                        if ap_enabled {
-                            if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
-                                let has_selection = self.current_selections().iter_sorted().any(|s| !s.is_collapsed());
-                                if has_selection {
-                                    let (open, close) = (pair.open, pair.close);
-                                    self.doc_edit(|b, s| insert_pair_close(b, s, open, close));
-                                }
-                            }
-                        }
+                if let KeyCode::Char(ch) = key.code
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                {
+                    let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
+                    if ap_enabled
+                        && let Some(pair) = ap_pairs.iter().find(|p| p.open == ch)
+                        && self.current_selections().iter_sorted().any(|s| !s.is_collapsed())
+                    {
+                        let (open, close) = (pair.open, pair.close);
+                        self.doc_edit(|b, s| insert_pair_close(b, s, open, close));
                     }
                 }
             }
@@ -583,7 +581,7 @@ impl Editor {
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(&steel_proc, char_arg, cmd_arg, &self.settings) {
+                        match host.call_steel_cmd(steel_proc, char_arg, cmd_arg, &self.settings) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
                         }

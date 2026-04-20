@@ -8,8 +8,7 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
 
-use crate::scripting::ledger::PluginId;
-use super::one_string;
+use crate::scripting::{ledger::PluginId, SteelCtx};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,56 +25,42 @@ fn steel_parse_err(e: String) -> SteelErr {
 /// declared-plugins list (case-insensitive dedup).
 ///
 /// Raises a Steel error for malformed names, aborting `init.scm`.
-pub(crate) fn push_declared_plugin(args: &[SteelVal]) -> SteelResult {
-    let name = one_string(args, "push-declared-plugin!")?;
+pub(crate) fn push_declared_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     // Validate before recording so declared-plugins never contains junk.
     PluginId::parse(&name).map_err(steel_parse_err)?;
-    super::with_ctx("push-declared-plugin!", |ctx| {
-        if !ctx.declared_plugins.iter().any(|d| d.eq_ignore_ascii_case(&name)) {
-            ctx.declared_plugins.push(name);
-        }
-        Ok(SteelVal::Void)
-    })
+    if !ctx.declared_plugins.iter().any(|d| d.eq_ignore_ascii_case(&name)) {
+        ctx.declared_plugins.push(name);
+    }
+    Ok(SteelVal::Void)
 }
 
 /// `(push-loaded-plugin! name)` — append to the loaded-plugins list
 /// (case-insensitive dedup, no validation — caller already validated).
-pub(crate) fn push_loaded_plugin(args: &[SteelVal]) -> SteelResult {
-    let name = one_string(args, "push-loaded-plugin!")?;
-    super::with_ctx("push-loaded-plugin!", |ctx| {
-        if !ctx.loaded_plugins.iter().any(|l| l.eq_ignore_ascii_case(&name)) {
-            ctx.loaded_plugins.push(name);
-        }
-        Ok(SteelVal::Void)
-    })
+pub(crate) fn push_loaded_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    if !ctx.loaded_plugins.iter().any(|l| l.eq_ignore_ascii_case(&name)) {
+        ctx.loaded_plugins.push(name);
+    }
+    Ok(SteelVal::Void)
 }
 
 /// `(push-current-plugin! name)` — push `name` onto the `CURRENT_PLUGIN`
 /// attribution stack.  Called from `dynamic-wind`'s before-thunk inside
 /// the Scheme-side `load-plugin`.
-pub(crate) fn push_current_plugin(args: &[SteelVal]) -> SteelResult {
-    let name = one_string(args, "push-current-plugin!")?;
+pub(crate) fn push_current_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
-    super::with_ctx("push-current-plugin!", |ctx| {
-        ctx.plugin_stack.push(plugin_id);
-        Ok(SteelVal::Void)
-    })
+    ctx.plugin_stack.push(plugin_id);
+    Ok(SteelVal::Void)
 }
 
 /// `(pop-current-plugin!)` — pop the top entry from the `CURRENT_PLUGIN`
 /// stack.  Called from `dynamic-wind`'s after-thunk.  Raises a Steel error
 /// on empty stack (the before/after pairing should always be balanced).
-pub(crate) fn pop_current_plugin(args: &[SteelVal]) -> SteelResult {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "pop-current-plugin! expects 0 args, got {}", args.len());
+pub(crate) fn pop_current_plugin(ctx: &mut SteelCtx) -> SteelResult {
+    if ctx.plugin_stack.is_empty() {
+        steel::stop!(Generic => "pop-current-plugin!: attribution stack is already empty");
     }
-    super::with_ctx("pop-current-plugin!", |ctx| {
-        if ctx.plugin_stack.is_empty() {
-            steel::stop!(Generic => "pop-current-plugin!: attribution stack is already empty");
-        }
-        ctx.plugin_stack.pop();
-        Ok(SteelVal::Void)
-    })
+    ctx.plugin_stack.pop();
+    Ok(SteelVal::Void)
 }
 
 /// Pure path resolution: given a plugin name and the runtime / data directories,
@@ -117,48 +102,37 @@ pub(crate) fn resolve_path_for_name(
 /// `(resolve-plugin-path name)` — return the resolved path string if the
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
-pub(crate) fn resolve_plugin_path(args: &[SteelVal]) -> SteelResult {
-    let name = one_string(args, "resolve-plugin-path")?;
-    super::with_ctx("resolve-plugin-path", |ctx| {
-        let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), ctx.data_dir.as_deref())
-            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-        match path {
-            Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
-            None    => Ok(SteelVal::BoolV(false)),
-        }
-    })
+pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), ctx.data_dir.as_deref())
+        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    match path {
+        Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
+        None    => Ok(SteelVal::BoolV(false)),
+    }
 }
 
 /// `(loaded-plugins)` — return a Steel list of all loaded plugin names.
-pub(crate) fn loaded_plugins(args: &[SteelVal]) -> SteelResult {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "loaded-plugins expects 0 args, got {}", args.len());
-    }
-    super::with_ctx("loaded-plugins", |ctx| {
-        let vals: Vec<SteelVal> = ctx
-            .loaded_plugins
-            .iter()
-            .map(|s| SteelVal::StringV(s.as_str().into()))
-            .collect();
-        vals.into_steelval()
-    })
+pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
+    let vals: Vec<SteelVal> = ctx
+        .loaded_plugins
+        .iter()
+        .map(|s| SteelVal::StringV(s.as_str().into()))
+        .collect();
+    vals.into_steelval()
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
 /// `(declared-plugins)` — return a Steel list of all declared third-party
 /// (non-`core:*`) plugin names.  Used by PLUM to know what to install.
-pub(crate) fn declared_plugins(args: &[SteelVal]) -> SteelResult {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "declared-plugins expects 0 args, got {}", args.len());
-    }
-    super::with_ctx("declared-plugins", |ctx| {
-        let vals: Vec<SteelVal> = ctx
-            .declared_plugins
-            .iter()
-            .filter(|name| !name.to_ascii_lowercase().starts_with("core:"))
-            .map(|s| SteelVal::StringV(s.as_str().into()))
-            .collect();
-        vals.into_steelval()
-    })
+pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
+    let vals: Vec<SteelVal> = ctx
+        .declared_plugins
+        .iter()
+        .filter(|name| !name.to_ascii_lowercase().starts_with("core:"))
+        .map(|s| SteelVal::StringV(s.as_str().into()))
+        .collect();
+    vals.into_steelval()
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

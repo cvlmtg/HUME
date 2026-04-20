@@ -163,10 +163,8 @@ fn do_paste(
     {
         let values = values.to_vec();
         let (displaced, _cs) = ed.doc_edit(|b, s| paste_fn(b, s, &values));
-        if let Some(displaced) = displaced {
-            if displaced.iter().any(|s| !s.is_empty()) {
-                ed.registers.write_text(DEFAULT_REGISTER, displaced);
-            }
+        if let Some(displaced) = displaced && displaced.iter().any(|s| !s.is_empty()) {
+            ed.registers.write_text(DEFAULT_REGISTER, displaced);
         }
     }
 }

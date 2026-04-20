@@ -796,15 +796,13 @@ mod tests {
 
     #[test]
     fn serialize_setting_wrap_mode_none() {
-        let mut s = EditorSettings::default();
-        s.wrap_mode = engine::pane::WrapMode::None;
+        let s = EditorSettings { wrap_mode: engine::pane::WrapMode::None, ..Default::default() };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "none");
     }
 
     #[test]
     fn serialize_setting_wrap_mode_indent() {
-        let mut s = EditorSettings::default();
-        s.wrap_mode = engine::pane::WrapMode::Indent { width: 80 };
+        let s = EditorSettings { wrap_mode: engine::pane::WrapMode::Indent { width: 80 }, ..Default::default() };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent:80");
     }
 }

@@ -27,6 +27,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
 
 use crate::editor::Severity;
+use crate::scripting::SteelCtx;
 use super::one_string;
 
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ struct ScriptDirs {
 }
 
 thread_local! {
-    static SCRIPT_DIRS: RefCell<Option<ScriptDirs>> = RefCell::new(None);
+    static SCRIPT_DIRS: RefCell<Option<ScriptDirs>> = const { RefCell::new(None) };
 }
 
 // ── UNC prefix stripping ──────────────────────────────────────────────────────
@@ -90,13 +91,13 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
     // when the directory does not exist yet (first run). When data_dir is
     // None (HOME/APPDATA unset), data_plugins is also None and every write
     // sandbox check fails closed.
-    let canonical_data = data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or_else(|_| d));
+    let canonical_data = data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or(d));
     // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
     // segments on Windows without producing malformed extended-length paths.
     let data_dir_display = canonical_data.as_ref().map(|d| strip_unc_prefix(d.clone()));
     let data_plugins = canonical_data.as_ref().map(|d| {
         let p = d.join("plugins");
-        crate::os::fs::canonicalize(&p).unwrap_or_else(|_| p)
+        crate::os::fs::canonicalize(&p).unwrap_or(p)
     });
     let canonical_runtime = runtime_dir.and_then(|rt| crate::os::fs::canonicalize(&rt).ok());
     let runtime_dir_display = canonical_runtime.as_ref().map(|rt| strip_unc_prefix(rt.clone()));
@@ -139,13 +140,13 @@ pub(crate) fn with_data_plugins<R>(f: impl FnOnce(&Path) -> R) -> Result<R, Stee
 // ── Sandbox predicates ────────────────────────────────────────────────────────
 
 fn is_under_write_sandbox(canonical: &Path) -> bool {
-    with_dirs(|dirs| dirs.data_plugins.as_deref().map_or(false, |p| canonical.starts_with(p)))
+    with_dirs(|dirs| dirs.data_plugins.as_deref().is_some_and(|p| canonical.starts_with(p)))
 }
 
 fn is_under_read_sandbox(canonical: &Path) -> bool {
     with_dirs(|dirs| {
-        dirs.data_plugins.as_deref().map_or(false, |p| canonical.starts_with(p))
-            || dirs.runtime_plugins.as_deref().map_or(false, |rp| canonical.starts_with(rp))
+        dirs.data_plugins.as_deref().is_some_and(|p| canonical.starts_with(p))
+            || dirs.runtime_plugins.as_deref().is_some_and(|rp| canonical.starts_with(rp))
     })
 }
 
@@ -203,32 +204,19 @@ fn canonical_ancestor_join(path: &Path) -> Option<PathBuf> {
     Some(result)
 }
 
-// ── LOG_QUEUE ─────────────────────────────────────────────────────────────────
-
-// Pending messages accumulated by `log!` during a Steel eval or command
-// invocation.  Initialized to `Some(Vec::new())` before each eval / command;
-// taken afterward and drained into `Editor::report` by the call-site.
-thread_local! {
-    pub(crate) static LOG_QUEUE: RefCell<Option<Vec<(Severity, String)>>>
-        = RefCell::new(None);
-}
-
 // ── log! ──────────────────────────────────────────────────────────────────────
 
 /// `(log! severity message)` — push `message` to the pending message buffer.
 ///
 /// `severity` must be one of the symbols `'trace`, `'info`, `'warn`, or
 /// `'error`.  Any other value raises a Steel error.
-pub(crate) fn log_msg(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    if args.len() != 2 {
-        steel::stop!(ArityMismatch => "log! expects 2 args (severity message), got {}", args.len());
-    }
-    let sev_str = match &args[0] {
+pub(crate) fn log_msg(ctx: &mut SteelCtx, severity: SteelVal, message: String) -> Result<SteelVal, SteelErr> {
+    let sev_str = match &severity {
         SteelVal::SymbolV(s) => s.as_str().to_string(),
         _ => steel::stop!(TypeMismatch =>
-            "log!: severity must be a symbol ('trace 'info 'warn 'error), got {:?}", args[0]),
+            "log!: severity must be a symbol ('trace 'info 'warn 'error), got {:?}", severity),
     };
-    let severity = match sev_str.as_str() {
+    let sev = match sev_str.as_str() {
         "trace" => Severity::Trace,
         "info"  => Severity::Info,
         "warn"  => Severity::Warning,
@@ -236,17 +224,7 @@ pub(crate) fn log_msg(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         other   => steel::stop!(Generic =>
             "log!: unknown severity '{}', expected 'trace, 'info, 'warn, or 'error", other),
     };
-    let text = match &args[1] {
-        SteelVal::StringV(s) => s.to_string(),
-        _ => steel::stop!(TypeMismatch =>
-            "log!: message must be a string, got {:?}", args[1]),
-    };
-    LOG_QUEUE.with(|cell| {
-        if let Some(queue) = cell.borrow_mut().as_mut() {
-            queue.push((severity, text));
-        }
-        // If LOG_QUEUE is None (e.g. bootstrap eval), drop silently.
-    });
+    ctx.pending_messages.push((sev, message));
     Ok(SteelVal::Void)
 }
 
@@ -618,28 +596,17 @@ mod tests {
 
     #[test]
     fn log_msg_valid_severity() {
-        LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-
-        let args = vec![
-            SteelVal::SymbolV("info".into()),
-            SteelVal::StringV("hello".into()),
-        ];
-        assert_eq!(log_msg(&args).unwrap(), SteelVal::Void);
-
-        let msgs = LOG_QUEUE.with(|q| q.borrow_mut().take().unwrap());
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].1, "hello");
-        assert!(matches!(msgs[0].0, Severity::Info));
+        let mut ctx = crate::scripting::SteelCtx::for_testing();
+        log_msg(&mut ctx, SteelVal::SymbolV("info".into()), "hello".to_string()).unwrap();
+        assert_eq!(ctx.pending_messages.len(), 1);
+        assert_eq!(ctx.pending_messages[0].1, "hello");
+        assert!(matches!(ctx.pending_messages[0].0, Severity::Info));
     }
 
     #[test]
     fn log_msg_unknown_severity_errors() {
-        LOG_QUEUE.with(|q| *q.borrow_mut() = Some(Vec::new()));
-        let args = vec![
-            SteelVal::SymbolV("bad".into()),
-            SteelVal::StringV("msg".into()),
-        ];
-        assert!(log_msg(&args).is_err());
+        let mut ctx = crate::scripting::SteelCtx::for_testing();
+        assert!(log_msg(&mut ctx, SteelVal::SymbolV("bad".into()), "msg".to_string()).is_err());
     }
 
     // ── path-join ────────────────────────────────────────────────────────────

@@ -1480,6 +1480,7 @@ impl Editor {
 /// Calls both the vertical and horizontal `ensure_cursor_visible` helpers in
 /// one shot. Used by `prepare_frame` for both the scratch-view path and the
 /// normal document path.
+#[allow(clippy::too_many_arguments)]
 fn scroll_into_view(
     pane: &mut Pane,
     rope: &ropey::Rope,

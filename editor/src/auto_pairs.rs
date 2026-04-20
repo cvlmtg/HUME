@@ -132,10 +132,8 @@ pub(crate) fn should_auto_pair_at(buf: &Text, head: usize, pair: &Pair, ap_pairs
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
     if pair.is_symmetric() && head > 0 {
         let prev_pos = prev_grapheme_boundary(buf, head);
-        if let Some(prev_ch) = buf.char_at(prev_pos) {
-            if classify_char(prev_ch) == CharClass::Word {
-                return false;
-            }
+        if buf.char_at(prev_pos).is_some_and(|c| classify_char(c) == CharClass::Word) {
+            return false;
         }
     }
 

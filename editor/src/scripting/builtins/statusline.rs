@@ -17,6 +17,7 @@
 use steel::rvals::SteelVal;
 use steel::rerrs::{ErrorKind, SteelErr};
 
+use crate::scripting::SteelCtx;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -75,22 +76,18 @@ fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement
 /// Each argument is a Steel list of element-name strings.  Pass `'()` for an
 /// empty section.  The new config takes effect immediately — the next rendered
 /// frame picks it up automatically.
-pub(crate) fn configure_statusline(args: &[SteelVal]) -> SteelResult {
-    if args.len() != 3 {
-        steel::stop!(
-            ArityMismatch =>
-            "configure-statusline! expects 3 args (left center right), got {}",
-            args.len()
-        );
+///
+/// Only valid during `init.scm` or plugin load.
+pub(crate) fn configure_statusline(ctx: &mut SteelCtx, left: SteelVal, center: SteelVal, right: SteelVal) -> SteelResult {
+    if !ctx.is_init {
+        steel::stop!(Generic =>
+            "configure-statusline!: only valid during init.scm or plugin load, not from a Steel command body");
     }
-    let left   = parse_element_list(&args[0], "left")?;
-    let center = parse_element_list(&args[1], "center")?;
-    let right  = parse_element_list(&args[2], "right")?;
-
-    super::with_ctx("configure-statusline!", |ctx| {
-        ctx.settings.statusline = StatusLineConfig { left, center, right };
-        Ok(SteelVal::Void)
-    })
+    let left   = parse_element_list(&left,   "left")?;
+    let center = parse_element_list(&center, "center")?;
+    let right  = parse_element_list(&right,  "right")?;
+    ctx.settings.statusline = StatusLineConfig { left, center, right };
+    Ok(SteelVal::Void)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
