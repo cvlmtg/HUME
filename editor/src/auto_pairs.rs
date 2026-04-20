@@ -1,4 +1,4 @@
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::changeset::ChangeSet;
 use crate::ops::edit::apply_edit;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
@@ -39,11 +39,11 @@ impl Pair {
 ///
 /// Multi-cursor: every selection is processed independently by `apply_edit`.
 pub(crate) fn insert_pair_close(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     open: char,
     close: char,
-) -> (Buffer, SelectionSet, ChangeSet) {
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -79,9 +79,9 @@ pub(crate) fn insert_pair_close(
 /// Only meaningful for cursor (single-character) selections; for non-cursor
 /// selections the caller should fall back to `delete_char_backward`.
 pub(crate) fn delete_pair(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
-) -> (Buffer, SelectionSet, ChangeSet) {
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         debug_assert!(sel.is_collapsed(), "delete_pair called on non-collapsed selection");
 
@@ -118,7 +118,7 @@ pub(crate) fn delete_pair(
 ///
 /// Callers are responsible for the all-or-nothing multi-cursor check; this
 /// function evaluates a single cursor position.
-pub(crate) fn should_auto_pair_at(buf: &Buffer, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
+pub(crate) fn should_auto_pair_at(buf: &Text, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
     let next_ok = match buf.char_at(head) {
         None => true,                         // EOF
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn delete_pair_parens() {
-        // Buffer: `(|)` where cursor is on `)`. Both are deleted.
+        // Text: `(|)` where cursor is on `)`. Both are deleted.
         assert_state!(
             "(-[)]>\n",
             |(buf, sels)| delete_pair(buf, sels),
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn auto_pair_next_alphanumeric_rejects_asymmetric() {
         // Cursor at 0, next char 'b' — should NOT auto-pair `(`.
-        let buf = Buffer::from("bar");
+        let buf = Text::from("bar");
         let pairs = default_pairs();
         assert!(!should_auto_pair_at(&buf, 0, &paren(), &pairs));
     }
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn auto_pair_next_alphanumeric_rejects_symmetric() {
         // Cursor at 0, next char 'b' — should NOT auto-pair `"`.
-        let buf = Buffer::from("bar");
+        let buf = Text::from("bar");
         let pairs = default_pairs();
         assert!(!should_auto_pair_at(&buf, 0, &quote(), &pairs));
     }
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn auto_pair_next_space_accepts() {
         // Cursor at 4 (space between words) — next char is space.
-        let buf = Buffer::from("foo bar");
+        let buf = Text::from("foo bar");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 3, &paren(), &pairs));
     }
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn auto_pair_next_newline_accepts() {
         // Cursor on the structural `\n` — next char is newline.
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 5, &paren(), &pairs));
     }
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn auto_pair_next_closing_bracket_accepts() {
         // Cursor at 1 (inside `()`), next char is `)`.
-        let buf = Buffer::from("()");
+        let buf = Text::from("()");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 1, &paren(), &pairs));
     }
@@ -355,7 +355,7 @@ mod tests {
     fn auto_pair_symmetric_prev_alphanumeric_rejects() {
         // `don't` — cursor at 3 (the `'`), prev char is `n`.
         // Should NOT auto-pair the quote.
-        let buf = Buffer::from("don't");
+        let buf = Text::from("don't");
         let pairs = default_pairs();
         assert!(!should_auto_pair_at(&buf, 3, &quote(), &pairs));
     }
@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn auto_pair_symmetric_prev_space_accepts() {
         // `say ` — cursor at 4 (the `\n`), prev char is space.
-        let buf = Buffer::from("say ");
+        let buf = Text::from("say ");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 4, &quote(), &pairs));
     }
@@ -372,7 +372,7 @@ mod tests {
     fn auto_pair_symmetric_at_position_zero_accepts() {
         // Cursor at 0 in an empty buffer (just the structural `\n`).
         // No prev char and next char is `\n` (whitespace) → should auto-pair.
-        let buf = Buffer::from("");
+        let buf = Text::from("");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 0, &quote(), &pairs));
     }
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn auto_pair_symmetric_prev_open_bracket_accepts() {
         // `( ` — cursor at 1 (space), prev char is `(` (not alphanumeric), next is space.
-        let buf = Buffer::from("( foo");
+        let buf = Text::from("( foo");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 1, &quote(), &pairs));
     }
@@ -389,7 +389,7 @@ mod tests {
     fn auto_pair_asymmetric_ignores_prev_word_char() {
         // `x ` — cursor at 1 (space), prev is `x`. Parens are asymmetric so
         // only the next-char rule applies; next is space → accept.
-        let buf = Buffer::from("x foo");
+        let buf = Text::from("x foo");
         let pairs = default_pairs();
         assert!(should_auto_pair_at(&buf, 1, &paren(), &pairs));
     }

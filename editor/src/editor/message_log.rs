@@ -10,7 +10,7 @@
 
 use std::collections::VecDeque;
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
 
 // ── Severity ─────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ impl MessageLog {
 /// Used by `:messages`; designed to be reusable for `:help` later.
 pub(crate) struct ScratchView {
     /// The read-only content to display.
-    pub(crate) buf: Buffer,
+    pub(crate) buf: Text,
     /// Current cursor/scroll position within the scratch buffer.
     pub(crate) sels: SelectionSet,
     /// Label shown in the statusline FileName slot (e.g. `"[messages]"`).
@@ -198,7 +198,7 @@ pub(crate) struct ScratchView {
 impl ScratchView {
     /// Build a scratch view from a multi-line string, cursor at the last line.
     pub(crate) fn from_text(text: &str, label: &'static str) -> Self {
-        let buf = Buffer::from(text);
+        let buf = Text::from(text);
         // Position the cursor at the start of the last content line so the user
         // sees the most recent entries when the buffer opens.
         let last_line = buf.rope().len_lines().saturating_sub(2); // skip trailing \n line

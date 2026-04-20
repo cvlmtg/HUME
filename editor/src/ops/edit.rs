@@ -1,4 +1,4 @@
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::{Selection, SelectionSet};
@@ -25,20 +25,20 @@ use crate::core::selection::{Selection, SelectionSet};
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
 // buffer and handles the invert timing constraint.
 
-/// Apply a `(&Buffer, SelectionSet) -> SelectionSet` command `count` times.
+/// Apply a `(&Text, SelectionSet) -> SelectionSet` command `count` times.
 ///
 #[allow(dead_code)]
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
-/// is needed for undo/redo bookkeeping via [`crate::core::document::Document`].
+/// is needed for undo/redo bookkeeping via [`crate::editor::buffer::Buffer`].
 ///
 /// For motions, count is handled inside `apply_motion` per-selection instead
 /// (prevents premature merging of multi-cursor selections between steps).
 pub(crate) fn repeat(
     count: usize,
-    buf: &Buffer,
+    buf: &Text,
     sels: SelectionSet,
-    cmd: impl Fn(&Buffer, SelectionSet) -> SelectionSet,
+    cmd: impl Fn(&Text, SelectionSet) -> SelectionSet,
 ) -> SelectionSet {
     (0..count).fold(sels, |s, _| cmd(buf, s))
 }
@@ -46,18 +46,18 @@ pub(crate) fn repeat(
 #[allow(dead_code)]
 /// Apply an edit command `count` times, composing all changesets into one.
 ///
-/// Like [`repeat`], but the command must return `(Buffer, SelectionSet,
+/// Like [`repeat`], but the command must return `(Text, SelectionSet,
 /// ChangeSet)`. The N changesets are folded with [`ChangeSet::compose`] so the
 /// whole repetition becomes a single undo step when passed to
-/// [`crate::core::document::Document::apply_edit`].
+/// [`crate::editor::buffer::Buffer::apply_edit`].
 ///
 /// If `count == 0`, returns the original state with an identity ChangeSet.
 pub(crate) fn repeat_edit(
     count: usize,
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
-    cmd: impl Fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet),
-) -> (Buffer, SelectionSet, ChangeSet) {
+    cmd: impl Fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+) -> (Text, SelectionSet, ChangeSet) {
     let mut current_buf = buf;
     let mut current_sels = sels;
     let mut composed: Option<ChangeSet> = None;
@@ -105,12 +105,12 @@ pub(crate) fn repeat_edit(
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
 pub(crate) fn apply_edit_with_capture<F>(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     mut f: F,
-) -> (Buffer, SelectionSet, ChangeSet, Vec<String>)
+) -> (Text, SelectionSet, ChangeSet, Vec<String>)
 where
-    F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>, &mut Vec<String>),
+    F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>, &mut Vec<String>),
 {
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels = Vec::with_capacity(sels.len());
@@ -137,9 +137,9 @@ where
 
 /// Convenience wrapper around [`apply_edit_with_capture`] for edits that
 /// don't need to capture per-selection output.
-pub(crate) fn apply_edit<F>(buf: Buffer, sels: SelectionSet, mut f: F) -> (Buffer, SelectionSet, ChangeSet)
+pub(crate) fn apply_edit<F>(buf: Text, sels: SelectionSet, mut f: F) -> (Text, SelectionSet, ChangeSet)
 where
-    F: FnMut(&mut ChangeSetBuilder, &Buffer, usize, &Selection, &mut Vec<Selection>),
+    F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>),
 {
     let (new_buf, new_sels, cs, _) =
         apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, _captured| {
@@ -158,7 +158,7 @@ where
 /// translates them to result-buffer positions internally.
 fn delete_one_grapheme(
     b: &mut ChangeSetBuilder,
-    buf: &Buffer,
+    buf: &Text,
     new_sels: &mut Vec<Selection>,
     p: usize,
 ) {
@@ -188,7 +188,7 @@ fn delete_one_grapheme(
 /// identical selection branches.
 fn delete_sel_region(
     b: &mut ChangeSetBuilder,
-    buf: &Buffer,
+    buf: &Text,
     sel: &Selection,
     new_sels: &mut Vec<Selection>,
 ) {
@@ -215,13 +215,13 @@ fn delete_sel_region(
 /// also accept `Fn` closures (they are a strict subset), but using the weakest
 /// sufficient bound makes the intent clearer to readers.
 fn paste_impl<P>(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     values: &[String],
     cursor_insert_pos: P,
-) -> (Buffer, SelectionSet, ChangeSet, Vec<String>)
+) -> (Text, SelectionSet, ChangeSet, Vec<String>)
 where
-    P: Fn(&Buffer, &Selection) -> usize,
+    P: Fn(&Text, &Selection) -> usize,
 {
     if values.is_empty() {
         // Nothing to paste — return an identity ChangeSet (all Retain).
@@ -291,7 +291,7 @@ where
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer, SelectionSet, ChangeSet) {
+pub(crate) fn insert_char(buf: Text, sels: SelectionSet, ch: char) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -318,9 +318,9 @@ pub(crate) fn insert_char(buf: Buffer, sels: SelectionSet, ch: char) -> (Buffer,
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`.
 pub(crate) fn delete_char_forward(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
-) -> (Buffer, SelectionSet, ChangeSet) {
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             delete_one_grapheme(b, buf, new_sels, sel.head);
@@ -339,9 +339,9 @@ pub(crate) fn delete_char_forward(
 ///   lands on `start()`. (Same as `delete_char_forward` for selections —
 ///   Delete and Backspace both clear a selection.)
 pub(crate) fn delete_char_backward(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
-) -> (Buffer, SelectionSet, ChangeSet) {
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head;
@@ -388,7 +388,7 @@ pub(crate) fn delete_char_backward(
 /// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
 /// registers.write(DEFAULT_REGISTER, yanked);
 /// ```
-pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, SelectionSet, ChangeSet) {
+pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and
     // pressing `d` on a selection deletes the selected region — exactly what
     // delete_char_forward does. There is no functional difference between the
@@ -418,10 +418,10 @@ pub(crate) fn delete_selection(buf: Buffer, sels: SelectionSet) -> (Buffer, Sele
 /// An empty `values` slice is a no-op (returns the original state and an empty
 /// `replaced` vec).
 pub(crate) fn paste_after(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
     // `last_char` = index of the structural \n. Must be read before `buf` is
     // consumed by `paste_impl`, so we capture it here and move it into the closure.
     let last_char = buf.len_chars() - 1;
@@ -443,10 +443,10 @@ pub(crate) fn paste_after(
 ///
 /// An empty `values` slice is a no-op.
 pub(crate) fn paste_before(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     values: &[String],
-) -> (Buffer, SelectionSet, ChangeSet, Vec<String>) {
+) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
     paste_impl(buf, sels, values, |_buf, sel| sel.start())
 }
 
@@ -464,10 +464,10 @@ pub(crate) fn paste_before(
 ///   multiple lines. The structural trailing `\n` is protected by the same
 ///   rule.
 pub(crate) fn replace_selections(
-    buf: Buffer,
+    buf: Text,
     sels: SelectionSet,
     ch: char,
-) -> (Buffer, SelectionSet, ChangeSet) {
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let sel_start = sel.start();
         let sel_end   = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
@@ -576,7 +576,7 @@ mod tests {
         // Selection head lands on the base codepoint 'e' of {e\u{0301}} = é.
         // The fix extends the delete to include the combining mark, so typing
         // 'Z' fully replaces "café" rather than leaving an orphaned accent.
-        // Buffer: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
+        // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
         // Result: chars 0-4 deleted, 'Z' inserted → "Z x\n", cursor at 1 (' ').
         assert_state!(
             "-[cafe]>\u{0301} x\n",
@@ -598,7 +598,7 @@ mod tests {
     fn insert_char_replaces_backward_selection() {
         // anchor=3, head=0 covers chars 0-3 ('h','e','l','l') — "hell" (4 chars).
         // Delete [0,4), insert 'x' at 0, cursor at 1.
-        // Buffer "hello" → remove "hell" → "o", insert 'x' → "xo".
+        // Text "hello" → remove "hell" → "o", insert 'x' → "xo".
         assert_state!(
             "<[hell]-o\n",
             |(buf, sels)| insert_char(buf, sels,'x'),
@@ -857,7 +857,7 @@ mod tests {
         // Multi-char selection whose head (sel.end()) lands on the base codepoint
         // 'e' of the grapheme {e\u{0301}} = é. The fix extends the delete to
         // include the combining mark at position 4, so no orphaned accent remains.
-        // Buffer: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
+        // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
         // Without the fix: only chars 0-3 deleted → "\u{0301} x\n" (broken).
         // With the fix: chars 0-4 deleted → " x\n" (correct).
         assert_state!(
@@ -870,13 +870,13 @@ mod tests {
     // ── paste_after ───────────────────────────────────────────────────────────
 
     // Helper: call paste_after and discard changeset + replaced vec for assert_state!.
-    fn pa(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
+    fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet) {
         let (b, s, _, _) = paste_after(buf, sels, values);
         (b, s)
     }
 
     // Helper: call paste_before and discard changeset + replaced vec for assert_state!.
-    fn pb(buf: Buffer, sels: SelectionSet, values: &[String]) -> (Buffer, SelectionSet) {
+    fn pb(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet) {
         let (b, s, _, _) = paste_before(buf, sels, values);
         (b, s)
     }
@@ -982,7 +982,7 @@ mod tests {
     fn paste_after_replace_multi_cursor_n_to_n() {
         // Two non-cursor selections; two values — each replaced independently.
         // "-[he]>l-[lo]>\n": "he" replaced by "AB", "lo" replaced by "CD".
-        // Buffer: h(0)e(1)l(2)l(3)o(4)\n(5)
+        // Text: h(0)e(1)l(2)l(3)o(4)\n(5)
         // After: AB + l + CD + \n = "ABlCD\n"
         assert_state!(
             "-[he]>l-[lo]>\n",
@@ -998,7 +998,7 @@ mod tests {
     fn paste_after_mixed_cursor_and_selection() {
         // One cursor (inserts) + one multi-char selection (replaces).
         // "-[h]>el-[lo]>\n": cursor at 'h' inserts "AB" after it; "lo" is replaced by "CD".
-        // Buffer: h + AB + el + CD + \n = "hABelCD\n"
+        // Text: h + AB + el + CD + \n = "hABelCD\n"
         // Cursors land on 'B' (pos 2) and 'D' (pos 6).
         assert_state!(
             "-[h]>el-[lo]>\n",
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     fn paste_before_two_cursors_n_to_n() {
         // Two cursors; two values — each cursor gets its own slot.
-        // Buffer after: AB + hell + CD + o + \n
+        // Text after: AB + hell + CD + o + \n
         assert_state!(
             "-[h]>ell-[o]>\n",
             |(buf, sels)| pb(buf, sels, &["AB".to_string(), "CD".to_string()]),
@@ -1181,7 +1181,7 @@ mod tests {
 
     #[test]
     fn paste_after_multiline_text() {
-        // Paste "foo\nbar" after 'h'. Buffer: "h" + "foo\nbar" + "ello\n".
+        // Paste "foo\nbar" after 'h'. Text: "h" + "foo\nbar" + "ello\n".
         // Cursor lands on the last pasted char 'r'(7).
         assert_state!(
             "-[h]>ello\n",
@@ -1195,7 +1195,7 @@ mod tests {
 
     #[test]
     fn paste_before_multiline_text() {
-        // Paste "foo\nbar" before 'h'. Buffer: "foo\nbar" + "hello\n".
+        // Paste "foo\nbar" before 'h'. Text: "foo\nbar" + "hello\n".
         // Cursor lands on the last pasted char 'r'(6).
         assert_state!(
             "-[h]>ello\n",
@@ -1310,7 +1310,7 @@ mod tests {
 
     #[test]
     fn replace_empty_buffer_is_noop() {
-        // Buffer is just the structural '\n'.
+        // Text is just the structural '\n'.
         assert_state!(
             "-[\n]>",
             |(buf, sels)| replace_selections(buf, sels, 'x'),
@@ -1371,7 +1371,7 @@ mod tests {
     #[test]
     fn replace_grapheme_cluster_cursor() {
         // Cursor on 'é' (e + U+0301, 2 codepoints). Replaced with 'x' (1 codepoint).
-        // Buffer shrinks by 1 char; cursor lands on 'x'.
+        // Text shrinks by 1 char; cursor lands on 'x'.
         assert_state!(
             "caf-[e]>\u{0301}z\n",
             |(buf, sels)| replace_selections(buf, sels, 'x'),

@@ -1,9 +1,9 @@
 //! Incremental search over a rope buffer using `regex-cursor`.
 //!
-//! All functions here are pure: they read `Buffer` and a compiled `Regex`,
+//! All functions here are pure: they read `Text` and a compiled `Regex`,
 //! return char-offset ranges, and never modify editor state. The regex match
 //! byte offsets from `regex-cursor` are converted to HUME's char offsets via
-//! `Buffer::byte_to_char`.
+//! `Text::byte_to_char`.
 //!
 //! # Coordinate system
 //!
@@ -13,7 +13,7 @@
 
 use regex_cursor::{engines::meta::Regex, Input, RopeyCursor};
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 use crate::editor::SearchDirection;
 
 // ── compile_search_regex ──────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ pub(crate) fn compile_search_regex(pattern: &str) -> Option<Regex> {
 /// Returns `None` when no match exists anywhere in the buffer, or when the
 /// match is zero-width (which would cause the cursor to appear stuck).
 pub(crate) fn find_next_match(
-    buf: &Buffer,
+    buf: &Text,
     regex: &Regex,
     from_char: usize,
     direction: SearchDirection,
@@ -102,7 +102,7 @@ pub(crate) fn find_next_match(
 ///
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
-pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize)> {
+pub(crate) fn find_all_matches(buf: &Text, regex: &Regex) -> Vec<(usize, usize)> {
     find_matches_in_range(buf, regex, 0, buf.len_chars() - 1)
 }
 
@@ -114,7 +114,7 @@ pub(crate) fn find_all_matches(buf: &Buffer, regex: &Regex) -> Vec<(usize, usize
 /// are returned. Results are `(start_char, end_char_inclusive)` pairs in
 /// document order. Zero-width matches are skipped.
 pub(crate) fn find_matches_in_range(
-    buf: &Buffer,
+    buf: &Text,
     regex: &Regex,
     start_char: usize,
     end_char: usize, // inclusive
@@ -241,7 +241,7 @@ pub(crate) fn find_match_from_cache(
 /// Find the first non-zero-width match in `byte_range`, returning
 /// `Some((start_char, end_char_inclusive, false))` or `None`.
 fn search_first_in(
-    buf: &Buffer,
+    buf: &Text,
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
 ) -> Option<(usize, usize, bool)> {
@@ -264,7 +264,7 @@ fn search_first_in(
 /// simple, acceptable for typical buffer sizes. A reverse-DFA approach could be
 /// added later for very large files.
 fn search_last_in(
-    buf: &Buffer,
+    buf: &Text,
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
 ) -> Option<(usize, usize, bool)> {
@@ -288,14 +288,14 @@ fn search_last_in(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::buffer::Buffer;
+    use crate::core::text::Text;
 
     fn re(pattern: &str) -> Regex {
         Regex::new(pattern).expect("test regex should be valid")
     }
 
-    fn buf(text: &str) -> Buffer {
-        Buffer::from(text)
+    fn buf(text: &str) -> Text {
+        Text::from(text)
     }
 
     // ── compile_search_regex (smart case) ──────────────────────────────────────
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn unicode_multibyte_char() {
         // "é" in NFC is a single codepoint (U+00E9, 2 bytes in UTF-8).
-        // Buffer chars: [é, space, b, o, n, \n]
+        // Text chars: [é, space, b, o, n, \n]
         let b = buf("é bon\n");
         let (s, e, _) = find_next_match(&b, &re("bon"), 0, SearchDirection::Forward).unwrap();
         assert_eq!((s, e), (2, 4));
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn unicode_combining_sequence() {
         // "é" as combining sequence: e (U+0065) + combining acute (U+0301) = 2 chars.
-        // Buffer chars: [e, \u{0301}, space, b, o, n, \n]  (7 chars total)
+        // Text chars: [e, \u{0301}, space, b, o, n, \n]  (7 chars total)
         let b = buf("e\u{0301} bon\n");
         let (s, e, _) = find_next_match(&b, &re("bon"), 0, SearchDirection::Forward).unwrap();
         // "b" is at char 3, "bon" spans chars 3..5 inclusive

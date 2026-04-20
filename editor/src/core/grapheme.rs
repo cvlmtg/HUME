@@ -1,6 +1,6 @@
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
-use crate::core::buffer::Buffer;
+use crate::core::text::Text;
 
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
@@ -28,7 +28,7 @@ use crate::core::buffer::Buffer;
 /// O(n) in space and time. `GraphemeCursor` supports a chunk-at-a-time API
 /// (`next_boundary` / `provide_context`) that lets us stay O(log n) and
 /// allocation-free.
-pub(crate) fn next_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize {
+pub(crate) fn next_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
     let len_chars = buf.len_chars();
     if char_offset >= len_chars {
         return len_chars;
@@ -81,7 +81,7 @@ pub(crate) fn next_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
 /// `char_offset`.
 ///
 /// Returns `0` when `char_offset` is already at the start of the buffer.
-pub(crate) fn prev_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize {
+pub(crate) fn prev_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
     if char_offset == 0 {
         return 0;
     }
@@ -140,7 +140,7 @@ pub(crate) fn prev_grapheme_boundary(buf: &Buffer, char_offset: usize) -> usize 
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
-pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> usize {
+pub(crate) fn grapheme_count(buf: &Text, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {
         return 0;
@@ -190,7 +190,7 @@ pub(crate) fn grapheme_count(buf: &Buffer, from_char: usize, to_char: usize) -> 
 /// This is a logical position (grapheme index), not a display column: wide
 /// characters count as one, not two. The value matches how many times the
 /// user pressed → to reach the cursor from the start of the line.
-pub(crate) fn grapheme_col_in_line(buf: &Buffer, line_idx: usize, char_pos: usize) -> usize {
+pub(crate) fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usize {
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }
 
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn ascii_next_single_step() {
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         assert_eq!(next_grapheme_boundary(&buf, 0), 1);
         assert_eq!(next_grapheme_boundary(&buf, 1), 2);
         assert_eq!(next_grapheme_boundary(&buf, 4), 5);
@@ -216,7 +216,7 @@ mod tests {
     fn ascii_next_walk() {
         // Walk forward through every grapheme in "hello\n" (6 chars).
         // Each char is its own grapheme, so boundaries are 0,1,2,…,6.
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         let boundaries: Vec<usize> =
             std::iter::successors(Some(0usize), |&c| {
                 let n = next_grapheme_boundary(&buf, c);
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn ascii_prev_single_step() {
-        let buf = Buffer::from("hello");
+        let buf = Text::from("hello");
         assert_eq!(prev_grapheme_boundary(&buf, 5), 4);
         assert_eq!(prev_grapheme_boundary(&buf, 1), 0);
     }
@@ -239,7 +239,7 @@ mod tests {
     fn combining_char_next() {
         // "e\u{0301}x\n" is 4 chars, 3 grapheme clusters: ["é", "x", "\n"].
         // next(0) must skip both chars of the combining cluster and return 2.
-        let buf = Buffer::from("e\u{0301}x");
+        let buf = Text::from("e\u{0301}x");
         assert_eq!(buf.len_chars(), 4);
         assert_eq!(next_grapheme_boundary(&buf, 0), 2); // skip the whole é cluster
         assert_eq!(next_grapheme_boundary(&buf, 2), 3); // x → \n boundary
@@ -250,7 +250,7 @@ mod tests {
         // Offset 1 is *inside* the é cluster (between 'e' and U+0301).
         // next() should still find the next boundary at 2, not at 1+1=2
         // by coincidence — it must consult the grapheme algorithm.
-        let buf = Buffer::from("e\u{0301}x");
+        let buf = Text::from("e\u{0301}x");
         assert_eq!(next_grapheme_boundary(&buf, 1), 2);
     }
 
@@ -259,7 +259,7 @@ mod tests {
         // prev(1) from inside the é cluster should return 0 (start of cluster),
         // not 1-1=0 by coincidence — test with a prefix to break the coincidence.
         // "ae\u{0301}x\n" — offset 2 is inside the é cluster (between 'e' and U+0301).
-        let buf = Buffer::from("ae\u{0301}x");
+        let buf = Text::from("ae\u{0301}x");
         assert_eq!(buf.len_chars(), 5);
         assert_eq!(prev_grapheme_boundary(&buf, 2), 1); // back to start of é, not to 'a'
     }
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn combining_char_prev() {
         // prev from end of "é" (char offset 2) must jump back to 0, not to 1.
-        let buf = Buffer::from("e\u{0301}x");
+        let buf = Text::from("e\u{0301}x");
         assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
         assert_eq!(prev_grapheme_boundary(&buf, 3), 2);
     }
@@ -278,14 +278,14 @@ mod tests {
     fn zwj_emoji_next() {
         // U+1F468 ZWJ U+1F469 ZWJ U+1F467 — 5 chars, 1 grapheme cluster; + "\n".
         // next(0) must return 5 — the whole family is one cluster.
-        let buf = Buffer::from("👨‍👩‍👧");
+        let buf = Text::from("👨‍👩‍👧");
         assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
         assert_eq!(next_grapheme_boundary(&buf, 0), 5);
     }
 
     #[test]
     fn zwj_emoji_prev() {
-        let buf = Buffer::from("👨‍👩‍👧");
+        let buf = Text::from("👨‍👩‍👧");
         assert_eq!(prev_grapheme_boundary(&buf, 5), 0);
     }
 
@@ -297,7 +297,7 @@ mod tests {
         //                           👨(6) ZWJ(7) 👩(8) ZWJ(9) 👧(10) !(11) \n(12)
         // Graphemes: H, e, l, l, o, ' ', [👨‍👩‍👧], !, \n
         // Boundaries: 0, 1, 2, 3, 4, 5, 6, 11, 12, 13
-        let buf = Buffer::from("Hello 👨‍👩‍👧!");
+        let buf = Text::from("Hello 👨‍👩‍👧!");
         assert_eq!(buf.len_chars(), 13);
 
         let expected = vec![0usize, 1, 2, 3, 4, 5, 6, 11, 12, 13];
@@ -315,27 +315,27 @@ mod tests {
     #[test]
     fn next_at_end_returns_len() {
         // "hi\n" is 3 chars. next(2) steps past '\n' to len_chars=3.
-        let buf = Buffer::from("hi");
+        let buf = Text::from("hi");
         assert_eq!(next_grapheme_boundary(&buf, 2), 3); // '\n' → one past it = len_chars
         assert_eq!(next_grapheme_boundary(&buf, 99), 3); // past end — clamped to len_chars
     }
 
     #[test]
     fn prev_at_start_returns_zero() {
-        let buf = Buffer::from("hi");
+        let buf = Text::from("hi");
         assert_eq!(prev_grapheme_boundary(&buf, 0), 0);
     }
 
     #[test]
     fn empty_buffer_next() {
-        // Buffer::empty() = "\n" (1 char). next(0) steps past '\n' to len_chars=1.
-        let buf = Buffer::empty();
+        // Text::empty() = "\n" (1 char). next(0) steps past '\n' to len_chars=1.
+        let buf = Text::empty();
         assert_eq!(next_grapheme_boundary(&buf, 0), 1);
     }
 
     #[test]
     fn empty_buffer_prev() {
-        let buf = Buffer::empty();
+        let buf = Text::empty();
         assert_eq!(prev_grapheme_boundary(&buf, 0), 0);
     }
 
@@ -346,7 +346,7 @@ mod tests {
         // 🇺🇸 is U+1F1FA (regional indicator U) + U+1F1F8 (regional indicator S).
         // Both codepoints form a single grapheme cluster. next from 0 must skip
         // both to land at 2.
-        let buf = Buffer::from("\u{1F1FA}\u{1F1F8}");
+        let buf = Text::from("\u{1F1FA}\u{1F1F8}");
         // buf: U+1F1FA(0) U+1F1F8(1) '\n'(2) = 3 chars
         assert_eq!(next_grapheme_boundary(&buf, 0), 2);
         assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn devanagari_vowel_sign() {
         // "क" (U+0915) + "ा" (U+093E vowel sign aa) form one grapheme cluster.
-        let buf = Buffer::from("\u{0915}\u{093E}");
+        let buf = Text::from("\u{0915}\u{093E}");
         // buf: U+0915(0) U+093E(1) '\n'(2) = 3 chars
         assert_eq!(next_grapheme_boundary(&buf, 0), 2);
         assert_eq!(prev_grapheme_boundary(&buf, 2), 0);
@@ -365,21 +365,21 @@ mod tests {
 
     #[test]
     fn grapheme_count_ascii() {
-        let buf = Buffer::from("hello\n");
+        let buf = Text::from("hello\n");
         // "hello" = 5 graphemes; line starts at 0
         assert_eq!(grapheme_count(&buf, 0, 5), 5);
     }
 
     #[test]
     fn grapheme_count_zero_range() {
-        let buf = Buffer::from("hello\n");
+        let buf = Text::from("hello\n");
         assert_eq!(grapheme_count(&buf, 2, 2), 0);
     }
 
     #[test]
     fn grapheme_count_combining_char() {
         // "e\u{0301}x" = 3 chars but 2 grapheme clusters ("é", "x") + structural \n
-        let buf = Buffer::from("e\u{0301}x\n");
+        let buf = Text::from("e\u{0301}x\n");
         // from char 0 to char 2 (past the combining cluster): 1 grapheme
         assert_eq!(grapheme_count(&buf, 0, 2), 1);
         // from char 0 to char 3 (past "x"): 2 graphemes
@@ -389,9 +389,9 @@ mod tests {
     #[test]
     fn grapheme_count_zwj_emoji() {
         // 👨‍👩‍👧 = 5 codepoints, 1 grapheme cluster.
-        // Buffer::from("👨‍👩‍👧\n"): the string already ends with \n so no extra is
+        // Text::from("👨‍👩‍👧\n"): the string already ends with \n so no extra is
         // added — total 6 chars (5 emoji codepoints + \n).
-        let buf = Buffer::from("👨‍👩‍👧\n");
+        let buf = Text::from("👨‍👩‍👧\n");
         assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
         // from 0 to 5 (past the whole emoji): 1 grapheme
         assert_eq!(grapheme_count(&buf, 0, 5), 1);
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn grapheme_count_multiline_offset() {
         // "ab\ncd\n" — "cd" starts at char 3
-        let buf = Buffer::from("ab\ncd\n");
+        let buf = Text::from("ab\ncd\n");
         // from line 1 start (char 3) to char 5 (past "cd"): 2 graphemes
         assert_eq!(grapheme_count(&buf, 3, 5), 2);
         // from 3 to 3: 0
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn grapheme_count_reversed_range_returns_zero() {
         // to_char < from_char is clamped to an empty range.
-        let buf = Buffer::from("hello\n");
+        let buf = Text::from("hello\n");
         assert_eq!(grapheme_count(&buf, 3, 1), 0);
     }
 
@@ -418,7 +418,7 @@ mod tests {
     fn grapheme_count_to_buffer_end() {
         // to_char == len_chars (the structural \n is the last char).
         // "hi\n" has len_chars = 3; counting from 0 to 3 covers h, i, \n = 3 graphemes.
-        let buf = Buffer::from("hi\n");
+        let buf = Text::from("hi\n");
         assert_eq!(buf.len_chars(), 3);
         assert_eq!(grapheme_count(&buf, 0, 3), 3);
     }
