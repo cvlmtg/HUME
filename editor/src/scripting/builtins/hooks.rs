@@ -1,6 +1,6 @@
 //! `(register-hook! 'hook-name proc)` builtin.
 
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::scripting::SteelCtx;
@@ -22,15 +22,15 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
         SteelVal::SymbolV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch => "register-hook!: expected a symbol, got {:?}", name),
     };
-    let hook_id = HookId::from_symbol(&name_str)
-        .ok_or_else(|| SteelErr::new(
-            ErrorKind::Generic,
-            format!(
-                "register-hook!: unknown hook '{}'; known hooks: {}",
-                name_str,
-                HookId::all_names().collect::<Vec<_>>().join(", "),
-            ),
-        ))?;
+    let hook_id = match HookId::from_symbol(&name_str) {
+        Some(id) => id,
+        None => steel::stop!(
+            Generic =>
+            "register-hook!: unknown hook '{}'; known hooks: {}",
+            name_str,
+            HookId::all_names().collect::<Vec<_>>().join(", ")
+        ),
+    };
     let owner = ctx.plugin_stack.current_owner();
     ctx.hooks.register(hook_id, owner, proc);
     Ok(SteelVal::Void)
