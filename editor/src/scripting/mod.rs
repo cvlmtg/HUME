@@ -426,9 +426,12 @@ fn run_steel<'a>(
 ///
 /// Constructed before an eval via [`EvalSnapshot::capture`]; on success the
 /// snapshot is simply dropped (or ignored). On error, call
-/// [`EvalSnapshot::restore`] to revert every field to its pre-eval value.
+/// [`EvalSnapshot::restore`] to revert all reverted fields to their pre-eval
+/// values.
 ///
-/// Covers all mutable state a plugin can touch during init.
+/// Covers: settings, keymap, plugin_stack, ledger_stack, cmd_owners, hooks.
+/// `pending_messages` is intentionally NOT reverted — messages from the
+/// failed eval are preserved so the user can see what went wrong.
 struct EvalSnapshot {
     settings:     EditorSettings,
     keymap:       Keymap,
@@ -865,6 +868,15 @@ impl ScriptingHost {
             let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
             (result, steel_ctx.cmd_queue)
         };
+
+        // Null out arg and proc globals before returning — releases Arc references
+        // to closed buffers and prevents stale values leaking into later fires.
+        for i in 0..args.len() {
+            self.engine.update_value(&hook_arg_name(i), SteelVal::Void);
+        }
+        for i in 0..handler_procs.len() {
+            self.engine.update_value(&hook_proc_name(i), SteelVal::Void);
+        }
 
         result?;
         Ok(cmd_queue)
@@ -1777,6 +1789,35 @@ mod tests {
             &mut s, &mut km,
         ).unwrap_err();
         assert!(err.contains("unknown hook"), "got: {err}");
+    }
+
+    #[test]
+    fn fire_hook_globals_cleared_between_fires() {
+        // After each fire_hook call, *hume.ha0* / *hume.hp0* … must be Void.
+        // Leaking them keeps Arc references alive (e.g. to a closed buffer)
+        // and may surface stale data in subsequent fires with fewer args.
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        // Handler reads arg 0 and queues its string representation.
+        h.eval_source(
+            r#"(register-hook! 'on-mode-change (lambda (old new) (call! new)))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        use steel::rvals::IntoSteelVal as _;
+        let old_val = "normal".into_steelval().unwrap();
+        let new_val = "insert".into_steelval().unwrap();
+        let q1 = h.fire_hook(
+            HookId::OnModeChange, &[old_val.clone(), new_val], test_refs(&mut s, &mut km),
+        ).unwrap();
+        assert_eq!(q1, vec!["insert"]);
+
+        // Second fire with different args — stale *hume.ha1* would give wrong result.
+        let new_val2 = "normal".into_steelval().unwrap();
+        let q2 = h.fire_hook(
+            HookId::OnModeChange, &[old_val, new_val2], test_refs(&mut s, &mut km),
+        ).unwrap();
+        assert_eq!(q2, vec!["normal"], "second fire must not see stale globals from first");
     }
 
     #[test]
