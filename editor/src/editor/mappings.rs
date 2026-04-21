@@ -9,7 +9,7 @@ use crate::core::jump_list::JumpEntry;
 use crate::core::search_state::SearchPattern;
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
-use crate::core::selection::{Selection, SelectionSet};
+use crate::core::selection::Selection;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
 use crate::ops::MotionMode;
@@ -621,11 +621,9 @@ impl Editor {
                 let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
                     let bid = self.focused_buffer_id();
-                    self.pane_jumps[self.focused_pane_id].push(JumpEntry {
-                        buffer_id: bid,
-                        selections: SelectionSet::single(pre_primary),
-                        primary_line: pre_line,
-                    });
+                    self.pane_jumps[self.focused_pane_id].push(
+                        JumpEntry::from_pre_motion(pre_primary, pre_line, bid),
+                    );
                 }
             }
 

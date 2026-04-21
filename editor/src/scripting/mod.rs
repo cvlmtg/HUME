@@ -60,6 +60,28 @@ fn hook_arg_name(i: usize) -> String { format!("*hume.ha{i}*") }
 /// Internal Steel global name for the i-th handler proc bound during a hook fire.
 fn hook_proc_name(i: usize) -> String { format!("*hume.hp{i}*") }
 
+/// Build the composite hook invocation program for `handler_count` handlers
+/// and `arg_count` arguments.  The result is deterministic and cacheable.
+fn build_hook_program(arg_count: usize, handler_count: usize) -> String {
+    let mut arg_exprs = String::with_capacity(arg_count * 14);
+    for i in 0..arg_count {
+        if i > 0 { arg_exprs.push(' '); }
+        arg_exprs.push_str(&hook_arg_name(i));
+    }
+    let mut program = String::with_capacity(handler_count * (18 + arg_exprs.len()));
+    for i in 0..handler_count {
+        if i > 0 { program.push('\n'); }
+        program.push('(');
+        program.push_str(&hook_proc_name(i));
+        if arg_count > 0 {
+            program.push(' ');
+            program.push_str(&arg_exprs);
+        }
+        program.push(')');
+    }
+    program
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────────
 
 /// Arms a wall-clock budget for a single Steel eval.
@@ -439,6 +461,9 @@ struct EvalSnapshot {
     ledger_stack: LedgerStack,
     cmd_owners:   std::collections::HashMap<String, String>,
     hooks:        HookRegistry,
+    /// Version of `hooks` at capture time — used to skip the write-back in
+    /// `restore` when no hooks were registered during the failed eval.
+    hooks_version_at_capture: u32,
 }
 
 impl EvalSnapshot {
@@ -450,6 +475,7 @@ impl EvalSnapshot {
             ledger_stack: host.ledger_stack.clone(),
             cmd_owners:   host.cmd_owners.clone(),
             hooks:        host.hooks.clone(),
+            hooks_version_at_capture: host.hooks.version,
         }
     }
 
@@ -459,7 +485,10 @@ impl EvalSnapshot {
         host.plugin_stack   = self.plugin_stack;
         host.ledger_stack   = self.ledger_stack;
         host.cmd_owners     = self.cmd_owners;
-        host.hooks          = self.hooks;
+        // Skip write-back when no hooks were registered during the failed eval.
+        if host.hooks.version != self.hooks_version_at_capture {
+            host.hooks = self.hooks;
+        }
     }
 }
 
@@ -498,6 +527,10 @@ pub(crate) struct ScriptingHost {
     /// `(hume/yield!)` calls should abort the running script.  Reset to
     /// `false` after every `eval_init` call.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
+    /// Cache of pre-built hook invocation programs keyed by
+    /// `(arg_count, handler_count)`.  The program text is deterministic given
+    /// those two values, so it is built once and reused across fires.
+    hook_program_cache: std::collections::HashMap<(usize, usize), String>,
 }
 
 impl ScriptingHost {
@@ -533,14 +566,15 @@ impl ScriptingHost {
         builtins::register_all(&mut engine);
         Self {
             engine,
-            plugin_stack:     PluginStack::default(),
-            ledger_stack:     LedgerStack::default(),
-            cmd_owners:       std::collections::HashMap::new(),
-            hooks:            HookRegistry::default(),
-            pending_messages: Vec::new(),
+            plugin_stack:        PluginStack::default(),
+            ledger_stack:        LedgerStack::default(),
+            cmd_owners:          std::collections::HashMap::new(),
+            hooks:               HookRegistry::default(),
+            pending_messages:    Vec::new(),
             data_dir,
             runtime_dir,
-            interrupt_flag:   Arc::new(AtomicBool::new(false)),
+            interrupt_flag:      Arc::new(AtomicBool::new(false)),
+            hook_program_cache:  std::collections::HashMap::new(),
         }
     }
 
@@ -829,28 +863,21 @@ impl ScriptingHost {
             .collect();
         if handler_procs.is_empty() { return Ok(vec![]); }
 
-        // Pre-bind each arg as a global and accumulate the space-separated name
-        // list in one pass — avoids an intermediate Vec<String>.
-        let mut arg_exprs = String::with_capacity(args.len() * 14);
+        // Pre-bind each arg global.
         for (i, arg) in args.iter().enumerate() {
-            let name = hook_arg_name(i);
-            self.engine.register_value(&name, arg.clone());
-            if i > 0 { arg_exprs.push(' '); }
-            arg_exprs.push_str(&name);
+            self.engine.register_value(&hook_arg_name(i), arg.clone());
         }
 
-        // Pre-bind each handler proc and build the composite program in one pass.
-        let mut program = String::with_capacity(handler_procs.len() * (18 + arg_exprs.len()));
+        // Pre-bind each handler proc global.
         for (i, proc) in handler_procs.iter().enumerate() {
-            let name = hook_proc_name(i);
-            self.engine.register_value(&name, proc.clone());
-            if i > 0 { program.push('\n'); }
-            program.push('(');
-            program.push_str(&name);
-            program.push(' ');
-            program.push_str(&arg_exprs);
-            program.push(')');
+            self.engine.register_value(&hook_proc_name(i), proc.clone());
         }
+
+        // Look up (or build once) the composite invocation program.
+        let program = self.hook_program_cache
+            .entry((args.len(), handler_procs.len()))
+            .or_insert_with(|| build_hook_program(args.len(), handler_procs.len()))
+            .clone();
 
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
 

@@ -962,11 +962,6 @@ impl Editor {
         }
     }
 
-    /// Capture the current editor state into `statusline_data` so `HumeStatusline`
-    /// renders a consistent snapshot each frame.
-    ///
-    /// Called once per frame before `term.draw`. Per-frame rebuild is cheap:
-    /// a handful of clones of short strings.
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     ///

@@ -54,12 +54,16 @@ impl HookId {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HookRegistry {
     handlers: HashMap<HookId, Vec<(Owner, SteelVal)>>,
+    /// Monotonically increasing; wraps on overflow.  Incremented by every
+    /// `register` call so callers can detect whether hooks changed.
+    pub(crate) version: u32,
 }
 
 impl HookRegistry {
     /// Append `proc` to the handler list for `hook_id`, attributed to `owner`.
     pub(crate) fn register(&mut self, hook_id: HookId, owner: Owner, proc: SteelVal) {
         self.handlers.entry(hook_id).or_default().push((owner, proc));
+        self.version = self.version.wrapping_add(1);
     }
 
     /// Return the handlers for `hook_id` in registration order.
