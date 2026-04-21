@@ -6,8 +6,7 @@
 //!
 //! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,
 //! `switch_to_buffer_with_jump`, `replace_buffer_in_place`) are thin
-//! delegators; all logic lives here.  Callers are responsible for keeping any
-//! denormalised `buffer_id` field in sync after mutations.
+//! delegators; all logic lives here.
 
 use slotmap::SecondaryMap;
 
@@ -71,8 +70,7 @@ pub(crate) fn switch_pane_to_buffer(
 /// `pane_jumps[focused_pane_id]`.
 ///
 /// Caller contract: all fallible steps must succeed before calling this —
-/// `push` truncates forward history. Does not update any denormalised
-/// `buffer_id` field — callers are responsible.
+/// `push` truncates forward history.
 pub(crate) fn switch_to_buffer_with_jump(
     ev: &mut EngineView,
     buffers: &BufferStore,
@@ -96,8 +94,7 @@ pub(crate) fn switch_to_buffer_with_jump(
 ///   MRU replacement, then free the slot.
 /// - Only buffer: replace in-place with a fresh scratch buffer.
 ///
-/// Returns the `BufferId` that the focused pane is now viewing, so callers can
-/// sync any denormalised `buffer_id` field.
+/// Returns the `BufferId` that the focused pane is now viewing.
 pub(crate) fn close_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,

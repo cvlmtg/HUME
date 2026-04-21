@@ -97,7 +97,7 @@ impl Editor {
             let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let buf_id = self.buffer_id;
+            let buf_id = self.focused_buffer_id();
             let rope = self.buffers.get(buf_id).text().rope();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
             scroll_viewport_up(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, scroll_lines, &mut self.motion_format_scratch);
@@ -122,7 +122,7 @@ impl Editor {
             let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let buf_id = self.buffer_id;
+            let buf_id = self.focused_buffer_id();
             let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
@@ -141,7 +141,7 @@ impl Editor {
     // ── Coordinate conversion ─────────────────────────────────────────────────
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let (vp, gutter_w) = {
             let pane = &self.engine_view.panes[self.focused_pane_id];
             let gw = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());

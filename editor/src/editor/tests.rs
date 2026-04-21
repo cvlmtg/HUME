@@ -3738,7 +3738,7 @@ fn d1_selections_are_pane_owned() {
     use crate::core::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello world\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
 
     let pid_b = ed.open_pane(bid);
@@ -3767,7 +3767,7 @@ fn d4a_search_pattern_is_per_buffer() {
     use crate::editor::pane_state::SearchCursor;
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -3846,7 +3846,7 @@ fn d4b_sticky_col_is_per_selection() {
 #[test]
 fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -3888,7 +3888,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
     use crate::core::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -3925,7 +3925,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -3954,7 +3954,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
     use crate::core::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[a]>bcdefghij\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -3990,7 +3990,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
 
     // "abcde\n" — 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let pid_a = ed.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
@@ -4025,7 +4025,7 @@ use crate::core::selection::SelectionSet;
 #[test]
 fn p6_open_buffer_seeds_pane_state() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
-    let initial_bid = ed.buffer_id;
+    let initial_bid = ed.focused_buffer_id();
     let doc2 = Buffer::new(Text::from("world\n"), SelectionSet::default());
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
@@ -4037,14 +4037,14 @@ fn p6_open_buffer_seeds_pane_state() {
 #[test]
 fn p6_close_buffer_redirects_to_mru() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("alpha\n"), SelectionSet::default()));
-    let bid_alpha = ed.buffer_id;
+    let bid_alpha = ed.focused_buffer_id();
     let doc_beta = Buffer::new(Text::from("beta\n"), SelectionSet::default());
     let bid_beta = ed.open_buffer(doc_beta);
     ed.switch_to_buffer_with_jump(bid_beta);
-    assert_eq!(ed.buffer_id, bid_beta);
+    assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta — should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta);
-    assert_eq!(ed.buffer_id, bid_alpha, "focused pane redirected to alpha after closing beta");
+    assert_eq!(ed.focused_buffer_id(), bid_alpha, "focused pane redirected to alpha after closing beta");
     assert!(ed.buffers.try_get(bid_beta).is_none(), "beta slot freed from BufferStore");
 }
 
@@ -4052,10 +4052,10 @@ fn p6_close_buffer_redirects_to_mru() {
 #[test]
 fn p6_close_last_buffer_becomes_scratch() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("only\n"), SelectionSet::default()));
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     ed.close_buffer(bid);
     // Buffer id stays valid but content is now scratch.
-    assert_eq!(ed.buffer_id, bid, "same buffer id after scratch replacement");
+    assert_eq!(ed.focused_buffer_id(), bid, "same buffer id after scratch replacement");
     assert_eq!(ed.doc().text().to_string(), "\n", "scratch buffer has structural newline only");
 }
 
@@ -4063,7 +4063,7 @@ fn p6_close_last_buffer_becomes_scratch() {
 #[test]
 fn p6_replace_buffer_in_place_reseeds() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("old content\n"), SelectionSet::default()));
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     ed.apply_motion(|b, _sels| {
         let head = b.len_chars().saturating_sub(2);
@@ -4081,32 +4081,32 @@ fn p6_replace_buffer_in_place_reseeds() {
 #[test]
 fn p6_bnext_bprev_cycle() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("a\n"), SelectionSet::default()));
-    let bid_a = ed.buffer_id;
+    let bid_a = ed.focused_buffer_id();
     let bid_b = ed.open_buffer(Buffer::new(Text::from("b\n"), SelectionSet::default()));
     let bid_c = ed.open_buffer(Buffer::new(Text::from("c\n"), SelectionSet::default()));
     // Still focused on a. bnext → b.
     let _ = ed.execute_typed("bn", None);
-    assert_eq!(ed.buffer_id, bid_b, "bnext advances to b");
+    assert_eq!(ed.focused_buffer_id(), bid_b, "bnext advances to b");
     let _ = ed.execute_typed("bn", None);
-    assert_eq!(ed.buffer_id, bid_c, "bnext advances to c");
+    assert_eq!(ed.focused_buffer_id(), bid_c, "bnext advances to c");
     let _ = ed.execute_typed("bn", None);
-    assert_eq!(ed.buffer_id, bid_a, "bnext wraps to a");
+    assert_eq!(ed.focused_buffer_id(), bid_a, "bnext wraps to a");
     // bprev from a → c.
     let _ = ed.execute_typed("bp", None);
-    assert_eq!(ed.buffer_id, bid_c, "bprev wraps to c");
+    assert_eq!(ed.focused_buffer_id(), bid_c, "bprev wraps to c");
     let _ = ed.execute_typed("bp", None);
-    assert_eq!(ed.buffer_id, bid_b, "bprev to b");
+    assert_eq!(ed.focused_buffer_id(), bid_b, "bprev to b");
 }
 
 /// `:bd` closes the current buffer.
 #[test]
 fn p6_bd_closes_focused_buffer() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("first\n"), SelectionSet::default()));
-    let bid_first = ed.buffer_id;
+    let bid_first = ed.focused_buffer_id();
     let bid_second = ed.open_buffer(Buffer::new(Text::from("second\n"), SelectionSet::default()));
     ed.switch_to_buffer_with_jump(bid_second);
     let _ = ed.execute_typed("bd", None);
-    assert_eq!(ed.buffer_id, bid_first, "bd closed second, focused pane moved to first");
+    assert_eq!(ed.focused_buffer_id(), bid_first, "bd closed second, focused pane moved to first");
     assert!(ed.buffers.try_get(bid_second).is_none(), "second buffer freed");
 }
 
@@ -4114,7 +4114,7 @@ fn p6_bd_closes_focused_buffer() {
 #[test]
 fn p6_bd_force_closes_dirty_buffer() {
     let mut ed = Editor::for_testing(Buffer::new(Text::from("clean\n"), SelectionSet::default()));
-    let bid_clean = ed.buffer_id;
+    let bid_clean = ed.focused_buffer_id();
     let bid_dirty = ed.open_buffer(Buffer::new(Text::from("dirty\n"), SelectionSet::default()));
     ed.switch_to_buffer_with_jump(bid_dirty);
     // Make it dirty by inserting a character.
@@ -4128,7 +4128,7 @@ fn p6_bd_force_closes_dirty_buffer() {
     // :bd! should succeed.
     let result = ed.execute_typed("bd!", None);
     assert!(result.is_ok(), ":bd! should close dirty buffer");
-    assert_eq!(ed.buffer_id, bid_clean);
+    assert_eq!(ed.focused_buffer_id(), bid_clean);
 }
 
 /// `:e path` opens a new buffer when the file is not already open.
@@ -4140,11 +4140,11 @@ fn p6_edit_opens_new_buffer() {
     std::fs::write(&path, "file content\n").unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
-    let initial_bid = ed.buffer_id;
+    let initial_bid = ed.focused_buffer_id();
     let canonical = std::fs::canonicalize(&path).unwrap();
     let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(result.is_ok(), ":e should succeed for readable file");
-    assert_ne!(ed.buffer_id, initial_bid, ":e opened a new buffer");
+    assert_ne!(ed.focused_buffer_id(), initial_bid, ":e opened a new buffer");
     assert_eq!(ed.doc().text().to_string(), "file content\n");
     // Path stored correctly.
     assert_eq!(ed.doc().path.as_deref().map(|p| p.as_path()), Some(canonical.as_path()));
@@ -4162,7 +4162,7 @@ fn p6_edit_deduplicates_open_file() {
     // Open the file once.
     let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r1.is_ok());
-    let bid_first_open = ed.buffer_id;
+    let bid_first_open = ed.focused_buffer_id();
     let count_after_first = ed.buffers.len();
     // Switch back to scratch.
     let scratch_bid = ed.buffers.prev(bid_first_open);
@@ -4170,7 +4170,7 @@ fn p6_edit_deduplicates_open_file() {
     // Open the same file again — should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r2.is_ok());
-    assert_eq!(ed.buffer_id, bid_first_open, "dedup: switched to existing buffer");
+    assert_eq!(ed.focused_buffer_id(), bid_first_open, "dedup: switched to existing buffer");
     assert_eq!(ed.buffers.len(), count_after_first, "no new buffer created on dedup");
 }
 
@@ -4244,18 +4244,18 @@ fn p7_cross_buffer_ctrl_o() {
 
     let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
     ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
-    let buf1 = ed.buffer_id;
+    let buf1 = ed.focused_buffer_id();
     let line0_state_f1 = state(&ed);
 
     // Open file2 — switch_to_buffer_with_jump records {file1, line 0} before switching.
     ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
-    let buf2 = ed.buffer_id;
+    let buf2 = ed.focused_buffer_id();
     assert_ne!(buf1, buf2, "different buffers");
     // Now in file2, cursor at line 0. Jump list: [{scratch}, {file1}], cursor = 2.
 
     // Ctrl+O: saves current (file2, line 0) then goes to entries[1] = {file1, line 0}.
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(ed.buffer_id, buf1, "Ctrl+O crossed back to file1");
+    assert_eq!(ed.focused_buffer_id(), buf1, "Ctrl+O crossed back to file1");
     assert_eq!(state(&ed), line0_state_f1, "cursor restored in file1");
 }
 
@@ -4271,11 +4271,11 @@ fn p7_close_buffer_prunes_pane_jumps() {
 
     let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
     ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
-    let buf1 = ed.buffer_id;
+    let buf1 = ed.focused_buffer_id();
 
     // Open file2, recording a jump from file1→file2.
     ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
-    let buf2 = ed.buffer_id;
+    let buf2 = ed.focused_buffer_id();
     assert_ne!(buf1, buf2);
 
     // Close file1 — its jump entries should be pruned from pane_jumps.

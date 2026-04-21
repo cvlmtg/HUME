@@ -580,9 +580,9 @@ impl Editor {
                     }
                 }
                 MappableCommand::SteelBacked { ref steel_proc, .. } => {
+                    let focused_pane_id = self.focused_pane_id;
+                    let focused_buffer_id = self.focused_buffer_id();
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        let focused_pane_id = self.focused_pane_id;
-                        let focused_buffer_id = self.buffer_id;
                         match host.call_steel_cmd(
                             steel_proc, char_arg, cmd_arg,
                             &mut self.settings,
@@ -599,10 +599,6 @@ impl Editor {
                     } else {
                         return;
                     };
-                    // Sync denormalised buffer_id: a Steel builtin may have
-                    // called (switch-to-buffer!) or (close-buffer!), which
-                    // updates the engine pane state but not this field.
-                    self.buffer_id = self.engine_view.panes[self.focused_pane_id].buffer_id;
                     self.flush_script_messages();
                     for cmd_name in queue {
                         self.execute_keymap_command(cmd_name.into(), count, extend, None);
@@ -620,7 +616,8 @@ impl Editor {
             if let Some((pre_sels, pre_line)) = pre_jump {
                 let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
-                    self.pane_jumps[self.focused_pane_id].push(JumpEntry { buffer_id: self.buffer_id, selections: pre_sels, primary_line: pre_line });
+                    let bid = self.focused_buffer_id();
+                    self.pane_jumps[self.focused_pane_id].push(JumpEntry { buffer_id: bid, selections: pre_sels, primary_line: pre_line });
                 }
             }
 
@@ -733,7 +730,7 @@ impl Editor {
                 // discarding it — the search moved the cursor to the match.
                 let pid = self.focused_pane_id;
                 if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
-                    let bid = self.buffer_id;
+                    let bid = self.focused_buffer_id();
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
                     self.pane_jumps[self.focused_pane_id].push(entry);
                 }
@@ -745,7 +742,7 @@ impl Editor {
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore position when pattern is fully erased, but stay in Search mode.
                 self.restore_search_snapshot();
-                let bid = self.buffer_id;
+                let bid = self.focused_buffer_id();
                 self.clear_buffer_search(bid);
             }
             MiniBufferEvent::Edited => self.update_live_search(),
@@ -759,7 +756,7 @@ impl Editor {
         if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         self.clear_buffer_search(bid);
         self.mode = Mode::Normal;
         self.minibuf = None;
@@ -777,7 +774,7 @@ impl Editor {
 
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
-            let bid = self.buffer_id;
+            let bid = self.focused_buffer_id();
             self.clear_buffer_search(bid);
             return;
         };
@@ -818,9 +815,8 @@ impl Editor {
             }
         }
 
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
-            direction,
             regex: Arc::new(regex),
             pattern_str: pattern,
         });
