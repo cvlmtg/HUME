@@ -751,9 +751,11 @@ mod tests {
 
     #[test]
     fn newline_indicator_all_mode() {
-        let mut ws = WhitespaceConfig::default();
-        ws.newline = crate::pane::WhitespaceRender::All;
-        ws.newline_char = "⏎";
+        let ws = WhitespaceConfig {
+            newline: crate::pane::WhitespaceRender::All,
+            newline_char: "⏎",
+            ..WhitespaceConfig::default()
+        };
         let (rows, graphemes) = do_format_ws("abc\n", ws);
         // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
         // Line 0: 3 content graphemes + 1 eol sentinel + 1 newline indicator = 5.
@@ -773,8 +775,7 @@ mod tests {
 
     #[test]
     fn newline_indicator_trailing_mode_shows_after_content() {
-        let mut ws = WhitespaceConfig::default();
-        ws.newline = crate::pane::WhitespaceRender::Trailing;
+        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::Trailing, ..WhitespaceConfig::default() };
         let (_, graphemes) = do_format_ws("abc\n", ws);
         // Trailing: shows after non-ws content, so it appears.
         assert!(graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
@@ -783,25 +784,25 @@ mod tests {
     #[test]
     fn newline_indicator_trailing_mode_blank_line() {
         // Blank lines (only spaces) must NOT get a trailing newline indicator.
-        let mut ws = WhitespaceConfig::default();
-        ws.newline = crate::pane::WhitespaceRender::Trailing;
+        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::Trailing, ..WhitespaceConfig::default() };
         let (_, graphemes) = do_format_ws("   \n", ws);
         assert!(!graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
     }
 
     #[test]
     fn newline_indicator_none_mode() {
-        let mut ws = WhitespaceConfig::default();
-        ws.newline = crate::pane::WhitespaceRender::None;
+        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::None, ..WhitespaceConfig::default() };
         let (_, graphemes) = do_format_ws("abc\n", ws);
         assert!(!graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
     }
 
     #[test]
     fn space_indicator_all_mode() {
-        let mut ws = WhitespaceConfig::default();
-        ws.space = crate::pane::WhitespaceRender::All;
-        ws.space_char = "·";
+        let ws = WhitespaceConfig {
+            space: crate::pane::WhitespaceRender::All,
+            space_char: "·",
+            ..WhitespaceConfig::default()
+        };
         let (_, graphemes) = do_format_ws("a b\n", ws);
         // Space at index 1 should be Indicator
         let space_g = graphemes.iter().find(|g| g.col == 1).unwrap();
@@ -810,9 +811,11 @@ mod tests {
 
     #[test]
     fn tab_indicator_all_mode() {
-        let mut ws = WhitespaceConfig::default();
-        ws.tab = crate::pane::WhitespaceRender::All;
-        ws.tab_char = "→";
+        let ws = WhitespaceConfig {
+            tab: crate::pane::WhitespaceRender::All,
+            tab_char: "→",
+            ..WhitespaceConfig::default()
+        };
         let rope = Rope::from_str("\t");
         let visible = crate::layout::VisibleRange {
             line_range: 0..1,

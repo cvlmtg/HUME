@@ -442,6 +442,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn do_compose(
         rope: &Rope,
         rows: &[DisplayRow],
@@ -642,7 +643,7 @@ mod tests {
         clear_row_span(&mut buf, 3, 7, 1);
         for x in 0..10 {
             let sym = buf.cell(ratatui::layout::Position { x, y: 1 }).unwrap().symbol();
-            if x >= 3 && x < 7 { assert_eq!(sym, " ", "col {x} should be blank"); }
+            if (3..7).contains(&x) { assert_eq!(sym, " ", "col {x} should be blank"); }
             else { assert_eq!(sym, "X", "col {x} should be untouched"); }
         }
     }
