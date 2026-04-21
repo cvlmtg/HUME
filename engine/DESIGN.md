@@ -1,3 +1,5 @@
+> **STATUS: IMPLEMENTED** — The engine described here shipped as part of the M7 multi-buffer migration (complete 2026-04-20). This document is preserved as a historical requirements brief.
+
 ## GOAL
 
 Design a rendering engine for a modal text editor that is elegant, fast, and composable.
