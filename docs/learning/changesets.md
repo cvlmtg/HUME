@@ -113,7 +113,7 @@ the cursors are at `pre_edit_sels`.
 **Timing matters.** `invert(&old_buf)` must be called before discarding
 `old_buf`. `invert` reads deleted text from the original rope to reconstruct
 the `Insert` operations — it captures those chars at inversion time. In
-practice `Document::apply_edit` enforces this: it calls `cs.invert(&self.buf)`
+practice `Buffer::apply_edit` enforces this: it calls `cs.invert(&self.buf)`
 while `self.buf` still holds the pre-edit content, then overwrites it.
 
 The history manager stores both Transactions. Applying the inverse restores
@@ -122,9 +122,9 @@ forward Transaction redoes the edit.
 
 ## Implementation
 
-- `src/core/changeset.rs` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
-- `src/core/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
-- `src/ops/edit.rs` — edit operations build changesets via the builder
+- `editor/src/core/changeset/` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
+- `editor/src/core/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
+- `editor/src/ops/edit/` — edit operations build changesets via the builder
 - `src/core/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
 
   An **arena** is a `Vec` that owns all the nodes of a tree or graph. Instead
