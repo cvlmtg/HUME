@@ -1,7 +1,7 @@
 //! Free functions for buffer lifecycle operations.
 //!
 //! Extracted from `impl Editor` so the same logic can be called by both the
-//! `Editor` methods (which take `&mut self`) and the Phase 4 Steel builtins
+//! `Editor` methods (which take `&mut self`) and the Steel builtins
 //! (which receive individual `&mut` references via `SteelCtx`).
 //!
 //! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,

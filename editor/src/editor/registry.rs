@@ -603,7 +603,7 @@ impl CommandRegistry {
         // ── Editor commands — misc ────────────────────────────────────────────
         ecmd("force-quit", "Quit without checking for unsaved changes.", cmd_quit).reg(self);
 
-        // ── Editor commands — pane focus (Phase 9 stubs) ─────────────────────
+        // ── Editor commands — pane focus stubs (M9+) ─────────────────────────
         ecmd("pane-focus-next",  "Focus the next pane.",      cmd_pane_focus_next ).reg(self);
         ecmd("pane-focus-left",  "Focus the pane to the left.",  cmd_pane_focus_left ).reg(self);
         ecmd("pane-focus-right", "Focus the pane to the right.", cmd_pane_focus_right).reg(self);
@@ -690,7 +690,7 @@ mod tests {
     ///    2 jump-list editor commands
     ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
     ///    1 force-quit editor command
-    ///    5 pane-focus editor commands (next, left, right, up, down — Phase 9 stubs)
+    ///    5 pane-focus editor commands (next, left, right, up, down — M9+ stubs)
     ///   14 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config, edit, buffer-delete, bnext, bprev, split, vsplit)
     ///  ──
     ///  121 total

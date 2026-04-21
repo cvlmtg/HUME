@@ -11,8 +11,8 @@
 //!
 //! [`EditGroup`] is the in-progress insert-session accumulator. It is stored on
 //! [`PaneBufferState`] rather than [`crate::editor::buffer::Buffer`] so that
-//! the focus-switch-Normal-only invariant (Principle #11) can be maintained
-//! without per-buffer group bookkeeping.
+//! the focus-switch-Normal-only invariant can be maintained without
+//! per-buffer group bookkeeping (at most one pane is ever in Insert).
 
 use crate::core::changeset::ChangeSet;
 use crate::core::selection::SelectionSet;
@@ -57,9 +57,7 @@ pub(crate) struct PaneBufferState {
     pub edit_group: Option<EditGroup>,
 }
 
-// ── SearchCursor ─────────────────────────────────────────────────────────────
-
-pub(crate) use crate::core::search_state::SearchCursor;
+use crate::core::search_state::SearchCursor;
 
 // ── PaneTransient ────────────────────────────────────────────────────────────
 

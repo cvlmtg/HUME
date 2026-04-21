@@ -1,4 +1,4 @@
-//! Multi-buffer Steel builtins — read-only (Phase 3) and mutating (Phase 4).
+//! Multi-buffer Steel builtins — buffer/pane query and lifecycle ops.
 //!
 //! All builtins guard against init-eval context (`ctx.is_init = true`), where
 //! editor refs are `None`.  Calling any of these from `init.scm` raises a Steel
@@ -185,7 +185,7 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     Ok(SteelVal::Void)
 }
 
-// ── Pane stubs (Phase 5 — reserved for M9+) ──────────────────────────────────
+// ── Pane stubs (reserved for M9+) ────────────────────────────────────────────
 
 fn pane_stub(builtin_name: &str) -> SteelResult {
     steel::stop!(Generic => "{}: pane operations require :split, deferred to M9+", builtin_name)
@@ -588,10 +588,11 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
 
-        let (_, _) = h.call_steel_cmd(
+        let (cmd_queue, _) = h.call_steel_cmd(
             "%hume-cmd-do-open", None, None,
             mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
+        assert!(cmd_queue.is_empty());
 
         assert_eq!(bufs.len(), 2, "(open-buffer!) should add a second buffer");
         let _ = std::fs::remove_file(&path);
@@ -741,7 +742,7 @@ mod tests {
         );
     }
 
-    // ── Pane stubs (Phase 5) ──────────────────────────────────────────────────
+    // ── Pane stubs ────────────────────────────────────────────────────────────
 
     #[test]
     fn open_pane_returns_deferred_error() {
