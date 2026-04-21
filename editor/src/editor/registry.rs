@@ -147,7 +147,7 @@ pub(crate) enum MappableCommand {
     /// `steel_proc` is the name under which the lambda is registered in the
     /// Steel engine's global namespace (e.g. `"%hume-cmd-my-command"`).
     /// Dispatched by [`crate::scripting::ScriptingHost::call_steel_cmd`], which
-    /// evaluates `(steel_proc)` and drains the resulting `CMD_QUEUE`.
+    /// evaluates `(steel_proc)` and drains the resulting `steel_ctx.cmd_queue`.
     ///
     /// Not repeatable, not jump, not visual-line, not extendable — these can be
     /// added as optional flags once the use-cases emerge.

@@ -65,6 +65,41 @@ pub(crate) fn is_pane_id(val: SteelVal) -> bool {
     }
 }
 
+// ── Value-equality builtins ───────────────────────────────────────────────────
+// Steel's `equal?` uses Arc-pointer equality for opaque Custom types, so two
+// SteelBufferId values wrapping the same BufferId are NOT `equal?` unless they
+// share the same Arc.  These builtins compare the inner IDs by value instead.
+
+fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
+    if let SteelVal::Custom(v) = val {
+        v.read().as_any_ref().downcast_ref::<SteelBufferId>().map(|b| b.0)
+    } else {
+        None
+    }
+}
+
+fn downcast_pane_id(val: &SteelVal) -> Option<PaneId> {
+    if let SteelVal::Custom(v) = val {
+        v.read().as_any_ref().downcast_ref::<SteelPaneId>().map(|p| p.0)
+    } else {
+        None
+    }
+}
+
+/// `(buffer-id=? a b)` — value-equality for opaque `BufferId` handles.
+///
+/// Returns `#t` if both `a` and `b` are buffer-ids wrapping the same
+/// underlying `BufferId`.  Prefer this over `equal?`, which only returns
+/// `#t` when both values share the same `Arc`.
+pub(crate) fn buffer_id_equal(a: SteelVal, b: SteelVal) -> bool {
+    matches!((downcast_buffer_id(&a), downcast_buffer_id(&b)), (Some(x), Some(y)) if x == y)
+}
+
+/// `(pane-id=? a b)` — value-equality for opaque `PaneId` handles.
+pub(crate) fn pane_id_equal(a: SteelVal, b: SteelVal) -> bool {
+    matches!((downcast_pane_id(&a), downcast_pane_id(&b)), (Some(x), Some(y)) if x == y)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -131,5 +166,36 @@ mod tests {
         let id = SteelPaneId(PaneId::default());
         let s = id.fmt().unwrap().unwrap();
         assert!(s.starts_with("#<pane-id "), "got: {s}");
+    }
+
+    #[test]
+    fn buffer_id_equal_same_value() {
+        // Two different SteelVal wrappings of the same BufferId must be equal.
+        let id = BufferId::default();
+        let a = SteelBufferId(id).into_steelval().unwrap();
+        let b = SteelBufferId(id).into_steelval().unwrap();
+        assert!(buffer_id_equal(a, b), "same BufferId must be equal");
+    }
+
+    #[test]
+    fn buffer_id_equal_rejects_wrong_type() {
+        let a = SteelBufferId(BufferId::default()).into_steelval().unwrap();
+        let b = SteelVal::BoolV(true);
+        assert!(!buffer_id_equal(a, b));
+    }
+
+    #[test]
+    fn pane_id_equal_same_value() {
+        let id = PaneId::default();
+        let a = SteelPaneId(id).into_steelval().unwrap();
+        let b = SteelPaneId(id).into_steelval().unwrap();
+        assert!(pane_id_equal(a, b), "same PaneId must be equal");
+    }
+
+    #[test]
+    fn pane_id_equal_rejects_wrong_type() {
+        let a = SteelPaneId(PaneId::default()).into_steelval().unwrap();
+        let b = SteelVal::BoolV(false);
+        assert!(!pane_id_equal(a, b));
     }
 }

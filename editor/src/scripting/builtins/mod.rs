@@ -123,9 +123,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Logging — push messages to the editor message log
     engine.register_fn_with_ctx(HUME_CTX, "log!", fs::log_msg);
 
-    // Opaque ID predicates — context-free; no SteelCtx needed.
-    engine.register_fn("buffer-id?", ids::is_buffer_id);
-    engine.register_fn("pane-id?",   ids::is_pane_id);
+    // Opaque ID predicates and equality — context-free; no SteelCtx needed.
+    engine.register_fn("buffer-id?",  ids::is_buffer_id);
+    engine.register_fn("pane-id?",    ids::is_pane_id);
+    engine.register_fn("buffer-id=?", ids::buffer_id_equal);
+    engine.register_fn("pane-id=?",   ids::pane_id_equal);
 
     // Multi-buffer read-only builtins
     engine.register_fn_with_ctx(HUME_CTX, "current-buffer", buffers::current_buffer);
@@ -141,12 +143,13 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "close-buffer!",     buffers::close_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
 
-    // Pane stubs — reserved names for M9+ :split feature
-    engine.register_fn_with_ctx(HUME_CTX, "open-pane!",        buffers::open_pane);
-    engine.register_fn_with_ctx(HUME_CTX, "close-pane!",       buffers::close_pane);
-    engine.register_fn_with_ctx(HUME_CTX, "focus-pane!",       buffers::focus_pane);
-    engine.register_fn_with_ctx(HUME_CTX, "pane-buffer",       buffers::pane_buffer);
-    engine.register_fn_with_ctx(HUME_CTX, "pane-set-buffer!",  buffers::pane_set_buffer);
+    // Pane stubs — reserved names for M9+ :split feature.
+    // These never use SteelCtx so they register as plain register_fn.
+    engine.register_fn("open-pane!",       buffers::open_pane);
+    engine.register_fn("close-pane!",      buffers::close_pane);
+    engine.register_fn("focus-pane!",      buffers::focus_pane);
+    engine.register_fn("pane-buffer",      buffers::pane_buffer);
+    engine.register_fn("pane-set-buffer!", buffers::pane_set_buffer);
 
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));

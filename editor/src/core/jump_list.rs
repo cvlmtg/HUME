@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use engine::pipeline::BufferId;
 
 use crate::core::text::Text;
-use crate::core::selection::SelectionSet;
+use crate::core::selection::{Selection, SelectionSet};
 
 /// Default capacity — kept here so tests can construct jump lists without
 /// importing `EditorSettings`.
@@ -40,6 +40,14 @@ impl JumpEntry {
     pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head);
         Self { buffer_id, selections, primary_line }
+    }
+
+    /// Build a jump entry from a pre-motion snapshot.
+    ///
+    /// Used at call sites that capture the cursor *before* a motion runs, so
+    /// `primary_line` is already known and no buffer reference is needed.
+    pub(crate) fn from_pre_motion(pre_primary: Selection, primary_line: usize, buffer_id: BufferId) -> Self {
+        Self { buffer_id, selections: SelectionSet::single(pre_primary), primary_line }
     }
 }
 

@@ -15,6 +15,14 @@ use super::{ids::{SteelBufferId, SteelPaneId}, require_cmd_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
+/// Convert `None` → Steel error when an editor ref is unexpectedly absent.
+///
+/// Called after `require_cmd_ctx!`, so `None` means the caller forgot to
+/// populate the ref — a coding error, not a user error.
+fn require_ref<T>(opt: Option<T>, builtin: &str) -> Result<T, SteelErr> {
+    opt.ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("{builtin}: editor refs unavailable")))
+}
+
 /// Extract the inner `BufferId` from a `SteelVal::Custom(SteelBufferId)`.
 fn extract_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
@@ -46,7 +54,7 @@ pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
 /// `(buffers)` → list of all open BufferIds in open-order.
 pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "buffers");
-    let store = ctx.buffers.as_deref().expect("buffers is Some when is_init = false");
+    let store = require_ref(ctx.buffers.as_deref(), "buffers")?;
     let list: Vec<SteelVal> = store.iter()
         .map(|(id, _)| SteelBufferId(id).into_steel_val())
         .collect();
@@ -57,7 +65,7 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
 /// `(panes)` → list of all open PaneIds.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "panes");
-    let ev = ctx.engine_view.as_deref().expect("engine_view is Some when is_init = false");
+    let ev = require_ref(ctx.engine_view.as_deref(), "panes")?;
     let list: Vec<SteelVal> = ev.panes.iter()
         .map(|(id, _)| SteelPaneId(id).into_steelval().expect("SteelPaneId into_steelval"))
         .collect();
@@ -72,7 +80,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-path");
     let id = extract_buffer_id(&bid)
         .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-path: expected buffer-id".into()))?;
-    let store = ctx.buffers.as_deref().expect("buffers is Some when is_init = false");
+    let store = require_ref(ctx.buffers.as_deref(), "buffer-path")?;
     let buf = store.try_get(id)
         .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-path: invalid buffer id {id:?}")))?;
     match buf.path.as_deref() {
@@ -87,7 +95,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-name");
     let id = extract_buffer_id(&bid)
         .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-name: expected buffer-id".into()))?;
-    let store = ctx.buffers.as_deref().expect("buffers is Some when is_init = false");
+    let store = require_ref(ctx.buffers.as_deref(), "buffer-name")?;
     let buf = store.try_get(id)
         .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-name: invalid buffer id {id:?}")))?;
     let name = buf.path.as_deref()
@@ -103,7 +111,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-dirty?");
     let id = extract_buffer_id(&bid)
         .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-dirty?: expected buffer-id".into()))?;
-    let store = ctx.buffers.as_deref().expect("buffers is Some when is_init = false");
+    let store = require_ref(ctx.buffers.as_deref(), "buffer-dirty?")?;
     let buf = store.try_get(id)
         .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-dirty?: invalid buffer id {id:?}")))?;
     Ok(SteelVal::BoolV(buf.is_dirty()))
@@ -123,9 +131,9 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let canonical = crate::os::fs::canonicalize(p)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", p.display())))?;
     let focused_pane_id = ctx.focused_pane_id;
-    let ev   = ctx.engine_view.as_deref_mut().expect("engine_view is Some when is_init = false");
-    let bufs = ctx.buffers.as_deref_mut().expect("buffers is Some when is_init = false");
-    let ps   = ctx.pane_state.as_deref_mut().expect("pane_state is Some when is_init = false");
+    let ev   = require_ref(ctx.engine_view.as_deref_mut(), "open-buffer!")?;
+    let bufs = require_ref(ctx.buffers.as_deref_mut(), "open-buffer!")?;
+    let ps   = require_ref(ctx.pane_state.as_deref_mut(), "open-buffer!")?;
     let (bid, _) = crate::editor::ops::open_or_dedup(ev, bufs, ps, focused_pane_id, &canonical)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", canonical.display())))?;
     SteelBufferId(bid).into_steelval()
@@ -141,18 +149,14 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "close-buffer!");
     let id = extract_buffer_id(&bid)
         .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "close-buffer!: expected buffer-id".into()))?;
-    if ctx.buffers.as_deref()
-        .expect("buffers is Some when is_init = false")
-        .try_get(id)
-        .is_none()
-    {
+    if require_ref(ctx.buffers.as_deref(), "close-buffer!")?.try_get(id).is_none() {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
     let focused_pane_id = ctx.focused_pane_id;
-    let ev    = ctx.engine_view.as_deref_mut().expect("engine_view is Some when is_init = false");
-    let bufs  = ctx.buffers.as_deref_mut().expect("buffers is Some when is_init = false");
-    let ps    = ctx.pane_state.as_deref_mut().expect("pane_state is Some when is_init = false");
-    let jumps = ctx.pane_jumps.as_deref_mut().expect("pane_jumps is Some when is_init = false");
+    let ev    = require_ref(ctx.engine_view.as_deref_mut(), "close-buffer!")?;
+    let bufs  = require_ref(ctx.buffers.as_deref_mut(), "close-buffer!")?;
+    let ps    = require_ref(ctx.pane_state.as_deref_mut(), "close-buffer!")?;
+    let jumps = require_ref(ctx.pane_jumps.as_deref_mut(), "close-buffer!")?;
     let new_live = crate::editor::ops::close_buffer(ev, bufs, ps, jumps, focused_pane_id, id);
     ctx.live_focused_buffer_id = new_live;
     Ok(SteelVal::Void)
@@ -167,19 +171,15 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     require_cmd_ctx!(ctx, "switch-to-buffer!");
     let target = extract_buffer_id(&bid)
         .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "switch-to-buffer!: expected buffer-id".into()))?;
-    if ctx.buffers.as_deref()
-        .expect("buffers is Some when is_init = false")
-        .try_get(target)
-        .is_none()
-    {
+    if require_ref(ctx.buffers.as_deref(), "switch-to-buffer!")?.try_get(target).is_none() {
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
     let focused_pane_id = ctx.focused_pane_id;
     let current = ctx.live_focused_buffer_id;
-    let ev    = ctx.engine_view.as_deref_mut().expect("engine_view is Some when is_init = false");
-    let bufs  = ctx.buffers.as_deref_mut().expect("buffers is Some when is_init = false");
-    let ps    = ctx.pane_state.as_deref_mut().expect("pane_state is Some when is_init = false");
-    let jumps = ctx.pane_jumps.as_deref_mut().expect("pane_jumps is Some when is_init = false");
+    let ev    = require_ref(ctx.engine_view.as_deref_mut(), "switch-to-buffer!")?;
+    let bufs  = require_ref(ctx.buffers.as_deref_mut(), "switch-to-buffer!")?;
+    let ps    = require_ref(ctx.pane_state.as_deref_mut(), "switch-to-buffer!")?;
+    let jumps = require_ref(ctx.pane_jumps.as_deref_mut(), "switch-to-buffer!")?;
     crate::editor::ops::switch_to_buffer_with_jump(ev, bufs, ps, jumps, focused_pane_id, current, target);
     ctx.live_focused_buffer_id = target;
     Ok(SteelVal::Void)
@@ -192,19 +192,19 @@ fn pane_stub(builtin_name: &str) -> SteelResult {
 }
 
 /// `(open-pane! bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn open_pane(_ctx: &mut SteelCtx, _bid: SteelVal) -> SteelResult { pane_stub("open-pane!") }
+pub(crate) fn open_pane(_bid: SteelVal) -> SteelResult { pane_stub("open-pane!") }
 
 /// `(close-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn close_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("close-pane!") }
+pub(crate) fn close_pane(_pid: SteelVal) -> SteelResult { pane_stub("close-pane!") }
 
 /// `(focus-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn focus_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("focus-pane!") }
+pub(crate) fn focus_pane(_pid: SteelVal) -> SteelResult { pane_stub("focus-pane!") }
 
 /// `(pane-buffer pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_buffer(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("pane-buffer") }
+pub(crate) fn pane_buffer(_pid: SteelVal) -> SteelResult { pane_stub("pane-buffer") }
 
 /// `(pane-set-buffer! pid bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_set_buffer(_ctx: &mut SteelCtx, _pid: SteelVal, _bid: SteelVal) -> SteelResult { pane_stub("pane-set-buffer!") }
+pub(crate) fn pane_set_buffer(_pid: SteelVal, _bid: SteelVal) -> SteelResult { pane_stub("pane-set-buffer!") }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
