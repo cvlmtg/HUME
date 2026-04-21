@@ -74,7 +74,7 @@ to every selection in the set simultaneously. The *primary* is just the
 
    **Macro model (M5):** macros are stored in registers (Vim model, not
    Helix's single-slot model). `QQ` records into register `q` (the default
-   macro register). `Q3` records into register `3`. `q` replays from `q`,
+   macro register). `Q3` records into register `3`. `qq` replays from `q`,
    `q3` replays from `3`.
 
    **Why Vim-style macros over Helix-style?** Helix has a single macro slot
