@@ -26,6 +26,9 @@ use crate::ops::pair::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::settings::EditorSettings;
 use crate::os::terminal::Term;
+use crate::scripting::hooks::HookId;
+use crate::scripting::builtins::ids::SteelBufferId;
+use steel::rvals::IntoSteelVal;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -669,6 +672,44 @@ impl Editor {
         }
     }
 
+    // ── Hook firing ──────────────────────────────────────────────────────────
+
+    /// Fire all Steel handlers for `hook_id`, passing `args` to each.
+    ///
+    /// No-ops immediately if no scripting host is present or if no handlers
+    /// are registered for the hook.  Errors from handlers are reported as
+    /// `Severity::Error`; the returned `cmd_queue` is discarded (not yet routed).
+    /// Convenience wrapper for `on-buffer-save` hooks — avoids importing Steel
+    /// types in `commands.rs`.
+    pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
+        let val = SteelBufferId(bid).into_steelval().expect("SteelBufferId into_steelval");
+        self.fire_hook_silent(HookId::OnBufferSave, &[val]);
+    }
+
+    pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
+        if self.scripting.as_ref().is_none_or(|h| h.ctx.hooks.is_empty_for(&hook_id)) {
+            return;
+        }
+        let pid = self.focused_pane_id;
+        let bid = self.buffer_id;
+        let result = {
+            let host = self.scripting.as_mut().expect("checked above");
+            host.fire_hook(
+                hook_id, args, &self.settings, pid, bid,
+                Some(&mut self.buffers),
+                Some(&mut self.engine_view),
+                Some(&mut self.pane_state),
+                Some(&mut self.pane_jumps),
+            )
+        };
+        // Sync buffer_id — a hook may have called (switch-to-buffer!).
+        self.buffer_id = self.engine_view.panes[self.focused_pane_id].buffer_id;
+        self.flush_script_messages();
+        if let Err(e) = result {
+            self.report(Severity::Error, format!("hook error: {e}"));
+        }
+    }
+
     // ── Scripting ─────────────────────────────────────────────────────────────
 
     /// Initialise the Steel scripting host and evaluate `init.scm`.
@@ -942,7 +983,23 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
+        let old = self.mode;
         self.mode = mode;
+        if old != mode {
+            fn mode_name(m: EditorMode) -> &'static str {
+                match m {
+                    EditorMode::Normal  => "normal",
+                    EditorMode::Insert  => "insert",
+                    EditorMode::Extend  => "extend",
+                    EditorMode::Command => "command",
+                    EditorMode::Search  => "search",
+                    EditorMode::Select  => "select",
+                }
+            }
+            let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
+            let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
+            self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
+        }
     }
 
     // ── Buffer accessors ──────────────────────────────────────────────────────
@@ -1151,10 +1208,13 @@ impl Editor {
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// `pane_state`, and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        ops::open_buffer(
+        let bid = ops::open_buffer(
             &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
             self.focused_pane_id, doc,
-        )
+        );
+        let val = SteelBufferId(bid).into_steelval().expect("SteelBufferId into_steelval");
+        self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
+        bid
     }
 
     /// Remove buffer `id`, handling two cases:
@@ -1167,6 +1227,9 @@ impl Editor {
             &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
             &mut self.pane_jumps, self.focused_pane_id, id,
         );
+        // Fire with the ID that was closed, not the new current buffer.
+        let val = SteelBufferId(id).into_steelval().expect("SteelBufferId into_steelval");
+        self.fire_hook_silent(HookId::OnBufferClose, &[val]);
     }
 
     /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.

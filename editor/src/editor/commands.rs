@@ -767,6 +767,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
                 ed.doc_mut().file_meta = Some(meta);
                 ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
+                ed.fire_hook_buffer_save(ed.buffer_id);
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
@@ -780,6 +781,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
             Ok(()) => {
                 ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
+                ed.fire_hook_buffer_save(ed.buffer_id);
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
