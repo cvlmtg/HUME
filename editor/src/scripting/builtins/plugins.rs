@@ -66,9 +66,9 @@ pub(crate) fn pop_current_plugin(ctx: &mut SteelCtx) -> SteelResult {
 /// Pure path resolution: given a plugin name and the runtime / data directories,
 /// return the resolved `PathBuf` if the plugin file exists on disk, or `None`.
 ///
-/// Called by both the `resolve-plugin-path` Steel builtin (which uses `with_ctx`
-/// to supply the dirs) and by [`crate::scripting::ScriptingHost::reload_plugin`]
-/// (which accesses the dirs directly on `ScriptFacingCtx`).
+/// Called by both the `resolve-plugin-path` Steel builtin (which accesses the
+/// dirs via `&mut SteelCtx`) and by [`crate::scripting::ScriptingHost::reload_plugin`]
+/// (which reads the dirs directly from `ScriptingHost`).
 pub(crate) fn resolve_path_for_name(
     name: &str,
     runtime_dir: Option<&std::path::Path>,
