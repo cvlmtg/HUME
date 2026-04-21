@@ -783,23 +783,24 @@ impl Editor {
         let pane_id = self.focused_pane_id;
         let buf_id = self.focused_buffer_id();
 
-        // Collect from pane_state before mutably borrowing engine_view.
-        // pane_state[..] and engine_view are disjoint fields; borrows end at `;`.
-        let primary_idx = self.pane_state[pane_id][buf_id].selections.primary_index();
-        let mut engine_sels: Vec<(usize, EngineSelection)> = self.pane_state[pane_id][buf_id].selections
-            .iter_sorted()
-            .enumerate()
-            .map(|(i, sel)| (i, EngineSelection { anchor: sel.anchor, head: sel.head }))
-            .collect();
-        engine_sels.sort_by_key(|(_, s)| s.head);
-        let primary_in_sorted = engine_sels.iter()
-            .position(|(orig_i, _)| *orig_i == primary_idx)
-            .unwrap_or(0);
+        // head is unique within a SelectionSet; use it to locate primary after
+        // head-sort without needing to track (original_index, EngineSelection) pairs.
+        let primary_head = self.pane_state[pane_id][buf_id].selections.primary().head;
 
-        let pane = &mut self.engine_view.panes[pane_id];
+        // Split-borrow pane_state and engine_view (disjoint fields) so we can
+        // stream directly into pane.selections, reusing its existing capacity.
+        let Self { pane_state, engine_view, .. } = &mut *self;
+        let pane = &mut engine_view.panes[pane_id];
         pane.selections.clear();
-        pane.primary_idx = primary_in_sorted;
-        pane.selections.extend(engine_sels.into_iter().map(|(_, s)| s));
+        pane.selections.extend(
+            pane_state[pane_id][buf_id].selections
+                .iter_sorted()
+                .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
+        );
+        pane.selections.sort_by_key(|s| s.head);
+        pane.primary_idx = pane.selections.iter()
+            .position(|s| s.head == primary_head)
+            .unwrap_or(0);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
