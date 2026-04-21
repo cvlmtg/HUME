@@ -48,7 +48,7 @@ impl HookId {
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
-/// Persistent per-hook handler lists, held on [`super::ScriptFacingCtx`].
+/// Persistent per-hook handler lists, held on [`super::ScriptingHost`].
 ///
 /// Each entry pairs an owner (for ledger-attribution teardown) with the Steel
 /// proc value.  `Clone` is required by [`super::EvalSnapshot`].
