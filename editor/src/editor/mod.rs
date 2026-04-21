@@ -844,19 +844,20 @@ impl Editor {
     /// No-op when no search is active. Designed so calling it per-key is cheap —
     /// the cache check short-circuits before any regex work when nothing changed.
     pub(super) fn update_buffer_matches(&mut self, bid: BufferId) {
-        let Some((pattern_str, regex, revision)) = (|| {
-            let buf = self.buffers.get(bid);
-            let sp = buf.search_pattern.as_ref()?;
-            Some((sp.pattern_str.clone(), Arc::clone(&sp.regex), buf.revision_id()))
-        })() else { return; };
-
         {
-            let sm = &self.buffers.get(bid).search_matches;
-            if sm.cache_revision == Some(revision)
-                && sm.cache_pattern.as_deref() == Some(pattern_str.as_str()) {
+            let buf = self.buffers.get(bid);
+            let Some(sp) = buf.search_pattern.as_ref() else { return; };
+            let sm = &buf.search_matches;
+            if sm.cache_revision == Some(buf.revision_id())
+                && sm.cache_pattern.as_deref() == Some(sp.pattern_str.as_str()) {
                 return;
             }
         }
+        let (pattern_str, regex, revision) = {
+            let buf = self.buffers.get(bid);
+            let sp = buf.search_pattern.as_ref().expect("checked above");
+            (sp.pattern_str.clone(), Arc::clone(&sp.regex), buf.revision_id())
+        };
 
         let matches = find_all_matches(self.buffers.get(bid).text(), &regex);
         let sm = &mut self.buffers.get_mut(bid).search_matches;
@@ -997,9 +998,11 @@ impl Editor {
                     EditorMode::Select  => "select",
                 }
             }
-            let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
-            let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
-            self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
+            if self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(&HookId::OnModeChange)) {
+                let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
+                let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
+                self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
+            }
         }
     }
 
