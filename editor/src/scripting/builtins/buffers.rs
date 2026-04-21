@@ -58,7 +58,7 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "buffers");
     let store = ctx.buffers.as_deref().expect("buffers is Some when is_init = false");
     let list: Vec<SteelVal> = store.iter()
-        .map(|(id, _)| SteelBufferId(id).into_steelval().expect("SteelBufferId into_steelval"))
+        .map(|(id, _)| SteelBufferId(id).into_steel_val())
         .collect();
     list.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
@@ -251,7 +251,7 @@ mod tests {
     use crate::editor::pane_state::PaneBufferState;
     use crate::editor::keymap::Keymap;
     use crate::settings::EditorSettings;
-    use crate::scripting::ScriptingHost;
+    use crate::scripting::{EditorSteelRefs, ScriptingHost};
 
     // ── Test fixture helpers ──────────────────────────────────────────────────
 
@@ -265,6 +265,29 @@ mod tests {
     );
 
     fn host() -> ScriptingHost { ScriptingHost::new() }
+
+    #[allow(clippy::too_many_arguments)]
+    fn mb_refs<'a>(
+        s: &'a mut EditorSettings,
+        km: &'a mut Keymap,
+        pane_id: PaneId,
+        buf_id: BufferId,
+        bufs: &'a mut BufferStore,
+        ev: &'a mut EngineView,
+        ps: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        pj: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+    ) -> EditorSteelRefs<'a> {
+        EditorSteelRefs {
+            settings:          s,
+            keymap:            km,
+            focused_pane_id:   pane_id,
+            focused_buffer_id: buf_id,
+            buffers:           Some(bufs),
+            engine_view:       Some(ev),
+            pane_state:        Some(ps),
+            pane_jumps:        pj,
+        }
+    }
 
     /// Create a minimal one-buffer, one-pane editor state for tests.
     fn one_buf_state() -> BufState {
@@ -317,8 +340,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-buf", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-buf", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "current-buffer must return a buffer-id");
     }
@@ -337,8 +360,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-pane", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-pane", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "current-pane must return a pane-id");
     }
@@ -372,8 +395,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-bufs", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-bufs", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "(buffers) must return a list of one buffer-id");
     }
@@ -396,8 +419,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-panes", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-panes", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "(panes) must return a list of one pane-id");
     }
@@ -432,8 +455,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-path-scratch", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-path-scratch", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "buffer-path of scratch should be #f");
     }
@@ -456,8 +479,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-path", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-path", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "buffer-path should return a string for named buffer");
     }
@@ -481,8 +504,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-name-scratch", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-name-scratch", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "buffer-name of scratch should be *scratch*");
     }
@@ -505,8 +528,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-name", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-name", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "buffer-name should return the filename");
     }
@@ -530,8 +553,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-dirty", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-dirty", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "new buffer should not be dirty");
     }
@@ -557,8 +580,8 @@ mod tests {
         bufs.close(buf_id);
 
         let err = h.call_steel_cmd(
-            "%hume-cmd-check-invalid", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), None,
+            "%hume-cmd-check-invalid", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
         ).unwrap_err();
         assert!(err.contains("invalid buffer id"), "got: {err}");
     }
@@ -591,8 +614,8 @@ mod tests {
         ).unwrap();
 
         let (_, _) = h.call_steel_cmd(
-            "%hume-cmd-do-open", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), Some(&mut pj),
+            "%hume-cmd-do-open", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
 
         assert_eq!(bufs.len(), 2, "(open-buffer!) should add a second buffer");
@@ -628,8 +651,8 @@ mod tests {
         ).unwrap();
 
         let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-open-twice", None, None, &mut s, &mut km,
-            pane_id, first_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), Some(&mut pj),
+            "%hume-cmd-open-twice", None, None,
+            mb_refs(&mut s, &mut km, pane_id, first_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"], "dedup: same path must return same BufferId");
         assert_eq!(bufs.len(), 2, "no extra buffer should be created on dedup");
@@ -668,8 +691,8 @@ mod tests {
 
         // Dispatch with second_id as the focused buffer.
         h.call_steel_cmd(
-            "%hume-cmd-do-close", None, None, &mut s, &mut km,
-            pane_id, second_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), Some(&mut pj),
+            "%hume-cmd-do-close", None, None,
+            mb_refs(&mut s, &mut km, pane_id, second_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
 
         assert_eq!(bufs.len(), 1, "(close-buffer!) must remove the buffer");
@@ -688,8 +711,8 @@ mod tests {
         ).unwrap();
 
         h.call_steel_cmd(
-            "%hume-cmd-do-close-last", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), Some(&mut pj),
+            "%hume-cmd-do-close-last", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
 
         // The only buffer becomes scratch — count stays at 1.
@@ -733,8 +756,8 @@ mod tests {
         ).unwrap();
 
         h.call_steel_cmd(
-            "%hume-cmd-do-switch", None, None, &mut s, &mut km,
-            pane_id, buf_id, Some(&mut bufs), Some(&mut ev), Some(&mut ps), Some(&mut pj),
+            "%hume-cmd-do-switch", None, None,
+            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
         ).unwrap();
 
         assert_eq!(
