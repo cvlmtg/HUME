@@ -53,6 +53,11 @@ use ledger::{LedgerStack, PluginId, PluginStack};
 /// `register_fn_with_ctx(HUME_CTX, …)` receive this value as their first arg.
 pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 
+/// Internal Steel global name for the lambda of a Steel-backed command.
+fn cmd_proc_name(name: &str) -> String {
+    format!("%hume-cmd-{name}")
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────────
 
 /// Arms a wall-clock budget for a single Steel eval.
@@ -725,7 +730,7 @@ impl ScriptingHost {
     fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {
         let mut defs = Vec::new();
         for cmd in pending {
-            let steel_proc = format!("%hume-cmd-{}", cmd.name);
+            let steel_proc = cmd_proc_name(&cmd.name);
             // Register (or overwrite) the lambda under its internal name.
             self.engine.register_value(&steel_proc, cmd.proc);
             // Record a ledger entry so teardown knows to remove this command.
@@ -878,7 +883,7 @@ fn restore_ledger_entry(
     settings: &mut EditorSettings,
     keymap: &mut Keymap,
 ) -> Result<(), String> {
-    if let Some(mode_and_seq) = keymap_ledger_mode(&entry.key) {
+    if let Some(mode_and_seq) = BindMode::from_ledger_prefix(&entry.key) {
         let (mode, key_str) = mode_and_seq;
         let keys = keys::parse_key_sequence(key_str)?;
         if entry.prior_value.is_empty() {
@@ -895,21 +900,6 @@ fn restore_ledger_entry(
         }
     }
     Ok(())
-}
-
-/// If `key` is a keymap ledger key (e.g. `"normal f"`, `"insert <ctrl-d>"`),
-/// return `Some((mode, key_sequence_string))`.  Returns `None` for setting keys.
-fn keymap_ledger_mode(key: &str) -> Option<(BindMode, &str)> {
-    if let Some(rest) = key.strip_prefix("normal ") {
-        return Some((BindMode::Normal, rest));
-    }
-    if let Some(rest) = key.strip_prefix("extend ") {
-        return Some((BindMode::Extend, rest));
-    }
-    if let Some(rest) = key.strip_prefix("insert ") {
-        return Some((BindMode::Insert, rest));
-    }
-    None
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

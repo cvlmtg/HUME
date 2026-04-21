@@ -988,22 +988,10 @@ impl Editor {
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
         let old = self.mode;
         self.mode = mode;
-        if old != mode {
-            fn mode_name(m: EditorMode) -> &'static str {
-                match m {
-                    EditorMode::Normal  => "normal",
-                    EditorMode::Insert  => "insert",
-                    EditorMode::Extend  => "extend",
-                    EditorMode::Command => "command",
-                    EditorMode::Search  => "search",
-                    EditorMode::Select  => "select",
-                }
-            }
-            if self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(&HookId::OnModeChange)) {
-                let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
-                let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
-                self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
-            }
+        if old != mode && self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(&HookId::OnModeChange)) {
+            let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
+            let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
+            self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
         }
     }
 
@@ -1494,6 +1482,18 @@ fn scroll_into_view(
 ) {
     scroll::ensure_cursor_visible(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
     scroll::ensure_cursor_visible_horizontal(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, h_margin);
+}
+
+/// Map an `EditorMode` to the Steel-facing string name used in hook arguments.
+fn mode_name(m: EditorMode) -> &'static str {
+    match m {
+        EditorMode::Normal  => "normal",
+        EditorMode::Insert  => "insert",
+        EditorMode::Extend  => "extend",
+        EditorMode::Command => "command",
+        EditorMode::Search  => "search",
+        EditorMode::Select  => "select",
+    }
 }
 
 /// Convert a char-offset position to a line-relative byte offset.

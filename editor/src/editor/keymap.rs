@@ -241,6 +241,25 @@ pub(crate) enum BindMode {
     Insert,
 }
 
+impl BindMode {
+    /// The ledger key prefix used when storing bindings (e.g. `"normal "`).
+    pub(crate) fn ledger_prefix(self) -> &'static str {
+        match self {
+            Self::Normal => "normal ",
+            Self::Extend => "extend ",
+            Self::Insert => "insert ",
+        }
+    }
+
+    /// Parse a ledger key of the form `"<mode> <keys>"` back into a `(BindMode, keys)` pair.
+    pub(crate) fn from_ledger_prefix(s: &str) -> Option<(Self, &str)> {
+        if let Some(rest) = s.strip_prefix("normal ") { return Some((Self::Normal, rest)); }
+        if let Some(rest) = s.strip_prefix("extend ") { return Some((Self::Extend, rest)); }
+        if let Some(rest) = s.strip_prefix("insert ") { return Some((Self::Insert, rest)); }
+        None
+    }
+}
+
 // ── Keymap ────────────────────────────────────────────────────────────────────
 
 /// Per-mode keymap container. One instance lives on the [`Editor`].

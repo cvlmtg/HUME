@@ -76,6 +76,9 @@ pub(crate) struct Buffer {
 }
 
 impl Buffer {
+    /// Display name used for buffers that have no backing file.
+    pub(crate) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
+
     /// Create a new buffer from text and an initial selection state.
     ///
     /// `initial_sels` are stored in the history root so `initial_sels()` can
