@@ -485,32 +485,34 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
     let bid = ed.focused_buffer_id();
-    let use_cache = !ed.buffers.get(bid).search_matches.matches.is_empty();
-    let cached_matches: Vec<(usize, usize)> = if use_cache {
-        ed.buffers.get(bid).search_matches.matches.clone()
-    } else {
-        Vec::new()
-    };
 
-    for _ in 0..count {
-        let result = if use_cache {
-            find_match_from_cache(&cached_matches, from_char, direction)
-        } else {
-            find_next_match(ed.doc().text(), &regex, from_char, direction)
-        };
-        match result {
-            Some((start, end_incl, wrapped)) => {
-                any_wrapped |= wrapped;
-                last_match = Some((start, end_incl));
-                from_char = match direction {
-                    SearchDirection::Forward => next_grapheme_boundary(ed.doc().text(), end_incl),
-                    // For backward: next search must land before the current match start.
-                    SearchDirection::Backward => start,
-                };
+    if !ed.buffers.get(bid).search_matches.matches.is_empty() {
+        let cached_matches = &ed.buffers.get(bid).search_matches.matches;
+        for _ in 0..count {
+            match find_match_from_cache(cached_matches, from_char, direction) {
+                Some((start, end_incl, wrapped)) => {
+                    any_wrapped |= wrapped;
+                    last_match = Some((start, end_incl));
+                    from_char = match direction {
+                        SearchDirection::Forward => next_grapheme_boundary(ed.doc().text(), end_incl),
+                        SearchDirection::Backward => start,
+                    };
+                }
+                None => { last_match = None; break; }
             }
-            None => {
-                last_match = None;
-                break;
+        }
+    } else {
+        for _ in 0..count {
+            match find_next_match(ed.doc().text(), &regex, from_char, direction) {
+                Some((start, end_incl, wrapped)) => {
+                    any_wrapped |= wrapped;
+                    last_match = Some((start, end_incl));
+                    from_char = match direction {
+                        SearchDirection::Forward => next_grapheme_boundary(ed.doc().text(), end_incl),
+                        SearchDirection::Backward => start,
+                    };
+                }
+                None => { last_match = None; break; }
             }
         }
     }

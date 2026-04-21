@@ -819,26 +819,28 @@ impl ScriptingHost {
             .collect();
         if handler_procs.is_empty() { return Ok(vec![]); }
 
-        // Pre-bind each arg as a global so handlers can reference them by name.
-        // `register_value` creates-or-overwrites, safe for first-call globals.
+        // Pre-bind each arg as a global and accumulate the space-separated name
+        // list in one pass — avoids an intermediate Vec<String>.
+        let mut arg_exprs = String::with_capacity(args.len() * 14);
         for (i, arg) in args.iter().enumerate() {
-            self.engine.register_value(&format!("*hume.ha{i}*"), arg.clone());
+            let name = format!("*hume.ha{i}*");
+            self.engine.register_value(&name, arg.clone());
+            if i > 0 { arg_exprs.push(' '); }
+            arg_exprs.push_str(&name);
         }
-        let arg_exprs: String = (0..args.len())
-            .map(|i| format!("*hume.ha{i}*"))
-            .collect::<Vec<_>>()
-            .join(" ");
 
-        // Pre-bind each handler proc as a global.
+        // Pre-bind each handler proc and build the composite program in one pass.
+        let mut program = String::with_capacity(handler_procs.len() * (18 + arg_exprs.len()));
         for (i, proc) in handler_procs.iter().enumerate() {
-            self.engine.register_value(&format!("*hume.hp{i}*"), proc.clone());
+            let name = format!("*hume.hp{i}*");
+            self.engine.register_value(&name, proc.clone());
+            if i > 0 { program.push('\n'); }
+            program.push('(');
+            program.push_str(&name);
+            program.push(' ');
+            program.push_str(&arg_exprs);
+            program.push(')');
         }
-
-        // Composite program: call every handler in order.
-        let program: String = (0..handler_procs.len())
-            .map(|i| format!("(*hume.hp{i}* {arg_exprs})"))
-            .collect::<Vec<_>>()
-            .join("\n");
 
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
 
