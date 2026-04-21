@@ -204,6 +204,33 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     Ok(SteelVal::Void)
 }
 
+// ── Pane stubs (Phase 5 — reserved for M9+) ──────────────────────────────────
+
+/// `(open-pane! bid)` — reserved; pane split operations land in M9+.
+pub(crate) fn open_pane(_ctx: &mut SteelCtx, _bid: SteelVal) -> SteelResult {
+    steel::stop!(Generic => "open-pane!: pane operations require :split, deferred to M9+");
+}
+
+/// `(close-pane! pid)` — reserved; pane split operations land in M9+.
+pub(crate) fn close_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
+    steel::stop!(Generic => "close-pane!: pane operations require :split, deferred to M9+");
+}
+
+/// `(focus-pane! pid)` — reserved; pane split operations land in M9+.
+pub(crate) fn focus_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
+    steel::stop!(Generic => "focus-pane!: pane operations require :split, deferred to M9+");
+}
+
+/// `(pane-buffer pid)` — reserved; pane split operations land in M9+.
+pub(crate) fn pane_buffer(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
+    steel::stop!(Generic => "pane-buffer: pane operations require :split, deferred to M9+");
+}
+
+/// `(pane-set-buffer! pid bid)` — reserved; pane split operations land in M9+.
+pub(crate) fn pane_set_buffer(_ctx: &mut SteelCtx, _pid: SteelVal, _bid: SteelVal) -> SteelResult {
+    steel::stop!(Generic => "pane-set-buffer!: pane operations require :split, deferred to M9+");
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -714,5 +741,52 @@ mod tests {
             ev.panes[pane_id].buffer_id, second_id,
             "pane must be viewing second buffer after switch-to-buffer!",
         );
+    }
+
+    // ── Pane stubs (Phase 5) ──────────────────────────────────────────────────
+
+    #[test]
+    fn open_pane_returns_deferred_error() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source("(open-pane! #f)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("deferred to M9+"), "got: {err}");
+    }
+
+    #[test]
+    fn close_pane_returns_deferred_error() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source("(close-pane! #f)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("deferred to M9+"), "got: {err}");
+    }
+
+    #[test]
+    fn focus_pane_returns_deferred_error() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source("(focus-pane! #f)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("deferred to M9+"), "got: {err}");
+    }
+
+    #[test]
+    fn pane_buffer_returns_deferred_error() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source("(pane-buffer #f)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("deferred to M9+"), "got: {err}");
+    }
+
+    #[test]
+    fn pane_set_buffer_returns_deferred_error() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source("(pane-set-buffer! #f #f)", &mut s, &mut km).unwrap_err();
+        assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 }

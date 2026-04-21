@@ -127,6 +127,13 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "close-buffer!",     buffers::close_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
 
+    // Pane stubs — reserved names for M9+ :split feature
+    engine.register_fn_with_ctx(HUME_CTX, "open-pane!",        buffers::open_pane);
+    engine.register_fn_with_ctx(HUME_CTX, "close-pane!",       buffers::close_pane);
+    engine.register_fn_with_ctx(HUME_CTX, "focus-pane!",       buffers::focus_pane);
+    engine.register_fn_with_ctx(HUME_CTX, "pane-buffer",       buffers::pane_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "pane-set-buffer!",  buffers::pane_set_buffer);
+
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
     engine.register_value("runtime-dir",  SteelVal::FuncV(fs::runtime_dir));
