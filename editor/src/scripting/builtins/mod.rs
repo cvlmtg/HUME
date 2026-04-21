@@ -122,6 +122,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "buffer-name",    buffers::buffer_name);
     engine.register_fn_with_ctx(HUME_CTX, "buffer-dirty?",  buffers::buffer_dirty);
 
+    // Multi-buffer mutating builtins
+    engine.register_fn_with_ctx(HUME_CTX, "open-buffer!",      buffers::open_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "close-buffer!",     buffers::close_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
+
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
     engine.register_value("runtime-dir",  SteelVal::FuncV(fs::runtime_dir));

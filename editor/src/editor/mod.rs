@@ -31,6 +31,7 @@ use self::keymap::{Keymap, WaitCharPending};
 
 pub(crate) mod buffer;
 pub(crate) mod buffer_store;
+pub(crate) mod ops;
 pub(crate) mod pane_state;
 mod registry;
 mod commands;
@@ -1150,45 +1151,22 @@ impl Editor {
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// `pane_state`, and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        let bid = self.engine_view.buffers.insert(engine::pipeline::SharedBuffer::new());
-        let initial_sels = doc.initial_sels();
-        self.buffers.open(bid, doc);
-        let pid = self.focused_pane_id;
-        self.pane_state[pid].insert(bid, PaneBufferState {
-            selections: initial_sels,
-            ..PaneBufferState::default()
-        });
-        bid
+        ops::open_buffer(
+            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
+            self.focused_pane_id, doc,
+        )
     }
 
-    /// Remove buffer `id`, handling the three cases:
+    /// Remove buffer `id`, handling two cases:
     ///
-    /// - **Case A/B** — at least one other buffer exists: redirect every pane
-    ///   viewing `id` to the MRU replacement, then free the slot.
-    /// - **Case C** — `id` is the only buffer: replace in-place with scratch.
+    /// - At least one other buffer: redirect every pane viewing `id` to the
+    ///   MRU replacement, then free the slot.
+    /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
-        match self.buffers.mru_excluding(id) {
-            Some(next) => {
-                // Collect panes viewing `id` (can't iterate while mutating).
-                let panes_to_redirect: Vec<PaneId> = self.engine_view.panes
-                    .iter()
-                    .filter(|(_, p)| p.buffer_id == id)
-                    .map(|(pid, _)| pid)
-                    .collect();
-                for pid in panes_to_redirect {
-                    self.switch_pane_to_buffer_without_jump(pid, next);
-                }
-                // Sync denormalized buffer_id from the focused pane.
-                self.buffer_id = self.engine_view.panes[self.focused_pane_id].buffer_id;
-                self.buffers.close(id);
-                self.engine_view.buffers.remove(id);
-                self.forget_buffer_in_all_panes(id);
-            }
-            None => {
-                // Case C: only buffer — replace in-place with scratch.
-                self.replace_buffer_in_place(id, Buffer::scratch());
-            }
-        }
+        self.buffer_id = ops::close_buffer(
+            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
+            &mut self.pane_jumps, self.focused_pane_id, id,
+        );
     }
 
     /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
@@ -1196,67 +1174,16 @@ impl Editor {
     /// Used by `:e!` reload. Caller contract: `new_doc.search_pattern` must be `None`
     /// (enforced by debug_assert — `Buffer::from_file` satisfies this by construction).
     pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
-        debug_assert!(new_doc.search_pattern.is_none(),
-            "replace_buffer_in_place: new_doc must have no active search state");
-        let initial_sels = new_doc.initial_sels();
-        *self.buffers.get_mut(id) = new_doc;
-        // Re-seed every pane currently viewing this buffer.
-        let pane_ids: Vec<PaneId> = self.engine_view.panes
-            .iter()
-            .filter(|(_, p)| p.buffer_id == id)
-            .map(|(pid, _)| pid)
-            .collect();
-        for pid in pane_ids {
-            self.pane_state[pid].insert(id, PaneBufferState {
-                selections: initial_sels.clone(),
-                ..PaneBufferState::default()
-            });
-        }
-        for jumps in self.pane_jumps.values_mut() {
-            jumps.prune_buffer(id);
-        }
-        for pane in self.engine_view.panes.values_mut() {
-            pane.forget_buffer(id);
-        }
-    }
-
-    /// Clear all per-pane state for `id` across every pane.
-    ///
-    /// Called after `buffers.close(id)` — the id is no longer valid at this point.
-    fn forget_buffer_in_all_panes(&mut self, id: BufferId) {
-        for pane in self.engine_view.panes.values_mut() {
-            pane.forget_buffer(id);
-        }
-        for buf_state in self.pane_state.values_mut() {
-            buf_state.remove(id);
-        }
-        for jumps in self.pane_jumps.values_mut() {
-            jumps.prune_buffer(id);
-        }
-    }
-
-    /// Redirect pane `pid` to buffer `target` without recording a jump.
-    ///
-    /// Saves the pane's scroll on the old buffer, loads the target's saved
-    /// scroll (0 on first visit), and seeds `pane_state` for the target if
-    /// this pane hasn't viewed it before.
-    pub(crate) fn switch_pane_to_buffer_without_jump(&mut self, pid: PaneId, target: BufferId) {
-        self.engine_view.panes[pid].remember_scroll();
-        self.engine_view.panes[pid].buffer_id = target;
-        self.engine_view.panes[pid].recall_scroll(target);
-        if !self.pane_state[pid].contains_key(target) {
-            let initial_sels = self.buffers.get(target).initial_sels();
-            self.pane_state[pid].insert(target, PaneBufferState {
-                selections: initial_sels,
-                ..PaneBufferState::default()
-            });
-        }
+        ops::replace_buffer_in_place(
+            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
+            &mut self.pane_jumps, id, new_doc,
+        );
     }
 
     /// Redirect the focused pane to `target` without recording a jump.
     pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.focused_pane_id;
-        self.switch_pane_to_buffer_without_jump(pid, target);
+        ops::switch_pane_to_buffer(&mut self.engine_view, &self.buffers, &mut self.pane_state, pid, target);
         self.buffer_id = target;
     }
 
@@ -1266,9 +1193,11 @@ impl Editor {
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
     pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
-        let entry = self.current_jump_entry();
-        self.pane_jumps[self.focused_pane_id].push(entry);
-        self.switch_to_buffer_without_jump(target);
+        ops::switch_to_buffer_with_jump(
+            &mut self.engine_view, &self.buffers, &mut self.pane_state,
+            &mut self.pane_jumps, self.focused_pane_id, self.buffer_id, target,
+        );
+        self.buffer_id = target;
     }
 
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.

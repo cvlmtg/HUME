@@ -589,6 +589,7 @@ impl Editor {
                             Some(&mut self.buffers),
                             Some(&mut self.engine_view),
                             Some(&mut self.pane_state),
+                            Some(&mut self.pane_jumps),
                         ) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }
@@ -596,6 +597,10 @@ impl Editor {
                     } else {
                         return;
                     };
+                    // Sync denormalised buffer_id: a Steel builtin may have
+                    // called (switch-to-buffer!) or (close-buffer!), which
+                    // updates the engine pane state but not this field.
+                    self.buffer_id = self.engine_view.panes[self.focused_pane_id].buffer_id;
                     self.flush_script_messages();
                     for cmd_name in queue {
                         self.execute_keymap_command(cmd_name.into(), count, extend, None);
