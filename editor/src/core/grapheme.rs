@@ -438,20 +438,34 @@ mod tests {
     /// This test reads the source files at compile time, skips test blocks and
     /// comment lines, and fails if any active code contains a forbidden stepping
     /// pattern on a char-position variable.
+    fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = rd.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            let name = entry.file_name();
+            let n = name.to_string_lossy();
+            if path.is_dir() && n != "tests" {
+                collect_source_rs(&path, out);
+            } else if path.is_file() && n.ends_with(".rs") && n != "tests.rs" {
+                out.push(path);
+            }
+        }
+    }
+
     #[test]
     fn no_raw_char_stepping_in_motion_code() {
         let manifest = std::env::var("CARGO_MANIFEST_DIR")
             .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
 
-        // All files whose position-manipulation code must use grapheme boundaries.
-        let files = [
-            "src/ops/motion.rs",
-            "src/ops/text_object.rs",
-            "src/ops/selection_cmd.rs",
-            "src/ops/edit.rs",
-            "src/auto_pairs.rs",
-            "src/helpers.rs",
-        ];
+        // Collect all non-test source files under src/ops/ plus two standalone files.
+        // Using directory traversal so future submodule splits are covered automatically.
+        let root = std::path::Path::new(&manifest);
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        collect_source_rs(&root.join("src/ops"), &mut paths);
+        paths.push(root.join("src/auto_pairs.rs"));
+        paths.push(root.join("src/helpers.rs"));
 
         // Forbidden patterns — raw +1/-1 steps on char-position variables.
         // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)
@@ -475,10 +489,10 @@ mod tests {
 
         let mut violations: Vec<String> = Vec::new();
 
-        for file in &files {
-            let path = format!("{manifest}/{file}");
-            let src = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("cannot read {file}: {e}"));
+        for path in &paths {
+            let file = path.strip_prefix(root).unwrap_or(path).display().to_string();
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
 
             // Track whether we are inside a `#[cfg(test)] mod tests { … }` block
             // so we don't flag historical references in test comments.
