@@ -1425,6 +1425,28 @@ fn ctrl_w_w_is_pane_focus_next_stub() {
     );
 }
 
+/// Ctrl+w, h/j/k/l → directional pane-focus stubs (M9+ placeholders).
+///
+/// Locks the contract that all four directional variants are stubs until
+/// the `:split` feature lands — they must not mutate state or panic.
+#[test]
+fn ctrl_w_directional_stubs_report_not_implemented() {
+    for second_key in ['h', 'j', 'k', 'l'] {
+        let mut ed = editor_from_kitty("-[h]>ello world\n");
+        ed.handle_key(key_ctrl('w'));
+        ed.handle_key(key(second_key));
+        assert_eq!(
+            state(&ed), "-[h]>ello world\n",
+            "Ctrl+w {second_key}: stub must not move cursor",
+        );
+        assert!(
+            ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
+            "Ctrl+w {second_key}: stub must report not-yet-implemented: {:?}",
+            ed.status_msg,
+        );
+    }
+}
+
 /// Ctrl+b extends to the previous word via union semantics (kitty mode only).
 /// From cursor at 'w' (pos 6), select_prev_word finds "hello" (0,4).
 /// Union: min(6,0)=0, max(6,4)=6 → "hello w" forward.
@@ -4128,6 +4150,54 @@ fn p6_bd_force_closes_dirty_buffer() {
     let result = ed.execute_typed("bd!", None);
     assert!(result.is_ok(), ":bd! should close dirty buffer");
     assert_eq!(ed.focused_buffer_id(), bid_clean);
+}
+
+/// `:split`, `:vsplit`, and their aliases `:sp`/`:vsp` are M9+ stubs.
+///
+/// Locks the error contract so the stubs can't accidentally become no-ops
+/// or panics when the feature isn't yet wired.
+#[test]
+fn colon_split_vsplit_are_stubs() {
+    use crate::core::error::CommandError;
+    for cmd in ["split", "vsplit", "sp", "vsp"] {
+        let mut ed = editor_from("-[h]>ello\n");
+        let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();
+        assert!(
+            err.0.contains("not yet implemented"),
+            ":{cmd} must report not-yet-implemented, got: {:?}", err.0,
+        );
+        // execute_typed also sets status_msg so the user sees the error.
+        assert!(
+            ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
+            ":{cmd} must set error status: {:?}", ed.status_msg,
+        );
+    }
+}
+
+/// `close_buffer` redirects ALL panes viewing the closed buffer to the MRU alternative.
+///
+/// The `:bd` tests verify the single-pane path. This test targets the multi-pane
+/// redirect branch: both the focused and a non-focused pane must be redirected.
+#[test]
+fn p6_close_buffer_redirects_all_panes_to_mru() {
+    let mut ed = Editor::for_testing(Buffer::new(Text::from("a\n"), SelectionSet::default()));
+    let bid_a = ed.focused_buffer_id();
+    // open_buffer seeds pane_state for the focused pane but doesn't switch the pane view.
+    let bid_b = ed.open_buffer(Buffer::new(Text::from("b\n"), SelectionSet::default()));
+
+    let pid_1 = ed.focused_pane_id;
+    // Second pane also views A.
+    let pid_2 = ed.open_pane(bid_a);
+
+    assert_eq!(ed.engine_view.panes[pid_1].buffer_id, bid_a, "sanity: pid_1 views A");
+    assert_eq!(ed.engine_view.panes[pid_2].buffer_id, bid_a, "sanity: pid_2 views A");
+
+    // Close A; mru_excluding(A) == B (B was opened last, so it's at the MRU tail).
+    ed.close_buffer(bid_a);
+
+    assert_eq!(ed.engine_view.panes[pid_1].buffer_id, bid_b, "focused pane redirected to B");
+    assert_eq!(ed.engine_view.panes[pid_2].buffer_id, bid_b, "non-focused pane redirected to B");
+    assert!(ed.buffers.try_get(bid_a).is_none(), "closed buffer freed from store");
 }
 
 /// `:e path` opens a new buffer when the file is not already open.
