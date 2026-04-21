@@ -665,11 +665,6 @@ impl Editor {
 
     // ── Hook firing ──────────────────────────────────────────────────────────
 
-    /// Fire all Steel handlers for `hook_id`, passing `args` to each.
-    ///
-    /// No-ops immediately if no scripting host is present or if no handlers
-    /// are registered for the hook.  Errors from handlers are reported as
-    /// `Severity::Error`; the returned `cmd_queue` is discarded (not yet routed).
     /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
     /// `commands.rs` share this rather than duplicating the arg construction.
     pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
@@ -677,6 +672,12 @@ impl Editor {
         self.fire_hook_silent(HookId::OnBufferSave, &[val]);
     }
 
+    /// Fire all Steel handlers for `hook_id`, passing `args` to each.
+    ///
+    /// No-ops immediately if no scripting host is present or if no handlers
+    /// are registered for the hook.  Commands queued by `(call! …)` inside
+    /// hook bodies are dispatched after all handlers return.  Errors from
+    /// handlers are reported as `Severity::Error`.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
         if self.scripting.as_ref().is_none_or(|h| h.hooks.is_empty_for(&hook_id)) {
             return;
@@ -700,8 +701,13 @@ impl Editor {
             )
         };
         self.flush_script_messages();
-        if let Err(e) = result {
-            self.report(Severity::Error, format!("hook error: {e}"));
+        match result {
+            Ok(queue) => {
+                for cmd in queue {
+                    self.execute_keymap_command(cmd.into(), 1, false, None);
+                }
+            }
+            Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
         }
     }
 
@@ -1019,12 +1025,39 @@ impl Editor {
     /// `rope_pre` is the buffer text **before** the edit — required by
     /// `translate_in_place` to identify which line each head was on before
     /// mapping, so it can decide whether to reset `Selection.horiz`.
+    ///
+    /// Also syncs each affected pane's engine selections so multi-pane
+    /// rendering (M9+ :split) sees up-to-date cursor positions without
+    /// waiting for the next `prepare_frame`.
     fn propagate_cs_to_panes(&mut self, buf_id: BufferId, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         let focused = self.focused_pane_id;
-        for (pane_id, buf_map) in self.pane_state.iter_mut() {
-            if pane_id == focused { continue; }
-            if let Some(state) = buf_map.get_mut(buf_id) {
-                state.selections.translate_in_place(cs, rope_pre);
+
+        // Collect affected pane IDs before mutating to satisfy the borrow checker.
+        let affected: Vec<PaneId> = self.pane_state.iter()
+            .filter_map(|(pid, buf_map)| {
+                (pid != focused && buf_map.contains_key(buf_id)).then_some(pid)
+            })
+            .collect();
+
+        for pid in affected {
+            self.pane_state[pid][buf_id].selections.translate_in_place(cs, rope_pre);
+
+            // Mirror translated selections to the engine pane (split borrow:
+            // pane_state and engine_view are disjoint fields).
+            let primary_head = self.pane_state[pid][buf_id].selections.primary().head;
+            let Self { pane_state, engine_view, .. } = &mut *self;
+            if let Some(pane) = engine_view.panes.get_mut(pid) {
+                pane.selections.clear();
+                pane.selections.extend(
+                    pane_state[pid][buf_id].selections
+                        .iter_sorted()
+                        .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
+                );
+                pane.selections.sort_by_key(|s| s.head);
+                pane.primary_idx = pane.selections
+                    .iter()
+                    .position(|s| s.head == primary_head)
+                    .unwrap_or(0);
             }
         }
     }
@@ -1392,7 +1425,15 @@ impl Editor {
     }
 
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
+    ///
+    /// Precondition: editor must be in Normal mode. Focus switches are only
+    /// bound in Normal mode; mode-changing commands must not switch panes.
     pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
+        debug_assert!(
+            self.mode == Mode::Normal,
+            "focus-switch must only happen in Normal mode, got {:?}",
+            self.mode,
+        );
         self.focused_pane_id = target;
         if !self.pane_state.contains_key(target) {
             self.pane_state.insert(target, SecondaryMap::new());
