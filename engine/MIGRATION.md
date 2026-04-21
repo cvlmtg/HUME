@@ -1,3 +1,5 @@
+> **STATUS: COMPLETE** — All 11 steps of this migration shipped with the M7 multi-buffer refactor (complete 2026-04-20). This document is preserved as a historical record.
+
 # Plan: Wire New Engine to Editor
 
 ## Context
