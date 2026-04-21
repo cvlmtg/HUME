@@ -9,7 +9,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
-- **Named commands** (`src/ops/edit.rs`, `src/ops/motion.rs`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions. They have no knowledge of keys.
+- **Named commands** (`editor/src/ops/edit/`, `editor/src/ops/motion/`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions. They have no knowledge of keys.
 - **Keymaps** (`src/editor/keymap.rs`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Insert).
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
@@ -31,7 +31,7 @@ These must be respected from the first line of code — retrofitting is expensiv
   - **Forbidden**: `pos += 1`, `pos -= 1`, `start += 1`, `start -= 1`, `end += 1`, `end -= 1`, `head += 1`, `head -= 1`, `char_at(pos + 1)`, `char_at(pos - 1)` in any motion or selection code. These step over raw chars and will land mid-cluster on combining sequences (e.g. `é` = U+0065 + U+0301) or ZWJ emoji.
   - **Required**: `next_grapheme_boundary(buf, pos)` and `prev_grapheme_boundary(buf, pos)` from `src/core/grapheme.rs` for all position advances in motion/selection logic.
   - **Allowed**: `line += 1` for line-level iteration, `i += 1` in bracket/delimiter scanning (ASCII only), `len_chars() - 1` for end-of-buffer clamping.
-  - **Enforced**: `cargo test no_raw_char_stepping_in_motion_code` (in `src/core/grapheme.rs`) scans `src/ops/motion.rs`, `src/ops/text_object.rs`, and `src/ops/selection_cmd.rs` for forbidden patterns and fails the build if found.
+  - **Enforced**: `cargo test no_raw_char_stepping_in_motion_code` (in `editor/src/core/grapheme.rs`) recursively scans `editor/src/ops/` plus `editor/src/auto_pairs.rs` and `editor/src/helpers.rs` for forbidden patterns and fails the build if found.
 
 ## Rust coding philosophy
 This project is both a product and a learning journey. Write the best Rust possible, and teach as you go.
