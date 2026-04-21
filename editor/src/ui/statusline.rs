@@ -342,9 +342,9 @@ fn render_section(elements: &[StatusElement], editor: &Editor, colors: &EditorCo
                 spans.push((Cow::Borrowed(" "), colors.statusline));
                 spans.push((text, style));
             } else if a_ends_space && b_starts_space {
-                let trimmed = match &text {
+                let trimmed = match text {
                     Cow::Borrowed(s) => Cow::Borrowed(s.strip_prefix(' ').unwrap_or(s)),
-                    Cow::Owned(s) => Cow::Owned(s.strip_prefix(' ').unwrap_or(s.as_str()).to_string()),
+                    Cow::Owned(mut s) => { s.drain(..1); Cow::Owned(s) }
                 };
                 spans.push((trimmed, style));
             } else {
