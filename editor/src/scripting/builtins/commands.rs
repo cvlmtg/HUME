@@ -32,10 +32,11 @@
 //! with `:cmd` and `bind-key!`.
 
 use steel::rvals::SteelVal;
-use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rerrs::SteelErr;
 
 use crate::scripting::{PendingSteelCmd, SteelCtx};
 use crate::scripting::ledger::Owner;
+use super::require_cmd_ctx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -87,12 +88,7 @@ pub(crate) fn define_command(ctx: &mut SteelCtx, name: String, doc: String, proc
 /// Only valid inside a `SteelBacked` command invocation; raises a Steel error
 /// if called from top-level `init.scm`.
 pub(crate) fn call_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    if ctx.is_init {
-        return Err(SteelErr::new(
-            ErrorKind::Generic,
-            "call!: not inside a Steel command invocation".to_string(),
-        ));
-    }
+    require_cmd_ctx!(ctx, "call!");
     ctx.cmd_queue.push(name);
     Ok(SteelVal::Void)
 }
@@ -109,12 +105,7 @@ pub(crate) fn call_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
 ///
 /// Only valid inside a `SteelBacked` command invocation.
 pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult {
-    if ctx.is_init {
-        return Err(SteelErr::new(
-            ErrorKind::Generic,
-            "request-wait-char!: not inside a Steel command invocation".to_string(),
-        ));
-    }
+    require_cmd_ctx!(ctx, "request-wait-char!");
     ctx.wait_char_request = Some(cmd);
     Ok(SteelVal::Void)
 }
@@ -176,7 +167,7 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = call_command(&mut ctx, "move-right".to_string()).unwrap_err();
-        assert!(err.to_string().contains("not inside"), "got: {err}");
+        assert!(err.to_string().contains("not available during init"), "got: {err}");
     }
 
     #[test]
@@ -202,7 +193,7 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = request_wait_char(&mut ctx, "replace".to_string()).unwrap_err();
-        assert!(err.to_string().contains("not inside"), "got: {err}");
+        assert!(err.to_string().contains("not available during init"), "got: {err}");
     }
 
     #[test]

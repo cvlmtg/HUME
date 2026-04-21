@@ -11,20 +11,9 @@ use engine::pipeline::BufferId;
 
 use crate::editor::buffer::Buffer;
 use crate::scripting::SteelCtx;
-use super::ids::{SteelBufferId, SteelPaneId};
+use super::{ids::{SteelBufferId, SteelPaneId}, require_cmd_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-// ── Shared helpers ─────────────────────────────────────────────────────────────
-
-/// Return `Err` if we're inside an init eval (editor refs are None).
-macro_rules! require_cmd_ctx {
-    ($ctx:expr, $name:literal) => {
-        if $ctx.is_init {
-            steel::stop!(Generic => "{}: not available during init evaluation", $name);
-        }
-    };
-}
 
 /// Extract the inner `BufferId` from a `SteelVal::Custom(SteelBufferId)`.
 fn extract_buffer_id(val: &SteelVal) -> Option<BufferId> {
@@ -133,21 +122,12 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let p = std::path::Path::new(&path);
     let canonical = crate::os::fs::canonicalize(p)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", p.display())))?;
-    // Dedup check — immutable borrow ends before the mutable borrows below.
-    if let Some(existing) = ctx.buffers.as_deref()
-        .expect("buffers is Some when is_init = false")
-        .find_by_path(&canonical)
-    {
-        return SteelBufferId(existing).into_steelval()
-            .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()));
-    }
-    let doc = crate::editor::buffer::Buffer::from_file(&canonical)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", canonical.display())))?;
     let focused_pane_id = ctx.focused_pane_id;
     let ev   = ctx.engine_view.as_deref_mut().expect("engine_view is Some when is_init = false");
     let bufs = ctx.buffers.as_deref_mut().expect("buffers is Some when is_init = false");
     let ps   = ctx.pane_state.as_deref_mut().expect("pane_state is Some when is_init = false");
-    let bid = crate::editor::ops::open_buffer(ev, bufs, ps, focused_pane_id, doc);
+    let (bid, _) = crate::editor::ops::open_or_dedup(ev, bufs, ps, focused_pane_id, &canonical)
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", canonical.display())))?;
     SteelBufferId(bid).into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
@@ -207,30 +187,24 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
 
 // ── Pane stubs (Phase 5 — reserved for M9+) ──────────────────────────────────
 
-/// `(open-pane! bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn open_pane(_ctx: &mut SteelCtx, _bid: SteelVal) -> SteelResult {
-    steel::stop!(Generic => "open-pane!: pane operations require :split, deferred to M9+");
+fn pane_stub(builtin_name: &str) -> SteelResult {
+    steel::stop!(Generic => "{}: pane operations require :split, deferred to M9+", builtin_name)
 }
+
+/// `(open-pane! bid)` — reserved; pane split operations land in M9+.
+pub(crate) fn open_pane(_ctx: &mut SteelCtx, _bid: SteelVal) -> SteelResult { pane_stub("open-pane!") }
 
 /// `(close-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn close_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
-    steel::stop!(Generic => "close-pane!: pane operations require :split, deferred to M9+");
-}
+pub(crate) fn close_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("close-pane!") }
 
 /// `(focus-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn focus_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
-    steel::stop!(Generic => "focus-pane!: pane operations require :split, deferred to M9+");
-}
+pub(crate) fn focus_pane(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("focus-pane!") }
 
 /// `(pane-buffer pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_buffer(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult {
-    steel::stop!(Generic => "pane-buffer: pane operations require :split, deferred to M9+");
-}
+pub(crate) fn pane_buffer(_ctx: &mut SteelCtx, _pid: SteelVal) -> SteelResult { pane_stub("pane-buffer") }
 
 /// `(pane-set-buffer! pid bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_set_buffer(_ctx: &mut SteelCtx, _pid: SteelVal, _bid: SteelVal) -> SteelResult {
-    steel::stop!(Generic => "pane-set-buffer!: pane operations require :split, deferred to M9+");
-}
+pub(crate) fn pane_set_buffer(_ctx: &mut SteelCtx, _pid: SteelVal, _bid: SteelVal) -> SteelResult { pane_stub("pane-set-buffer!") }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 

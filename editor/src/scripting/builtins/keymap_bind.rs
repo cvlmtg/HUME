@@ -27,6 +27,37 @@ fn mode_from_str(mode_str: &str, fn_name: &str) -> Result<BindMode, SteelErr> {
     }
 }
 
+enum BindKind { Normal, WaitChar }
+
+fn bind_inner(
+    ctx: &mut SteelCtx,
+    fn_name: &str,
+    mode_str: String,
+    key_str: String,
+    cmd_name: String,
+    kind: BindKind,
+) -> SteelResult {
+    if !ctx.is_init {
+        steel::stop!(Generic =>
+            "{fn_name}: only valid during init.scm or plugin load, not from a Steel command body");
+    }
+    let mode = mode_from_str(&mode_str, fn_name)?;
+    let keys = parse_key_sequence(&key_str)
+        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
+    let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
+    let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
+    let current_owner = ctx.plugin_stack.current_owner();
+    match kind {
+        BindKind::Normal   => ctx.keymap.bind_user(mode, &keys, Cow::Owned(cmd_name)),
+        BindKind::WaitChar => ctx.keymap.bind_wait_char_user(mode, &keys, Cow::Owned(cmd_name)),
+    }
+    if let Owner::Plugin(ref plugin_id) = current_owner {
+        ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
+    }
+    Ok(SteelVal::Void)
+}
+
 /// `(bind-key! mode key-sequence command-name)`
 ///
 /// Binds a key sequence in the given mode to a named command.
@@ -39,22 +70,7 @@ fn mode_from_str(mode_str: &str, fn_name: &str) -> Result<BindMode, SteelErr> {
 /// Records a ledger entry when called from a plugin body.
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String, cmd_name: String) -> SteelResult {
-    if !ctx.is_init {
-        steel::stop!(Generic =>
-            "bind-key!: only valid during init.scm or plugin load, not from a Steel command body");
-    }
-    let mode = mode_from_str(&mode_str, "bind-key!")?;
-    let keys = parse_key_sequence(&key_str)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
-    let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
-    let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
-    let current_owner = ctx.plugin_stack.current_owner();
-    ctx.keymap.bind_user(mode, &keys, Cow::Owned(cmd_name));
-    if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
-    }
-    Ok(SteelVal::Void)
+    bind_inner(ctx, "bind-key!", mode_str, key_str, cmd_name, BindKind::Normal)
 }
 
 /// `(bind-wait-char! mode key-sequence command-name)`
@@ -69,20 +85,5 @@ pub(crate) fn bind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String, cm
 /// Records a ledger entry when called from a plugin body.
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_wait_char(ctx: &mut SteelCtx, mode_str: String, key_str: String, cmd_name: String) -> SteelResult {
-    if !ctx.is_init {
-        steel::stop!(Generic =>
-            "bind-wait-char!: only valid during init.scm or plugin load, not from a Steel command body");
-    }
-    let mode = mode_from_str(&mode_str, "bind-wait-char!")?;
-    let keys = parse_key_sequence(&key_str)
-        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
-    let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
-    let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
-    let current_owner = ctx.plugin_stack.current_owner();
-    ctx.keymap.bind_wait_char_user(mode, &keys, Cow::Owned(cmd_name));
-    if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(plugin_id, ledger_key, prior_owner, prior_value);
-    }
-    Ok(SteelVal::Void)
+    bind_inner(ctx, "bind-wait-char!", mode_str, key_str, cmd_name, BindKind::WaitChar)
 }
