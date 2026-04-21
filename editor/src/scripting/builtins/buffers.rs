@@ -130,7 +130,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     require_cmd_ctx!(ctx, "open-buffer!");
     let p = std::path::Path::new(&path);
-    let canonical = std::fs::canonicalize(p)
+    let canonical = crate::os::fs::canonicalize(p)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", p.display())))?;
     // Dedup check — immutable borrow ends before the mutable borrows below.
     if let Some(existing) = ctx.buffers.as_deref()

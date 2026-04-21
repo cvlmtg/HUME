@@ -29,8 +29,6 @@ pub(crate) enum SearchDirection {
 /// fully-valid by construction (invalid regexes are rejected at compile time and
 /// leave `Buffer.search_pattern = None`).
 pub(crate) struct SearchPattern {
-    #[allow(dead_code)] // stored for completeness; session direction lives on SearchState
-    pub direction: SearchDirection,
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
     /// Raw pattern string — used as an invalidation key for `SearchMatches`.
     pub pattern_str: String,

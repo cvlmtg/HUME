@@ -134,7 +134,6 @@ pub(crate) use engine::types::EditorMode as Mode;
 
 pub(crate) struct Editor {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
-    /// The focused buffer is `buffers.get(buffer_id)`.
     pub(crate) buffers: BufferStore,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state (previously a separate `extend: bool` field). Mode is the single
@@ -212,8 +211,6 @@ pub(crate) struct Editor {
     pub(crate) engine_view: EngineView,
     /// The single pane created in `open()`.
     pub(crate) focused_pane_id: PaneId,
-    /// The single buffer registered in `open()`.
-    pub(crate) buffer_id: BufferId,
     /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
     /// Written by `update_highlight_providers()` each frame; read by the provider.
     pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
@@ -415,7 +412,6 @@ impl Editor {
             pane_transient,
             engine_view,
             focused_pane_id: pane_id,
-            buffer_id,
             bracket_hl_data,
             search_hl_data,
             motion_format_scratch: engine::format::FormatScratch::new(),
@@ -458,7 +454,7 @@ impl Editor {
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.pane_state[self.focused_pane_id][self.buffer_id].selections.primary().head;
+                let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
                 let (vp, gutter_w) = {
                     let pane = &self.engine_view.panes[self.focused_pane_id];
                     let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc().text().len_lines());
@@ -488,7 +484,7 @@ impl Editor {
             } else {
                 self.doc().text().rope()
             };
-            let buffer_id = self.buffer_id;
+            let buffer_id = self.focused_buffer_id();
             let pane_id   = self.focused_pane_id;
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
@@ -617,14 +613,14 @@ impl Editor {
             }
 
             // 4. Scroll so the primary cursor stays visible.
-            let cursor_char = self.pane_state[self.focused_pane_id][self.buffer_id].selections.primary().head;
+            let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             {
-                let buf_id = self.buffer_id;
+                let buf_id = self.focused_buffer_id();
                 let rope = self.buffers.get(buf_id).text().rope();
                 let pane = &mut self.engine_view.panes[self.focused_pane_id];
                 scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, &wrap_mode, tab_width, &whitespace, v_margin, h_margin);
@@ -691,7 +687,7 @@ impl Editor {
             return;
         }
         let pid = self.focused_pane_id;
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         let result = {
             let host = self.scripting.as_mut().expect("checked above");
             host.fire_hook(
@@ -705,8 +701,6 @@ impl Editor {
                 Some(&mut self.pane_jumps),
             )
         };
-        // Sync buffer_id — a hook may have called (switch-to-buffer!).
-        self.buffer_id = self.engine_view.panes[self.focused_pane_id].buffer_id;
         self.flush_script_messages();
         if let Err(e) = result {
             self.report(Severity::Error, format!("hook error: {e}"));
@@ -784,7 +778,7 @@ impl Editor {
     /// to track the primary selection's position in that order.
     pub(crate) fn push_selections_to_pane(&mut self) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
 
         // Collect from pane_state before mutably borrowing engine_view.
         // pane_state[..] and engine_view are disjoint fields; borrows end at `;`.
@@ -809,23 +803,24 @@ impl Editor {
 
     /// Accessor for the focused buffer's active search pattern.
     pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
-        self.buffers.get(self.buffer_id).search_pattern.as_ref()
+        self.buffers.get(self.focused_buffer_id()).search_pattern.as_ref()
     }
 
     /// Accessor for the focused buffer's match cache.
     #[cfg(test)]
     pub(crate) fn search_matches(&self) -> &SearchMatches {
-        &self.buffers.get(self.buffer_id).search_matches
+        &self.buffers.get(self.focused_buffer_id()).search_matches
     }
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
     pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
-        &self.pane_state[self.focused_pane_id][self.buffer_id].search_cursor
+        &self.pane_state[self.focused_pane_id][self.focused_buffer_id()].search_cursor
     }
 
     /// Mutable accessor for the focused pane's search cursor.
     pub(crate) fn current_search_cursor_mut(&mut self) -> &mut SearchCursor {
-        &mut self.pane_state[self.focused_pane_id][self.buffer_id].search_cursor
+        let bid = self.focused_buffer_id();
+        &mut self.pane_state[self.focused_pane_id][bid].search_cursor
     }
 
     /// Clear the active search state for buffer `bid`: drop the pattern,
@@ -903,7 +898,7 @@ impl Editor {
     /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for the
     /// focused pane/buffer. Replaces the old `update_search_cache`.
     pub(super) fn sync_search_cache(&mut self) {
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         let pid = self.focused_pane_id;
         self.update_buffer_matches(bid);
         self.update_pane_cursor(pid, bid);
@@ -932,7 +927,7 @@ impl Editor {
                 // Matches are sorted by document order. Binary-search to the first
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
-                let matches = &self.buffers.get(self.buffer_id).search_matches.matches;
+                let matches = &self.buffers.get(self.focused_buffer_id()).search_matches.matches;
                 let first = matches.partition_point(|&(start, _)| start < top_char);
                 for &(start, end_incl) in &matches[first..] {
                     let (line, byte_start) = char_to_line_byte(buf, start);
@@ -951,7 +946,7 @@ impl Editor {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.mode != EditorMode::Insert {
-                let head = self.pane_state[self.focused_pane_id][self.buffer_id].selections.primary().head;
+                let head = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
@@ -1007,9 +1002,14 @@ impl Editor {
 
     // ── Buffer accessors ──────────────────────────────────────────────────────
 
+    /// The `BufferId` the focused pane is currently viewing.
+    pub(crate) fn focused_buffer_id(&self) -> BufferId {
+        self.engine_view.panes[self.focused_pane_id].buffer_id
+    }
+
     /// Shared reference to the focused buffer.
     pub(crate) fn doc(&self) -> &Buffer {
-        self.buffers.get(self.buffer_id)
+        self.buffers.get(self.focused_buffer_id())
     }
 
     /// Mutable reference to the focused buffer.
@@ -1018,19 +1018,21 @@ impl Editor {
     /// disjoint, so you can hold this reference while reading e.g. `self.settings`.
     /// Do NOT keep this reference live across a call that also borrows `self`.
     pub(crate) fn doc_mut(&mut self) -> &mut Buffer {
-        self.buffers.get_mut(self.buffer_id)
+        let bid = self.focused_buffer_id();
+        self.buffers.get_mut(bid)
     }
 
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        &self.pane_state[self.focused_pane_id][self.buffer_id].selections
+        &self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
-        self.pane_state[self.focused_pane_id][self.buffer_id].selections = sels;
+        let bid = self.focused_buffer_id();
+        self.pane_state[self.focused_pane_id][bid].selections = sels;
     }
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
@@ -1058,7 +1060,7 @@ impl Editor {
         cmd: impl FnOnce(Text, SelectionSet) -> R,
     ) -> (Option<Vec<String>>, ChangeSet) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         // Snapshot pre-edit rope (O(1) — ropey uses structural sharing).
         let rope_pre = self.buffers.get(buf_id).text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
@@ -1079,7 +1081,7 @@ impl Editor {
         cmd: impl FnOnce(Text, SelectionSet) -> R,
     ) -> (Option<Vec<String>>, ChangeSet) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let rope_pre = self.buffers.get(buf_id).text().rope().clone();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
         // Split borrow: self.buffers and self.pane_state are disjoint fields.
@@ -1095,7 +1097,7 @@ impl Editor {
     /// Apply undo to the focused buffer and propagate the inverse CS to other panes.
     pub(super) fn doc_undo(&mut self) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         // rope_pre for undo is the *current* (post-edit) text: undo's CS maps
         // post-edit positions back to pre-edit, so non-acting panes' heads (which
         // live in post-edit space) must be translated through that CS.
@@ -1109,7 +1111,7 @@ impl Editor {
     /// Apply redo to the focused buffer and propagate the forward CS to other panes.
     pub(super) fn doc_redo(&mut self) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let rope_pre = self.buffers.get(buf_id).text().rope().clone();
         if let Some((new_sels, cs)) = self.buffers.get_mut(buf_id).redo() {
             self.pane_state[pane_id][buf_id].selections = new_sels;
@@ -1118,12 +1120,12 @@ impl Editor {
     }
 
     fn is_group_open_current(&self) -> bool {
-        self.pane_state[self.focused_pane_id][self.buffer_id].edit_group.is_some()
+        self.pane_state[self.focused_pane_id][self.focused_buffer_id()].edit_group.is_some()
     }
 
     fn begin_edit_group_current(&mut self) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
         let doc = self.buffers.get_mut(buf_id);
         let pbs = &mut self.pane_state[pane_id][buf_id];
@@ -1132,7 +1134,7 @@ impl Editor {
 
     fn commit_edit_group_current(&mut self) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let sels = self.pane_state[pane_id][buf_id].selections.clone();
         let doc = self.buffers.get_mut(buf_id);
         let pbs = &mut self.pane_state[pane_id][buf_id];
@@ -1178,7 +1180,7 @@ impl Editor {
     /// Apply a motion command and store the resulting selection.
     pub(super) fn apply_motion(&mut self, f: impl FnOnce(&Text, SelectionSet) -> SelectionSet) {
         let pane_id = self.focused_pane_id;
-        let buf_id = self.buffer_id;
+        let buf_id = self.focused_buffer_id();
         let new_sels = {
             let buf = self.doc().text();
             let sels = self.pane_state[pane_id][buf_id].selections.clone();
@@ -1226,7 +1228,7 @@ impl Editor {
     ///   MRU replacement, then free the slot.
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
-        self.buffer_id = ops::close_buffer(
+        ops::close_buffer(
             &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
             &mut self.pane_jumps, self.focused_pane_id, id,
         );
@@ -1250,7 +1252,6 @@ impl Editor {
     pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.focused_pane_id;
         ops::switch_pane_to_buffer(&mut self.engine_view, &self.buffers, &mut self.pane_state, pid, target);
-        self.buffer_id = target;
     }
 
     /// Redirect the focused pane to `target`, recording the outgoing position
@@ -1259,18 +1260,18 @@ impl Editor {
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
     pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
+        let current = self.focused_buffer_id();
         ops::switch_to_buffer_with_jump(
             &mut self.engine_view, &self.buffers, &mut self.pane_state,
-            &mut self.pane_jumps, self.focused_pane_id, self.buffer_id, target,
+            &mut self.pane_jumps, self.focused_pane_id, current, target,
         );
-        self.buffer_id = target;
     }
 
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.
     pub(crate) fn current_jump_entry(&self) -> crate::core::jump_list::JumpEntry {
         use crate::core::jump_list::JumpEntry;
         let pid = self.focused_pane_id;
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         let sels = self.pane_state[pid][bid].selections.clone();
         JumpEntry::new(sels, self.buffers.get(bid).text(), bid)
     }
@@ -1341,7 +1342,6 @@ impl Editor {
             pane_transient,
             engine_view,
             focused_pane_id: pane_id,
-            buffer_id,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
             motion_format_scratch: engine::format::FormatScratch::new(),
@@ -1357,9 +1357,8 @@ impl Editor {
 
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
         if let Ok(regex) = regex_cursor::engines::meta::Regex::new(pattern) {
-            let bid = self.buffer_id;
+            let bid = self.focused_buffer_id();
             self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
-                direction: self.search.direction,
                 regex: Arc::new(regex),
                 pattern_str: pattern.to_string(),
             });
@@ -1390,7 +1389,6 @@ impl Editor {
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
         self.focused_pane_id = target;
-        self.buffer_id = self.engine_view.panes[target].buffer_id;
         if !self.pane_state.contains_key(target) {
             self.pane_state.insert(target, SecondaryMap::new());
         }
@@ -1403,7 +1401,7 @@ impl Editor {
                 crate::core::jump_list::JumpList::new(self.settings.jump_list_capacity),
             );
         }
-        let bid = self.buffer_id;
+        let bid = self.focused_buffer_id();
         if !self.pane_state[target].contains_key(bid) {
             let initial_sels = self.buffers.get(bid).initial_sels();
             self.pane_state[target].insert(bid, PaneBufferState {

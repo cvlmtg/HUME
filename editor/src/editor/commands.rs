@@ -435,9 +435,8 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
     if pattern.is_empty() { return false; }
     match compile_search_regex(&pattern) {
         Some(r) => {
-            let bid = ed.buffer_id;
+            let bid = ed.focused_buffer_id();
             ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
-                direction: ed.search.direction,
                 regex: Arc::new(r),
                 pattern_str: pattern,
             });
@@ -457,7 +456,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
     if !ensure_search_regex(ed) { return Ok(()); }
 
     let regex = {
-        let bid = ed.buffer_id;
+        let bid = ed.focused_buffer_id();
         match ed.buffers.get(bid).search_pattern.as_ref() {
             Some(sp) => Arc::clone(&sp.regex),
             None => return Ok(()),
@@ -485,7 +484,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
     let count = count.max(1);
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let use_cache = !ed.buffers.get(bid).search_matches.matches.is_empty();
     let cached_matches: Vec<(usize, usize)> = if use_cache {
         ed.buffers.get(bid).search_matches.matches.clone()
@@ -531,7 +530,7 @@ fn search_jump(ed: &mut Editor, count: usize, direction: SearchDirection, mode: 
 ///
 /// Also invocable as `:clear-search` / `:cs` in command mode.
 pub(super) fn cmd_clear_search(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     ed.clear_buffer_search(bid);
     Ok(())
 }
@@ -552,7 +551,7 @@ pub(super) fn cmd_search_prev(ed: &mut Editor, count: usize, mode: MotionMode) -
 /// The first match becomes primary.
 pub(super) fn cmd_select_all_matches(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     if !ensure_search_regex(ed) { return Ok(()); }
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let regex = match ed.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => Arc::clone(&sp.regex),
         None => return Ok(()),
@@ -628,9 +627,8 @@ pub(super) fn cmd_use_selection_as_search(ed: &mut Editor, _count: usize, _mode:
     // Store in search register and set as active search.
     ed.registers.write_text(SEARCH_REGISTER, vec![escaped.clone()]);
     ed.search.direction = SearchDirection::Forward;
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
-        direction: SearchDirection::Forward,
         regex: Arc::new(regex),
         pattern_str: escaped,
     });
@@ -707,7 +705,7 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
     let Some((key, value)) = rest.split_once('=') else {
         return Err(CommandError("Expected key=value".into()));
     };
-    let bid = ed.buffer_id;
+    let bid = ed.focused_buffer_id();
     let result = match scope {
         "global" => crate::settings::apply_setting(
             crate::settings::SettingScope::Global,
@@ -767,7 +765,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
                 ed.doc_mut().file_meta = Some(meta);
                 ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
-                ed.fire_hook_buffer_save(ed.buffer_id);
+                ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
@@ -781,7 +779,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
             Ok(()) => {
                 ed.doc_mut().mark_saved();
                 ed.report(Severity::Info, format!("Written {line_count} lines"));
-                ed.fire_hook_buffer_save(ed.buffer_id);
+                ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
@@ -797,7 +795,7 @@ pub(super) fn cmd_jump_backward(ed: &mut Editor, _count: usize, _mode: MotionMod
     let nav = ed.pane_jumps[pid].backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {
-        if target_buf != ed.buffer_id {
+        if target_buf != ed.focused_buffer_id() {
             ed.switch_to_buffer_without_jump(target_buf);
         }
         ed.set_current_selections(sels);
@@ -810,7 +808,7 @@ pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode
     let nav = ed.pane_jumps[pid].forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {
-        if target_buf != ed.buffer_id {
+        if target_buf != ed.focused_buffer_id() {
             ed.switch_to_buffer_without_jump(target_buf);
         }
         ed.set_current_selections(sels);
@@ -907,7 +905,7 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
         // Dedup: if already open, just switch.
         if let Some(existing) = ed.buffers.find_by_path(&canonical) {
-            if existing != ed.buffer_id {
+            if existing != ed.focused_buffer_id() {
                 ed.switch_to_buffer_with_jump(existing);
             }
             return Ok(());
@@ -928,7 +926,7 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
         let Some(path) = ed.doc().path.clone() else {
             if force {
                 // :e! on scratch: replace with fresh scratch.
-                let id = ed.buffer_id;
+                let id = ed.focused_buffer_id();
                 ed.replace_buffer_in_place(id, crate::editor::buffer::Buffer::scratch());
                 return Ok(());
             }
@@ -941,7 +939,7 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
         }
         let doc = crate::editor::buffer::Buffer::from_file(&path)
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
-        let id = ed.buffer_id;
+        let id = ed.focused_buffer_id();
         ed.replace_buffer_in_place(id, doc);
         let name = path.file_name()
             .and_then(|n| n.to_str())
@@ -960,15 +958,15 @@ pub(super) fn typed_buffer_delete(ed: &mut Editor, _arg: Option<&str>, force: bo
     if ed.doc().is_dirty() && !force {
         return Err(CommandError("unsaved changes (use :bd! to force)".into()));
     }
-    let id = ed.buffer_id;
+    let id = ed.focused_buffer_id();
     ed.close_buffer(id);
     Ok(())
 }
 
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
 pub(super) fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    let target = ed.buffers.next(ed.buffer_id);
-    if target != ed.buffer_id {
+    let target = ed.buffers.next(ed.focused_buffer_id());
+    if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);
     }
     Ok(())
@@ -976,8 +974,8 @@ pub(super) fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> 
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
 pub(super) fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    let target = ed.buffers.prev(ed.buffer_id);
-    if target != ed.buffer_id {
+    let target = ed.buffers.prev(ed.focused_buffer_id());
+    if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);
     }
     Ok(())
