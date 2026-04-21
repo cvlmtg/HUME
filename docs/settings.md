@@ -55,30 +55,29 @@ Controls how invisible characters are displayed. Set sub-fields independently vi
 
 ## Statusline Configuration (Steel only)
 
-The statusline is configured via `(set-statusline! section elements)` in `init.scm`. Each section is a space-separated list of element names.
+The statusline is configured via `(configure-statusline! left center right)` in `init.scm`. Each argument is a quoted list of element name strings.
 
 ```scheme
-(set-statusline! "left"   "mode separator file-name dirty-indicator")
-(set-statusline! "center" "")
-(set-statusline! "right"  "macro-recording selections position")
+(configure-statusline!
+  '("Mode" "Separator" "FileName" "DirtyIndicator")
+  '()
+  '("MacroRecording" "Selections" "Position"))
 ```
 
-**Sections:** `"left"`, `"center"`, `"right"`
-
-**Available elements:**
+**Available elements (PascalCase strings):**
 
 | Element | Description |
 |---------|-------------|
-| `mode` | Current mode (`NORMAL`, `INSERT`, `EXTEND`) |
-| `separator` | Visual divider between element groups |
-| `file-name` | Name of the current file (basename only) |
-| `dirty-indicator` | Shows `[+]` when the buffer has unsaved changes |
-| `position` | Cursor line and column |
-| `selections` | Number of active selections (hidden when just one) |
-| `search-matches` | Current match index and total when a search is active |
-| `mini-buf` | Contents of the mini-buffer (search prompt, command prompt) |
-| `macro-recording` | Recording indicator when a macro is being captured |
-| `kitty-protocol` | Shows `[kitty]` when the kitty keyboard protocol is active |
+| `"Mode"` | Current mode (`NORMAL`, `INSERT`, `EXTEND`) |
+| `"Separator"` | Visual divider between element groups |
+| `"FileName"` | Name of the current file (basename only) |
+| `"DirtyIndicator"` | Shows `[+]` when the buffer has unsaved changes |
+| `"Position"` | Cursor line and column |
+| `"Selections"` | Number of active selections (hidden when just one) |
+| `"SearchMatches"` | Current match index and total when a search is active |
+| `"MiniBuf"` | Contents of the mini-buffer (search prompt, command prompt) |
+| `"MacroRecording"` | Recording indicator when a macro is being captured |
+| `"KittyProtocol"` | Shows `[kitty]` when the kitty keyboard protocol is active |
 
 ---
 
@@ -127,24 +126,24 @@ Bind a key sequence to a wait-char node. The next keypress after the sequence is
 
 ### `(define-command! name doc lambda)`
 
-Register a Steel lambda as a named mappable command. The command can then be bound with `keymap-bind!` or called via `(exec ...)`.
+Register a Steel lambda as a named mappable command. The command can then be bound with `keymap-bind!` or invoked via `(call! ...)`.
 
 ```scheme
 (define-command! "my-command" "Description shown in command help."
   (lambda ()
-    (exec "move-right")
-    (exec "delete")))
+    (call! "move-right")
+    (call! "delete")))
 ```
 
 If a command with the same name is already registered, the new registration is rejected with a warning (no shadowing).
 
-### `(exec command-name)`
+### `(call! command-name)`
 
-Queue a named command for execution. Only valid inside a `define-command!` lambda — calling `exec` at the top level of a script is an error.
+Queue a named command for execution. `call-command!` is a back-compat alias; prefer `call!`.
 
 ```scheme
-(exec "move-right")
-(exec (string-append "surround-" suffix))
+(call! "move-right")
+(call! (string-append "surround-" suffix))
 ```
 
 ### `(pending-char)`
@@ -153,9 +152,9 @@ Returns the wait-char argument as a single-character string. Empty string if no 
 
 ```scheme
 (let ((ch (pending-char)))
-  (exec (string-append "find-" ch)))
+  (call! (string-append "find-" ch)))
 ```
 
-### `(set-statusline! section elements)`
+### `(configure-statusline! left center right)`
 
-Configure a statusline section. See [Statusline Configuration](#statusline-configuration-steel-only) above.
+Configure all three statusline sections in one call. See [Statusline Configuration](#statusline-configuration-steel-only) above.
