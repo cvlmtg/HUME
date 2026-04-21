@@ -48,7 +48,7 @@ mod visual_move;
 
 pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
 use crate::core::search_state::{SearchPattern, SearchMatches};
-use crate::editor::pane_state::SearchCursor;
+use crate::core::search_state::SearchCursor;
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
@@ -282,12 +282,7 @@ pub(crate) struct Editor {
     /// the end of every `handle_key` call.
     pub(super) skip_macro_record: bool,
 
-    /// True while the event loop is draining the replay queue.
-    ///
-    /// Used to suppress nested recording: a `Q` key inside a replayed macro
-    /// must not start a new recording session. Checking this flag is more
-    /// reliable than checking `replay_queue.is_empty()`, which becomes `true`
-    /// at the exact moment the last replayed key is processed.
+    /// `true` while draining the replay queue; suppresses nested `Q` recording.
     pub(super) is_replaying: bool,
 
     // ── Mouse ─────────────────────────────────────────────────────────────────
@@ -675,8 +670,8 @@ impl Editor {
     /// No-ops immediately if no scripting host is present or if no handlers
     /// are registered for the hook.  Errors from handlers are reported as
     /// `Severity::Error`; the returned `cmd_queue` is discarded (not yet routed).
-    /// Convenience wrapper for `on-buffer-save` hooks — avoids importing Steel
-    /// types in `commands.rs`.
+    /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
+    /// `commands.rs` share this rather than duplicating the arg construction.
     pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
         let val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferSave, &[val]);
@@ -1209,7 +1204,7 @@ impl Editor {
         }
     }
 
-    // ── Phase 6 — Buffer choke-points ────────────────────────────────────────
+    // ── Buffer choke-points ───────────────────────────────────────────────────
 
     /// Dedup-open a canonicalized path: returns `(id, false)` if already open,
     /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
@@ -1377,7 +1372,7 @@ impl Editor {
         self
     }
 
-    // ── Phase 4b — Pane choke-points (test-gated until Phase 9) ──────────────
+    // ── Pane choke-points ─────────────────────────────────────────────────────
 
     /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
@@ -1425,7 +1420,7 @@ impl Editor {
     ///
     /// Precondition: at least one other pane exists. Callers must switch focus
     /// away before calling this if `target` is the focused pane.
-    #[allow(dead_code)] // Phase 9: wired to :close/:only/:split-close
+    #[allow(dead_code)] // wired in M9+ :split/:close
     pub(crate) fn close_pane(&mut self, target: PaneId) {
         self.engine_view.panes.remove(target);
         self.pane_state.remove(target);

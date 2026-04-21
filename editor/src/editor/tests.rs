@@ -3764,7 +3764,7 @@ fn d1_selections_are_pane_owned() {
 /// each pane has its own `SearchCursor` in `pane_state`.
 #[test]
 fn d4a_search_pattern_is_per_buffer() {
-    use crate::editor::pane_state::SearchCursor;
+    use crate::core::search_state::SearchCursor;
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();

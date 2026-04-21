@@ -967,7 +967,7 @@ pub(super) fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> 
     Ok(())
 }
 
-// ── Pane focus (Phase 9 stubs) ────────────────────────────────────────────────
+// ── Pane focus stubs (M9+) ────────────────────────────────────────────────────
 
 pub(super) fn cmd_pane_focus_next(_ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
     Err(CommandError(":split not yet implemented".into()))

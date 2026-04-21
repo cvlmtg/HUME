@@ -165,14 +165,9 @@ pub(crate) enum Owner {
 ///
 /// The *new* value lives in the live registry/keymap/settings — the ledger
 /// never duplicates it. Only the prior state is recorded here.
-///
-/// Note: `prior_value` is a serialized `String` in Phase 2. Phase 3 replaces
-/// this with a typed `PriorValue` enum (one variant per mutable subsystem).
 #[derive(Debug, Clone)]
 pub(crate) struct LedgerEntry {
-    /// The key that was changed (e.g. `"f"` for a keybind, `"tab-width"` for a
-    /// setting). Typed as `String` for Phase 2; will become a `LedgerKey` enum
-    /// in Phase 3 when builtins wire into live registries.
+    /// The key that was changed (e.g. `"f"` for a keybind, `"tab-width"` for a setting).
     pub(crate) key: String,
     /// The serialized value that was live before this mutation.
     pub(crate) prior_value: String,

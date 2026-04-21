@@ -7,15 +7,11 @@
 //! operations on the hot-key path; an IPC round-trip per keystroke would be
 //! strictly worse than a direct function call.
 //!
-//! ## Phases
-//! - Phase 1 (this file): embed the engine, evaluate `init.scm`, report errors.
-//! - Phase 2 (`ledger.rs`): ownership ledger + `CURRENT_PLUGIN` attribution stack.
-//! - Phase 3 (this file + `builtins/`): mutation builtins (`set-option!`,
-//!   `bind-key!`) and `load-plugin` (Scheme-defined, Rust-backed).
-//! - Phase 4 (`builtins/statusline.rs`): `(configure-statusline! left center right)`
-//!   sets `EditorSettings::statusline` declaratively.
-//! - Phase 5 (this file + `builtins/interrupt.rs`): step budget via a watchdog
-//!   thread + `(hume/yield!)` cooperative interruption builtin.
+//! ## Modules
+//! - `ledger.rs`: plugin ownership ledger + attribution stack for teardown.
+//! - `hooks.rs`: `HookRegistry` + typed `HookId` enum.
+//! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
+//!   `(configure-statusline! …)`, `(hume/yield!)` step-budget interruption.
 
 pub(crate) mod builtins;
 pub(crate) mod hooks;
@@ -189,7 +185,7 @@ pub(crate) struct SteelCtx<'a> {
     /// Builtins that mutate config (`set-option!`, `bind-key!`, etc.) check
     /// this and raise a Steel error when called from command bodies.
     pub(crate) is_init: bool,
-    // ── Focus snapshot (Phase 2+) ────────────────────────────────────────────
+    // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
     pub(crate) focused_buffer_id: BufferId,
     /// Tracks the live focused buffer across mutations within one command call.
@@ -1256,7 +1252,7 @@ mod tests {
 
         // Pre-set the flag; after eval_source it must be cleared.
         h.interrupt_flag.store(true, Ordering::Relaxed);
-        let _ = h.eval_source("(hume/yield!)", &mut s, &mut km); // may error — that's fine
+        h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap_err(); // interrupted via pre-set flag
         assert!(!h.interrupt_flag.load(Ordering::Relaxed),
                 "interrupt_flag must be false after eval_source returns");
 
