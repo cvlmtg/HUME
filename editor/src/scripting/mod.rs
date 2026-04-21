@@ -36,6 +36,7 @@ use std::borrow::Cow;
 use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
+use crate::core::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::pane_state::PaneBufferState;
@@ -175,15 +176,15 @@ pub(crate) struct SteelCtx<'a> {
     // ── Focus snapshot (Phase 2+) ────────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
     pub(crate) focused_buffer_id: BufferId,
-    // Phase 4 mutating builtins will read this; set in call_steel_cmd.
-    #[allow(dead_code)]
+    /// Tracks the live focused buffer across mutations within one command call.
+    /// Starts equal to `focused_buffer_id`; updated by `switch-to-buffer!` and
+    /// `close-buffer!` so subsequent builtins see the new current buffer.
     pub(crate) live_focused_buffer_id: BufferId,
     pub(crate) buffers: Option<&'a mut BufferStore>,
     pub(crate) engine_view: Option<&'a mut EngineView>,
-    // Phase 4 mutating builtins (open/close/switch-to-buffer!) will use this.
-    #[allow(dead_code)]
     pub(crate) pane_state:
         Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
+    pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
 }
 
 impl CustomReference for SteelCtx<'_> {}
@@ -218,6 +219,7 @@ impl SteelCtx<'static> {
             buffers:               None,
             engine_view:           None,
             pane_state:            None,
+            pane_jumps:            None,
         }
     }
 }
@@ -535,6 +537,7 @@ impl ScriptingHost {
             buffers:               None,
             engine_view:           None,
             pane_state:            None,
+            pane_jumps:            None,
         };
 
         let watchdog = EvalWatchdog::arm(
@@ -638,6 +641,7 @@ impl ScriptingHost {
         buffers: Option<&'a mut BufferStore>,
         engine_view: Option<&'a mut EngineView>,
         pane_state: Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
+        pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
     ) -> Result<(Vec<String>, Option<String>), String> {
         let budget_ms = settings.steel_command_budget_ms;
         let watchdog = EvalWatchdog::arm(
@@ -670,6 +674,7 @@ impl ScriptingHost {
             buffers,
             engine_view,
             pane_state,
+            pane_jumps,
         };
 
         let invocation = format!("({steel_proc})");
@@ -1334,7 +1339,7 @@ mod tests {
         let start = std::time::Instant::now();
         let err = h.call_steel_cmd(
             &steel_proc, None, None, &s,
-            PaneId::default(), BufferId::default(), None, None, None,
+            PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
@@ -1365,7 +1370,7 @@ mod tests {
 
         let err = h.call_steel_cmd(
             &steel_proc, None, None, &s,
-            PaneId::default(), BufferId::default(), None, None, None,
+            PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
@@ -1388,7 +1393,7 @@ mod tests {
 
         let err = h.call_steel_cmd(
             "%hume-cmd-try-set", None, None, &s,
-            PaneId::default(), BufferId::default(), None, None, None,
+            PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap_err();
 
         assert!(err.contains("set-option!"),
@@ -1417,13 +1422,13 @@ mod tests {
 
         let (q1, _) = h.call_steel_cmd(
             "%hume-cmd-use-call-bang", None, None, &s,
-            PaneId::default(), BufferId::default(), None, None, None,
+            PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap();
         assert_eq!(q1, vec!["move-right"], "call! should queue the command");
 
         let (q2, _) = h.call_steel_cmd(
             "%hume-cmd-use-call-command", None, None, &s,
-            PaneId::default(), BufferId::default(), None, None, None,
+            PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap();
         assert_eq!(q2, vec!["move-left"], "call-command! alias should queue the command");
     }
