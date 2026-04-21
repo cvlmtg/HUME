@@ -173,18 +173,14 @@ pub(crate) struct SteelCtx<'a> {
     /// this and raise a Steel error when called from command bodies.
     pub(crate) is_init: bool,
     // ── Focus snapshot (Phase 2+) ────────────────────────────────────────────
-    // Allow dead_code: Phase 3 builtins will read these; they exist now so the
-    // scripting surface has consistent focus at dispatch time.
-    #[allow(dead_code)]
     pub(crate) focused_pane_id: PaneId,
-    #[allow(dead_code)]
     pub(crate) focused_buffer_id: BufferId,
+    // Phase 4 mutating builtins will read this; set in call_steel_cmd.
     #[allow(dead_code)]
     pub(crate) live_focused_buffer_id: BufferId,
-    #[allow(dead_code)]
     pub(crate) buffers: Option<&'a mut BufferStore>,
-    #[allow(dead_code)]
     pub(crate) engine_view: Option<&'a mut EngineView>,
+    // Phase 4 mutating builtins (open/close/switch-to-buffer!) will use this.
     #[allow(dead_code)]
     pub(crate) pane_state:
         Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
