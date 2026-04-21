@@ -26,9 +26,9 @@ use crate::ops::pair::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::settings::EditorSettings;
 use crate::os::terminal::Term;
-use crate::scripting::hooks::HookId;
+use crate::scripting::{EditorSteelRefs, hooks::HookId};
 use crate::scripting::builtins::ids::SteelBufferId;
-use steel::rvals::IntoSteelVal;
+use steel::rvals::IntoSteelVal as _;
 
 use self::keymap::{Keymap, WaitCharPending};
 
@@ -678,7 +678,7 @@ impl Editor {
     /// Convenience wrapper for `on-buffer-save` hooks — avoids importing Steel
     /// types in `commands.rs`.
     pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
-        let val = SteelBufferId(bid).into_steelval().expect("SteelBufferId into_steelval");
+        let val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferSave, &[val]);
     }
 
@@ -692,13 +692,16 @@ impl Editor {
             let host = self.scripting.as_mut().expect("checked above");
             host.fire_hook(
                 hook_id, args,
-                &mut self.settings,
-                &mut self.keymap,
-                pid, bid,
-                Some(&mut self.buffers),
-                Some(&mut self.engine_view),
-                Some(&mut self.pane_state),
-                Some(&mut self.pane_jumps),
+                EditorSteelRefs {
+                    settings:          &mut self.settings,
+                    keymap:            &mut self.keymap,
+                    focused_pane_id:   pid,
+                    focused_buffer_id: bid,
+                    buffers:           Some(&mut self.buffers),
+                    engine_view:       Some(&mut self.engine_view),
+                    pane_state:        Some(&mut self.pane_state),
+                    pane_jumps:        Some(&mut self.pane_jumps),
+                },
             )
         };
         self.flush_script_messages();
@@ -1217,7 +1220,7 @@ impl Editor {
             &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
             self.focused_pane_id, doc,
         );
-        let val = SteelBufferId(bid).into_steelval().expect("SteelBufferId into_steelval");
+        let val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
         bid
     }
@@ -1233,7 +1236,7 @@ impl Editor {
             &mut self.pane_jumps, self.focused_pane_id, id,
         );
         // Fire with the ID that was closed, not the new current buffer.
-        let val = SteelBufferId(id).into_steelval().expect("SteelBufferId into_steelval");
+        let val = SteelBufferId(id).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferClose, &[val]);
     }
 

@@ -23,6 +23,7 @@ use engine::types::EditorMode;
 
 use crate::ops::register::MACRO_REGISTER;
 
+use crate::scripting::EditorSteelRefs;
 use super::{Editor, MacroPending, Mode, SearchDirection};
 
 
@@ -585,13 +586,16 @@ impl Editor {
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
                         match host.call_steel_cmd(
                             steel_proc, char_arg, cmd_arg,
-                            &mut self.settings,
-                            &mut self.keymap,
-                            focused_pane_id, focused_buffer_id,
-                            Some(&mut self.buffers),
-                            Some(&mut self.engine_view),
-                            Some(&mut self.pane_state),
-                            Some(&mut self.pane_jumps),
+                            EditorSteelRefs {
+                                settings:          &mut self.settings,
+                                keymap:            &mut self.keymap,
+                                focused_pane_id,
+                                focused_buffer_id,
+                                buffers:           Some(&mut self.buffers),
+                                engine_view:       Some(&mut self.engine_view),
+                                pane_state:        Some(&mut self.pane_state),
+                                pane_jumps:        Some(&mut self.pane_jumps),
+                            },
                         ) {
                             Ok(r) => r,
                             Err(e) => { self.report(Severity::Error, e); return; }

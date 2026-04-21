@@ -10,7 +10,7 @@ use engine::pipeline::{BufferId, PaneId};
 use slotmap::Key as _;
 use steel::{
     gc::ShareableMut as _,
-    rvals::{Custom, SteelVal},
+    rvals::{Custom, IntoSteelVal as _, SteelVal},
 };
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
@@ -22,6 +22,16 @@ pub(crate) struct SteelBufferId(pub(crate) BufferId);
 /// Opaque Steel handle for a `PaneId`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SteelPaneId(pub(crate) PaneId);
+
+impl SteelBufferId {
+    /// Convert to a `SteelVal` without returning `Result`.
+    ///
+    /// `IntoSteelVal` for custom types is infallible; this avoids `.expect()` at
+    /// every call site that wraps a `BufferId` for hook args or builtin returns.
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("SteelBufferId into_steelval")
+    }
+}
 
 impl Custom for SteelBufferId {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {

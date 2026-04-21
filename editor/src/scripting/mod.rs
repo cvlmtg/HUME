@@ -201,6 +201,81 @@ pub(crate) struct SteelCtx<'a> {
 impl CustomReference for SteelCtx<'_> {}
 steel::custom_reference!(SteelCtx<'a>);
 
+impl<'a> SteelCtx<'a> {
+    fn new_init(
+        host: HostBundle<'a>,
+        settings: &'a mut EditorSettings,
+        keymap: &'a mut Keymap,
+        builtin_cmd_names: std::collections::HashSet<String>,
+    ) -> Self {
+        Self {
+            settings,
+            keymap,
+            plugin_stack:           host.plugin_stack,
+            ledger_stack:           host.ledger_stack,
+            cmd_owners:             host.cmd_owners,
+            hooks:                  host.hooks,
+            pending_messages:       host.pending_messages,
+            data_dir:               host.data_dir,
+            runtime_dir:            host.runtime_dir,
+            declared_plugins:       Vec::new(),
+            loaded_plugins:         Vec::new(),
+            builtin_cmd_names,
+            pending_steel_cmds:     Vec::new(),
+            interrupt_flag:         host.interrupt_flag,
+            cmd_queue:              Vec::new(),
+            wait_char_request:      None,
+            pending_char:           None,
+            cmd_arg:                None,
+            is_init:                true,
+            focused_pane_id:        PaneId::default(),
+            focused_buffer_id:      BufferId::default(),
+            live_focused_buffer_id: BufferId::default(),
+            buffers:                None,
+            engine_view:            None,
+            pane_state:             None,
+            pane_jumps:             None,
+        }
+    }
+
+    fn new_command(
+        host: HostBundle<'a>,
+        refs: EditorSteelRefs<'a>,
+        pending_char: Option<char>,
+        cmd_arg: Option<String>,
+    ) -> Self {
+        let fid = refs.focused_buffer_id;
+        Self {
+            settings:               refs.settings,
+            keymap:                 refs.keymap,
+            plugin_stack:           host.plugin_stack,
+            ledger_stack:           host.ledger_stack,
+            cmd_owners:             host.cmd_owners,
+            hooks:                  host.hooks,
+            pending_messages:       host.pending_messages,
+            data_dir:               host.data_dir,
+            runtime_dir:            host.runtime_dir,
+            declared_plugins:       Vec::new(),
+            loaded_plugins:         Vec::new(),
+            builtin_cmd_names:      std::collections::HashSet::new(),
+            pending_steel_cmds:     Vec::new(),
+            interrupt_flag:         host.interrupt_flag,
+            cmd_queue:              Vec::new(),
+            wait_char_request:      None,
+            pending_char,
+            cmd_arg,
+            is_init:                false,
+            focused_pane_id:        refs.focused_pane_id,
+            focused_buffer_id:      fid,
+            live_focused_buffer_id: fid,
+            buffers:                refs.buffers,
+            engine_view:            refs.engine_view,
+            pane_state:             refs.pane_state,
+            pane_jumps:             refs.pane_jumps,
+        }
+    }
+}
+
 /// Backing storage for [`SteelCtx`] in unit tests.
 ///
 /// Because `SteelCtx<'a>` borrows all persistent state by reference, tests
@@ -240,35 +315,102 @@ impl SteelCtxTestHarness {
     /// Build a `SteelCtx` in command mode (`is_init = false`) borrowing from
     /// this harness.  Inspect harness fields after the call to read side-effects.
     pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
-        SteelCtx {
-            settings:              &mut self.settings,
-            keymap:                &mut self.keymap,
-            plugin_stack:          &mut self.plugin_stack,
-            ledger_stack:          &mut self.ledger_stack,
-            cmd_owners:            &mut self.cmd_owners,
-            hooks:                 &mut self.hooks,
-            pending_messages:      &mut self.pending_messages,
-            data_dir:              self.data_dir.as_deref(),
-            runtime_dir:           self.runtime_dir.as_deref(),
-            declared_plugins:      Vec::new(),
-            loaded_plugins:        Vec::new(),
-            builtin_cmd_names:     std::collections::HashSet::new(),
-            pending_steel_cmds:    Vec::new(),
-            interrupt_flag:        Arc::clone(&self.interrupt_flag),
-            cmd_queue:             Vec::new(),
-            wait_char_request:     None,
-            pending_char:          None,
-            cmd_arg:               None,
-            is_init:               false,
-            focused_pane_id:       PaneId::default(),
-            focused_buffer_id:     BufferId::default(),
-            live_focused_buffer_id: BufferId::default(),
-            buffers:               None,
-            engine_view:           None,
-            pane_state:            None,
-            pane_jumps:            None,
-        }
+        let Self { settings, keymap, plugin_stack, ledger_stack, cmd_owners, hooks,
+                   pending_messages, data_dir, runtime_dir, interrupt_flag } = self;
+        SteelCtx::new_command(
+            HostBundle {
+                plugin_stack,
+                ledger_stack,
+                cmd_owners,
+                hooks,
+                pending_messages,
+                data_dir:       data_dir.as_deref(),
+                runtime_dir:    runtime_dir.as_deref(),
+                interrupt_flag: Arc::clone(interrupt_flag),
+            },
+            EditorSteelRefs {
+                settings,
+                keymap,
+                focused_pane_id:   PaneId::default(),
+                focused_buffer_id: BufferId::default(),
+                buffers:           None,
+                engine_view:       None,
+                pane_state:        None,
+                pane_jumps:        None,
+            },
+            None,
+            None,
+        )
     }
+}
+
+// ── EditorSteelRefs / HostBundle ─────────────────────────────────────────────
+
+/// Editor-side references bundled for a single Steel eval in command mode.
+///
+/// Passed to [`ScriptingHost::call_steel_cmd`] and [`ScriptingHost::fire_hook`]
+/// to replace the previous 8-parameter sprawl.  All fields have the same
+/// lifetime `'a` so a single `'a` annotation on those methods suffices.
+pub(crate) struct EditorSteelRefs<'a> {
+    pub(crate) settings:          &'a mut EditorSettings,
+    pub(crate) keymap:            &'a mut Keymap,
+    pub(crate) focused_pane_id:   PaneId,
+    pub(crate) focused_buffer_id: BufferId,
+    pub(crate) buffers:           Option<&'a mut BufferStore>,
+    pub(crate) engine_view:       Option<&'a mut EngineView>,
+    pub(crate) pane_state:        Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
+    pub(crate) pane_jumps:        Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+}
+
+/// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
+///
+/// Built from a `let Self { engine, plugin_stack, … } = &mut *self` destructure
+/// and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
+/// Private to this module.
+struct HostBundle<'a> {
+    plugin_stack:     &'a mut PluginStack,
+    ledger_stack:     &'a mut LedgerStack,
+    cmd_owners:       &'a mut std::collections::HashMap<String, String>,
+    hooks:            &'a mut HookRegistry,
+    pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
+    data_dir:         Option<&'a std::path::Path>,
+    runtime_dir:      Option<&'a std::path::Path>,
+    /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
+    /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
+    interrupt_flag:   Arc<AtomicBool>,
+}
+
+// ── run_steel ─────────────────────────────────────────────────────────────────
+
+/// Arm the watchdog, run `program` inside `engine` with `ctx` visible as
+/// `*hume.ctx*`, then cancel the watchdog and reset the interrupt flag.
+///
+/// Used by `eval_source_raw`, `call_steel_cmd`, and `fire_hook` to avoid
+/// repeating the same arm / eval / cancel / reset ceremony in each entry point.
+fn run_steel<'a>(
+    engine:     &mut Engine,
+    ctx:        &mut SteelCtx<'a>,
+    program:    String,
+    budget_ms:  u64,
+) -> Result<(), String> {
+    let watchdog = EvalWatchdog::arm(
+        Arc::clone(&ctx.interrupt_flag),
+        std::time::Duration::from_millis(budget_ms),
+    );
+    let result = engine
+        .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
+        .consume_once(|engine, args| {
+            let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
+            engine.update_value(HUME_CTX, ctx_val);
+            let res = engine.compile_and_run_raw_program(program);
+            engine.update_value(HUME_CTX, SteelVal::Void);
+            res
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string());
+    watchdog.cancel();
+    ctx.interrupt_flag.store(false, Ordering::Relaxed);
+    result
 }
 
 // ── EvalSnapshot ─────────────────────────────────────────────────────────────
@@ -542,9 +684,9 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<Vec<SteelCmdDef>, String> {
+        let budget_ms = settings.steel_init_budget_ms as u64;
         // Snapshot for all-or-nothing rollback on error.
         let snapshot = EvalSnapshot::capture(settings, keymap, self);
-        let budget_ms = snapshot.settings.steel_init_budget_ms;
 
         // Build SteelCtx borrowing persistent fields directly from self.
         // The explicit block ensures steel_ctx is dropped (releasing all borrows)
@@ -553,57 +695,14 @@ impl ScriptingHost {
             let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
                        pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
 
-            let mut steel_ctx = SteelCtx {
-                settings,
-                keymap,
-                plugin_stack,
-                ledger_stack,
-                cmd_owners,
-                hooks,
-                pending_messages,
-                data_dir:              data_dir.as_deref(),
-                runtime_dir:           runtime_dir.as_deref(),
-                declared_plugins:      Vec::new(),
-                loaded_plugins:        Vec::new(),
-                builtin_cmd_names:     builtin_names,
-                pending_steel_cmds:    Vec::new(),
-                interrupt_flag:        Arc::clone(interrupt_flag),
-                cmd_queue:             Vec::new(),
-                wait_char_request:     None,
-                pending_char:          None,
-                cmd_arg:               None,
-                is_init:               true,
-                focused_pane_id:       PaneId::default(),
-                focused_buffer_id:     BufferId::default(),
-                live_focused_buffer_id: BufferId::default(),
-                buffers:               None,
-                engine_view:           None,
-                pane_state:            None,
-                pane_jumps:            None,
-            };
-
-            let watchdog = EvalWatchdog::arm(
-                Arc::clone(interrupt_flag),
-                std::time::Duration::from_millis(budget_ms as u64),
+            let mut steel_ctx = SteelCtx::new_init(
+                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
+                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
+                             interrupt_flag: Arc::clone(interrupt_flag) },
+                settings, keymap, builtin_names,
             );
 
-            let result = engine
-                .with_mut_reference::<SteelCtx<'_>, SteelCtx<'static>>(&mut steel_ctx)
-                .consume_once(|engine, args| {
-                    let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
-                    engine.update_value(HUME_CTX, ctx_val);
-                    let res = engine.compile_and_run_raw_program(source);
-                    engine.update_value(HUME_CTX, SteelVal::Void);
-                    res
-                })
-                .map(|_| ())
-                .map_err(|e| e.to_string());
-
-            watchdog.cancel();
-            interrupt_flag.store(false, Ordering::Relaxed);
-
-            // Move the owned accumulator out before steel_ctx drops and
-            // releases its borrows on self's fields.
+            let result = run_steel(engine, &mut steel_ctx, source, budget_ms);
             (result, steel_ctx.pending_steel_cmds)
         };
 
@@ -668,77 +767,28 @@ impl ScriptingHost {
     /// Steel error when called from a command body.  Commands that queue further
     /// Rust commands via `(call! …)` dispatch those after returning `Ok`; on
     /// error the queue is dropped, so no further dispatch occurs.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn call_steel_cmd<'a>(
         &'a mut self,
         steel_proc: &str,
         pending_char: Option<char>,
         cmd_arg: Option<String>,
-        settings: &'a mut EditorSettings,
-        keymap: &'a mut Keymap,
-        focused_pane_id: PaneId,
-        focused_buffer_id: BufferId,
-        buffers: Option<&'a mut BufferStore>,
-        engine_view: Option<&'a mut EngineView>,
-        pane_state: Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
-        pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+        refs: EditorSteelRefs<'a>,
     ) -> Result<(Vec<String>, Option<String>), String> {
-        let budget_ms = settings.steel_command_budget_ms;
+        let budget_ms = refs.settings.steel_command_budget_ms as u64;
         let invocation = format!("({steel_proc})");
 
         let (result, cmd_queue, wait_char_request) = {
             let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
                        pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
 
-            let watchdog = EvalWatchdog::arm(
-                Arc::clone(interrupt_flag),
-                std::time::Duration::from_millis(budget_ms as u64),
+            let mut steel_ctx = SteelCtx::new_command(
+                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
+                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
+                             interrupt_flag: Arc::clone(interrupt_flag) },
+                refs, pending_char, cmd_arg,
             );
 
-            let mut steel_ctx = SteelCtx {
-                settings,
-                keymap,
-                plugin_stack,
-                ledger_stack,
-                cmd_owners,
-                hooks,
-                pending_messages,
-                data_dir:              data_dir.as_deref(),
-                runtime_dir:           runtime_dir.as_deref(),
-                declared_plugins:      Vec::new(),
-                loaded_plugins:        Vec::new(),
-                builtin_cmd_names:     std::collections::HashSet::new(),
-                pending_steel_cmds:    Vec::new(),
-                interrupt_flag:        Arc::clone(interrupt_flag),
-                cmd_queue:             Vec::new(),
-                wait_char_request:     None,
-                pending_char,
-                cmd_arg,
-                is_init:               false,
-                focused_pane_id,
-                focused_buffer_id,
-                live_focused_buffer_id: focused_buffer_id,
-                buffers,
-                engine_view,
-                pane_state,
-                pane_jumps,
-            };
-
-            let result = engine
-                .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(&mut steel_ctx)
-                .consume_once(|engine, args| {
-                    let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
-                    engine.update_value(HUME_CTX, ctx_val);
-                    let res = engine.compile_and_run_raw_program(invocation);
-                    engine.update_value(HUME_CTX, SteelVal::Void);
-                    res
-                })
-                .map(|_| ())
-                .map_err(|e| e.to_string());
-
-            watchdog.cancel();
-            interrupt_flag.store(false, Ordering::Relaxed);
-
+            let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
             (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request)
         };
 
@@ -755,19 +805,11 @@ impl ScriptingHost {
     ///
     /// Returns immediately (no engine call, no watchdog) if no handlers are
     /// registered for `hook_id`.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn fire_hook<'a>(
         &'a mut self,
         hook_id: hooks::HookId,
         args: &[SteelVal],
-        settings: &'a mut EditorSettings,
-        keymap: &'a mut Keymap,
-        focused_pane_id: PaneId,
-        focused_buffer_id: BufferId,
-        buffers: Option<&'a mut BufferStore>,
-        engine_view: Option<&'a mut EngineView>,
-        pane_state: Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
-        pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+        refs: EditorSteelRefs<'a>,
     ) -> Result<Vec<String>, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.hooks
@@ -798,61 +840,20 @@ impl ScriptingHost {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let budget_ms = settings.steel_command_budget_ms;
+        let budget_ms = refs.settings.steel_command_budget_ms as u64;
 
         let (result, cmd_queue) = {
             let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
                        pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
 
-            let watchdog = EvalWatchdog::arm(
-                Arc::clone(interrupt_flag),
-                std::time::Duration::from_millis(budget_ms as u64),
+            let mut steel_ctx = SteelCtx::new_command(
+                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
+                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
+                             interrupt_flag: Arc::clone(interrupt_flag) },
+                refs, None, None,
             );
 
-            let mut steel_ctx = SteelCtx {
-                settings,
-                keymap,
-                plugin_stack,
-                ledger_stack,
-                cmd_owners,
-                hooks,
-                pending_messages,
-                data_dir:              data_dir.as_deref(),
-                runtime_dir:           runtime_dir.as_deref(),
-                declared_plugins:      Vec::new(),
-                loaded_plugins:        Vec::new(),
-                builtin_cmd_names:     std::collections::HashSet::new(),
-                pending_steel_cmds:    Vec::new(),
-                interrupt_flag:        Arc::clone(interrupt_flag),
-                cmd_queue:             Vec::new(),
-                wait_char_request:     None,
-                pending_char:          None,
-                cmd_arg:               None,
-                is_init:               false,
-                focused_pane_id,
-                focused_buffer_id,
-                live_focused_buffer_id: focused_buffer_id,
-                buffers,
-                engine_view,
-                pane_state,
-                pane_jumps,
-            };
-
-            let result = engine
-                .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(&mut steel_ctx)
-                .consume_once(|engine, args| {
-                    let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
-                    engine.update_value(HUME_CTX, ctx_val);
-                    let res = engine.compile_and_run_raw_program(program);
-                    engine.update_value(HUME_CTX, SteelVal::Void);
-                    res
-                })
-                .map(|_| ())
-                .map_err(|e| e.to_string());
-
-            watchdog.cancel();
-            interrupt_flag.store(false, Ordering::Relaxed);
-
+            let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
             (result, steel_ctx.cmd_queue)
         };
 
@@ -939,11 +940,44 @@ impl ScriptingHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::pipeline::{BufferId, PaneId};
     use crate::settings::EditorSettings;
     use crate::editor::keymap::Keymap;
 
     fn host() -> ScriptingHost {
         ScriptingHost::new()
+    }
+
+    /// Build a minimal `EditorSteelRefs` for tests that don't exercise
+    /// multi-buffer builtins (no `buffers` / `engine_view` / etc.).
+    fn test_refs<'a>(s: &'a mut EditorSettings, km: &'a mut Keymap) -> EditorSteelRefs<'a> {
+        EditorSteelRefs {
+            settings:          s,
+            keymap:            km,
+            focused_pane_id:   PaneId::default(),
+            focused_buffer_id: BufferId::default(),
+            buffers:           None,
+            engine_view:       None,
+            pane_state:        None,
+            pane_jumps:        None,
+        }
+    }
+
+    fn test_refs_with_bid<'a>(
+        s: &'a mut EditorSettings,
+        km: &'a mut Keymap,
+        bid: BufferId,
+    ) -> EditorSteelRefs<'a> {
+        EditorSteelRefs {
+            settings:          s,
+            keymap:            km,
+            focused_pane_id:   PaneId::default(),
+            focused_buffer_id: bid,
+            buffers:           None,
+            engine_view:       None,
+            pane_state:        None,
+            pane_jumps:        None,
+        }
     }
 
     // ── set-option! ───────────────────────────────────────────────────────────
@@ -1499,8 +1533,7 @@ mod tests {
 
         let start = std::time::Instant::now();
         let err = h.call_steel_cmd(
-            &steel_proc, None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            &steel_proc, None, None, test_refs(&mut s, &mut km),
         ).unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
@@ -1530,8 +1563,7 @@ mod tests {
         s.steel_command_budget_ms = 50;
 
         let err = h.call_steel_cmd(
-            &steel_proc, None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            &steel_proc, None, None, test_refs(&mut s, &mut km),
         ).unwrap_err();
 
         assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
@@ -1553,8 +1585,7 @@ mod tests {
         ).unwrap();
 
         let err = h.call_steel_cmd(
-            "%hume-cmd-try-set", None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            "%hume-cmd-try-set", None, None, test_refs(&mut s, &mut km),
         ).unwrap_err();
 
         assert!(err.contains("set-option!"),
@@ -1582,24 +1613,20 @@ mod tests {
         ).unwrap();
 
         let (q1, _) = h.call_steel_cmd(
-            "%hume-cmd-use-call-bang", None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            "%hume-cmd-use-call-bang", None, None, test_refs(&mut s, &mut km),
         ).unwrap();
         assert_eq!(q1, vec!["move-right"], "call! should queue the command");
 
         let (q2, _) = h.call_steel_cmd(
-            "%hume-cmd-use-call-command", None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            "%hume-cmd-use-call-command", None, None, test_refs(&mut s, &mut km),
         ).unwrap();
         assert_eq!(q2, vec!["move-left"], "call-command! alias should queue the command");
     }
 
     // ── register-hook! / fire_hook ────────────────────────────────────────────
 
-    use engine::pipeline::{BufferId, PaneId};
     use crate::scripting::hooks::HookId;
     use crate::scripting::builtins::ids::SteelBufferId;
-    use steel::rvals::IntoSteelVal as _;
 
     #[test]
     fn register_hook_fires_on_buffer_open() {
@@ -1611,10 +1638,9 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
         let bid = BufferId::default();
-        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let val = SteelBufferId(bid).into_steel_val();
         let queue = h.fire_hook(
-            HookId::OnBufferOpen, &[val], &mut s, &mut km,
-            PaneId::default(), bid, None, None, None, None,
+            HookId::OnBufferOpen, &[val], test_refs_with_bid(&mut s, &mut km, bid),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"]);
     }
@@ -1629,10 +1655,9 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
         let bid = BufferId::default();
-        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let val = SteelBufferId(bid).into_steel_val();
         let queue = h.fire_hook(
-            HookId::OnBufferClose, &[val], &mut s, &mut km,
-            PaneId::default(), bid, None, None, None, None,
+            HookId::OnBufferClose, &[val], test_refs_with_bid(&mut s, &mut km, bid),
         ).unwrap();
         assert_eq!(queue, vec!["move-left"]);
     }
@@ -1647,10 +1672,9 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
         let bid = BufferId::default();
-        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let val = SteelBufferId(bid).into_steel_val();
         let queue = h.fire_hook(
-            HookId::OnBufferSave, &[val], &mut s, &mut km,
-            PaneId::default(), bid, None, None, None, None,
+            HookId::OnBufferSave, &[val], test_refs_with_bid(&mut s, &mut km, bid),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"]);
     }
@@ -1666,11 +1690,11 @@ mod tests {
                     (when (equal? new "insert") (call! "move-right"))))"#,
             &mut s, &mut km,
         ).unwrap();
+        use steel::rvals::IntoSteelVal as _;
         let old_val = "normal".into_steelval().unwrap();
         let new_val = "insert".into_steelval().unwrap();
         let queue = h.fire_hook(
-            HookId::OnModeChange, &[old_val, new_val], &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            HookId::OnModeChange, &[old_val, new_val], test_refs(&mut s, &mut km),
         ).unwrap();
         assert_eq!(queue, vec!["move-right"]);
     }
@@ -1681,8 +1705,7 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
         let queue = h.fire_hook(
-            HookId::OnBufferOpen, &[], &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            HookId::OnBufferOpen, &[], test_refs(&mut s, &mut km),
         ).unwrap();
         assert!(queue.is_empty());
     }
@@ -1700,10 +1723,9 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
         let bid = BufferId::default();
-        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let val = SteelBufferId(bid).into_steel_val();
         let queue = h.fire_hook(
-            HookId::OnBufferSave, &[val], &mut s, &mut km,
-            PaneId::default(), bid, None, None, None, None,
+            HookId::OnBufferSave, &[val], test_refs_with_bid(&mut s, &mut km, bid),
         ).unwrap();
         assert_eq!(queue, vec!["move-right", "move-left"]);
     }
@@ -1739,8 +1761,7 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
         let err = h.call_steel_cmd(
-            "%hume-cmd-bad-cmd", None, None, &mut s, &mut km,
-            PaneId::default(), BufferId::default(), None, None, None, None,
+            "%hume-cmd-bad-cmd", None, None, test_refs(&mut s, &mut km),
         ).unwrap_err();
         assert!(err.contains("can only be called during init"), "got: {err}");
     }
