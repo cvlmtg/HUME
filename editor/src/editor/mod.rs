@@ -26,7 +26,7 @@ use crate::ops::pair::find_bracket_pair;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::settings::EditorSettings;
 use crate::os::terminal::Term;
-use crate::scripting::{EditorSteelRefs, hooks::HookId};
+use crate::scripting::{EditorSteelRefs, SteelCmdDef, hooks::HookId};
 use crate::scripting::builtins::ids::SteelBufferId;
 use steel::rvals::IntoSteelVal as _;
 
@@ -740,20 +740,7 @@ impl Editor {
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
         match host.eval_init(&init_path, &mut self.settings, &mut self.keymap, builtin_names) {
-            Ok(cmds) => {
-                for def in cmds {
-                    if self.registry.get_mappable(&def.name).is_some() {
-                        self.report(Severity::Error, format!(
-                            "define-command!: '{}' conflicts with existing command", def.name));
-                    } else {
-                        self.registry.register(registry::MappableCommand::SteelBacked {
-                            name: def.name.into(),
-                            doc: def.doc.into(),
-                            steel_proc: def.steel_proc,
-                        });
-                    }
-                }
-            }
+            Ok(cmds) => self.register_steel_cmds(cmds),
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
         // Flush any `(log! …)` messages produced during init.scm evaluation.
@@ -1203,7 +1190,35 @@ impl Editor {
         self.last_action = saved_action;
     }
 
+    // ── Scripting helpers ─────────────────────────────────────────────────────
+
+    /// Register each `SteelCmdDef` in the command registry, reporting
+    /// conflicts as errors.  Used after both init and plugin-reload evals.
+    pub(super) fn register_steel_cmds(&mut self, defs: impl IntoIterator<Item = SteelCmdDef>) {
+        for def in defs {
+            if self.registry.get_mappable(&def.name).is_some() {
+                self.report(Severity::Error, format!(
+                    "define-command!: '{}' conflicts with existing command", def.name));
+            } else {
+                self.registry.register(registry::MappableCommand::SteelBacked {
+                    name: def.name.into(),
+                    doc: def.doc.into(),
+                    steel_proc: def.steel_proc,
+                });
+            }
+        }
+    }
+
     // ── Phase 6 — Buffer choke-points ────────────────────────────────────────
+
+    /// Dedup-open a canonicalized path: returns `(id, false)` if already open,
+    /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
+    pub(super) fn open_or_dedup(&mut self, canonical: &std::path::Path) -> std::io::Result<(BufferId, bool)> {
+        if let Some(existing) = self.buffers.find_by_path(canonical) {
+            return Ok((existing, false));
+        }
+        Ok((self.open_buffer(Buffer::from_file(canonical)?), true))
+    }
 
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// `pane_state`, and return the allocated `BufferId`.

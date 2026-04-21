@@ -25,6 +25,16 @@ use super::HUME_CTX;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
+/// Return `Err` if we're inside an init eval (editor refs are None).
+macro_rules! require_cmd_ctx {
+    ($ctx:expr, $name:literal) => {
+        if $ctx.is_init {
+            steel::stop!(Generic => "{}: not available during init evaluation", $name);
+        }
+    };
+}
+pub(crate) use require_cmd_ctx;
+
 /// Extract the single string argument from `args`, returning a Steel error on
 /// arity or type mismatch.  Used by fs builtins that still take `&[SteelVal]`.
 pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {

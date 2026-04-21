@@ -17,7 +17,25 @@ use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 
-// ── open_buffer ────────────────────────────────────────────────────────────────
+// ── open_or_dedup / open_buffer ───────────────────────────────────────────────
+
+/// Dedup-open a file path: if already open returns `(existing_id, false)`,
+/// otherwise reads the file and allocates a new buffer, returning `(new_id, true)`.
+///
+/// The caller is responsible for any post-open work (hook firing, pane switching).
+pub(crate) fn open_or_dedup(
+    ev: &mut EngineView,
+    buffers: &mut BufferStore,
+    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    focused_pane_id: PaneId,
+    canonical: &std::path::Path,
+) -> std::io::Result<(BufferId, bool)> {
+    if let Some(existing) = buffers.find_by_path(canonical) {
+        return Ok((existing, false));
+    }
+    let doc = Buffer::from_file(canonical)?;
+    Ok((open_buffer(ev, buffers, pane_state, focused_pane_id, doc), true))
+}
 
 /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
 /// `pane_state` with initial selections, and return the allocated `BufferId`.

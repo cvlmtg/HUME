@@ -852,18 +852,7 @@ pub(super) fn typed_reload_plugin(ed: &mut Editor, arg: Option<&str>, _force: bo
         for cmd_name in cmds_to_remove {
             ed.registry.unregister(&cmd_name);
         }
-        for def in new_cmds {
-            if ed.registry.get_mappable(&def.name).is_some() {
-                ed.report(Severity::Error, format!(
-                    "define-command!: '{}' conflicts with existing command", def.name));
-            } else {
-                ed.registry.register(super::registry::MappableCommand::SteelBacked {
-                    name: def.name.into(),
-                    doc: def.doc.into(),
-                    steel_proc: def.steel_proc,
-                });
-            }
-        }
+        ed.register_steel_cmds(new_cmds);
         ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
     }
     ed.flush_script_messages();
@@ -905,23 +894,18 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
         let path = Path::new(path_str);
         let canonical = std::fs::canonicalize(path)
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
-        // Dedup: if already open, just switch.
-        if let Some(existing) = ed.buffers.find_by_path(&canonical) {
-            if existing != ed.focused_buffer_id() {
-                ed.switch_to_buffer_with_jump(existing);
-            }
-            return Ok(());
-        }
-        // New buffer: read from disk, open, switch.
-        let doc = crate::editor::buffer::Buffer::from_file(&canonical)
+        let (bid, is_new) = ed.open_or_dedup(&canonical)
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
-        let name = canonical.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path_str)
-            .to_string();
-        let bid = ed.open_buffer(doc);
-        ed.switch_to_buffer_with_jump(bid);
-        ed.report(Severity::Info, format!("Opened {name}"));
+        if is_new {
+            let name = canonical.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path_str)
+                .to_string();
+            ed.switch_to_buffer_with_jump(bid);
+            ed.report(Severity::Info, format!("Opened {name}"));
+        } else if bid != ed.focused_buffer_id() {
+            ed.switch_to_buffer_with_jump(bid);
+        }
         Ok(())
     } else {
         // Reload current file.
