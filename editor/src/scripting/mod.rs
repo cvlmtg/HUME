@@ -54,6 +54,12 @@ fn cmd_proc_name(name: &str) -> String {
     format!("%hume-cmd-{name}")
 }
 
+/// Internal Steel global name for the i-th argument bound during a hook fire.
+fn hook_arg_name(i: usize) -> String { format!("*hume.ha{i}*") }
+
+/// Internal Steel global name for the i-th handler proc bound during a hook fire.
+fn hook_proc_name(i: usize) -> String { format!("*hume.hp{i}*") }
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────────
 
 /// Arms a wall-clock budget for a single Steel eval.
@@ -824,7 +830,7 @@ impl ScriptingHost {
         // list in one pass — avoids an intermediate Vec<String>.
         let mut arg_exprs = String::with_capacity(args.len() * 14);
         for (i, arg) in args.iter().enumerate() {
-            let name = format!("*hume.ha{i}*");
+            let name = hook_arg_name(i);
             self.engine.register_value(&name, arg.clone());
             if i > 0 { arg_exprs.push(' '); }
             arg_exprs.push_str(&name);
@@ -833,7 +839,7 @@ impl ScriptingHost {
         // Pre-bind each handler proc and build the composite program in one pass.
         let mut program = String::with_capacity(handler_procs.len() * (18 + arg_exprs.len()));
         for (i, proc) in handler_procs.iter().enumerate() {
-            let name = format!("*hume.hp{i}*");
+            let name = hook_proc_name(i);
             self.engine.register_value(&name, proc.clone());
             if i > 0 { program.push('\n'); }
             program.push('(');
@@ -887,6 +893,13 @@ fn restore_ledger_entry(
         } else {
             keymap.bind_user(mode, &keys, Cow::Owned(entry.prior_value));
         }
+    } else if entry.key.contains(' ') {
+        // A key with a space is unambiguously a keymap entry, but the mode
+        // prefix didn't match any known BindMode — treat as corruption.
+        return Err(format!(
+            "ledger key '{}' has unknown mode prefix (expected 'normal ', 'extend ', or 'insert ')",
+            entry.key
+        ));
     } else {
         // Setting key — restore via apply_setting.
         if !entry.prior_value.is_empty() {
@@ -1764,5 +1777,19 @@ mod tests {
             &mut s, &mut km,
         ).unwrap_err();
         assert!(err.contains("unknown hook"), "got: {err}");
+    }
+
+    #[test]
+    fn restore_ledger_entry_rejects_unknown_mode_prefix() {
+        use crate::scripting::ledger::{LedgerEntry, Owner};
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let entry = LedgerEntry {
+            key: "bogus abc".to_string(),
+            prior_value: String::new(),
+            prior_owner: Owner::Core,
+        };
+        let err = restore_ledger_entry(entry, &mut s, &mut km).unwrap_err();
+        assert!(err.contains("unknown mode prefix"), "got: {err}");
     }
 }
