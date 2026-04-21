@@ -46,7 +46,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     };
 
     // Capture prior state for the ledger before we overwrite it.
-    let prior_value = serialize_setting(&ctx.settings, &key).unwrap_or_default();
+    let prior_value = serialize_setting(ctx.settings, &key).unwrap_or_default();
     // prior_owner is who owned the setting *before* this mutation —
     // derived from the ledger (last-writer-wins), not the current plugin.
     let prior_owner = ctx.ledger_stack.owner_of(&key);
@@ -57,7 +57,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
         SettingScope::Global,
         &key,
         &value_str,
-        &mut ctx.settings,
+        ctx.settings,
         &mut dummy_overrides,
     )
     .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;

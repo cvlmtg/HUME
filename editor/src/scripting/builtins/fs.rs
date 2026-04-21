@@ -596,16 +596,19 @@ mod tests {
 
     #[test]
     fn log_msg_valid_severity() {
-        let mut ctx = crate::scripting::SteelCtx::for_testing();
+        let mut h = crate::scripting::SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         log_msg(&mut ctx, SteelVal::SymbolV("info".into()), "hello".to_string()).unwrap();
-        assert_eq!(ctx.pending_messages.len(), 1);
-        assert_eq!(ctx.pending_messages[0].1, "hello");
-        assert!(matches!(ctx.pending_messages[0].0, Severity::Info));
+        drop(ctx);
+        assert_eq!(h.pending_messages.len(), 1);
+        assert_eq!(h.pending_messages[0].1, "hello");
+        assert!(matches!(h.pending_messages[0].0, Severity::Info));
     }
 
     #[test]
     fn log_msg_unknown_severity_errors() {
-        let mut ctx = crate::scripting::SteelCtx::for_testing();
+        let mut h = crate::scripting::SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         assert!(log_msg(&mut ctx, SteelVal::SymbolV("bad".into()), "msg".to_string()).is_err());
     }
 

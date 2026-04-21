@@ -119,6 +119,7 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+    use crate::scripting::SteelCtxTestHarness;
 
     fn setup(tmp: &TempDir) {
         let data_dir = tmp.path().join("hume");
@@ -133,7 +134,8 @@ mod tests {
 
         // Parent is tmp root (outside sandbox), dest is tmp/evil.
         let dest = tmp.path().join("evil").to_string_lossy().to_string();
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         let err = git_clone(&mut ctx, "https://example.com/repo.git".into(), dest)
             .unwrap_err();
         assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
@@ -146,7 +148,8 @@ mod tests {
 
         // Use the tmp root itself — it exists but is outside the sandbox.
         let dir = tmp.path().to_string_lossy().to_string();
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         let err = git_pull(&mut ctx, dir).unwrap_err();
         assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
     }
@@ -157,7 +160,8 @@ mod tests {
         setup(&tmp);
 
         let dest = format!("{}/hume/plugins/user/../../../evil", tmp.path().display());
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         assert!(git_clone(&mut ctx, "https://example.com/repo.git".into(), dest).is_err());
     }
 

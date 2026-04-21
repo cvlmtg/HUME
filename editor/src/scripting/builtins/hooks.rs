@@ -32,6 +32,6 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
             ),
         ))?;
     let owner = ctx.plugin_stack.current_owner();
-    ctx.pending_hooks.push((hook_id, owner, proc));
+    ctx.hooks.register(hook_id, owner, proc);
     Ok(SteelVal::Void)
 }

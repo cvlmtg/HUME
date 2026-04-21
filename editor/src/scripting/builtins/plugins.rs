@@ -103,7 +103,7 @@ pub(crate) fn resolve_path_for_name(
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
 pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let path = resolve_path_for_name(&name, ctx.runtime_dir.as_deref(), ctx.data_dir.as_deref())
+    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     match path {
         Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
