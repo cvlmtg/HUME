@@ -665,7 +665,7 @@ impl Editor {
     pub(crate) fn flush_script_messages(&mut self) {
         let msgs = self.scripting
             .as_mut()
-            .map(|h| h.ctx.pending_messages.drain(..).collect::<Vec<_>>())
+            .map(|h| h.pending_messages.drain(..).collect::<Vec<_>>())
             .unwrap_or_default();
         for (sev, text) in msgs {
             self.report(sev, text);
@@ -687,7 +687,7 @@ impl Editor {
     }
 
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
-        if self.scripting.as_ref().is_none_or(|h| h.ctx.hooks.is_empty_for(&hook_id)) {
+        if self.scripting.as_ref().is_none_or(|h| h.hooks.is_empty_for(&hook_id)) {
             return;
         }
         let pid = self.focused_pane_id;
@@ -695,7 +695,10 @@ impl Editor {
         let result = {
             let host = self.scripting.as_mut().expect("checked above");
             host.fire_hook(
-                hook_id, args, &self.settings, pid, bid,
+                hook_id, args,
+                &mut self.settings,
+                &mut self.keymap,
+                pid, bid,
                 Some(&mut self.buffers),
                 Some(&mut self.engine_view),
                 Some(&mut self.pane_state),
@@ -729,11 +732,11 @@ impl Editor {
         let mut host = crate::scripting::ScriptingHost::new();
         // Trace the resolved directories so they're visible in `:messages`.
         // A missing runtime dir is a warning because `core:*` plugins need it.
-        match &host.ctx.runtime_dir {
+        match &host.runtime_dir {
             Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
-        match &host.ctx.data_dir {
+        match &host.data_dir {
             Some(d) => self.report(Severity::Trace, format!("scripting: data dir = {}", d.display())),
             None => self.report(Severity::Warning, "scripting: no data directory — HOME/APPDATA unset; user plugins unavailable".into()),
         }
@@ -757,7 +760,7 @@ impl Editor {
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
         // Flush any `(log! …)` messages produced during init.scm evaluation.
-        for (sev, text) in host.ctx.pending_messages.drain(..) {
+        for (sev, text) in host.pending_messages.drain(..) {
             self.report(sev, text);
         }
         self.scripting = Some(host);

@@ -166,11 +166,13 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scripting::SteelCtxTestHarness;
 
     #[test]
     fn call_command_outside_invocation_errors() {
         // is_init = true simulates "not inside a Steel command invocation"
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = call_command(&mut ctx, "move-right".to_string()).unwrap_err();
         assert!(err.to_string().contains("not inside"), "got: {err}");
@@ -178,14 +180,16 @@ mod tests {
 
     #[test]
     fn call_command_queues_name() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         call_command(&mut ctx, "move-right".to_string()).unwrap();
         assert_eq!(ctx.cmd_queue, vec!["move-right"]);
     }
 
     #[test]
     fn call_bang_queues_multiple_names() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         call_command(&mut ctx, "move-right".to_string()).unwrap();
         call_command(&mut ctx, "move-left".to_string()).unwrap();
         assert_eq!(ctx.cmd_queue, vec!["move-right", "move-left"]);
@@ -193,7 +197,8 @@ mod tests {
 
     #[test]
     fn request_wait_char_outside_invocation_errors() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = request_wait_char(&mut ctx, "replace".to_string()).unwrap_err();
         assert!(err.to_string().contains("not inside"), "got: {err}");
@@ -201,21 +206,24 @@ mod tests {
 
     #[test]
     fn request_wait_char_stores_cmd() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         request_wait_char(&mut ctx, "replace".to_string()).unwrap();
         assert_eq!(ctx.wait_char_request, Some("replace".to_string()));
     }
 
     #[test]
     fn cmd_arg_returns_false_when_none() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         let result = cmd_arg(&mut ctx).unwrap();
         assert_eq!(result, SteelVal::BoolV(false));
     }
 
     #[test]
     fn cmd_arg_returns_string_when_set() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         ctx.cmd_arg = Some("user/repo".to_string());
         let result = cmd_arg(&mut ctx).unwrap();
         assert_eq!(result, SteelVal::StringV("user/repo".into()));
@@ -223,14 +231,16 @@ mod tests {
 
     #[test]
     fn pending_char_returns_false_when_none() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         let result = pending_char(&mut ctx).unwrap();
         assert_eq!(result, SteelVal::BoolV(false));
     }
 
     #[test]
     fn pending_char_returns_string_when_set() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         ctx.pending_char = Some('(');
         let result = pending_char(&mut ctx).unwrap();
         assert_eq!(result, SteelVal::StringV("(".into()));
@@ -238,15 +248,17 @@ mod tests {
 
     #[test]
     fn command_plugin_unknown_returns_hume() {
-        let mut ctx = SteelCtx::for_testing();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
         let result = command_plugin(&mut ctx, "move-right".to_string()).unwrap();
         assert_eq!(result, SteelVal::StringV("hume".into()));
     }
 
     #[test]
     fn command_plugin_known_returns_owner() {
-        let mut ctx = SteelCtx::for_testing();
-        ctx.cmd_owners.insert("my-cmd".to_string(), "core:plum".to_string());
+        let mut h = SteelCtxTestHarness::new();
+        h.cmd_owners.insert("my-cmd".to_string(), "core:plum".to_string());
+        let mut ctx = h.ctx();
         let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
         assert_eq!(result, SteelVal::StringV("core:plum".into()));
     }

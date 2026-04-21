@@ -584,7 +584,9 @@ impl Editor {
                         let focused_pane_id = self.focused_pane_id;
                         let focused_buffer_id = self.buffer_id;
                         match host.call_steel_cmd(
-                            steel_proc, char_arg, cmd_arg, &self.settings,
+                            steel_proc, char_arg, cmd_arg,
+                            &mut self.settings,
+                            &mut self.keymap,
                             focused_pane_id, focused_buffer_id,
                             Some(&mut self.buffers),
                             Some(&mut self.engine_view),
