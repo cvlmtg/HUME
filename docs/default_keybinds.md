@@ -235,6 +235,15 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 | `:toggle-soft-wrap` | `:wrap` | Toggle soft line wrapping |
 | `:set global <key>=<value>` | | Set a global setting |
 | `:set buffer <key>=<value>` | | Set a buffer-local setting override |
-| `:clear-search` | `:cs` | Clear search highlights |
+| `:messages` | `:mes` | Show the message log in a read-only scratch buffer |
+| `:edit <path>` | `:e` | Open a file; `:e` with no arg reloads current |
+| `:bnext` | `:bn` | Switch to the next open buffer |
+| `:bprev` | `:bp` | Switch to the previous open buffer |
+| `:buffer-delete` | `:bd` | Close the focused buffer (guards unsaved changes) |
+| `:reload-plugin <name>` | | Reload a plugin by name |
+| `:reload-config` | | Reload `init.scm` from scratch |
+| `:split` | `:sp` | Split current pane horizontally *(not yet implemented)* |
+| `:vsplit` | `:vsp` | Split current pane vertically *(not yet implemented)* |
+| `:clear-search` | | Clear search highlights |
 
 See [settings.md](settings.md) for the full list of available keys and values for `:set`.
