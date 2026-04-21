@@ -47,7 +47,7 @@ to every selection in the set simultaneously. The *primary* is just the
    only) and `cmd_remove_primary_selection` (remove primary) operate on
    exactly one selection. The primary determines which one.
 
-4. **Registers** (`src/ops/register.rs`): when you yank with N cursors, the
+4. **Registers** (`editor/src/ops/register.rs`): when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
    order. Pasting with N cursors maps each slot back to the corresponding
    cursor. If the cursor count doesn't match at paste time, the full register
@@ -60,8 +60,8 @@ to every selection in the set simultaneously. The *primary* is just the
    | Key | Register | Notes |
    |-----|----------|-------|
    | `0`–`9` | Named storage | Text or macros; last write wins |
-   | `q` | Default macro | `qq` records, `Q` replays |
-   | `c` | System clipboard | Deferred to M3 |
+   | `q` | Default macro | `QQ` records, `q` replays |
+   | `c` | System clipboard | Deferred to M7 |
    | `b` | Black hole | Discards writes |
    | `s` | Search | Holds last search pattern |
 
@@ -72,10 +72,10 @@ to every selection in the set simultaneously. The *primary* is just the
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
    this: numbers for user storage, letters for special registers.
 
-   **Macro model (M3):** macros are stored in registers (Vim model, not
-   Helix's single-slot model). `qq` records into register `q` (the default
-   macro register). `q3` records into register `3`. `Q` replays from `q`,
-   `Q3` replays from `3`.
+   **Macro model (M5):** macros are stored in registers (Vim model, not
+   Helix's single-slot model). `QQ` records into register `q` (the default
+   macro register). `Q3` records into register `3`. `q` replays from `q`,
+   `q3` replays from `3`.
 
    **Why Vim-style macros over Helix-style?** Helix has a single macro slot
    (`Q` records, `Q` replays). Users complained — one slot is enough for a
@@ -85,7 +85,7 @@ to every selection in the set simultaneously. The *primary* is just the
    without the full `a`–`z` namespace overhead. Ten slots (`0`–`9`) covers
    real workflows; the `q` default keeps the common case a one-key operation.
 
-5. **Paste-as-replace** (`src/ops/edit.rs`): In a select-then-act model, `p`/`P`
+5. **Paste-as-replace** (`editor/src/ops/edit/`): In a select-then-act model, `p`/`P`
    has to handle two distinct cases:
 
    - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the
