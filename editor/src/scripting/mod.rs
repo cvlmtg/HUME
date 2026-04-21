@@ -18,6 +18,7 @@
 //!   thread + `(hume/yield!)` cooperative interruption builtin.
 
 pub(crate) mod builtins;
+pub(crate) mod hooks;
 pub(crate) mod keys;
 pub(crate) mod ledger;
 
@@ -42,7 +43,8 @@ use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::pane_state::PaneBufferState;
 use crate::settings::{apply_setting, BufferOverrides, EditorSettings, SettingScope};
 
-use ledger::{LedgerStack, PluginId, PluginStack};
+use hooks::HookRegistry;
+use ledger::{LedgerStack, Owner, PluginId, PluginStack};
 
 // ── HUME_CTX global name ──────────────────────────────────────────────────────
 
@@ -156,6 +158,9 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) cmd_owners: std::collections::HashMap<String, String>,
     /// Messages accumulated by `(log! …)`.  Drained into the editor after eval.
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
+    /// Hook registrations accumulated by `(register-hook! …)` during this eval.
+    /// Drained into `ScriptFacingCtx.hooks` on successful eval; dropped on error.
+    pub(crate) pending_hooks: Vec<(hooks::HookId, Owner, SteelVal)>,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
     // ── Command-mode fields (meaningful only when is_init = false) ────────────
@@ -207,6 +212,7 @@ impl SteelCtx<'static> {
             pending_steel_cmds:    Vec::new(),
             cmd_owners:            std::collections::HashMap::new(),
             pending_messages:      Vec::new(),
+            pending_hooks:         Vec::new(),
             interrupt_flag:        Arc::new(AtomicBool::new(false)),
             cmd_queue:             Vec::new(),
             wait_char_request:     None,
@@ -254,6 +260,9 @@ pub(crate) struct ScriptFacingCtx {
     /// Steel command dispatch.  Drained into `Editor::report` by the caller
     /// immediately after `eval_init` / `call_steel_cmd` returns.
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
+    /// Persistent hook registry: handlers registered by `(register-hook! …)`
+    /// across all evals.  Purged per-plugin on teardown.
+    pub(crate) hooks: HookRegistry,
 }
 
 // ── EvalSnapshot ─────────────────────────────────────────────────────────────
@@ -344,6 +353,7 @@ impl ScriptingHost {
             ledger_stack: LedgerStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             pending_messages: Vec::new(),
+            hooks: HookRegistry::default(),
         };
         // Initialize the fs builtin directory TLS before the engine registers
         // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
@@ -411,6 +421,7 @@ impl ScriptingHost {
     ) -> Result<Vec<String>, String> {
         let plugin_id = PluginId::parse(plugin_name)
             .map_err(|e| format!("teardown-plugin: {e}"))?;
+        self.ctx.hooks.purge_plugin(&plugin_id);
         let to_restore = self.ctx.ledger_stack.unload(&plugin_id);
 
         let mut cmds_to_remove = Vec::new();
@@ -525,6 +536,7 @@ impl ScriptingHost {
             pending_steel_cmds:    Vec::new(),
             cmd_owners:            snapshot.cmd_owners.clone(),
             pending_messages:      Vec::new(),
+            pending_hooks:         Vec::new(),
             interrupt_flag:        Arc::clone(&self.interrupt_flag),
             cmd_queue:             Vec::new(),
             wait_char_request:     None,
@@ -568,9 +580,14 @@ impl ScriptingHost {
         self.ctx.ledger_stack = steel_ctx.ledger_stack;
 
         let steel_cmds = if result.is_ok() {
-            self.process_pending_cmds(steel_ctx.pending_steel_cmds)
+            let cmds = self.process_pending_cmds(steel_ctx.pending_steel_cmds);
+            for (hook_id, owner, proc) in steel_ctx.pending_hooks {
+                self.ctx.hooks.register(hook_id, owner, proc);
+            }
+            cmds
         } else {
             // Rollback: discard partial mutations and restore pre-eval snapshot.
+            // pending_hooks are silently dropped — never applied on error.
             snapshot.restore(settings, keymap, &mut self.ctx);
             Vec::new()
         };
@@ -660,6 +677,7 @@ impl ScriptingHost {
             loaded_plugins:        Vec::new(),
             builtin_cmd_names:     std::collections::HashSet::new(),
             pending_steel_cmds:    Vec::new(),
+            pending_hooks:         Vec::new(),
             cmd_owners:            self.ctx.cmd_owners.clone(),
             pending_messages:      Vec::new(),
             interrupt_flag:        Arc::clone(&self.interrupt_flag),
@@ -697,6 +715,112 @@ impl ScriptingHost {
 
         result?;
         Ok((steel_ctx.cmd_queue, steel_ctx.wait_char_request))
+    }
+
+    /// Fire all registered handlers for `hook_id`, passing `args` to each.
+    ///
+    /// Handlers are called in registration order inside a single
+    /// `with_mut_reference` session so they have full access to HUME builtins
+    /// (`current-buffer`, `call!`, etc.).  Returns the combined `cmd_queue`
+    /// from all handlers, or an empty vec if no handlers are registered.
+    ///
+    /// Returns immediately (no engine call, no watchdog) if no handlers are
+    /// registered for `hook_id`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fire_hook<'a>(
+        &mut self,
+        hook_id: hooks::HookId,
+        args: &[SteelVal],
+        settings: &EditorSettings,
+        focused_pane_id: PaneId,
+        focused_buffer_id: BufferId,
+        buffers: Option<&'a mut BufferStore>,
+        engine_view: Option<&'a mut EngineView>,
+        pane_state: Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
+        pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+    ) -> Result<Vec<String>, String> {
+        // Collect handler procs before borrowing the engine.
+        let handler_procs: Vec<SteelVal> = self.ctx.hooks
+            .handlers_for(&hook_id)
+            .iter()
+            .map(|(_, proc)| proc.clone())
+            .collect();
+        if handler_procs.is_empty() { return Ok(vec![]); }
+
+        // Pre-bind each arg as a global so handlers can reference them by name.
+        // `register_value` creates-or-overwrites, safe for first-call globals.
+        for (i, arg) in args.iter().enumerate() {
+            self.engine.register_value(&format!("*hume.ha{i}*"), arg.clone());
+        }
+        let arg_exprs: String = (0..args.len())
+            .map(|i| format!("*hume.ha{i}*"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Pre-bind each handler proc as a global.
+        for (i, proc) in handler_procs.iter().enumerate() {
+            self.engine.register_value(&format!("*hume.hp{i}*"), proc.clone());
+        }
+
+        // Composite program: call every handler in order.
+        let program: String = (0..handler_procs.len())
+            .map(|i| format!("(*hume.hp{i}* {arg_exprs})"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let budget_ms = settings.steel_command_budget_ms;
+        let watchdog = EvalWatchdog::arm(
+            Arc::clone(&self.interrupt_flag),
+            std::time::Duration::from_millis(budget_ms as u64),
+        );
+
+        let mut steel_ctx = SteelCtx {
+            settings:              settings.clone(),
+            keymap:                Keymap::default(),
+            plugin_stack:          PluginStack::default(),
+            ledger_stack:          LedgerStack::default(),
+            data_dir:              self.ctx.data_dir.clone(),
+            runtime_dir:           self.ctx.runtime_dir.clone(),
+            declared_plugins:      Vec::new(),
+            loaded_plugins:        Vec::new(),
+            builtin_cmd_names:     std::collections::HashSet::new(),
+            pending_steel_cmds:    Vec::new(),
+            pending_hooks:         Vec::new(),
+            cmd_owners:            self.ctx.cmd_owners.clone(),
+            pending_messages:      Vec::new(),
+            interrupt_flag:        Arc::clone(&self.interrupt_flag),
+            cmd_queue:             Vec::new(),
+            wait_char_request:     None,
+            pending_char:          None,
+            cmd_arg:               None,
+            is_init:               false,
+            focused_pane_id,
+            focused_buffer_id,
+            live_focused_buffer_id: focused_buffer_id,
+            buffers,
+            engine_view,
+            pane_state,
+            pane_jumps,
+        };
+
+        let result = self.engine
+            .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(&mut steel_ctx)
+            .consume_once(|engine, args| {
+                let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
+                engine.update_value(HUME_CTX, ctx_val);
+                let res = engine.compile_and_run_raw_program(program);
+                engine.update_value(HUME_CTX, SteelVal::Void);
+                res
+            })
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+
+        watchdog.cancel();
+        self.interrupt_flag.store(false, Ordering::Relaxed);
+        self.ctx.pending_messages.extend(steel_ctx.pending_messages);
+
+        result?;
+        Ok(steel_ctx.cmd_queue)
     }
 }
 
@@ -1431,5 +1555,167 @@ mod tests {
             PaneId::default(), BufferId::default(), None, None, None, None,
         ).unwrap();
         assert_eq!(q2, vec!["move-left"], "call-command! alias should queue the command");
+    }
+
+    // ── register-hook! / fire_hook ────────────────────────────────────────────
+
+    use engine::pipeline::{BufferId, PaneId};
+    use crate::scripting::hooks::HookId;
+    use crate::scripting::builtins::ids::SteelBufferId;
+    use steel::rvals::IntoSteelVal as _;
+
+    #[test]
+    fn register_hook_fires_on_buffer_open() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        h.eval_source(
+            r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let bid = BufferId::default();
+        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let queue = h.fire_hook(
+            HookId::OnBufferOpen, &[val], &s,
+            PaneId::default(), bid, None, None, None, None,
+        ).unwrap();
+        assert_eq!(queue, vec!["move-right"]);
+    }
+
+    #[test]
+    fn register_hook_fires_on_buffer_close() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        h.eval_source(
+            r#"(register-hook! 'on-buffer-close (lambda (bid) (call! "move-left")))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let bid = BufferId::default();
+        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let queue = h.fire_hook(
+            HookId::OnBufferClose, &[val], &s,
+            PaneId::default(), bid, None, None, None, None,
+        ).unwrap();
+        assert_eq!(queue, vec!["move-left"]);
+    }
+
+    #[test]
+    fn register_hook_fires_on_buffer_save() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        h.eval_source(
+            r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let bid = BufferId::default();
+        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let queue = h.fire_hook(
+            HookId::OnBufferSave, &[val], &s,
+            PaneId::default(), bid, None, None, None, None,
+        ).unwrap();
+        assert_eq!(queue, vec!["move-right"]);
+    }
+
+    #[test]
+    fn register_hook_fires_on_mode_change() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        h.eval_source(
+            r#"(register-hook! 'on-mode-change
+                  (lambda (old new)
+                    (when (equal? new "insert") (call! "move-right"))))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let old_val = "normal".into_steelval().unwrap();
+        let new_val = "insert".into_steelval().unwrap();
+        let queue = h.fire_hook(
+            HookId::OnModeChange, &[old_val, new_val], &s,
+            PaneId::default(), BufferId::default(), None, None, None, None,
+        ).unwrap();
+        assert_eq!(queue, vec!["move-right"]);
+    }
+
+    #[test]
+    fn register_hook_no_fire_if_no_handlers() {
+        let mut h = host();
+        let s = EditorSettings::default();
+        let queue = h.fire_hook(
+            HookId::OnBufferOpen, &[], &s,
+            PaneId::default(), BufferId::default(), None, None, None, None,
+        ).unwrap();
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn register_hook_multiple_handlers_all_fire() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        h.eval_source(
+            r#"
+(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))
+(register-hook! 'on-buffer-save (lambda (bid) (call! "move-left")))
+"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let bid = BufferId::default();
+        let val = SteelBufferId(bid).into_steelval().unwrap();
+        let queue = h.fire_hook(
+            HookId::OnBufferSave, &[val], &s,
+            PaneId::default(), bid, None, None, None, None,
+        ).unwrap();
+        assert_eq!(queue, vec!["move-right", "move-left"]);
+    }
+
+    #[test]
+    fn teardown_removes_plugin_hooks() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        // Register a hook as part of a plugin.
+        h.ctx.plugin_stack.push(ledger::PluginId::parse("user/myplugin").unwrap());
+        h.eval_source(
+            r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        h.ctx.plugin_stack.pop();
+        // Hook is registered.
+        assert!(!h.ctx.hooks.is_empty_for(&HookId::OnBufferOpen));
+        // Teardown removes it.
+        h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
+        assert!(h.ctx.hooks.is_empty_for(&HookId::OnBufferOpen));
+    }
+
+    #[test]
+    fn register_hook_errors_in_command_mode() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        // Define a command that tries to register a hook (not allowed in command mode).
+        h.eval_source(
+            r#"(define-command! "bad-cmd" "" (lambda ()
+                 (register-hook! 'on-buffer-open (lambda (bid) #f))))"#,
+            &mut s, &mut km,
+        ).unwrap();
+        let err = h.call_steel_cmd(
+            "%hume-cmd-bad-cmd", None, None, &s,
+            PaneId::default(), BufferId::default(), None, None, None, None,
+        ).unwrap_err();
+        assert!(err.contains("can only be called during init"), "got: {err}");
+    }
+
+    #[test]
+    fn register_hook_unknown_name_errors() {
+        let mut h = host();
+        let mut s = EditorSettings::default();
+        let mut km = Keymap::default();
+        let err = h.eval_source(
+            r#"(register-hook! 'on-nonexistent (lambda () #f))"#,
+            &mut s, &mut km,
+        ).unwrap_err();
+        assert!(err.contains("unknown hook"), "got: {err}");
     }
 }

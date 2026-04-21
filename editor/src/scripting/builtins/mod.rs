@@ -7,6 +7,7 @@
 pub(crate) mod buffers;
 pub(crate) mod commands;
 pub(crate) mod fs;
+pub(crate) mod hooks;
 pub(crate) mod ids;
 pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
@@ -91,6 +92,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Plugin introspection
     engine.register_fn_with_ctx(HUME_CTX, "loaded-plugins",   plugins::loaded_plugins);
     engine.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
+
+    // Hook registration — init-only
+    engine.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);
 
     // Steel command definition and composition
     engine.register_fn_with_ctx(HUME_CTX, "define-command!",    commands::define_command);
