@@ -37,7 +37,7 @@ than O(total visible graphemes).
 
 Holds everything the engine needs to render one editor viewport:
 
-- `buffer_id` — key into `EngineView::buffers` (rope lives in the editor's `Document`)
+- `buffer_id` — key into `EngineView::buffers` (rope lives in the editor's `Buffer`)
 - `viewport: ViewportState` — `top_line`, `top_row_offset`, `horizontal_offset`, `width`, `height`
 - `selections: Vec<Selection>` — all cursor/selection positions, pre-sorted by `head`
 - `wrap_mode: WrapMode` — `None` or `Indent { width }`
@@ -109,6 +109,6 @@ scope tree until a match is found.
 ## Where the rope lives
 
 The rope (`ropey::Rope`) never moves into the engine. `EngineView::render()`
-accepts a closure `get_rope: impl Fn(BufferId) -> &Rope` so the editor can pass
-a borrow of its `Document`'s rope without any cloning or ownership transfer.
-This keeps the engine crate free of `Editor` dependencies.
+accepts a closure `get_rope: impl Fn(BufferId) -> Option<&ropey::Rope>` so the
+editor can pass a borrow of its `Buffer`'s rope without any cloning or ownership
+transfer. This keeps the engine crate free of `Editor` dependencies.
