@@ -40,10 +40,9 @@ pub(crate) struct SearchMatches {
     /// All non-overlapping matches as `(start_char, end_char_inclusive)` pairs,
     /// sorted in document order.
     pub matches: Vec<(usize, usize)>,
-    /// Buffer revision when `matches` was last computed. `None` = never computed.
-    pub cache_revision: Option<RevisionId>,
-    /// Pattern string when `matches` was last computed. `None` = never computed.
-    pub cache_pattern: Option<String>,
+    /// `(revision, pattern)` when `matches` was last computed. `None` = never computed.
+    /// Stored as a pair so both are always in sync — no half-initialised state.
+    pub cache: Option<(RevisionId, String)>,
 }
 
 // ── Per-(pane, buffer) type ───────────────────────────────────────────────────
@@ -61,10 +60,9 @@ pub(crate) struct SearchCursor {
     pub wrapped: bool,
     /// Head position when `match_count` was last computed. `None` = never computed.
     pub cache_head: Option<usize>,
-    /// `SearchMatches::cache_revision` value when `match_count` was last computed.
-    pub cache_matches_rev: Option<RevisionId>,
-    /// `SearchMatches::cache_pattern` value when `match_count` was last computed.
-    pub cache_matches_pattern: Option<String>,
+    /// `SearchMatches::cache` key when `match_count` was last computed.
+    /// Stored as a pair so both fields are always in sync — no half-initialised state.
+    pub cache_matches: Option<(RevisionId, String)>,
 }
 
 // ── Session-level interaction state ──────────────────────────────────────────

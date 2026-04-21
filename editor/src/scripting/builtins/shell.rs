@@ -50,7 +50,7 @@ pub(crate) fn git_clone(ctx: &mut SteelCtx, url: String, dest: String) -> Result
     sandbox_write_check(&canonical_parent.join(file_name), &dest)?;
 
     // Log which git we'll invoke — useful for debugging.
-    ctx.pending_messages.push((Severity::Trace, format!("git-clone: running `git clone {url} {dest}`")));
+    ctx.log(Severity::Trace, format!("git-clone: running `git clone {url} {dest}`"));
 
     let status = crate::os::process::git_clone(&url, &dest)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
@@ -81,7 +81,7 @@ pub(crate) fn git_pull(ctx: &mut SteelCtx, dir: String) -> Result<SteelVal, Stee
 
     sandbox_write_check(&canonical, &dir)?;
 
-    ctx.pending_messages.push((Severity::Trace, format!("git-pull: running `git pull` in {dir}")));
+    ctx.log(Severity::Trace, format!("git-pull: running `git pull` in {dir}"));
 
     let status = crate::os::process::git_pull_in(&canonical)
         .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,

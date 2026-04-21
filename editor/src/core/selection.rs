@@ -213,9 +213,19 @@ impl SelectionSet {
         self.selections.len()
     }
 
-    /// Iterate over all selections in sorted order.
+    /// Iterate over all selections in ascending `start()` order.
     pub(crate) fn iter_sorted(&self) -> impl Iterator<Item = &Selection> {
         self.selections.iter()
+    }
+
+    /// Iterate over all selections in ascending `head` order.
+    ///
+    /// The engine layer (`EngineView::panes`) requires selections sorted by `head`,
+    /// which differs from `start()` when anchor > head (reverse selections).
+    pub(crate) fn iter_head_sorted(&self) -> impl Iterator<Item = &Selection> {
+        let mut v: Vec<&Selection> = self.selections.iter().collect();
+        v.sort_by_key(|s| s.head);
+        v.into_iter()
     }
 
     /// Apply `f` to every selection and return a new `SelectionSet`.

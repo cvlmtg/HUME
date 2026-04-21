@@ -579,7 +579,7 @@ mod tests {
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, mut pj, pane_id, buf_id) = one_buf_state();
 
-        let path = std::env::temp_dir().join("hume_test_open_buffer.txt");
+        let path = std::env::temp_dir().join(format!("hume_test_open_buffer_{}.txt", std::process::id()));
         std::fs::write(&path, "test content\n").unwrap();
 
         let escaped = path.display().to_string().replace('\\', "\\\\");
@@ -605,7 +605,7 @@ mod tests {
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, mut pj, pane_id, _buf_id) = one_buf_state();
 
-        let path = std::env::temp_dir().join("hume_test_open_dedup.txt");
+        let path = std::env::temp_dir().join(format!("hume_test_open_dedup_{}.txt", std::process::id()));
         std::fs::write(&path, "dedup\n").unwrap();
         let canonical = std::fs::canonicalize(&path).unwrap();
         let canonical_str = canonical.display().to_string().replace('\\', "\\\\");

@@ -66,7 +66,7 @@
 - [x] Selection manipulation: collapse, flip, keep/remove/cycle primary, split on newlines, copy to adjacent line, trim whitespace (`selection_cmd.rs`)
 - [x] Registers: named yank/paste buffers (`'0'`–`'9'`) + default (`'"'`) + black hole (`'b'`) + reserved slots for clipboard (`'c'`), search (`'s'`), macro (`'q'`); `yank_selections` (`src/register.rs`), `paste_after`/`paste_before` (`src/edit.rs`). System clipboard deferred to M4 (editor layer).
 - [x] Count prefix: numeric prefix to repeat motions/actions (`3w`, `5x`)
-- [x] Undo/redo: tree-structured undo with changesets (`History` arena in `src/history.rs`, `Document` orchestrator in `src/document.rs`)
+- [x] Undo/redo: tree-structured undo with changesets (`History` arena in `editor/src/core/history.rs`, `Buffer` orchestrator in `editor/src/editor/buffer.rs`)
 - [x] `goto_revision`: jump to any node in the undo tree directly (`History::goto_revision` + `Document::goto_revision`); uses LCA-based path-finding, applies inverse/forward transactions sequentially
 - [x] Property-based tests (`proptest`): random edit sequences never corrupt buffer or desync selections
 - [x] Thorough unit tests for every operation and edge case
