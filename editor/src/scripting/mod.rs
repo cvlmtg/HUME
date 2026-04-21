@@ -63,6 +63,7 @@ fn hook_proc_name(i: usize) -> String { format!("*hume.hp{i}*") }
 /// Build the composite hook invocation program for `handler_count` handlers
 /// and `arg_count` arguments.  The result is deterministic and cacheable.
 fn build_hook_program(arg_count: usize, handler_count: usize) -> String {
+    // 14 = len("*hume.ha99* ") worst-case per arg; 18 = len("(*hume.hp99*)\n") per handler.
     let mut arg_exprs = String::with_capacity(arg_count * 14);
     for i in 0..arg_count {
         if i > 0 { arg_exprs.push(' '); }
@@ -265,6 +266,12 @@ impl<'a> SteelCtx<'a> {
             pane_state:             None,
             pane_jumps:             None,
         }
+    }
+
+    /// Push a log message — prefer this over direct `pending_messages.push` so
+    /// any future severity filter is applied uniformly.
+    pub(crate) fn log(&mut self, severity: crate::editor::Severity, msg: String) {
+        self.pending_messages.push((severity, msg));
     }
 
     fn new_command(
@@ -857,7 +864,7 @@ impl ScriptingHost {
     ) -> Result<Vec<String>, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.hooks
-            .handlers_for(&hook_id)
+            .handlers_for(hook_id)
             .iter()
             .map(|(_, proc)| proc.clone())
             .collect();
@@ -991,16 +998,7 @@ mod tests {
     /// Build a minimal `EditorSteelRefs` for tests that don't exercise
     /// multi-buffer builtins (no `buffers` / `engine_view` / etc.).
     fn test_refs<'a>(s: &'a mut EditorSettings, km: &'a mut Keymap) -> EditorSteelRefs<'a> {
-        EditorSteelRefs {
-            settings:          s,
-            keymap:            km,
-            focused_pane_id:   PaneId::default(),
-            focused_buffer_id: BufferId::default(),
-            buffers:           None,
-            engine_view:       None,
-            pane_state:        None,
-            pane_jumps:        None,
-        }
+        test_refs_with_bid(s, km, BufferId::default())
     }
 
     fn test_refs_with_bid<'a>(
@@ -1783,10 +1781,10 @@ mod tests {
         ).unwrap();
         h.plugin_stack.pop();
         // Hook is registered.
-        assert!(!h.hooks.is_empty_for(&HookId::OnBufferOpen));
+        assert!(!h.hooks.is_empty_for(HookId::OnBufferOpen));
         // Teardown removes it.
         h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
-        assert!(h.hooks.is_empty_for(&HookId::OnBufferOpen));
+        assert!(h.hooks.is_empty_for(HookId::OnBufferOpen));
     }
 
     #[test]

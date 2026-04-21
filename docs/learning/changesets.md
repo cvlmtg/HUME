@@ -134,4 +134,4 @@ forward Transaction redoes the edit.
   one contiguous allocation instead of many small heap objects. The trade-off is
   that nodes are never individually freed — the whole arena is dropped at once.
   For an undo tree that only grows, this is fine.
-- `src/core/document.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
+- `editor/src/editor/buffer.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`

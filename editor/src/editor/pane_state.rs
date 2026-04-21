@@ -15,6 +15,7 @@
 //! per-buffer group bookkeeping (at most one pane is ever in Insert).
 
 use crate::core::changeset::ChangeSet;
+use crate::core::search_state::SearchCursor;
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 
@@ -56,8 +57,6 @@ pub(crate) struct PaneBufferState {
     /// Some only while this pane is in Insert mode for this buffer.
     pub edit_group: Option<EditGroup>,
 }
-
-use crate::core::search_state::SearchCursor;
 
 // ── PaneTransient ────────────────────────────────────────────────────────────
 

@@ -679,7 +679,7 @@ impl Editor {
     /// hook bodies are dispatched after all handlers return.  Errors from
     /// handlers are reported as `Severity::Error`.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
-        if self.scripting.as_ref().is_none_or(|h| h.hooks.is_empty_for(&hook_id)) {
+        if self.scripting.as_ref().is_none_or(|h| h.hooks.is_empty_for(hook_id)) {
             return;
         }
         let pid = self.focused_pane_id;
@@ -779,13 +779,16 @@ impl Editor {
         // stream directly into pane.selections, reusing its existing capacity.
         let Self { pane_state, engine_view, .. } = &mut *self;
         let pane = &mut engine_view.panes[pane_id];
+        // iter_head_sorted: engine requires Vec<EngineSelection> sorted by head.
+        // SelectionSet stores by start(); within a single-cursor set head==start,
+        // but in multi-cursor mode head may differ.  head is unique across the set
+        // (cursor positions never alias), so unwrap_or(0) is unreachable in practice.
         pane.selections.clear();
         pane.selections.extend(
             pane_state[pane_id][buf_id].selections
-                .iter_sorted()
+                .iter_head_sorted()
                 .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
         );
-        pane.selections.sort_by_key(|s| s.head);
         pane.primary_idx = pane.selections.iter()
             .position(|s| s.head == primary_head)
             .unwrap_or(0);
@@ -837,8 +840,7 @@ impl Editor {
             let buf = self.buffers.get(bid);
             let Some(sp) = buf.search_pattern.as_ref() else { return; };
             let sm = &buf.search_matches;
-            if sm.cache_revision == Some(buf.revision_id())
-                && sm.cache_pattern.as_deref() == Some(sp.pattern_str.as_str()) {
+            if sm.cache == Some((buf.revision_id(), sp.pattern_str.clone())) {
                 return;
             }
         }
@@ -851,8 +853,7 @@ impl Editor {
         let matches = find_all_matches(self.buffers.get(bid).text(), &regex);
         let sm = &mut self.buffers.get_mut(bid).search_matches;
         sm.matches = matches;
-        sm.cache_revision = Some(revision);
-        sm.cache_pattern = Some(pattern_str);
+        sm.cache = Some((revision, pattern_str));
     }
 
     /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
@@ -864,28 +865,25 @@ impl Editor {
         {
             let sm = &self.buffers.get(bid).search_matches;
             let cur = &self.pane_state[pid][bid].search_cursor;
-            if cur.cache_head == Some(head)
-                && cur.cache_matches_rev == sm.cache_revision
-                && cur.cache_matches_pattern.as_deref() == sm.cache_pattern.as_deref() {
+            if cur.cache_head == Some(head) && cur.cache_matches == sm.cache {
                 return;
             }
         }
 
-        let (match_count, cache_rev, cache_pat) = {
+        let (match_count, cache_matches) = {
             let sm = &self.buffers.get(bid).search_matches;
-            if sm.cache_revision.is_none() {
+            if sm.cache.is_none() {
                 // Buffer has no active search — cursor should be default.
                 return;
             }
             let count = search_match_info(&sm.matches, head);
-            (Some(count), sm.cache_revision, sm.cache_pattern.clone())
+            (Some(count), sm.cache.clone())
         };
 
         let cursor = &mut self.pane_state[pid][bid].search_cursor;
         cursor.match_count = match_count;
         cursor.cache_head = Some(head);
-        cursor.cache_matches_rev = cache_rev;
-        cursor.cache_matches_pattern = cache_pat;
+        cursor.cache_matches = cache_matches;
     }
 
     /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for the
@@ -971,7 +969,7 @@ impl Editor {
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
         let old = self.mode;
         self.mode = mode;
-        if old != mode && self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(&HookId::OnModeChange)) {
+        if old != mode && self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(HookId::OnModeChange)) {
             let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
             let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
             self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
@@ -1045,10 +1043,9 @@ impl Editor {
                 pane.selections.clear();
                 pane.selections.extend(
                     pane_state[pid][buf_id].selections
-                        .iter_sorted()
+                        .iter_head_sorted()
                         .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
                 );
-                pane.selections.sort_by_key(|s| s.head);
                 pane.primary_idx = pane.selections
                     .iter()
                     .position(|s| s.head == primary_head)
@@ -1079,8 +1076,8 @@ impl Editor {
     /// selections via pane_state, propagates CS to other panes.
     /// Returns `(displaced, cs)`.
     ///
-    /// The split borrow (`&mut self.doc` ∥ `&mut pane_state[..].edit_group`)
-    /// is safe because `doc` and `pane_state` are disjoint fields of `Editor`.
+    /// The split borrow (`&mut self.buffers` ∥ `&mut self.pane_state`)
+    /// is safe because both are disjoint fields of `Editor`.
     pub(super) fn doc_edit_grouped<R: IntoApplyResult>(
         &mut self,
         cmd: impl FnOnce(Text, SelectionSet) -> R,

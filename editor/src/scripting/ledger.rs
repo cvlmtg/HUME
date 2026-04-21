@@ -168,6 +168,8 @@ pub(crate) enum Owner {
 #[derive(Debug, Clone)]
 pub(crate) struct LedgerEntry {
     /// The key that was changed (e.g. `"f"` for a keybind, `"tab-width"` for a setting).
+    /// Stored as a raw `String` — a typed `LedgerKey` enum was considered but the
+    /// string form is compact and already unambiguous (space = keymap, no space = setting).
     pub(crate) key: String,
     /// The serialized value that was live before this mutation.
     pub(crate) prior_value: String,

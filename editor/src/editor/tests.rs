@@ -3726,8 +3726,7 @@ fn macro_q1_replay_after_undo() {
 
 // ── D1–D6: Multi-pane contract tests ──────────────────────────────────────────
 //
-// These tests lock the SSOT invariants for per-pane, per-buffer, and per-search
-// state.  D2/D3 require Phase 5 (`propagate_cs_to_panes`) and will be added then.
+// These tests lock the SSOT invariants for per-pane, per-buffer, and per-search state.
 
 /// D1 — Each pane maintains its own cursor independently for the same buffer.
 ///

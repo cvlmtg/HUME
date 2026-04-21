@@ -13,7 +13,8 @@ use crate::scripting::ledger::{Owner, PluginId};
 // ── HookId ────────────────────────────────────────────────────────────────────
 
 /// Identifier for each editor lifecycle event plugins can observe.
-// The `On` prefix is intentional — matches the `on-buffer-open` Steel naming convention.
+// All variants share the `On` prefix, matching the `on-buffer-open` Steel naming
+// convention.  The lint wants dissimilar prefixes; we intentionally override it.
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HookId {
@@ -67,13 +68,13 @@ impl HookRegistry {
     }
 
     /// Return the handlers for `hook_id` in registration order.
-    pub(crate) fn handlers_for(&self, hook_id: &HookId) -> &[(Owner, SteelVal)] {
-        self.handlers.get(hook_id).map(Vec::as_slice).unwrap_or(&[])
+    pub(crate) fn handlers_for(&self, hook_id: HookId) -> &[(Owner, SteelVal)] {
+        self.handlers.get(&hook_id).map(Vec::as_slice).unwrap_or(&[])
     }
 
     /// `true` if no handlers are registered for `hook_id` (fast early-exit path).
-    pub(crate) fn is_empty_for(&self, hook_id: &HookId) -> bool {
-        self.handlers.get(hook_id).is_none_or(Vec::is_empty)
+    pub(crate) fn is_empty_for(&self, hook_id: HookId) -> bool {
+        self.handlers.get(&hook_id).is_none_or(Vec::is_empty)
     }
 
     /// Remove all handlers attributed to `plugin_id` (called from teardown).

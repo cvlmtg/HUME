@@ -123,6 +123,7 @@ pub(crate) fn close_buffer(
 ) -> BufferId {
     match buffers.mru_excluding(id) {
         Some(next) => {
+            // Collect before mutating (borrow checker); n≈1 in the single-pane case.
             let panes_to_redirect: Vec<PaneId> = ev.panes
                 .iter()
                 .filter(|(_, p)| p.buffer_id == id)
@@ -163,6 +164,7 @@ pub(crate) fn replace_buffer_in_place(
     );
     let initial_sels = new_doc.initial_sels();
     *buffers.get_mut(id) = new_doc;
+    // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev.panes
         .iter()
         .filter(|(_, p)| p.buffer_id == id)
