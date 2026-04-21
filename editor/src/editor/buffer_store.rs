@@ -64,10 +64,14 @@ impl BufferStore {
         self.buffers.get_mut(id).expect("BufferStore: unseeded BufferId")
     }
 
-    /// Non-panicking getter — `None` for stale jump-list entries.
-    #[cfg(test)]
+    /// Non-panicking getter — `None` for stale / unknown IDs.
     pub(crate) fn try_get(&self, id: BufferId) -> Option<&Buffer> {
         self.buffers.get(id)
+    }
+
+    /// Iterate all open buffers in open-order.  Yields `(BufferId, &Buffer)`.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
+        self.order.iter().filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
     /// Remove `id` from the store.

@@ -4,6 +4,7 @@
 //! the Scheme bootstrap that defines `load-plugin`.  This must be called once
 //! during [`ScriptingHost::new`] before any `eval_init` call.
 
+pub(crate) mod buffers;
 pub(crate) mod commands;
 pub(crate) mod fs;
 pub(crate) mod ids;
@@ -111,6 +112,15 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Opaque ID predicates — context-free; no SteelCtx needed.
     engine.register_fn("buffer-id?", ids::is_buffer_id);
     engine.register_fn("pane-id?",   ids::is_pane_id);
+
+    // Multi-buffer read-only builtins
+    engine.register_fn_with_ctx(HUME_CTX, "current-buffer", buffers::current_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "current-pane",   buffers::current_pane);
+    engine.register_fn_with_ctx(HUME_CTX, "buffers",        buffers::buffers);
+    engine.register_fn_with_ctx(HUME_CTX, "panes",          buffers::panes);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-path",    buffers::buffer_path);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-name",    buffers::buffer_name);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-dirty?",  buffers::buffer_dirty);
 
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
     engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
