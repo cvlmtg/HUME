@@ -46,7 +46,7 @@ pub(crate) fn bind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String, cm
     let mode = mode_from_str(&mode_str, "bind-key!")?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{} {}", mode_str.to_ascii_lowercase(), key_str);
+    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
     let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
     let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
     let current_owner = ctx.plugin_stack.current_owner();
@@ -76,7 +76,7 @@ pub(crate) fn bind_wait_char(ctx: &mut SteelCtx, mode_str: String, key_str: Stri
     let mode = mode_from_str(&mode_str, "bind-wait-char!")?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{} {}", mode_str.to_ascii_lowercase(), key_str);
+    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
     let prior_value = ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
     let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
     let current_owner = ctx.plugin_stack.current_owner();

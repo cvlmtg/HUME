@@ -15,7 +15,7 @@ use crate::scripting::ledger::{Owner, PluginId};
 /// Identifier for each editor lifecycle event plugins can observe.
 // The `On` prefix is intentional — matches the `on-buffer-open` Steel naming convention.
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HookId {
     OnBufferOpen,
     OnBufferClose,
@@ -24,25 +24,24 @@ pub(crate) enum HookId {
     OnModeChange,
 }
 
+/// Single source of truth: `(HookId variant, Steel symbol name)` pairs.
+const HOOKS: &[(HookId, &str)] = &[
+    (HookId::OnBufferOpen,  "on-buffer-open"),
+    (HookId::OnBufferClose, "on-buffer-close"),
+    (HookId::OnBufferSave,  "on-buffer-save"),
+    (HookId::OnEdit,        "on-edit"),
+    (HookId::OnModeChange,  "on-mode-change"),
+];
+
 impl HookId {
     /// Map a Steel symbol name to a `HookId`.
     pub(crate) fn from_symbol(s: &str) -> Option<Self> {
-        match s {
-            "on-buffer-open"  => Some(Self::OnBufferOpen),
-            "on-buffer-close" => Some(Self::OnBufferClose),
-            "on-buffer-save"  => Some(Self::OnBufferSave),
-            "on-edit"         => Some(Self::OnEdit),
-            "on-mode-change"  => Some(Self::OnModeChange),
-            _ => None,
-        }
+        HOOKS.iter().find(|(_, name)| *name == s).map(|(id, _)| *id)
     }
 
-    /// All valid hook names, for error messages.
-    pub(crate) fn all_names() -> &'static [&'static str] {
-        &[
-            "on-buffer-open", "on-buffer-close", "on-buffer-save",
-            "on-edit", "on-mode-change",
-        ]
+    /// All valid hook names as an iterator, for error messages.
+    pub(crate) fn all_names() -> impl Iterator<Item = &'static str> {
+        HOOKS.iter().map(|(_, name)| *name)
     }
 }
 

@@ -9,6 +9,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use engine::pipeline::BufferId;
 
+use crate::editor::buffer::Buffer;
 use crate::scripting::SteelCtx;
 use super::ids::{SteelBufferId, SteelPaneId};
 
@@ -103,7 +104,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     let name = buf.path.as_deref()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .unwrap_or("*scratch*");
+        .unwrap_or(Buffer::SCRATCH_BUFFER_NAME);
     name.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }

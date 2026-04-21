@@ -35,6 +35,7 @@ use steel::rvals::SteelVal;
 use steel::rerrs::{ErrorKind, SteelErr};
 
 use crate::scripting::{PendingSteelCmd, SteelCtx};
+use crate::scripting::ledger::Owner;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -144,7 +145,7 @@ pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let owner = ctx.cmd_owners
         .get(&name)
         .cloned()
-        .unwrap_or_else(|| "hume".to_string());
+        .unwrap_or_else(|| Owner::Core.to_string());
     Ok(SteelVal::StringV(owner.into()))
 }
 

@@ -28,7 +28,7 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
             format!(
                 "register-hook!: unknown hook '{}'; known hooks: {}",
                 name_str,
-                HookId::all_names().join(", "),
+                HookId::all_names().collect::<Vec<_>>().join(", "),
             ),
         ))?;
     let owner = ctx.plugin_stack.current_owner();
