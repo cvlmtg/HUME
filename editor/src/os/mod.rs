@@ -6,6 +6,7 @@ mod windows;
 pub(crate) mod dirs;
 pub(crate) mod fs;
 pub(crate) mod io;
+pub(crate) mod path;
 pub(crate) mod process;
 pub(crate) mod terminal;
 

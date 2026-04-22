@@ -171,10 +171,7 @@ impl Completer for PathCompleter {
         let (arg_start, prefix) = arg_prefix(input, cursor);
 
         // Split prefix into (dir_str, file_prefix).
-        let (dir_str, file_prefix) = match prefix.rfind('/') {
-            Some(idx) => (&prefix[..=idx], &prefix[idx + 1..]),
-            None      => ("", prefix),
-        };
+        let (dir_str, file_prefix) = crate::os::path::split_path_at_sep(prefix);
 
         // Resolve the directory: absolute if it starts with '/', else relative to cwd.
         let dir: PathBuf = if dir_str.is_empty() {
