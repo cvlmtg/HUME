@@ -994,6 +994,7 @@ impl Editor {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
                 anchor_col,
+                border: self.settings.popup_border,
             }
         });
         *self.completion_view.write().expect("RwLock not poisoned") = view;
