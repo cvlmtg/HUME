@@ -42,16 +42,13 @@ pub(crate) struct CompletionState {
     /// Byte offset in the minibuffer input where the completed token starts.
     /// Constant across the session (the span start never shifts while cycling).
     pub span_start: usize,
-    /// Current byte end of the replacement in the minibuffer input.
-    /// Equals `span_start + candidates[selected].replacement.len()` after
-    /// every apply.  Used to know what to replace on the next Tab.
-    pub current_end: usize,
 }
 
 impl CompletionState {
     /// The byte range that the current replacement occupies in the input.
     pub(crate) fn current_span(&self) -> std::ops::Range<usize> {
-        self.span_start..self.current_end
+        let end = self.span_start + self.candidates[self.selected].replacement.len();
+        self.span_start..end
     }
 }
 
@@ -105,8 +102,6 @@ impl Completer for CommandCompleter {
             .filter(|name| name.starts_with(prefix) && *name != prefix)
             .map(|name| Completion { replacement: name.to_owned(), display: name.to_owned() })
             .collect();
-        // Exact prefix match goes first only if the prefix itself is a valid command;
-        // otherwise sort everything alphabetically for predictability.
         candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
         candidates.dedup_by(|a, b| a.replacement == b.replacement);
         CompletionResult { span_start: 0, candidates }

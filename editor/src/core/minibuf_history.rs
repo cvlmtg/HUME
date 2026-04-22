@@ -9,7 +9,7 @@
 
 use std::collections::VecDeque;
 
-// ── HistoryKind ───────────────────────────────────────────────────────────────
+// ── HistoryKind / HistoryDir ──────────────────────────────────────────────────
 
 /// Which minibuffer prompt a history ring belongs to.
 ///
@@ -23,6 +23,13 @@ pub(crate) enum HistoryKind {
     SearchForward,
     /// `?` backward-search prompt.
     SearchBackward,
+}
+
+/// Direction for [`crate::editor::Editor::recall_history`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryDir {
+    Prev,
+    Next,
 }
 
 // ── History ───────────────────────────────────────────────────────────────────

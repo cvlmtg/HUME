@@ -985,6 +985,13 @@ impl Editor {
     ///
     /// Called from `prepare_frame` after highlight data is synced.
     fn sync_completion_view(&self) {
+        // Skip the write-lock when both sides are already None — common case
+        // while no popup is open.
+        if self.completion.is_none()
+            && self.completion_view.read().expect("RwLock not poisoned").is_none()
+        {
+            return;
+        }
         use unicode_width::UnicodeWidthChar as _;
         use unicode_width::UnicodeWidthStr as _;
         let view = self.completion.as_ref().map(|state| {
