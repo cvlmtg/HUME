@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::core::jump_list::JumpEntry;
-use crate::core::minibuf_history::{HistoryKind, HistoryStore};
+use crate::core::minibuf_history::{HistoryDir, HistoryKind, HistoryStore};
 use crate::core::search_state::SearchPattern;
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
@@ -753,7 +753,7 @@ impl Editor {
                 // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
                 self.set_mode(Mode::Normal);
-                self.minibuf = None;
+                self.close_minibuf();
             }
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore position when pattern is fully erased, but stay in Search mode.
@@ -770,25 +770,14 @@ impl Editor {
             MiniBufferEvent::HistoryPrev => {
                 let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
                 let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
-                let current = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
-                if let Some(text) = self.history.get_mut(kind).prev(&current) {
-                    if let Some(mb) = self.minibuf.as_mut() {
-                        mb.input = text;
-                        mb.cursor = mb.input.len();
-                    }
-                    self.update_live_search();
-                }
+                self.recall_history(kind, HistoryDir::Prev);
+                self.update_live_search();
             }
             MiniBufferEvent::HistoryNext => {
                 let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
                 let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
-                if let Some(text) = self.history.get_mut(kind).next() {
-                    if let Some(mb) = self.minibuf.as_mut() {
-                        mb.input = text;
-                        mb.cursor = mb.input.len();
-                    }
-                    self.update_live_search();
-                }
+                self.recall_history(kind, HistoryDir::Next);
+                self.update_live_search();
             }
             MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
             | MiniBufferEvent::CompleteRequested { .. } => {}
@@ -804,7 +793,7 @@ impl Editor {
         let bid = self.focused_buffer_id();
         self.clear_buffer_search(bid);
         self.mode = Mode::Normal;
-        self.minibuf = None;
+        self.close_minibuf();
     }
 
     /// Recompile the regex from the current mini-buffer input and jump to the
@@ -886,7 +875,7 @@ impl Editor {
                 // search pattern and its highlights should be preserved so that
                 // n/N continues to navigate the original search.
                 self.set_mode(Mode::Normal);
-                self.minibuf = None;
+                self.close_minibuf();
             }
             MiniBufferEvent::EmptiedByBackspace => {
                 // Restore original selections when pattern is fully erased.
@@ -909,7 +898,7 @@ impl Editor {
         // Do not clear search state — the previous search should survive a
         // cancelled select-within.
         self.mode = Mode::Normal;
-        self.minibuf = None;
+        self.close_minibuf();
     }
 
     /// Recompile the regex and replace selections with matches within the
@@ -991,22 +980,11 @@ impl Editor {
             }
             MiniBufferEvent::HistoryPrev => {
                 self.completion = None;
-                let current = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
-                if let Some(text) = self.history.get_mut(HistoryKind::Command).prev(&current)
-                    && let Some(mb) = self.minibuf.as_mut()
-                {
-                    mb.input = text;
-                    mb.cursor = mb.input.len();
-                }
+                self.recall_history(HistoryKind::Command, HistoryDir::Prev);
             }
             MiniBufferEvent::HistoryNext => {
                 self.completion = None;
-                if let Some(text) = self.history.get_mut(HistoryKind::Command).next()
-                    && let Some(mb) = self.minibuf.as_mut()
-                {
-                    mb.input = text;
-                    mb.cursor = mb.input.len();
-                }
+                self.recall_history(HistoryKind::Command, HistoryDir::Next);
             }
             MiniBufferEvent::Ignored => {}
         }
@@ -1017,6 +995,23 @@ impl Editor {
         self.minibuf = None;
         self.completion = None;
         self.history.begin_session_all();
+    }
+
+    /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
+    /// ring and install it in the minibuffer. No-op when there is no active
+    /// minibuffer or when the ring has nowhere to go.
+    fn recall_history(&mut self, kind: HistoryKind, dir: HistoryDir) {
+        let current = self.minibuf.as_ref().map(|m| m.input.as_str()).unwrap_or("");
+        let text = match dir {
+            HistoryDir::Prev => self.history.get_mut(kind).prev(current),
+            HistoryDir::Next => self.history.get_mut(kind).next(),
+        };
+        if let Some(text) = text
+            && let Some(mb) = self.minibuf.as_mut()
+        {
+            mb.input = text;
+            mb.cursor = mb.input.len();
+        }
     }
 
     /// Drive one Tab / Shift-Tab cycle in the completion popup.
@@ -1032,19 +1027,19 @@ impl Editor {
         // If completion is already open, cycle to the next candidate.
         if let Some(ref mut state) = self.completion {
             let n = state.candidates.len();
+            // current_span() reflects what's currently in the input (based on the
+            // previously-selected candidate), so it must be read before advancing
+            // state.selected — after the update, candidates[selected] is the new one.
+            let span = state.current_span();
             state.selected = if reverse {
                 state.selected.checked_sub(1).unwrap_or(n - 1)
             } else {
                 (state.selected + 1) % n
             };
             let replacement = state.candidates[state.selected].replacement.clone();
-            let span = state.current_span();
             if let Some(mb) = &mut self.minibuf {
                 mb.input.replace_range(span.clone(), &replacement);
                 mb.cursor = span.start + replacement.len();
-            }
-            if let Some(ref mut state) = self.completion {
-                state.current_end = state.span_start + replacement.len();
             }
             return;
         }
@@ -1062,7 +1057,10 @@ impl Editor {
         if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') { return; }
 
         // Resolve cwd (needed by PathCompleter).
-        let cwd = std::env::current_dir().unwrap_or_default();
+        let Ok(cwd) = std::env::current_dir() else {
+            self.report(Severity::Warning, "Cannot determine current directory".into());
+            return;
+        };
         let ctx = crate::editor::completion::CompletionCtx {
             registry: &self.registry,
             buffers:  &self.buffers,
@@ -1084,7 +1082,7 @@ impl Editor {
                 }
                 Some((cmd_raw, _)) => {
                     // Resolve alias → canonical name.
-                    let cmd = cmd_raw.trim_end_matches('!');
+                    let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
                     let canonical = self.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
                     match canonical {
                         Some("edit" | "write" | "write-quit") => {
@@ -1120,12 +1118,10 @@ impl Editor {
             mb.input.replace_range(span_start..cursor, &replacement);
             mb.cursor = span_start + replacement.len();
         }
-        let current_end = span_start + replacement.len();
         self.completion = Some(CompletionState {
             candidates,
             selected: 0,
             span_start,
-            current_end,
         });
     }
 
