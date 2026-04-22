@@ -305,3 +305,30 @@ fn ctrl_w_dismisses_open_completion_popup() {
     // Edited event clears completion; Ctrl-W consumed the word ("w"-based candidate).
     assert!(ed.completion.is_none(), "Ctrl-W must dismiss the popup");
 }
+
+#[test]
+fn ctrl_w_works_in_search_minibuf() {
+    // Ctrl-W in a `/` search prompt deletes the last word without cancelling.
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    assert_eq!(ed.mode, Mode::Search);
+    for ch in "foo bar".chars() { ed.handle_key(key(ch)); }
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo bar");
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo ");
+    // Search minibuf must still be open.
+    assert!(ed.minibuf.is_some(), "Ctrl-W must not close the search minibuf");
+    assert_eq!(ed.mode, Mode::Search);
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn ctrl_w_at_start_of_search_minibuf_is_noop() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    // Nothing typed yet — Ctrl-W on empty input is a no-op.
+    ed.handle_key(key_ctrl('w'));
+    assert!(ed.minibuf.is_some(), "Ctrl-W on empty search input must not close the minibuf");
+    assert_eq!(ed.mode, Mode::Search);
+    ed.handle_key(key_esc());
+}

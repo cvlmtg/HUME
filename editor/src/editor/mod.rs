@@ -776,6 +776,8 @@ impl Editor {
             Ok(cmds) => self.register_steel_cmds(cmds),
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
+        // Pick up any (set-option! "history-capacity" N) calls from init.scm.
+        self.history.set_capacity(self.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (sev, text) in host.pending_messages.drain(..) {
             self.report(sev, text);

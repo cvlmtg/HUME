@@ -722,6 +722,9 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
         ),
         _ => Err(format!("unknown scope '{scope}': expected 'global' or 'buffer'")),
     };
+    if result.is_ok() && key == "history-capacity" {
+        ed.history.set_capacity(ed.settings.history_capacity);
+    }
     result.map_err(CommandError)
 }
 

@@ -670,3 +670,61 @@ fn search_recall_updates_live_preview() {
     ed.handle_key(key_esc());
 }
 
+#[test]
+fn search_down_walks_forward_and_restores_scratch() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    search_forward(&mut ed, "alpha");
+    search_forward(&mut ed, "beta");
+
+    ed.handle_key(key('/'));
+    // Type something as scratch before navigating.
+    for ch in "typed".chars() { ed.handle_key(key(ch)); }
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "typed");
+
+    // Up walks back: "beta", then "alpha".
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "beta");
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "alpha");
+
+    // Down walks forward: "beta".
+    ed.handle_key(key_down());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "beta");
+
+    // Down past newest restores original scratch text.
+    ed.handle_key(key_down());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "typed");
+
+    // Another Down when not navigating is a no-op.
+    ed.handle_key(key_down());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "typed");
+
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn search_edit_after_recall_demotes_to_scratch() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    search_forward(&mut ed, "hello");
+
+    // Open search, recall "hello" via Up.
+    ed.handle_key(key('/'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "hello");
+
+    // Edit the recalled entry — demotes nav state so the next Up re-stashes
+    // the current (now-edited) text as fresh scratch.
+    ed.handle_key(key('x')); // input is now "hellox"
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "hellox");
+
+    // Up: stashes "hellox" as scratch, recalls "hello".
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "hello");
+
+    // Down past newest: restores "hellox" (the edited scratch).
+    ed.handle_key(key_down());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "hellox");
+
+    ed.handle_key(key_esc());
+}
+

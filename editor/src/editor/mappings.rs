@@ -1080,6 +1080,11 @@ impl Editor {
                     // No space yet — complete the command name.
                     CommandCompleter.complete(&input, cursor, &ctx)
                 }
+                Some((cmd_raw, _)) if cursor <= cmd_raw.len() => {
+                    // Cursor is within the command name (user moved left past the
+                    // space) — complete the command name, not the argument.
+                    CommandCompleter.complete(&input, cursor, &ctx)
+                }
                 Some((cmd_raw, _)) => {
                     // Resolve alias → canonical name.
                     let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
