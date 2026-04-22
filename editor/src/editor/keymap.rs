@@ -316,7 +316,7 @@ impl Keymap {
     /// interior nodes as needed.
     ///
     /// `keys` must not be empty.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn bind_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
         self.bind_user_with_extend(mode, keys, command, false);
     }
@@ -324,7 +324,6 @@ impl Keymap {
     /// Like [`bind_user`], but also controls the `force_extend` flag on the
     /// resulting leaf.  Use this when restoring a prior force-extending binding
     /// from the ledger, or when implementing `(bind-key-extend! …)`.
-    #[allow(dead_code)]
     pub(crate) fn bind_user_with_extend(
         &mut self,
         mode: BindMode,
@@ -344,7 +343,6 @@ impl Keymap {
     /// Remove a binding for a key sequence in the given mode.
     ///
     /// No-op if the sequence is not bound or any intermediate node is missing.
-    #[allow(dead_code)]
     pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
