@@ -128,7 +128,7 @@
 - [x] **`:e` / `:edit <path>`**: open a file into a new buffer, make it current. `:e!` reloads current buffer from disk (discards unsaved changes). `:e` with no arg = reload current.
 - [x] **`:bnext` / `:bprev` / `:bd` / `:bd!`**: navigate the buffer list. `:bd` guards dirty; `:bd!` force-closes.
 - [x] **Hook system**: `on-buffer-open` / `on-buffer-close` hooks; `ScriptingHost` dispatches with per-pane `SteelCtx<'a>` — no TLS, no `mem::take`.
-- [ ] **Tab completion in minibuffer**: `complete(input, cursor) -> Vec<Completion>` engine. Per-command completers: path (`:e`, `:w`), buffer-name (`:bd`, `:b`), command-name (bare `:`). Popup rendered above statusline. `Tab` / `Shift-Tab` cycle; `Enter` accepts; `Esc` dismisses.
+- [x] **Tab completion in minibuffer**: `Completer` trait + `CompletionState` on `Editor`. Per-command completers: `CommandCompleter` (bare `:`), `PathCompleter` (`:e`/`:w`). `BufferNameCompleter` scaffolded for `:b` (next task). Popup rendered above statusline via `CompletionOverlay: OverlayProvider`. `Tab` / `Shift-Tab` cycle; `Enter` accepts; `Esc` dismisses. (`editor/src/editor/completion.rs`, `editor/src/ui/completion_overlay.rs`)
 - [ ] **Command history (session-only)**: in-memory `Vec<String>` per ring (`:` and `/`). Up/Down arrows in minibuffer recall prior entries.
 - [x] **`%`/`#` expansion in command args**: `%` = current file path, `#` = alternate buffer path. Pre-processing step in `execute_command`.
 - [x] **Alternate buffer `#`**: uses `BufferStore` MRU's most-recent-other entry (no new field on `Editor`). Enables `#` in `%`/`#` expansion and `Ctrl+6` toggle (`goto-alternate-file`).

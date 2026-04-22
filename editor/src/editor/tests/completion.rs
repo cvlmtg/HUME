@@ -1,0 +1,211 @@
+use super::*;
+use crossterm::event::{KeyCode, KeyModifiers};
+use pretty_assertions::assert_eq;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn key_tab() -> KeyEvent {
+    KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)
+}
+
+fn key_shift_tab() -> KeyEvent {
+    KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)
+}
+
+/// Drain the minibuf input for assertions.
+fn minibuf_input(ed: &Editor) -> &str {
+    ed.minibuf.as_ref().map(|mb| mb.input.as_str()).unwrap_or("")
+}
+
+// ── Command-name completion ───────────────────────────────────────────────────
+
+#[test]
+fn tab_on_command_prefix_single_match_completes_silently() {
+    // ":quit" is the only registered command starting with "qui".
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "qui".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    assert_eq!(minibuf_input(&ed), "quit");
+    // Single-match: no popup state.
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn tab_no_match_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "zzz".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    assert_eq!(minibuf_input(&ed), "zzz");
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn tab_multiple_matches_opens_popup_with_first_candidate() {
+    // "w" matches: write, write-quit, wq, wrap (at minimum).
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+
+    // Completion state must be open.
+    assert!(ed.completion.is_some(), "popup should be open");
+    let state = ed.completion.as_ref().unwrap();
+    assert_eq!(state.selected, 0);
+    assert!(state.candidates.len() >= 2);
+    // Input shows the first candidate.
+    let first = state.candidates[0].replacement.clone();
+    assert_eq!(minibuf_input(&ed), first);
+}
+
+#[test]
+fn second_tab_cycles_to_next_candidate() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+
+    let state = ed.completion.as_ref().unwrap();
+    assert_eq!(state.selected, 1);
+    let second = state.candidates[1].replacement.clone();
+    assert_eq!(minibuf_input(&ed), second);
+}
+
+#[test]
+fn shift_tab_cycles_backward() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    // Open popup (first candidate selected).
+    ed.handle_key(key_tab());
+    // Tab forward to candidate 1.
+    ed.handle_key(key_tab());
+    // Shift-Tab back to candidate 0.
+    ed.handle_key(key_shift_tab());
+
+    let state = ed.completion.as_ref().unwrap();
+    assert_eq!(state.selected, 0);
+}
+
+#[test]
+fn tab_wraps_at_end() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+
+    let n = ed.completion.as_ref().unwrap().candidates.len();
+    // Tab n times to wrap back to 0.
+    for _ in 0..n {
+        ed.handle_key(key_tab());
+    }
+    assert_eq!(ed.completion.as_ref().unwrap().selected, 0);
+}
+
+#[test]
+fn typing_char_dismisses_popup() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab()); // open popup
+
+    assert!(ed.completion.is_some());
+    ed.handle_key(key('r')); // type a char → dismiss
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn enter_mid_completion_executes_selected_candidate() {
+    // ":quit" is a unique completion for "qui".
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "qui".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    // Now input = "quit". Enter should quit.
+    ed.handle_key(key_enter());
+    assert!(ed.should_quit);
+    assert!(ed.completion.is_none());
+    assert!(ed.minibuf.is_none());
+}
+
+#[test]
+fn esc_dismisses_minibuf_and_clears_completion() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab()); // open popup
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn shift_tab_with_no_popup_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "wri".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_shift_tab()); // no popup yet
+
+    // Nothing should have changed: input stays "wri", no popup.
+    assert_eq!(minibuf_input(&ed), "wri");
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn tab_in_search_mode_is_noop() {
+    // Tab in search mode (`/`) must not trigger completion.
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('/'));
+    ed.handle_key(key('e'));
+    ed.handle_key(key_tab());
+
+    // Input unchanged; no completion.
+    assert_eq!(minibuf_input(&ed), "e");
+    assert!(ed.completion.is_none());
+}
+
+// ── Path completion ───────────────────────────────────────────────────────────
+
+#[test]
+fn tab_on_edit_arg_completes_path() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    // Use an absolute path so we don't depend on cwd (avoids test-parallelism races).
+    let prefix = format!("{}/hel", dir.path().display());
+    let input = format!("e {prefix}");
+
+    ed.handle_key(key(':'));
+    for ch in input.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    // Single match → silent completion, no popup.
+    let expected = format!("e {}/hello.txt", dir.path().display());
+    assert_eq!(minibuf_input(&ed), expected);
+    assert!(ed.completion.is_none());
+}
+
+#[test]
+fn tab_on_write_arg_completes_path() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("out.txt"), b"").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let prefix = format!("{}/out", dir.path().display());
+    let input = format!("w {prefix}");
+
+    ed.handle_key(key(':'));
+    for ch in input.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    let expected = format!("w {}/out.txt", dir.path().display());
+    assert_eq!(minibuf_input(&ed), expected);
+}

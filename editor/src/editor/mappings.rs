@@ -755,7 +755,8 @@ impl Editor {
                 self.clear_buffer_search(bid);
             }
             MiniBufferEvent::Edited => self.update_live_search(),
-            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
+            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
+            | MiniBufferEvent::CompleteRequested { .. } => {}
         }
     }
 
@@ -857,7 +858,8 @@ impl Editor {
                 self.restore_select_snapshot();
             }
             MiniBufferEvent::Edited => self.update_live_select(),
-            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
+            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
+            | MiniBufferEvent::CompleteRequested { .. } => {}
         }
     }
 
@@ -911,20 +913,143 @@ impl Editor {
         match event {
             MiniBufferEvent::Cancel => {
                 self.set_mode(Mode::Normal);
-                self.minibuf = None;
+                self.close_minibuf();
             }
             MiniBufferEvent::Confirm(_) | MiniBufferEvent::ConfirmEmpty => {
                 self.execute_command();
                 self.set_mode(Mode::Normal);
-                self.minibuf = None;
+                self.close_minibuf();
             }
             // Backspace at column 0 or on the last character cancels (Kakoune behaviour).
             MiniBufferEvent::EmptiedByBackspace => {
                 self.set_mode(Mode::Normal);
-                self.minibuf = None;
+                self.close_minibuf();
             }
-            MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
+            // Any edit or cursor move while completion is open dismisses the popup.
+            MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
+                self.completion = None;
+            }
+            MiniBufferEvent::CompleteRequested { reverse } => {
+                self.complete_minibuf(reverse);
+            }
+            MiniBufferEvent::Ignored => {}
         }
+    }
+
+    /// Close the minibuffer and clear any active completion session.
+    fn close_minibuf(&mut self) {
+        self.minibuf = None;
+        self.completion = None;
+    }
+
+    /// Drive one Tab / Shift-Tab cycle in the completion popup.
+    ///
+    /// On the first Tab: queries the appropriate completer for the current
+    /// minibuffer input.  If zero candidates → no-op.  If one → apply
+    /// silently.  If two or more → open the popup and apply the first
+    /// candidate.
+    ///
+    /// On subsequent Tab presses (state already Some): rotate `selected`
+    /// forward (or backward when `reverse`) and apply the new candidate.
+    fn complete_minibuf(&mut self, reverse: bool) {
+        // If completion is already open, cycle to the next candidate.
+        if let Some(ref mut state) = self.completion {
+            let n = state.candidates.len();
+            state.selected = if reverse {
+                state.selected.checked_sub(1).unwrap_or(n - 1)
+            } else {
+                (state.selected + 1) % n
+            };
+            let replacement = state.candidates[state.selected].replacement.clone();
+            let span = state.current_span();
+            if let Some(mb) = &mut self.minibuf {
+                mb.input.replace_range(span.clone(), &replacement);
+                mb.cursor = span.start + replacement.len();
+            }
+            if let Some(ref mut state) = self.completion {
+                state.current_end = state.span_start + replacement.len();
+            }
+            return;
+        }
+
+        // Shift-Tab with no open popup is a no-op.
+        if reverse { return; }
+
+        // First Tab: extract input context without holding &mut self.minibuf.
+        let (input, cursor) = match &self.minibuf {
+            Some(mb) => (mb.input.clone(), mb.cursor),
+            None => return,
+        };
+
+        // Only complete command-mode minibuffers.
+        if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') { return; }
+
+        // Resolve cwd (needed by PathCompleter).
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let ctx = crate::editor::completion::CompletionCtx {
+            registry: &self.registry,
+            buffers:  &self.buffers,
+            cwd:      &cwd,
+        };
+
+        // Dispatch to the right completer based on command + input shape.
+        use crate::editor::completion::{
+            Completer, CommandCompleter, PathCompleter,
+            CompletionResult, CompletionState,
+        };
+
+        let result: CompletionResult = {
+            // Split input into (cmd_raw, arg) to determine the completer.
+            match input.split_once(' ') {
+                None => {
+                    // No space yet — complete the command name.
+                    CommandCompleter.complete(&input, cursor, &ctx)
+                }
+                Some((cmd_raw, _)) => {
+                    // Resolve alias → canonical name.
+                    let cmd = cmd_raw.trim_end_matches('!');
+                    let canonical = self.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
+                    match canonical {
+                        Some("edit" | "write" | "write-quit") => {
+                            PathCompleter.complete(&input, cursor, &ctx)
+                        }
+                        // `:bd` ignores its argument today; skip completion to
+                        // avoid a misleading pick-then-close-current-buffer UX.
+                        // BufferNameCompleter will be wired when `:b` is added.
+                        _ => return,
+                    }
+                }
+            }
+        };
+
+        if result.candidates.is_empty() { return; }
+
+        let span_start = result.span_start;
+        let mut candidates = result.candidates;
+
+        if candidates.len() == 1 {
+            // Single match: apply silently without opening a popup.
+            let replacement = candidates.remove(0).replacement;
+            if let Some(mb) = &mut self.minibuf {
+                mb.input.replace_range(span_start..cursor, &replacement);
+                mb.cursor = span_start + replacement.len();
+            }
+            return;
+        }
+
+        // Two or more: open popup with the first candidate selected.
+        let replacement = candidates[0].replacement.clone();
+        if let Some(mb) = &mut self.minibuf {
+            mb.input.replace_range(span_start..cursor, &replacement);
+            mb.cursor = span_start + replacement.len();
+        }
+        let current_end = span_start + replacement.len();
+        self.completion = Some(CompletionState {
+            candidates,
+            selected: 0,
+            span_start,
+            current_end,
+        });
     }
 
     /// Execute the command currently in the mini-buffer.
