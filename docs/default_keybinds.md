@@ -15,7 +15,7 @@ All bindings listed here are the built-in defaults. Any of them can be overridde
 | `j` / `↓` | Move down one visual line |
 | `k` / `↑` | Move up one visual line |
 
-> **Ctrl+motion extend (kitty only):** When the kitty keyboard protocol is active, `Ctrl+h/j/k/l` run the same motion with extend mode on for that keypress only (one-shot extend without toggling `e`). This is handled at runtime and not visible in the keymap.
+> **Ctrl+motion extend (kitty only):** When the kitty keyboard protocol is active, `Ctrl+h/j/k/l` run the same motion with extend mode on for that keypress only (one-shot extend without toggling `e`). This is handled at runtime and not visible in the keymap. `Ctrl+w` and `Ctrl+b` also work the same way (extend-next-word and extend-prev-word). In legacy mode these are silent no-ops.
 
 ### Word Motion
 
@@ -47,8 +47,8 @@ All bindings listed here are the built-in defaults. Any of them can be overridde
 |-----|---------|
 | `x` | Select current line (forward) |
 | `X` | Select current line (backward) |
-| `Ctrl+x` | Select current line (forward) — extend in extend mode |
-| `Ctrl+X` | Select current line (backward) — extend in extend mode |
+| `Ctrl+x` | Select current line (forward) — always extends (works in kitty and legacy) |
+| `Ctrl+X` | Select current line (backward) — always extends (works in kitty and legacy) |
 
 ### Page Scroll
 
@@ -181,6 +181,16 @@ Macros are stored in registers. Register `q` is the default.
 |-----|---------|
 | `Ctrl+o` | Jump backward in the jump list |
 | `Ctrl+i` / `Tab` | Jump forward in the jump list |
+
+### Pane Focus (`Ctrl+p` prefix) — M9+ stubs
+
+| Sequence | Command |
+|----------|---------|
+| `Ctrl+p w` | Focus next pane |
+| `Ctrl+p h` | Focus pane to the left |
+| `Ctrl+p j` | Focus pane below |
+| `Ctrl+p k` | Focus pane above |
+| `Ctrl+p l` | Focus pane to the right |
 
 ### Mode Transitions
 
