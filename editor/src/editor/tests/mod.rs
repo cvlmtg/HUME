@@ -50,6 +50,18 @@ fn key_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
 }
 
+fn key_up() -> KeyEvent {
+    KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)
+}
+
+fn key_down() -> KeyEvent {
+    KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)
+}
+
+fn key_tab() -> KeyEvent {
+    KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)
+}
+
 fn key_backspace() -> KeyEvent {
     KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
 }

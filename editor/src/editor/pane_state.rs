@@ -90,7 +90,7 @@ pub(crate) fn ensure<'a>(
     let inner = pane_state
         .entry(pid)
         .expect("pid must be a live PaneId")
-        .or_insert_with(SecondaryMap::new);
+        .or_default();
     inner
         .entry(bid)
         .expect("bid must be a live BufferId")

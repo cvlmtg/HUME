@@ -592,3 +592,81 @@ fn search_n_merges_with_overlapping_secondary() {
     assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc().text()), 7);
 }
 
+// ── Search history ────────────────────────────────────────────────────────────
+
+/// Helper: submit a forward search through the minibuffer.
+fn search_forward(ed: &mut Editor, pattern: &str) {
+    ed.handle_key(key('/'));
+    for ch in pattern.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+}
+
+/// Helper: submit a backward search.
+fn search_backward(ed: &mut Editor, pattern: &str) {
+    ed.handle_key(key('?'));
+    for ch in pattern.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+}
+
+#[test]
+fn search_up_recalls_previous_forward_pattern() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    search_forward(&mut ed, "foo");
+    // Open forward search and press Up.
+    ed.handle_key(key('/'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn search_history_is_separate_from_command_history() {
+    // Submit a command, then open search — command history must not bleed in.
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key(':'));
+    for ch in "messages".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+    // Open forward search and press Up — history should be empty.
+    ed.handle_key(key('/'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn forward_and_backward_search_histories_are_separate() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    search_forward(&mut ed, "alpha");
+    search_backward(&mut ed, "beta");
+    // Forward ring only has "alpha".
+    ed.handle_key(key('/'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "alpha");
+    ed.handle_key(key_esc());
+    // Backward ring only has "beta".
+    ed.handle_key(key('?'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "beta");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn search_recall_updates_live_preview() {
+    // Buffer has two words; submit a search for the first, then recall it.
+    let mut ed = editor_from("-[h]>ello world\n");
+    search_forward(&mut ed, "hello");
+    // Cursor should now be on "hello". Move to start so we can observe the jump.
+    assert_eq!(state(&ed), "-[hello]> world\n");
+    // Open search, type something else so live search moves cursor, then Up to recall.
+    ed.handle_key(key('/'));
+    for ch in "world".chars() { ed.handle_key(key(ch)); }
+    // Live search: cursor should now be on "world".
+    assert_eq!(state(&ed), "hello -[world]>\n");
+    // Up recalls "hello" and updates live search.
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "hello");
+    // Live preview should have jumped back to "hello".
+    assert_eq!(state(&ed), "-[hello]> world\n");
+    ed.handle_key(key_esc());
+}
+

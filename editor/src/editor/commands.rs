@@ -113,6 +113,7 @@ pub(super) fn cmd_open_line_above(ed: &mut Editor, _count: usize, _mode: MotionM
 }
 
 pub(super) fn cmd_command_mode(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    ed.history.begin_session_all();
     ed.set_mode(Mode::Command);
     ed.minibuf = Some(MiniBuffer { prompt: ':', input: String::new(), cursor: 0 });
     Ok(())
@@ -383,6 +384,7 @@ pub(super) fn cmd_search_forward(ed: &mut Editor, _count: usize, _mode: MotionMo
     // Capture extend state before mode becomes Search — live search uses it.
     ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
     ed.pane_transient[pid].search_extend = extend;
+    ed.history.begin_session_all();
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '/', input: String::new(), cursor: 0 });
     Ok(())
@@ -397,6 +399,7 @@ pub(super) fn cmd_search_backward(ed: &mut Editor, _count: usize, _mode: MotionM
     // Capture extend state before mode becomes Search — live search uses it.
     ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
     ed.pane_transient[pid].search_extend = extend;
+    ed.history.begin_session_all();
     ed.set_mode(Mode::Search);
     ed.minibuf = Some(MiniBuffer { prompt: '?', input: String::new(), cursor: 0 });
     Ok(())
