@@ -396,11 +396,11 @@ fn teardown_restores_keybind() {
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
-    assert_eq!(km.lookup_command(BindMode::Normal, h_key).as_deref(), Some("move-right"));
+    assert_eq!(km.lookup_command(BindMode::Normal, h_key).map(|(n, _)| n).as_deref(), Some("move-right"));
 
     // Tear down plugin A — 'h' should go back to "move-left".
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    assert_eq!(km.lookup_command(BindMode::Normal, h_key).as_deref(), Some("move-left"),
+    assert_eq!(km.lookup_command(BindMode::Normal, h_key).map(|(n, _)| n).as_deref(), Some("move-left"),
                "teardown should restore prior keybind");
 }
 
@@ -857,6 +857,92 @@ fn fire_hook_globals_cleared_between_fires() {
     assert_eq!(q2, vec!["normal"], "second fire must not see stale globals from first");
 }
 
+// ── bind-key-extend! ──────────────────────────────────────────────────────
+
+#[test]
+fn bind_key_extend_creates_force_extending_leaf() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(bind-key-extend! "normal" "z" "select-line")"#,
+        &mut s, &mut km,
+    ).unwrap();
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
+    let (name, force_extend) = km.lookup_command(BindMode::Normal, z_key)
+        .expect("z must be bound after bind-key-extend!");
+    assert_eq!(name, "select-line");
+    assert!(force_extend, "bind-key-extend! must produce force_extend = true");
+}
+
+#[test]
+fn bind_key_does_not_force_extend() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(bind-key! "normal" "z" "select-line")"#,
+        &mut s, &mut km,
+    ).unwrap();
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
+    let (_, force_extend) = km.lookup_command(BindMode::Normal, z_key)
+        .expect("z must be bound after bind-key!");
+    assert!(!force_extend, "bind-key! must produce force_extend = false");
+}
+
+#[test]
+fn bind_key_extend_invalid_mode_errors() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let err = h.eval_source(
+        r#"(bind-key-extend! "visual" "f" "cmd")"#,
+        &mut s, &mut km,
+    ).unwrap_err();
+    assert!(err.contains("mode"), "got: {err}");
+}
+
+/// Plugin rebinding ctrl-x (a force-extend built-in) then unloading must
+/// restore the original binding with force_extend = true.
+#[test]
+fn plugin_unload_restores_force_extend_on_ctrl_x() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let cx_key = &[KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)];
+
+    // Verify built-in Ctrl+x has force_extend = true.
+    let (_, built_in_extend) = km.lookup_command(BindMode::Normal, cx_key)
+        .expect("Ctrl+x must be bound in the default keymap");
+    assert!(built_in_extend, "built-in Ctrl+x must have force_extend = true");
+
+    // Plugin shadows Ctrl+x with a plain (non-extending) binding.
+    h.eval_source(
+        r#"(push-current-plugin! "user/a")
+           (bind-key! "normal" "ctrl-x" "move-right")
+           (pop-current-plugin!)"#,
+        &mut s, &mut km,
+    ).unwrap();
+    let (name, extend_after_shadow) = km.lookup_command(BindMode::Normal, cx_key).unwrap();
+    assert_eq!(name, "move-right");
+    assert!(!extend_after_shadow, "plugin bind-key! must set force_extend = false");
+
+    // Unload plugin — Ctrl+x must be restored with force_extend = true.
+    h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+    let (restored_name, restored_extend) = km.lookup_command(BindMode::Normal, cx_key)
+        .expect("Ctrl+x must be bound after unload");
+    assert_eq!(restored_name, "select-line");
+    assert!(restored_extend,
+        "ledger round-trip must restore force_extend = true for built-in Ctrl+x");
+}
+
 #[test]
 fn restore_ledger_entry_rejects_unknown_mode_prefix() {
     use crate::scripting::ledger::{LedgerEntry, Owner};
@@ -865,6 +951,7 @@ fn restore_ledger_entry_rejects_unknown_mode_prefix() {
     let entry = LedgerEntry {
         key: "bogus abc".to_string(),
         prior_value: String::new(),
+        prior_force_extend: false,
         prior_owner: Owner::Core,
     };
     let err = restore_ledger_entry(entry, &mut s, &mut km).unwrap_err();

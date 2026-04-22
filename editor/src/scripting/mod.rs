@@ -788,6 +788,7 @@ impl ScriptingHost {
                     ledger_key,
                     prior_owner,
                     String::new(), // commands always start fresh (ownership rules prevent shadowing)
+                    false,
                 );
             }
             // Record the owner string for `(command-plugin …)` introspection.
@@ -937,7 +938,12 @@ fn restore_ledger_entry(
         if entry.prior_value.is_empty() {
             keymap.unbind_user(mode, &keys);
         } else {
-            keymap.bind_user(mode, &keys, Cow::Owned(entry.prior_value));
+            keymap.bind_user_with_extend(
+                mode,
+                &keys,
+                Cow::Owned(entry.prior_value),
+                entry.prior_force_extend,
+            );
         }
     } else if entry.key.contains(' ') {
         // A key with a space is unambiguously a keymap entry, but the mode

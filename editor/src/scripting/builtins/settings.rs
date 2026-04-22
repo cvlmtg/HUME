@@ -66,7 +66,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     // User-level mutations (top-level init.scm) need no ledger entry
     // because `:reload-config` rebuilds everything from scratch.
     if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(plugin_id, key, prior_owner, prior_value);
+        ctx.ledger_stack.record(plugin_id, key, prior_owner, prior_value, false);
     }
 
     Ok(SteelVal::Void)

@@ -318,13 +318,27 @@ impl Keymap {
     /// `keys` must not be empty.
     #[allow(dead_code)]
     pub(crate) fn bind_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
-        debug_assert!(!keys.is_empty(), "bind_user called with empty key sequence");
+        self.bind_user_with_extend(mode, keys, command, false);
+    }
+
+    /// Like [`bind_user`], but also controls the `force_extend` flag on the
+    /// resulting leaf.  Use this when restoring a prior force-extending binding
+    /// from the ledger, or when implementing `(bind-key-extend! …)`.
+    #[allow(dead_code)]
+    pub(crate) fn bind_user_with_extend(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        command: Cow<'static, str>,
+        force_extend: bool,
+    ) {
+        debug_assert!(!keys.is_empty(), "bind_user_with_extend called with empty key sequence");
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
         };
-        trie.bind_sequence(keys, KeymapCommand { name: command, force_extend: false });
+        trie.bind_sequence(keys, KeymapCommand { name: command, force_extend });
     }
 
     /// Remove a binding for a key sequence in the given mode.
@@ -340,19 +354,21 @@ impl Keymap {
         trie.remove_sequence(keys);
     }
 
-    /// Return the command name currently bound to `keys` in `mode`, or `None`
-    /// if the sequence is unbound.
+    /// Return the command name and `force_extend` flag for `keys` in `mode`,
+    /// or `None` if the sequence is unbound.
     ///
-    /// Used by `(bind-key!)` to capture the prior value before overwriting a
-    /// binding, so the ledger can restore it on plugin unload.
-    pub(crate) fn lookup_command(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<String> {
+    /// Used by `(bind-key!)` / `(bind-key-extend!)` to capture the prior
+    /// binding before overwriting it, so the ledger can restore it on plugin
+    /// unload — including the `force_extend` flag so extend semantics survive
+    /// a bind/rebind/unload cycle.
+    pub(crate) fn lookup_command(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<(String, bool)> {
         let trie = match mode {
             BindMode::Normal => &self.normal,
             BindMode::Extend => &self.extend,
             BindMode::Insert => &self.insert,
         };
         match trie.walk(keys) {
-            WalkResult::Leaf(cmd) => Some(cmd.name.into_owned()),
+            WalkResult::Leaf(cmd) => Some((cmd.name.into_owned(), cmd.force_extend)),
             _ => None,
         }
     }
