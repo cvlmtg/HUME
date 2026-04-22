@@ -2,8 +2,7 @@ use super::*;
 
 // ── Hook cmd_queue routing ────────────────────────────────────────────────────
 
-/// `fire_hook_silent` must dispatch commands queued by `(call! …)` inside hook
-/// bodies — previously they were silently discarded.
+/// `fire_hook_silent` must dispatch commands queued by `(call! …)` inside hook bodies.
 #[test]
 fn hook_cmd_queue_is_dispatched() {
     use crate::scripting::ScriptingHost;
