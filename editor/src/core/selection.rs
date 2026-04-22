@@ -134,7 +134,7 @@ impl Selection {
     /// Panics if the shift would move either end below zero (underflow).
     /// This is always a bug in the caller — an edit cannot shift a selection
     /// to a negative position.
-    #[allow(dead_code)]
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn shift(self, delta: isize) -> Self {
         // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
@@ -268,7 +268,6 @@ impl SelectionSet {
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
     /// set. Panics if `idx >= len()`.
-    #[allow(dead_code)]
     pub(crate) fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
         self.selections[idx] = new_sel;
         self

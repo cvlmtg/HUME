@@ -270,15 +270,9 @@ impl Buffer {
     }
 
     /// `true` if there is at least one edit to undo.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn can_undo(&self) -> bool {
         self.history.can_undo()
-    }
-
-    /// `true` if there is at least one undone edit to redo.
-    #[allow(dead_code)]
-    pub(crate) fn can_redo(&self) -> bool {
-        self.history.can_redo()
     }
 
     /// Jump to an arbitrary revision in the undo tree.

@@ -80,8 +80,10 @@ pub(super) enum WalkResult {
     /// At an interior trie node — more keys are needed.
     /// The `name` field names this node (e.g. `"match"`, `"goto"`) and will
     /// be shown in the statusline while the user completes the sequence.
-    #[allow(dead_code)]
-    Interior { name: &'static str },
+    Interior {
+        #[allow(dead_code)]
+        name: &'static str,
+    },
     /// The last key of the sequence matches a wait-char binding. The caller
     /// should consume the next character, store it in `pending_char`, and
     /// dispatch the named command.
@@ -154,7 +156,6 @@ impl KeyTrie {
     /// needed. Single-key sequences insert directly as a `Leaf`.
     ///
     /// Called by [`Keymap::bind_user_with_extend`] at runtime (e.g. from Steel config).
-    #[allow(dead_code)]
     pub(crate) fn bind_sequence(&mut self, keys: &[KeyEvent], cmd: KeymapCommand) {
         debug_assert!(!keys.is_empty());
         if keys.len() == 1 {
@@ -177,7 +178,6 @@ impl KeyTrie {
     /// Remove the binding for a key sequence. Leaves interior nodes in place.
     ///
     /// No-op if the sequence is not bound or any intermediate node is absent.
-    #[allow(dead_code)]
     pub(crate) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
         match keys {
             [] => {}
@@ -236,7 +236,6 @@ impl KeyTrie {
 /// Which keymap to apply a user-supplied binding to.
 ///
 /// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BindMode {
     Normal,
