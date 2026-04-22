@@ -292,3 +292,44 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     assert_eq!(pane_b_sels.primary().head, 1, "merged cursor at deletion point");
 }
 
+/// Non-focused pane engine mirror is updated by `sync_all_pane_mirrors` after
+/// an edit translates the pane's authoritative `SelectionSet`.
+///
+/// Guards the removal of the immediate engine-mirror write from
+/// `propagate_cs_to_panes`: the mirror must stay consistent with `pane_state`
+/// when synced via the per-frame path.
+#[test]
+fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
+    use crate::core::selection::{Selection, SelectionSet};
+
+    // "abcdefghij\n" — cursor on 'a'.
+    let mut ed = editor_from("-[a]>bcdefghij\n");
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.focused_pane_id;
+    let pid_b = ed.open_pane(bid);
+
+    // Position pane B's cursor at char 5 ('f').
+    ed.switch_focused_pane(pid_b);
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(5)));
+
+    // Switch to pane A and delete char 0 ('a'); this calls propagate_cs_to_panes
+    // which translates pane B's authoritative SelectionSet but (post-fix) does NOT
+    // write the engine mirror directly.
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key('d'));
+
+    // Authoritative selection in pane_state must be at 4 (translated by CS).
+    assert_eq!(
+        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        4,
+        "pane B pane_state selection translated to 4"
+    );
+
+    // Simulate the per-frame sync — this is what write the engine mirror.
+    ed.sync_all_pane_mirrors();
+
+    // Engine mirror for pane B must now reflect the translated position.
+    let mirror_head = ed.engine_view.panes[pid_b].selections[0].head;
+    assert_eq!(mirror_head, 4, "pane B engine mirror head reflects translated position");
+}
+
