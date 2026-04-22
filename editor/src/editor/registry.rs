@@ -675,35 +675,7 @@ impl CommandRegistry {
 mod tests {
     use super::*;
 
-    /// The expected number of commands registered by `with_defaults`.
-    ///
-    /// This acts as an exhaustiveness guard: if a new command is added without
-    /// a corresponding registry entry, this test catches the omission.
-    ///
-    /// Count breakdown (extend-variant commands removed; MotionMode is now a runtime param):
-    ///   13 motions
-    ///    2 line-selection motions (no count)
-    ///   10 selection commands
-    ///   22 text objects (2 line + 4 word + 8 bracket + 6 quote + 2 argument)
-    ///    7 surround selection commands
-    ///    3 edit commands
-    ///    8 mode-transition editor commands
-    ///    7 edit-composite editor commands
-    ///    2 selection-state editor commands
-    ///    6 find/till editor commands (4 + 2 repeat)
-    ///    1 replace editor command
-    ///    1 repeat-last-action editor command
-    ///    5 search editor commands (search-forward/backward, search-next/prev, clear-search)
-    ///    3 select editor commands (select-within, select-all-matches, use-selection-as-search)
-    ///    2 page-scroll editor commands
-    ///    2 half-page-scroll editor commands
-    ///    2 jump-list editor commands
-    ///    7 insert editor commands (insert-at-line-start/end, insert-at-selection-start/end, open-line-above/below, exit-insert)
-    ///    1 force-quit editor command
-    ///    5 pane-focus editor commands (next, left, right, up, down — M9+ stubs)
-    ///   14 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config, edit, buffer-delete, bnext, bprev, split, vsplit)
-    ///  ──
-    ///  121 total
+    /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
     const EXPECTED_COMMAND_COUNT: usize = 122;
 
     #[test]
