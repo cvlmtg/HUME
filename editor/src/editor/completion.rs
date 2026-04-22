@@ -47,6 +47,11 @@ pub(crate) struct CompletionState {
 impl CompletionState {
     /// The byte range that the current replacement occupies in the input.
     pub(crate) fn current_span(&self) -> std::ops::Range<usize> {
+        debug_assert!(
+            self.selected < self.candidates.len(),
+            "CompletionState invariant violated: selected {} >= len {}",
+            self.selected, self.candidates.len(),
+        );
         let end = self.span_start + self.candidates[self.selected].replacement.len();
         self.span_start..end
     }

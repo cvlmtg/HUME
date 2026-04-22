@@ -64,7 +64,7 @@ impl History {
     /// Record a submitted entry. Skips empty strings and consecutive duplicates.
     /// Always resets nav state — a confirm ends the session.
     pub(crate) fn push(&mut self, entry: String) {
-        self.reset_session();
+        self.begin_session();
         if entry.is_empty() {
             return;
         }
@@ -73,6 +73,15 @@ impl History {
         }
         self.entries.push_back(entry);
         if self.entries.len() > self.capacity {
+            self.entries.pop_front();
+        }
+    }
+
+    /// Update the capacity limit. Trims oldest entries if the ring is already
+    /// over the new limit. Called when `history-capacity` is changed at runtime.
+    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+        self.capacity = new_cap;
+        while self.entries.len() > self.capacity {
             self.entries.pop_front();
         }
     }
@@ -124,11 +133,6 @@ impl History {
 
     /// Reset per-session nav state. Called when the minibuffer opens or closes.
     pub(crate) fn begin_session(&mut self) {
-        self.cursor = None;
-        self.scratch = None;
-    }
-
-    fn reset_session(&mut self) {
         self.cursor = None;
         self.scratch = None;
     }
@@ -209,6 +213,14 @@ impl HistoryStore {
         self.command.begin_session();
         self.search_f.begin_session();
         self.search_b.begin_session();
+    }
+
+    /// Update the capacity of every ring and trim stale entries.
+    /// Called when the `history-capacity` setting changes at runtime.
+    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+        self.command.set_capacity(new_cap);
+        self.search_f.set_capacity(new_cap);
+        self.search_b.set_capacity(new_cap);
     }
 
     // ── Persistence hooks (unused in v1) ──────────────────────────────────────
@@ -428,6 +440,43 @@ mod tests {
             restored.get(HistoryKind::SearchBackward).entries().iter().cloned().collect::<Vec<_>>(),
             vec!["bar"],
         );
+    }
+
+    #[test]
+    fn set_capacity_updates_limit_and_trims_oldest() {
+        let mut h = h(10);
+        h.push("a".into());
+        h.push("b".into());
+        h.push("c".into());
+        assert_eq!(h.entries.len(), 3);
+
+        // Shrink: oldest entries are trimmed to fit.
+        h.set_capacity(2);
+        assert_eq!(h.capacity, 2);
+        assert_eq!(h.entries.len(), 2);
+        assert_eq!(h.entries.back().map(|s| s.as_str()), Some("c"));
+        assert_eq!(h.entries.front().map(|s| s.as_str()), Some("b"));
+
+        // Future pushes respect the new limit.
+        h.push("d".into());
+        assert_eq!(h.entries.len(), 2);
+        assert_eq!(h.entries.back().map(|s| s.as_str()), Some("d"));
+    }
+
+    #[test]
+    fn history_store_set_capacity_updates_all_rings() {
+        let mut s = store(10);
+        s.get_mut(HistoryKind::Command).push("w".into());
+        s.get_mut(HistoryKind::SearchForward).push("foo".into());
+        s.get_mut(HistoryKind::SearchBackward).push("bar".into());
+
+        s.set_capacity(5);
+
+        assert_eq!(s.get(HistoryKind::Command).capacity, 5);
+        assert_eq!(s.get(HistoryKind::SearchForward).capacity, 5);
+        assert_eq!(s.get(HistoryKind::SearchBackward).capacity, 5);
+        // Existing entries fit in 5 so none were evicted.
+        assert_eq!(s.get(HistoryKind::Command).entries().len(), 1);
     }
 
     #[test]
