@@ -916,6 +916,19 @@ impl Editor {
                 self.close_minibuf();
             }
             MiniBufferEvent::Confirm(_) | MiniBufferEvent::ConfirmEmpty => {
+                // If the selected completion candidate is a directory
+                // (trailing `/`), Enter descends into it instead of executing:
+                // the candidate is already in the input (Tab applied it), so
+                // we just dismiss the popup and restart completion for the
+                // directory's children.
+                if self.completion.as_ref()
+                    .and_then(|s| s.candidates.get(s.selected))
+                    .is_some_and(|c| c.replacement.ends_with('/'))
+                {
+                    self.completion = None;
+                    self.complete_minibuf(false);
+                    return;
+                }
                 self.execute_command();
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();

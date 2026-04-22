@@ -88,6 +88,20 @@ impl MiniBuffer {
                     }
                 }
             }
+            // Ctrl-W: readline-style delete-word-backward. Skip trailing
+            // whitespace first, then remove the word. Never closes the minibuf
+            // on empty (unlike Backspace) — emits `Ignored` when there's
+            // nothing to the left of the cursor.
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                let new_cursor = word_boundary_back(&self.input, self.cursor);
+                if new_cursor == self.cursor {
+                    MiniBufferEvent::Ignored
+                } else {
+                    self.input.drain(new_cursor..self.cursor);
+                    self.cursor = new_cursor;
+                    MiniBufferEvent::Edited
+                }
+            }
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.input.insert(self.cursor, ch);
                 self.cursor += ch.len_utf8();
@@ -122,4 +136,24 @@ fn prev_grapheme(s: &str, cursor: usize) -> usize {
 /// If `cursor` is at or past the end of the string, returns `s.len()`.
 fn next_grapheme(s: &str, cursor: usize) -> usize {
     s[cursor..].grapheme_indices(true).next().map(|(_, g)| cursor + g.len()).unwrap_or(s.len())
+}
+
+/// Walk back from `cursor` over trailing whitespace, then over one run of
+/// non-whitespace graphemes — the readline Ctrl-W "delete word" boundary.
+/// Returns the byte offset where the deletion should begin; equals `cursor`
+/// when there is nothing to delete.
+fn word_boundary_back(s: &str, cursor: usize) -> usize {
+    let is_ws = |slice: &str| slice.chars().all(|c| c.is_whitespace());
+    let mut i = cursor;
+    // Phase 1: skip trailing whitespace graphemes.
+    while i > 0 {
+        let prev = prev_grapheme(s, i);
+        if is_ws(&s[prev..i]) { i = prev; } else { break; }
+    }
+    // Phase 2: consume the run of non-whitespace graphemes.
+    while i > 0 {
+        let prev = prev_grapheme(s, i);
+        if !is_ws(&s[prev..i]) { i = prev; } else { break; }
+    }
+    i
 }
