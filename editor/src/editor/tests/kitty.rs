@@ -221,8 +221,6 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
     // First scroll down so Ctrl+u has room to scroll back up.
     ed.handle_key(key_ctrl('d'));
-    let before = ed.current_selections().primary();
-
     ed.handle_key(key_ctrl('u'));
 
     let after = ed.current_selections().primary();
