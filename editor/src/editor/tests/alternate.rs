@@ -11,12 +11,6 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
     (path, f.into_temp_path())
 }
 
-/// Type a colon command into the editor via handle_key (goes through %/# expansion).
-fn type_cmd(ed: &mut Editor, cmd: &str) {
-    for ch in cmd.chars() { ed.handle_key(key(ch)); }
-    ed.handle_key(key_enter());
-}
-
 // ── alternate_buffer() ────────────────────────────────────────────────────────
 
 #[test]
@@ -99,7 +93,7 @@ fn colon_e_hash_opens_alternate() {
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let buf_count = ed.buffers.len();
 
-    type_cmd(&mut ed, &format!(":e #"));
+    type_cmd(&mut ed, ":e #");
     assert_eq!(ed.focused_buffer_id(), id_a, ":e # must switch to alternate");
     assert_eq!(ed.buffers.len(), buf_count, ":e # must not open a duplicate");
 }

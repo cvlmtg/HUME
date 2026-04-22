@@ -54,6 +54,14 @@ fn key_backspace() -> KeyEvent {
     KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
 }
 
+/// Type a colon command into the editor via `handle_key`, going through the
+/// mini-buffer path (and thus `%`/`#` expansion). Useful when testing typed
+/// commands that must be verified end-to-end through the keymap dispatcher.
+fn type_cmd(ed: &mut Editor, cmd: &str) {
+    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+}
+
 fn reg(ed: &Editor, name: char) -> Vec<String> {
     ed.registers
         .read(name)

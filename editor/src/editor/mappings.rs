@@ -24,6 +24,7 @@ use engine::types::EditorMode;
 use crate::ops::register::MACRO_REGISTER;
 
 use crate::scripting::EditorSteelRefs;
+use crate::core::error::CommandError;
 use super::{Editor, MacroPending, Mode, SearchDirection};
 
 
@@ -954,8 +955,8 @@ impl Editor {
         let expanded: Option<String> = match arg {
             Some(a) if a.contains('%') || a.contains('#') => {
                 match expand_command_arg(self, a) {
-                    Ok(s)    => Some(s),
-                    Err(msg) => { self.report(Severity::Error, msg); return; }
+                    Ok(s)  => Some(s),
+                    Err(e) => { self.report(Severity::Error, e.0); return; }
                 }
             }
             Some(a) => Some(a.to_owned()),
@@ -991,21 +992,21 @@ impl Editor {
 /// Only whole tokens (separated by ASCII spaces) are substituted, so filenames
 /// containing `%` or `#` as part of a longer word pass through unchanged.
 /// Spacing is preserved; returns a user-facing error on the first unresolved token.
-fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, String> {
+fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
     let mut out = String::with_capacity(arg.len());
     for (i, token) in arg.split(' ').enumerate() {
         if i > 0 { out.push(' '); }
         match token {
             "%" => {
                 let path = ed.doc().path.as_ref()
-                    .ok_or_else(|| "No file name".to_string())?;
+                    .ok_or_else(|| CommandError("No file name".into()))?;
                 out.push_str(&path.display().to_string());
             }
             "#" => {
                 let alt_id = ed.alternate_buffer()
-                    .ok_or_else(|| "No alternate buffer".to_string())?;
+                    .ok_or_else(|| CommandError("No alternate buffer".into()))?;
                 let alt_path = ed.buffers.get(alt_id).path.as_ref()
-                    .ok_or_else(|| "Alternate buffer has no file name".to_string())?;
+                    .ok_or_else(|| CommandError("Alternate buffer has no file name".into()))?;
                 out.push_str(&alt_path.display().to_string());
             }
             other => out.push_str(other),
