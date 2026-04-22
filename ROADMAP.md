@@ -131,11 +131,14 @@
 - [ ] **Tab completion in minibuffer**: `complete(input, cursor) -> Vec<Completion>` engine. Per-command completers: path (`:e`, `:w`), buffer-name (`:bd`, `:b`), command-name (bare `:`). Popup rendered above statusline. `Tab` / `Shift-Tab` cycle; `Enter` accepts; `Esc` dismisses.
 - [ ] **Command history (session-only)**: in-memory `Vec<String>` per ring (`:` and `/`). Up/Down arrows in minibuffer recall prior entries.
 - [ ] **`%`/`#` expansion in command args**: `%` = current file path, `#` = alternate buffer path. Pre-processing step in `execute_command`.
-- [ ] **Alternate buffer `#`**: `Option<BufferId>` updated on buffer switch. Enables `#` in expansion above.
+- [ ] **Alternate buffer `#`**: uses `BufferStore` MRU's most-recent-other entry (no new field on `Editor`). Enables `#` in `%`/`#` expansion and `:b#` toggle command.
 - [ ] **`:w!` force-write**: currently hard-rejected; allow chmod-retry path for readonly targets.
 - [ ] **Statusline: line-ending + pwd indicators**: new `StatusElement` variants (`LineEnding`, `Cwd`) exposing `Buffer::line_ending()` and current working directory. Configurable via `configure-statusline!`.
 - [ ] **`:cd <path>`**: change working directory and refresh `Editor.cwd`; required for relative-path `:e` to feel natural.
 - [ ] **System clipboard register `'c'`**: wire `CLIPBOARD_REGISTER` to `arboard`. Reads OS clipboard on paste-from-`'c'`; writes on yank-into-`'c'`. Falls back to in-memory storage (with a `MessageLog` warning) when `arboard` can't reach the clipboard (headless CI/SSH).
+- [ ] **`:ls`**: list all open buffers (index, name, path, dirty flag) in the message log; no picker UI.
+- [ ] **`:b <partial-name>` fuzzy buffer picker**: as-you-type buffer filtering rendered in the tab-completion popup; `Enter` switches, `Esc` dismisses. Reuses the completion popup infra from tab completion.
+- [ ] **CLI: multiple file paths at startup**: `hume a.txt b.txt c.txt` opens all three as separate buffers; the first becomes current. Changes `run(Option<PathBuf>)` → `run(Vec<PathBuf>)` in `editor/src/lib.rs` and `editor/src/main.rs`.
 
 ### M8 — Syntax awareness (planned)
 - [ ] **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
@@ -153,8 +156,15 @@
   3. **Ledger encoding for buffer-scoped keys**: the ledger key must encode both the setting name and the target buffer (e.g. `"buf:tab-width"`). `teardown_plugin` and `restore_ledger_entry` in `editor/src/scripting/ledger.rs` must handle a new `buf:…` prefix alongside `cmd:…` and plain setting keys.
   4. **`set-buffer-option!` builtin** in `editor/src/scripting/builtins/settings.rs`: same shape as `set-option!` but calls `apply_setting(SettingScope::Buffer, …)` on `ctx.active_overrides`. Valid only during `call_steel_cmd` (where a buffer is active); raise an error if called at init time.
 
-- **Splits / multiple panes**: multi-buffer (M7) introduces the buffer list; a layout engine for side-by-side panes is the next step. Tab UI pairs with this.
+- **Splits & pane focus (`:split` / `:vsplit` / pane focus commands)**: stubs already registered; multi-pane scaffolding on `Editor` is split-ready. Requires a layout engine to render side-by-side views.
+- **Tabline UI**: buffer/tab bar rendered by the engine; `TabBarProvider` slot already exists. Pairs with split panes.
 - **File picker / fuzzy finder** (Helix-style picker): depends on split/pane layout for comfortable rendering. Deferred until post-splits.
+- **Steel: `on-buffer-switch` hook + per-buffer keymaps**: add `on-buffer-switch` to `editor/src/scripting/hooks.rs`; buffer-scoped keymap overrides. Independent of split panes.
+- **PLUM: pin plugins to commit / tag / branch**: `(load-plugin "user/repo" #:rev "v0.3.1")` syntax; PLUM git-fetcher uses the specified ref instead of HEAD.
+- **`:e` binary / huge-file y/n confirm**: binary-sniff (null-byte heuristic) + configurable size threshold → new `Mode::Confirm` variant with callback storage on `Editor`. Currently `:e` opens unconditionally; this is the first gate + UX in one.
+- **Byte-string parsing in settings**: parse `"10MB"` / `"512KB"` strings in `editor/src/settings.rs`; companion to the size-threshold setting above.
+- **Cached `size: u64` on `FileMeta` + `FileSize` statusline element**: add field at load time in `editor/src/os/io.rs`; new `StatusElement::FileSize` variant wired through `configure-statusline!`.
+- **Streaming load for huge files**: replace the single blocking `fs::read_to_string` in `Buffer::from_file` (`editor/src/editor/buffer.rs`) with a chunked `Rope::from_reader` path; separate from the binary/size gate.
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
