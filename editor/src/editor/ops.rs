@@ -15,7 +15,7 @@ use engine::pipeline::{BufferId, EngineView, PaneId, SharedBuffer};
 use crate::core::jump_list::{JumpEntry, JumpList};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
-use crate::editor::pane_state::PaneBufferState;
+use crate::editor::pane_state::{self, PaneBufferState};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
@@ -47,12 +47,8 @@ pub(crate) fn open_buffer(
     doc: Buffer,
 ) -> BufferId {
     let bid = ev.buffers.insert(SharedBuffer::new());
-    let initial_sels = doc.initial_sels();
     buffers.open(bid, doc);
-    pane_state[focused_pane_id].insert(bid, PaneBufferState {
-        selections: initial_sels,
-        ..PaneBufferState::default()
-    });
+    pane_state::ensure(pane_state, buffers, focused_pane_id, bid);
     bid
 }
 
@@ -73,13 +69,7 @@ pub(crate) fn switch_pane_to_buffer(
     ev.panes[pid].remember_scroll();
     ev.panes[pid].buffer_id = target;
     ev.panes[pid].recall_scroll(target);
-    if !pane_state[pid].contains_key(target) {
-        let initial_sels = buffers.get(target).initial_sels();
-        pane_state[pid].insert(target, PaneBufferState {
-            selections: initial_sels,
-            ..PaneBufferState::default()
-        });
-    }
+    pane_state::ensure(pane_state, buffers, pid, target);
 }
 
 // ── switch_to_buffer_with_jump ────────────────────────────────────────────────
@@ -162,7 +152,6 @@ pub(crate) fn replace_buffer_in_place(
         new_doc.search_pattern.is_none(),
         "replace_buffer_in_place: new_doc must have no active search state",
     );
-    let initial_sels = new_doc.initial_sels();
     *buffers.get_mut(id) = new_doc;
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev.panes
@@ -171,10 +160,9 @@ pub(crate) fn replace_buffer_in_place(
         .map(|(pid, _)| pid)
         .collect();
     for pid in pane_ids {
-        pane_state[pid].insert(id, PaneBufferState {
-            selections: initial_sels.clone(),
-            ..PaneBufferState::default()
-        });
+        // Unconditional overwrite: caller replaced the buffer, so old view state
+        // (selections, edit group) is stale and must be discarded.
+        pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
     }
     for jumps in pane_jumps.values_mut() {
         jumps.prune_buffer(id);

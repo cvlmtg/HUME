@@ -14,10 +14,15 @@
 //! the focus-switch-Normal-only invariant can be maintained without
 //! per-buffer group bookkeeping (at most one pane is ever in Insert).
 
+use engine::pipeline::{BufferId, PaneId};
+use slotmap::SecondaryMap;
+
 use crate::core::changeset::ChangeSet;
 use crate::core::search_state::SearchCursor;
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
+use crate::editor::buffer::Buffer;
+use crate::editor::buffer_store::BufferStore;
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
 
@@ -56,6 +61,40 @@ pub(crate) struct PaneBufferState {
     pub search_cursor: SearchCursor,
     /// Some only while this pane is in Insert mode for this buffer.
     pub edit_group: Option<EditGroup>,
+}
+
+// ── Construction helpers ──────────────────────────────────────────────────────
+
+/// Construct a fresh [`PaneBufferState`] for `buf` — SSOT for the initial-state
+/// value. All seed sites must call this rather than building the struct literal
+/// directly, so that adding a new field with a non-default initialiser requires
+/// only one edit here.
+pub(crate) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
+    PaneBufferState {
+        selections: buf.initial_sels(),
+        ..PaneBufferState::default()
+    }
+}
+
+/// Ensure `pane_state[pid][bid]` exists, seeding with [`fresh_from_buf`] if absent.
+/// Idempotent — safe to call even if the entry was already seeded.
+///
+/// Panics if `pid` or `bid` is not a live slotmap key; that is a caller-contract
+/// violation (the pane or buffer was never opened), not a recoverable error.
+pub(crate) fn ensure<'a>(
+    pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    buffers: &BufferStore,
+    pid: PaneId,
+    bid: BufferId,
+) -> &'a mut PaneBufferState {
+    let inner = pane_state
+        .entry(pid)
+        .expect("pid must be a live PaneId")
+        .or_insert_with(SecondaryMap::new);
+    inner
+        .entry(bid)
+        .expect("bid must be a live BufferId")
+        .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
 }
 
 // ── PaneTransient ────────────────────────────────────────────────────────────
@@ -102,5 +141,16 @@ mod tests {
         assert!(t.pre_search_sels.is_none());
         assert!(t.pre_select_sels.is_none());
         assert!(!t.search_extend);
+    }
+
+    #[test]
+    fn fresh_from_buf_seeds_initial_sels() {
+        use crate::editor::buffer::Buffer;
+        let buf = Buffer::scratch();
+        let expected = buf.initial_sels();
+        let state = fresh_from_buf(&buf);
+        assert_eq!(state.selections, expected);
+        assert!(state.edit_group.is_none());
+        assert!(state.search_cursor.match_count.is_none());
     }
 }

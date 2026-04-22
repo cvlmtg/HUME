@@ -379,10 +379,7 @@ impl Editor {
 
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
-        per_pane_bufs.insert(buffer_id, PaneBufferState {
-            selections: doc.initial_sels(),
-            ..PaneBufferState::default()
-        });
+        per_pane_bufs.insert(buffer_id, pane_state::fresh_from_buf(&doc));
         let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
         pane_state.insert(pane_id, per_pane_bufs);
         let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
@@ -1318,18 +1315,14 @@ impl Editor {
         engine_view.layout = LayoutTree::Leaf(pane_id);
         engine_view.theme.bake(&engine_view.registry);
 
-        let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
-        per_pane_bufs.insert(buffer_id, PaneBufferState {
-            selections: doc.initial_sels(),
-            ..PaneBufferState::default()
-        });
-        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
-        pane_state.insert(pane_id, per_pane_bufs);
-        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
-        pane_transient.insert(pane_id, PaneTransient::default());
-
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
+
+        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
+        pane_state.insert(pane_id, SecondaryMap::new());
+        pane_state::ensure(&mut pane_state, &buffers, pane_id, buffer_id);
+        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
+        pane_transient.insert(pane_id, PaneTransient::default());
 
         Self {
             buffers,
@@ -1392,13 +1385,8 @@ impl Editor {
     /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
         let pid = self.engine_view.panes.insert(Pane::new(buffer_id));
-        let initial_sels = self.buffers.get(buffer_id).initial_sels();
-        let mut inner: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
-        inner.insert(buffer_id, PaneBufferState {
-            selections: initial_sels,
-            ..PaneBufferState::default()
-        });
-        self.pane_state.insert(pid, inner);
+        self.pane_state.insert(pid, SecondaryMap::new());
+        pane_state::ensure(&mut self.pane_state, &self.buffers, pid, buffer_id);
         self.pane_transient.insert(pid, PaneTransient::default());
         self.pane_jumps.insert(pid, crate::core::jump_list::JumpList::new(
             self.settings.jump_list_capacity,
@@ -1417,9 +1405,6 @@ impl Editor {
             self.mode,
         );
         self.focused_pane_id = target;
-        if !self.pane_state.contains_key(target) {
-            self.pane_state.insert(target, SecondaryMap::new());
-        }
         if !self.pane_transient.contains_key(target) {
             self.pane_transient.insert(target, PaneTransient::default());
         }
@@ -1430,13 +1415,7 @@ impl Editor {
             );
         }
         let bid = self.focused_buffer_id();
-        if !self.pane_state[target].contains_key(bid) {
-            let initial_sels = self.buffers.get(bid).initial_sels();
-            self.pane_state[target].insert(bid, PaneBufferState {
-                selections: initial_sels,
-                ..PaneBufferState::default()
-            });
-        }
+        pane_state::ensure(&mut self.pane_state, &self.buffers, target, bid);
     }
 
     /// Remove pane `target` and all its per-pane state.
