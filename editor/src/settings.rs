@@ -235,6 +235,7 @@ define_settings! {
         "jump-line-threshold"     => jump_line_threshold:     usize = 5,      parser: usize;
         "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
+        "popup-border" => popup_border: bool = true, parser: bool;
     }
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
@@ -294,6 +295,7 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "jump-line-threshold"     => settings.jump_line_threshold.to_string(),
         "steel-init-budget-ms"    => settings.steel_init_budget_ms.to_string(),
         "steel-command-budget-ms" => settings.steel_command_budget_ms.to_string(),
+        "popup-border"        => settings.popup_border.to_string(),
         "tab-width"           => settings.tab_width.to_string(),
         "wrap-mode"           => match settings.wrap_mode {
             engine::pane::WrapMode::None                 => "none".to_string(),
@@ -715,6 +717,7 @@ mod tests {
             "mouse-select",
             "jump-list-capacity",
             "jump-line-threshold",
+            "popup-border",
         ] {
             let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov)
                 .unwrap_err();
@@ -768,6 +771,7 @@ mod tests {
         let keys = [
             "scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
             "mouse-enabled", "mouse-select", "jump-list-capacity", "jump-line-threshold",
+            "popup-border",
             "tab-width", "wrap-mode", "line-number-style", "auto-pairs-enabled",
             "whitespace-space", "whitespace-tab", "whitespace-newline",
         ];
