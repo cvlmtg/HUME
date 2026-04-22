@@ -142,18 +142,21 @@ fn next_grapheme(s: &str, cursor: usize) -> usize {
 /// non-whitespace graphemes — the readline Ctrl-W "delete word" boundary.
 /// Returns the byte offset where the deletion should begin; equals `cursor`
 /// when there is nothing to delete.
+///
+/// `/` (and `\` on Windows) is treated as a separator so that path arguments
+/// delete one component at a time (`/tmp/alpha/one.txt` → `/tmp/alpha/` → …).
 fn word_boundary_back(s: &str, cursor: usize) -> usize {
-    let is_ws = |slice: &str| slice.chars().all(|c| c.is_whitespace());
+    let is_sep = |slice: &str| slice.chars().all(|c| c.is_whitespace() || crate::os::path::is_path_sep(c));
     let mut i = cursor;
-    // Phase 1: skip trailing whitespace graphemes.
+    // Phase 1: skip trailing separators (whitespace or '/').
     while i > 0 {
         let prev = prev_grapheme(s, i);
-        if is_ws(&s[prev..i]) { i = prev; } else { break; }
+        if is_sep(&s[prev..i]) { i = prev; } else { break; }
     }
-    // Phase 2: consume the run of non-whitespace graphemes.
+    // Phase 2: consume the run of non-separator graphemes.
     while i > 0 {
         let prev = prev_grapheme(s, i);
-        if !is_ws(&s[prev..i]) { i = prev; } else { break; }
+        if !is_sep(&s[prev..i]) { i = prev; } else { break; }
     }
     i
 }
