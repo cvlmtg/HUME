@@ -162,6 +162,7 @@ fn inner_word_includes_combining_grapheme() {
 // ── WORD ──────────────────────────────────────────────────────────────────
 
 #[test]
+#[allow(non_snake_case)]
 fn inner_WORD_spans_punctuation() {
     // `hello.world` is one WORD (no whitespace boundary within it).
     assert_state!(
@@ -434,6 +435,7 @@ fn around_line_multi_cursor_different_lines() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn inner_WORD_multi_cursor() {
     assert_state!(
         "-[h]>ello.world -[f]>oo\n",
@@ -455,6 +457,7 @@ fn inner_paren_two_cursors_same_pair_merge() {
 // ── around_WORD ───────────────────────────────────────────────────────────
 
 #[test]
+#[allow(non_snake_case)]
 fn around_WORD_includes_trailing_space() {
     assert_state!(
         "-[h]>ello.world foo\n",
@@ -464,6 +467,7 @@ fn around_WORD_includes_trailing_space() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn around_WORD_no_trailing_space_uses_leading() {
     // Last WORD has no trailing space — grabs leading space instead.
     assert_state!(
@@ -490,6 +494,7 @@ fn around_WORD_end_of_buffer_with_leading_space_uses_WORD_boundary() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn around_WORD_cursor_on_whitespace_extends_to_next_WORD() {
     assert_state!(
         "foo-[ ]>bar\n",
@@ -499,6 +504,7 @@ fn around_WORD_cursor_on_whitespace_extends_to_next_WORD() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn around_WORD_multi_cursor() {
     // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
     assert_state!(
@@ -509,6 +515,7 @@ fn around_WORD_multi_cursor() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn around_WORD_treats_punctuation_as_part_of_word() {
     // WORD includes adjacent punctuation; `around_word` (lower-case) would stop at '.'.
     // "foo.bar baz\n" — cursor on 'f': around_WORD selects "foo.bar " (whole WORD + space).
@@ -607,6 +614,7 @@ fn inner_word_on_structural_newline() {
 }
 
 #[test]
+#[allow(non_snake_case)]
 fn inner_WORD_on_structural_newline() {
     assert_state!(
         "-[\n]>",
