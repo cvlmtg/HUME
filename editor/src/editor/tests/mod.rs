@@ -109,3 +109,4 @@ mod multi_pane;
 mod buffer_store;
 mod per_pane_jumps;
 mod hooks;
+mod alternate;
