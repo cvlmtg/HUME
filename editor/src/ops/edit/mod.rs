@@ -27,13 +27,13 @@ use crate::core::selection::{Selection, SelectionSet};
 
 /// Apply a `(&Text, SelectionSet) -> SelectionSet` command `count` times.
 ///
-#[allow(dead_code)]
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
 /// is needed for undo/redo bookkeeping via [`crate::editor::buffer::Buffer`].
 ///
 /// For motions, count is handled inside `apply_motion` per-selection instead
 /// (prevents premature merging of multi-cursor selections between steps).
+#[cfg(test)]
 pub(crate) fn repeat(
     count: usize,
     buf: &Text,
@@ -43,7 +43,6 @@ pub(crate) fn repeat(
     (0..count).fold(sels, |s, _| cmd(buf, s))
 }
 
-#[allow(dead_code)]
 /// Apply an edit command `count` times, composing all changesets into one.
 ///
 /// Like [`repeat`], but the command must return `(Text, SelectionSet,
@@ -52,6 +51,7 @@ pub(crate) fn repeat(
 /// [`crate::editor::buffer::Buffer::apply_edit`].
 ///
 /// If `count == 0`, returns the original state with an identity ChangeSet.
+#[cfg(test)]
 pub(crate) fn repeat_edit(
     count: usize,
     buf: Text,

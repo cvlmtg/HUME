@@ -31,20 +31,13 @@ pub(crate) const DEFAULT_REGISTER: char = '"';
 /// Use `"by` to yank without touching the default register.
 pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
 
-/// The system clipboard register (`c`). Requires OS integration.
-/// Reserved here so the editor layer can reference it by name.
-#[allow(dead_code)]
-pub(crate) const CLIPBOARD_REGISTER: char = 'c';
-
 /// The search register (`s`) — holds the last search pattern.
 /// Written by the search command; readable for paste into the command line.
-#[allow(dead_code)]
 pub(crate) const SEARCH_REGISTER: char = 's';
 
 /// The default macro register (`q`).
 /// `QQ` starts/stops recording into this register; `qq` replays from it.
 /// Can also hold yanked text if the user explicitly writes to it.
-#[allow(dead_code)]
 pub(crate) const MACRO_REGISTER: char = 'q';
 
 /// The content of a register — either yanked text or a recorded macro.
@@ -267,7 +260,6 @@ mod tests {
     fn constants_have_expected_values() {
         // Document the register name choices so a future reader sees them tested.
         assert_eq!(BLACK_HOLE_REGISTER, 'b');
-        assert_eq!(CLIPBOARD_REGISTER, 'c');
         assert_eq!(SEARCH_REGISTER,    's');
         assert_eq!(MACRO_REGISTER,     'q');
     }

@@ -194,13 +194,13 @@ impl History {
         Some(self.revisions[child_id.0].forward.clone())
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     /// True if there is at least one revision above the current position.
     pub(crate) fn can_undo(&self) -> bool {
         self.revisions[self.current.0].parent.is_some()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     /// True if the current revision has at least one child.
     pub(crate) fn can_redo(&self) -> bool {
         !self.revisions[self.current.0].children.is_empty()

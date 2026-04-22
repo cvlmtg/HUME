@@ -42,7 +42,6 @@ pub(crate) enum StatusElement {
     Position,
     /// Selection count as `"N sels"`, or the empty string when only one
     /// selection is active (so it occupies no space in single-cursor mode).
-    #[allow(dead_code)]
     Selections,
     /// Kitty keyboard protocol indicator: `"🐱"` when active, empty otherwise.
     ///

@@ -83,6 +83,8 @@ pub(crate) enum MappableCommand {
     /// semantics at dispatch time — no separate extend-variant functions needed.
     Motion {
         name: Cow<'static, str>,
+        // Pending command-palette / :help integration.
+        #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Whether this motion always records a jump list entry before executing,
@@ -97,6 +99,8 @@ pub(crate) enum MappableCommand {
     /// `_mode` and ignore it; extendable text objects branch on it.
     Selection {
         name: Cow<'static, str>,
+        // Pending command-palette / :help integration.
+        #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&Text, SelectionSet, MotionMode) -> SelectionSet,
     },
@@ -107,6 +111,8 @@ pub(crate) enum MappableCommand {
     /// Edits are never extendable — they don't carry `MotionMode`.
     Edit {
         name: Cow<'static, str>,
+        // Pending command-palette / :help integration.
+        #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
         /// Whether `.` should replay this command. Set to `true` for edits that
@@ -125,6 +131,8 @@ pub(crate) enum MappableCommand {
     /// dispatched as a function pointer exactly like the other variants.
     EditorCmd {
         name: Cow<'static, str>,
+        // Pending command-palette / :help integration.
+        #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&mut super::Editor, usize, MotionMode) -> Result<(), CommandError>,
         /// Whether `.` should replay this command.
@@ -153,6 +161,8 @@ pub(crate) enum MappableCommand {
     /// added as optional flags once the use-cases emerge.
     SteelBacked {
         name: Cow<'static, str>,
+        // Pending command-palette / :help integration.
+        #[allow(dead_code)]
         doc: Cow<'static, str>,
         /// Name of the lambda in Steel's global namespace.
         steel_proc: String,
@@ -160,7 +170,7 @@ pub(crate) enum MappableCommand {
 }
 
 impl MappableCommand {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn name(&self) -> &str {
         match self {
             Self::Motion { name, .. }
@@ -172,7 +182,7 @@ impl MappableCommand {
     }
 
     /// One-line description of the command, for `:help` and command-palette display.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn doc(&self) -> &str {
         match self {
             Self::Motion { doc, .. }
@@ -377,13 +387,12 @@ impl CommandRegistry {
     }
 
     /// Iterate over all registered canonical command names (not aliases).
-    #[allow(dead_code)]
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
         self.commands.keys().map(|k| k.as_ref())
     }
 
     /// Total number of registered commands (mappable + typed, not counting aliases).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.commands.len()
     }

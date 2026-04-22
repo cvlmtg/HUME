@@ -128,7 +128,7 @@ impl Text {
 
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         debug_assert!(
             self.rope.len_chars() > 0,
@@ -207,7 +207,7 @@ impl Text {
         self.rope.len_bytes()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///
     /// All char offsets at or after `at` in the old buffer are shifted forward
@@ -223,7 +223,7 @@ impl Text {
         Self { rope, line_ending: self.line_ending }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     /// Returns a new buffer with `range` of chars removed.
     ///
     /// All char offsets at or after `range.end` in the old buffer are shifted
