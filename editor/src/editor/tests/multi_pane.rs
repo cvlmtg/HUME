@@ -333,3 +333,58 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     assert_eq!(mirror_head, 4, "pane B engine mirror head reflects translated position");
 }
 
+
+// ── ensure() contract tests ────────────────────────────────────────────────────
+
+/// ensure() is idempotent: calling it twice on the same (pid, bid) does not
+/// overwrite existing state (e.g. selections moved away from initial).
+#[test]
+fn ensure_is_idempotent() {
+    use crate::core::selection::{Selection, SelectionSet};
+    use crate::editor::pane_state;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid = ed.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+
+    // Move the cursor away from its initial position.
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(3)));
+
+    // ensure() on an already-seeded entry must not reset to initial_sels.
+    pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid);
+    assert_eq!(
+        ed.current_selections().primary().head,
+        3,
+        "ensure must not overwrite existing pane_state entry",
+    );
+}
+
+/// ensure() on a new (pid, bid) pair seeds the entry with the buffer's initial
+/// selections, matching the same value that fresh_from_buf() would produce.
+#[test]
+fn ensure_seeds_new_entry_with_initial_sels() {
+    use crate::editor::pane_state;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid = ed.focused_pane_id;
+
+    // Open a second buffer; the focused pane has never viewed it.
+    let doc2 = Buffer::scratch();
+    let expected_sels = doc2.initial_sels();
+    let bid2 = crate::editor::ops::open_buffer(
+        &mut ed.engine_view,
+        &mut ed.buffers,
+        &mut ed.pane_state,
+        pid,
+        doc2,
+    );
+
+    // open_buffer already calls ensure internally; a second call is idempotent
+    // and returns a state with the initial selections.
+    let state = pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid2);
+    assert_eq!(
+        state.selections,
+        expected_sels,
+        "ensure must seed with buffer's initial_sels on first visit",
+    );
+}
