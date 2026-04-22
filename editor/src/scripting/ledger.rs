@@ -173,6 +173,12 @@ pub(crate) struct LedgerEntry {
     pub(crate) key: String,
     /// The serialized value that was live before this mutation.
     pub(crate) prior_value: String,
+    /// Whether the prior keymap binding had `force_extend = true`.
+    ///
+    /// Always `false` for settings entries; populated from `lookup_command`
+    /// for keymap entries so that plugin unload can faithfully restore
+    /// built-in force-extending bindings (e.g. `Ctrl+x → select-line`).
+    pub(crate) prior_force_extend: bool,
     /// The owner of the binding before this mutation.
     pub(crate) prior_owner: Owner,
 }
@@ -210,22 +216,27 @@ impl LedgerStack {
     /// **Deduplicates by key within a plugin's ledger:** if `plugin` has already
     /// recorded a mutation for `key`, this call is a no-op — the first entry
     /// already captures the pre-plugin state and that is all we need to restore.
+    ///
+    /// `prior_force_extend` is `false` for settings entries; for keymap entries
+    /// it carries the `force_extend` flag of the binding that existed before this
+    /// mutation, so plugin unload can restore it faithfully.
     pub(crate) fn record(
         &mut self,
         plugin: &PluginId,
         key: String,
         prior_owner: Owner,
         prior_value: String,
+        prior_force_extend: bool,
     ) {
         if let Some(ledger) = self.ledgers.iter_mut().find(|l| l.plugin == *plugin) {
             // Only record the first mutation per key for this plugin.
             if !ledger.entries.iter().any(|e| e.key == key) {
-                ledger.entries.push(LedgerEntry { key, prior_value, prior_owner });
+                ledger.entries.push(LedgerEntry { key, prior_value, prior_force_extend, prior_owner });
             }
         } else {
             self.ledgers.push(Ledger {
                 plugin: plugin.clone(),
-                entries: vec![LedgerEntry { key, prior_value, prior_owner }],
+                entries: vec![LedgerEntry { key, prior_value, prior_force_extend, prior_owner }],
             });
         }
     }
@@ -278,9 +289,10 @@ impl LedgerStack {
             if let Some(later_entry) = later {
                 // Splice `plugin` out: Y's prior now points to what existed
                 // before plugin (X's prior), so when Y is later unloaded it
-                // restores the correct baseline value.
+                // restores the correct baseline value — including extend semantics.
                 later_entry.prior_owner = entry.prior_owner;
                 later_entry.prior_value = entry.prior_value;
+                later_entry.prior_force_extend = entry.prior_force_extend;
             } else {
                 // `plugin` was the live owner — caller must restore.
                 to_restore.push(entry);
@@ -426,8 +438,8 @@ mod tests {
         let mut stack = LedgerStack::default();
         let x = pid("user/x");
         let y = pid("user/y");
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
+        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
         assert_eq!(stack.owner_of("f"), Owner::Plugin(y));
     }
 
@@ -436,9 +448,9 @@ mod tests {
         let mut stack = LedgerStack::default();
         let x = pid("user/x");
         // First record — should be stored.
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
         // Second record for the same key by the same plugin — should be ignored.
-        stack.record(&x, "f".into(), Owner::Plugin(x.clone()), "foo".into());
+        stack.record(&x, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
         let ledger = stack.ledgers.iter().find(|l| l.plugin == x).unwrap();
         assert_eq!(ledger.entries.len(), 1);
         assert_eq!(ledger.entries[0].prior_value, "find-char");
@@ -450,7 +462,7 @@ mod tests {
     fn unload_no_later_writer_returns_entry_to_restore() {
         let mut stack = LedgerStack::default();
         let x = pid("user/x");
-        stack.record(&x, "tab-size".into(), Owner::Core, "2".into());
+        stack.record(&x, "tab-size".into(), Owner::Core, "2".into(), false);
 
         let to_restore = stack.unload(&x);
 
@@ -473,9 +485,9 @@ mod tests {
         let x = pid("user/x");
         let y = pid("user/y");
         // X: f was find-char / Core
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
         // Y: f was foo / X
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
+        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
 
         let to_restore = stack.unload(&x);
 
@@ -494,9 +506,9 @@ mod tests {
         let x = pid("user/x");
         let y = pid("user/y");
         // X owns both; Y later takes `f` but never touches `tab-size`.
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
-        stack.record(&x, "tab-size".into(), Owner::Core, "2".into());
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
+        stack.record(&x, "tab-size".into(), Owner::Core, "2".into(), false);
+        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
 
         let to_restore = stack.unload(&x);
 
@@ -511,7 +523,7 @@ mod tests {
         let mut stack = LedgerStack::default();
         let x = pid("user/x");
         let y = pid("user/y");
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
 
         let to_restore = stack.unload(&y); // y has no ledger
 
@@ -528,9 +540,9 @@ mod tests {
         let x = pid("user/x");
         let y = pid("user/y");
         let z = pid("user/z");
-        stack.record(&x, "f".into(), Owner::Core, "find-char".into());
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into());
-        stack.record(&z, "f".into(), Owner::Plugin(y.clone()), "bar".into());
+        stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
+        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
+        stack.record(&z, "f".into(), Owner::Plugin(y.clone()), "bar".into(), false);
 
         // Unload X — Y still owns f; Y's prior must now point to Core.
         assert!(stack.unload(&x).is_empty());
@@ -547,6 +559,44 @@ mod tests {
             .entries.iter().find(|e| e.key == "f").unwrap();
         assert_eq!(z_entry.prior_owner, Owner::Core);
         assert_eq!(z_entry.prior_value, "find-char");
+    }
+
+    // ── LedgerStack — prior_force_extend round-trip ──────────────────────────
+
+    #[test]
+    fn round_trip_preserves_prior_force_extend() {
+        let mut stack = LedgerStack::default();
+        let x = pid("user/x");
+        stack.record(&x, "normal ctrl-x".into(), Owner::Core, "select-line".into(), true);
+
+        let to_restore = stack.unload(&x);
+
+        assert_eq!(to_restore.len(), 1);
+        assert!(to_restore[0].prior_force_extend,
+            "unload must return prior_force_extend = true so the caller can restore it");
+    }
+
+    #[test]
+    fn stackover_inherits_prior_force_extend() {
+        let mut stack = LedgerStack::default();
+        let x = pid("user/x");
+        let y = pid("user/y");
+        // X: ctrl-x was select-line with force_extend = true (built-in baseline).
+        stack.record(&x, "normal ctrl-x".into(), Owner::Core, "select-line".into(), true);
+        // Y: ctrl-x was moved to x's non-extending command.
+        stack.record(&y, "normal ctrl-x".into(), Owner::Plugin(x.clone()), "move-right".into(), false);
+
+        // Unload X — Y still owns ctrl-x; Y's prior must now carry Core baseline
+        // AND prior_force_extend = true from X's entry.
+        assert!(stack.unload(&x).is_empty());
+        let y_entry = stack.ledgers.iter()
+            .find(|l| l.plugin == y).unwrap()
+            .entries.iter()
+            .find(|e| e.key == "normal ctrl-x").unwrap();
+        assert_eq!(y_entry.prior_owner, Owner::Core);
+        assert_eq!(y_entry.prior_value, "select-line");
+        assert!(y_entry.prior_force_extend,
+            "Y's prior_force_extend must be inherited from X after X is spliced out");
     }
 
     // ── PluginStack ──────────────────────────────────────────────────────────
