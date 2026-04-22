@@ -260,3 +260,184 @@ fn colon_wq_bang_quits_even_if_write_fails() {
     ed.handle_key(key_enter());
     assert!(ed.should_quit);
 }
+
+// ── Command history ───────────────────────────────────────────────────────────
+
+/// Helper: submit a typed command through the minibuffer.
+fn submit(ed: &mut Editor, cmd: &str) {
+    ed.handle_key(key(':'));
+    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_enter());
+}
+
+/// Helper: open the command minibuffer, press Up once, return the current input.
+fn open_and_up(ed: &mut Editor) -> String {
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up());
+    ed.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default()
+}
+
+#[test]
+fn up_recalls_previous_command() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    assert_eq!(open_and_up(&mut ed), "messages");
+}
+
+#[test]
+fn second_up_recalls_older() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    submit(&mut ed, "q");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "q");
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    // Cancel to leave normal mode.
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn down_walks_forward() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    submit(&mut ed, "q");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // "q"
+    ed.handle_key(key_up()); // "messages"
+    ed.handle_key(key_down()); // back to "q"
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "q");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn down_past_newest_restores_scratch() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    ed.handle_key(key(':'));
+    for ch in "foo".chars() { ed.handle_key(key(ch)); } // in-progress "foo"
+    ed.handle_key(key_up());   // stash "foo", show "messages"
+    ed.handle_key(key_down()); // past newest → restore "foo"
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo");
+    assert_eq!(ed.minibuf.as_ref().unwrap().cursor, 3);
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn down_without_prior_up_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    ed.handle_key(key(':'));
+    for ch in "foo".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_down()); // not navigating — no-op
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn empty_history_up_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // empty history — input unchanged
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn at_oldest_up_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // lands on "messages"
+    ed.handle_key(key_up()); // already at oldest — no change
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn consecutive_duplicate_not_recorded() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    submit(&mut ed, "messages"); // duplicate — should be skipped
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // should land on "messages"
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    ed.handle_key(key_up()); // at oldest — no older entry
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn failing_command_is_still_recorded() {
+    // Unknown commands are recorded so the user can Up, fix the typo, and re-submit.
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "qit"); // typo — reports "Unknown command: qit"
+    assert_eq!(open_and_up(&mut ed), "qit");
+}
+
+#[test]
+fn empty_confirm_not_recorded() {
+    let mut ed = editor_from("-[h]>ello\n");
+    // Press Enter with empty input — ConfirmEmpty, should not add an entry.
+    ed.handle_key(key(':'));
+    ed.handle_key(key_enter()); // ConfirmEmpty
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // no entry to recall — input stays empty
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn edit_after_up_demotes_scratch() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up()); // recall "messages"
+    // Type a char — demotes history navigation back to scratch.
+    ed.handle_key(key('x'));
+    // Up should now re-stash "messagesx" and jump to newest entry.
+    ed.handle_key(key_up());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    // Down should restore the stashed "messagesx".
+    ed.handle_key(key_down());
+    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messagesx");
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn history_survives_minibuf_close_and_reopen() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    // Open, press Esc — history entry should survive the close.
+    ed.handle_key(key(':'));
+    ed.handle_key(key_esc());
+    // Re-open and recall.
+    assert_eq!(open_and_up(&mut ed), "messages");
+}
+
+#[test]
+fn history_up_clears_completion_popup() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    // Open and trigger completion.
+    ed.handle_key(key(':'));
+    ed.handle_key(key('q')); // partial input
+    ed.handle_key(key_tab()); // Tab → CompleteRequested → may open popup
+    // Completion may or may not be Some depending on candidates, but pressing
+    // Up must clear it regardless.
+    ed.handle_key(key_up());
+    assert!(ed.completion.is_none());
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn cursor_is_at_end_after_recall() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "messages");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up());
+    let mb = ed.minibuf.as_ref().unwrap();
+    assert_eq!(mb.cursor, mb.input.len());
+    ed.handle_key(key_esc());
+}

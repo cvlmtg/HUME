@@ -37,6 +37,10 @@ pub(super) enum MiniBufferEvent {
     CursorMoved,
     /// Tab (forward) or Shift-Tab (reverse) pressed — caller should cycle completions.
     CompleteRequested { reverse: bool },
+    /// Up pressed — caller should recall the previous history entry for this prompt.
+    HistoryPrev,
+    /// Down pressed — caller should recall the next history entry (or restore scratch).
+    HistoryNext,
     /// Key was not handled (e.g. unrecognised control sequence).
     Ignored,
 }
@@ -117,6 +121,11 @@ impl MiniBuffer {
             }
             KeyCode::Tab    => MiniBufferEvent::CompleteRequested { reverse: false },
             KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
+            // Up/Down are handled by the caller (mode-specific history ring).
+            // Do NOT bind Ctrl+N / Ctrl+P here — those are reserved for
+            // future completion-popup navigation.
+            KeyCode::Up   => MiniBufferEvent::HistoryPrev,
+            KeyCode::Down => MiniBufferEvent::HistoryNext,
             _ => MiniBufferEvent::Ignored,
         }
     }

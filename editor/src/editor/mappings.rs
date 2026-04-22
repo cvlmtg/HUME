@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::core::jump_list::JumpEntry;
+use crate::core::minibuf_history::{HistoryKind, HistoryStore};
 use crate::core::search_state::SearchPattern;
 use super::commands::{cmd_clear_search, search_sel};
 use super::registry::MappableCommand;
@@ -733,6 +734,12 @@ impl Editor {
         match event {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_search(),
             MiniBufferEvent::Confirm(pattern) => {
+                // Record into the correct search ring before closing the minibuf.
+                let kind = self.minibuf.as_ref()
+                    .and_then(|m| HistoryStore::kind_for_prompt(m.prompt));
+                if let Some(k) = kind {
+                    self.history.get_mut(k).push(pattern.clone());
+                }
                 // Persist pattern in 's' register for future n/N.
                 self.registers.write_text(SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
@@ -754,7 +761,35 @@ impl Editor {
                 let bid = self.focused_buffer_id();
                 self.clear_buffer_search(bid);
             }
-            MiniBufferEvent::Edited => self.update_live_search(),
+            MiniBufferEvent::Edited => {
+                if let Some(k) = self.minibuf.as_ref().and_then(|m| HistoryStore::kind_for_prompt(m.prompt)) {
+                    self.history.get_mut(k).demote_to_scratch();
+                }
+                self.update_live_search();
+            }
+            MiniBufferEvent::HistoryPrev => {
+                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
+                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
+                let current = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
+                if let Some(text) = self.history.get_mut(kind).prev(&current) {
+                    if let Some(mb) = self.minibuf.as_mut() {
+                        mb.input = text;
+                        mb.cursor = mb.input.len();
+                    }
+                    self.update_live_search();
+                }
+            }
+            MiniBufferEvent::HistoryNext => {
+                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
+                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
+                if let Some(text) = self.history.get_mut(kind).next() {
+                    if let Some(mb) = self.minibuf.as_mut() {
+                        mb.input = text;
+                        mb.cursor = mb.input.len();
+                    }
+                    self.update_live_search();
+                }
+            }
             MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
             | MiniBufferEvent::CompleteRequested { .. } => {}
         }
@@ -858,8 +893,10 @@ impl Editor {
                 self.restore_select_snapshot();
             }
             MiniBufferEvent::Edited => self.update_live_select(),
+            // Up/Down are reserved for minibuffer history — no-op in select-within.
             MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
-            | MiniBufferEvent::CompleteRequested { .. } => {}
+            | MiniBufferEvent::CompleteRequested { .. }
+            | MiniBufferEvent::HistoryPrev | MiniBufferEvent::HistoryNext => {}
         }
     }
 
@@ -929,6 +966,11 @@ impl Editor {
                     self.complete_minibuf(false);
                     return;
                 }
+                // Record before dispatch so failed/unknown commands are recallable.
+                if let Some(mb) = self.minibuf.as_ref() {
+                    let raw = mb.input.clone();
+                    self.history.get_mut(HistoryKind::Command).push(raw);
+                }
                 self.execute_command();
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
@@ -938,12 +980,33 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            // Any edit or cursor move while completion is open dismisses the popup.
+            // Any edit or cursor move while completion is open dismisses the popup
+            // and demotes any active history recall back to scratch.
             MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
                 self.completion = None;
+                self.history.get_mut(HistoryKind::Command).demote_to_scratch();
             }
             MiniBufferEvent::CompleteRequested { reverse } => {
                 self.complete_minibuf(reverse);
+            }
+            MiniBufferEvent::HistoryPrev => {
+                self.completion = None;
+                let current = self.minibuf.as_ref().map(|m| m.input.clone()).unwrap_or_default();
+                if let Some(text) = self.history.get_mut(HistoryKind::Command).prev(&current)
+                    && let Some(mb) = self.minibuf.as_mut()
+                {
+                    mb.input = text;
+                    mb.cursor = mb.input.len();
+                }
+            }
+            MiniBufferEvent::HistoryNext => {
+                self.completion = None;
+                if let Some(text) = self.history.get_mut(HistoryKind::Command).next()
+                    && let Some(mb) = self.minibuf.as_mut()
+                {
+                    mb.input = text;
+                    mb.cursor = mb.input.len();
+                }
             }
             MiniBufferEvent::Ignored => {}
         }
@@ -953,6 +1016,7 @@ impl Editor {
     fn close_minibuf(&mut self) {
         self.minibuf = None;
         self.completion = None;
+        self.history.begin_session_all();
     }
 
     /// Drive one Tab / Shift-Tab cycle in the completion popup.

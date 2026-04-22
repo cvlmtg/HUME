@@ -229,6 +229,11 @@ pub(crate) struct Editor {
     /// Per-pane navigable history of cursor positions before large movements.
     /// `jump-backward` (Ctrl+O) / `jump-forward` (Ctrl+I) traverse each pane's list.
     pub(super) pane_jumps: SecondaryMap<PaneId, crate::core::jump_list::JumpList>,
+
+    // ── Minibuffer history ───────────────────────────────────────────────────
+    /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
+    /// Recalled via Up/Down while the minibuffer is open.
+    pub(super) history: crate::core::minibuf_history::HistoryStore,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -389,6 +394,7 @@ impl Editor {
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
         let jump_list_capacity = settings.jump_list_capacity;
+        let history_capacity   = settings.history_capacity;
 
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
@@ -433,6 +439,7 @@ impl Editor {
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
                 m
             },
+            history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,
@@ -797,11 +804,9 @@ impl Editor {
     pub(crate) fn sync_all_pane_mirrors(&mut self) {
         let Self { pane_state, engine_view, scratch_view, focused_pane_id, .. } = &mut *self;
         for (pid, pane) in engine_view.panes.iter_mut() {
-            if pid == *focused_pane_id {
-                if let Some(sv) = scratch_view.as_ref() {
-                    write_pane_mirror(pane, &sv.sels);
-                    continue;
-                }
+            if pid == *focused_pane_id && let Some(sv) = scratch_view.as_ref() {
+                write_pane_mirror(pane, &sv.sels);
+                continue;
             }
             if let Some(pbs) = pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
                 write_pane_mirror(pane, &pbs.selections);
@@ -1353,6 +1358,7 @@ impl Editor {
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
+        let history_capacity   = settings.history_capacity;
         let pane = Pane::new(buffer_id);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
@@ -1396,6 +1402,7 @@ impl Editor {
                 m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
                 m
             },
+            history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,

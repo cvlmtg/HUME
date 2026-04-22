@@ -233,6 +233,7 @@ define_settings! {
         "mouse-select"        => mouse_select:        bool  = false, parser: bool;
         "jump-list-capacity"      => jump_list_capacity:      usize = 100,    parser: usize_nonzero;
         "jump-line-threshold"     => jump_line_threshold:     usize = 5,      parser: usize;
+        "history-capacity"        => history_capacity:        usize = 100,    parser: usize_nonzero;
         "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
         "popup-border" => popup_border: bool = true, parser: bool;
@@ -293,6 +294,7 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "mouse-select"        => settings.mouse_select.to_string(),
         "jump-list-capacity"      => settings.jump_list_capacity.to_string(),
         "jump-line-threshold"     => settings.jump_line_threshold.to_string(),
+        "history-capacity"        => settings.history_capacity.to_string(),
         "steel-init-budget-ms"    => settings.steel_init_budget_ms.to_string(),
         "steel-command-budget-ms" => settings.steel_command_budget_ms.to_string(),
         "popup-border"        => settings.popup_border.to_string(),
@@ -413,6 +415,7 @@ mod tests {
         assert!(!s.mouse_select);
         assert_eq!(s.jump_list_capacity, 100);
         assert_eq!(s.jump_line_threshold, 5);
+        assert_eq!(s.history_capacity, 100);
         assert_eq!(s.tab_width, 4);
         assert_eq!(s.wrap_mode, WrapMode::Indent { width: 76 });
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
@@ -549,6 +552,16 @@ mod tests {
     #[test]
     fn set_global_jump_line_threshold() {
         assert_eq!(global("jump-line-threshold", "10").unwrap().jump_line_threshold, 10);
+    }
+
+    #[test]
+    fn set_global_history_capacity() {
+        assert_eq!(global("history-capacity", "50").unwrap().history_capacity, 50);
+    }
+
+    #[test]
+    fn set_global_history_capacity_zero_errors() {
+        assert!(global("history-capacity", "0").is_err());
     }
 
     #[test]
@@ -717,6 +730,7 @@ mod tests {
             "mouse-select",
             "jump-list-capacity",
             "jump-line-threshold",
+            "history-capacity",
             "popup-border",
         ] {
             let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov)
@@ -771,7 +785,7 @@ mod tests {
         let keys = [
             "scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
             "mouse-enabled", "mouse-select", "jump-list-capacity", "jump-line-threshold",
-            "popup-border",
+            "history-capacity", "popup-border",
             "tab-width", "wrap-mode", "line-number-style", "auto-pairs-enabled",
             "whitespace-space", "whitespace-tab", "whitespace-newline",
         ];

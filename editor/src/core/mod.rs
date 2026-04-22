@@ -6,4 +6,5 @@ pub(crate) mod selection;
 pub(crate) mod grapheme;
 pub(crate) mod error;
 pub(crate) mod jump_list;
+pub(crate) mod minibuf_history;
 pub(crate) mod search_state;
