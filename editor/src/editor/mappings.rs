@@ -556,8 +556,9 @@ impl Editor {
             let is_explicit_jump = reg_cmd.is_jump();
             let is_vertical_visual = reg_cmd.is_visual_move();
             let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
+                let bid     = self.focused_buffer_id();
                 let primary = self.current_selections().primary();
-                Some((primary, self.doc().text().char_to_line(primary.head)))
+                Some((primary, self.doc().text().char_to_line(primary.head), bid))
             } else {
                 None
             };
@@ -619,12 +620,11 @@ impl Editor {
             }
 
             // ── Jump list: record if this was a jump ─────────────────────────
-            if let Some((pre_primary, pre_line)) = pre_jump {
+            if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
                 let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
                 if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
-                    let bid = self.focused_buffer_id();
                     self.pane_jumps[self.focused_pane_id].push(
-                        JumpEntry::from_pre_motion(pre_primary, pre_line, bid),
+                        JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid),
                     );
                 }
             }
@@ -949,9 +949,22 @@ impl Editor {
             None => (cmd_raw, false),
         };
 
+        // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
+        // common case (no expansion) stays allocation-free.
+        let expanded: Option<String> = match arg {
+            Some(a) if a.contains('%') || a.contains('#') => {
+                match expand_command_arg(self, a) {
+                    Ok(s)    => Some(s),
+                    Err(msg) => { self.report(Severity::Error, msg); return; }
+                }
+            }
+            Some(a) => Some(a.to_owned()),
+            None    => None,
+        };
+
         if let Some(tc) = self.registry.get_typed(cmd) {
             let fun = tc.fun;
-            if let Err(e) = fun(self, arg, force) {
+            if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.0);
             }
         } else if self.registry.get_mappable(cmd).is_some() {
@@ -962,12 +975,43 @@ impl Editor {
             // Pass the arg string so Steel commands can read it via `(cmd-arg)`.
             self.execute_keymap_command(
                 cmd.to_owned().into(), 1, false,
-                arg.map(|s| s.to_owned()),
+                expanded,
             );
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }
     }
+}
+
+// ── Typed-command helpers ─────────────────────────────────────────────────────
+
+/// Expand `%` → focused buffer's path and `#` → alternate buffer's path in a
+/// typed-command argument.
+///
+/// Only whole tokens (separated by ASCII spaces) are substituted, so filenames
+/// containing `%` or `#` as part of a longer word pass through unchanged.
+/// Spacing is preserved; returns a user-facing error on the first unresolved token.
+fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(arg.len());
+    for (i, token) in arg.split(' ').enumerate() {
+        if i > 0 { out.push(' '); }
+        match token {
+            "%" => {
+                let path = ed.doc().path.as_ref()
+                    .ok_or_else(|| "No file name".to_string())?;
+                out.push_str(&path.display().to_string());
+            }
+            "#" => {
+                let alt_id = ed.alternate_buffer()
+                    .ok_or_else(|| "No alternate buffer".to_string())?;
+                let alt_path = ed.buffers.get(alt_id).path.as_ref()
+                    .ok_or_else(|| "Alternate buffer has no file name".to_string())?;
+                out.push_str(&alt_path.display().to_string());
+            }
+            other => out.push_str(other),
+        }
+    }
+    Ok(out)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

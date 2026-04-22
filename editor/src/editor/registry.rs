@@ -606,8 +606,9 @@ impl CommandRegistry {
         ecmd("use-selection-as-search", "Use primary selection text as the search pattern.",       cmd_use_selection_as_search).reg(self);
 
         // ── Editor commands — jump list ──────────────────────────────────────
-        ecmd("jump-backward", "Navigate to the previous position in the jump list.", cmd_jump_backward).reg(self);
-        ecmd("jump-forward",  "Navigate to the next position in the jump list.",     cmd_jump_forward ).reg(self);
+        ecmd("jump-backward",       "Navigate to the previous position in the jump list.", cmd_jump_backward      ).reg(self);
+        ecmd("jump-forward",        "Navigate to the next position in the jump list.",     cmd_jump_forward       ).reg(self);
+        ecmd("goto-alternate-file", "Switch to the most-recently-focused other buffer.",   cmd_goto_alternate_file).jump().reg(self);
 
         // ── Editor commands — misc ────────────────────────────────────────────
         ecmd("force-quit", "Quit without checking for unsaved changes.", cmd_quit).reg(self);
@@ -703,7 +704,7 @@ mod tests {
     ///   14 typed commands (quit, write, write-quit, toggle-soft-wrap, set, messages, reload-plugin, reload-config, edit, buffer-delete, bnext, bprev, split, vsplit)
     ///  ──
     ///  121 total
-    const EXPECTED_COMMAND_COUNT: usize = 121;
+    const EXPECTED_COMMAND_COUNT: usize = 122;
 
     #[test]
     fn registry_has_expected_count() {

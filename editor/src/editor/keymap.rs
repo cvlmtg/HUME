@@ -599,6 +599,13 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(Ctrl + 'i'), cmd!("jump-forward"));
     t.bind_leaf(key!(Tab), cmd!("jump-forward"));
 
+    // ── Alternate buffer ─────────────────────────────────────────────────────
+    // `Ctrl+6` is the portable form of vim's `Ctrl+^`: both share a keycap on
+    // US layouts and emit identical bytes. With kitty keyboard protocol this
+    // arrives as `Char('6') + CONTROL`; legacy terminals emit 0x1E which is
+    // not surfaced here (users can fall back to `:e #`).
+    t.bind_leaf(key!(Ctrl + '6'), cmd!("goto-alternate-file"));
+
     // ── Whole-buffer selection ────────────────────────────────────────────────
     t.bind_leaf(key!('%'), cmd!("select-all"));
 

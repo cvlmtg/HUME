@@ -818,6 +818,23 @@ pub(super) fn cmd_jump_forward(ed: &mut Editor, _count: usize, _mode: MotionMode
     Ok(())
 }
 
+// ── Alternate buffer ─────────────────────────────────────────────────────────
+
+/// `Ctrl+6` / `goto-alternate-file` — switch to the most-recently-focused
+/// other buffer.
+///
+/// Uses `switch_to_buffer_without_jump` because `execute_keymap_command` already
+/// records the pre-switch state for all `is_jump=true` commands. Using the
+/// `_with_jump` variant here would push twice, corrupting the jump list on the
+/// second Ctrl+O.
+pub(super) fn cmd_goto_alternate_file(ed: &mut Editor, _count: usize, _mode: MotionMode) -> Result<(), CommandError> {
+    match ed.alternate_buffer() {
+        Some(id) => ed.switch_to_buffer_without_jump(id),
+        None     => ed.report(Severity::Warning, "No alternate buffer".to_string()),
+    }
+    Ok(())
+}
+
 // ── Message log ──────────────────────────────────────────────────────────────
 
 /// `:messages` — open the message log in a read-only scratch buffer.

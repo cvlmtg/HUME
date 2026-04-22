@@ -130,8 +130,8 @@
 - [x] **Hook system**: `on-buffer-open` / `on-buffer-close` hooks; `ScriptingHost` dispatches with per-pane `SteelCtx<'a>` — no TLS, no `mem::take`.
 - [ ] **Tab completion in minibuffer**: `complete(input, cursor) -> Vec<Completion>` engine. Per-command completers: path (`:e`, `:w`), buffer-name (`:bd`, `:b`), command-name (bare `:`). Popup rendered above statusline. `Tab` / `Shift-Tab` cycle; `Enter` accepts; `Esc` dismisses.
 - [ ] **Command history (session-only)**: in-memory `Vec<String>` per ring (`:` and `/`). Up/Down arrows in minibuffer recall prior entries.
-- [ ] **`%`/`#` expansion in command args**: `%` = current file path, `#` = alternate buffer path. Pre-processing step in `execute_command`.
-- [ ] **Alternate buffer `#`**: uses `BufferStore` MRU's most-recent-other entry (no new field on `Editor`). Enables `#` in `%`/`#` expansion and `:b#` toggle command.
+- [x] **`%`/`#` expansion in command args**: `%` = current file path, `#` = alternate buffer path. Pre-processing step in `execute_command`.
+- [x] **Alternate buffer `#`**: uses `BufferStore` MRU's most-recent-other entry (no new field on `Editor`). Enables `#` in `%`/`#` expansion and `Ctrl+6` toggle (`goto-alternate-file`).
 - [ ] **`:w!` force-write**: currently hard-rejected; allow chmod-retry path for readonly targets.
 - [ ] **Statusline: line-ending + pwd indicators**: new `StatusElement` variants (`LineEnding`, `Cwd`) exposing `Buffer::line_ending()` and current working directory. Configurable via `configure-statusline!`.
 - [ ] **`:cd <path>`**: change working directory and refresh `Editor.cwd`; required for relative-path `:e` to feel natural.
