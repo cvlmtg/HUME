@@ -153,7 +153,7 @@ impl KeyTrie {
     /// Bind a multi-key sequence to a leaf command, creating interior nodes as
     /// needed. Single-key sequences insert directly as a `Leaf`.
     ///
-    /// Called by [`Keymap::bind_user`] at runtime (e.g. from Steel config).
+    /// Called by [`Keymap::bind_user_with_extend`] at runtime (e.g. from Steel config).
     #[allow(dead_code)]
     pub(crate) fn bind_sequence(&mut self, keys: &[KeyEvent], cmd: KeymapCommand) {
         debug_assert!(!keys.is_empty());
@@ -235,7 +235,7 @@ impl KeyTrie {
 
 /// Which keymap to apply a user-supplied binding to.
 ///
-/// Used by [`Keymap::bind_user`] and [`Keymap::unbind_user`].
+/// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BindMode {
@@ -313,17 +313,10 @@ impl Keymap {
     ///
     /// Overwrites any existing binding for the same sequence. Single-key
     /// sequences are inserted as a `Leaf`; multi-key sequences create
-    /// interior nodes as needed.
+    /// interior nodes as needed. Pass `force_extend = true` for bindings
+    /// that should always extend (see `cmd_extend!`).
     ///
     /// `keys` must not be empty.
-    #[cfg(test)]
-    pub(crate) fn bind_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
-        self.bind_user_with_extend(mode, keys, command, false);
-    }
-
-    /// Like [`bind_user`], but also controls the `force_extend` flag on the
-    /// resulting leaf.  Use this when restoring a prior force-extending binding
-    /// from the ledger, or when implementing `(bind-key-extend! …)`.
     pub(crate) fn bind_user_with_extend(
         &mut self,
         mode: BindMode,
@@ -738,7 +731,7 @@ fn default_insert_keymap() -> KeyTrie {
 mod tests {
     use super::*;
 
-    // ── bind_sequence / remove_sequence / bind_user / unbind_user ────────────
+    // ── bind_sequence / remove_sequence / bind_user_with_extend / unbind_user ─
 
     #[test]
     fn bind_sequence_single_key() {
@@ -812,7 +805,7 @@ mod tests {
     #[test]
     fn bind_user_normal_mode() {
         let mut km = Keymap::default();
-        km.bind_user(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"));
+        km.bind_user_with_extend(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"), false);
         assert!(matches!(
             km.normal.walk(&[key!('z')]),
             WalkResult::Leaf(ref c) if c.name == "my-cmd"
@@ -824,7 +817,7 @@ mod tests {
     #[test]
     fn unbind_user_normal_mode() {
         let mut km = Keymap::default();
-        km.bind_user(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"));
+        km.bind_user_with_extend(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"), false);
         km.unbind_user(BindMode::Normal, &[key!('z')]);
         assert!(matches!(km.normal.walk(&[key!('z')]), WalkResult::NoMatch));
     }
