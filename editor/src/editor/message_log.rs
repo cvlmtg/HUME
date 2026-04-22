@@ -126,9 +126,12 @@ impl MessageLog {
         self.seen_up_to = self.entries.len();
     }
 
-    /// One-line summary shown in the statusline when there are unseen entries.
+    /// One-line summary shown in the statusline when there are unseen
+    /// `Warning` or `Error` entries.
     ///
-    /// Returns `None` when everything has been seen (normal statusline shows).
+    /// Returns `None` when everything has been seen, *or* when the only unseen
+    /// entries are `Trace` — trace messages are logged for `:messages` review
+    /// but never raise a statusline indicator (see [`Severity`] table).
     pub(crate) fn summary_text(&self) -> Option<String> {
         if !self.has_unseen() {
             return None;
