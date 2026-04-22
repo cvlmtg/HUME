@@ -91,6 +91,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Keymap
     engine.register_fn_with_ctx(HUME_CTX, "bind-key!",        keymap_bind::bind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-key-extend!", keymap_bind::bind_key_extend);
+    engine.register_fn_with_ctx(HUME_CTX, "unbind-key!",      keymap_bind::unbind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!",  keymap_bind::bind_wait_char);
 
     // Plugin lifecycle (called from the Scheme-side load-plugin)

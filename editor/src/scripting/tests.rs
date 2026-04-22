@@ -906,6 +906,64 @@ fn bind_key_extend_invalid_mode_errors() {
     assert!(err.contains("mode"), "got: {err}");
 }
 
+// ── unbind-key! ───────────────────────────────────────────────────────────
+
+#[test]
+fn unbind_key_removes_default_binding() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
+    assert!(km.lookup_command(BindMode::Normal, h_key).is_some(), "'h' must be bound by default");
+
+    h.eval_source(r#"(unbind-key! "normal" "h")"#, &mut s, &mut km).unwrap();
+
+    assert!(km.lookup_command(BindMode::Normal, h_key).is_none(), "'h' must be unbound after unbind-key!");
+}
+
+#[test]
+fn unbind_key_noop_on_already_unbound() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    // 'Q' is not in the default keymap.
+    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut s, &mut km).unwrap();
+}
+
+#[test]
+fn unbind_key_invalid_mode_errors() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let err = h.eval_source(r#"(unbind-key! "visual" "h")"#, &mut s, &mut km).unwrap_err();
+    assert!(err.contains("mode"), "got: {err}");
+}
+
+#[test]
+fn plugin_unbind_is_restored_on_unload() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
+
+    h.eval_source(
+        r#"(push-current-plugin! "user/a")
+           (unbind-key! "normal" "h")
+           (pop-current-plugin!)"#,
+        &mut s, &mut km,
+    ).unwrap();
+    assert!(km.lookup_command(BindMode::Normal, h_key).is_none(), "'h' must be unbound while plugin is loaded");
+
+    h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+    let (name, _) = km.lookup_command(BindMode::Normal, h_key)
+        .expect("'h' must be restored after plugin unload");
+    assert_eq!(name, "move-left");
+}
+
 /// Plugin rebinding ctrl-x (a force-extend built-in) then unloading must
 /// restore the original binding with force_extend = true.
 #[test]
