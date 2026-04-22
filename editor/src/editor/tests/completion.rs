@@ -209,3 +209,99 @@ fn tab_on_write_arg_completes_path() {
     let expected = format!("w {}/out.txt", dir.path().display());
     assert_eq!(minibuf_input(&ed), expected);
 }
+
+// ── Directory descent on Enter ────────────────────────────────────────────────
+
+#[test]
+fn enter_on_directory_candidate_restarts_completion() {
+    let dir = tempfile::tempdir().unwrap();
+    // Two sub-dirs so the path popup has ≥2 candidates (popup opens).
+    std::fs::create_dir(dir.path().join("alpha")).unwrap();
+    std::fs::create_dir(dir.path().join("beta")).unwrap();
+    // Populate one of them with two files so the descend-restart opens a popup.
+    std::fs::write(dir.path().join("alpha/one.txt"), b"").unwrap();
+    std::fs::write(dir.path().join("alpha/two.txt"), b"").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let input = format!("e {}/", dir.path().display());
+    ed.handle_key(key(':'));
+    for ch in input.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab()); // opens popup; "alpha/" selected first (alphabetical).
+
+    let state = ed.completion.as_ref().expect("popup should be open");
+    let first = state.candidates[0].replacement.clone();
+    assert!(first.ends_with('/'), "expected directory candidate, got {first}");
+
+    ed.handle_key(key_enter());
+
+    // Minibuf stays open — Enter on a dir must not execute the command.
+    assert!(ed.minibuf.is_some(), "Enter on dir candidate must keep minibuf open");
+    // Input now contains the selected directory.
+    let input_now = minibuf_input(&ed);
+    assert!(input_now.contains("/alpha/"), "expected descent through alpha/, got {input_now}");
+    // Completion re-triggered with the directory's children.
+    let restarted = ed.completion.as_ref().expect("completion should restart for dir children");
+    assert_eq!(restarted.candidates.len(), 2, "expected 2 files under alpha/");
+}
+
+// ── Ctrl-W delete-word in minibuf ─────────────────────────────────────────────
+
+#[test]
+fn ctrl_w_deletes_word_in_minibuf() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "e foo bar".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e foo ");
+}
+
+#[test]
+fn ctrl_w_skips_trailing_whitespace_first() {
+    // Readline behaviour: runs of spaces are consumed before the word.
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "e foo   ".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e ");
+}
+
+#[test]
+fn ctrl_w_at_start_is_noop_and_keeps_minibuf_open() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "");
+    // Unlike Backspace on empty input (which cancels), Ctrl-W is a no-op.
+    assert!(ed.minibuf.is_some(), "Ctrl-W on empty input must not close the minibuf");
+}
+
+#[test]
+fn ctrl_w_stops_at_slash_for_path_args() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "e /tmp/alpha/one.txt".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e /tmp/alpha/");
+}
+
+#[test]
+fn ctrl_w_on_trailing_slash_deletes_dir_component() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "e /tmp/alpha/".chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e /tmp/");
+}
+
+#[test]
+fn ctrl_w_dismisses_open_completion_popup() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab()); // opens popup for "w"-prefixed commands
+    assert!(ed.completion.is_some(), "sanity: popup should be open");
+
+    ed.handle_key(key_ctrl('w'));
+    // Edited event clears completion; Ctrl-W consumed the word ("w"-based candidate).
+    assert!(ed.completion.is_none(), "Ctrl-W must dismiss the popup");
+}
