@@ -118,3 +118,4 @@ mod buffer_store;
 mod per_pane_jumps;
 mod hooks;
 mod alternate;
+mod completion;

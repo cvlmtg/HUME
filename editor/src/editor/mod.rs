@@ -34,6 +34,7 @@ use self::keymap::{Keymap, WaitCharPending};
 
 pub(crate) mod buffer;
 pub(crate) mod buffer_store;
+pub(crate) mod completion;
 pub(crate) mod ops;
 pub(crate) mod pane_state;
 mod registry;
@@ -164,6 +165,13 @@ pub(crate) struct Editor {
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
     pub(crate) minibuf: Option<MiniBuffer>,
+    /// Active completion session while a popup is showing.
+    /// Cleared whenever the minibuffer closes or the user edits the input with
+    /// any key other than Tab / Shift-Tab.
+    pub(crate) completion: Option<completion::CompletionState>,
+    /// Shared completion-popup view: written by `prepare_frame`, read by the
+    /// `CompletionOverlay` provider during render.
+    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
     /// Transient one-line message shown in the statusline after an action
     /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
     pub(crate) status_msg: Option<String>,
@@ -349,6 +357,8 @@ impl Editor {
         // Register the shared highlight data arcs.
         let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
         let search_hl_data:  Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
+        let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
+            Arc::new(RwLock::new(None));
 
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
@@ -367,6 +377,9 @@ impl Editor {
             scope: search_scope,
             tier: engine::providers::HighlightTier::SearchMatch,
             data: Arc::clone(&search_hl_data),
+        }));
+        providers.add_overlay(Box::new(crate::ui::completion_overlay::CompletionOverlay {
+            data: Arc::clone(&completion_view),
         }));
 
         let settings = EditorSettings::default();
@@ -401,6 +414,8 @@ impl Editor {
             registers: RegisterSet::new(),
             should_quit: false,
             minibuf: None,
+            completion: None,
+            completion_view,
             status_msg: None,
             message_log: MessageLog::new(),
             scratch_view: None,
@@ -631,6 +646,9 @@ impl Editor {
             // 5. Sync highlight data (search matches, bracket matches) to shared
             //    Arc buffers read by the highlight providers during rendering.
             self.update_highlight_providers();
+
+            // 6. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
+            self.sync_completion_view();
         }
     }
 
@@ -955,6 +973,30 @@ impl Editor {
                 }
             }
         }
+    }
+
+    /// Write the current completion state into the shared `CompletionView` Arc
+    /// so `CompletionOverlay` can render it during this frame.
+    ///
+    /// Called from `prepare_frame` after highlight data is synced.
+    fn sync_completion_view(&self) {
+        use unicode_width::UnicodeWidthChar as _;
+        use unicode_width::UnicodeWidthStr as _;
+        let view = self.completion.as_ref().map(|state| {
+            let anchor_col = self.minibuf.as_ref().map(|mb| {
+                let pad: u16 = 1;
+                let prompt_w = mb.prompt.width().unwrap_or(1) as u16;
+                let safe_end = state.span_start.min(mb.input.len());
+                let token_col = mb.input[..safe_end].width() as u16;
+                pad + prompt_w + token_col
+            }).unwrap_or(0);
+            crate::ui::completion_overlay::CompletionView {
+                rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
+                selected: state.selected,
+                anchor_col,
+            }
+        });
+        *self.completion_view.write().expect("RwLock not poisoned") = view;
     }
 
     /// Set the editing mode. The cursor shape reflecting the new mode will be
@@ -1334,6 +1376,8 @@ impl Editor {
             registers: RegisterSet::new(),
             should_quit: false,
             minibuf: None,
+            completion: None,
+            completion_view: Arc::new(RwLock::new(None)),
             status_msg: None,
             message_log: MessageLog::new(),
             scratch_view: None,

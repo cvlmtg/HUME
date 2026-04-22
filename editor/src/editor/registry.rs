@@ -391,6 +391,16 @@ impl CommandRegistry {
         self.commands.keys().map(|k| k.as_ref())
     }
 
+    /// Iterate over all command names: canonical names and aliases combined.
+    ///
+    /// May yield duplicate strings only if a name is registered as both a
+    /// canonical and an alias — which is a registry bug and must not happen.
+    /// Callers that display results should sort and dedup.
+    pub(crate) fn iter_names_and_aliases(&self) -> impl Iterator<Item = &str> {
+        self.commands.keys().map(|k| k.as_ref())
+            .chain(self.alias_map.keys().map(|k| k.as_ref()))
+    }
+
     /// Total number of registered commands (mappable + typed, not counting aliases).
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {

@@ -35,6 +35,8 @@ pub(super) enum MiniBufferEvent {
     EmptiedByBackspace,
     /// Cursor moved left/right; content unchanged.
     CursorMoved,
+    /// Tab (forward) or Shift-Tab (reverse) pressed — caller should cycle completions.
+    CompleteRequested { reverse: bool },
     /// Key was not handled (e.g. unrecognised control sequence).
     Ignored,
 }
@@ -99,6 +101,8 @@ impl MiniBuffer {
                 self.cursor = next_grapheme(&self.input, self.cursor);
                 MiniBufferEvent::CursorMoved
             }
+            KeyCode::Tab    => MiniBufferEvent::CompleteRequested { reverse: false },
+            KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
             _ => MiniBufferEvent::Ignored,
         }
     }
