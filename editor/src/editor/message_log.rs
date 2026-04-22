@@ -135,12 +135,7 @@ impl MessageLog {
         }
         let (errors, warnings) = self.unseen_counts();
         let msg = match (errors, warnings) {
-            (0, 0) => {
-                // Only Trace entries unseen — still prompt, but generically.
-                let n = self.entries.len() - self.seen_up_to;
-                let noun = if n == 1 { "message" } else { "messages" };
-                format!("{n} {noun} — :messages for details")
-            }
+            (0, 0) => return None,
             (e, 0) => {
                 let noun = if e == 1 { "error" } else { "errors" };
                 format!("{e} {noun} — :messages for details")
@@ -317,7 +312,7 @@ mod tests {
     #[test]
     fn summary_text_trace_only() {
         let log = make_log(&[(Severity::Trace, "t1"), (Severity::Trace, "t2")]);
-        assert_eq!(log.summary_text().unwrap(), "2 messages — :messages for details");
+        assert!(log.summary_text().is_none());
     }
 
     #[test]
