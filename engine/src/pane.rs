@@ -187,7 +187,8 @@ pub struct Pane {
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
     /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
-    /// All active selections, sorted in ascending document order.
+    /// All active selections, sorted by `head` position.
+    /// (`SelectionSet` is start-sorted; `populate_sorted_sels` asserts head order.)
     pub selections: Vec<Selection>,
     /// Index of the primary selection within `selections`.
     pub primary_idx: usize,

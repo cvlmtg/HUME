@@ -309,6 +309,24 @@ impl std::fmt::Debug for Editor {
     }
 }
 
+/// Project a `SelectionSet` into an engine pane's head-sorted selection mirror.
+///
+/// `SelectionSet` stores selections in `start()` order; the engine asserts they
+/// are sorted by `head` (see `populate_sorted_sels`).  The two orderings differ
+/// whenever a selection is backward (`anchor > head`).  `primary_idx` is
+/// re-located after the sort by matching the primary's unique head value.
+fn write_pane_mirror(pane: &mut engine::pane::Pane, sels: &SelectionSet) {
+    let primary_head = sels.primary().head;
+    pane.selections.clear();
+    pane.selections.extend(
+        sels.iter_head_sorted()
+            .map(|s| EngineSelection { anchor: s.anchor, head: s.head }),
+    );
+    pane.primary_idx = pane.selections.iter()
+        .position(|s| s.head == primary_head)
+        .unwrap_or(0);
+}
+
 impl Editor {
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
@@ -557,11 +575,12 @@ impl Editor {
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
-    /// This is the **single sync point** between the editor and the engine.
-    /// No other code path should write to `pane.selections` or the highlight/
-    /// statusline shared buffers — all such writes happen here, immediately
-    /// before every `render()` call. Mode and display settings are resolved
-    /// lazily via the `get_pane_settings` closure passed to `render()`.
+    /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
+    /// and `pane.primary_idx` — it covers every pane in one pass.  No other code
+    /// path writes those fields.  Highlight and statusline shared buffers are also
+    /// written here, immediately before every `render()` call.  Mode and display
+    /// settings are resolved lazily via the `get_pane_settings` closure passed to
+    /// `render()`.
     fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16, ctx: &mut RenderContext) {
         // 1. Sync viewport dimensions.
         // Engine reserves 1 row for the statusline; the pane gets the rest.
@@ -571,20 +590,14 @@ impl Editor {
             vp.height = terminal_height.saturating_sub(1);
         }
 
+        // 2. Sync selection mirrors for every pane (scratch-view override is
+        //    handled inside sync_all_pane_mirrors for the focused pane).
+        self.sync_all_pane_mirrors();
+
         if let Some(ref sv) = self.scratch_view {
             // ── Scratch view path ─────────────────────────────────────────────
-            // Push the scratch buffer's selections and use its rope for scroll
-            // calculations. The real document is untouched.
-            let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            pane.selections.clear();
-            pane.selections.push(engine::types::Selection {
-                anchor: sv.sels.primary().anchor,
-                head:   sv.sels.primary().head,
-            });
-            pane.primary_idx = 0;
-
-            // Scroll so the cursor stays visible using global settings (no
-            // buffer-specific overrides for the scratch/messages view).
+            // Use the scratch rope for scroll calculations.
+            // The real document and all highlight providers are untouched.
             let cursor_char = sv.sels.primary().head;
             let rope = sv.buf.rope();
             let v_margin = self.settings.scroll_margin;
@@ -597,9 +610,6 @@ impl Editor {
             // No highlight updates for scratch view — no search or bracket matches.
         } else {
             // ── Normal document path ──────────────────────────────────────────
-
-            // 2. Push char-offset selections to the engine pane (no conversion needed).
-            self.push_selections_to_pane();
 
             // 3. Sync line-number style provider (depends on buffer overrides).
             {
@@ -761,37 +771,27 @@ impl Editor {
         &mut self.engine_view.panes[self.focused_pane_id].viewport
     }
 
-    /// Convert the editor's char-offset selections to engine `DocPos`-based
-    /// selections and push them to the engine pane.
+    /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
     ///
-    /// Called once per frame from `prepare_frame`. Selections are re-sorted by
-    /// `head` for the engine (which requires head-order); `primary_idx` is updated
-    /// to track the primary selection's position in that order.
-    pub(crate) fn push_selections_to_pane(&mut self) {
-        let pane_id = self.focused_pane_id;
-        let buf_id = self.focused_buffer_id();
-
-        // head is unique within a SelectionSet; use it to locate primary after
-        // head-sort without needing to track (original_index, EngineSelection) pairs.
-        let primary_head = self.pane_state[pane_id][buf_id].selections.primary().head;
-
-        // Split-borrow pane_state and engine_view (disjoint fields) so we can
-        // stream directly into pane.selections, reusing its existing capacity.
-        let Self { pane_state, engine_view, .. } = &mut *self;
-        let pane = &mut engine_view.panes[pane_id];
-        // iter_head_sorted: engine requires Vec<EngineSelection> sorted by head.
-        // SelectionSet stores by start(); within a single-cursor set head==start,
-        // but in multi-cursor mode head may differ.  head is unique across the set
-        // (cursor positions never alias), so unwrap_or(0) is unreachable in practice.
-        pane.selections.clear();
-        pane.selections.extend(
-            pane_state[pane_id][buf_id].selections
-                .iter_head_sorted()
-                .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
-        );
-        pane.primary_idx = pane.selections.iter()
-            .position(|s| s.head == primary_head)
-            .unwrap_or(0);
+    /// The engine requires `pane.selections` sorted by `head` (not by `start()` as
+    /// `SelectionSet` stores internally); `primary_idx` is re-located by matching
+    /// the primary's head value after the sort.  This is the **single sync point** —
+    /// no other code path writes `pane.selections` or `pane.primary_idx`.
+    ///
+    /// Called once per frame from `prepare_frame`, before `render()`.
+    pub(crate) fn sync_all_pane_mirrors(&mut self) {
+        let Self { pane_state, engine_view, scratch_view, focused_pane_id, .. } = &mut *self;
+        for (pid, pane) in engine_view.panes.iter_mut() {
+            if pid == *focused_pane_id {
+                if let Some(sv) = scratch_view.as_ref() {
+                    write_pane_mirror(pane, &sv.sels);
+                    continue;
+                }
+            }
+            if let Some(pbs) = pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
+                write_pane_mirror(pane, &pbs.selections);
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1025,9 +1025,10 @@ impl Editor {
     /// `translate_in_place` to identify which line each head was on before
     /// mapping, so it can decide whether to reset `Selection.horiz`.
     ///
-    /// Also syncs each affected pane's engine selections so multi-pane
-    /// rendering (M9+ :split) sees up-to-date cursor positions without
-    /// waiting for the next `prepare_frame`.
+    /// The engine pane mirrors are **not** updated here; `sync_all_pane_mirrors`
+    /// in the next `prepare_frame` handles that.  Only the authoritative
+    /// `SelectionSet` in `pane_state` must be kept rope-valid between edits,
+    /// because other mid-event code (e.g. `update_pane_cursor`) reads it.
     fn propagate_cs_to_panes(&mut self, buf_id: BufferId, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         let focused = self.focused_pane_id;
 
@@ -1040,23 +1041,6 @@ impl Editor {
 
         for pid in affected {
             self.pane_state[pid][buf_id].selections.translate_in_place(cs, rope_pre);
-
-            // Mirror translated selections to the engine pane (split borrow:
-            // pane_state and engine_view are disjoint fields).
-            let primary_head = self.pane_state[pid][buf_id].selections.primary().head;
-            let Self { pane_state, engine_view, .. } = &mut *self;
-            if let Some(pane) = engine_view.panes.get_mut(pid) {
-                pane.selections.clear();
-                pane.selections.extend(
-                    pane_state[pid][buf_id].selections
-                        .iter_head_sorted()
-                        .map(|sel| EngineSelection { anchor: sel.anchor, head: sel.head }),
-                );
-                pane.primary_idx = pane.selections
-                    .iter()
-                    .position(|s| s.head == primary_head)
-                    .unwrap_or(0);
-            }
         }
     }
 
