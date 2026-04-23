@@ -9,7 +9,7 @@ Vim and Helix distinguish two kinds of "word":
 - `WORD` (uppercase): a run of any non-whitespace characters. Only a
   whitespace boundary counts.
 
-In `helpers.rs`, this is captured by `CharClass` and two boundary predicates:
+This is captured by `CharClass` and two boundary predicates:
 
 ```rust
 pub(crate) enum CharClass { Word, Punctuation, Space, Eol }
