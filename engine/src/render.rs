@@ -321,15 +321,11 @@ pub fn fill_rect_bg(
 /// Used for cursorline highlighting so the tint extends past the last grapheme.
 #[inline]
 fn fill_row_bg(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
-    if x_start >= x_end { return; }
-    let area = buf.area();
-    let x_start = x_start.max(area.x);
-    let x_end = x_end.min(area.x + area.width);
-    if x_start >= x_end || y >= area.y + area.height { return; }
-    let style = ratatui::style::Style::default().bg(bg);
-    for x in x_start..x_end {
-        buf[(x, y)].set_char(' ').set_style(style);
-    }
+    fill_rect_bg(
+        buf,
+        ratatui::layout::Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
+        ratatui::style::Style::default().bg(bg),
+    );
 }
 
 /// Fill a horizontal span of cells on row `y` with blank `Cell::default()`.
