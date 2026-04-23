@@ -1086,7 +1086,10 @@ impl Editor {
                     let canonical = self.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
                     match canonical {
                         Some("edit" | "write" | "write-quit") => {
-                            PathCompleter.complete(&input, cursor, &ctx)
+                            PathCompleter { dirs_only: false }.complete(&input, cursor, &ctx)
+                        }
+                        Some("change-directory") => {
+                            PathCompleter { dirs_only: true }.complete(&input, cursor, &ctx)
                         }
                         // `:bd` ignores its argument today; skip completion to
                         // avoid a misleading pick-then-close-current-buffer UX.
