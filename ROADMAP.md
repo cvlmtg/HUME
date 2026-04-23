@@ -169,6 +169,8 @@
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
+- **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
+- **Steel builtin to register custom completers**: Steel-side API for plugins to register `Completer` implementations dispatched by command name (same shape as `CommandCompleter` / `PathCompleter` / `BufferNameCompleter` in `editor/src/editor/completion.rs`). Lets plugin-defined `:` commands offer tab completion for their arguments. Post-M7; depends on the `Completer` trait staying stable.
 - Code folding (tree-sitter powered collapse/expand)
 - Git gutter signs (plugin candidate — keep out of core, implement via Steel once scripting lands)
 - File watcher (detect external file changes, prompt to reload)
