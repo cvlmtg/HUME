@@ -57,6 +57,11 @@
 ;; ── Custom commands ───────────────────────────────────────────────────────────
 ;;
 ;; (define-command! name doc-string (lambda () body...))
+;; (define-command-extend! name doc-string (lambda () body...))
+;;   Same as define-command!, but marks the command as extendable so that
+;;   Ctrl+<key> still works after you rebind the bare letter.  Use this for
+;;   commands that end in a motion or selection step.
+;;
 ;; The command becomes available as ":name" in the command bar.
 ;; Use (call! "other-command") to invoke any command — built-in or
 ;; defined by you / another plugin.  All command invocation is by name.
@@ -68,6 +73,24 @@
   "Log a greeting to the message log."
   (lambda ()
     (log! 'info "Hello from init.scm!")))
+
+;; Move down/up and immediately select the word under the new cursor position.
+;; Uses define-command-extend! so Ctrl-J / Ctrl-K still work (one-shot extend).
+;;
+;; (define-command-extend! "move-down-select-word"
+;;   "Move down one visual line, then select inner word."
+;;   (lambda ()
+;;     (call! "move-down")
+;;     (call! "inner-word")))
+;;
+;; (define-command-extend! "move-up-select-word"
+;;   "Move up one visual line, then select inner word."
+;;   (lambda ()
+;;     (call! "move-up")
+;;     (call! "inner-word")))
+;;
+;; (bind-key! "normal" "j" "move-down-select-word")
+;; (bind-key! "normal" "k" "move-up-select-word")
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;;
