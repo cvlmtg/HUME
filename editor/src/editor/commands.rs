@@ -758,7 +758,8 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
 
     if let Some(path_str) = arg {
         // Save-as: write to the specified path.
-        let path = std::path::Path::new(path_str);
+        let expanded = crate::os::path::expand(path_str);
+        let path = std::path::Path::new(expanded.as_ref());
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
         let result = match crate::os::io::read_file_meta(path) {
@@ -914,7 +915,8 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
     use std::path::Path;
 
     if let Some(path_str) = arg {
-        let path = Path::new(path_str);
+        let expanded = crate::os::path::expand(path_str);
+        let path = Path::new(expanded.as_ref());
         let canonical = std::fs::canonicalize(path)
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
         let (bid, is_new) = ed.open_or_dedup(&canonical)

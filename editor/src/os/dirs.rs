@@ -74,6 +74,36 @@ fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     }
 }
 
+/// Returns the current user's home directory, if it can be resolved.
+///
+/// - Unix / macOS: `$HOME`
+/// - Windows: `%USERPROFILE%`, falling back to `%HOMEDRIVE%%HOMEPATH%`
+///
+/// Returns `None` if the relevant env vars are unset.  Callers that need a
+/// home directory for path expansion should treat `None` as "leave literal"
+/// rather than silently falling back to a relative path.
+pub(crate) fn home_dir() -> Option<PathBuf> {
+    home_dir_with(env_var)
+}
+
+#[cfg(not(windows))]
+fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    env("HOME").map(PathBuf::from)
+}
+
+#[cfg(windows)]
+fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    // USERPROFILE is set in every modern Windows session and is the canonical
+    // home directory.  HOMEDRIVE+HOMEPATH is the legacy fallback used by older
+    // tools and stripped service-account environments.
+    env("USERPROFILE")
+        .or_else(|| match (env("HOMEDRIVE"), env("HOMEPATH")) {
+            (Some(d), Some(p)) => Some(format!("{d}{p}")),
+            _ => None,
+        })
+        .map(PathBuf::from)
+}
+
 /// Returns the runtime directory for HUME, if one can be found.
 ///
 /// Search order (STEEL.md §"Runtime directory discovery"):
@@ -149,5 +179,50 @@ mod tests {
             _ => None,
         });
         assert_eq!(result, Some(tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn home_dir_uses_home_env() {
+        let result = home_dir_with(|k| match k {
+            "HOME" => Some("/home/alice".to_owned()),
+            _ => None,
+        });
+        assert_eq!(result, Some(PathBuf::from("/home/alice")));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn home_dir_none_when_home_unset() {
+        let result = home_dir_with(|_| None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn home_dir_uses_userprofile() {
+        let result = home_dir_with(|k| match k {
+            "USERPROFILE" => Some(r"C:\Users\Alice".to_owned()),
+            _ => None,
+        });
+        assert_eq!(result, Some(PathBuf::from(r"C:\Users\Alice")));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn home_dir_falls_back_to_homedrive_homepath() {
+        let result = home_dir_with(|k| match k {
+            "HOMEDRIVE" => Some("C:".to_owned()),
+            "HOMEPATH"  => Some(r"\Users\Alice".to_owned()),
+            _ => None,
+        });
+        assert_eq!(result, Some(PathBuf::from(r"C:\Users\Alice")));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn home_dir_none_when_all_unset() {
+        let result = home_dir_with(|_| None);
+        assert_eq!(result, None);
     }
 }
