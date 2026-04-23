@@ -1056,15 +1056,10 @@ impl Editor {
         // Only complete command-mode minibuffers.
         if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') { return; }
 
-        // Resolve cwd (needed by PathCompleter).
-        let Ok(cwd) = std::env::current_dir() else {
-            self.report(Severity::Warning, "Cannot determine current directory".into());
-            return;
-        };
         let ctx = crate::editor::completion::CompletionCtx {
             registry: &self.registry,
             buffers:  &self.buffers,
-            cwd:      &cwd,
+            cwd:      &self.cwd,
         };
 
         // Dispatch to the right completer based on command + input shape.
