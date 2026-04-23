@@ -62,8 +62,6 @@ fn write_follows_symlink() {
 #[cfg(unix)]
 #[test]
 fn write_file_atomic_returns_false_on_plain_write() {
-    use std::os::unix::fs::PermissionsExt;
-
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), "initial\n").unwrap();
     let meta = crate::os::io::read_file_meta(tmp.path()).unwrap();
@@ -73,14 +71,15 @@ fn write_file_atomic_returns_false_on_plain_write() {
     assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "updated\n");
 }
 
-/// On macOS/Linux `rename(2)` succeeds against a `0o444` target in a writable
-/// directory without needing to chmod the target first — the file-level
-/// permission is irrelevant to the rename syscall. `:w!` should succeed with
-/// the ordinary "Written N lines" message and preserve the `0o444` permissions
-/// on the new inode.
+/// `:w!` on a `0o444` target succeeds and preserves the readonly mode on the
+/// new inode. Note: on POSIX, `rename(2)` ignores the target file's permission
+/// bits when the directory is writable, so the chmod-retry branch in
+/// `write_file_atomic` is *not* exercised here — that branch is reached on
+/// Windows (READONLY attribute) and exotic filesystems. This test verifies the
+/// observable user behaviour either way.
 #[cfg(unix)]
 #[test]
-fn write_force_on_readonly_file_preserves_perms() {
+fn colon_w_bang_on_readonly_file_preserves_perms() {
     use std::os::unix::fs::PermissionsExt;
 
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");

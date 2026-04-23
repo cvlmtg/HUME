@@ -131,8 +131,10 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> 
         {
             // Target is readonly; make it writable just long enough for the
             // rename. After rename(2) the old inode (transiently writable) is
-            // unlinked — the new inode already carries meta.permissions.
-            let mut perms = fs::metadata(target)?.permissions();
+            // unlinked — the new inode already carries meta.permissions, so
+            // `set_readonly(false)` on a clone of meta.permissions is enough
+            // (the value we pass is overwritten by the rename anyway).
+            let mut perms = meta.permissions.clone();
             perms.set_readonly(false);
             fs::set_permissions(target, perms)?;
             persist_err.file.persist(target).map_err(|e| e.error)?;
