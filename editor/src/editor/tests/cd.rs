@@ -210,7 +210,7 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
 
 #[test]
 #[cfg(not(windows))]
-fn path_completer_dirs_only_filters_files() {
+fn path_completer_dirs_only_mode() {
     use crate::editor::completion::{Completer, CompletionCtx, PathCompleter};
 
     let dir = tempfile::tempdir().unwrap();
@@ -224,32 +224,15 @@ fn path_completer_dirs_only_filters_files() {
     let buffers = crate::editor::buffer_store::BufferStore::new();
     let ctx = CompletionCtx { registry: &registry, buffers: &buffers, cwd: &canonical };
 
-    let result = PathCompleter { dirs_only: true }.complete("cd m", 4, &ctx);
-    let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
+    // dirs_only: true — files must be excluded.
+    let dirs = PathCompleter { dirs_only: true }.complete("cd m", 4, &ctx);
+    let dir_names: Vec<&str> = dirs.candidates.iter().map(|c| c.display.as_str()).collect();
+    assert!(dir_names.iter().any(|n| *n == "mysubdir/"), "dirs_only must include subdirectory");
+    assert!(!dir_names.iter().any(|n| *n == "myfile.txt"), "dirs_only must exclude files");
 
-    assert!(names.iter().any(|n| *n == "mysubdir/"), "dirs_only must include subdirectory");
-    assert!(!names.iter().any(|n| *n == "myfile.txt"), "dirs_only must exclude files");
-}
-
-#[test]
-#[cfg(not(windows))]
-fn path_completer_files_and_dirs_includes_both() {
-    use crate::editor::completion::{Completer, CompletionCtx, PathCompleter};
-
-    let dir = tempfile::tempdir().unwrap();
-    let subdir = dir.path().join("mysubdir");
-    let file = dir.path().join("myfile.txt");
-    std::fs::create_dir(&subdir).unwrap();
-    std::fs::write(&file, "x\n").unwrap();
-
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
-    let registry = crate::editor::registry::CommandRegistry::with_defaults();
-    let buffers = crate::editor::buffer_store::BufferStore::new();
-    let ctx = CompletionCtx { registry: &registry, buffers: &buffers, cwd: &canonical };
-
-    let result = PathCompleter { dirs_only: false }.complete("e m", 3, &ctx);
-    let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
-
-    assert!(names.iter().any(|n| *n == "mysubdir/"), "dirs_only=false must include subdirectory");
-    assert!(names.iter().any(|n| *n == "myfile.txt"), "dirs_only=false must include files");
+    // dirs_only: false — both dirs and files must appear.
+    let all = PathCompleter { dirs_only: false }.complete("e m", 3, &ctx);
+    let all_names: Vec<&str> = all.candidates.iter().map(|c| c.display.as_str()).collect();
+    assert!(all_names.iter().any(|n| *n == "mysubdir/"), "dirs_only=false must include subdirectory");
+    assert!(all_names.iter().any(|n| *n == "myfile.txt"), "dirs_only=false must include files");
 }
