@@ -281,6 +281,79 @@ fn configure_statusline_wrong_arity_errors() {
     assert!(!err.is_empty(), "expected arity error");
 }
 
+// ── configure-statusline! ledger behaviour ────────────────────────────────
+
+#[test]
+fn configure_statusline_plugin_unload_restores_default() {
+    use crate::ui::statusline::StatusElement;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let default_left = s.statusline.left.clone();
+
+    h.eval_source(
+        r#"(push-current-plugin! "user/a")
+           (configure-statusline! '("Mode") '() '("Position"))
+           (pop-current-plugin!)"#,
+        &mut s, &mut km,
+    ).unwrap();
+    assert_eq!(s.statusline.left, vec![StatusElement::Mode]);
+
+    // Tear down plugin A — statusline should revert to the default.
+    h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+    assert_eq!(s.statusline.left, default_left, "teardown must restore prior statusline");
+}
+
+#[test]
+fn configure_statusline_two_plugin_chain_splices_correctly() {
+    use crate::ui::statusline::StatusElement;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let default_left = s.statusline.left.clone();
+
+    // A sets statusline; B overrides it.
+    h.eval_source(
+        r#"(push-current-plugin! "user/a")
+           (configure-statusline! '("Mode") '() '())
+           (pop-current-plugin!)
+           (push-current-plugin! "user/b")
+           (configure-statusline! '("FileName") '() '())
+           (pop-current-plugin!)"#,
+        &mut s, &mut km,
+    ).unwrap();
+    assert_eq!(s.statusline.left, vec![StatusElement::FileName]);
+
+    // Unload A — B still owns statusline; live value unchanged.
+    h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
+    assert_eq!(s.statusline.left, vec![StatusElement::FileName],
+               "B's live statusline must not be touched when A is unloaded");
+
+    // Unload B — B's prior was rewritten to the default by A's splice.
+    h.teardown_plugin("user/b", &mut s, &mut km).unwrap();
+    assert_eq!(s.statusline.left, default_left, "default must be restored after both unloads");
+}
+
+#[test]
+fn configure_statusline_user_level_writes_no_ledger_entry() {
+    // Top-level init.scm (no plugin on stack) must NOT create a ledger entry —
+    // owner_of "statusline" stays Core.
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(
+        r#"(configure-statusline! '("Mode") '() '("Position"))"#,
+        &mut s, &mut km,
+    ).unwrap();
+
+    // No ledger entry created for User-level mutations.
+    assert!(h.ledger_stack.ledgers.is_empty(),
+            "user-level configure-statusline! must not add a ledger entry");
+}
+
 // ── hume/yield! ───────────────────────────────────────────────────────────
 
 #[test]
