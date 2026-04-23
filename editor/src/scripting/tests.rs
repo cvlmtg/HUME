@@ -255,6 +255,23 @@ fn configure_statusline_unknown_element_errors() {
 }
 
 #[test]
+fn configure_statusline_new_elements() {
+    use crate::ui::statusline::StatusElement;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(
+        r#"(configure-statusline! '("LineEnding") '() '("Cwd"))"#,
+        &mut s, &mut km,
+    ).unwrap();
+
+    assert_eq!(s.statusline.left,   vec![StatusElement::LineEnding]);
+    assert_eq!(s.statusline.center, vec![]);
+    assert_eq!(s.statusline.right,  vec![StatusElement::Cwd]);
+}
+
+#[test]
 fn configure_statusline_wrong_arity_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
