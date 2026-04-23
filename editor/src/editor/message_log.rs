@@ -368,6 +368,28 @@ mod tests {
     }
 
     #[test]
+    fn scratch_view_at_line_zero_positions_at_header() {
+        let sv = ScratchView::from_text_at_line("header\nline1\nline2\n", "[test]", 0);
+        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
+        assert_eq!(line, 0);
+    }
+
+    #[test]
+    fn scratch_view_at_line_mid_positions_correctly() {
+        let sv = ScratchView::from_text_at_line("header\nline1\nline2\n", "[test]", 2);
+        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
+        assert_eq!(line, 2);
+    }
+
+    #[test]
+    fn scratch_view_at_line_out_of_bounds_clamps_to_last_content() {
+        // 3 content lines + trailing empty line from final \n → len_lines() = 4 → last_content = 2
+        let sv = ScratchView::from_text_at_line("a\nb\nc\n", "[test]", 999);
+        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
+        assert_eq!(line, 2, "out-of-bounds line must clamp to last content line");
+    }
+
+    #[test]
     fn push_respects_cap() {
         let mut log = MessageLog::new();
         // Push MAX_ENTRIES + 1 entries; the oldest should be evicted.

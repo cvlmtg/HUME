@@ -884,15 +884,15 @@ pub(super) fn typed_list_buffers(ed: &mut Editor, _arg: Option<&str>, _force: bo
     let current = ed.focused_buffer_id();
     let alternate = ed.alternate_buffer();
 
-    let header = format!(
-        "{:>4}  {:<2}  {:<32}  {}\n",
-        "buf", "  ", "name", "path"
-    );
+    let header = format!("{:>4}    {:<32}  {}\n", "buf", "name", "path");
     let mut out = header;
-    let mut current_line: usize = 1;
+    // The header occupies rope line 0; each buffer occupies rope line `idx + 1`.
+    // `current_rope_line` tracks that index so the cursor opens on the right row.
+    let mut current_rope_line: usize = 1;
 
     for (idx, (id, buf)) in ed.buffers.iter().enumerate() {
-        let row = idx + 1; // header occupies line 0, so row equals the 0-indexed line number
+        let display_num = idx + 1;
+        let rope_line   = idx + 1; // 1 header line before buffer rows
 
         let cur_marker = if id == current { '%' } else if matches!(alternate, Some(alt) if id == alt) { '#' } else { ' ' };
         let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
@@ -906,14 +906,14 @@ pub(super) fn typed_list_buffers(ed: &mut Editor, _arg: Option<&str>, _force: bo
             .map(|p| crate::os::path::shorten_home(p))
             .unwrap_or_default();
 
-        out.push_str(&format!("{:>4}  {}{}  {:<32}  {}\n", row, cur_marker, dirty_marker, name, path));
+        out.push_str(&format!("{:>4}  {}{}  {:<32}  {}\n", display_num, cur_marker, dirty_marker, name, path));
 
         if id == current {
-            current_line = row;
+            current_rope_line = rope_line;
         }
     }
 
-    ed.scratch_view = Some(ScratchView::from_text_at_line(&out, "[buffers]", current_line));
+    ed.scratch_view = Some(ScratchView::from_text_at_line(&out, "[buffers]", current_rope_line));
     Ok(())
 }
 
