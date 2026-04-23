@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
+use engine::render::fill_rect_bg;
 use engine::types::EditorMode;
 
 use crate::core::grapheme::grapheme_col_in_line;
@@ -204,7 +205,7 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
 }
 
 fn fill_row_colors(buf: &mut ScreenBuf, colors: &EditorColors, area: Rect, y: u16) {
-    buf.set_style(Rect::new(area.x, y, area.width, 1), colors.statusline);
+    fill_rect_bg(buf, Rect::new(area.x, y, area.width, 1), colors.statusline);
 }
 
 fn render_statusline(

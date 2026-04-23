@@ -13,6 +13,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
 use engine::providers::OverlayProvider;
+use engine::render::fill_rect_bg;
 use engine::theme::Theme;
 
 // ── Popup palette ─────────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ impl OverlayProvider for CompletionOverlay {
         // 1. Fill the entire outer rectangle with the popup background.
         //    This gives a solid, opaque backdrop — no buffer content bleeds through.
         //    For border=false it also acts as the visible 1-cell margin.
-        buf.set_style(Rect::new(popup_x, popup_y, outer_w, outer_h), bg_style);
+        fill_rect_bg(buf, Rect::new(popup_x, popup_y, outer_w, outer_h), bg_style);
 
         // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
         if view.border {
@@ -125,7 +126,7 @@ impl OverlayProvider for CompletionOverlay {
             if row_idx == selected {
                 // Highlight the full inner width so the reversed bar is uniform.
                 let inner_rect = Rect::new(text_x, y, outer_w.saturating_sub(2), 1);
-                buf.set_style(inner_rect, selected_style);
+                fill_rect_bg(buf, inner_rect, selected_style);
                 buf.set_string(text_x, y, row_text, selected_style);
             } else {
                 buf.set_string(text_x, y, row_text, bg_style);
