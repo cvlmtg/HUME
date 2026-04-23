@@ -1298,8 +1298,8 @@ impl Editor {
             ));
         }
         std::env::set_current_dir(&canonical)?;
-        self.cwd = canonical.clone();
-        Ok(canonical)
+        self.cwd = canonical;
+        Ok(self.cwd.clone())
     }
 
     // ── Buffer choke-points ───────────────────────────────────────────────────
