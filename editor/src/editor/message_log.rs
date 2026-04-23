@@ -206,10 +206,7 @@ impl ScratchView {
     }
 
     /// Build a scratch view with the cursor placed at `line` (0-indexed).
-    ///
-    /// Used when the caller wants a specific row highlighted on open (e.g. `:ls`
-    /// positions the cursor on the current buffer's row).  Out-of-bounds lines
-    /// are clamped to the last content line.
+    /// Out-of-bounds lines are clamped to the last content line.
     pub(crate) fn from_text_at_line(text: &str, label: &'static str, line: usize) -> Self {
         let buf = Text::from(text);
         let last_content = buf.rope().len_lines().saturating_sub(2);

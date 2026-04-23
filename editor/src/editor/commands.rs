@@ -881,7 +881,7 @@ pub(super) fn typed_messages(ed: &mut Editor, _arg: Option<&str>, _force: bool) 
 /// dirty (`+`) flag, short name, and home-shortened absolute path.
 /// Cursor is placed on the row corresponding to the currently focused buffer.
 pub(super) fn typed_list_buffers(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
-    let current  = ed.focused_buffer_id();
+    let current = ed.focused_buffer_id();
     let alternate = ed.alternate_buffer();
 
     let header = format!(
@@ -889,20 +889,20 @@ pub(super) fn typed_list_buffers(ed: &mut Editor, _arg: Option<&str>, _force: bo
         "buf", "  ", "name", "path"
     );
     let mut out = header;
-    let mut current_line: usize = 1; // default to first buffer row if current not found
+    let mut current_line: usize = 1;
 
     for (idx, (id, buf)) in ed.buffers.iter().enumerate() {
-        let row = idx + 1; // 1-based; header is line 0
+        let row = idx + 1; // header occupies line 0, so row equals the 0-indexed line number
 
-        let cur_marker = if id == current { '%' } else if Some(id) == alternate { '#' } else { ' ' };
+        let cur_marker = if id == current { '%' } else if matches!(alternate, Some(alt) if id == alt) { '#' } else { ' ' };
         let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
 
-        let name = buf.path.as_deref()
+        let path_ref = buf.path.as_deref();
+        let name = path_ref
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("[scratch]");
-
-        let path = buf.path.as_deref()
+        let path = path_ref
             .map(|p| crate::os::path::shorten_home(p))
             .unwrap_or_default();
 
