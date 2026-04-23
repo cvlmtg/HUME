@@ -43,6 +43,7 @@
 |----------|---------|
 | Multiline quote text objects | Quote text objects (`i"`, `i'`, `` i` ``) are line-bounded because the parity scan gives wrong results when earlier lines contain unmatched quotes. Brackets don't have this problem (asymmetric delimiters allow depth tracking). Tree-sitter can resolve the ambiguity — use syntax-aware matching when a grammar is loaded, fall back to line-bounded parity otherwise. |
 | Register paste count mismatch | When yank uses N cursors but paste uses M≠N, Helix falls back to pasting the full register at every cursor. Explore alternatives with real usage data (e.g. cycling slots, clamping to last slot, user-facing warning). Decide after more real usage. |
+| Common-prefix auto-extend on Tab | Readline/bash behaviour: on Tab with ≥2 candidates, first extend the input to their shared prefix before opening the popup (e.g. `:bp<Tab>` → `:bpr` if all candidates begin with `bpr`, then popup to disambiguate). Current behaviour in `complete_minibuf` (`editor/src/editor/mappings.rs`) skips straight to cycling. Small UX polish; decide after more real usage whether the extra keystroke saved is worth the surprise of input mutating mid-type. |
 
 ## Milestones
 
@@ -170,7 +171,7 @@
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
 - **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
-- **Steel builtin to register custom completers**: Steel-side API for plugins to register `Completer` implementations dispatched by command name (same shape as `CommandCompleter` / `PathCompleter` / `BufferNameCompleter` in `editor/src/editor/completion.rs`). Lets plugin-defined `:` commands offer tab completion for their arguments. Post-M7; depends on the `Completer` trait staying stable.
+- **Steel builtin to register custom completers**: Steel-side API for plugins to register `Completer` implementations dispatched by command name (same shape as `CommandCompleter` / `PathCompleter` / `BufferNameCompleter` in `editor/src/editor/completion.rs`). Lets plugin-defined `:` commands offer tab completion for their arguments. Post-M7; depends on the `Completer` trait staying stable. **Design note**: fuzzy matching stays out of core — plugins own ranking (fzy/fzf/skim-style scoring are a matter of taste), the core only does prefix matching.
 - Code folding (tree-sitter powered collapse/expand)
 - Git gutter signs (plugin candidate — keep out of core, implement via Steel once scripting lands)
 - File watcher (detect external file changes, prompt to reload)
