@@ -1282,6 +1282,26 @@ impl Editor {
         }
     }
 
+    // ── Working directory ─────────────────────────────────────────────────────
+
+    /// Change the editor's working directory.
+    ///
+    /// Canonicalizes `path`, rejects non-directories, then updates both
+    /// `self.cwd` and the process cwd so that relative paths in `:e` and
+    /// subprocesses resolve consistently.
+    pub(super) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
+        let canonical = std::fs::canonicalize(path)?;
+        if !canonical.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                "not a directory",
+            ));
+        }
+        std::env::set_current_dir(&canonical)?;
+        self.cwd = canonical.clone();
+        Ok(canonical)
+    }
+
     // ── Buffer choke-points ───────────────────────────────────────────────────
 
     /// Dedup-open a canonicalized path: returns `(id, false)` if already open,

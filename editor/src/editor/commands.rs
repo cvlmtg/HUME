@@ -975,6 +975,28 @@ pub(super) fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Res
     }
 }
 
+/// `:cd [path]` — change the working directory.
+///
+/// - No arg: change to `$HOME`.
+/// - `path` given: `~` / env-var expansion applied first; relative paths
+///   resolve against the current process cwd (which mirrors `editor.cwd`).
+pub(super) fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    let target = match arg.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => {
+            let expanded = crate::os::path::expand(s);
+            std::path::PathBuf::from(expanded.as_ref())
+        }
+        None => crate::os::dirs::home_dir()
+            .ok_or_else(|| CommandError("HOME not set".into()))?,
+    };
+
+    let resolved = ed
+        .set_cwd(&target)
+        .map_err(|e| CommandError(format!("{}: {e}", target.display())))?;
+    ed.report(Severity::Info, format!("cwd: {}", resolved.display()));
+    Ok(())
+}
+
 /// `:bd` — delete (close) the focused buffer.
 ///
 /// If the buffer is dirty and `force` is false, returns an error.

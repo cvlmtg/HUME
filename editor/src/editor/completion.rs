@@ -158,13 +158,18 @@ impl Completer for BufferNameCompleter {
 
 // ── PathCompleter ─────────────────────────────────────────────────────────────
 
-/// Completes filesystem paths for `:e` / `:w`.
+/// Completes filesystem paths for `:e` / `:w` / `:cd`.
 ///
 /// Splits the arg into a directory prefix and a filename prefix.  Reads the
 /// directory and filters by the filename prefix.  Directory entries get a
 /// trailing `/` in both `display` and `replacement`.  Hidden files (leading
 /// `.`) are excluded unless the filename prefix itself starts with `.`.
-pub(crate) struct PathCompleter;
+///
+/// When `dirs_only` is `true` (used by `:cd`), non-directory entries are
+/// filtered out.
+pub(crate) struct PathCompleter {
+    pub(crate) dirs_only: bool,
+}
 
 impl PathCompleter {
     /// Testable core of [`Completer::complete`].
@@ -217,6 +222,7 @@ impl PathCompleter {
                 if !name.starts_with(file_prefix) { return None; }
                 if !include_hidden && name.starts_with('.') { return None; }
                 let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                if self.dirs_only && !is_dir { return None; }
                 let suffix = if is_dir { "/" } else { "" };
                 let display = format!("{name}{suffix}");
                 // Build the full replacement: dir_str + name + suffix.
@@ -418,7 +424,7 @@ mod tests {
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let ctx = ctx(&reg, &store, dir.path());
         let input = "e ";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter { dirs_only: false }.complete(input, input.len(), &ctx);
 
         let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
         assert!(names.contains(&"alpha.txt"), "alpha.txt should appear");
@@ -436,7 +442,7 @@ mod tests {
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let ctx = ctx(&reg, &store, dir.path());
         let input = "e foo";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter { dirs_only: false }.complete(input, input.len(), &ctx);
 
         assert_eq!(result.candidates.len(), 1);
         assert_eq!(result.candidates[0].replacement, "foo.txt");
@@ -452,13 +458,13 @@ mod tests {
         let ctx = ctx(&reg, &store, dir.path());
 
         // Without dot prefix: hidden excluded.
-        let result = PathCompleter.complete("e ", 2, &ctx);
+        let result = PathCompleter { dirs_only: false }.complete("e ", 2, &ctx);
         assert!(!result.candidates.iter().any(|c| c.display.starts_with('.')));
         assert!(result.candidates.iter().any(|c| c.display == "visible"));
 
         // With dot prefix: hidden included.
         let input = "e .";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter { dirs_only: false }.complete(input, input.len(), &ctx);
         assert!(result.candidates.iter().any(|c| c.display == ".hidden"));
     }
 
@@ -474,7 +480,7 @@ mod tests {
 
         // Completing "sub/f" — should find "sub/file.rs".
         let input = "e sub/f";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter { dirs_only: false }.complete(input, input.len(), &ctx);
         assert_eq!(result.candidates.len(), 1);
         assert_eq!(result.candidates[0].replacement, "sub/file.rs");
     }
@@ -484,7 +490,7 @@ mod tests {
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/nonexistent/path/that/does/not/exist");
         let ctx = CompletionCtx { registry: &reg, buffers: &store, cwd };
-        let result = PathCompleter.complete("e foo", 5, &ctx);
+        let result = PathCompleter { dirs_only: false }.complete("e foo", 5, &ctx);
         assert!(result.candidates.is_empty());
     }
 
@@ -496,7 +502,7 @@ mod tests {
         }
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let ctx = ctx(&reg, &store, dir.path());
-        let result = PathCompleter.complete("e ", 2, &ctx);
+        let result = PathCompleter { dirs_only: false }.complete("e ", 2, &ctx);
         let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
         let mut sorted = names.clone();
         sorted.sort_unstable();
@@ -518,7 +524,7 @@ mod tests {
 
         let home = home_dir.path().to_path_buf();
         let input = "e ~/";
-        let result = PathCompleter.complete_with_expand(input, input.len(), &ctx, |s: &str| {
+        let result = PathCompleter { dirs_only: false }.complete_with_expand(input, input.len(), &ctx, |s: &str| {
             if let Some(tail) = s.strip_prefix('~') {
                 if tail.is_empty() || tail.starts_with('/') {
                     return Cow::Owned(format!("{}{tail}", home.display()));
@@ -553,7 +559,7 @@ mod tests {
 
         let expanded = dir.path().to_string_lossy().into_owned();
         let input = "e $MYDIR/";
-        let result = PathCompleter.complete_with_expand(input, input.len(), &ctx, |s: &str| {
+        let result = PathCompleter { dirs_only: false }.complete_with_expand(input, input.len(), &ctx, |s: &str| {
             if let Some(rest) = s.strip_prefix("$MYDIR") {
                 Cow::Owned(format!("{expanded}{rest}"))
             } else {
