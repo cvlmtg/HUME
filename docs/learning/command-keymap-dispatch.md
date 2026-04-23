@@ -21,10 +21,11 @@ with metadata. Four variants exist:
 
 ```rust
 enum MappableCommand {
-    Motion    { name, fun: fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet },
-    Selection { name, fun: fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet },
-    Edit      { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet), repeatable },
-    EditorCmd { name, fun: fn(&mut Editor, usize, MotionMode), repeatable, extendable },
+    Motion      { name, fun: fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet },
+    Selection   { name, fun: fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet },
+    Edit        { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet), repeatable },
+    EditorCmd   { name, fun: fn(&mut Editor, usize, MotionMode), repeatable, extendable },
+    SteelBacked { name, doc, steel_proc: String, extendable },
 }
 ```
 
@@ -56,9 +57,14 @@ extend support comes for free from the `MotionMode` parameter.
 ### The `extendable` flag
 
 Motion and Selection commands are always extendable. Edit commands are never
-extendable. EditorCmd has an explicit `extendable: bool` flag set at
-registration time. This is used by the Ctrl+key guard (see below) to decide
-whether a `Ctrl+letter` keypress should trigger extend behaviour.
+extendable. EditorCmd and SteelBacked each have an explicit `extendable: bool`
+flag set at registration time. This is used by the Ctrl+key guard (see below)
+to decide whether a `Ctrl+letter` keypress should trigger extend behaviour.
+
+For Steel-defined commands, use `(define-command-extend! name doc proc)` instead
+of `(define-command! …)` to set `extendable = true`. Use this for composite
+commands whose last step is a motion or selection — it preserves the `Ctrl+key`
+one-shot extend behaviour for any bare letter you rebind to the command.
 
 ### Typed commands
 
@@ -190,6 +196,11 @@ undo — these must not silently become extend variants. The dispatch checks
 - **Extendable** → dispatch with `MotionMode::Extend`
 - **Not extendable** → dispatch normally (non-kitty explicit binding) or
   suppress entirely (kitty strip-CONTROL path)
+
+This is why binding a bare letter to a plain `(define-command! …)` command
+silently kills that letter's `Ctrl` variant: `SteelBacked.extendable` is
+`false` by default, so the strip-CONTROL path suppresses it. Use
+`(define-command-extend! …)` to opt in.
 
 ### WaitChar: parameterized commands
 
