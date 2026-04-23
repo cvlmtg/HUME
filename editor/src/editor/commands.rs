@@ -997,6 +997,12 @@ pub(super) fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Resu
     Ok(())
 }
 
+/// `:pwd` / `:print-working-directory` — display the current working directory.
+pub(super) fn typed_pwd(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    ed.report(Severity::Info, crate::os::path::shorten_home(&ed.cwd));
+    Ok(())
+}
+
 /// `:bd` — delete (close) the focused buffer.
 ///
 /// If the buffer is dirty and `force` is false, returns an error.
