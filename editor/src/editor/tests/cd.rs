@@ -150,7 +150,7 @@ fn typed_cd_error_on_nonexistent() {
     let before_editor = ed.cwd.clone();
 
     let err = ed.execute_typed("cd", Some("/definitely/not/a/real/path/xyz123")).unwrap_err();
-    assert!(err.to_string().contains("No such file"), "expected ENOENT, got: {err}");
+    assert!(err.to_string().contains("xyz123"), "path must appear in error message, got: {err}");
     assert_eq!(ed.cwd, before_editor, "editor.cwd must be unchanged on error");
     assert_eq!(std::env::current_dir().unwrap(), before, "process cwd must be unchanged on error");
 }
