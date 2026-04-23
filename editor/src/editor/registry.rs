@@ -157,8 +157,8 @@ pub(crate) enum MappableCommand {
     /// Dispatched by [`crate::scripting::ScriptingHost::call_steel_cmd`], which
     /// evaluates `(steel_proc)` and drains the resulting `steel_ctx.cmd_queue`.
     ///
-    /// Not repeatable, not jump, not visual-line, not extendable — these can be
-    /// added as optional flags once the use-cases emerge.
+    /// Not repeatable, not jump, not visual-line — these can be added as
+    /// optional flags once the use-cases emerge.
     SteelBacked {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
@@ -166,6 +166,9 @@ pub(crate) enum MappableCommand {
         doc: Cow<'static, str>,
         /// Name of the lambda in Steel's global namespace.
         steel_proc: String,
+        /// If `true`, this command participates in sticky-Ctrl one-shot extend
+        /// (strip-Ctrl fallback).  Set via `(define-command-extend! …)`.
+        extendable: bool,
     },
 }
 
@@ -235,7 +238,8 @@ impl MappableCommand {
     pub(crate) fn is_extendable(&self) -> bool {
         match self {
             Self::Motion { .. } | Self::Selection { .. } => true,
-            Self::Edit { .. } | Self::SteelBacked { .. } => false,
+            Self::Edit { .. } => false,
+            Self::SteelBacked { extendable, .. } => *extendable,
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
@@ -839,6 +843,20 @@ mod tests {
     }
 
     #[test]
+    fn is_extendable_steel_backed_reflects_flag() {
+        let cmd_t = MappableCommand::SteelBacked {
+            name: "x".into(), doc: "".into(),
+            steel_proc: "%hume-cmd-x".to_string(), extendable: true,
+        };
+        let cmd_f = MappableCommand::SteelBacked {
+            name: "y".into(), doc: "".into(),
+            steel_proc: "%hume-cmd-y".to_string(), extendable: false,
+        };
+        assert!(cmd_t.is_extendable());
+        assert!(!cmd_f.is_extendable());
+    }
+
+    #[test]
     fn all_names_are_unique() {
         // HashMap insertion silently overwrites duplicates — verify the final
         // count matches the number of distinct registered names.
@@ -916,11 +934,13 @@ mod tests {
             name: Cow::Owned("my-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-my-steel-cmd".to_string(),
+            extendable: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-another-steel-cmd".to_string(),
+            extendable: false,
         });
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
@@ -948,11 +968,13 @@ mod tests {
             name: Cow::Owned("plugin-cmd-a".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-plugin-cmd-a".to_string(),
+            extendable: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-b".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-plugin-cmd-b".to_string(),
+            extendable: false,
         });
         assert!(!reg.steel_backed_names().is_empty());
 

@@ -53,29 +53,54 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// - The same name is defined twice within one eval session.
 /// - Called from a command body (only valid during init.scm or plugin load).
 pub(crate) fn define_command(ctx: &mut SteelCtx, name: String, doc: String, proc: SteelVal) -> SteelResult {
+    define_command_inner(ctx, "define-command!", name, doc, proc, false)
+}
+
+/// `(define-command-extend! name doc proc)`
+///
+/// Like `(define-command! …)` but marks the command as extendable
+/// (`is_extendable() == true`).  Extendable Steel commands participate in the
+/// sticky-Ctrl / strip-Ctrl one-shot extend mechanism: pressing `Ctrl-X` when
+/// `X` is bound to an extendable Steel command dispatches it in extend mode,
+/// just like built-in motion commands.
+///
+/// Use this for composite commands that end in a motion or selection step so
+/// that `Ctrl-X` continues to work after binding `X` to the Steel command.
+///
+/// Same error conditions as `(define-command! …)`.
+pub(crate) fn define_command_extend(ctx: &mut SteelCtx, name: String, doc: String, proc: SteelVal) -> SteelResult {
+    define_command_inner(ctx, "define-command-extend!", name, doc, proc, true)
+}
+
+fn define_command_inner(
+    ctx: &mut SteelCtx,
+    builtin_name: &str,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+    extendable: bool,
+) -> SteelResult {
     if !ctx.is_init {
         steel::stop!(Generic =>
-            "define-command!: only valid during init.scm or plugin load, not from a Steel command body");
+            "{}: only valid during init.scm or plugin load, not from a Steel command body",
+            builtin_name);
     }
-    // Accept any callable value as the proc.
     match &proc {
         SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => {}
         _ => steel::stop!(TypeMismatch =>
-            "define-command!: third arg (proc) must be a callable, got {:?}", proc),
+            "{}: third arg (proc) must be a callable, got {:?}", builtin_name, proc),
     }
-    // Conflict against core/user built-ins known at eval start.
     if ctx.builtin_cmd_names.contains(&name) {
         steel::stop!(Generic =>
-            "define-command!: '{}' conflicts with a built-in command and cannot be redefined",
-            name);
+            "{}: '{}' conflicts with a built-in command and cannot be redefined",
+            builtin_name, name);
     }
-    // Conflict within this single eval session (e.g. two `define-command!` for same name).
     if ctx.pending_steel_cmds.iter().any(|c| c.name == name) {
         steel::stop!(Generic =>
-            "define-command!: '{}' is already defined in this eval session", name);
+            "{}: '{}' is already defined in this eval session", builtin_name, name);
     }
     let current_owner = ctx.plugin_stack.current_owner();
-    ctx.pending_steel_cmds.push(PendingSteelCmd { name, doc, proc, current_owner });
+    ctx.pending_steel_cmds.push(PendingSteelCmd { name, doc, proc, current_owner, extendable });
     Ok(SteelVal::Void)
 }
 

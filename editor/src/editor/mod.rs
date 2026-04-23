@@ -1268,6 +1268,7 @@ impl Editor {
                     name: def.name.into(),
                     doc: def.doc.into(),
                     steel_proc: def.steel_proc,
+                    extendable: def.extendable,
                 });
             }
         }

@@ -139,6 +139,9 @@ pub(crate) struct PendingSteelCmd {
     pub(crate) proc: steel::rvals::SteelVal,
     /// Attribution owner at call time (for ledger recording).
     pub(crate) current_owner: ledger::Owner,
+    /// Whether this command participates in sticky-Ctrl extend.
+    /// Set by `(define-command-extend! …)`.
+    pub(crate) extendable: bool,
 }
 
 /// A Steel command that has been fully registered in the engine and is ready
@@ -154,6 +157,7 @@ pub(crate) struct SteelCmdDef {
     /// (e.g. `"%hume-cmd-my-command"`).  Used by
     /// [`crate::scripting::ScriptingHost::call_steel_cmd`] at dispatch time.
     pub(crate) steel_proc: String,
+    pub(crate) extendable: bool,
 }
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -797,6 +801,7 @@ impl ScriptingHost {
                 name: cmd.name,
                 doc: cmd.doc,
                 steel_proc,
+                extendable: cmd.extendable,
             });
         }
         defs

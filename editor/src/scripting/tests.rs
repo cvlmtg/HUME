@@ -496,6 +496,28 @@ fn command_plugin_cleared_on_teardown() {
     assert!(!h.cmd_owners.contains_key("my-cmd"), "teardown should remove from cmd_owners");
 }
 
+// ── define-command-extend! ────────────────────────────────────────────────
+
+/// `define-command-extend!` sets `extendable: true` on the returned SteelCmdDef;
+/// plain `define-command!` sets it to `false`.
+#[test]
+fn define_command_extend_sets_extendable_flag() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let defs = h.eval_source_raw(
+        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
+           (define-command!        "plain-cmd" "doc" (lambda () (+ 1 0)))"#.to_owned(),
+        Default::default(), &mut s, &mut km,
+    ).expect("eval should succeed");
+
+    let ext   = defs.iter().find(|d| d.name == "ext-cmd").expect("ext-cmd not found");
+    let plain = defs.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
+    assert!(ext.extendable,   "define-command-extend! should set extendable = true");
+    assert!(!plain.extendable, "define-command! should set extendable = false");
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
 
 /// Cancelling a watchdog with a long budget wakes the thread immediately.
