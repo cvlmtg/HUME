@@ -294,6 +294,28 @@ fn set_cell(buf: &mut ratatui::buffer::Buffer, x: u16, y: u16, text: &str, style
     }
 }
 
+/// Paint every cell of `rect` with a space glyph and `style`, clipping to buffer bounds.
+///
+/// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs visible.
+/// Opaque overlays (popups, statusline fills) need to overwrite the symbol too.
+#[inline]
+pub fn fill_rect_bg(
+    buf: &mut ratatui::buffer::Buffer,
+    rect: ratatui::layout::Rect,
+    style: ratatui::style::Style,
+) {
+    let area = buf.area();
+    let x0   = rect.x.max(area.x);
+    let y0   = rect.y.max(area.y);
+    let x1   = (rect.x + rect.width).min(area.x + area.width);
+    let y1   = (rect.y + rect.height).min(area.y + area.height);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            buf[(x, y)].set_char(' ').set_style(style);
+        }
+    }
+}
+
 /// Fill a horizontal span with spaces using an explicit background colour.
 ///
 /// Used for cursorline highlighting so the tint extends past the last grapheme.
