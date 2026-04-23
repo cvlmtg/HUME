@@ -47,7 +47,7 @@ to every selection in the set simultaneously. The *primary* is just the
    only) and `cmd_remove_primary_selection` (remove primary) operate on
    exactly one selection. The primary determines which one.
 
-4. **Registers** (`editor/src/ops/register.rs`): when you yank with N cursors, the
+4. **Registers**: when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
    order. Pasting with N cursors maps each slot back to the corresponding
    cursor. If the cursor count doesn't match at paste time, the full register
@@ -61,7 +61,7 @@ to every selection in the set simultaneously. The *primary* is just the
    |-----|----------|-------|
    | `0`–`9` | Named storage | Text or macros; last write wins |
    | `q` | Default macro | `QQ` records, `q` replays |
-   | `c` | System clipboard | Deferred to M7 |
+   | `c` | System clipboard | Requires OS integration |
    | `b` | Black hole | Discards writes |
    | `s` | Search | Holds last search pattern |
 
@@ -85,7 +85,7 @@ to every selection in the set simultaneously. The *primary* is just the
    without the full `a`–`z` namespace overhead. Ten slots (`0`–`9`) covers
    real workflows; the `q` default keeps the common case a one-key operation.
 
-5. **Paste-as-replace** (`editor/src/ops/edit/`): In a select-then-act model, `p`/`P`
+5. **Paste-as-replace**: In a select-then-act model, `p`/`P`
    has to handle two distinct cases:
 
    - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the

@@ -21,3 +21,4 @@ useful later. Each topic lives in its own file under `docs/learning/`.
 | Quote Scanning: Parity Instead of Depth | [docs/learning/quote-scanning.md](docs/learning/quote-scanning.md) |
 | The Command/Keymap/Dispatch Architecture | [docs/learning/command-keymap-dispatch.md](docs/learning/command-keymap-dispatch.md) |
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
+| The Plugin Ledger: Attribution and Clean Unload | [docs/learning/plugin-ledger.md](docs/learning/plugin-ledger.md) |

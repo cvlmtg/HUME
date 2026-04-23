@@ -120,18 +120,16 @@ The history manager stores both Transactions. Applying the inverse restores
 both the text and the cursor positions in a single step (undo); applying the
 forward Transaction redoes the edit.
 
-## Implementation
+## The undo tree
 
-- `editor/src/core/changeset/` — `Operation`, `ChangeSet`, `ChangeSetBuilder`, `Assoc`
-- `editor/src/core/transaction.rs` — `Transaction` (pairs ChangeSet with SelectionSet)
-- `editor/src/ops/edit/` — edit operations build changesets via the builder
-- `src/core/history.rs` — arena-based undo tree; stores forward/inverse Transaction pairs per revision
+The history manager stores forward/inverse `Transaction` pairs in an
+**arena** — a `Vec` that owns all the nodes of the undo tree. Instead of
+linking nodes with pointers or `Rc<RefCell<...>>`, each node stores plain
+integer indices into the `Vec`. Lookups are O(1) array accesses; there are no
+reference cycles for the borrow checker to worry about; and the allocator sees
+one contiguous allocation instead of many small heap objects. The trade-off is
+that nodes are never individually freed — the whole arena is dropped at once.
+For an undo tree that only grows, this is fine.
 
-  An **arena** is a `Vec` that owns all the nodes of a tree or graph. Instead
-  of linking nodes with pointers or `Rc<RefCell<...>>`, each node stores plain
-  integer indices into the `Vec`. Lookups are O(1) array accesses; there are no
-  reference cycles for the borrow checker to worry about; and the allocator sees
-  one contiguous allocation instead of many small heap objects. The trade-off is
-  that nodes are never individually freed — the whole arena is dropped at once.
-  For an undo tree that only grows, this is fine.
-- `editor/src/editor/buffer.rs` — orchestrates Buffer + SelectionSet + History; enforces the invert-before-apply timing invariant in `apply_edit`
+The buffer layer orchestrates `Buffer`, `SelectionSet`, and `History` together,
+and enforces the invert-before-apply timing invariant in `apply_edit`.

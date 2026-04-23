@@ -33,17 +33,17 @@ than O(total visible graphemes).
 
 ## Key types
 
-### `Pane` (`engine/src/pane.rs`)
+### `Pane`
 
 Holds everything the engine needs to render one editor viewport:
 
 - `buffer_id` — key into `EngineView::buffers` (rope lives in the editor's `Buffer`)
 - `viewport: ViewportState` — `top_line`, `top_row_offset`, `horizontal_offset`, `width`, `height`
 - `selections: Vec<Selection>` — all cursor/selection positions, pre-sorted by `head`
-- `wrap_mode: WrapMode` — `None` or `Indent { width }`
+- `wrap_mode: WrapMode` — `None`, `Soft { width }`, `Word { width }`, or `Indent { width }`
 - `providers: ProviderSet` — pluggable gutter columns, highlight sources, virtual lines, overlays
 
-### `ProviderSet` (`engine/src/providers.rs`)
+### `ProviderSet`
 
 A collection of trait objects that inject content into the pipeline:
 
@@ -55,11 +55,11 @@ A collection of trait objects that inject content into the pipeline:
 | `InlineDecoration` | Format | Inline virtual text (e.g. type hints) |
 | `OverlayProvider` | Compose | Floating overlays (completions, hover) |
 
-Providers are registered by the editor at startup. The `SharedHighlighter` in
-`editor/src/ui/highlight_providers.rs` wraps an `Arc<RwLock<Vec<...>>>` that
-the editor writes once per frame, then the engine reads during Stage 3.
+Providers are registered by the editor at startup. The `SharedHighlighter`
+wraps an `Arc<RwLock<Vec<...>>>` that the editor writes once per frame, then
+the engine reads during Stage 3.
 
-### `DisplayRow` and `Grapheme` (`engine/src/types.rs`)
+### `DisplayRow` and `Grapheme`
 
 Stage 2 (Format) produces one `DisplayRow` per visual row. A `DisplayRow` has:
 
@@ -73,18 +73,18 @@ Each `Grapheme` has:
 - `width` — visual width in terminal columns
 - `indent_depth`, `char_class`, `is_virtual`
 
-### `ResolvedStyle` (`engine/src/types.rs`)
+### `ResolvedStyle`
 
 The output of Stage 3: one style per `Grapheme`. Combines foreground colour,
 background colour, and modifier flags (bold, italic, underline, etc.) resolved
 from the theme's scope hierarchy.
 
-### `FrameScratch` (`engine/src/pipeline.rs`)
+### `FrameScratch`
 
 Reusable scratch storage cleared at the start of each pane render. All `Vec`s
 stabilise their capacity after a few frames — no heap allocation in steady state.
 
-## The fused loop (`render_pane` in `engine/src/pipeline.rs`)
+## The fused loop
 
 ```
 pre: populate_sorted_sels, pre-collect virtual lines, compute col_widths
@@ -98,7 +98,7 @@ for each buffer line in visible range:
 tilde filler rows until viewport is full
 ```
 
-## Scope-based theming (`engine/src/theme.rs`, `engine/src/style.rs`)
+## Scope-based theming
 
 Colours are resolved through a scope hierarchy (inspired by TextMate grammars).
 A `ScopeId` is a small integer registered in `ScopeRegistry`. The `Theme`
@@ -109,6 +109,6 @@ scope tree until a match is found.
 ## Where the rope lives
 
 The rope (`ropey::Rope`) never moves into the engine. `EngineView::render()`
-accepts a closure `get_rope: impl Fn(BufferId) -> Option<&ropey::Rope>` so the
-editor can pass a borrow of its `Buffer`'s rope without any cloning or ownership
-transfer. This keeps the engine crate free of `Editor` dependencies.
+accepts a `get_rope` closure so the editor can pass a borrow of its `Buffer`'s
+rope without any cloning or ownership transfer. This keeps the engine crate free
+of `Editor` dependencies.
