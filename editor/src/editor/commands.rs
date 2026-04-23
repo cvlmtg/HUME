@@ -757,7 +757,6 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
     };
 
     if let Some(path_str) = arg {
-        // Save-as: write to the specified path.
         let expanded = crate::os::path::expand(path_str);
         let path = std::path::Path::new(expanded.as_ref());
         // Try to preserve existing file's permissions; if the file doesn't
