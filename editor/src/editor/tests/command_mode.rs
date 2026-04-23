@@ -248,7 +248,7 @@ fn colon_w_bang_writes_writable_file() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     for ch in ":w!".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
-    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     assert!(!ed.should_quit);
 }
