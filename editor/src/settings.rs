@@ -36,7 +36,7 @@ use engine::builtins::line_number::LineNumberStyle;
 use engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
 use crate::auto_pairs::Pair;
-use crate::ui::statusline::StatusLineConfig;
+use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
 // ── SettingScope ──────────────────────────────────────────────────────────────
 
@@ -217,6 +217,14 @@ macro_rules! define_settings {
                 (SettingScope::Text, "whitespace-newline") => {
                     overrides.whitespace_newline = Some(value.parse()?);
                 }
+                // Statusline config — global-only; three sections separated by `|`,
+                // each a comma-separated list of StatusElement names (may be empty).
+                (SettingScope::Global, "statusline") => {
+                    settings.statusline = parse_statusline(value)?;
+                }
+                (SettingScope::Text, "statusline") => {
+                    return Err("'statusline' is a global-only setting — use :set global statusline=…".to_string());
+                }
                 _ => return Err(format!("unknown setting '{key}'")),
             }
             Ok(())
@@ -314,6 +322,7 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "whitespace-space"    => whitespace_render_to_str(settings.whitespace.space).to_string(),
         "whitespace-tab"      => whitespace_render_to_str(settings.whitespace.tab).to_string(),
         "whitespace-newline"  => whitespace_render_to_str(settings.whitespace.newline).to_string(),
+        "statusline" => serialize_statusline(&settings.statusline),
         _ => return None,
     })
 }
@@ -324,6 +333,42 @@ fn whitespace_render_to_str(r: engine::pane::WhitespaceRender) -> &'static str {
         engine::pane::WhitespaceRender::All      => "all",
         engine::pane::WhitespaceRender::Trailing => "trailing",
     }
+}
+
+/// Serialize a `StatusLineConfig` to the `"left|center|right"` wire format.
+///
+/// Each section is a comma-joined list of `StatusElement` names; empty sections
+/// produce an empty string between the pipes (e.g. `"Mode||Position"`).
+fn serialize_statusline(cfg: &StatusLineConfig) -> String {
+    let fmt_section = |elems: &[StatusElement]| -> String {
+        elems.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(",")
+    };
+    format!("{}|{}|{}", fmt_section(&cfg.left), fmt_section(&cfg.center), fmt_section(&cfg.right))
+}
+
+/// Parse the `"left|center|right"` wire format into a `StatusLineConfig`.
+///
+/// Requires exactly three `|`-separated sections. Each section is a
+/// comma-separated list of `StatusElement` names; empty sections are allowed.
+fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
+    let parts: Vec<&str> = s.splitn(4, '|').collect();
+    if parts.len() != 3 {
+        return Err(format!(
+            "statusline value must be three sections separated by '|' \
+             (e.g. 'Mode,FileName||Position'), got '{s}'"
+        ));
+    }
+    let parse_section = |section: &str| -> Result<Vec<StatusElement>, String> {
+        section.split(',')
+            .filter(|name| !name.is_empty())
+            .map(|name| name.parse::<StatusElement>())
+            .collect()
+    };
+    Ok(StatusLineConfig {
+        left:   parse_section(parts[0])?,
+        center: parse_section(parts[1])?,
+        right:  parse_section(parts[2])?,
+    })
 }
 
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
@@ -788,6 +833,7 @@ mod tests {
             "history-capacity", "popup-border",
             "tab-width", "wrap-mode", "line-number-style", "auto-pairs-enabled",
             "whitespace-space", "whitespace-tab", "whitespace-newline",
+            "statusline",
         ];
         for key in keys {
             let serialized = serialize_setting(&s, key)
@@ -822,5 +868,68 @@ mod tests {
     fn serialize_setting_wrap_mode_indent() {
         let s = EditorSettings { wrap_mode: engine::pane::WrapMode::Indent { width: 80 }, ..Default::default() };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent:80");
+    }
+
+    // ── statusline setting ────────────────────────────────────────────────────
+
+    #[test]
+    fn serialize_statusline_round_trips_non_default() {
+        use crate::ui::statusline::StatusElement;
+        let mut s = EditorSettings::default();
+        s.statusline = crate::ui::statusline::StatusLineConfig {
+            left:   vec![StatusElement::Position, StatusElement::FileName],
+            center: vec![StatusElement::MacroRecording],
+            right:  vec![StatusElement::Mode],
+        };
+        let serialized = serialize_setting(&s, "statusline").unwrap();
+        assert_eq!(serialized, "Position,FileName|MacroRecording|Mode");
+
+        let mut s2 = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Global, "statusline", &serialized, &mut s2, &mut ov).unwrap();
+        assert_eq!(s2.statusline.left,   s.statusline.left);
+        assert_eq!(s2.statusline.center, s.statusline.center);
+        assert_eq!(s2.statusline.right,  s.statusline.right);
+    }
+
+    #[test]
+    fn serialize_statusline_empty_sections() {
+        let mut s = EditorSettings::default();
+        s.statusline = crate::ui::statusline::StatusLineConfig {
+            left: vec![], center: vec![], right: vec![],
+        };
+        let serialized = serialize_setting(&s, "statusline").unwrap();
+        assert_eq!(serialized, "||");
+
+        let mut s2 = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        apply_setting(SettingScope::Global, "statusline", "||", &mut s2, &mut ov).unwrap();
+        assert!(s2.statusline.left.is_empty());
+        assert!(s2.statusline.center.is_empty());
+        assert!(s2.statusline.right.is_empty());
+    }
+
+    #[test]
+    fn apply_statusline_wrong_section_count_errors() {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        // Two pipes required; one pipe produces only two parts.
+        assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position", &mut s, &mut ov).is_err());
+        // Four pipes produce four parts, also rejected.
+        assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position|Cwd|Extra", &mut s, &mut ov).is_err());
+    }
+
+    #[test]
+    fn apply_statusline_unknown_element_name_errors() {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        assert!(apply_setting(SettingScope::Global, "statusline", "NotAnElement||", &mut s, &mut ov).is_err());
+    }
+
+    #[test]
+    fn apply_statusline_text_scope_rejected() {
+        let mut s = EditorSettings::default();
+        let mut ov = BufferOverrides::default();
+        assert!(apply_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
     }
 }

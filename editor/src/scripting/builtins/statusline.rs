@@ -13,41 +13,25 @@
 //!   '()                                         ; center section (empty)
 //!   '("MacroRecording" "SearchMatches" "Separator" "Mode"))  ; right section
 //! ```
+//!
+//! ## Ledger participation
+//!
+//! When called from a plugin body, the prior statusline config is captured via
+//! `serialize_setting` before the new config is written, and a ledger entry is
+//! recorded so the config can be restored on plugin unload.  Top-level
+//! `init.scm` mutations (attribution = `User`) write no ledger entry — reload
+//! rebuilds from scratch.
 
 use steel::rvals::SteelVal;
 use steel::rerrs::{ErrorKind, SteelErr};
 
-use crate::scripting::SteelCtx;
+use crate::scripting::{ledger::Owner, SteelCtx};
+use crate::settings::serialize_setting;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Parsing helpers ───────────────────────────────────────────────────────────
-
-/// Map a string name to the corresponding [`StatusElement`] variant.
-///
-/// Names are the PascalCase variant names from [`StatusElement`] — the same
-/// strings a user would write in `init.scm`.
-fn parse_element_name(s: &str) -> Result<StatusElement, SteelErr> {
-    match s {
-        "Mode"           => Ok(StatusElement::Mode),
-        "Separator"      => Ok(StatusElement::Separator),
-        "FileName"       => Ok(StatusElement::FileName),
-        "Position"       => Ok(StatusElement::Position),
-        "Selections"     => Ok(StatusElement::Selections),
-        "KittyProtocol"  => Ok(StatusElement::KittyProtocol),
-        "Cwd"            => Ok(StatusElement::Cwd),
-        "DirtyIndicator" => Ok(StatusElement::DirtyIndicator),
-        "LineEnding"     => Ok(StatusElement::LineEnding),
-        "SearchMatches"  => Ok(StatusElement::SearchMatches),
-        "MiniBuf"        => Ok(StatusElement::MiniBuf),
-        "MacroRecording" => Ok(StatusElement::MacroRecording),
-        _ => Err(SteelErr::new(ErrorKind::Generic,
-            format!("configure-statusline!: unknown element '{s}'; \
-                     valid names: Cwd DirtyIndicator FileName KittyProtocol LineEnding \
-                     MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"))),
-    }
-}
 
 /// Parse a Steel list of strings into a `Vec<StatusElement>`.
 ///
@@ -58,7 +42,10 @@ fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement
         SteelVal::ListV(lst) => {
             lst.iter()
                 .map(|v| match v {
-                    SteelVal::StringV(s) => parse_element_name(&s.to_string()),
+                    SteelVal::StringV(s) => s.parse::<StatusElement>().map_err(|e| {
+                        SteelErr::new(ErrorKind::Generic,
+                            format!("configure-statusline!: {e}"))
+                    }),
                     _ => Err(SteelErr::new(ErrorKind::TypeMismatch,
                         format!("configure-statusline!: {section} section expects a list of \
                                  strings, got {:?}", v))),
@@ -79,7 +66,9 @@ fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement
 /// empty section.  The new config takes effect immediately — the next rendered
 /// frame picks it up automatically.
 ///
-/// Only valid during `init.scm` or plugin load.
+/// Only valid during `init.scm` or plugin load.  When called from a plugin body,
+/// the prior config is serialized and recorded in the ledger so it can be
+/// restored via `apply_setting` when the plugin unloads.
 pub(crate) fn configure_statusline(ctx: &mut SteelCtx, left: SteelVal, center: SteelVal, right: SteelVal) -> SteelResult {
     if !ctx.is_init {
         steel::stop!(Generic =>
@@ -88,7 +77,20 @@ pub(crate) fn configure_statusline(ctx: &mut SteelCtx, left: SteelVal, center: S
     let left   = parse_element_list(&left,   "left")?;
     let center = parse_element_list(&center, "center")?;
     let right  = parse_element_list(&right,  "right")?;
-    ctx.settings.statusline = StatusLineConfig { left, center, right };
+    let new_cfg = StatusLineConfig { left, center, right };
+
+    // Capture prior state for the ledger before overwriting — same pattern as set_option.
+    let prior_value = serialize_setting(ctx.settings, "statusline").unwrap_or_default();
+    let prior_owner = ctx.ledger_stack.owner_of("statusline");
+    let current_owner = ctx.plugin_stack.current_owner();
+
+    ctx.settings.statusline = new_cfg;
+
+    // Only record a ledger entry for plugin-attributed mutations; User-level
+    // mutations (top-level init.scm) are rebuilt from scratch on :reload-config.
+    if let Owner::Plugin(ref plugin_id) = current_owner {
+        ctx.ledger_stack.record(plugin_id, "statusline".to_string(), prior_owner, prior_value, false);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -113,15 +115,15 @@ mod tests {
             ("MiniBuf",        StatusElement::MiniBuf),
             ("MacroRecording", StatusElement::MacroRecording),
         ] {
-            let got = parse_element_name(name).unwrap();
+            let got = name.parse::<StatusElement>().unwrap();
             assert_eq!(got, expected, "element '{name}' mismatch");
         }
     }
 
     #[test]
     fn unknown_element_errors() {
-        let err = parse_element_name("FooBar").unwrap_err();
-        assert!(err.to_string().contains("FooBar"), "got: {err}");
+        let err = "FooBar".parse::<StatusElement>().unwrap_err();
+        assert!(err.contains("FooBar"), "got: {err}");
     }
 
     #[test]

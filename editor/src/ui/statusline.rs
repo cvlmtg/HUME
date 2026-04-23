@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::fmt;
+use std::str::FromStr;
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
@@ -75,6 +77,50 @@ pub(crate) enum StatusElement {
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
     MacroRecording,
+}
+
+impl fmt::Display for StatusElement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            StatusElement::Mode           => "Mode",
+            StatusElement::Separator      => "Separator",
+            StatusElement::FileName       => "FileName",
+            StatusElement::Cwd            => "Cwd",
+            StatusElement::Position       => "Position",
+            StatusElement::Selections     => "Selections",
+            StatusElement::KittyProtocol  => "KittyProtocol",
+            StatusElement::DirtyIndicator => "DirtyIndicator",
+            StatusElement::LineEnding     => "LineEnding",
+            StatusElement::SearchMatches  => "SearchMatches",
+            StatusElement::MiniBuf        => "MiniBuf",
+            StatusElement::MacroRecording => "MacroRecording",
+        })
+    }
+}
+
+impl FromStr for StatusElement {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Mode"           => Ok(StatusElement::Mode),
+            "Separator"      => Ok(StatusElement::Separator),
+            "FileName"       => Ok(StatusElement::FileName),
+            "Cwd"            => Ok(StatusElement::Cwd),
+            "Position"       => Ok(StatusElement::Position),
+            "Selections"     => Ok(StatusElement::Selections),
+            "KittyProtocol"  => Ok(StatusElement::KittyProtocol),
+            "DirtyIndicator" => Ok(StatusElement::DirtyIndicator),
+            "LineEnding"     => Ok(StatusElement::LineEnding),
+            "SearchMatches"  => Ok(StatusElement::SearchMatches),
+            "MiniBuf"        => Ok(StatusElement::MiniBuf),
+            "MacroRecording" => Ok(StatusElement::MacroRecording),
+            _ => Err(format!(
+                "unknown element '{s}'; valid names: Cwd DirtyIndicator FileName KittyProtocol \
+                 LineEnding MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"
+            )),
+        }
+    }
 }
 
 /// Describes the content layout of the statusline's three sections.
