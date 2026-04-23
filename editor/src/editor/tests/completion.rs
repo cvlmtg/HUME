@@ -210,6 +210,28 @@ fn tab_on_write_arg_completes_path() {
     assert_eq!(minibuf_input(&ed), expected);
 }
 
+#[test]
+fn tab_on_cd_arg_completes_dirs_only() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("mysubdir")).unwrap();
+    std::fs::write(dir.path().join("myfile.txt"), b"").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    // "my" matches both mysubdir/ and myfile.txt if dirs_only=false, but :cd
+    // dispatches PathCompleter { dirs_only: true }, leaving only one candidate.
+    let prefix = format!("{}/my", dir.path().display());
+    let input = format!("cd {prefix}");
+
+    ed.handle_key(key(':'));
+    for ch in input.chars() { ed.handle_key(key(ch)); }
+    ed.handle_key(key_tab());
+
+    // One dir-only match → silent complete with trailing '/'.
+    let expected = format!("cd {}/mysubdir/", dir.path().display());
+    assert_eq!(minibuf_input(&ed), expected, "cd must complete to the directory");
+    assert!(ed.completion.is_none(), ":cd completion must exclude files, leaving a single dir match");
+}
+
 // ── Directory descent on Enter ────────────────────────────────────────────────
 
 #[test]
