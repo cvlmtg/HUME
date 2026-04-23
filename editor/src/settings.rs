@@ -339,6 +339,8 @@ fn whitespace_render_to_str(r: engine::pane::WhitespaceRender) -> &'static str {
 ///
 /// Each section is a comma-joined list of `StatusElement` names; empty sections
 /// produce an empty string between the pipes (e.g. `"Mode||Position"`).
+/// Safe to use `|` as delimiter because all `StatusElement` names are PascalCase
+/// ASCII identifiers that never contain `|` or `,`.
 fn serialize_statusline(cfg: &StatusLineConfig) -> String {
     let fmt_section = |elems: &[StatusElement]| -> String {
         elems.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(",")
