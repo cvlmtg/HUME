@@ -662,6 +662,7 @@ impl CommandRegistry {
         typed_cmd!("vsplit",           "Split the current pane vertically.",                       &["vsp"], typed_vsplit);
         typed_cmd!("change-directory",       "Change the working directory.",       &["cd"],    typed_cd);
         typed_cmd!("print-working-directory", "Print the current working directory.", &["pwd"],  typed_pwd);
+        typed_cmd!("list-buffers",            "List all open buffers.",               &["ls"],   typed_list_buffers);
     }
 
 }
@@ -692,7 +693,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 124;
+    const EXPECTED_COMMAND_COUNT: usize = 125;
 
     #[test]
     fn registry_has_expected_count() {

@@ -132,3 +132,4 @@ mod hooks;
 mod alternate;
 mod cd;
 mod completion;
+mod list_buffers;
