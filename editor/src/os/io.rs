@@ -124,6 +124,11 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> 
         );
     }
 
+    // Note: on POSIX, rename(2) ignores the target file's permission bits when
+    // the containing directory is writable, so this PermissionDenied branch is
+    // primarily reached on Windows (READONLY attribute) and on exotic POSIX
+    // filesystems / ACL setups — it is genuinely hard to exercise from a
+    // unit test on macOS/Linux without root or chflags.
     match tmp.persist(target) {
         Ok(_) => Ok(false),
         Err(persist_err)
@@ -137,8 +142,16 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> 
             let mut perms = meta.permissions.clone();
             perms.set_readonly(false);
             fs::set_permissions(target, perms)?;
-            persist_err.file.persist(target).map_err(|e| e.error)?;
-            Ok(true)
+            match persist_err.file.persist(target) {
+                Ok(_) => Ok(true),
+                Err(retry_err) => {
+                    // A failed `:w!` must not leave the target more permissive
+                    // than it was. Best-effort restore — if this also fails,
+                    // surface the original retry error rather than masking it.
+                    let _ = fs::set_permissions(target, meta.permissions.clone());
+                    Err(retry_err.error)
+                }
+            }
         }
         Err(persist_err) => Err(persist_err.error),
     }

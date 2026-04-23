@@ -94,7 +94,7 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     // On POSIX rename succeeds without triggering the chmod-retry path, so the
     // message has no "(forced)" suffix.
-    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     // Permissions must be preserved at 0o444.
     let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;
@@ -108,7 +108,7 @@ fn colon_wq_bang_force_writes_and_quits() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     for ch in ":wq!".chars() { ed.handle_key(key(ch)); }
     ed.handle_key(key_enter());
-    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     assert!(ed.should_quit);
 }

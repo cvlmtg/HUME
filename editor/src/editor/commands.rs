@@ -762,8 +762,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         let path = std::path::Path::new(expanded.as_ref());
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
-        let result: std::io::Result<(crate::os::io::FileMeta, bool)> =
-            match crate::os::io::read_file_meta(path) {
+        let result = match crate::os::io::read_file_meta(path) {
                 Ok(meta) => crate::os::io::write_file_atomic(&content, &meta, force)
                     .map(|retried| (meta, retried)),
                 Err(_) => crate::os::io::write_file_new(&content, path)
