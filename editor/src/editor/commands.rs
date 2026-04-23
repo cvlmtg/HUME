@@ -875,6 +875,48 @@ pub(super) fn typed_messages(ed: &mut Editor, _arg: Option<&str>, _force: bool) 
     Ok(())
 }
 
+/// `:ls` / `:list-buffers` — open a read-only scratch view listing every open buffer.
+///
+/// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
+/// dirty (`+`) flag, short name, and home-shortened absolute path.
+/// Cursor is placed on the row corresponding to the currently focused buffer.
+pub(super) fn typed_list_buffers(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    let current  = ed.focused_buffer_id();
+    let alternate = ed.alternate_buffer();
+
+    let header = format!(
+        "{:>4}  {:<2}  {:<32}  {}\n",
+        "buf", "  ", "name", "path"
+    );
+    let mut out = header;
+    let mut current_line: usize = 1; // default to first buffer row if current not found
+
+    for (idx, (id, buf)) in ed.buffers.iter().enumerate() {
+        let row = idx + 1; // 1-based; header is line 0
+
+        let cur_marker = if id == current { '%' } else if Some(id) == alternate { '#' } else { ' ' };
+        let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
+
+        let name = buf.path.as_deref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("[scratch]");
+
+        let path = buf.path.as_deref()
+            .map(|p| crate::os::path::shorten_home(p))
+            .unwrap_or_default();
+
+        out.push_str(&format!("{:>4}  {}{}  {:<32}  {}\n", row, cur_marker, dirty_marker, name, path));
+
+        if id == current {
+            current_line = row;
+        }
+    }
+
+    ed.scratch_view = Some(ScratchView::from_text_at_line(&out, "[buffers]", current_line));
+    Ok(())
+}
+
 /// `:reload-plugin <name>` — tear down the named plugin's ledger entries and
 /// re-evaluate its `plugin.scm`.  If the plugin file no longer exists on disk,
 /// teardown still runs but re-eval is silently skipped (same "not on disk →
