@@ -206,6 +206,40 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
     assert_eq!(open_path, canonical_file.as_path(), ":e after :cd must open the file in the new cwd");
 }
 
+// ── :pwd typed command ────────────────────────────────────────────────────────
+
+#[test]
+#[cfg(not(windows))]
+fn typed_pwd_reports_current_directory() {
+    let _guard = CwdGuard::new();
+    let dir = tempfile::tempdir().unwrap();
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.set_cwd(&canonical).unwrap();
+
+    ed.execute_typed("pwd", None).unwrap();
+
+    let msg = ed.status_msg.as_deref().expect(":pwd must report a message");
+    let expected = crate::os::path::shorten_home(&canonical);
+    assert_eq!(msg, expected, ":pwd must report shorten_home(cwd)");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn typed_pwd_long_alias_works() {
+    let _guard = CwdGuard::new();
+    let dir = tempfile::tempdir().unwrap();
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.set_cwd(&canonical).unwrap();
+
+    ed.execute_typed("print-working-directory", None).unwrap();
+
+    let msg = ed.status_msg.as_deref().expect(":print-working-directory must report a message");
+    let expected = crate::os::path::shorten_home(&canonical);
+    assert_eq!(msg, expected, "long alias must match :pwd output");
+}
+
 // ── PathCompleter dirs_only ───────────────────────────────────────────────────
 
 #[test]
