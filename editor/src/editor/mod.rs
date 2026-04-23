@@ -312,6 +312,13 @@ pub(crate) struct Editor {
     /// `open()` returns, before the event loop starts). `Some` for the rest
     /// of the editor's lifetime.
     pub(super) scripting: Option<crate::scripting::ScriptingHost>,
+
+    // ── Working directory ─────────────────────────────────────────────────────
+
+    /// Current working directory.
+    ///
+    /// Set at startup; updated by `:cd`. Avoids a `getcwd` syscall every frame.
+    pub(super) cwd: PathBuf,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -454,6 +461,7 @@ impl Editor {
             is_replaying: false,
             mouse_drag_anchor: None,
             scripting: None,
+            cwd: std::env::current_dir().unwrap_or_default(),
         })
     }
 
@@ -1427,6 +1435,7 @@ impl Editor {
             is_replaying: false,
             mouse_drag_anchor: None,
             scripting: None,
+            cwd: std::env::current_dir().unwrap_or_default(),
         }
     }
 

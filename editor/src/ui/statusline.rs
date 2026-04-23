@@ -359,11 +359,7 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Cwd => {
-            let display = match std::env::current_dir() {
-                Ok(path) => shorten_home(&path),
-                Err(_)   => String::new(),
-            };
-            (Cow::Owned(display), colors.statusline)
+            (Cow::Owned(shorten_home(&editor.cwd)), colors.statusline)
         }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.current_search_cursor().match_count {
