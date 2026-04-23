@@ -109,7 +109,8 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);
 
     // Steel command definition and composition
-    engine.register_fn_with_ctx(HUME_CTX, "define-command!",    commands::define_command);
+    engine.register_fn_with_ctx(HUME_CTX, "define-command!",        commands::define_command);
+    engine.register_fn_with_ctx(HUME_CTX, "define-command-extend!", commands::define_command_extend);
     engine.register_fn_with_ctx(HUME_CTX, "call!",              commands::call_command);
     // Back-compat alias — prefer call! in new code.
     engine.register_fn_with_ctx(HUME_CTX, "call-command!",      commands::call_command);
