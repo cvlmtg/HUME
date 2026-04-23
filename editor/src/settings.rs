@@ -917,7 +917,7 @@ mod tests {
         let mut ov = BufferOverrides::default();
         // Two pipes required; one pipe produces only two parts.
         assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position", &mut s, &mut ov).is_err());
-        // Four pipes produce four parts, also rejected.
+        // Three pipes / four sections produce four parts, also rejected.
         assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position|Cwd|Extra", &mut s, &mut ov).is_err());
     }
 

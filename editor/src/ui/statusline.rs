@@ -45,8 +45,8 @@ pub(crate) enum StatusElement {
     FileName,
     /// Current working directory, with the home prefix replaced by `~`.
     ///
-    /// Sourced from `std::env::current_dir()` each frame. Renders empty when the
-    /// working directory is unavailable (e.g. it has been deleted).
+    /// Read from `editor.cwd`, which is cached at startup and updated by `:cd`.
+    /// Renders empty when the working directory path is unavailable.
     Cwd,
     /// Cursor position as `"line:col"` (both 1-based, col = grapheme index).
     Position,
