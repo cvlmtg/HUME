@@ -166,8 +166,22 @@ impl Completer for BufferNameCompleter {
 /// `.`) are excluded unless the filename prefix itself starts with `.`.
 pub(crate) struct PathCompleter;
 
-impl Completer for PathCompleter {
-    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
+impl PathCompleter {
+    /// Testable core of [`Completer::complete`].
+    ///
+    /// `expand_fn` mirrors `crate::os::path::expand`: given a raw path string it
+    /// returns the tilde / env-var expanded form.  Tests pass a stub closure;
+    /// production calls this with the real `expand`.
+    fn complete_with_expand<F>(
+        &self,
+        input: &str,
+        cursor: usize,
+        ctx: &CompletionCtx<'_>,
+        expand_fn: F,
+    ) -> CompletionResult
+    where
+        F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
+    {
         let (arg_start, prefix) = arg_prefix(input, cursor);
 
         // Split prefix into (dir_str, file_prefix).
@@ -176,7 +190,7 @@ impl Completer for PathCompleter {
         // Expand `~` and env vars for the directory lookup only; the literal
         // `dir_str` is still used in `replacement` below so `~/` is preserved
         // in the minibuffer exactly as the user typed it.
-        let expanded_dir = crate::os::path::expand(dir_str);
+        let expanded_dir = expand_fn(dir_str);
 
         // Resolve the directory: absolute if it starts with '/', else relative to cwd.
         let dir: PathBuf = if expanded_dir.is_empty() {
@@ -213,6 +227,12 @@ impl Completer for PathCompleter {
 
         candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
         CompletionResult { span_start: arg_start, candidates }
+    }
+}
+
+impl Completer for PathCompleter {
+    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
+        self.complete_with_expand(input, cursor, ctx, crate::os::path::expand)
     }
 }
 
@@ -486,19 +506,26 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
+        use std::borrow::Cow;
+
         let home_dir = tempfile::tempdir().unwrap();
         std::fs::write(home_dir.path().join("notes.md"), b"").unwrap();
         std::fs::create_dir(home_dir.path().join("code")).unwrap();
-
-        // Point $HOME at the temp dir for this lookup.
-        unsafe { std::env::set_var("HOME", home_dir.path()) };
 
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/tmp");
         let ctx = CompletionCtx { registry: &reg, buffers: &store, cwd };
 
+        let home = home_dir.path().to_path_buf();
         let input = "e ~/";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter.complete_with_expand(input, input.len(), &ctx, |s: &str| {
+            if let Some(tail) = s.strip_prefix('~') {
+                if tail.is_empty() || tail.starts_with('/') {
+                    return Cow::Owned(format!("{}{tail}", home.display()));
+                }
+            }
+            Cow::Borrowed(s)
+        });
 
         // Candidates must be present (the temp home has files).
         assert!(!result.candidates.is_empty(), "tilde should resolve to home and list entries");
@@ -515,18 +542,24 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn path_completer_dollar_var_expands_for_lookup() {
+        use std::borrow::Cow;
+
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("main.rs"), b"").unwrap();
-
-        let dir_str = dir.path().to_string_lossy().into_owned();
-        unsafe { std::env::set_var("MYDIR", &dir_str) };
 
         let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
         let cwd = Path::new("/tmp");
         let ctx = CompletionCtx { registry: &reg, buffers: &store, cwd };
 
+        let expanded = dir.path().to_string_lossy().into_owned();
         let input = "e $MYDIR/";
-        let result = PathCompleter.complete(input, input.len(), &ctx);
+        let result = PathCompleter.complete_with_expand(input, input.len(), &ctx, |s: &str| {
+            if let Some(rest) = s.strip_prefix("$MYDIR") {
+                Cow::Owned(format!("{expanded}{rest}"))
+            } else {
+                Cow::Borrowed(s)
+            }
+        });
 
         assert!(!result.candidates.is_empty(), "$MYDIR should expand and list entries");
         assert!(result.candidates.iter().all(|c| c.replacement.starts_with("$MYDIR/")));
