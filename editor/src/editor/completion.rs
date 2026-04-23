@@ -173,13 +173,18 @@ impl Completer for PathCompleter {
         // Split prefix into (dir_str, file_prefix).
         let (dir_str, file_prefix) = crate::os::path::split_path_at_sep(prefix);
 
+        // Expand `~` and env vars for the directory lookup only; the literal
+        // `dir_str` is still used in `replacement` below so `~/` is preserved
+        // in the minibuffer exactly as the user typed it.
+        let expanded_dir = crate::os::path::expand(dir_str);
+
         // Resolve the directory: absolute if it starts with '/', else relative to cwd.
-        let dir: PathBuf = if dir_str.is_empty() {
+        let dir: PathBuf = if expanded_dir.is_empty() {
             ctx.cwd.to_owned()
-        } else if Path::new(dir_str).is_absolute() {
-            PathBuf::from(dir_str)
+        } else if Path::new(expanded_dir.as_ref()).is_absolute() {
+            PathBuf::from(expanded_dir.as_ref())
         } else {
-            ctx.cwd.join(dir_str)
+            ctx.cwd.join(expanded_dir.as_ref())
         };
 
         let include_hidden = file_prefix.starts_with('.');
@@ -476,5 +481,56 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort_unstable();
         assert_eq!(names, sorted, "results must be sorted alphabetically");
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
+        let home_dir = tempfile::tempdir().unwrap();
+        std::fs::write(home_dir.path().join("notes.md"), b"").unwrap();
+        std::fs::create_dir(home_dir.path().join("code")).unwrap();
+
+        // Point $HOME at the temp dir for this lookup.
+        unsafe { std::env::set_var("HOME", home_dir.path()) };
+
+        let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+        let cwd = Path::new("/tmp");
+        let ctx = CompletionCtx { registry: &reg, buffers: &store, cwd };
+
+        let input = "e ~/";
+        let result = PathCompleter.complete(input, input.len(), &ctx);
+
+        // Candidates must be present (the temp home has files).
+        assert!(!result.candidates.is_empty(), "tilde should resolve to home and list entries");
+        // Replacements must keep the literal `~/` prefix, not expand to the absolute path.
+        assert!(
+            result.candidates.iter().all(|c| c.replacement.starts_with("~/")),
+            "replacements must preserve the `~/` prefix"
+        );
+        let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
+        assert!(names.contains(&"notes.md"), "notes.md should appear");
+        assert!(names.contains(&"code/"), "code/ directory should appear with trailing /");
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn path_completer_dollar_var_expands_for_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("main.rs"), b"").unwrap();
+
+        let dir_str = dir.path().to_string_lossy().into_owned();
+        unsafe { std::env::set_var("MYDIR", &dir_str) };
+
+        let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+        let cwd = Path::new("/tmp");
+        let ctx = CompletionCtx { registry: &reg, buffers: &store, cwd };
+
+        let input = "e $MYDIR/";
+        let result = PathCompleter.complete(input, input.len(), &ctx);
+
+        assert!(!result.candidates.is_empty(), "$MYDIR should expand and list entries");
+        assert!(result.candidates.iter().all(|c| c.replacement.starts_with("$MYDIR/")));
+        let names: Vec<&str> = result.candidates.iter().map(|c| c.display.as_str()).collect();
+        assert!(names.contains(&"main.rs"));
     }
 }
