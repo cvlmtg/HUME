@@ -86,13 +86,20 @@ pub(crate) fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 ///    when running as root or as the file's owner).
 /// 5. Rename onto the target.
 ///
+/// When `force` is `true` and the rename fails with `PermissionDenied`, the
+/// function clears the readonly attribute on the target file and retries once.
+/// The old inode (transiently made writable) is unlinked by the rename, so no
+/// permission-restore step is needed — the new inode already carries
+/// `meta.permissions` (set on the temp file in step 3). Returns `true` when
+/// the chmod-retry path was taken, `false` on a plain successful write.
+///
 /// **Atomicity:** on POSIX (macOS, Linux) `rename(2)` is a single syscall —
 /// the target either has the old content or the new content, never a partial
 /// write. On Windows, `tempfile::persist` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
 /// which is not crash-atomic for file replacement (no equivalent of POSIX
 /// `rename` exists on Windows without the deprecated transactional NTFS).
 /// This is the best available option on Windows.
-pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()> {
+pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> io::Result<bool> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));
 
@@ -117,8 +124,22 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta) -> io::Result<()
         );
     }
 
-    tmp.persist(target).map_err(|e| e.error)?;
-    Ok(())
+    match tmp.persist(target) {
+        Ok(_) => Ok(false),
+        Err(persist_err)
+            if force && persist_err.error.kind() == io::ErrorKind::PermissionDenied =>
+        {
+            // Target is readonly; make it writable just long enough for the
+            // rename. After rename(2) the old inode (transiently writable) is
+            // unlinked — the new inode already carries meta.permissions.
+            let mut perms = fs::metadata(target)?.permissions();
+            perms.set_readonly(false);
+            fs::set_permissions(target, perms)?;
+            persist_err.file.persist(target).map_err(|e| e.error)?;
+            Ok(true)
+        }
+        Err(persist_err) => Err(persist_err.error),
+    }
 }
 
 // ── write_file_new ────────────────────────────────────────────────────────────

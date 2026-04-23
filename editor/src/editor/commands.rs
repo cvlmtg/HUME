@@ -662,16 +662,13 @@ pub(super) fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Re
 }
 
 pub(super) fn typed_write(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
-    if force {
-        Err(CommandError("w! is not supported".into()))
-    } else {
-        write_file(ed, arg)
-    }
+    write_file(ed, arg, force)
 }
 
 pub(super) fn typed_write_quit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
-    // force applies to the quit part: quit even if the write fails.
-    match write_file(ed, arg) {
+    // force applies to both write (chmod-retry on readonly targets) and quit
+    // (quit even if the write fails).
+    match write_file(ed, arg, force) {
         Ok(()) => { ed.should_quit = true; Ok(()) }
         Err(e) if force => { ed.should_quit = true; Err(e) }
         Err(e) => Err(e),
@@ -737,9 +734,13 @@ pub(super) fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Res
 /// If `arg` is `None`, writes to the current file. Errors with
 /// "no file name" if the buffer is a scratch buffer with no path.
 ///
+/// When `force` is `true`, a `PermissionDenied` rename error triggers a
+/// chmod-retry: the target is made writable, the rename is retried, and the
+/// status message includes "(forced)".
+///
 /// On success, calls `ed.doc_mut().mark_saved()` and sets a status message.
 /// Returns `Ok(())` on success, `Err(CommandError)` on any error.
-fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
+fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     let (content, line_count) = {
         let buf = ed.doc().text();
         // The rope is always stored LF-normalized; restore CRLF for files that
@@ -761,18 +762,21 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         let path = std::path::Path::new(expanded.as_ref());
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
-        let result = match crate::os::io::read_file_meta(path) {
-            Ok(meta) => crate::os::io::write_file_atomic(&content, &meta).map(|()| meta),
-            Err(_)   => crate::os::io::write_file_new(&content, path),
-        };
+        let result: std::io::Result<(crate::os::io::FileMeta, bool)> =
+            match crate::os::io::read_file_meta(path) {
+                Ok(meta) => crate::os::io::write_file_atomic(&content, &meta, force)
+                    .map(|retried| (meta, retried)),
+                Err(_) => crate::os::io::write_file_new(&content, path)
+                    .map(|meta| (meta, false)),
+            };
         match result {
-            Ok(meta) => {
+            Ok((meta, retried)) => {
                 // Store the canonicalized path so file_path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
                 ed.doc_mut().path = Some(Arc::new(meta.resolved_path.clone()));
                 ed.doc_mut().file_meta = Some(meta);
                 ed.doc_mut().mark_saved();
-                ed.report(Severity::Info, format!("Written {line_count} lines"));
+                ed.report(write_severity(retried), write_msg(line_count, retried));
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
@@ -783,15 +787,27 @@ fn write_file(ed: &mut Editor, arg: Option<&str>) -> Result<(), CommandError> {
         let Some(meta) = ed.doc().file_meta.as_ref() else {
             return Err(CommandError("no file name".into()));
         };
-        match crate::os::io::write_file_atomic(&content, meta) {
-            Ok(()) => {
+        match crate::os::io::write_file_atomic(&content, meta, force) {
+            Ok(retried) => {
                 ed.doc_mut().mark_saved();
-                ed.report(Severity::Info, format!("Written {line_count} lines"));
+                ed.report(write_severity(retried), write_msg(line_count, retried));
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
             Err(e) => Err(CommandError(e.to_string())),
         }
+    }
+}
+
+fn write_severity(forced: bool) -> Severity {
+    if forced { Severity::Warning } else { Severity::Info }
+}
+
+fn write_msg(line_count: usize, forced: bool) -> String {
+    if forced {
+        format!("Written {line_count} lines (forced)")
+    } else {
+        format!("Written {line_count} lines")
     }
 }
 
