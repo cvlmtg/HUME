@@ -197,6 +197,32 @@ fn var_name_len(s: &str) -> usize {
     end
 }
 
+// ── Home shortening ───────────────────────────────────────────────────────────
+
+/// Replace the user's home directory prefix with `~` for display.
+///
+/// `"/home/user/dev/hume"` → `"~/dev/hume"`.  Exact match returns `"~"`.
+/// When `home_dir()` is unavailable or the path does not start with the home
+/// directory, the full path is returned unchanged.
+pub(crate) fn shorten_home(path: &std::path::Path) -> String {
+    shorten_home_with(path, crate::os::dirs::home_dir)
+}
+
+fn shorten_home_with(
+    path: &std::path::Path,
+    home_fn: impl FnOnce() -> Option<std::path::PathBuf>,
+) -> String {
+    if let Some(home) = home_fn() {
+        match path.strip_prefix(&home) {
+            Ok(suffix) if suffix.as_os_str().is_empty() => "~".to_string(),
+            Ok(suffix) => format!("~{}{}", std::path::MAIN_SEPARATOR, suffix.display()),
+            Err(_) => path.display().to_string(),
+        }
+    } else {
+        path.display().to_string()
+    }
+}
+
 // ── Separator utilities ───────────────────────────────────────────────────────
 
 /// Returns `true` if `c` is a path-component separator on the current platform.
@@ -444,5 +470,49 @@ mod tests {
         assert!(!is_path_sep('a'));
         assert!(!is_path_sep('.'));
         assert!(!is_path_sep(' '));
+    }
+
+    // ── shorten_home_with ─────────────────────────────────────────────────────
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shorten_home_with_path_inside_home() {
+        use std::path::Path;
+        let got = shorten_home_with(Path::new("/home/user/dev/hume"), || Some(PathBuf::from("/home/user")));
+        assert_eq!(got, "~/dev/hume");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shorten_home_with_path_equal_to_home() {
+        use std::path::Path;
+        let got = shorten_home_with(Path::new("/home/user"), || Some(PathBuf::from("/home/user")));
+        assert_eq!(got, "~");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shorten_home_with_path_outside_home() {
+        use std::path::Path;
+        let got = shorten_home_with(Path::new("/tmp/foo"), || Some(PathBuf::from("/home/user")));
+        assert_eq!(got, "/tmp/foo");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shorten_home_with_no_home_returns_full_path() {
+        use std::path::Path;
+        let got = shorten_home_with(Path::new("/tmp/foo"), || None);
+        assert_eq!(got, "/tmp/foo");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shorten_home_with_path_prefix_not_a_dir_boundary() {
+        use std::path::Path;
+        // "/home/userx" must NOT match home="/home/user" — strip_prefix is
+        // component-aware and rejects partial component matches.
+        let got = shorten_home_with(Path::new("/home/userx/foo"), || Some(PathBuf::from("/home/user")));
+        assert_eq!(got, "/home/userx/foo");
     }
 }

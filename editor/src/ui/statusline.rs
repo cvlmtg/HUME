@@ -9,7 +9,9 @@ use engine::render::fill_rect_bg;
 use engine::types::EditorMode;
 
 use crate::core::grapheme::grapheme_col_in_line;
+use crate::core::text::LineEnding as TextLineEnding;
 use crate::editor::Editor;
+use crate::os::path::shorten_home;
 use crate::ui::theme::EditorColors;
 
 /// Hardcoded left section for Command/Search modes.
@@ -39,6 +41,11 @@ pub(crate) enum StatusElement {
     Separator,
     /// The file's basename, or `"[scratch]"` for unnamed buffers.
     FileName,
+    /// Current working directory, with the home prefix replaced by `~`.
+    ///
+    /// Sourced from `std::env::current_dir()` each frame. Renders empty when the
+    /// working directory is unavailable (e.g. it has been deleted).
+    Cwd,
     /// Cursor position as `"line:col"` (both 1-based, col = grapheme index).
     Position,
     /// Selection count as `"N sels"`, or the empty string when only one
@@ -50,6 +57,9 @@ pub(crate) enum StatusElement {
     KittyProtocol,
     /// Dirty indicator: `"[+]"` when the buffer has unsaved changes, empty otherwise.
     DirtyIndicator,
+    /// Line-ending indicator: `"LF"` or `"CRLF"` reflecting the buffer's write-back
+    /// encoding. Always shown — LF is the common case but worth making explicit.
+    LineEnding,
     /// Search match count: `"[3/42]"` when a search regex is active, empty otherwise.
     ///
     /// The current index is 1-based — the match whose range contains the primary
@@ -295,6 +305,20 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             let label = if editor.doc().is_dirty() { "[+]" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
+        StatusElement::LineEnding => {
+            let label = match editor.doc().text().line_ending() {
+                TextLineEnding::Lf   => "LF",
+                TextLineEnding::CrLf => "CRLF",
+            };
+            (Cow::Borrowed(label), colors.statusline)
+        }
+        StatusElement::Cwd => {
+            let display = match std::env::current_dir() {
+                Ok(path) => shorten_home(&path),
+                Err(_)   => String::new(),
+            };
+            (Cow::Owned(display), colors.statusline)
+        }
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.current_search_cursor().match_count {
                 if total == 0 {
@@ -461,6 +485,43 @@ mod tests {
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
         assert_eq!(text.as_ref(), "[recording @3]");
+    }
+
+    // ── LineEnding element ────────────────────────────────────────────────────
+
+    fn test_editor_with_text(s: &str) -> crate::editor::Editor {
+        use crate::core::{text::Text, selection::{Selection, SelectionSet}};
+        use crate::editor::buffer::Buffer;
+        let text = Text::from(s);
+        let sels = SelectionSet::single(Selection::collapsed(0));
+        crate::editor::Editor::for_testing(Buffer::new(text, sels))
+    }
+
+    #[test]
+    fn line_ending_element_lf() {
+        let ed = test_editor_with_text("hello\n");
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors);
+        assert_eq!(text.as_ref(), "LF");
+    }
+
+    #[test]
+    fn line_ending_element_crlf() {
+        let ed = test_editor_with_text("hello\r\n");
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors);
+        assert_eq!(text.as_ref(), "CRLF");
+    }
+
+    // ── Cwd element ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn cwd_element_renders_nonempty() {
+        // Smoke test: current_dir() succeeds in a normal test run.
+        let ed = test_editor();
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::Cwd, &ed, &colors);
+        assert!(!text.is_empty(), "Cwd rendered empty; expected a path string");
     }
 
     // ── center_x arithmetic ───────────────────────────────────────────────────

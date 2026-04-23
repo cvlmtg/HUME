@@ -36,14 +36,16 @@ fn parse_element_name(s: &str) -> Result<StatusElement, SteelErr> {
         "Position"       => Ok(StatusElement::Position),
         "Selections"     => Ok(StatusElement::Selections),
         "KittyProtocol"  => Ok(StatusElement::KittyProtocol),
+        "Cwd"            => Ok(StatusElement::Cwd),
         "DirtyIndicator" => Ok(StatusElement::DirtyIndicator),
+        "LineEnding"     => Ok(StatusElement::LineEnding),
         "SearchMatches"  => Ok(StatusElement::SearchMatches),
         "MiniBuf"        => Ok(StatusElement::MiniBuf),
         "MacroRecording" => Ok(StatusElement::MacroRecording),
         _ => Err(SteelErr::new(ErrorKind::Generic,
             format!("configure-statusline!: unknown element '{s}'; \
-                     valid names: Mode Separator FileName Position Selections \
-                     KittyProtocol DirtyIndicator SearchMatches MiniBuf MacroRecording"))),
+                     valid names: Cwd DirtyIndicator FileName KittyProtocol LineEnding \
+                     MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"))),
     }
 }
 
@@ -102,9 +104,11 @@ mod tests {
             ("Mode",           StatusElement::Mode),
             ("Separator",      StatusElement::Separator),
             ("FileName",       StatusElement::FileName),
+            ("Cwd",            StatusElement::Cwd),
             ("Position",       StatusElement::Position),
             ("KittyProtocol",  StatusElement::KittyProtocol),
             ("DirtyIndicator", StatusElement::DirtyIndicator),
+            ("LineEnding",     StatusElement::LineEnding),
             ("SearchMatches",  StatusElement::SearchMatches),
             ("MiniBuf",        StatusElement::MiniBuf),
             ("MacroRecording", StatusElement::MacroRecording),
