@@ -1014,7 +1014,12 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            MiniBufferEvent::Confirm(_) | MiniBufferEvent::ConfirmEmpty => {
+            // Empty Enter: dismiss silently without dispatching.
+            MiniBufferEvent::ConfirmEmpty => {
+                self.set_mode(Mode::Normal);
+                self.close_minibuf();
+            }
+            MiniBufferEvent::Confirm(_) => {
                 // If the selected completion candidate is a directory
                 // (trailing `/`), Enter descends into it instead of executing:
                 // the candidate is already in the input (Tab applied it), so
@@ -1225,18 +1230,7 @@ impl Editor {
             .map(|m| m.input.trim().to_owned())
             .unwrap_or_default();
 
-        // Split into command name and optional argument (e.g. "w foo.txt" → "w" + "foo.txt").
-        // input is already trimmed, so splitting on the first space is sufficient.
-        let (cmd_raw, arg) = match input.split_once(' ') {
-            Some((c, a)) => (c, Some(a.trim())),
-            None => (input.as_str(), None),
-        };
-
-        // Parse trailing `!` once so commands can opt in to force semantics.
-        let (cmd, force) = match cmd_raw.strip_suffix('!') {
-            Some(base) => (base, true),
-            None => (cmd_raw, false),
-        };
+        let (cmd, force, arg) = parse_typed_command(&input);
 
         // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
         // common case (no expansion) stays allocation-free.
@@ -1271,6 +1265,29 @@ impl Editor {
 }
 
 // ── Typed-command helpers ─────────────────────────────────────────────────────
+
+/// Parse a typed-command string into `(cmd, force, arg)`.
+///
+/// Command name = longest `[A-Za-z_-]` prefix. One optional trailing `!` is
+/// consumed as `force = true`. Everything after is the argument (whitespace-
+/// trimmed). Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`,
+/// and `:w foo.txt` all parse correctly.
+pub(super) fn parse_typed_command(input: &str) -> (&str, bool, Option<&str>) {
+    let name_end = input
+        .char_indices()
+        .find(|(_, c)| !(c.is_ascii_alphabetic() || *c == '-' || *c == '_'))
+        .map(|(i, _)| i)
+        .unwrap_or(input.len());
+    let (cmd_end, force) = if input[name_end..].starts_with('!') {
+        (name_end + 1, true)
+    } else {
+        (name_end, false)
+    };
+    let cmd = &input[..name_end];
+    let rest = input[cmd_end..].trim();
+    let arg = if rest.is_empty() { None } else { Some(rest) };
+    (cmd, force, arg)
+}
 
 /// Expand `%` → focused buffer's path and `#` → alternate buffer's path in a
 /// typed-command argument.

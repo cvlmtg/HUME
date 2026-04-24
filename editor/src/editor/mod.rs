@@ -562,7 +562,11 @@ impl Editor {
                 } else {
                     self.mode
                 };
-                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+                let wrap_mode = if self.scratch_view.is_some() {
+                    self.scratch_wrap_mode()
+                } else {
+                    self.doc().overrides.wrap_mode(&self.settings)
+                };
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 PaneRenderSettings {
@@ -680,7 +684,7 @@ impl Editor {
             let rope = sv.buf.rope();
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
-            let wrap_mode = self.settings.wrap_mode.clone();
+            let wrap_mode = self.scratch_wrap_mode();
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
@@ -894,6 +898,14 @@ impl Editor {
 
     pub(crate) fn viewport(&self) -> &ViewportState {
         &self.engine_view.panes[self.focused_pane_id].viewport
+    }
+
+    /// Wrap mode for scratch views (`:ls`, `:messages`).
+    ///
+    /// Scratch content is terminal-sized system output, so it should fit
+    /// the current viewport rather than a fixed user-configured column.
+    fn scratch_wrap_mode(&self) -> WrapMode {
+        WrapMode::Indent { width: self.viewport().width.max(20) }
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
@@ -1729,14 +1741,7 @@ impl Editor {
         extra_arg: Option<&str>,
     ) -> Result<(), crate::core::error::CommandError> {
         use crate::editor::Severity;
-        let (cmd_raw, inline_arg) = match cmd_with_arg.split_once(' ') {
-            Some((c, a)) => (c, Some(a.trim())),
-            None => (cmd_with_arg, None),
-        };
-        let (cmd, force) = match cmd_raw.strip_suffix('!') {
-            Some(base) => (base, true),
-            None => (cmd_raw, false),
-        };
+        let (cmd, force, inline_arg) = mappings::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
         if let Some(tc) = self.registry.get_typed(cmd) {
             let fun = tc.fun;
