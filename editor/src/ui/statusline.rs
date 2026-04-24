@@ -348,8 +348,7 @@ fn render_element(
             } else {
                 editor
                     .doc()
-                    .path
-                    .as_deref()
+                    .path()
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
                     .unwrap_or("[scratch]")

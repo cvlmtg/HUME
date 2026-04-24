@@ -243,7 +243,7 @@ fn p6_edit_opens_new_buffer() {
     assert_eq!(ed.doc().text().to_string(), "file content\n");
     // Path stored correctly.
     assert_eq!(
-        ed.doc().path.as_deref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path())
     );
 }

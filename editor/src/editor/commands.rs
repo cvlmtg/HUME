@@ -1202,7 +1202,7 @@ pub(super) fn typed_list_buffers(
         };
         let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
 
-        let path_ref = buf.path.as_deref();
+        let path_ref = buf.path();
         let name = path_ref
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
@@ -1327,7 +1327,7 @@ pub(super) fn typed_edit(
         Ok(())
     } else {
         // Reload current file.
-        let Some(path) = ed.doc().path.clone() else {
+        let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
             if force {
                 // :e! on scratch: replace with fresh scratch.
                 let id = ed.focused_buffer_id();
@@ -1447,12 +1447,7 @@ fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
 
 /// Emit a warning if `bid`'s backing file no longer exists on disk.
 fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
-    let path = ed
-        .buffers
-        .get(bid)
-        .path
-        .as_deref()
-        .map(|p| p.as_path().to_path_buf());
+    let path = ed.buffers.get(bid).path().map(|p| p.to_path_buf());
     if let Some(p) = path
         && !p.exists()
     {
@@ -1473,8 +1468,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     // `*scratch*` otherwise. Unambiguous regardless of whether the collision
     // was on basename or prefix.
     let label = |buf: &Buffer| -> String {
-        buf.path
-            .as_ref()
+        buf.path()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
     };

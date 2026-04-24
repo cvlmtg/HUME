@@ -1,6 +1,5 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::core::changeset::ChangeSet;
 use crate::core::history::{History, RevisionId};
@@ -59,7 +58,7 @@ pub(crate) struct Buffer {
     /// The revision at which the buffer was last saved (or first opened).
     saved_revision: RevisionId,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
-    pub(crate) path: Option<Arc<std::path::PathBuf>>,
+    pub(super) path: Option<PathBuf>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
     pub(crate) file_meta: Option<FileMeta>,
@@ -138,7 +137,12 @@ impl Buffer {
                 p.display()
             );
         }
-        self.path = path.map(Arc::new);
+        self.path = path;
+    }
+
+    /// Canonical backing-file path, or `None` for scratch buffers.
+    pub(crate) fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 
     /// The initial selections stored at the history root.
@@ -151,8 +155,7 @@ impl Buffer {
 
     /// The name shown in the UI: basename for named buffers, `*scratch*` for unnamed ones.
     pub(crate) fn display_name(&self) -> String {
-        self.path
-            .as_deref()
+        self.path()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| Self::SCRATCH_BUFFER_NAME.to_owned())

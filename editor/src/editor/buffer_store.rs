@@ -51,7 +51,7 @@ impl BufferStore {
     pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
         self.buffers
             .iter()
-            .find_map(|(id, buf)| buf.path.as_deref().filter(|p| *p == path).map(|_| id))
+            .find_map(|(id, buf)| buf.path().filter(|p| *p == path).map(|_| id))
     }
 
     /// Infallible getter. Panics if `id` was never seeded — that is a caller bug.

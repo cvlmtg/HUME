@@ -34,7 +34,7 @@ fn buffer_index_switches_to_nth_buffer() {
     let p1_canonical = std::fs::canonicalize(&p1).unwrap();
     ed.execute_typed("b", Some("2")).unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(p1_canonical.as_path()),
         ":b 2 must switch to the 2nd buffer in open-order"
     );
@@ -75,7 +75,7 @@ fn buffer_full_path_switches() {
     ed.execute_typed("b", Some(p1_canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(p1_canonical.as_path()),
         ":b <full-path> must switch to the correct buffer"
     );
@@ -110,7 +110,7 @@ fn buffer_exact_basename_switches() {
     let basename = p1.file_name().unwrap().to_str().unwrap();
     ed.execute_typed("b", Some(basename)).unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(p1_canonical.as_path()),
         ":b <exact-basename> must switch to that buffer"
     );
@@ -162,7 +162,7 @@ fn buffer_prefix_unique_switches() {
     // "prefixed" is a unique prefix
     ed.execute_typed("b", Some("prefixed")).unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         ":b <prefix> must switch to the uniquely-matched buffer"
     );
@@ -216,11 +216,11 @@ fn buffer_scratch_literal_switches_back() {
     let mut ed = editor_from("-[h]>ello\n");
     // Open a file; scratch buffer is now the alternate.
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
-    assert!(ed.doc().path.is_some(), "must be on the file buffer now");
+    assert!(ed.doc().path().is_some(), "must be on the file buffer now");
 
     ed.execute_typed("b", Some("*scratch*")).unwrap();
     assert!(
-        ed.doc().path.is_none(),
+        ed.doc().path().is_none(),
         ":b *scratch* must switch to the unnamed scratch buffer"
     );
 }
@@ -292,7 +292,7 @@ fn buffer_switch_to_deleted_file_by_path() {
     ed.execute_typed("b", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         ":b <deleted-path> must still switch to the open buffer"
     );
@@ -319,7 +319,7 @@ fn buffer_switch_to_deleted_file_by_basename() {
     let basename = canonical.file_name().unwrap().to_str().unwrap();
     ed.execute_typed("b", Some(basename)).unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         ":b <basename> must switch even when the file is deleted"
     );
@@ -364,11 +364,11 @@ fn buffer_switch_pushes_jump() {
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     // Switch back to scratch via :b *scratch*.
     ed.execute_typed("b", Some("*scratch*")).unwrap();
-    assert!(ed.doc().path.is_none(), "must be on scratch now");
+    assert!(ed.doc().path().is_none(), "must be on scratch now");
     // Ctrl+O should bring us back to p1.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         "Ctrl+O must restore the buffer we jumped from"
     );
