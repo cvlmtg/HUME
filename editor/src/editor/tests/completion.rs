@@ -14,7 +14,10 @@ fn key_shift_tab() -> KeyEvent {
 
 /// Drain the minibuf input for assertions.
 fn minibuf_input(ed: &Editor) -> &str {
-    ed.minibuf.as_ref().map(|mb| mb.input.as_str()).unwrap_or("")
+    ed.minibuf
+        .as_ref()
+        .map(|mb| mb.input.as_str())
+        .unwrap_or("")
 }
 
 // ── Command-name completion ───────────────────────────────────────────────────
@@ -24,7 +27,9 @@ fn tab_on_command_prefix_single_match_completes_silently() {
     // ":quit" is the only registered command starting with "qui".
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "qui".chars() { ed.handle_key(key(ch)); }
+    for ch in "qui".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     assert_eq!(minibuf_input(&ed), "quit");
@@ -36,7 +41,9 @@ fn tab_on_command_prefix_single_match_completes_silently() {
 fn tab_no_match_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "zzz".chars() { ed.handle_key(key(ch)); }
+    for ch in "zzz".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     assert_eq!(minibuf_input(&ed), "zzz");
@@ -123,7 +130,9 @@ fn enter_mid_completion_executes_selected_candidate() {
     // ":quit" is a unique completion for "qui".
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "qui".chars() { ed.handle_key(key(ch)); }
+    for ch in "qui".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     // Now input = "quit". Enter should quit.
@@ -150,7 +159,9 @@ fn esc_dismisses_minibuf_and_clears_completion() {
 fn shift_tab_with_no_popup_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "wri".chars() { ed.handle_key(key(ch)); }
+    for ch in "wri".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_shift_tab()); // no popup yet
 
     // Nothing should have changed: input stays "wri", no popup.
@@ -184,7 +195,9 @@ fn tab_on_edit_arg_completes_path() {
     let input = format!("e {prefix}");
 
     ed.handle_key(key(':'));
-    for ch in input.chars() { ed.handle_key(key(ch)); }
+    for ch in input.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     // Single match → silent completion, no popup.
@@ -203,7 +216,9 @@ fn tab_on_write_arg_completes_path() {
     let input = format!("w {prefix}");
 
     ed.handle_key(key(':'));
-    for ch in input.chars() { ed.handle_key(key(ch)); }
+    for ch in input.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     let expected = format!("w {}/out.txt", dir.path().display());
@@ -223,13 +238,22 @@ fn tab_on_cd_arg_completes_dirs_only() {
     let input = format!("cd {prefix}");
 
     ed.handle_key(key(':'));
-    for ch in input.chars() { ed.handle_key(key(ch)); }
+    for ch in input.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab());
 
     // One dir-only match → silent complete with trailing '/'.
     let expected = format!("cd {}/mysubdir/", dir.path().display());
-    assert_eq!(minibuf_input(&ed), expected, "cd must complete to the directory");
-    assert!(ed.completion.is_none(), ":cd completion must exclude files, leaving a single dir match");
+    assert_eq!(
+        minibuf_input(&ed),
+        expected,
+        "cd must complete to the directory"
+    );
+    assert!(
+        ed.completion.is_none(),
+        ":cd completion must exclude files, leaving a single dir match"
+    );
 }
 
 // ── Directory descent on Enter ────────────────────────────────────────────────
@@ -247,23 +271,41 @@ fn enter_on_directory_candidate_restarts_completion() {
     let mut ed = editor_from("-[h]>ello\n");
     let input = format!("e {}/", dir.path().display());
     ed.handle_key(key(':'));
-    for ch in input.chars() { ed.handle_key(key(ch)); }
+    for ch in input.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_tab()); // opens popup; "alpha/" selected first (alphabetical).
 
     let state = ed.completion.as_ref().expect("popup should be open");
     let first = state.candidates[0].replacement.clone();
-    assert!(first.ends_with('/'), "expected directory candidate, got {first}");
+    assert!(
+        first.ends_with('/'),
+        "expected directory candidate, got {first}"
+    );
 
     ed.handle_key(key_enter());
 
     // Minibuf stays open — Enter on a dir must not execute the command.
-    assert!(ed.minibuf.is_some(), "Enter on dir candidate must keep minibuf open");
+    assert!(
+        ed.minibuf.is_some(),
+        "Enter on dir candidate must keep minibuf open"
+    );
     // Input now contains the selected directory.
     let input_now = minibuf_input(&ed);
-    assert!(input_now.contains("/alpha/"), "expected descent through alpha/, got {input_now}");
+    assert!(
+        input_now.contains("/alpha/"),
+        "expected descent through alpha/, got {input_now}"
+    );
     // Completion re-triggered with the directory's children.
-    let restarted = ed.completion.as_ref().expect("completion should restart for dir children");
-    assert_eq!(restarted.candidates.len(), 2, "expected 2 files under alpha/");
+    let restarted = ed
+        .completion
+        .as_ref()
+        .expect("completion should restart for dir children");
+    assert_eq!(
+        restarted.candidates.len(),
+        2,
+        "expected 2 files under alpha/"
+    );
 }
 
 // ── Ctrl-W delete-word in minibuf ─────────────────────────────────────────────
@@ -272,7 +314,9 @@ fn enter_on_directory_candidate_restarts_completion() {
 fn ctrl_w_deletes_word_in_minibuf() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "e foo bar".chars() { ed.handle_key(key(ch)); }
+    for ch in "e foo bar".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "e foo ");
 }
@@ -282,7 +326,9 @@ fn ctrl_w_skips_trailing_whitespace_first() {
     // Readline behaviour: runs of spaces are consumed before the word.
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "e foo   ".chars() { ed.handle_key(key(ch)); }
+    for ch in "e foo   ".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "e ");
 }
@@ -294,14 +340,19 @@ fn ctrl_w_at_start_is_noop_and_keeps_minibuf_open() {
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "");
     // Unlike Backspace on empty input (which cancels), Ctrl-W is a no-op.
-    assert!(ed.minibuf.is_some(), "Ctrl-W on empty input must not close the minibuf");
+    assert!(
+        ed.minibuf.is_some(),
+        "Ctrl-W on empty input must not close the minibuf"
+    );
 }
 
 #[test]
 fn ctrl_w_stops_at_slash_for_path_args() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "e /tmp/alpha/one.txt".chars() { ed.handle_key(key(ch)); }
+    for ch in "e /tmp/alpha/one.txt".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "e /tmp/alpha/");
 }
@@ -310,7 +361,9 @@ fn ctrl_w_stops_at_slash_for_path_args() {
 fn ctrl_w_on_trailing_slash_deletes_dir_component() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "e /tmp/alpha/".chars() { ed.handle_key(key(ch)); }
+    for ch in "e /tmp/alpha/".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "e /tmp/");
 }
@@ -334,12 +387,17 @@ fn ctrl_w_works_in_search_minibuf() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
     assert_eq!(ed.mode, Mode::Search);
-    for ch in "foo bar".chars() { ed.handle_key(key(ch)); }
+    for ch in "foo bar".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo bar");
     ed.handle_key(key_ctrl('w'));
     assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo ");
     // Search minibuf must still be open.
-    assert!(ed.minibuf.is_some(), "Ctrl-W must not close the search minibuf");
+    assert!(
+        ed.minibuf.is_some(),
+        "Ctrl-W must not close the search minibuf"
+    );
     assert_eq!(ed.mode, Mode::Search);
     ed.handle_key(key_esc());
 }
@@ -350,7 +408,10 @@ fn ctrl_w_at_start_of_search_minibuf_is_noop() {
     ed.handle_key(key('/'));
     // Nothing typed yet — Ctrl-W on empty input is a no-op.
     ed.handle_key(key_ctrl('w'));
-    assert!(ed.minibuf.is_some(), "Ctrl-W on empty search input must not close the minibuf");
+    assert!(
+        ed.minibuf.is_some(),
+        "Ctrl-W on empty search input must not close the minibuf"
+    );
     assert_eq!(ed.mode, Mode::Search);
     ed.handle_key(key_esc());
 }

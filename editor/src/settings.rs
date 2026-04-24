@@ -58,11 +58,21 @@ pub(crate) enum SettingScope {
 /// All arms return `Result<T, String>`. Used inside `apply_setting` (generated
 /// by `define_settings!`) where `value` and `key` are in scope.
 macro_rules! parse_setting {
-    ($value:expr, $key:expr, bool)          => { parse_bool($value, $key) };
-    ($value:expr, $key:expr, usize)         => { parse_usize($value, $key) };
-    ($value:expr, $key:expr, usize_nonzero) => { parse_usize_nonzero($value, $key) };
-    ($value:expr, $key:expr, tab_width)     => { parse_tab_width($value) };
-    ($value:expr, $key:expr, from_str)      => { $value.parse() };
+    ($value:expr, $key:expr, bool) => {
+        parse_bool($value, $key)
+    };
+    ($value:expr, $key:expr, usize) => {
+        parse_usize($value, $key)
+    };
+    ($value:expr, $key:expr, usize_nonzero) => {
+        parse_usize_nonzero($value, $key)
+    };
+    ($value:expr, $key:expr, tab_width) => {
+        parse_tab_width($value)
+    };
+    ($value:expr, $key:expr, from_str) => {
+        $value.parse()
+    };
 }
 
 // ── Settings definition ───────────────────────────────────────────────────────
@@ -295,33 +305,33 @@ define_settings! {
 /// `apply_setting(SettingScope::Global, …)` must have a matching arm here.
 pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<String> {
     Some(match key {
-        "scroll-margin"       => settings.scroll_margin.to_string(),
-        "scroll-margin-h"     => settings.scroll_margin_h.to_string(),
-        "mouse-scroll-lines"  => settings.mouse_scroll_lines.to_string(),
-        "mouse-enabled"       => settings.mouse_enabled.to_string(),
-        "mouse-select"        => settings.mouse_select.to_string(),
-        "jump-list-capacity"      => settings.jump_list_capacity.to_string(),
-        "jump-line-threshold"     => settings.jump_line_threshold.to_string(),
-        "history-capacity"        => settings.history_capacity.to_string(),
-        "steel-init-budget-ms"    => settings.steel_init_budget_ms.to_string(),
+        "scroll-margin" => settings.scroll_margin.to_string(),
+        "scroll-margin-h" => settings.scroll_margin_h.to_string(),
+        "mouse-scroll-lines" => settings.mouse_scroll_lines.to_string(),
+        "mouse-enabled" => settings.mouse_enabled.to_string(),
+        "mouse-select" => settings.mouse_select.to_string(),
+        "jump-list-capacity" => settings.jump_list_capacity.to_string(),
+        "jump-line-threshold" => settings.jump_line_threshold.to_string(),
+        "history-capacity" => settings.history_capacity.to_string(),
+        "steel-init-budget-ms" => settings.steel_init_budget_ms.to_string(),
         "steel-command-budget-ms" => settings.steel_command_budget_ms.to_string(),
-        "popup-border"        => settings.popup_border.to_string(),
-        "tab-width"           => settings.tab_width.to_string(),
-        "wrap-mode"           => match settings.wrap_mode {
-            engine::pane::WrapMode::None                 => "none".to_string(),
-            engine::pane::WrapMode::Soft   { width }     => format!("soft:{width}"),
-            engine::pane::WrapMode::Word   { width }     => format!("word:{width}"),
-            engine::pane::WrapMode::Indent { width }     => format!("indent:{width}"),
+        "popup-border" => settings.popup_border.to_string(),
+        "tab-width" => settings.tab_width.to_string(),
+        "wrap-mode" => match settings.wrap_mode {
+            engine::pane::WrapMode::None => "none".to_string(),
+            engine::pane::WrapMode::Soft { width } => format!("soft:{width}"),
+            engine::pane::WrapMode::Word { width } => format!("word:{width}"),
+            engine::pane::WrapMode::Indent { width } => format!("indent:{width}"),
         },
         "line-number-style" => match settings.line_number_style {
             engine::builtins::line_number::LineNumberStyle::Absolute => "absolute".to_string(),
             engine::builtins::line_number::LineNumberStyle::Relative => "relative".to_string(),
-            engine::builtins::line_number::LineNumberStyle::Hybrid   => "hybrid".to_string(),
+            engine::builtins::line_number::LineNumberStyle::Hybrid => "hybrid".to_string(),
         },
-        "auto-pairs-enabled"  => settings.auto_pairs_enabled.to_string(),
-        "whitespace-space"    => whitespace_render_to_str(settings.whitespace.space).to_string(),
-        "whitespace-tab"      => whitespace_render_to_str(settings.whitespace.tab).to_string(),
-        "whitespace-newline"  => whitespace_render_to_str(settings.whitespace.newline).to_string(),
+        "auto-pairs-enabled" => settings.auto_pairs_enabled.to_string(),
+        "whitespace-space" => whitespace_render_to_str(settings.whitespace.space).to_string(),
+        "whitespace-tab" => whitespace_render_to_str(settings.whitespace.tab).to_string(),
+        "whitespace-newline" => whitespace_render_to_str(settings.whitespace.newline).to_string(),
         "statusline" => serialize_statusline(&settings.statusline),
         _ => return None,
     })
@@ -329,8 +339,8 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
 
 fn whitespace_render_to_str(r: engine::pane::WhitespaceRender) -> &'static str {
     match r {
-        engine::pane::WhitespaceRender::None     => "none",
-        engine::pane::WhitespaceRender::All      => "all",
+        engine::pane::WhitespaceRender::None => "none",
+        engine::pane::WhitespaceRender::All => "all",
         engine::pane::WhitespaceRender::Trailing => "trailing",
     }
 }
@@ -343,9 +353,18 @@ fn whitespace_render_to_str(r: engine::pane::WhitespaceRender) -> &'static str {
 /// ASCII identifiers that never contain `|` or `,`.
 fn serialize_statusline(cfg: &StatusLineConfig) -> String {
     let fmt_section = |elems: &[StatusElement]| -> String {
-        elems.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(",")
+        elems
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     };
-    format!("{}|{}|{}", fmt_section(&cfg.left), fmt_section(&cfg.center), fmt_section(&cfg.right))
+    format!(
+        "{}|{}|{}",
+        fmt_section(&cfg.left),
+        fmt_section(&cfg.center),
+        fmt_section(&cfg.right)
+    )
 }
 
 /// Parse the `"left|center|right"` wire format into a `StatusLineConfig`.
@@ -361,15 +380,16 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
         ));
     }
     let parse_section = |section: &str| -> Result<Vec<StatusElement>, String> {
-        section.split(',')
+        section
+            .split(',')
             .filter(|name| !name.is_empty())
             .map(|name| name.parse::<StatusElement>())
             .collect()
     };
     Ok(StatusLineConfig {
-        left:   parse_section(parts[0])?,
+        left: parse_section(parts[0])?,
         center: parse_section(parts[1])?,
-        right:  parse_section(parts[2])?,
+        right: parse_section(parts[2])?,
     })
 }
 
@@ -384,8 +404,8 @@ impl BufferOverrides {
     /// global values for the others.
     pub(crate) fn whitespace(&self, global: &EditorSettings) -> WhitespaceConfig {
         WhitespaceConfig {
-            space:   self.whitespace_space.unwrap_or(global.whitespace.space),
-            tab:     self.whitespace_tab.unwrap_or(global.whitespace.tab),
+            space: self.whitespace_space.unwrap_or(global.whitespace.space),
+            tab: self.whitespace_tab.unwrap_or(global.whitespace.tab),
             newline: self.whitespace_newline.unwrap_or(global.whitespace.newline),
             // Rendering chars are not per-buffer configurable; always from global.
             ..global.whitespace.clone()
@@ -397,10 +417,7 @@ impl BufferOverrides {
     /// Returns references to avoid a `Vec` allocation on every keystroke.
     /// The `enabled` flag and the pair list are resolved independently so a
     /// buffer can override just one without replacing the other.
-    pub(crate) fn auto_pairs_ref<'a>(
-        &'a self,
-        global: &'a EditorSettings,
-    ) -> (bool, &'a [Pair]) {
+    pub(crate) fn auto_pairs_ref<'a>(&'a self, global: &'a EditorSettings) -> (bool, &'a [Pair]) {
         let enabled = self.auto_pairs_enabled(global);
         let pairs: &[Pair] = match &self.auto_pairs {
             Some(p) => p.as_slice(),
@@ -430,7 +447,9 @@ fn parse_bool(value: &str, key: &str) -> Result<bool, String> {
     match value {
         "true" | "on" | "yes" | "1" => Ok(true),
         "false" | "off" | "no" | "0" => Ok(false),
-        _ => Err(format!("invalid value for '{key}': expected true/false, got '{value}'")),
+        _ => Err(format!(
+            "invalid value for '{key}': expected true/false, got '{value}'"
+        )),
     }
 }
 
@@ -487,14 +506,20 @@ mod tests {
     #[test]
     fn resolution_override_wins_over_global() {
         let global = EditorSettings::default();
-        let ov = BufferOverrides { tab_width: Some(8), ..Default::default() };
+        let ov = BufferOverrides {
+            tab_width: Some(8),
+            ..Default::default()
+        };
         assert_eq!(ov.tab_width(&global), 8);
     }
 
     #[test]
     fn resolution_wrap_mode_override_wins() {
         let global = EditorSettings::default();
-        let ov = BufferOverrides { wrap_mode: Some(WrapMode::None), ..Default::default() };
+        let ov = BufferOverrides {
+            wrap_mode: Some(WrapMode::None),
+            ..Default::default()
+        };
         assert_eq!(ov.wrap_mode(&global), WrapMode::None);
     }
 
@@ -529,7 +554,10 @@ mod tests {
     #[test]
     fn auto_pairs_override_enabled_only() {
         let global = EditorSettings::default();
-        let ov = BufferOverrides { auto_pairs_enabled: Some(false), ..Default::default() };
+        let ov = BufferOverrides {
+            auto_pairs_enabled: Some(false),
+            ..Default::default()
+        };
         let (enabled, pairs) = ov.auto_pairs_ref(&global);
         assert!(!enabled);
         // Pairs list inherited from global.
@@ -573,7 +601,12 @@ mod tests {
 
     #[test]
     fn set_global_mouse_scroll_lines() {
-        assert_eq!(global("mouse-scroll-lines", "5").unwrap().mouse_scroll_lines, 5);
+        assert_eq!(
+            global("mouse-scroll-lines", "5")
+                .unwrap()
+                .mouse_scroll_lines,
+            5
+        );
     }
 
     #[test]
@@ -588,7 +621,12 @@ mod tests {
 
     #[test]
     fn set_global_jump_list_capacity() {
-        assert_eq!(global("jump-list-capacity", "50").unwrap().jump_list_capacity, 50);
+        assert_eq!(
+            global("jump-list-capacity", "50")
+                .unwrap()
+                .jump_list_capacity,
+            50
+        );
     }
 
     #[test]
@@ -598,12 +636,20 @@ mod tests {
 
     #[test]
     fn set_global_jump_line_threshold() {
-        assert_eq!(global("jump-line-threshold", "10").unwrap().jump_line_threshold, 10);
+        assert_eq!(
+            global("jump-line-threshold", "10")
+                .unwrap()
+                .jump_line_threshold,
+            10
+        );
     }
 
     #[test]
     fn set_global_history_capacity() {
-        assert_eq!(global("history-capacity", "50").unwrap().history_capacity, 50);
+        assert_eq!(
+            global("history-capacity", "50").unwrap().history_capacity,
+            50
+        );
     }
 
     #[test]
@@ -624,14 +670,19 @@ mod tests {
     #[test]
     fn set_global_line_number_style() {
         assert_eq!(
-            global("line-number-style", "relative").unwrap().line_number_style,
+            global("line-number-style", "relative")
+                .unwrap()
+                .line_number_style,
             LineNumberStyle::Relative,
         );
     }
 
     #[test]
     fn set_global_wrap_mode_none() {
-        assert_eq!(global("wrap-mode", "none").unwrap().wrap_mode, WrapMode::None);
+        assert_eq!(
+            global("wrap-mode", "none").unwrap().wrap_mode,
+            WrapMode::None
+        );
     }
 
     #[test]
@@ -644,7 +695,11 @@ mod tests {
 
     #[test]
     fn set_global_auto_pairs_enabled() {
-        assert!(!global("auto-pairs-enabled", "false").unwrap().auto_pairs_enabled);
+        assert!(
+            !global("auto-pairs-enabled", "false")
+                .unwrap()
+                .auto_pairs_enabled
+        );
     }
 
     #[test]
@@ -666,7 +721,10 @@ mod tests {
     #[test]
     fn set_global_whitespace_newline() {
         assert_eq!(
-            global("whitespace-newline", "all").unwrap().whitespace.newline,
+            global("whitespace-newline", "all")
+                .unwrap()
+                .whitespace
+                .newline,
             WhitespaceRender::All,
         );
     }
@@ -751,18 +809,21 @@ mod tests {
         global.whitespace.tab = WhitespaceRender::Trailing;
         let ov = buffer("whitespace-space", "all").unwrap();
         let ws = ov.whitespace(&global);
-        assert_eq!(ws.space, WhitespaceRender::All);       // from buffer override
-        assert_eq!(ws.tab, WhitespaceRender::Trailing);    // inherited from global
-        assert_eq!(ws.newline, WhitespaceRender::None);    // inherited from global
+        assert_eq!(ws.space, WhitespaceRender::All); // from buffer override
+        assert_eq!(ws.tab, WhitespaceRender::Trailing); // inherited from global
+        assert_eq!(ws.newline, WhitespaceRender::None); // inherited from global
     }
 
     #[test]
     fn set_buffer_global_only_setting_errors() {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        let err = apply_setting(SettingScope::Text, "scroll-margin", "3", &mut s, &mut ov)
-            .unwrap_err();
-        assert!(err.contains("global-only"), "expected 'global-only' in error: {err}");
+        let err =
+            apply_setting(SettingScope::Text, "scroll-margin", "3", &mut s, &mut ov).unwrap_err();
+        assert!(
+            err.contains("global-only"),
+            "expected 'global-only' in error: {err}"
+        );
     }
 
     #[test]
@@ -780,8 +841,7 @@ mod tests {
             "history-capacity",
             "popup-border",
         ] {
-            let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov)
-                .unwrap_err();
+            let err = apply_setting(SettingScope::Text, key, "1", &mut s, &mut ov).unwrap_err();
             assert!(
                 err.contains("global-only"),
                 "key '{key}': expected 'global-only' in error: {err}",
@@ -830,11 +890,22 @@ mod tests {
         let s = EditorSettings::default();
         // Every key known to apply_setting must be serializable.
         let keys = [
-            "scroll-margin", "scroll-margin-h", "mouse-scroll-lines",
-            "mouse-enabled", "mouse-select", "jump-list-capacity", "jump-line-threshold",
-            "history-capacity", "popup-border",
-            "tab-width", "wrap-mode", "line-number-style", "auto-pairs-enabled",
-            "whitespace-space", "whitespace-tab", "whitespace-newline",
+            "scroll-margin",
+            "scroll-margin-h",
+            "mouse-scroll-lines",
+            "mouse-enabled",
+            "mouse-select",
+            "jump-list-capacity",
+            "jump-line-threshold",
+            "history-capacity",
+            "popup-border",
+            "tab-width",
+            "wrap-mode",
+            "line-number-style",
+            "auto-pairs-enabled",
+            "whitespace-space",
+            "whitespace-tab",
+            "whitespace-newline",
             "statusline",
         ];
         for key in keys {
@@ -862,13 +933,19 @@ mod tests {
 
     #[test]
     fn serialize_setting_wrap_mode_none() {
-        let s = EditorSettings { wrap_mode: engine::pane::WrapMode::None, ..Default::default() };
+        let s = EditorSettings {
+            wrap_mode: engine::pane::WrapMode::None,
+            ..Default::default()
+        };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "none");
     }
 
     #[test]
     fn serialize_setting_wrap_mode_indent() {
-        let s = EditorSettings { wrap_mode: engine::pane::WrapMode::Indent { width: 80 }, ..Default::default() };
+        let s = EditorSettings {
+            wrap_mode: engine::pane::WrapMode::Indent { width: 80 },
+            ..Default::default()
+        };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent:80");
     }
 
@@ -877,28 +954,41 @@ mod tests {
     #[test]
     fn serialize_statusline_round_trips_non_default() {
         use crate::ui::statusline::StatusElement;
-        let mut s = EditorSettings::default();
-        s.statusline = crate::ui::statusline::StatusLineConfig {
-            left:   vec![StatusElement::Position, StatusElement::FileName],
-            center: vec![StatusElement::MacroRecording],
-            right:  vec![StatusElement::Mode],
+        let s = EditorSettings {
+            statusline: crate::ui::statusline::StatusLineConfig {
+                left: vec![StatusElement::Position, StatusElement::FileName],
+                center: vec![StatusElement::MacroRecording],
+                right: vec![StatusElement::Mode],
+            },
+            ..EditorSettings::default()
         };
         let serialized = serialize_setting(&s, "statusline").unwrap();
         assert_eq!(serialized, "Position,FileName|MacroRecording|Mode");
 
         let mut s2 = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        apply_setting(SettingScope::Global, "statusline", &serialized, &mut s2, &mut ov).unwrap();
-        assert_eq!(s2.statusline.left,   s.statusline.left);
+        apply_setting(
+            SettingScope::Global,
+            "statusline",
+            &serialized,
+            &mut s2,
+            &mut ov,
+        )
+        .unwrap();
+        assert_eq!(s2.statusline.left, s.statusline.left);
         assert_eq!(s2.statusline.center, s.statusline.center);
-        assert_eq!(s2.statusline.right,  s.statusline.right);
+        assert_eq!(s2.statusline.right, s.statusline.right);
     }
 
     #[test]
     fn serialize_statusline_empty_sections() {
-        let mut s = EditorSettings::default();
-        s.statusline = crate::ui::statusline::StatusLineConfig {
-            left: vec![], center: vec![], right: vec![],
+        let s = EditorSettings {
+            statusline: crate::ui::statusline::StatusLineConfig {
+                left: vec![],
+                center: vec![],
+                right: vec![],
+            },
+            ..EditorSettings::default()
         };
         let serialized = serialize_setting(&s, "statusline").unwrap();
         assert_eq!(serialized, "||");
@@ -916,16 +1006,43 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         // Two pipes required; one pipe produces only two parts.
-        assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position", &mut s, &mut ov).is_err());
+        assert!(
+            apply_setting(
+                SettingScope::Global,
+                "statusline",
+                "Mode|Position",
+                &mut s,
+                &mut ov
+            )
+            .is_err()
+        );
         // Three pipes / four sections produce four parts, also rejected.
-        assert!(apply_setting(SettingScope::Global, "statusline", "Mode|Position|Cwd|Extra", &mut s, &mut ov).is_err());
+        assert!(
+            apply_setting(
+                SettingScope::Global,
+                "statusline",
+                "Mode|Position|Cwd|Extra",
+                &mut s,
+                &mut ov
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn apply_statusline_unknown_element_name_errors() {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
-        assert!(apply_setting(SettingScope::Global, "statusline", "NotAnElement||", &mut s, &mut ov).is_err());
+        assert!(
+            apply_setting(
+                SettingScope::Global,
+                "statusline",
+                "NotAnElement||",
+                &mut s,
+                &mut ov
+            )
+            .is_err()
+        );
     }
 
     #[test]

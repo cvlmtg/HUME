@@ -64,7 +64,11 @@ fn set_cwd_rejects_non_directory() {
     assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
     // cwd must be unchanged on failure
     assert_eq!(ed.cwd, before_editor, "editor.cwd must not change on error");
-    assert_eq!(std::env::current_dir().unwrap(), before, "process cwd must not change on error");
+    assert_eq!(
+        std::env::current_dir().unwrap(),
+        before,
+        "process cwd must not change on error"
+    );
 }
 
 #[test]
@@ -73,7 +77,9 @@ fn set_cwd_rejects_nonexistent_path() {
     let _guard = CwdGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
 
-    let err = ed.set_cwd(std::path::Path::new("/definitely/not/a/real/path/xyz123")).unwrap_err();
+    let err = ed
+        .set_cwd(std::path::Path::new("/definitely/not/a/real/path/xyz123"))
+        .unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
@@ -87,7 +93,8 @@ fn typed_cd_absolute_path() {
     let canonical = std::fs::canonicalize(dir.path()).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
 
-    ed.execute_typed("cd", Some(canonical.to_str().unwrap())).unwrap();
+    ed.execute_typed("cd", Some(canonical.to_str().unwrap()))
+        .unwrap();
 
     assert_eq!(ed.cwd, canonical);
     assert_eq!(std::env::current_dir().unwrap(), canonical);
@@ -111,7 +118,10 @@ fn typed_cd_relative_path() {
     // Now :cd to the relative name "subdir".
     ed.execute_typed("cd", Some("subdir")).unwrap();
 
-    assert_eq!(ed.cwd, canonical_child, "relative :cd must resolve against editor.cwd");
+    assert_eq!(
+        ed.cwd, canonical_child,
+        "relative :cd must resolve against editor.cwd"
+    );
     assert_eq!(std::env::current_dir().unwrap(), canonical_child);
 }
 
@@ -149,10 +159,22 @@ fn typed_cd_error_on_nonexistent() {
     let mut ed = editor_from("-[h]>ello\n");
     let before_editor = ed.cwd.clone();
 
-    let err = ed.execute_typed("cd", Some("/definitely/not/a/real/path/xyz123")).unwrap_err();
-    assert!(err.to_string().contains("xyz123"), "path must appear in error message, got: {err}");
-    assert_eq!(ed.cwd, before_editor, "editor.cwd must be unchanged on error");
-    assert_eq!(std::env::current_dir().unwrap(), before, "process cwd must be unchanged on error");
+    let err = ed
+        .execute_typed("cd", Some("/definitely/not/a/real/path/xyz123"))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("xyz123"),
+        "path must appear in error message, got: {err}"
+    );
+    assert_eq!(
+        ed.cwd, before_editor,
+        "editor.cwd must be unchanged on error"
+    );
+    assert_eq!(
+        std::env::current_dir().unwrap(),
+        before,
+        "process cwd must be unchanged on error"
+    );
 }
 
 #[test]
@@ -165,10 +187,22 @@ fn typed_cd_error_on_file_path() {
     let mut ed = editor_from("-[h]>ello\n");
     let before_editor = ed.cwd.clone();
 
-    let err = ed.execute_typed("cd", Some(canonical.to_str().unwrap())).unwrap_err();
-    assert!(err.to_string().contains("not a directory"), "expected not-a-directory, got: {err}");
-    assert_eq!(ed.cwd, before_editor, "editor.cwd must be unchanged on file target");
-    assert_eq!(std::env::current_dir().unwrap(), before, "process cwd must be unchanged on file target");
+    let err = ed
+        .execute_typed("cd", Some(canonical.to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("not a directory"),
+        "expected not-a-directory, got: {err}"
+    );
+    assert_eq!(
+        ed.cwd, before_editor,
+        "editor.cwd must be unchanged on file target"
+    );
+    assert_eq!(
+        std::env::current_dir().unwrap(),
+        before,
+        "process cwd must be unchanged on file target"
+    );
 }
 
 #[test]
@@ -180,7 +214,8 @@ fn typed_cd_alias_works() {
     let mut ed = editor_from("-[h]>ello\n");
 
     // Both the canonical name and the `cd` alias must work.
-    ed.execute_typed("change-directory", Some(canonical.to_str().unwrap())).unwrap();
+    ed.execute_typed("change-directory", Some(canonical.to_str().unwrap()))
+        .unwrap();
     assert_eq!(ed.cwd, canonical);
 }
 
@@ -199,11 +234,20 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
     let canonical_file = std::fs::canonicalize(&file_path).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("cd", Some(canonical_dir.to_str().unwrap())).unwrap();
+    ed.execute_typed("cd", Some(canonical_dir.to_str().unwrap()))
+        .unwrap();
     ed.execute_typed("e", Some("myfile.txt")).unwrap();
 
-    let open_path = ed.doc().path.as_deref().expect("opened file must have a path");
-    assert_eq!(open_path, canonical_file.as_path(), ":e after :cd must open the file in the new cwd");
+    let open_path = ed
+        .doc()
+        .path
+        .as_deref()
+        .expect("opened file must have a path");
+    assert_eq!(
+        open_path,
+        canonical_file.as_path(),
+        ":e after :cd must open the file in the new cwd"
+    );
 }
 
 // ── :pwd typed command ────────────────────────────────────────────────────────
@@ -219,7 +263,10 @@ fn typed_pwd_reports_current_directory() {
 
     ed.execute_typed("pwd", None).unwrap();
 
-    let msg = ed.status_msg.as_deref().expect(":pwd must report a message");
+    let msg = ed
+        .status_msg
+        .as_deref()
+        .expect(":pwd must report a message");
     let expected = crate::os::path::shorten_home(&canonical);
     assert_eq!(msg, expected, ":pwd must report shorten_home(cwd)");
 }
@@ -235,7 +282,10 @@ fn typed_pwd_long_alias_works() {
 
     ed.execute_typed("print-working-directory", None).unwrap();
 
-    let msg = ed.status_msg.as_deref().expect(":print-working-directory must report a message");
+    let msg = ed
+        .status_msg
+        .as_deref()
+        .expect(":print-working-directory must report a message");
     let expected = crate::os::path::shorten_home(&canonical);
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
@@ -256,17 +306,33 @@ fn path_completer_dirs_only_mode() {
     let canonical = std::fs::canonicalize(dir.path()).unwrap();
     let registry = crate::editor::registry::CommandRegistry::with_defaults();
     let buffers = crate::editor::buffer_store::BufferStore::new();
-    let ctx = CompletionCtx { registry: &registry, buffers: &buffers, cwd: &canonical };
+    let ctx = CompletionCtx {
+        registry: &registry,
+        buffers: &buffers,
+        cwd: &canonical,
+    };
 
     // dirs_only: true — files must be excluded.
     let dirs = PathCompleter { dirs_only: true }.complete("cd m", 4, &ctx);
     let dir_names: Vec<&str> = dirs.candidates.iter().map(|c| c.display.as_str()).collect();
-    assert!(dir_names.iter().any(|n| *n == "mysubdir/"), "dirs_only must include subdirectory");
-    assert!(!dir_names.iter().any(|n| *n == "myfile.txt"), "dirs_only must exclude files");
+    assert!(
+        dir_names.contains(&"mysubdir/"),
+        "dirs_only must include subdirectory"
+    );
+    assert!(
+        !dir_names.contains(&"myfile.txt"),
+        "dirs_only must exclude files"
+    );
 
     // dirs_only: false — both dirs and files must appear.
     let all = PathCompleter { dirs_only: false }.complete("e m", 3, &ctx);
     let all_names: Vec<&str> = all.candidates.iter().map(|c| c.display.as_str()).collect();
-    assert!(all_names.iter().any(|n| *n == "mysubdir/"), "dirs_only=false must include subdirectory");
-    assert!(all_names.iter().any(|n| *n == "myfile.txt"), "dirs_only=false must include files");
+    assert!(
+        all_names.contains(&"mysubdir/"),
+        "dirs_only=false must include subdirectory"
+    );
+    assert!(
+        all_names.contains(&"myfile.txt"),
+        "dirs_only=false must include files"
+    );
 }

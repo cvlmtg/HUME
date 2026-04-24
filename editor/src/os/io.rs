@@ -114,7 +114,7 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> 
     // own files even if the group-change portion is rejected.
     #[cfg(unix)]
     {
-        use nix::unistd::{fchown, Gid, Uid};
+        use nix::unistd::{Gid, Uid, fchown};
         // Best-effort: succeeds only as root or matching uid; ignore errors so
         // a non-privileged user can still save their own files.
         let _ = fchown(
@@ -139,7 +139,9 @@ pub(crate) fn write_file_atomic(content: &str, meta: &FileMeta, force: bool) -> 
             // unlinked — the new inode already carries meta.permissions, so
             // `set_readonly(false)` on a clone of meta.permissions is enough
             // (the value we pass is overwritten by the rename anyway).
+            // Using the cross-platform API is deliberate; PermissionsExt is Unix-only.
             let mut perms = meta.permissions.clone();
+            #[allow(clippy::permissions_set_readonly_false)]
             perms.set_readonly(false);
             fs::set_permissions(target, perms)?;
             match persist_err.file.persist(target) {
