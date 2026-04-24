@@ -1447,13 +1447,20 @@ fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
 
 /// Emit a warning if `bid`'s backing file no longer exists on disk.
 fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
-    let path = ed.buffers.get(bid).path().map(|p| p.to_path_buf());
-    if let Some(p) = path
-        && !p.exists()
-    {
+    // Check while holding the borrow; capture only the display string so the
+    // borrow is released before the &mut ed.report() call below.
+    let display = ed.buffers.get(bid).path().and_then(|p| {
+        match std::fs::metadata(p) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Some(p.display().to_string())
+            }
+            _ => None,
+        }
+    });
+    if let Some(msg) = display {
         ed.report(
             Severity::Warning,
-            format!("{}: file no longer exists on disk", p.display()),
+            format!("{msg}: file no longer exists on disk"),
         );
     }
 }
