@@ -66,6 +66,10 @@ fn key_backspace() -> KeyEvent {
     KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
 }
 
+fn key_left() -> KeyEvent {
+    KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)
+}
+
 /// Type a colon command into the editor via `handle_key`, going through the
 /// mini-buffer path (and thus `%`/`#` expansion). Useful when testing typed
 /// commands that must be verified end-to-end through the keymap dispatcher.
