@@ -136,7 +136,6 @@ mod tests {
     use crate::core::text::Text;
     use engine::pipeline::{BufferId, EngineView};
     use engine::theme::Theme;
-    use std::sync::Arc;
 
     fn make_id(ev: &mut EngineView) -> BufferId {
         ev.buffers.insert(engine::pipeline::SharedBuffer::new())
@@ -201,7 +200,7 @@ mod tests {
         let (mut store, mut ev) = store_with_engine();
         let id = make_id(&mut ev);
         let mut buf = make_buf();
-        buf.path = Some(Arc::new(std::path::PathBuf::from("/tmp/foo.txt")));
+        buf.set_path(Some(std::path::PathBuf::from("/tmp/foo.txt")));
         store.open(id, buf);
         assert_eq!(store.find_by_path(Path::new("/tmp/foo.txt")), Some(id));
         assert_eq!(store.find_by_path(Path::new("/tmp/bar.txt")), None);

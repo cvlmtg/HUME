@@ -1,5 +1,5 @@
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::core::changeset::ChangeSet;
@@ -109,7 +109,7 @@ impl Buffer {
         let text = Text::from(content.as_str());
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);
-        buf.path = Some(Arc::new(meta.resolved_path.clone()));
+        buf.set_path(Some(meta.resolved_path.clone()));
         buf.file_meta = Some(meta);
         Ok(buf)
     }
@@ -121,6 +121,24 @@ impl Buffer {
     #[allow(dead_code)] // used when closing the last buffer in multi-buffer
     pub(crate) fn scratch() -> Self {
         Self::new(Text::empty(), SelectionSet::default())
+    }
+
+    /// Set the buffer's file path, enforcing the "path has a basename"
+    /// invariant. Pass `None` to clear (scratch buffer).
+    ///
+    /// Why: `display_name()` falls back to `*scratch*` when `path.file_name()`
+    /// is `None`, so pathological paths like `/` or `..` would collide with a
+    /// real scratch buffer in `:ls` and make `:b *scratch*` ambiguous. Rejecting
+    /// at the boundary keeps the collision truly unreachable.
+    pub(crate) fn set_path(&mut self, path: Option<PathBuf>) {
+        if let Some(ref p) = path {
+            assert!(
+                p.file_name().is_some(),
+                "Buffer::set_path: path must have a basename, got {}",
+                p.display()
+            );
+        }
+        self.path = path.map(Arc::new);
     }
 
     /// The initial selections stored at the history root.
@@ -852,5 +870,37 @@ mod tests {
         d.apply_edit(|b, s| paste_after(b, s, &yanked));
         d.undo();
         assert_eq!(state(&d), "-[hell]>o\n");
+    }
+
+    // ── set_path invariant ────────────────────────────────────────────────────
+
+    #[test]
+    fn set_path_accepts_paths_with_basename() {
+        let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+        b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+        assert_eq!(b.display_name(), "file.txt");
+    }
+
+    #[test]
+    fn set_path_none_clears_path() {
+        let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+        b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+        b.set_path(None);
+        assert!(b.path.is_none());
+        assert_eq!(b.display_name(), Buffer::SCRATCH_BUFFER_NAME);
+    }
+
+    #[test]
+    #[should_panic(expected = "path must have a basename")]
+    fn set_path_rejects_root() {
+        let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+        b.set_path(Some(PathBuf::from("/")));
+    }
+
+    #[test]
+    #[should_panic(expected = "path must have a basename")]
+    fn set_path_rejects_dotdot() {
+        let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+        b.set_path(Some(PathBuf::from("..")));
     }
 }

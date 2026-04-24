@@ -1045,7 +1045,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Ok((meta, retried)) => {
                 // Store the canonicalized path so file_path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
-                ed.doc_mut().path = Some(Arc::new(meta.resolved_path.clone()));
+                ed.doc_mut().set_path(Some(meta.resolved_path.clone()));
                 ed.doc_mut().file_meta = Some(meta);
                 ed.doc_mut().mark_saved();
                 ed.report(write_severity(retried), write_msg(line_count, retried));
