@@ -101,11 +101,17 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
-            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let buf_id = self.focused_buffer_id();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+            let len_lines = self.buffers.get(buf_id).text().len_lines();
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let buf_id = self.focused_buffer_id();
             let rope = self.buffers.get(buf_id).text().rope();
+            let (gutter_w, vp_width) = {
+                let pane = &self.engine_view.panes[self.focused_pane_id];
+                (cursor::gutter_width(pane.providers.gutter_columns(), len_lines), pane.viewport.width)
+            };
+            let wrap_mode = raw_wrap.resolve(vp_width.saturating_sub(gutter_w).max(1));
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
             scroll_viewport_up(
                 &mut pane.viewport,
@@ -134,12 +140,17 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
-            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let buf_id = self.focused_buffer_id();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let buf_id = self.focused_buffer_id();
             let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
+            let (gutter_w, vp_width) = {
+                let pane = &self.engine_view.panes[self.focused_pane_id];
+                (cursor::gutter_width(pane.providers.gutter_columns(), total_lines), pane.viewport.width)
+            };
+            let wrap_mode = raw_wrap.resolve(vp_width.saturating_sub(gutter_w).max(1));
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
             scroll_viewport_down(
                 &mut pane.viewport,
@@ -174,7 +185,8 @@ impl Editor {
             );
             (pane.viewport.clone(), gw)
         };
-        let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+        let content_width = vp.width.saturating_sub(gutter_w).max(1);
+        let wrap_mode = self.doc().overrides.wrap_mode(&self.settings).resolve(content_width);
         let tab_width = self.doc().overrides.tab_width(&self.settings);
         let whitespace = self.doc().overrides.whitespace(&self.settings);
         let rope = self.buffers.get(buf_id).text().rope();

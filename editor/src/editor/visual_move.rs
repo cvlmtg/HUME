@@ -166,11 +166,11 @@ fn visual_move_up_one(
 /// When wrapping is off every buffer line is exactly one display row, so we
 /// fall back to the pure buffer-line motions to avoid any overhead.
 fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: MotionMode) {
-    let wrap_mode = ed.doc().overrides.wrap_mode(&ed.settings);
+    let raw_wrap = ed.doc().overrides.wrap_mode(&ed.settings);
     let tab_width = ed.doc().overrides.tab_width(&ed.settings);
     let whitespace = ed.doc().overrides.whitespace(&ed.settings);
 
-    if !wrap_mode.is_wrapping() {
+    if !raw_wrap.is_wrapping() {
         // No wrapping — fall back to buffer-line movement.
         // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
         match down {
@@ -179,6 +179,17 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         }
         return;
     }
+
+    let gutter_w = {
+        let pane = &ed.engine_view.panes[ed.focused_pane_id];
+        crate::cursor::gutter_width(pane.providers.gutter_columns(), ed.doc().text().len_lines())
+    };
+    let content_width = ed.engine_view.panes[ed.focused_pane_id]
+        .viewport
+        .width
+        .saturating_sub(gutter_w)
+        .max(1);
+    let wrap_mode = raw_wrap.resolve(content_width);
 
     let rope = ed.doc().text().rope().clone();
     let sels = ed.current_selections().clone();
