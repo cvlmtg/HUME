@@ -2,7 +2,7 @@
 // Each submodule does `use super::*;` to access these.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
@@ -104,7 +104,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let tmp_path = tmp.into_temp_path();
     let (_, meta) = crate::os::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.doc_mut().path = Some(Arc::new(path));
+    ed.doc_mut().set_path(Some(path));
     ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)
 }

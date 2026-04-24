@@ -55,7 +55,7 @@ fn write_follows_symlink() {
     );
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().path = Some(Arc::new(link_path.clone()));
+    ed.doc_mut().set_path(Some(link_path.clone()));
     ed.doc_mut().file_meta = Some(meta);
 
     for ch in ":w".chars() {

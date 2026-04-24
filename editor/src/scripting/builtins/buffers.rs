@@ -295,8 +295,6 @@ pub(crate) fn pane_set_buffer(_pid: SteelVal, _bid: SteelVal) -> SteelResult {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use slotmap::SecondaryMap;
 
     use engine::pane::Pane;
@@ -595,7 +593,8 @@ mod tests {
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, _pj, pane_id, buf_id) = one_buf_state();
         // Set a path on the buffer.
-        bufs.get_mut(buf_id).path = Some(Arc::new(std::path::PathBuf::from("/tmp/test.txt")));
+        bufs.get_mut(buf_id)
+            .set_path(Some(std::path::PathBuf::from("/tmp/test.txt")));
 
         h.eval_source(
             r#"(define-command! "check-path" ""
@@ -667,7 +666,8 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, _pj, pane_id, buf_id) = one_buf_state();
-        bufs.get_mut(buf_id).path = Some(Arc::new(std::path::PathBuf::from("/tmp/hello.rs")));
+        bufs.get_mut(buf_id)
+            .set_path(Some(std::path::PathBuf::from("/tmp/hello.rs")));
 
         h.eval_source(
             r#"(define-command! "check-name" ""

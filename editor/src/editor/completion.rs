@@ -312,7 +312,6 @@ fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use tempfile::TempDir;
 
     use crate::core::selection::SelectionSet;
@@ -358,7 +357,7 @@ mod tests {
 
     fn buf_with_path(path: &str) -> Buffer {
         let mut b = make_buf();
-        b.path = Some(Arc::new(PathBuf::from(path)));
+        b.set_path(Some(PathBuf::from(path)));
         b
     }
 
