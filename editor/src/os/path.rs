@@ -119,12 +119,16 @@ fn expand_env_vars(
             }
             let name = &after_brace[..nlen];
             let after_name = &after_brace[nlen..];
-            if after_name.starts_with('}') {
+            if let Some(after_close) = after_name.strip_prefix('}') {
                 match env_lookup(name) {
                     Ok(val) => out.push_str(&val),
-                    Err(_) => { out.push_str("${"); out.push_str(name); out.push('}'); }
+                    Err(_) => {
+                        out.push_str("${");
+                        out.push_str(name);
+                        out.push('}');
+                    }
                 }
-                remaining = &after_name[1..]; // skip `}`
+                remaining = after_close;
             } else {
                 // Unclosed `${...` — literal.
                 out.push_str("${");
@@ -142,7 +146,10 @@ fn expand_env_vars(
             let name = &remaining[..nlen];
             match env_lookup(name) {
                 Ok(val) => out.push_str(&val),
-                Err(_) => { out.push('$'); out.push_str(name); }
+                Err(_) => {
+                    out.push('$');
+                    out.push_str(name);
+                }
             }
             remaining = &remaining[nlen..];
         }
@@ -173,7 +180,11 @@ fn expand_env_vars(
         let name = &remaining[..nlen];
         match env_lookup(name) {
             Ok(val) => out.push_str(&val),
-            Err(_) => { out.push('%'); out.push_str(name); out.push('%'); }
+            Err(_) => {
+                out.push('%');
+                out.push_str(name);
+                out.push('%');
+            }
         }
         remaining = &remaining[nlen + 1..]; // skip name + closing `%`
     }
@@ -246,7 +257,7 @@ pub(crate) fn is_path_sep(c: char) -> bool {
 pub(crate) fn split_path_at_sep(s: &str) -> (&str, &str) {
     match s.rfind(is_path_sep) {
         Some(i) => (&s[..=i], &s[i + 1..]),
-        None    => ("", s),
+        None => ("", s),
     }
 }
 
@@ -266,7 +277,9 @@ mod tests {
         move || Some(PathBuf::from(h))
     }
 
-    fn no_home() -> Option<PathBuf> { None }
+    fn no_home() -> Option<PathBuf> {
+        None
+    }
 
     #[test]
     fn expand_absolute_path_is_borrowed() {
@@ -318,18 +331,34 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn expand_dollar_var() {
-        let result = expand_with("$HOME/foo", |k| {
-            if k == "HOME" { Ok("/h".into()) } else { Err(std::env::VarError::NotPresent) }
-        }, no_home);
+        let result = expand_with(
+            "$HOME/foo",
+            |k| {
+                if k == "HOME" {
+                    Ok("/h".into())
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            },
+            no_home,
+        );
         assert_eq!(result, "/h/foo");
     }
 
     #[test]
     #[cfg(not(windows))]
     fn expand_dollar_braced_var() {
-        let result = expand_with("${HOME}/foo", |k| {
-            if k == "HOME" { Ok("/h".into()) } else { Err(std::env::VarError::NotPresent) }
-        }, no_home);
+        let result = expand_with(
+            "${HOME}/foo",
+            |k| {
+                if k == "HOME" {
+                    Ok("/h".into())
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            },
+            no_home,
+        );
         assert_eq!(result, "/h/foo");
     }
 
@@ -366,20 +395,32 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn expand_multiple_vars() {
-        let result = expand_with("$A/$B", |k| match k {
-            "A" => Ok("x".into()),
-            "B" => Ok("y".into()),
-            _   => Err(std::env::VarError::NotPresent),
-        }, no_home);
+        let result = expand_with(
+            "$A/$B",
+            |k| match k {
+                "A" => Ok("x".into()),
+                "B" => Ok("y".into()),
+                _ => Err(std::env::VarError::NotPresent),
+            },
+            no_home,
+        );
         assert_eq!(result, "x/y");
     }
 
     #[test]
     #[cfg(not(windows))]
     fn expand_tilde_and_env_var() {
-        let result = expand_with("~/$DIR/file", |k| {
-            if k == "DIR" { Ok("docs".into()) } else { Err(std::env::VarError::NotPresent) }
-        }, home("/h"));
+        let result = expand_with(
+            "~/$DIR/file",
+            |k| {
+                if k == "DIR" {
+                    Ok("docs".into())
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            },
+            home("/h"),
+        );
         assert_eq!(result, "/h/docs/file");
     }
 
@@ -388,9 +429,17 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn expand_percent_var() {
-        let result = expand_with(r"%USERPROFILE%\foo", |k| {
-            if k == "USERPROFILE" { Ok(r"C:\Users\Alice".into()) } else { Err(std::env::VarError::NotPresent) }
-        }, no_home);
+        let result = expand_with(
+            r"%USERPROFILE%\foo",
+            |k| {
+                if k == "USERPROFILE" {
+                    Ok(r"C:\Users\Alice".into())
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            },
+            no_home,
+        );
         assert_eq!(result, r"C:\Users\Alice\foo");
     }
 
@@ -411,20 +460,32 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn expand_consecutive_percent_vars() {
-        let result = expand_with("%A%%B%", |k| match k {
-            "A" => Ok("x".into()),
-            "B" => Ok("y".into()),
-            _   => Err(std::env::VarError::NotPresent),
-        }, no_home);
+        let result = expand_with(
+            "%A%%B%",
+            |k| match k {
+                "A" => Ok("x".into()),
+                "B" => Ok("y".into()),
+                _ => Err(std::env::VarError::NotPresent),
+            },
+            no_home,
+        );
         assert_eq!(result, "xy");
     }
 
     #[test]
     #[cfg(windows)]
     fn expand_tilde_and_percent_var() {
-        let result = expand_with(r"~\%DIR%\file", |k| {
-            if k == "DIR" { Ok("docs".into()) } else { Err(std::env::VarError::NotPresent) }
-        }, home(r"C:\Users\Alice"));
+        let result = expand_with(
+            r"~\%DIR%\file",
+            |k| {
+                if k == "DIR" {
+                    Ok("docs".into())
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            },
+            home(r"C:\Users\Alice"),
+        );
         assert_eq!(result, r"C:\Users\Alice\docs\file");
     }
 
@@ -478,7 +539,9 @@ mod tests {
     #[test]
     fn shorten_home_with_path_inside_home() {
         use std::path::Path;
-        let got = shorten_home_with(Path::new("/home/user/dev/hume"), || Some(PathBuf::from("/home/user")));
+        let got = shorten_home_with(Path::new("/home/user/dev/hume"), || {
+            Some(PathBuf::from("/home/user"))
+        });
         assert_eq!(got, "~/dev/hume");
     }
 
@@ -486,7 +549,9 @@ mod tests {
     #[test]
     fn shorten_home_with_path_equal_to_home() {
         use std::path::Path;
-        let got = shorten_home_with(Path::new("/home/user"), || Some(PathBuf::from("/home/user")));
+        let got = shorten_home_with(Path::new("/home/user"), || {
+            Some(PathBuf::from("/home/user"))
+        });
         assert_eq!(got, "~");
     }
 
@@ -512,7 +577,9 @@ mod tests {
         use std::path::Path;
         // "/home/userx" must NOT match home="/home/user" — strip_prefix is
         // component-aware and rejects partial component matches.
-        let got = shorten_home_with(Path::new("/home/userx/foo"), || Some(PathBuf::from("/home/user")));
+        let got = shorten_home_with(Path::new("/home/userx/foo"), || {
+            Some(PathBuf::from("/home/user"))
+        });
         assert_eq!(got, "/home/userx/foo");
     }
 }

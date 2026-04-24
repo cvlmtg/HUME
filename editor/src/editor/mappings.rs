@@ -4,30 +4,29 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use std::sync::Arc;
 
+use super::commands::{cmd_clear_search, search_sel};
+use super::registry::MappableCommand;
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::core::jump_list::JumpEntry;
 use crate::core::minibuf_history::{HistoryDir, HistoryKind, HistoryStore};
 use crate::core::search_state::SearchPattern;
-use super::commands::{cmd_clear_search, search_sel};
-use super::registry::MappableCommand;
 use crate::core::selection::Selection;
+use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, insert_char};
 use crate::ops::motion::cmd_move_right;
-use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{compile_search_regex, find_next_match};
 use crate::ops::selection_cmd::select_matches_within;
 
-use super::keymap::{WaitCharPending, WalkResult};
 use super::Severity;
+use super::keymap::{WaitCharPending, WalkResult};
 use engine::types::EditorMode;
 
 use crate::ops::register::MACRO_REGISTER;
 
-use crate::scripting::EditorSteelRefs;
-use crate::core::error::CommandError;
 use super::{Editor, MacroPending, Mode, SearchDirection};
-
+use crate::core::error::CommandError;
+use crate::scripting::EditorSteelRefs;
 
 /// Valid register names for macro recording/replay: `q` (default) and `0`–`9`.
 ///
@@ -45,13 +44,17 @@ fn is_valid_macro_register(ch: char) -> bool {
 /// unset, or holds text rather than a macro.
 fn enqueue_macro_replay(ed: &mut Editor, reg: char) {
     let count = ed.count.take().unwrap_or(1);
-    if let Some(keys) = ed.registers.read(reg).and_then(|r| r.as_macro()).map(|k| k.to_vec()) {
+    if let Some(keys) = ed
+        .registers
+        .read(reg)
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec())
+    {
         for _ in 0..count {
             ed.replay_queue.extend(keys.iter().copied());
         }
     }
 }
-
 
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
@@ -94,10 +97,15 @@ impl Editor {
     /// Only navigation and dismissal are supported. All other keys are silently
     /// swallowed so the real document cannot be accidentally modified.
     fn handle_scratch_key(&mut self, key: KeyEvent) {
-        use KeyCode::{Char, Esc, Down, Up};
-        use crate::ops::motion::{cmd_select_line, cmd_select_line_backward, cmd_goto_first_line, cmd_goto_last_line};
+        use crate::ops::motion::{
+            cmd_goto_first_line, cmd_goto_last_line, cmd_select_line, cmd_select_line_backward,
+        };
+        use KeyCode::{Char, Down, Esc, Up};
 
-        let sv = self.scratch_view.as_mut().expect("called only when scratch_view is Some");
+        let sv = self
+            .scratch_view
+            .as_mut()
+            .expect("called only when scratch_view is Some");
         match key.code {
             Char('q') | Esc => {
                 self.scratch_view = None;
@@ -375,8 +383,14 @@ impl Editor {
                         self.pending_keys.push(bare);
                         let result = self.keymap.normal.walk(&self.pending_keys);
                         let is_extendable = match &result {
-                            WalkResult::Leaf(c) => self.registry.get_mappable(c.name.as_ref()).is_some_and(|r| r.is_extendable()),
-                            WalkResult::WaitChar(wc) => self.registry.get_mappable(wc.cmd_name.as_ref()).is_some_and(|r| r.is_extendable()),
+                            WalkResult::Leaf(c) => self
+                                .registry
+                                .get_mappable(c.name.as_ref())
+                                .is_some_and(|r| r.is_extendable()),
+                            WalkResult::WaitChar(wc) => self
+                                .registry
+                                .get_mappable(wc.cmd_name.as_ref())
+                                .is_some_and(|r| r.is_extendable()),
                             _ => false,
                         };
                         if !is_extendable {
@@ -445,10 +459,14 @@ impl Editor {
                 if let KeyCode::Char(ch) = key.code
                     && !key.modifiers.contains(KeyModifiers::CONTROL)
                 {
-                    let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
+                    let (ap_enabled, ap_pairs) =
+                        self.doc().overrides.auto_pairs_ref(&self.settings);
                     if ap_enabled
                         && let Some(pair) = ap_pairs.iter().find(|p| p.open == ch)
-                        && self.current_selections().iter_sorted().any(|s| !s.is_collapsed())
+                        && self
+                            .current_selections()
+                            .iter_sorted()
+                            .any(|s| !s.is_collapsed())
                     {
                         let (open, close) = (pair.open, pair.close);
                         self.doc_edit(|b, s| insert_pair_close(b, s, open, close));
@@ -543,7 +561,13 @@ impl Editor {
     /// `extend` is converted to `MotionMode::Extend` / `MotionMode::Move` and
     /// passed to the command function. The command itself decides what to do
     /// with the mode — motions and selections branch on it; edits ignore it.
-    pub(super) fn execute_keymap_command(&mut self, name: Cow<'static, str>, count: usize, extend: bool, cmd_arg: Option<String>) {
+    pub(super) fn execute_keymap_command(
+        &mut self,
+        name: Cow<'static, str>,
+        count: usize,
+        extend: bool,
+        cmd_arg: Option<String>,
+    ) {
         let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
             return;
@@ -557,15 +581,22 @@ impl Editor {
             // can all produce large enough line jumps to warrant a jump entry.
             let is_explicit_jump = reg_cmd.is_jump();
             let is_vertical_visual = reg_cmd.is_visual_move();
-            let pre_jump = if is_explicit_jump || is_vertical_visual || matches!(reg_cmd, MappableCommand::Motion { .. }) {
-                let bid     = self.focused_buffer_id();
+            let pre_jump = if is_explicit_jump
+                || is_vertical_visual
+                || matches!(reg_cmd, MappableCommand::Motion { .. })
+            {
+                let bid = self.focused_buffer_id();
                 let primary = self.current_selections().primary();
                 Some((primary, self.doc().text().char_to_line(primary.head), bid))
             } else {
                 None
             };
 
-            let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
+            let motion_mode = if extend {
+                MotionMode::Extend
+            } else {
+                MotionMode::Move
+            };
 
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
@@ -590,20 +621,25 @@ impl Editor {
                     let focused_buffer_id = self.focused_buffer_id();
                     let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
                         match host.call_steel_cmd(
-                            steel_proc, char_arg, cmd_arg,
+                            steel_proc,
+                            char_arg,
+                            cmd_arg,
                             EditorSteelRefs {
-                                settings:          &mut self.settings,
-                                keymap:            &mut self.keymap,
+                                settings: &mut self.settings,
+                                keymap: &mut self.keymap,
                                 focused_pane_id,
                                 focused_buffer_id,
-                                buffers:           Some(&mut self.buffers),
-                                engine_view:       Some(&mut self.engine_view),
-                                pane_state:        Some(&mut self.pane_state),
-                                pane_jumps:        Some(&mut self.pane_jumps),
+                                buffers: Some(&mut self.buffers),
+                                engine_view: Some(&mut self.engine_view),
+                                pane_state: Some(&mut self.pane_state),
+                                pane_jumps: Some(&mut self.pane_jumps),
                             },
                         ) {
                             Ok(r) => r,
-                            Err(e) => { self.report(Severity::Error, e); return; }
+                            Err(e) => {
+                                self.report(Severity::Error, e);
+                                return;
+                            }
                         }
                     } else {
                         return;
@@ -623,11 +659,18 @@ impl Editor {
 
             // ── Jump list: record if this was a jump ─────────────────────────
             if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
-                let post_line = self.doc().text().char_to_line(self.current_selections().primary().head);
-                if is_explicit_jump || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold {
-                    self.pane_jumps[self.focused_pane_id].push(
-                        JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid),
-                    );
+                let post_line = self
+                    .doc()
+                    .text()
+                    .char_to_line(self.current_selections().primary().head);
+                if is_explicit_jump
+                    || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold
+                {
+                    self.pane_jumps[self.focused_pane_id].push(JumpEntry::from_pre_motion(
+                        pre_primary,
+                        pre_line,
+                        pre_bid,
+                    ));
                 }
             }
 
@@ -653,9 +696,9 @@ impl Editor {
     /// All-or-nothing: if even one cursor doesn't match, the whole operation
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
-        self.current_selections().iter_sorted().all(|sel| {
-            sel.is_collapsed() && self.doc().text().char_at(sel.head) == Some(ch)
-        })
+        self.current_selections()
+            .iter_sorted()
+            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head) == Some(ch))
     }
 
     /// Returns `true` if every selection is a cursor AND the pair
@@ -672,9 +715,7 @@ impl Editor {
             // chars are always single codepoints, but using it keeps the logic uniform.
             let prev = crate::core::grapheme::prev_grapheme_boundary(buf, sel.head);
             match (buf.char_at(prev), buf.char_at(sel.head)) {
-                (Some(before), Some(at)) => {
-                    pairs.iter().any(|p| p.open == before && p.close == at)
-                }
+                (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,
             }
         })
@@ -683,7 +724,11 @@ impl Editor {
     /// Returns `true` if auto-pairing `pair` is appropriate given the current
     /// selections. All-or-nothing: every collapsed selection must satisfy the
     /// context rules; non-collapsed selections always pass (they wrap).
-    fn should_auto_pair(&self, pair: &crate::auto_pairs::Pair, ap_pairs: &[crate::auto_pairs::Pair]) -> bool {
+    fn should_auto_pair(
+        &self,
+        pair: &crate::auto_pairs::Pair,
+        ap_pairs: &[crate::auto_pairs::Pair],
+    ) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
@@ -699,7 +744,11 @@ impl Editor {
     /// into one — so the total selection count may decrease.
     pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
         let idx = self.current_selections().primary_index();
-        let new_sels = self.current_selections().clone().replace(idx, new_sel).merge_overlapping();
+        let new_sels = self
+            .current_selections()
+            .clone()
+            .replace(idx, new_sel)
+            .merge_overlapping();
         self.set_current_selections(new_sels);
     }
 
@@ -735,7 +784,9 @@ impl Editor {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_search(),
             MiniBufferEvent::Confirm(pattern) => {
                 // Record into the correct search ring before closing the minibuf.
-                let kind = self.minibuf.as_ref()
+                let kind = self
+                    .minibuf
+                    .as_ref()
                     .and_then(|m| HistoryStore::kind_for_prompt(m.prompt));
                 if let Some(k) = kind {
                     self.history.get_mut(k).push(pattern.clone());
@@ -762,24 +813,37 @@ impl Editor {
                 self.clear_buffer_search(bid);
             }
             MiniBufferEvent::Edited => {
-                if let Some(k) = self.minibuf.as_ref().and_then(|m| HistoryStore::kind_for_prompt(m.prompt)) {
+                if let Some(k) = self
+                    .minibuf
+                    .as_ref()
+                    .and_then(|m| HistoryStore::kind_for_prompt(m.prompt))
+                {
                     self.history.get_mut(k).demote_to_scratch();
                 }
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryPrev => {
-                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
-                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
+                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else {
+                    return;
+                };
+                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
+                    return;
+                };
                 self.recall_history(kind, HistoryDir::Prev);
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryNext => {
-                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else { return };
-                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else { return };
+                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else {
+                    return;
+                };
+                let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
+                    return;
+                };
                 self.recall_history(kind, HistoryDir::Next);
                 self.update_live_search();
             }
-            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
+            MiniBufferEvent::CursorMoved
+            | MiniBufferEvent::Ignored
             | MiniBufferEvent::CompleteRequested { .. } => {}
         }
     }
@@ -837,7 +901,13 @@ impl Editor {
             Some((start, end_incl, _wrapped)) => {
                 let anchor = if self.pane_transient[pid].search_extend {
                     // Extend from the original anchor.
-                    Some(self.pane_transient[pid].pre_search_sels.as_ref().map(|s| s.primary().anchor).unwrap_or(start))
+                    Some(
+                        self.pane_transient[pid]
+                            .pre_search_sels
+                            .as_ref()
+                            .map(|s| s.primary().anchor)
+                            .unwrap_or(start),
+                    )
                 } else {
                     None
                 };
@@ -883,9 +953,11 @@ impl Editor {
             }
             MiniBufferEvent::Edited => self.update_live_select(),
             // Up/Down are reserved for minibuffer history — no-op in select-within.
-            MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored
+            MiniBufferEvent::CursorMoved
+            | MiniBufferEvent::Ignored
             | MiniBufferEvent::CompleteRequested { .. }
-            | MiniBufferEvent::HistoryPrev | MiniBufferEvent::HistoryNext => {}
+            | MiniBufferEvent::HistoryPrev
+            | MiniBufferEvent::HistoryNext => {}
         }
     }
 
@@ -918,9 +990,10 @@ impl Editor {
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
         let pid = self.focused_pane_id;
-        let result = self.pane_transient[pid].pre_select_sels.as_ref().and_then(|sels| {
-            select_matches_within(self.doc().text(), sels, &regex)
-        });
+        let result = self.pane_transient[pid]
+            .pre_select_sels
+            .as_ref()
+            .and_then(|sels| select_matches_within(self.doc().text(), sels, &regex));
 
         match result {
             Some(new_sels) => self.set_current_selections(new_sels),
@@ -947,7 +1020,9 @@ impl Editor {
                 // the candidate is already in the input (Tab applied it), so
                 // we just dismiss the popup and restart completion for the
                 // directory's children.
-                if self.completion.as_ref()
+                if self
+                    .completion
+                    .as_ref()
                     .and_then(|s| s.candidates.get(s.selected))
                     .is_some_and(|c| c.replacement.ends_with('/'))
                 {
@@ -973,7 +1048,9 @@ impl Editor {
             // and demotes any active history recall back to scratch.
             MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
                 self.completion = None;
-                self.history.get_mut(HistoryKind::Command).demote_to_scratch();
+                self.history
+                    .get_mut(HistoryKind::Command)
+                    .demote_to_scratch();
             }
             MiniBufferEvent::CompleteRequested { reverse } => {
                 self.complete_minibuf(reverse);
@@ -1001,7 +1078,11 @@ impl Editor {
     /// ring and install it in the minibuffer. No-op when there is no active
     /// minibuffer or when the ring has nowhere to go.
     fn recall_history(&mut self, kind: HistoryKind, dir: HistoryDir) {
-        let current = self.minibuf.as_ref().map(|m| m.input.as_str()).unwrap_or("");
+        let current = self
+            .minibuf
+            .as_ref()
+            .map(|m| m.input.as_str())
+            .unwrap_or("");
         let text = match dir {
             HistoryDir::Prev => self.history.get_mut(kind).prev(current),
             HistoryDir::Next => self.history.get_mut(kind).next(),
@@ -1045,7 +1126,9 @@ impl Editor {
         }
 
         // Shift-Tab with no open popup is a no-op.
-        if reverse { return; }
+        if reverse {
+            return;
+        }
 
         // First Tab: extract input context without holding &mut self.minibuf.
         let (input, cursor) = match &self.minibuf {
@@ -1054,18 +1137,20 @@ impl Editor {
         };
 
         // Only complete command-mode minibuffers.
-        if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') { return; }
+        if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') {
+            return;
+        }
 
         let ctx = crate::editor::completion::CompletionCtx {
             registry: &self.registry,
-            buffers:  &self.buffers,
-            cwd:      &self.cwd,
+            buffers: &self.buffers,
+            cwd: &self.cwd,
         };
 
         // Dispatch to the right completer based on command + input shape.
         use crate::editor::completion::{
-            Completer, CommandCompleter, PathCompleter,
-            CompletionResult, CompletionState,
+            BufferNameCompleter, CommandCompleter, Completer, CompletionResult, CompletionState,
+            PathCompleter,
         };
 
         let result: CompletionResult = {
@@ -1091,16 +1176,18 @@ impl Editor {
                         Some("change-directory") => {
                             PathCompleter { dirs_only: true }.complete(&input, cursor, &ctx)
                         }
-                        // `:bd` ignores its argument today; skip completion to
+                        Some("buffer") => BufferNameCompleter.complete(&input, cursor, &ctx),
+                        // `:bd` ignores its argument; skip completion to
                         // avoid a misleading pick-then-close-current-buffer UX.
-                        // BufferNameCompleter will be wired when `:b` is added.
                         _ => return,
                     }
                 }
             }
         };
 
-        if result.candidates.is_empty() { return; }
+        if result.candidates.is_empty() {
+            return;
+        }
 
         let span_start = result.span_start;
         let mut candidates = result.candidates;
@@ -1154,14 +1241,15 @@ impl Editor {
         // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
         // common case (no expansion) stays allocation-free.
         let expanded: Option<String> = match arg {
-            Some(a) if a.contains('%') || a.contains('#') => {
-                match expand_command_arg(self, a) {
-                    Ok(s)  => Some(s),
-                    Err(e) => { self.report(Severity::Error, e.0); return; }
+            Some(a) if a.contains('%') || a.contains('#') => match expand_command_arg(self, a) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    self.report(Severity::Error, e.0);
+                    return;
                 }
-            }
+            },
             Some(a) => Some(a.to_owned()),
-            None    => None,
+            None => None,
         };
 
         if let Some(tc) = self.registry.get_typed(cmd) {
@@ -1175,10 +1263,7 @@ impl Editor {
             // all work without needing typed-command wrappers.
             // `cmd` is already the canonical name — no need to clone the command.
             // Pass the arg string so Steel commands can read it via `(cmd-arg)`.
-            self.execute_keymap_command(
-                cmd.to_owned().into(), 1, false,
-                expanded,
-            );
+            self.execute_keymap_command(cmd.to_owned().into(), 1, false, expanded);
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }
@@ -1196,17 +1281,27 @@ impl Editor {
 fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
     let mut out = String::with_capacity(arg.len());
     for (i, token) in arg.split(' ').enumerate() {
-        if i > 0 { out.push(' '); }
+        if i > 0 {
+            out.push(' ');
+        }
         match token {
             "%" => {
-                let path = ed.doc().path.as_ref()
+                let path = ed
+                    .doc()
+                    .path
+                    .as_ref()
                     .ok_or_else(|| CommandError("No file name".into()))?;
                 out.push_str(&path.display().to_string());
             }
             "#" => {
-                let alt_id = ed.alternate_buffer()
+                let alt_id = ed
+                    .alternate_buffer()
                     .ok_or_else(|| CommandError("No alternate buffer".into()))?;
-                let alt_path = ed.buffers.get(alt_id).path.as_ref()
+                let alt_path = ed
+                    .buffers
+                    .get(alt_id)
+                    .path
+                    .as_ref()
                     .ok_or_else(|| CommandError("Alternate buffer has no file name".into()))?;
                 out.push_str(&alt_path.display().to_string());
             }
@@ -1229,9 +1324,12 @@ mod tests {
         let reg = super::super::registry::CommandRegistry::with_defaults();
 
         let must_be_jump = [
-            "goto-first-line", "goto-last-line",
-            "search-next", "search-prev",
-            "page-down", "page-up",
+            "goto-first-line",
+            "goto-last-line",
+            "search-next",
+            "search-prev",
+            "page-down",
+            "page-up",
         ];
         for name in must_be_jump {
             assert!(

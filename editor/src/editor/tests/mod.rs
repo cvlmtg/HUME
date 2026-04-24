@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
-use crate::editor::buffer::Buffer;
 use crate::editor::SearchDirection;
+use crate::editor::buffer::Buffer;
 use crate::testing::{parse_state, serialize_state};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{Editor, Mode};
 
@@ -45,7 +45,6 @@ fn key_ctrl(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
 }
 
-
 fn key_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
 }
@@ -70,7 +69,9 @@ fn key_backspace() -> KeyEvent {
 /// mini-buffer path (and thus `%`/`#` expansion). Useful when testing typed
 /// commands that must be verified end-to-end through the keymap dispatcher.
 fn type_cmd(ed: &mut Editor, cmd: &str) {
-    for ch in cmd.chars() { ed.handle_key(key(ch)); }
+    for ch in cmd.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 }
 
@@ -87,9 +88,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
     let buf = Text::from(text.as_str());
     let pos = buf.line_to_char(cursor_line);
-    let sels = SelectionSet::single(
-        crate::core::selection::Selection::collapsed(pos),
-    );
+    let sels = SelectionSet::single(crate::core::selection::Selection::collapsed(pos));
     let doc = Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
     ed.mode = Mode::Normal;
@@ -109,27 +108,27 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     (ed, tmp_path)
 }
 
-
-mod commands;
-mod command_mode;
-mod file_io;
+mod alternate;
 mod auto_pairs;
-mod find;
-mod kitty;
+mod buffer;
+mod buffer_store;
+mod cd;
+mod command_mode;
+mod commands;
+mod completion;
 mod dot_repeat;
-mod search;
-mod select_all;
+mod file_io;
+mod find;
+mod hooks;
 mod jump_list;
-mod surround;
-mod pane_sync;
-mod visual_move;
-mod page_scroll;
+mod kitty;
+mod list_buffers;
 mod macros;
 mod multi_pane;
-mod buffer_store;
+mod page_scroll;
+mod pane_sync;
 mod per_pane_jumps;
-mod hooks;
-mod alternate;
-mod cd;
-mod completion;
-mod list_buffers;
+mod search;
+mod select_all;
+mod surround;
+mod visual_move;
