@@ -497,3 +497,84 @@ fn cursor_is_at_end_after_recall() {
     assert_eq!(mb.cursor, mb.input.len());
     ed.handle_key(key_esc());
 }
+
+// ── Bug fixes: parser and empty Enter ────────────────────────────────────────
+
+/// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
+#[test]
+#[cfg(not(windows))]
+fn colon_b_hash_switches_to_alternate() {
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f1.path(), "file1\n").unwrap();
+    let c1 = std::fs::canonicalize(f1.path()).unwrap();
+
+    let f2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f2.path(), "file2\n").unwrap();
+    let c2 = std::fs::canonicalize(f2.path()).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    // Open both files. After this: current=f2, alternate=f1.
+    ed.execute_typed("e", Some(c1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(c2.to_str().unwrap())).unwrap();
+    assert_eq!(ed.doc().path(), Some(c2.as_path()), "should be on f2");
+
+    // `:b#` through the key handler (minibuf path) must switch to the
+    // alternate (f1) without a space before `#`.
+    submit(&mut ed, "b#");
+    assert_eq!(
+        ed.doc().path(),
+        Some(c1.as_path()),
+        ":b# must switch to alternate (f1), but got {:?}",
+        ed.doc().path()
+    );
+}
+
+/// `:ls` and `:list-buffers` (hyphen in name) still dispatch correctly after
+/// the parser rewrite — regression guard.
+#[test]
+fn colon_list_buffers_aliases_work() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "ls");
+    assert!(ed.scratch_view.is_some(), ":ls must open scratch view");
+    ed.handle_key(key_esc()); // dismiss scratch view
+
+    submit(&mut ed, "list-buffers");
+    assert!(ed.scratch_view.is_some(), ":list-buffers must open scratch view");
+}
+
+/// `:e! /path` (force + path, no space between `!` and arg) must parse as
+/// force=true with the path as argument — regression guard for the new parser.
+#[test]
+#[cfg(not(windows))]
+fn colon_edit_bang_path_parses() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "clean\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    // Open the file first so it's in the buffer list.
+    ed.execute_typed("e", Some(canonical.to_str().unwrap())).unwrap();
+    // :e! with no space before path must still open/switch correctly.
+    let cmd = format!("e!{}", canonical.display());
+    submit(&mut ed, &cmd);
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical.as_path()),
+        ":e!<path> (no space) must parse as cmd=e force=true arg=<path>"
+    );
+}
+
+/// Pressing `:` then Enter must dismiss the minibuf silently — no warning.
+#[test]
+fn colon_enter_empty_silently_dismisses() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_enter());
+    assert_eq!(ed.mode, Mode::Normal, "must return to Normal mode");
+    assert!(ed.minibuf.is_none(), "minibuf must be closed");
+    assert!(
+        ed.status_msg.is_none(),
+        "must not show 'Unknown command', got: {:?}",
+        ed.status_msg
+    );
+}
