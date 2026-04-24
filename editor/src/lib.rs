@@ -30,6 +30,9 @@ pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::err
     let (mut term, kitty_enabled) =
         os::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
     editor.kitty_enabled = kitty_enabled;
+    // Paint the buffer with default settings immediately so the user sees the
+    // editor chrome while Steel initialises, rather than a blank alt-screen.
+    editor.draw_once(&mut term)?;
     editor.init_scripting();
 
     let result = editor.run(&mut term);

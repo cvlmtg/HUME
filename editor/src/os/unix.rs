@@ -40,10 +40,11 @@ pub(super) fn probe_kitty_support() -> io::Result<bool> {
     // terminal has finished responding. Stopping at the first 'c' or 'u' would
     // risk missing the kitty response if the replies arrive in separate reads.
     //
-    // Initial timeout is generous to handle slow/remote terminals; subsequent
-    // reads use a short timeout since bytes arrive nearly instantaneously once
-    // the terminal starts responding.
-    let mut timeout_ms: i32 = 500;
+    // Initial timeout covers slow/remote terminals; local terminals reply in
+    // single-digit ms, so 100 ms is ample. Subsequent reads use a short
+    // timeout since bytes arrive nearly instantaneously once the terminal
+    // starts responding.
+    let mut timeout_ms: i32 = 100;
     loop {
         let mut pfds = [PollFd::new(tty.as_fd(), PollFlags::POLLIN)];
         let ready = poll(&mut pfds, PollTimeout::from(timeout_ms as u16)).unwrap_or(0);

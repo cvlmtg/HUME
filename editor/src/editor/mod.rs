@@ -686,6 +686,52 @@ impl Editor {
         Ok(())
     }
 
+    /// Paint one frame immediately — called before `init_scripting` so the
+    /// editor chrome is visible during Steel engine init instead of a blank
+    /// alt-screen.  Skips the statusline and cursor-position overlay (those
+    /// are only live inside the event loop) but renders the full buffer view.
+    pub(crate) fn draw_once(&mut self, term: &mut Term) -> io::Result<()> {
+        let mut ctx = RenderContext::new();
+        let size = term.size()?;
+        self.prepare_frame(size.width, size.height, &mut ctx);
+
+        let rope = self.doc().text().rope();
+        let buffer_id = self.focused_buffer_id();
+        let pane_id = self.focused_pane_id;
+        let pane_settings = {
+            let len_lines = self.doc().text().len_lines();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+            let tab_width = self.doc().overrides.tab_width(&self.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.settings);
+            let pane = &self.engine_view.panes[self.focused_pane_id];
+            let gutter_w =
+                crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
+            let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
+            let wrap_mode = raw_wrap.resolve(content_width);
+            PaneRenderSettings { mode: self.mode, wrap_mode, tab_width, whitespace }
+        };
+        let engine_view = &self.engine_view;
+        let _ = crate::os::terminal::begin_synchronized_update();
+        term.draw(|frame| {
+            engine_view.render(
+                frame.area(),
+                frame.buffer_mut(),
+                |bid| if bid == buffer_id { Some(rope) } else { None },
+                |pid| {
+                    if pid == pane_id {
+                        pane_settings.clone()
+                    } else {
+                        PaneRenderSettings::default()
+                    }
+                },
+                None,
+                &mut ctx,
+            );
+        })?;
+        let _ = crate::os::terminal::end_synchronized_update();
+        Ok(())
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
