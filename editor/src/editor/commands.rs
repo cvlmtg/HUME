@@ -940,16 +940,9 @@ pub(super) fn typed_toggle_soft_wrap(
         ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
-        // Estimate gutter width (line numbers + separator). The engine will
-        // compute the exact width at render time; this just needs to be close
-        // enough for a reasonable default wrap column.
-        const GUTTER_WIDTH_ESTIMATE: u16 = 4;
-        let content_w = ed
-            .viewport()
-            .width
-            .saturating_sub(GUTTER_WIDTH_ESTIMATE)
-            .max(1);
-        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::Indent { width: content_w });
+        // width: 0 is the sentinel for "terminal width" — resolved_wrap_mode
+        // injects viewport.width at render time, so this reflows on resize.
+        ed.doc_mut().overrides.wrap_mode = Some(WrapMode::Indent { width: 0 });
         ed.viewport_mut().horizontal_offset = 0;
         ed.viewport_mut().top_row_offset = 0;
     }
@@ -1208,7 +1201,7 @@ pub(super) fn typed_list_buffers(
             .and_then(|n| n.to_str())
             .unwrap_or("[scratch]");
         let path = path_ref
-            .map(|p| crate::os::path::shorten_home(p))
+            .map(crate::os::path::shorten_home)
             .unwrap_or_default();
 
         out.push_str(&format!(

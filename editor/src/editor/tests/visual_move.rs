@@ -28,7 +28,11 @@ fn visual_test_editor(head: usize) -> Editor {
     use crate::core::text::Text;
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(head));
-    Editor::for_testing(Buffer::new(buf, sels))
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    // Pin to 76-column indent-wrap so the char-offset expectations in the tests
+    // are stable regardless of terminal size.
+    ed.settings.wrap_mode = engine::pane::WrapMode::Indent { width: 76 };
+    ed
 }
 
 /// j moves from sub-row 0 to sub-row 1 of the same buffer line.
@@ -221,6 +225,7 @@ fn visual_move_per_selection_sticky_col() {
         1, // primary is B
     );
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.settings.wrap_mode = engine::pane::WrapMode::Indent { width: 76 };
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));

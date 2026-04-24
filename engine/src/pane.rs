@@ -59,16 +59,21 @@ pub struct ScrollPosition {
 // ---------------------------------------------------------------------------
 
 /// How the formatter handles lines that exceed the content width.
+///
+/// For `Soft`, `Word`, and `Indent`, `width: 0` is a sentinel meaning "wrap at
+/// the current terminal width". A non-zero width is a fixed column.  The editor
+/// resolves the sentinel to a concrete pixel count (via `resolved_wrap_mode`)
+/// before passing the mode to the engine.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum WrapMode {
     /// No wrapping — horizontal scroll.
     #[default]
     None,
-    /// Break at `width` columns.
+    /// Break at `width` columns (`0` = terminal width).
     Soft { width: u16 },
-    /// Break at whitespace boundaries; prefer not to split words.
+    /// Break at whitespace boundaries; prefer not to split words (`0` = terminal width).
     Word { width: u16 },
-    /// Word wrap + indent continuation rows to match the line's indent level.
+    /// Word wrap + indent continuation rows to match the line's indent level (`0` = terminal width).
     Indent { width: u16 },
 }
 
@@ -77,26 +82,28 @@ impl FromStr for WrapMode {
 
     /// Parse a wrap mode from a string.
     ///
-    /// Accepted forms: `none`, `soft:N`, `word:N`, `indent:N`
+    /// Accepted forms:
+    /// - `none`                 — no wrapping
+    /// - `soft` / `word` / `indent` — wrap at terminal width
+    /// - `soft:N` / `word:N` / `indent:N` — wrap at column N (N=0 also means terminal width)
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lower = s.to_ascii_lowercase();
         if lower == "none" {
             return Ok(WrapMode::None);
         }
+        // Bare keyword with no colon → sentinel width 0 (terminal width).
+        if lower == "soft"   { return Ok(WrapMode::Soft   { width: 0 }); }
+        if lower == "word"   { return Ok(WrapMode::Word   { width: 0 }); }
+        if lower == "indent" { return Ok(WrapMode::Indent { width: 0 }); }
         let (kind, rest) = lower.split_once(':').ok_or_else(|| {
-            format!("invalid wrap-mode '{s}': expected none, soft:N, word:N, or indent:N")
+            format!("invalid wrap-mode '{s}': expected none, soft[:N], word[:N], or indent[:N]")
         })?;
         let width: u16 = rest.parse().map_err(|_| {
             format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
         })?;
-        if width == 0 {
-            return Err(format!(
-                "invalid wrap-mode width in '{s}': must be at least 1"
-            ));
-        }
         match kind {
-            "soft" => Ok(WrapMode::Soft { width }),
-            "word" => Ok(WrapMode::Word { width }),
+            "soft"   => Ok(WrapMode::Soft   { width }),
+            "word"   => Ok(WrapMode::Word   { width }),
             "indent" => Ok(WrapMode::Indent { width }),
             _ => Err(format!(
                 "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
@@ -106,12 +113,15 @@ impl FromStr for WrapMode {
 }
 
 impl WrapMode {
+    /// Concrete wrap column, or `None` if wrapping is off or the width is the
+    /// terminal-width sentinel (`0`).  Callers that need the resolved width
+    /// should consult the editor's `resolved_wrap_mode` instead.
     pub fn wrap_width(&self) -> Option<u16> {
         match self {
             WrapMode::None => None,
-            WrapMode::Soft { width } | WrapMode::Word { width } | WrapMode::Indent { width } => {
-                Some(*width)
-            }
+            WrapMode::Soft { width }
+            | WrapMode::Word { width }
+            | WrapMode::Indent { width } => (*width != 0).then_some(*width),
         }
     }
 
@@ -299,6 +309,20 @@ mod tests {
     }
 
     #[test]
+    fn wrap_mode_from_str_bare_keywords() {
+        // Bare keyword (no colon) → sentinel width 0 (terminal width).
+        assert_eq!("soft".parse::<WrapMode>().unwrap(),   WrapMode::Soft   { width: 0 });
+        assert_eq!("word".parse::<WrapMode>().unwrap(),   WrapMode::Word   { width: 0 });
+        assert_eq!("indent".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 0 });
+    }
+
+    #[test]
+    fn wrap_mode_from_str_colon_zero_is_sentinel() {
+        // `:0` is the same sentinel as bare keyword.
+        assert_eq!("soft:0".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 0 });
+    }
+
+    #[test]
     fn wrap_mode_from_str_case_insensitive() {
         assert_eq!(
             "Soft:80".parse::<WrapMode>().unwrap(),
@@ -313,17 +337,6 @@ mod tests {
     #[test]
     fn wrap_mode_from_str_error_unknown_kind() {
         assert!("hard:80".parse::<WrapMode>().is_err());
-    }
-
-    #[test]
-    fn wrap_mode_from_str_error_zero_width() {
-        let err = "soft:0".parse::<WrapMode>().unwrap_err();
-        assert!(err.contains("soft:0"), "error should contain input: {err}");
-    }
-
-    #[test]
-    fn wrap_mode_from_str_error_missing_colon() {
-        assert!("soft".parse::<WrapMode>().is_err());
     }
 
     #[test]
@@ -374,16 +387,18 @@ mod tests {
     #[test]
     fn wrap_mode_wrap_width() {
         assert_eq!(WrapMode::None.wrap_width(), None);
-        assert_eq!(WrapMode::Soft { width: 80 }.wrap_width(), Some(80));
-        assert_eq!(WrapMode::Word { width: 40 }.wrap_width(), Some(40));
+        // Sentinel (0) → None, concrete > 0 → Some.
+        assert_eq!(WrapMode::Soft   { width: 0  }.wrap_width(), None);
+        assert_eq!(WrapMode::Soft   { width: 80 }.wrap_width(), Some(80));
+        assert_eq!(WrapMode::Word   { width: 40 }.wrap_width(), Some(40));
         assert_eq!(WrapMode::Indent { width: 60 }.wrap_width(), Some(60));
     }
 
     #[test]
     fn wrap_mode_is_wrapping() {
         assert!(!WrapMode::None.is_wrapping());
-        assert!(WrapMode::Soft { width: 80 }.is_wrapping());
-        assert!(WrapMode::Word { width: 80 }.is_wrapping());
+        assert!(WrapMode::Soft   { width: 80 }.is_wrapping());
+        assert!(WrapMode::Word   { width: 80 }.is_wrapping());
         assert!(WrapMode::Indent { width: 80 }.is_wrapping());
     }
 

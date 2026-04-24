@@ -523,7 +523,7 @@ impl Editor {
                     );
                     (pane.viewport.clone(), gw)
                 };
-                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+                let wrap_mode = self.resolved_wrap_mode(self.doc().overrides.wrap_mode(&self.settings));
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 crate::cursor::screen_pos(
@@ -562,11 +562,12 @@ impl Editor {
                 } else {
                     self.mode
                 };
-                let wrap_mode = if self.scratch_view.is_some() {
-                    self.scratch_wrap_mode()
+                let raw_wrap = if self.scratch_view.is_some() {
+                    self.settings.wrap_mode.clone()
                 } else {
                     self.doc().overrides.wrap_mode(&self.settings)
                 };
+                let wrap_mode = self.resolved_wrap_mode(raw_wrap);
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 PaneRenderSettings {
@@ -684,7 +685,7 @@ impl Editor {
             let rope = sv.buf.rope();
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
-            let wrap_mode = self.scratch_wrap_mode();
+            let wrap_mode = self.resolved_wrap_mode(self.settings.wrap_mode.clone());
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
@@ -718,7 +719,7 @@ impl Editor {
                 .head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
-            let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+            let wrap_mode = self.resolved_wrap_mode(self.doc().overrides.wrap_mode(&self.settings));
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             {
@@ -900,12 +901,17 @@ impl Editor {
         &self.engine_view.panes[self.focused_pane_id].viewport
     }
 
-    /// Wrap mode for scratch views (`:ls`, `:messages`).
-    ///
-    /// Scratch content is terminal-sized system output, so it should fit
-    /// the current viewport rather than a fixed user-configured column.
-    fn scratch_wrap_mode(&self) -> WrapMode {
-        WrapMode::Indent { width: self.viewport().width.max(20) }
+    /// Replace the sentinel `width: 0` with the current viewport width so the
+    /// engine always receives a concrete column count.  Fixed non-zero widths
+    /// pass through unchanged.
+    fn resolved_wrap_mode(&self, raw: WrapMode) -> WrapMode {
+        let vw = self.viewport().width.max(20);
+        match raw {
+            WrapMode::Soft   { width: 0 } => WrapMode::Soft   { width: vw },
+            WrapMode::Word   { width: 0 } => WrapMode::Word   { width: vw },
+            WrapMode::Indent { width: 0 } => WrapMode::Indent { width: vw },
+            other => other,
+        }
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
