@@ -49,6 +49,26 @@ fn backspace_clearing_last_char_keeps_minibuf_open() {
 }
 
 #[test]
+fn backspace_at_cursor_start_with_nonempty_input_is_noop() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "hello".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Move cursor to position 0; input is still "hello".
+    for _ in 0..5 {
+        ed.handle_key(key_left());
+    }
+    assert_eq!(ed.minibuf.as_ref().unwrap().cursor, 0);
+    // Backspace at start of non-empty input must be a no-op.
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.mode, Mode::Command, "minibuf must stay open");
+    let mb = ed.minibuf.as_ref().expect("minibuf must still be present");
+    assert_eq!(mb.input, "hello", "input must be unchanged");
+    assert_eq!(mb.cursor, 0, "cursor must remain at start");
+}
+
+#[test]
 fn backspace_removes_last_char() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
