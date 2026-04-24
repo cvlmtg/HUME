@@ -150,30 +150,22 @@ fn buffer_exact_basename_ambiguous_errors() {
 #[test]
 #[cfg(not(windows))]
 fn buffer_prefix_unique_switches() {
-    let (p1, _t1) = temp_file("unique_name.rs\n");
-    let p1_canonical = std::fs::canonicalize(&p1).unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
-
-    // The tempfile's basename won't start with "uniq" unless we pick by content;
-    // since tempfile names are random we can't predict the prefix.
-    // Instead, test the prefix path via a controlled filename.
+    // Use a controlled filename — `tempfile::NamedTempFile` produces random
+    // basenames we can't match a prefix against.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("prefixed_file.rs");
     std::fs::write(&path, "x\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
-    let mut ed2 = editor_from("-[h]>ello\n");
-    ed2.execute_typed("e", Some(canonical.to_str().unwrap()))
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     // "prefixed" is a unique prefix
-    ed2.execute_typed("b", Some("prefixed")).unwrap();
+    ed.execute_typed("b", Some("prefixed")).unwrap();
     assert_eq!(
-        ed2.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path.as_ref().map(|p| p.as_path()),
         Some(canonical.as_path()),
         ":b <prefix> must switch to the uniquely-matched buffer"
     );
-    let _ = p1_canonical; // suppress unused warning
-    let _ = _t1;
 }
 
 #[test]
@@ -259,6 +251,26 @@ fn buffer_long_alias_accepted() {
     assert!(
         err.to_string().contains("no buffer matching"),
         "canonical name 'buffer' must work too, got: {err}"
+    );
+}
+
+#[test]
+fn buffer_bang_force_is_ignored() {
+    // `:b` takes a `force` flag for syntactic compatibility with the
+    // `<cmd>!` convention, but there is nothing to force on a plain
+    // buffer switch — `:b!` must behave identically to `:b`.
+    let mut ed = editor_from("-[h]>ello\n");
+    let before_id = ed.focused_buffer_id();
+    ed.execute_typed("b!", Some("*scratch*")).unwrap();
+    assert_eq!(
+        ed.focused_buffer_id(),
+        before_id,
+        ":b! to current buffer must be a no-op, same as :b"
+    );
+    let err = ed.execute_typed("b!", Some("xyz_no_such_buf")).unwrap_err();
+    assert!(
+        err.to_string().contains("no buffer matching"),
+        ":b! must still report resolution errors, got: {err}"
     );
 }
 
