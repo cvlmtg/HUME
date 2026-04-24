@@ -259,7 +259,7 @@ define_settings! {
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
             parser: tab_width;
-        "wrap-mode"          => wrap_mode:          WrapMode        = WrapMode::Indent { width: 76 },
+        "wrap-mode"          => wrap_mode:          WrapMode        = WrapMode::Indent { width: 0 },
             parser: from_str;
         "line-number-style"  => line_number_style:  LineNumberStyle = LineNumberStyle::Hybrid,
             parser: from_str;
@@ -319,8 +319,11 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "tab-width" => settings.tab_width.to_string(),
         "wrap-mode" => match settings.wrap_mode {
             engine::pane::WrapMode::None => "none".to_string(),
-            engine::pane::WrapMode::Soft { width } => format!("soft:{width}"),
-            engine::pane::WrapMode::Word { width } => format!("word:{width}"),
+            engine::pane::WrapMode::Soft   { width: 0 } => "soft".to_string(),
+            engine::pane::WrapMode::Word   { width: 0 } => "word".to_string(),
+            engine::pane::WrapMode::Indent { width: 0 } => "indent".to_string(),
+            engine::pane::WrapMode::Soft   { width } => format!("soft:{width}"),
+            engine::pane::WrapMode::Word   { width } => format!("word:{width}"),
             engine::pane::WrapMode::Indent { width } => format!("indent:{width}"),
         },
         "line-number-style" => match settings.line_number_style {
@@ -483,7 +486,7 @@ mod tests {
         assert_eq!(s.jump_line_threshold, 5);
         assert_eq!(s.history_capacity, 100);
         assert_eq!(s.tab_width, 4);
-        assert_eq!(s.wrap_mode, WrapMode::Indent { width: 76 });
+        assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
         assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
         assert!(s.auto_pairs_enabled);
     }
@@ -690,6 +693,22 @@ mod tests {
         assert_eq!(
             global("wrap-mode", "indent:80").unwrap().wrap_mode,
             WrapMode::Indent { width: 80 },
+        );
+    }
+
+    #[test]
+    fn set_global_wrap_mode_indent_no_colon() {
+        assert_eq!(
+            global("wrap-mode", "indent").unwrap().wrap_mode,
+            WrapMode::Indent { width: 0 },
+        );
+    }
+
+    #[test]
+    fn set_global_wrap_mode_soft_no_colon() {
+        assert_eq!(
+            global("wrap-mode", "soft").unwrap().wrap_mode,
+            WrapMode::Soft { width: 0 },
         );
     }
 
@@ -947,6 +966,23 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent:80");
+    }
+
+    #[test]
+    fn serialize_setting_wrap_mode_bare_indent() {
+        // width:0 is the "terminal width" sentinel — serializes as bare "indent".
+        let s = EditorSettings {
+            wrap_mode: engine::pane::WrapMode::Indent { width: 0 },
+            ..Default::default()
+        };
+        assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent");
+    }
+
+    #[test]
+    fn serialize_setting_wrap_mode_default_is_bare_indent() {
+        // Default wrap-mode is Indent{width:0} → round-trips as "indent".
+        let s = EditorSettings::default();
+        assert_eq!(serialize_setting(&s, "wrap-mode").unwrap(), "indent");
     }
 
     // ── statusline setting ────────────────────────────────────────────────────
