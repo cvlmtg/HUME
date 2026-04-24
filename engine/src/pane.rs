@@ -61,19 +61,18 @@ pub struct ScrollPosition {
 /// How the formatter handles lines that exceed the content width.
 ///
 /// For `Soft`, `Word`, and `Indent`, `width: 0` is a sentinel meaning "wrap at
-/// the current terminal width". A non-zero width is a fixed column.  The editor
-/// resolves the sentinel to a concrete pixel count (via `resolved_wrap_mode`)
-/// before passing the mode to the engine.
+/// the content width" (pane width minus gutter). Call `WrapMode::resolve(content_width)`
+/// to substitute a concrete column count before handing the mode to engine code.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum WrapMode {
     /// No wrapping — horizontal scroll.
     #[default]
     None,
-    /// Break at `width` columns (`0` = terminal width).
+    /// Break at `width` columns (`0` = content width sentinel).
     Soft { width: u16 },
-    /// Break at whitespace boundaries; prefer not to split words (`0` = terminal width).
+    /// Break at whitespace boundaries; prefer not to split words (`0` = content width sentinel).
     Word { width: u16 },
-    /// Word wrap + indent continuation rows to match the line's indent level (`0` = terminal width).
+    /// Word wrap + indent continuation rows to match the line's indent level (`0` = content width sentinel).
     Indent { width: u16 },
 }
 
@@ -113,15 +112,37 @@ impl FromStr for WrapMode {
 }
 
 impl WrapMode {
-    /// Concrete wrap column, or `None` if wrapping is off or the width is the
-    /// terminal-width sentinel (`0`).  Callers that need the resolved width
-    /// should consult the editor's `resolved_wrap_mode` instead.
+    /// Concrete wrap column, or `None` if wrapping is off.
+    ///
+    /// The caller must have already resolved the `width: 0` sentinel via
+    /// `WrapMode::resolve(content_width)` — passing an unresolved sentinel is a
+    /// bug and will panic in debug builds.
     pub fn wrap_width(&self) -> Option<u16> {
         match self {
             WrapMode::None => None,
             WrapMode::Soft { width }
             | WrapMode::Word { width }
-            | WrapMode::Indent { width } => (*width != 0).then_some(*width),
+            | WrapMode::Indent { width } => {
+                debug_assert!(
+                    *width != 0,
+                    "wrap_width() received unresolved sentinel (width: 0) — \
+                     call WrapMode::resolve(content_width) before reaching the engine",
+                );
+                (*width != 0).then_some(*width)
+            }
+        }
+    }
+
+    /// Replace the `width: 0` sentinel with a concrete column count.
+    ///
+    /// `WrapMode::None` and concrete non-zero widths pass through unchanged.
+    /// Call this once at the editor→engine boundary, passing `pane_width − gutter_width`.
+    pub fn resolve(self, content_width: u16) -> WrapMode {
+        match self {
+            WrapMode::Soft   { width: 0 } => WrapMode::Soft   { width: content_width },
+            WrapMode::Word   { width: 0 } => WrapMode::Word   { width: content_width },
+            WrapMode::Indent { width: 0 } => WrapMode::Indent { width: content_width },
+            other => other,
         }
     }
 
@@ -387,11 +408,20 @@ mod tests {
     #[test]
     fn wrap_mode_wrap_width() {
         assert_eq!(WrapMode::None.wrap_width(), None);
-        // Sentinel (0) → None, concrete > 0 → Some.
-        assert_eq!(WrapMode::Soft   { width: 0  }.wrap_width(), None);
         assert_eq!(WrapMode::Soft   { width: 80 }.wrap_width(), Some(80));
         assert_eq!(WrapMode::Word   { width: 40 }.wrap_width(), Some(40));
         assert_eq!(WrapMode::Indent { width: 60 }.wrap_width(), Some(60));
+    }
+
+    #[test]
+    fn wrap_mode_resolve() {
+        // Sentinel → concrete.
+        assert_eq!(WrapMode::Soft   { width: 0 }.resolve(80), WrapMode::Soft   { width: 80 });
+        assert_eq!(WrapMode::Word   { width: 0 }.resolve(80), WrapMode::Word   { width: 80 });
+        assert_eq!(WrapMode::Indent { width: 0 }.resolve(80), WrapMode::Indent { width: 80 });
+        // Concrete and None pass through unchanged.
+        assert_eq!(WrapMode::Soft   { width: 40 }.resolve(80), WrapMode::Soft   { width: 40 });
+        assert_eq!(WrapMode::None.resolve(80), WrapMode::None);
     }
 
     #[test]

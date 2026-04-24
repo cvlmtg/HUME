@@ -940,8 +940,8 @@ pub(super) fn typed_toggle_soft_wrap(
         ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
     } else {
-        // width: 0 is the sentinel for "terminal width" — resolved_wrap_mode
-        // injects viewport.width at render time, so this reflows on resize.
+        // width: 0 is the sentinel for "content width" — resolved via
+        // WrapMode::resolve(content_width) at render time, so this reflows on resize.
         ed.doc_mut().overrides.wrap_mode = Some(WrapMode::Indent { width: 0 });
         ed.viewport_mut().horizontal_offset = 0;
         ed.viewport_mut().top_row_offset = 0;

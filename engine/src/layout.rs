@@ -107,7 +107,7 @@ fn compute_line_range(
     last_line_idx: usize,
 ) -> Range<usize> {
     // For non-wrapping mode each buffer line is exactly one display row.
-    if wrap_mode.wrap_width().is_none() {
+    if !wrap_mode.is_wrapping() {
         // top_skip is always 0 for non-wrapping (no wrapped lines).
         let end = (top_line + viewport_height as usize).min(last_line_idx);
         return top_line..end;

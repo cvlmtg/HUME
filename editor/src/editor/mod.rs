@@ -523,7 +523,8 @@ impl Editor {
                     );
                     (pane.viewport.clone(), gw)
                 };
-                let wrap_mode = self.resolved_wrap_mode(self.doc().overrides.wrap_mode(&self.settings));
+                let content_width = vp.width.saturating_sub(gutter_w).max(1);
+                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings).resolve(content_width);
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 crate::cursor::screen_pos(
@@ -562,12 +563,15 @@ impl Editor {
                 } else {
                     self.mode
                 };
-                let raw_wrap = if self.scratch_view.is_some() {
-                    self.settings.wrap_mode.clone()
+                let (raw_wrap, len_lines) = if let Some(ref sv) = self.scratch_view {
+                    (self.settings.wrap_mode.clone(), sv.buf.len_lines())
                 } else {
-                    self.doc().overrides.wrap_mode(&self.settings)
+                    (self.doc().overrides.wrap_mode(&self.settings), self.doc().text().len_lines())
                 };
-                let wrap_mode = self.resolved_wrap_mode(raw_wrap);
+                let pane = &self.engine_view.panes[self.focused_pane_id];
+                let gutter_w = crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
+                let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
+                let wrap_mode = raw_wrap.resolve(content_width);
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 PaneRenderSettings {
@@ -685,10 +689,12 @@ impl Editor {
             let rope = sv.buf.rope();
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
-            let wrap_mode = self.resolved_wrap_mode(self.settings.wrap_mode.clone());
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
+            let gutter_w = crate::cursor::gutter_width(pane.providers.gutter_columns(), sv.buf.len_lines());
+            let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
+            let wrap_mode = self.settings.wrap_mode.clone().resolve(content_width);
             scroll_into_view(
                 pane,
                 rope,
@@ -719,12 +725,20 @@ impl Editor {
                 .head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
-            let wrap_mode = self.resolved_wrap_mode(self.doc().overrides.wrap_mode(&self.settings));
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             {
                 let buf_id = self.focused_buffer_id();
+                let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+                let len_lines = self.buffers.get(buf_id).text().len_lines();
                 let rope = self.buffers.get(buf_id).text().rope();
+                let (gutter_w, viewport_width) = {
+                    let pane = &self.engine_view.panes[self.focused_pane_id];
+                    (crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines),
+                     pane.viewport.width)
+                };
+                let content_width = viewport_width.saturating_sub(gutter_w).max(1);
+                let wrap_mode = raw_wrap.resolve(content_width);
                 let pane = &mut self.engine_view.panes[self.focused_pane_id];
                 scroll_into_view(
                     pane,
@@ -899,19 +913,6 @@ impl Editor {
 
     pub(crate) fn viewport(&self) -> &ViewportState {
         &self.engine_view.panes[self.focused_pane_id].viewport
-    }
-
-    /// Replace the sentinel `width: 0` with the current viewport width so the
-    /// engine always receives a concrete column count.  Fixed non-zero widths
-    /// pass through unchanged.
-    fn resolved_wrap_mode(&self, raw: WrapMode) -> WrapMode {
-        let vw = self.viewport().width.max(20);
-        match raw {
-            WrapMode::Soft   { width: 0 } => WrapMode::Soft   { width: vw },
-            WrapMode::Word   { width: 0 } => WrapMode::Word   { width: vw },
-            WrapMode::Indent { width: 0 } => WrapMode::Indent { width: vw },
-            other => other,
-        }
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut ViewportState {
