@@ -889,7 +889,7 @@ mod tests {
         let mut b = Buffer::new(Text::empty(), SelectionSet::default());
         b.set_path(Some(PathBuf::from("/tmp/file.txt")));
         b.set_path(None);
-        assert!(b.path.is_none());
+        assert!(b.path().is_none());
         assert_eq!(b.display_name(), Buffer::SCRATCH_BUFFER_NAME);
     }
 
