@@ -131,7 +131,7 @@ impl Buffer {
     /// at the boundary keeps the collision truly unreachable.
     pub(crate) fn set_path(&mut self, path: Option<PathBuf>) {
         if let Some(ref p) = path {
-            assert!(
+            debug_assert!(
                 p.file_name().is_some(),
                 "Buffer::set_path: path must have a basename, got {}",
                 p.display()

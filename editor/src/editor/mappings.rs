@@ -1288,8 +1288,7 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
             "%" => {
                 let path = ed
                     .doc()
-                    .path
-                    .as_ref()
+                    .path()
                     .ok_or_else(|| CommandError("No file name".into()))?;
                 out.push_str(&path.display().to_string());
             }
@@ -1300,8 +1299,7 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                 let alt_path = ed
                     .buffers
                     .get(alt_id)
-                    .path
-                    .as_ref()
+                    .path()
                     .ok_or_else(|| CommandError("Alternate buffer has no file name".into()))?;
                 out.push_str(&alt_path.display().to_string());
             }

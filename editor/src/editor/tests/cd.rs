@@ -212,8 +212,7 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
 
     let open_path = ed
         .doc()
-        .path
-        .as_deref()
+        .path()
         .expect("opened file must have a path");
     assert_eq!(
         open_path,
