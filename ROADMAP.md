@@ -167,6 +167,7 @@
 - **File picker / fuzzy finder** (Helix-style picker): depends on split/pane layout for comfortable rendering. Deferred until post-splits.
 - **Steel: `on-buffer-switch` hook + per-buffer keymaps**: add `on-buffer-switch` to `editor/src/scripting/hooks.rs`; buffer-scoped keymap overrides. Independent of split panes.
 - **PLUM: pin plugins to commit / tag / branch**: `(load-plugin "user/repo" #:rev "v0.3.1")` syntax; PLUM git-fetcher uses the specified ref instead of HEAD.
+- **`:e <new-path>` touch-or-open**: when no buffer matches and the file doesn't exist, create an empty buffer bound to that path so the first `:w` writes a new file. Currently errors with ENOENT. Requires the same `find_buffer_by_path_arg` pre-check that landed in `791e461`; the only addition is a post-`ENOENT` branch that calls `Buffer::scratch()` with the path pre-set.
 - **`:e` binary / huge-file y/n confirm**: binary-sniff (null-byte heuristic) + configurable size threshold → new `Mode::Confirm` variant with callback storage on `Editor`. Currently `:e` opens unconditionally; this is the first gate + UX in one.
 - **Byte-string parsing in settings**: parse `"10MB"` / `"512KB"` strings in `editor/src/settings.rs`; companion to the size-threshold setting above.
 - **Cached `size: u64` on `FileMeta` + `FileSize` statusline element**: add field at load time in `editor/src/os/io.rs`; new `StatusElement::FileSize` variant wired through `configure-statusline!`.
