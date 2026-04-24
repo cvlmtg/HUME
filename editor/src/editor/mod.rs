@@ -1737,7 +1737,7 @@ impl Editor {
             is_replaying: false,
             mouse_drag_anchor: None,
             scripting: None,
-            cwd: std::env::current_dir().unwrap_or_default(),
+            cwd: std::env::temp_dir(),
         }
     }
 
