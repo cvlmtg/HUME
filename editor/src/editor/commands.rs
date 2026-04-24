@@ -1026,13 +1026,18 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
 
     if let Some(path_str) = arg {
         let expanded = crate::os::path::expand(path_str);
-        let path = std::path::Path::new(expanded.as_ref());
+        let path: std::path::PathBuf = {
+            let p = std::path::Path::new(expanded.as_ref());
+            // Resolve relative paths against editor.cwd, not the process cwd,
+            // so `:w relpath` is stable regardless of how the process cwd drifts.
+            if p.is_relative() { ed.cwd.join(p) } else { p.to_owned() }
+        };
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
-        let result = match crate::os::io::read_file_meta(path) {
+        let result = match crate::os::io::read_file_meta(&path) {
             Ok(meta) => crate::os::io::write_file_atomic(&content, &meta, force)
                 .map(|retried| (meta, retried)),
-            Err(_) => crate::os::io::write_file_new(&content, path).map(|meta| (meta, false)),
+            Err(_) => crate::os::io::write_file_new(&content, &path).map(|meta| (meta, false)),
         };
         match result {
             Ok((meta, retried)) => {
