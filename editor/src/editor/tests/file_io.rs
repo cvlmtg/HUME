@@ -195,7 +195,7 @@ fn edit_existing_buffer_switches_without_reread() {
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         ":e same-path must stay on the buffer"
     );
@@ -223,7 +223,7 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(canonical.as_path()),
         ":e <deleted-path> must switch to the open buffer"
     );
@@ -268,14 +268,14 @@ fn edit_relative_path_matches_existing_buffer() {
 
     // Switch to scratch, then :cd to the file's directory.
     ed.execute_typed("b", Some("*scratch*")).unwrap();
-    assert!(ed.doc().path.is_none(), "must be on scratch");
+    assert!(ed.doc().path().is_none(), "must be on scratch");
     ed.execute_typed("cd", Some(canonical_dir.to_str().unwrap()))
         .unwrap();
 
     // :e with just the basename must switch to the already-open buffer.
     ed.execute_typed("e", Some("relpath_test.txt")).unwrap();
     assert_eq!(
-        ed.doc().path.as_ref().map(|p| p.as_path()),
+        ed.doc().path(),
         Some(path.as_path()),
         ":e <relative> must switch to the already-open buffer"
     );

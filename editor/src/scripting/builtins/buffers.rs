@@ -110,7 +110,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             format!("buffer-path: invalid buffer id {id:?}"),
         )
     })?;
-    match buf.path.as_deref() {
+    match buf.path() {
         Some(p) => p
             .to_string_lossy()
             .into_owned()
@@ -978,7 +978,7 @@ mod tests {
             "last buffer must be replaced by scratch, not removed"
         );
         assert!(
-            bufs.get(buf_id).path.is_none(),
+            bufs.get(buf_id).path().is_none(),
             "scratch buffer has no path"
         );
     }

@@ -231,7 +231,7 @@ fn colon_w_path_creates_new_file() {
     assert!(new_path.exists());
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
     // file_path should be updated.
-    assert!(ed.doc_mut().path.is_some());
+    assert!(ed.doc_mut().path().is_some());
     // Text should now be clean.
     assert!(!ed.doc().is_dirty());
 }

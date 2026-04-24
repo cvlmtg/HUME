@@ -140,8 +140,7 @@ impl Completer for BufferNameCompleter {
         let entry_for = |buf: &crate::editor::buffer::Buffer| -> (String, String) {
             let base = buf.display_name();
             let replacement = buf
-                .path
-                .as_ref()
+                .path()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| base.clone());
             (base, replacement)
@@ -165,7 +164,7 @@ impl Completer for BufferNameCompleter {
                 }
                 let display = if *name_count.get(&base).expect("base was counted above") >= 2 {
                     // Two or more buffers share this basename — show parent dir.
-                    if let Some(parent) = buf.path.as_ref().and_then(|p| p.parent()) {
+                    if let Some(parent) = buf.path().and_then(|p| p.parent()) {
                         format!("{base}  ({}/)", crate::os::path::shorten_home(parent))
                     } else {
                         base // scratch can't collide
