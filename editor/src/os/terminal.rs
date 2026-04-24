@@ -1,10 +1,13 @@
-use std::io::{self, Stdout, Write, stdout};
+use std::io::{self, BufWriter, Stdout, Write, stdout};
 
 use crossterm::{
     cursor::SetCursorStyle,
     event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{
+        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen,
+        LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    },
 };
 use engine::types::EditorMode;
 use ratatui::{Terminal, backend::CrosstermBackend};
@@ -13,7 +16,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 ///
 /// Aliased here so every other module can name the type without repeating the
 /// backend parameter.
-pub(crate) type Term = Terminal<CrosstermBackend<Stdout>>;
+pub(crate) type Term = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 
 /// Switch the terminal into raw mode + alternate screen and create a ratatui
 /// `Terminal`. Also probes for kitty keyboard protocol support and enables it
@@ -72,7 +75,7 @@ pub(crate) fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term,
     }
 
     execute!(out, EnterAlternateScreen)?;
-    let term = Terminal::new(CrosstermBackend::new(out))?;
+    let term = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(64 * 1024, out)))?;
     Ok((term, kitty_enabled))
 }
 
@@ -157,4 +160,24 @@ pub(crate) fn set_cursor_shape(mode: EditorMode) -> io::Result<()> {
 /// restored.
 pub(crate) fn reset_cursor_shape() -> io::Result<()> {
     execute!(stdout(), SetCursorStyle::DefaultUserShape)
+}
+
+/// Emit DEC Mode 2026 `\x1b[?2026h` — ask the terminal to defer display
+/// updates until [`end_synchronized_update`] is called.
+///
+/// Call once per frame, before `term.draw(…)`. Terminals that do not
+/// recognise DEC 2026 silently ignore the sequence, so this is safe to emit
+/// unconditionally. The `let _ = …` pattern at the call site is intentional:
+/// a write failure here must never abort the render loop.
+pub(crate) fn begin_synchronized_update() -> io::Result<()> {
+    execute!(stdout(), BeginSynchronizedUpdate)
+}
+
+/// Emit DEC Mode 2026 `\x1b[?2026l` — signal the terminal that the current
+/// frame is complete and it may paint the accumulated output atomically.
+///
+/// Call after every write that contributes to the current frame (draw,
+/// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
+pub(crate) fn end_synchronized_update() -> io::Result<()> {
+    execute!(stdout(), EndSynchronizedUpdate)
 }

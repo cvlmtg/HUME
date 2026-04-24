@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::{Arc, RwLock};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
@@ -582,6 +583,11 @@ impl Editor {
                 }
             };
             let engine_view = &self.engine_view;
+            // Open the synchronized-output envelope so the terminal defers
+            // display until after every byte of this frame has been written.
+            // Terminals that don't support DEC 2026 silently ignore the
+            // sequence — hence `let _ =` rather than `?`.
+            let _ = crate::os::terminal::begin_synchronized_update();
             term.draw(|frame| {
                 engine_view.render(
                     frame.area(),
@@ -611,6 +617,9 @@ impl Editor {
                 let _ = crate::os::terminal::set_cursor_color_for_mode(self.mode);
                 last_cursor_color_mode = Some(self.mode);
             }
+            // Close the synchronized-output envelope: the terminal now atomically
+            // paints the complete frame — clear + cells + cursor shape in one shot.
+            let _ = crate::os::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
             match event::read()? {
@@ -625,7 +634,30 @@ impl Editor {
                 Event::Mouse(mouse) => {
                     self.handle_mouse(mouse);
                 }
-                Event::Resize(_, _) => {} // dimensions re-read at loop top
+                Event::Resize(_, _) => {
+                    // Drain any additional resize events that are already queued
+                    // so a drag (which emits one event per delta) collapses into a
+                    // single render on the next iteration. Viewport dimensions are
+                    // re-read at loop top, so only the final size matters.
+                    // Non-resize events that arrive during the drain are handled
+                    // inline so they are never lost.
+                    while event::poll(Duration::from_millis(0))? {
+                        match event::read()? {
+                            Event::Resize(_, _) => continue,
+                            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                                self.handle_key(key);
+                                self.sync_search_cache();
+                                break;
+                            }
+                            Event::Key(_) => break,
+                            Event::Mouse(mouse) => {
+                                self.handle_mouse(mouse);
+                                break;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
                 _ => {}
             }
 
