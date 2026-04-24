@@ -1043,7 +1043,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         };
         match result {
             Ok((meta, retried)) => {
-                // Store the canonicalized path so file_path and file_meta.resolved_path
+                // Store the canonicalized path so path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
                 ed.doc_mut().set_path(Some(meta.resolved_path.clone()));
                 ed.doc_mut().file_meta = Some(meta);
@@ -1285,8 +1285,9 @@ pub(super) fn typed_reload_config(
 /// - `path` given and already open: switch to the existing buffer.
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
 ///
-/// Dedup uses `find_by_path` (canonical path comparison). `:e!` (`force=true`)
-/// reloads even if the buffer is dirty.
+/// Dedup uses `find_by_path` (canonical path comparison). `force` (`!` suffix)
+/// only takes effect in the no-arg reload branch: it discards unsaved changes
+/// and re-reads the file from disk. When a path is given, `force` is unused.
 pub(super) fn typed_edit(
     ed: &mut Editor,
     arg: Option<&str>,
