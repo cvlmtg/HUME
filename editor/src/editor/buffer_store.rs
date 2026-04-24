@@ -46,7 +46,7 @@ impl BufferStore {
 
     /// Find a buffer by its canonical resolved path.
     ///
-    /// Returns the first `BufferId` whose `buffer.path == Some(canonical_path)`.
+    /// Returns the first `BufferId` whose `buffer.path() == Some(canonical_path)`.
     /// Used by `:e` to deduplicate already-open files.
     pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
         self.buffers
