@@ -10,8 +10,8 @@
 
 use std::collections::VecDeque;
 
-use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
 
 // ── Severity ─────────────────────────────────────────────────────────────────
 
@@ -41,10 +41,10 @@ pub(crate) enum Severity {
 impl Severity {
     fn label(self) -> &'static str {
         match self {
-            Severity::Info    => "info",
+            Severity::Info => "info",
             Severity::Warning => "warning",
-            Severity::Error   => "error",
-            Severity::Trace   => "trace",
+            Severity::Error => "error",
+            Severity::Trace => "trace",
         }
     }
 }
@@ -83,7 +83,10 @@ pub(crate) struct MessageLog {
 
 impl MessageLog {
     pub(crate) fn new() -> Self {
-        Self { entries: VecDeque::new(), seen_up_to: 0 }
+        Self {
+            entries: VecDeque::new(),
+            seen_up_to: 0,
+        }
     }
 
     /// Append an entry to the log. Called by `Editor::report`.
@@ -114,11 +117,14 @@ impl MessageLog {
     /// `Info` entries are never logged; `Trace` entries are not surfaced in
     /// the summary because they are supplemental detail, not actionable items.
     pub(crate) fn unseen_counts(&self) -> (usize, usize) {
-        self.entries.iter().skip(self.seen_up_to).fold((0, 0), |(e, w), entry| match entry.severity {
-            Severity::Error   => (e + 1, w),
-            Severity::Warning => (e, w + 1),
-            _ => (e, w),
-        })
+        self.entries
+            .iter()
+            .skip(self.seen_up_to)
+            .fold((0, 0), |(e, w), entry| match entry.severity {
+                Severity::Error => (e + 1, w),
+                Severity::Warning => (e, w + 1),
+                _ => (e, w),
+            })
     }
 
     /// Mark all current entries as seen. Called when the user opens `:messages`.
@@ -233,10 +239,7 @@ mod tests {
 
     #[test]
     fn push_and_entries() {
-        let log = make_log(&[
-            (Severity::Warning, "first"),
-            (Severity::Error,   "second"),
-        ]);
+        let log = make_log(&[(Severity::Warning, "first"), (Severity::Error, "second")]);
         let entries: Vec<_> = log.entries().collect();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "first");
@@ -246,10 +249,10 @@ mod tests {
     #[test]
     fn unseen_counts_initial() {
         let log = make_log(&[
-            (Severity::Error,   "e1"),
+            (Severity::Error, "e1"),
             (Severity::Warning, "w1"),
             (Severity::Warning, "w2"),
-            (Severity::Trace,   "t1"),
+            (Severity::Trace, "t1"),
         ]);
         let (errors, warnings) = log.unseen_counts();
         assert_eq!(errors, 1);
@@ -295,19 +298,28 @@ mod tests {
     #[test]
     fn summary_text_errors_only() {
         let log = make_log(&[(Severity::Error, "e1"), (Severity::Error, "e2")]);
-        assert_eq!(log.summary_text().unwrap(), "2 errors — :messages for details");
+        assert_eq!(
+            log.summary_text().unwrap(),
+            "2 errors — :messages for details"
+        );
     }
 
     #[test]
     fn summary_text_single_error() {
         let log = make_log(&[(Severity::Error, "e")]);
-        assert_eq!(log.summary_text().unwrap(), "1 error — :messages for details");
+        assert_eq!(
+            log.summary_text().unwrap(),
+            "1 error — :messages for details"
+        );
     }
 
     #[test]
     fn summary_text_warnings_only() {
         let log = make_log(&[(Severity::Warning, "w")]);
-        assert_eq!(log.summary_text().unwrap(), "1 warning — :messages for details");
+        assert_eq!(
+            log.summary_text().unwrap(),
+            "1 warning — :messages for details"
+        );
     }
 
     #[test]
@@ -339,8 +351,8 @@ mod tests {
     fn format_for_display_prefixes() {
         let log = make_log(&[
             (Severity::Warning, "bad key"),
-            (Severity::Error,   "crash"),
-            (Severity::Trace,   "stack trace here"),
+            (Severity::Error, "crash"),
+            (Severity::Trace, "stack trace here"),
         ]);
         let out = log.format_for_display();
         let lines: Vec<&str> = out.lines().collect();
@@ -356,14 +368,14 @@ mod tests {
         // "line3" starts at char offset 12 (6 + 6).
         let head = sv.sels.primary().head;
         let text = sv.buf.rope().to_string();
-        let line_start = text[..text.char_indices()
-            .nth(head)
-            .map(|(i, _)| i)
-            .unwrap_or(0)]
+        let line_start = text[..text.char_indices().nth(head).map(|(i, _)| i).unwrap_or(0)]
             .rfind('\n')
             .map(|i| i + 1)
             .unwrap_or(0);
-        let line_content: String = text[line_start..].chars().take_while(|&c| c != '\n').collect();
+        let line_content: String = text[line_start..]
+            .chars()
+            .take_while(|&c| c != '\n')
+            .collect();
         assert_eq!(line_content, "line3");
     }
 
@@ -386,7 +398,10 @@ mod tests {
         // 3 content lines + trailing empty line from final \n → len_lines() = 4 → last_content = 2
         let sv = ScratchView::from_text_at_line("a\nb\nc\n", "[test]", 999);
         let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
-        assert_eq!(line, 2, "out-of-bounds line must clamp to last content line");
+        assert_eq!(
+            line, 2,
+            "out-of-bounds line must clamp to last content line"
+        );
     }
 
     #[test]

@@ -6,10 +6,10 @@
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 
-use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
-use crate::ops::pair::{find_bracket_pair, find_quote_pair};
+use crate::core::text::Text;
 use crate::ops::MotionMode;
+use crate::ops::pair::{find_bracket_pair, find_quote_pair};
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
@@ -70,7 +70,11 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
         // Symmetric source (e.g. `"` → `(`): use selection index as
         // tiebreaker.  After `ms"` the first cursor (even index) sits on
         // the opening quote, the second (odd) on the closing quote.
-        if sel_index.is_multiple_of(2) { open } else { close }
+        if sel_index.is_multiple_of(2) {
+            open
+        } else {
+            close
+        }
     } else {
         replacement
     }
@@ -126,21 +130,21 @@ macro_rules! surround_cmd {
     };
 }
 
-surround_cmd!(cmd_surround_paren,        bracket, '(', ')');
-surround_cmd!(cmd_surround_bracket,      bracket, '[', ']');
-surround_cmd!(cmd_surround_brace,        bracket, '{', '}');
-surround_cmd!(cmd_surround_angle,        bracket, '<', '>');
-surround_cmd!(cmd_surround_double_quote, quote,   '"');
-surround_cmd!(cmd_surround_single_quote, quote,   '\'');
-surround_cmd!(cmd_surround_backtick,     quote,   '`');
+surround_cmd!(cmd_surround_paren, bracket, '(', ')');
+surround_cmd!(cmd_surround_bracket, bracket, '[', ']');
+surround_cmd!(cmd_surround_brace, bracket, '{', '}');
+surround_cmd!(cmd_surround_angle, bracket, '<', '>');
+surround_cmd!(cmd_surround_double_quote, quote, '"');
+surround_cmd!(cmd_surround_single_quote, quote, '\'');
+surround_cmd!(cmd_surround_backtick, quote, '`');
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
+    use crate::core::text::Text;
 
     /// Helper: make a buffer + single-cursor SelectionSet and run a surround
     /// command, returning the resulting selections as `(anchor, head)` pairs.
@@ -230,10 +234,8 @@ mod tests {
     fn surround_multi_cursor_different_pairs() {
         // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
         let buf = Text::from("(a) [b]\n");
-        let sels = SelectionSet::from_vec(
-            vec![Selection::collapsed(1), Selection::collapsed(5)],
-            0,
-        );
+        let sels =
+            SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(5)], 0);
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Only the first cursor is inside parens; second is not.
         // First → cursors on ( and ), second preserved.
@@ -245,10 +247,8 @@ mod tests {
     fn surround_multi_cursor_same_pair_merges() {
         // (hello) — two cursors both inside the same parens (pos 1 and 3).
         let buf = Text::from("(hello)\n");
-        let sels = SelectionSet::from_vec(
-            vec![Selection::collapsed(1), Selection::collapsed(3)],
-            0,
-        );
+        let sels =
+            SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
         let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();

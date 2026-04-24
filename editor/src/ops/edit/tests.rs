@@ -7,24 +7,40 @@ use pretty_assertions::assert_eq;
 #[test]
 fn insert_char_at_cursor_start() {
     // Cursor on 'h'; 'x' inserted before it; cursor advances to 'h'.
-    assert_state!("-[h]>ello\n", |(buf, sels)| insert_char(buf, sels,'x'), "x-[h]>ello\n");
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| insert_char(buf, sels, 'x'),
+        "x-[h]>ello\n"
+    );
 }
 
 #[test]
 fn insert_char_at_cursor_middle() {
     // Cursor on second 'l' (offset 3); 'x' inserted, cursor on 'l'.
-    assert_state!("hel-[l]>o\n", |(buf, sels)| insert_char(buf, sels,'x'), "helx-[l]>o\n");
+    assert_state!(
+        "hel-[l]>o\n",
+        |(buf, sels)| insert_char(buf, sels, 'x'),
+        "helx-[l]>o\n"
+    );
 }
 
 #[test]
 fn insert_char_at_cursor_eof() {
     // Cursor at EOF (offset 5); 'x' appended; cursor at new EOF.
-    assert_state!("hello-[\n]>", |(buf, sels)| insert_char(buf, sels,'x'), "hellox-[\n]>");
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| insert_char(buf, sels, 'x'),
+        "hellox-[\n]>"
+    );
 }
 
 #[test]
 fn insert_char_into_empty_buffer() {
-    assert_state!("-[\n]>", |(buf, sels)| insert_char(buf, sels,'x'), "x-[\n]>");
+    assert_state!(
+        "-[\n]>",
+        |(buf, sels)| insert_char(buf, sels, 'x'),
+        "x-[\n]>"
+    );
 }
 
 #[test]
@@ -33,7 +49,7 @@ fn insert_char_replaces_forward_selection() {
     // Delete [0,4), insert 'x', cursor at 1.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| insert_char(buf, sels,'x'),
+        |(buf, sels)| insert_char(buf, sels, 'x'),
         "x-[o]>\n"
     );
 }
@@ -56,7 +72,7 @@ fn insert_char_replaces_selection_grapheme_base() {
 fn insert_char_replaces_whole_buffer() {
     assert_state!(
         "-[hello]>\n",
-        |(buf, sels)| insert_char(buf, sels,'x'),
+        |(buf, sels)| insert_char(buf, sels, 'x'),
         "x-[\n]>"
     );
 }
@@ -68,7 +84,7 @@ fn insert_char_replaces_backward_selection() {
     // Text "hello" → remove "hell" → "o", insert 'x' → "xo".
     assert_state!(
         "<[hell]-o\n",
-        |(buf, sels)| insert_char(buf, sels,'x'),
+        |(buf, sels)| insert_char(buf, sels, 'x'),
         "x-[o]>\n"
     );
 }
@@ -80,7 +96,7 @@ fn insert_char_two_cursors() {
     // Result: "xfoox bar", cursors at 1 and 5.
     assert_state!(
         "-[f]>oo-[ ]>bar\n",
-        |(buf, sels)| insert_char(buf, sels,'x'),
+        |(buf, sels)| insert_char(buf, sels, 'x'),
         "x-[f]>oox-[ ]>bar\n"
     );
 }
@@ -88,7 +104,11 @@ fn insert_char_two_cursors() {
 #[test]
 fn insert_char_unicode() {
     // Insert a multi-byte char (2 bytes in UTF-8, 1 char offset).
-    assert_state!("caf-[é]>\n", |(buf, sels)| insert_char(buf, sels,'à'), "cafà-[é]>\n");
+    assert_state!(
+        "caf-[é]>\n",
+        |(buf, sels)| insert_char(buf, sels, 'à'),
+        "cafà-[é]>\n"
+    );
 }
 
 // ── delete_char_forward ───────────────────────────────────────────────────
@@ -96,22 +116,38 @@ fn insert_char_unicode() {
 #[test]
 fn delete_forward_at_cursor_start() {
     // Cursor on 'h'; deletes 'h'; cursor stays at 0 (now on 'e').
-    assert_state!("-[h]>ello\n", |(buf, sels)| delete_char_forward(buf, sels), "-[e]>llo\n");
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| delete_char_forward(buf, sels),
+        "-[e]>llo\n"
+    );
 }
 
 #[test]
 fn delete_forward_at_cursor_middle() {
-    assert_state!("h-[e]>llo\n", |(buf, sels)| delete_char_forward(buf, sels), "h-[l]>lo\n");
+    assert_state!(
+        "h-[e]>llo\n",
+        |(buf, sels)| delete_char_forward(buf, sels),
+        "h-[l]>lo\n"
+    );
 }
 
 #[test]
 fn delete_forward_at_eof_is_noop() {
-    assert_state!("hello-[\n]>", |(buf, sels)| delete_char_forward(buf, sels), "hello-[\n]>");
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| delete_char_forward(buf, sels),
+        "hello-[\n]>"
+    );
 }
 
 #[test]
 fn delete_forward_empty_buffer_is_noop() {
-    assert_state!("-[\n]>", |(buf, sels)| delete_char_forward(buf, sels), "-[\n]>");
+    assert_state!(
+        "-[\n]>",
+        |(buf, sels)| delete_char_forward(buf, sels),
+        "-[\n]>"
+    );
 }
 
 #[test]
@@ -161,23 +197,39 @@ fn delete_forward_grapheme_cluster() {
 #[test]
 fn delete_backward_at_cursor_end() {
     // Cursor at EOF (offset 5); backspace deletes 'o'; cursor at 4.
-    assert_state!("hello-[\n]>", |(buf, sels)| delete_char_backward(buf, sels), "hell-[\n]>");
+    assert_state!(
+        "hello-[\n]>",
+        |(buf, sels)| delete_char_backward(buf, sels),
+        "hell-[\n]>"
+    );
 }
 
 #[test]
 fn delete_backward_at_cursor_middle() {
     // Cursor at 3 ('l'); backspace deletes 'l' at 2; cursor at 2.
-    assert_state!("hel-[l]>o\n", |(buf, sels)| delete_char_backward(buf, sels), "he-[l]>o\n");
+    assert_state!(
+        "hel-[l]>o\n",
+        |(buf, sels)| delete_char_backward(buf, sels),
+        "he-[l]>o\n"
+    );
 }
 
 #[test]
 fn delete_backward_at_start_is_noop() {
-    assert_state!("-[h]>ello\n", |(buf, sels)| delete_char_backward(buf, sels), "-[h]>ello\n");
+    assert_state!(
+        "-[h]>ello\n",
+        |(buf, sels)| delete_char_backward(buf, sels),
+        "-[h]>ello\n"
+    );
 }
 
 #[test]
 fn delete_backward_empty_buffer_is_noop() {
-    assert_state!("-[\n]>", |(buf, sels)| delete_char_backward(buf, sels), "-[\n]>");
+    assert_state!(
+        "-[\n]>",
+        |(buf, sels)| delete_char_backward(buf, sels),
+        "-[\n]>"
+    );
 }
 
 #[test]

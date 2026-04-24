@@ -24,8 +24,8 @@ fn visual_test_editor(head: usize) -> Editor {
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
     // Build manually so we can place the cursor at an exact char offset.
-    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
+    use crate::core::text::Text;
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(head));
     Editor::for_testing(Buffer::new(buf, sels))
@@ -36,8 +36,16 @@ fn visual_test_editor(head: usize) -> Editor {
 fn visual_move_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 76, "j: sub-row 0 → sub-row 1, col 0 → char 76");
-    assert_eq!(ed.current_selections().primary().horiz, Some(0), "sticky col latched on first j");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        76,
+        "j: sub-row 0 → sub-row 1, col 0 → char 76"
+    );
+    assert_eq!(
+        ed.current_selections().primary().horiz,
+        Some(0),
+        "sticky col latched on first j"
+    );
 }
 
 /// j on the last sub-row crosses to the next buffer line.
@@ -45,7 +53,11 @@ fn visual_move_down_within_wrapped_line() {
 fn visual_move_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 81, "j: last sub-row → first char of next buffer line");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        81,
+        "j: last sub-row → first char of next buffer line"
+    );
 }
 
 /// k from the first row of a buffer line enters the last sub-row of the previous line.
@@ -53,7 +65,11 @@ fn visual_move_down_crosses_buffer_line() {
 fn visual_move_up_enters_last_subrow_of_previous_line() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('k'));
-    assert_eq!(ed.current_selections().primary().head, 76, "k: buffer line n+1 → last sub-row of line n, col 0 → char 76");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        76,
+        "k: buffer line n+1 → last sub-row of line n, col 0 → char 76"
+    );
 }
 
 /// k on sub-row 1 retreats to sub-row 0 of the same buffer line.
@@ -61,7 +77,11 @@ fn visual_move_up_enters_last_subrow_of_previous_line() {
 fn visual_move_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('k'));
-    assert_eq!(ed.current_selections().primary().head, 0, "k: sub-row 1 → sub-row 0, col 0 → char 0");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        0,
+        "k: sub-row 1 → sub-row 0, col 0 → char 0"
+    );
 }
 
 /// k on the first sub-row of the first line stays put.
@@ -69,7 +89,11 @@ fn visual_move_up_within_wrapped_line() {
 fn visual_move_up_at_top_stays_put() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('k'));
-    assert_eq!(ed.current_selections().primary().head, 0, "k at first row: no-op");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        0,
+        "k at first row: no-op"
+    );
 }
 
 /// j on the last sub-row of the last line stays put.
@@ -78,7 +102,11 @@ fn visual_move_down_at_bottom_stays_put() {
     // Place cursor at "short" (line 1 is last). Line 1 has only 1 sub-row.
     let mut ed = visual_test_editor(81);
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 81, "j at last row: no-op");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        81,
+        "j at last row: no-op"
+    );
 }
 
 /// The preferred display column is preserved across consecutive j/k presses
@@ -91,14 +119,30 @@ fn visual_preferred_col_stickiness() {
     // j: target_col = 40, sub-row 1 has only 4 chars (cols 0..3).
     // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 79, "j: clamped to last char on short sub-row");
-    assert_eq!(ed.current_selections().primary().horiz, Some(40), "sticky col stays at 40");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        79,
+        "j: clamped to last char on short sub-row"
+    );
+    assert_eq!(
+        ed.current_selections().primary().horiz,
+        Some(40),
+        "sticky col stays at 40"
+    );
 
     // j again: cross to "short\n" (line 1). target_col=40, "short" has cols 0..4.
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 85, "j: clamped to last char on short second line");
-    assert_eq!(ed.current_selections().primary().horiz, Some(40), "sticky col still 40");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        85,
+        "j: clamped to last char on short second line"
+    );
+    assert_eq!(
+        ed.current_selections().primary().horiz,
+        Some(40),
+        "sticky col still 40"
+    );
 }
 
 /// Any non-vertical command resets preferred_display_col.
@@ -106,9 +150,15 @@ fn visual_preferred_col_stickiness() {
 fn visual_preferred_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
     ed.handle_key(key('j')); // latches horiz on the selection
-    assert!(ed.current_selections().primary().horiz.is_some(), "j latches sticky col");
+    assert!(
+        ed.current_selections().primary().horiz.is_some(),
+        "j latches sticky col"
+    );
     ed.handle_key(key('l')); // horizontal motion — Selection::new() clears horiz
-    assert!(ed.current_selections().primary().horiz.is_none(), "l resets sticky col");
+    assert!(
+        ed.current_selections().primary().horiz.is_none(),
+        "l resets sticky col"
+    );
 }
 
 /// WrapMode::None falls back to buffer-line movement.
@@ -120,8 +170,15 @@ fn visual_move_no_wrap_falls_back_to_buffer_line() {
 
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
-    assert_eq!(ed.current_selections().primary().head, 81, "WrapMode::None: j moves by buffer line");
-    assert!(ed.current_selections().primary().horiz.is_none(), "no sticky col in non-wrap mode");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        81,
+        "WrapMode::None: j moves by buffer line"
+    );
+    assert!(
+        ed.current_selections().primary().horiz.is_none(),
+        "no sticky col in non-wrap mode"
+    );
 }
 
 /// count prefix: 2j moves two visual rows.
@@ -131,7 +188,11 @@ fn visual_move_down_with_count() {
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
     // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
-    assert_eq!(ed.current_selections().primary().head, 81, "2j: two visual rows from sub-row 0");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        81,
+        "2j: two visual rows from sub-row 0"
+    );
 }
 
 /// Each cursor uses its own sticky column in multi-cursor j/k.
@@ -192,8 +253,8 @@ fn visual_extend_down_within_wrapped_line() {
     ed.handle_key(key('e')); // enter extend mode
     ed.handle_key(key('j'));
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor, 0,  "anchor fixed at sub-row 0 col 0");
-    assert_eq!(sel.head,   76, "head extends to sub-row 1 col 0");
+    assert_eq!(sel.anchor, 0, "anchor fixed at sub-row 0 col 0");
+    assert_eq!(sel.head, 76, "head extends to sub-row 1 col 0");
 }
 
 /// extend-down crosses to the next buffer line when already on the last sub-row.
@@ -204,7 +265,10 @@ fn visual_extend_down_crosses_buffer_line() {
     ed.handle_key(key('j'));
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 76, "anchor fixed at last sub-row");
-    assert_eq!(sel.head,   81, "head crosses to first char of next buffer line");
+    assert_eq!(
+        sel.head, 81,
+        "head crosses to first char of next buffer line"
+    );
 }
 
 /// extend-up (e+k) within a wrapped line: head retreats from sub-row 1 to sub-row 0.
@@ -215,7 +279,7 @@ fn visual_extend_up_within_wrapped_line() {
     ed.handle_key(key('k'));
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 76, "anchor fixed at sub-row 1");
-    assert_eq!(sel.head,   0,  "head retreats to sub-row 0 col 0");
+    assert_eq!(sel.head, 0, "head retreats to sub-row 0 col 0");
 }
 
 /// extend-up enters the last sub-row of the previous buffer line.
@@ -226,6 +290,8 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
     ed.handle_key(key('k'));
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor, 81, "anchor fixed at line 1 start");
-    assert_eq!(sel.head,   76, "head enters last sub-row of previous buffer line");
+    assert_eq!(
+        sel.head, 76,
+        "head enters last sub-row of previous buffer line"
+    );
 }
-

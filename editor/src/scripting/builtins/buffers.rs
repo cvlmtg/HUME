@@ -9,9 +9,12 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use engine::pipeline::BufferId;
 
+use super::{
+    ids::{SteelBufferId, SteelPaneId},
+    require_cmd_ctx,
+};
 use crate::editor::buffer::Buffer;
 use crate::scripting::SteelCtx;
-use super::{ids::{SteelBufferId, SteelPaneId}, require_cmd_ctx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -20,14 +23,22 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// Called after `require_cmd_ctx!`, so `None` means the caller forgot to
 /// populate the ref — a coding error, not a user error.
 fn require_ref<T>(opt: Option<T>, builtin: &str) -> Result<T, SteelErr> {
-    opt.ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("{builtin}: editor refs unavailable")))
+    opt.ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("{builtin}: editor refs unavailable"),
+        )
+    })
 }
 
 /// Extract the inner `BufferId` from a `SteelVal::Custom(SteelBufferId)`.
 fn extract_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
         use steel::gc::ShareableMut as _;
-        v.read().as_any_ref().downcast_ref::<SteelBufferId>().map(|b| b.0)
+        v.read()
+            .as_any_ref()
+            .downcast_ref::<SteelBufferId>()
+            .map(|b| b.0)
     } else {
         None
     }
@@ -38,14 +49,16 @@ fn extract_buffer_id(val: &SteelVal) -> Option<BufferId> {
 /// `(current-buffer)` → BufferId of the focused buffer at dispatch time.
 pub(crate) fn current_buffer(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-buffer");
-    SteelBufferId(ctx.focused_buffer_id).into_steelval()
+    SteelBufferId(ctx.focused_buffer_id)
+        .into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
 /// `(current-pane)` → PaneId of the focused pane at dispatch time.
 pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-pane");
-    SteelPaneId(ctx.focused_pane_id).into_steelval()
+    SteelPaneId(ctx.focused_pane_id)
+        .into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
@@ -55,7 +68,8 @@ pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "buffers");
     let store = require_ref(ctx.buffers.as_deref(), "buffers")?;
-    let list: Vec<SteelVal> = store.iter()
+    let list: Vec<SteelVal> = store
+        .iter()
         .map(|(id, _)| SteelBufferId(id).into_steel_val())
         .collect();
     list.into_steelval()
@@ -66,8 +80,14 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "panes");
     let ev = require_ref(ctx.engine_view.as_deref(), "panes")?;
-    let list: Vec<SteelVal> = ev.panes.iter()
-        .map(|(id, _)| SteelPaneId(id).into_steelval().expect("SteelPaneId into_steelval"))
+    let list: Vec<SteelVal> = ev
+        .panes
+        .iter()
+        .map(|(id, _)| {
+            SteelPaneId(id)
+                .into_steelval()
+                .expect("SteelPaneId into_steelval")
+        })
         .collect();
     list.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
@@ -78,13 +98,24 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 /// `(buffer-path bid)` → absolute path string, or `#f` for unsaved buffers.
 pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-path");
-    let id = extract_buffer_id(&bid)
-        .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-path: expected buffer-id".into()))?;
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-path: expected buffer-id".into(),
+        )
+    })?;
     let store = require_ref(ctx.buffers.as_deref(), "buffer-path")?;
-    let buf = store.try_get(id)
-        .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-path: invalid buffer id {id:?}")))?;
+    let buf = store.try_get(id).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("buffer-path: invalid buffer id {id:?}"),
+        )
+    })?;
     match buf.path.as_deref() {
-        Some(p) => p.to_string_lossy().into_owned().into_steelval()
+        Some(p) => p
+            .to_string_lossy()
+            .into_owned()
+            .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string())),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -93,12 +124,22 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// `(buffer-name bid)` → display name (filename or `"*scratch*"`).
 pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-name");
-    let id = extract_buffer_id(&bid)
-        .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-name: expected buffer-id".into()))?;
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-name: expected buffer-id".into(),
+        )
+    })?;
     let store = require_ref(ctx.buffers.as_deref(), "buffer-name")?;
-    let buf = store.try_get(id)
-        .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-name: invalid buffer id {id:?}")))?;
-    let name = buf.path.as_deref()
+    let buf = store.try_get(id).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("buffer-name: invalid buffer id {id:?}"),
+        )
+    })?;
+    let name = buf
+        .path
+        .as_deref()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .unwrap_or(Buffer::SCRATCH_BUFFER_NAME);
@@ -109,11 +150,19 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// `(buffer-dirty? bid)` → `#t` if the buffer has unsaved edits.
 pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-dirty?");
-    let id = extract_buffer_id(&bid)
-        .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "buffer-dirty?: expected buffer-id".into()))?;
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "buffer-dirty?: expected buffer-id".into(),
+        )
+    })?;
     let store = require_ref(ctx.buffers.as_deref(), "buffer-dirty?")?;
-    let buf = store.try_get(id)
-        .ok_or_else(|| SteelErr::new(ErrorKind::Generic, format!("buffer-dirty?: invalid buffer id {id:?}")))?;
+    let buf = store.try_get(id).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("buffer-dirty?: invalid buffer id {id:?}"),
+        )
+    })?;
     Ok(SteelVal::BoolV(buf.is_dirty()))
 }
 
@@ -128,15 +177,25 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
     require_cmd_ctx!(ctx, "open-buffer!");
     let p = std::path::Path::new(&path);
-    let canonical = crate::os::fs::canonicalize(p)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", p.display())))?;
+    let canonical = crate::os::fs::canonicalize(p).map_err(|e| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("open-buffer!: {}: {e}", p.display()),
+        )
+    })?;
     let focused_pane_id = ctx.focused_pane_id;
-    let ev   = require_ref(ctx.engine_view.as_deref_mut(), "open-buffer!")?;
+    let ev = require_ref(ctx.engine_view.as_deref_mut(), "open-buffer!")?;
     let bufs = require_ref(ctx.buffers.as_deref_mut(), "open-buffer!")?;
-    let ps   = require_ref(ctx.pane_state.as_deref_mut(), "open-buffer!")?;
+    let ps = require_ref(ctx.pane_state.as_deref_mut(), "open-buffer!")?;
     let (bid, _) = crate::editor::ops::open_or_dedup(ev, bufs, ps, focused_pane_id, &canonical)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("open-buffer!: {}: {e}", canonical.display())))?;
-    SteelBufferId(bid).into_steelval()
+        .map_err(|e| {
+            SteelErr::new(
+                ErrorKind::Generic,
+                format!("open-buffer!: {}: {e}", canonical.display()),
+            )
+        })?;
+    SteelBufferId(bid)
+        .into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
@@ -147,15 +206,22 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// an invalid or unknown `bid`.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "close-buffer!");
-    let id = extract_buffer_id(&bid)
-        .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "close-buffer!: expected buffer-id".into()))?;
-    if require_ref(ctx.buffers.as_deref(), "close-buffer!")?.try_get(id).is_none() {
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "close-buffer!: expected buffer-id".into(),
+        )
+    })?;
+    if require_ref(ctx.buffers.as_deref(), "close-buffer!")?
+        .try_get(id)
+        .is_none()
+    {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
     let focused_pane_id = ctx.focused_pane_id;
-    let ev    = require_ref(ctx.engine_view.as_deref_mut(), "close-buffer!")?;
-    let bufs  = require_ref(ctx.buffers.as_deref_mut(), "close-buffer!")?;
-    let ps    = require_ref(ctx.pane_state.as_deref_mut(), "close-buffer!")?;
+    let ev = require_ref(ctx.engine_view.as_deref_mut(), "close-buffer!")?;
+    let bufs = require_ref(ctx.buffers.as_deref_mut(), "close-buffer!")?;
+    let ps = require_ref(ctx.pane_state.as_deref_mut(), "close-buffer!")?;
     let jumps = require_ref(ctx.pane_jumps.as_deref_mut(), "close-buffer!")?;
     let new_live = crate::editor::ops::close_buffer(ev, bufs, ps, jumps, focused_pane_id, id);
     ctx.live_focused_buffer_id = new_live;
@@ -169,18 +235,33 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// unknown `bid`.
 pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "switch-to-buffer!");
-    let target = extract_buffer_id(&bid)
-        .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "switch-to-buffer!: expected buffer-id".into()))?;
-    if require_ref(ctx.buffers.as_deref(), "switch-to-buffer!")?.try_get(target).is_none() {
+    let target = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "switch-to-buffer!: expected buffer-id".into(),
+        )
+    })?;
+    if require_ref(ctx.buffers.as_deref(), "switch-to-buffer!")?
+        .try_get(target)
+        .is_none()
+    {
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
     let focused_pane_id = ctx.focused_pane_id;
     let current = ctx.live_focused_buffer_id;
-    let ev    = require_ref(ctx.engine_view.as_deref_mut(), "switch-to-buffer!")?;
-    let bufs  = require_ref(ctx.buffers.as_deref_mut(), "switch-to-buffer!")?;
-    let ps    = require_ref(ctx.pane_state.as_deref_mut(), "switch-to-buffer!")?;
+    let ev = require_ref(ctx.engine_view.as_deref_mut(), "switch-to-buffer!")?;
+    let bufs = require_ref(ctx.buffers.as_deref_mut(), "switch-to-buffer!")?;
+    let ps = require_ref(ctx.pane_state.as_deref_mut(), "switch-to-buffer!")?;
     let jumps = require_ref(ctx.pane_jumps.as_deref_mut(), "switch-to-buffer!")?;
-    crate::editor::ops::switch_to_buffer_with_jump(ev, bufs, ps, jumps, focused_pane_id, current, target);
+    crate::editor::ops::switch_to_buffer_with_jump(
+        ev,
+        bufs,
+        ps,
+        jumps,
+        focused_pane_id,
+        current,
+        target,
+    );
     ctx.live_focused_buffer_id = target;
     Ok(SteelVal::Void)
 }
@@ -192,19 +273,29 @@ fn pane_stub(builtin_name: &str) -> SteelResult {
 }
 
 /// `(open-pane! bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn open_pane(_bid: SteelVal) -> SteelResult { pane_stub("open-pane!") }
+pub(crate) fn open_pane(_bid: SteelVal) -> SteelResult {
+    pane_stub("open-pane!")
+}
 
 /// `(close-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn close_pane(_pid: SteelVal) -> SteelResult { pane_stub("close-pane!") }
+pub(crate) fn close_pane(_pid: SteelVal) -> SteelResult {
+    pane_stub("close-pane!")
+}
 
 /// `(focus-pane! pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn focus_pane(_pid: SteelVal) -> SteelResult { pane_stub("focus-pane!") }
+pub(crate) fn focus_pane(_pid: SteelVal) -> SteelResult {
+    pane_stub("focus-pane!")
+}
 
 /// `(pane-buffer pid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_buffer(_pid: SteelVal) -> SteelResult { pane_stub("pane-buffer") }
+pub(crate) fn pane_buffer(_pid: SteelVal) -> SteelResult {
+    pane_stub("pane-buffer")
+}
 
 /// `(pane-set-buffer! pid bid)` — reserved; pane split operations land in M9+.
-pub(crate) fn pane_set_buffer(_pid: SteelVal, _bid: SteelVal) -> SteelResult { pane_stub("pane-set-buffer!") }
+pub(crate) fn pane_set_buffer(_pid: SteelVal, _bid: SteelVal) -> SteelResult {
+    pane_stub("pane-set-buffer!")
+}
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
@@ -214,19 +305,19 @@ mod tests {
 
     use slotmap::SecondaryMap;
 
-    use engine::pipeline::{BufferId, EngineView, PaneId, SharedBuffer};
     use engine::pane::Pane;
+    use engine::pipeline::{BufferId, EngineView, PaneId, SharedBuffer};
     use engine::theme::Theme;
 
     use crate::core::jump_list::JumpList;
-    use crate::core::text::Text;
     use crate::core::selection::SelectionSet;
+    use crate::core::text::Text;
     use crate::editor::buffer::Buffer;
     use crate::editor::buffer_store::BufferStore;
-    use crate::editor::pane_state::PaneBufferState;
     use crate::editor::keymap::Keymap;
-    use crate::settings::EditorSettings;
+    use crate::editor::pane_state::PaneBufferState;
     use crate::scripting::{EditorSteelRefs, ScriptingHost};
+    use crate::settings::EditorSettings;
 
     // ── Test fixture helpers ──────────────────────────────────────────────────
 
@@ -239,7 +330,9 @@ mod tests {
         BufferId,
     );
 
-    fn host() -> ScriptingHost { ScriptingHost::new() }
+    fn host() -> ScriptingHost {
+        ScriptingHost::new()
+    }
 
     #[allow(clippy::too_many_arguments)]
     fn mb_refs<'a>(
@@ -253,14 +346,14 @@ mod tests {
         pj: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
     ) -> EditorSteelRefs<'a> {
         EditorSteelRefs {
-            settings:          s,
-            keymap:            km,
-            focused_pane_id:   pane_id,
+            settings: s,
+            keymap: km,
+            focused_pane_id: pane_id,
             focused_buffer_id: buf_id,
-            buffers:           Some(bufs),
-            engine_view:       Some(ev),
-            pane_state:        Some(ps),
-            pane_jumps:        pj,
+            buffers: Some(bufs),
+            engine_view: Some(ev),
+            pane_state: Some(ps),
+            pane_jumps: pj,
         }
     }
 
@@ -270,7 +363,10 @@ mod tests {
         let buffer_id = ev.buffers.insert(SharedBuffer::new());
         let pane_id = ev.panes.insert(Pane::new(buffer_id));
         let mut buffers = BufferStore::new();
-        buffers.open(buffer_id, Buffer::new(Text::from("hello\n"), SelectionSet::default()));
+        buffers.open(
+            buffer_id,
+            Buffer::new(Text::from("hello\n"), SelectionSet::default()),
+        );
         let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
             SecondaryMap::new();
         pane_state.insert(pane_id, SecondaryMap::new());
@@ -287,7 +383,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(current-buffer)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(current-buffer)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -296,7 +394,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(current-pane)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(current-pane)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -314,11 +414,21 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-buf", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "current-buffer must return a buffer-id");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-buf",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "current-buffer must return a buffer-id"
+        );
     }
 
     #[test]
@@ -334,11 +444,21 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-pane", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "current-pane must return a pane-id");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-pane",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "current-pane must return a pane-id"
+        );
     }
 
     // ── (buffers) / (panes) ───────────────────────────────────────────────────
@@ -366,14 +486,26 @@ mod tests {
                      (if (and (= (length bs) 1) (buffer-id? (car bs)))
                          (call! "move-right")
                          (call! "move-left")))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-bufs", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "(buffers) must return a list of one buffer-id");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-bufs",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "(buffers) must return a list of one buffer-id"
+        );
     }
 
     #[test]
@@ -390,14 +522,26 @@ mod tests {
                      (if (and (= (length ps) 1) (pane-id? (car ps)))
                          (call! "move-right")
                          (call! "move-left")))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-panes", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "(panes) must return a list of one pane-id");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-panes",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "(panes) must return a list of one pane-id"
+        );
     }
 
     // ── (buffer-path bid) ─────────────────────────────────────────────────────
@@ -408,7 +552,9 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
         // Calling with any non-buffer arg also errors in init mode (init check fires first).
-        let err = h.eval_source("(buffer-path #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(buffer-path #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -426,14 +572,26 @@ mod tests {
                    (if (equal? (buffer-path (current-buffer)) #f)
                        (call! "move-right")
                        (call! "move-left"))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-path-scratch", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "buffer-path of scratch should be #f");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-path-scratch",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "buffer-path of scratch should be #f"
+        );
     }
 
     #[test]
@@ -450,14 +608,26 @@ mod tests {
                  (lambda ()
                    (let ((p (buffer-path (current-buffer))))
                      (if (string? p) (call! "move-right") (call! "move-left")))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-path", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "buffer-path should return a string for named buffer");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-path",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "buffer-path should return a string for named buffer"
+        );
     }
 
     // ── (buffer-name bid) ─────────────────────────────────────────────────────
@@ -475,14 +645,26 @@ mod tests {
                    (if (equal? (buffer-name (current-buffer)) "*scratch*")
                        (call! "move-right")
                        (call! "move-left"))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-name-scratch", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "buffer-name of scratch should be *scratch*");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-name-scratch",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "buffer-name of scratch should be *scratch*"
+        );
     }
 
     #[test]
@@ -499,14 +681,26 @@ mod tests {
                    (if (equal? (buffer-name (current-buffer)) "hello.rs")
                        (call! "move-right")
                        (call! "move-left"))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-name", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "buffer-name should return the filename");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-name",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "buffer-name should return the filename"
+        );
     }
 
     // ── (buffer-dirty? bid) ───────────────────────────────────────────────────
@@ -524,13 +718,21 @@ mod tests {
                    (if (buffer-dirty? (current-buffer))
                        (call! "move-left")
                        (call! "move-right"))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-check-dirty", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap();
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-check-dirty",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap();
         assert_eq!(queue, vec!["move-right"], "new buffer should not be dirty");
     }
 
@@ -548,16 +750,24 @@ mod tests {
         h.eval_source(
             r#"(define-command! "check-invalid" ""
                  (lambda () (buffer-path (current-buffer))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
         // Close the buffer then call — buf_id becomes stale.
         bufs.close(buf_id);
 
-        let err = h.call_steel_cmd(
-            "%hume-cmd-check-invalid", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None),
-        ).unwrap_err();
+        let err = h
+            .call_steel_cmd(
+                "%hume-cmd-check-invalid",
+                None,
+                None,
+                mb_refs(
+                    &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
+                ),
+            )
+            .unwrap_err();
         assert!(err.contains("invalid buffer id"), "got: {err}");
     }
 
@@ -568,7 +778,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(open-buffer! \"/tmp/no.txt\")", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(open-buffer! \"/tmp/no.txt\")", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -579,19 +791,35 @@ mod tests {
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, mut pj, pane_id, buf_id) = one_buf_state();
 
-        let path = std::env::temp_dir().join(format!("hume_test_open_buffer_{}.txt", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("hume_test_open_buffer_{}.txt", std::process::id()));
         std::fs::write(&path, "test content\n").unwrap();
 
         let escaped = path.display().to_string().replace('\\', "\\\\");
         h.eval_source(
             &format!(r#"(define-command! "do-open" "" (lambda () (open-buffer! "{escaped}")))"#),
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (cmd_queue, _) = h.call_steel_cmd(
-            "%hume-cmd-do-open", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
-        ).unwrap();
+        let (cmd_queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-do-open",
+                None,
+                None,
+                mb_refs(
+                    &mut s,
+                    &mut km,
+                    pane_id,
+                    buf_id,
+                    &mut bufs,
+                    &mut ev,
+                    &mut ps,
+                    Some(&mut pj),
+                ),
+            )
+            .unwrap();
         assert!(cmd_queue.is_empty());
 
         assert_eq!(bufs.len(), 2, "(open-buffer!) should add a second buffer");
@@ -605,32 +833,57 @@ mod tests {
         let mut km = Keymap::default();
         let (mut bufs, mut ev, mut ps, mut pj, pane_id, _buf_id) = one_buf_state();
 
-        let path = std::env::temp_dir().join(format!("hume_test_open_dedup_{}.txt", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("hume_test_open_dedup_{}.txt", std::process::id()));
         std::fs::write(&path, "dedup\n").unwrap();
         let canonical = std::fs::canonicalize(&path).unwrap();
         let canonical_str = canonical.display().to_string().replace('\\', "\\\\");
 
         // Open the file once to pre-seed the store.
         let first_id = crate::editor::ops::open_buffer(
-            &mut ev, &mut bufs, &mut ps, pane_id,
+            &mut ev,
+            &mut bufs,
+            &mut ps,
+            pane_id,
             crate::editor::buffer::Buffer::from_file(&canonical).unwrap(),
         );
 
         h.eval_source(
-            &format!(r#"
+            &format!(
+                r#"
 (define-command! "open-twice" ""
   (lambda ()
     (let ((b1 (open-buffer! "{canonical_str}"))
           (b2 (open-buffer! "{canonical_str}")))
-      (if (equal? b1 b2) (call! "move-right") (call! "move-left")))))"#),
-            &mut s, &mut km,
-        ).unwrap();
+      (if (equal? b1 b2) (call! "move-right") (call! "move-left")))))"#
+            ),
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
-        let (queue, _) = h.call_steel_cmd(
-            "%hume-cmd-open-twice", None, None,
-            mb_refs(&mut s, &mut km, pane_id, first_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
-        ).unwrap();
-        assert_eq!(queue, vec!["move-right"], "dedup: same path must return same BufferId");
+        let (queue, _) = h
+            .call_steel_cmd(
+                "%hume-cmd-open-twice",
+                None,
+                None,
+                mb_refs(
+                    &mut s,
+                    &mut km,
+                    pane_id,
+                    first_id,
+                    &mut bufs,
+                    &mut ev,
+                    &mut ps,
+                    Some(&mut pj),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            queue,
+            vec!["move-right"],
+            "dedup: same path must return same BufferId"
+        );
         assert_eq!(bufs.len(), 2, "no extra buffer should be created on dedup");
         let _ = std::fs::remove_file(&path);
     }
@@ -642,7 +895,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(close-buffer! #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(close-buffer! #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -655,21 +910,38 @@ mod tests {
 
         // Add a second buffer via ops so we have something to close.
         let second_id = crate::editor::ops::open_buffer(
-            &mut ev, &mut bufs, &mut ps, pane_id,
+            &mut ev,
+            &mut bufs,
+            &mut ps,
+            pane_id,
             Buffer::new(Text::from("second\n"), SelectionSet::default()),
         );
         assert_eq!(bufs.len(), 2, "precondition: 2 buffers");
 
         h.eval_source(
             r#"(define-command! "do-close" "" (lambda () (close-buffer! (current-buffer))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
         // Dispatch with second_id as the focused buffer.
         h.call_steel_cmd(
-            "%hume-cmd-do-close", None, None,
-            mb_refs(&mut s, &mut km, pane_id, second_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
-        ).unwrap();
+            "%hume-cmd-do-close",
+            None,
+            None,
+            mb_refs(
+                &mut s,
+                &mut km,
+                pane_id,
+                second_id,
+                &mut bufs,
+                &mut ev,
+                &mut ps,
+                Some(&mut pj),
+            ),
+        )
+        .unwrap();
 
         assert_eq!(bufs.len(), 1, "(close-buffer!) must remove the buffer");
     }
@@ -683,17 +955,38 @@ mod tests {
 
         h.eval_source(
             r#"(define-command! "do-close-last" "" (lambda () (close-buffer! (current-buffer))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
         h.call_steel_cmd(
-            "%hume-cmd-do-close-last", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
-        ).unwrap();
+            "%hume-cmd-do-close-last",
+            None,
+            None,
+            mb_refs(
+                &mut s,
+                &mut km,
+                pane_id,
+                buf_id,
+                &mut bufs,
+                &mut ev,
+                &mut ps,
+                Some(&mut pj),
+            ),
+        )
+        .unwrap();
 
         // The only buffer becomes scratch — count stays at 1.
-        assert_eq!(bufs.len(), 1, "last buffer must be replaced by scratch, not removed");
-        assert!(bufs.get(buf_id).path.is_none(), "scratch buffer has no path");
+        assert_eq!(
+            bufs.len(),
+            1,
+            "last buffer must be replaced by scratch, not removed"
+        );
+        assert!(
+            bufs.get(buf_id).path.is_none(),
+            "scratch buffer has no path"
+        );
     }
 
     // ── (switch-to-buffer! bid) ───────────────────────────────────────────────
@@ -703,7 +996,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(switch-to-buffer! #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(switch-to-buffer! #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("not available during init"), "got: {err}");
     }
 
@@ -716,7 +1011,10 @@ mod tests {
 
         // Add a second buffer.
         let second_id = crate::editor::ops::open_buffer(
-            &mut ev, &mut bufs, &mut ps, pane_id,
+            &mut ev,
+            &mut bufs,
+            &mut ps,
+            pane_id,
             Buffer::new(Text::from("second\n"), SelectionSet::default()),
         );
 
@@ -728,13 +1026,27 @@ mod tests {
                    (let ((bs (buffers)))
                      (when (= (length bs) 2)
                        (switch-to-buffer! (car (cdr bs)))))))"#,
-            &mut s, &mut km,
-        ).unwrap();
+            &mut s,
+            &mut km,
+        )
+        .unwrap();
 
         h.call_steel_cmd(
-            "%hume-cmd-do-switch", None, None,
-            mb_refs(&mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, Some(&mut pj)),
-        ).unwrap();
+            "%hume-cmd-do-switch",
+            None,
+            None,
+            mb_refs(
+                &mut s,
+                &mut km,
+                pane_id,
+                buf_id,
+                &mut bufs,
+                &mut ev,
+                &mut ps,
+                Some(&mut pj),
+            ),
+        )
+        .unwrap();
 
         assert_eq!(
             ev.panes[pane_id].buffer_id, second_id,
@@ -749,7 +1061,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(open-pane! #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(open-pane! #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 
@@ -758,7 +1072,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(close-pane! #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(close-pane! #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 
@@ -767,7 +1083,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(focus-pane! #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(focus-pane! #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 
@@ -776,7 +1094,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(pane-buffer #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(pane-buffer #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 
@@ -785,7 +1105,9 @@ mod tests {
         let mut h = host();
         let mut s = EditorSettings::default();
         let mut km = Keymap::default();
-        let err = h.eval_source("(pane-set-buffer! #f #f)", &mut s, &mut km).unwrap_err();
+        let err = h
+            .eval_source("(pane-set-buffer! #f #f)", &mut s, &mut km)
+            .unwrap_err();
         assert!(err.contains("deferred to M9+"), "got: {err}");
     }
 }

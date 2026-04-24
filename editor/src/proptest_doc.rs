@@ -13,8 +13,10 @@
 mod tests {
     use proptest::prelude::*;
 
+    use crate::core::selection::{Selection, SelectionSet};
     use crate::core::text::Text;
     use crate::editor::buffer::{Buffer, IntoApplyResult};
+    use crate::ops::MotionMode;
     use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
@@ -23,8 +25,6 @@ mod tests {
         cmd_move_up, cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD,
         cmd_select_prev_word,
     };
-    use crate::ops::MotionMode;
-    use crate::core::selection::{Selection, SelectionSet};
     use crate::ops::selection_cmd::{
         cmd_collapse_selection, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
@@ -43,16 +43,22 @@ mod tests {
             let buf = Buffer::new(text, sels.clone());
             Self { buf, sels }
         }
-        fn text(&self) -> &Text { self.buf.text() }
+        fn text(&self) -> &Text {
+            self.buf.text()
+        }
         fn apply_edit<R: IntoApplyResult>(&mut self, cmd: impl FnOnce(Text, SelectionSet) -> R) {
             let (new_sels, _, _) = self.buf.apply_edit(self.sels.clone(), cmd);
             self.sels = new_sels;
         }
         fn undo(&mut self) {
-            if let Some((sels, _cs)) = self.buf.undo() { self.sels = sels; }
+            if let Some((sels, _cs)) = self.buf.undo() {
+                self.sels = sels;
+            }
         }
         fn redo(&mut self) {
-            if let Some((sels, _cs)) = self.buf.redo() { self.sels = sels; }
+            if let Some((sels, _cs)) = self.buf.redo() {
+                self.sels = sels;
+            }
         }
     }
 
@@ -146,10 +152,7 @@ mod tests {
     /// Every position is in `0..buf_len`. Positions are paired into selections
     /// with random directionality, then sorted and de-overlapped via
     /// `merge_overlapping`.
-    fn arb_selection_set(
-        buf_len: usize,
-        max_sels: usize,
-    ) -> impl Strategy<Value = SelectionSet> {
+    fn arb_selection_set(buf_len: usize, max_sels: usize) -> impl Strategy<Value = SelectionSet> {
         // With only 1 valid position (a single-char buffer of just '\n'), we
         // can only produce a single cursor at position 0.
         if buf_len <= 1 {
@@ -162,30 +165,27 @@ mod tests {
         n_sels
             .prop_flat_map(move |n| {
                 // Generate 2*n positions in 0..buf_len and pair them up.
-                proptest::collection::vec(0..buf_len, 2 * n)
-                    .prop_flat_map(move |positions| {
-                        let _ = max_pos; // suppress unused warning
-                        proptest::collection::vec(proptest::bool::ANY, n).prop_map(
-                            move |flips| {
-                                let sels: Vec<Selection> = positions
-                                    .chunks(2)
-                                    .zip(flips.iter())
-                                    .map(|(pair, &flip)| {
-                                        let (a, b) = (pair[0].min(max_pos), pair[1].min(max_pos));
-                                        // Ensure anchor != head when possible so we get real
-                                        // selections, but a cursor (anchor == head) is also valid.
-                                        if flip {
-                                            Selection::new(a, b)
-                                        } else {
-                                            Selection::new(b, a)
-                                        }
-                                    })
-                                    .collect();
-                                // Use index 0 as primary; merge_overlapping adjusts it.
-                                SelectionSet::from_vec(sels, 0).merge_overlapping()
-                            },
-                        )
+                proptest::collection::vec(0..buf_len, 2 * n).prop_flat_map(move |positions| {
+                    let _ = max_pos; // suppress unused warning
+                    proptest::collection::vec(proptest::bool::ANY, n).prop_map(move |flips| {
+                        let sels: Vec<Selection> = positions
+                            .chunks(2)
+                            .zip(flips.iter())
+                            .map(|(pair, &flip)| {
+                                let (a, b) = (pair[0].min(max_pos), pair[1].min(max_pos));
+                                // Ensure anchor != head when possible so we get real
+                                // selections, but a cursor (anchor == head) is also valid.
+                                if flip {
+                                    Selection::new(a, b)
+                                } else {
+                                    Selection::new(b, a)
+                                }
+                            })
+                            .collect();
+                        // Use index 0 as primary; merge_overlapping adjusts it.
+                        SelectionSet::from_vec(sels, 0).merge_overlapping()
                     })
+                })
             })
             .boxed()
     }
@@ -302,7 +302,12 @@ mod tests {
 
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
-    fn apply_pure_op(buf: &Text, sels: SelectionSet, op: &PureOp, mode: MotionMode) -> SelectionSet {
+    fn apply_pure_op(
+        buf: &Text,
+        sels: SelectionSet,
+        op: &PureOp,
+        mode: MotionMode,
+    ) -> SelectionSet {
         match op {
             PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
             PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),

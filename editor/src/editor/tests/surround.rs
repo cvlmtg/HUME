@@ -7,7 +7,9 @@ use pretty_assertions::assert_eq;
 #[test]
 fn surround_select_paren() {
     let mut ed = editor_from("(-[h]>ello)\n");
-    for ch in "ms(".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms(".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(state(&ed), "-[(]>hello-[)]>\n");
 }
 
@@ -15,7 +17,9 @@ fn surround_select_paren() {
 #[test]
 fn surround_select_bracket() {
     let mut ed = editor_from("[-[h]>ello]\n");
-    for ch in "ms[".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms[".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(state(&ed), "-[[]>hello-[]]>\n");
 }
 
@@ -23,7 +27,9 @@ fn surround_select_bracket() {
 #[test]
 fn surround_select_double_quote() {
     let mut ed = editor_from("\"-[h]>ello\"\n");
-    for ch in "ms\"".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms\"".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(state(&ed), "-[\"]>hello-[\"]>\n");
 }
 
@@ -31,7 +37,9 @@ fn surround_select_double_quote() {
 #[test]
 fn surround_delete_paren() {
     let mut ed = editor_from("(-[h]>ello)\n");
-    for ch in "ms(".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms(".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key('d'));
     // Two cursors remain: one where `(` was (now `h`), one where `)` was
     // (now the structural `\n`).
@@ -42,7 +50,9 @@ fn surround_delete_paren() {
 #[test]
 fn surround_replace_paren_with_bracket() {
     let mut ed = editor_from("(-[h]>ello)\n");
-    for ch in "ms(".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms(".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key('r'));
     ed.handle_key(key('['));
     assert_eq!(state(&ed), "-[[]>hello-[]]>\n");
@@ -52,7 +62,9 @@ fn surround_replace_paren_with_bracket() {
 #[test]
 fn surround_replace_quote_with_paren() {
     let mut ed = editor_from("\"-[h]>ello\"\n");
-    for ch in "ms\"".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms\"".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key('r'));
     ed.handle_key(key('('));
     assert_eq!(state(&ed), "-[(]>hello-[)]>\n");
@@ -62,7 +74,8 @@ fn surround_replace_quote_with_paren() {
 #[test]
 fn surround_no_match_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
-    for ch in "ms(".chars() { ed.handle_key(key(ch)); }
+    for ch in "ms(".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
-

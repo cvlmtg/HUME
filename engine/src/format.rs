@@ -3,8 +3,10 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::layout::VisibleRange;
-use crate::pane::{WrapMode, WhitespaceConfig, WhitespaceRender};
-use crate::providers::{InlineDecoration, InlineInsert, VirtualLine, VirtualLineAnchor, VirtualLineSource};
+use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use crate::providers::{
+    InlineDecoration, InlineInsert, VirtualLine, VirtualLineAnchor, VirtualLineSource,
+};
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -52,7 +54,9 @@ impl FormatScratch {
 }
 
 impl Default for FormatScratch {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +84,11 @@ pub fn format_lines(
     // order during the line loop without re-querying each iteration.
     scratch.virtual_lines.clear();
     for provider in virtual_providers {
-        provider.virtual_lines(visible.line_range.clone(), visible.content_width, &mut scratch.virtual_lines);
+        provider.virtual_lines(
+            visible.line_range.clone(),
+            visible.content_width,
+            &mut scratch.virtual_lines,
+        );
     }
     // Sort by anchor for O(n) merging during the line loop.
     scratch.virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
@@ -92,7 +100,12 @@ pub fn format_lines(
         while vl_cursor < scratch.virtual_lines.len() {
             if scratch.virtual_lines[vl_cursor].anchor == VirtualLineAnchor::Before(line_idx) {
                 let vl = &scratch.virtual_lines[vl_cursor];
-                emit_virtual_row(vl, line_idx, &mut scratch.display_rows, &mut scratch.graphemes);
+                emit_virtual_row(
+                    vl,
+                    line_idx,
+                    &mut scratch.display_rows,
+                    &mut scratch.graphemes,
+                );
                 vl_cursor += 1;
             } else {
                 break;
@@ -133,7 +146,12 @@ pub fn format_lines(
         while vl_cursor < scratch.virtual_lines.len() {
             if scratch.virtual_lines[vl_cursor].anchor == VirtualLineAnchor::After(line_idx) {
                 let vl = &scratch.virtual_lines[vl_cursor];
-                emit_virtual_row(vl, line_idx, &mut scratch.display_rows, &mut scratch.graphemes);
+                emit_virtual_row(
+                    vl,
+                    line_idx,
+                    &mut scratch.display_rows,
+                    &mut scratch.graphemes,
+                );
                 vl_cursor += 1;
             } else {
                 break;
@@ -155,7 +173,10 @@ fn emit_virtual_row(
     let g_start = graphemes.len();
     graphemes.extend_from_slice(&vl.graphemes);
     display_rows.push(DisplayRow {
-        kind: RowKind::Virtual { provider_id: vl.provider_id, anchor_line },
+        kind: RowKind::Virtual {
+            provider_id: vl.provider_id,
+            anchor_line,
+        },
         graphemes: g_start..graphemes.len(),
     });
 }
@@ -183,7 +204,15 @@ pub fn count_visual_rows(
     scratch.display_rows.clear();
     scratch.graphemes.clear();
     scratch.line_texts.clear();
-    format_buffer_line(rope, line_idx, tab_width, whitespace, wrap_mode, &[], scratch);
+    format_buffer_line(
+        rope,
+        line_idx,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        &[],
+        scratch,
+    );
     scratch.display_rows.len()
 }
 
@@ -260,7 +289,15 @@ pub fn format_buffer_line(
             let ins = &inline_inserts[insert_idx];
             let ins_width = unicode_display_width(ins.text) as u8;
             if ins_width > 0 {
-                wrap.maybe_wrap(ins_width, wrap_width, indent_cols, line_idx, indent_depth, rows_out, graphemes_out);
+                wrap.maybe_wrap(
+                    ins_width,
+                    wrap_width,
+                    indent_cols,
+                    line_idx,
+                    indent_depth,
+                    rows_out,
+                    graphemes_out,
+                );
                 graphemes_out.push(Grapheme {
                     byte_range: byte_offset..byte_offset, // zero-length: virtual
                     // Inline inserts have no buffer char; use sentinel so style stage skips them.
@@ -302,7 +339,15 @@ pub fn format_buffer_line(
         );
 
         // ── Wrap if necessary ─────────────────────────────────────────────
-        wrap.maybe_wrap(width, wrap_width, indent_cols, line_idx, indent_depth, rows_out, graphemes_out);
+        wrap.maybe_wrap(
+            width,
+            wrap_width,
+            indent_cols,
+            line_idx,
+            indent_depth,
+            rows_out,
+            graphemes_out,
+        );
 
         // ── Track word-break position ─────────────────────────────────────
         if is_ws && !in_leading_ws {
@@ -382,7 +427,14 @@ pub fn format_buffer_line(
     // on the last wrap row. `in_leading_ws` and `had_non_ws` reflect the
     // state after iterating all graphemes, so `should_render_whitespace` sees
     // the correct context for Trailing vs All rules.
-    if had_newline && should_render_whitespace(&whitespace.newline, in_leading_ws, had_non_ws, line_is_blank) {
+    if had_newline
+        && should_render_whitespace(
+            &whitespace.newline,
+            in_leading_ws,
+            had_non_ws,
+            line_is_blank,
+        )
+    {
         graphemes_out.push(Grapheme {
             byte_range: line_str.len()..line_str.len(),
             char_offset: usize::MAX, // whitespace indicator, no buffer char
@@ -466,7 +518,10 @@ impl WrapState {
         self.last_ws_g_idx = split_at;
 
         rows_out.push(DisplayRow {
-            kind: RowKind::Wrap { line_idx, wrap_row: self.wrap_row },
+            kind: RowKind::Wrap {
+                line_idx,
+                wrap_row: self.wrap_row,
+            },
             graphemes: self.row_g_start..0, // closed later
         });
     }
@@ -516,7 +571,12 @@ fn grapheme_display(
         let tab_width = tab_width.max(1) as u16;
         let next_stop = (current_col / tab_width + 1) * tab_width;
         let display_width = (next_stop - current_col).min(255) as u8;
-        let content = if should_render_whitespace(&whitespace.tab, in_leading_ws, had_non_ws, line_is_blank) {
+        let content = if should_render_whitespace(
+            &whitespace.tab,
+            in_leading_ws,
+            had_non_ws,
+            line_is_blank,
+        ) {
             CellContent::Indicator(whitespace.tab_char)
         } else {
             CellContent::Indicator(" ") // tabs render as spaces when indicator is off
@@ -526,7 +586,12 @@ fn grapheme_display(
 
     // Space
     if grapheme_str == " " {
-        let content = if should_render_whitespace(&whitespace.space, in_leading_ws, had_non_ws, line_is_blank) {
+        let content = if should_render_whitespace(
+            &whitespace.space,
+            in_leading_ws,
+            had_non_ws,
+            line_is_blank,
+        ) {
             CellContent::Indicator(whitespace.space_char)
         } else {
             CellContent::Grapheme
@@ -613,7 +678,17 @@ mod tests {
         let ws = WhitespaceConfig::default();
         let mut inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(&rope, &visible, 4, &ws, &wrap_mode, &[], &[], &mut inserts, &mut scratch);
+        format_lines(
+            &rope,
+            &visible,
+            4,
+            &ws,
+            &wrap_mode,
+            &[],
+            &[],
+            &mut inserts,
+            &mut scratch,
+        );
         (scratch.display_rows, scratch.graphemes)
     }
 
@@ -637,7 +712,10 @@ mod tests {
         // 5 content graphemes + 1 eol sentinel.
         assert_eq!(row0_gs.len(), 6, "5 content + eol sentinel");
         let sentinel = &row0_gs[5];
-        assert!(matches!(sentinel.content, CellContent::Empty), "sentinel must be Empty");
+        assert!(
+            matches!(sentinel.content, CellContent::Empty),
+            "sentinel must be Empty"
+        );
         assert_eq!(sentinel.col, 5, "sentinel one past last char");
         assert_eq!(sentinel.char_offset, 5, "sentinel at \\n char offset");
     }
@@ -653,7 +731,10 @@ mod tests {
         assert_eq!(empty_row.kind, RowKind::LineStart { line_idx: 1 });
         let row_gs = &graphemes[empty_row.graphemes.clone()];
         assert_eq!(row_gs.len(), 1, "exactly one sentinel grapheme");
-        assert!(matches!(row_gs[0].content, CellContent::Empty), "sentinel must be Empty");
+        assert!(
+            matches!(row_gs[0].content, CellContent::Empty),
+            "sentinel must be Empty"
+        );
         assert_eq!(row_gs[0].col, 0);
         assert_eq!(row_gs[0].width, 1);
     }
@@ -674,7 +755,11 @@ mod tests {
     fn soft_wrap_produces_continuation_rows() {
         // 10 chars, wrapped at width 4: rows "hell", "o wo", "rld"
         let (rows, _) = do_format("hello world\n", WrapMode::Soft { width: 4 });
-        assert!(rows.len() >= 2, "expected at least 2 rows, got {}", rows.len());
+        assert!(
+            rows.len() >= 2,
+            "expected at least 2 rows, got {}",
+            rows.len()
+        );
         assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
         assert!(matches!(rows[1].kind, RowKind::Wrap { line_idx: 0, .. }));
     }
@@ -692,7 +777,17 @@ mod tests {
         };
         let mut inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(&rope, &visible, 4, &WhitespaceConfig::default(), &WrapMode::None, &[], &[], &mut inserts, &mut scratch);
+        format_lines(
+            &rope,
+            &visible,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &[],
+            &[],
+            &mut inserts,
+            &mut scratch,
+        );
         assert_eq!(scratch.graphemes[0].width, 4); // tab at col 0 → 4 wide
     }
 
@@ -717,10 +812,27 @@ mod tests {
         };
         let mut inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(&rope, &visible, 4, &WhitespaceConfig::default(), &WrapMode::None, &[], &[], &mut inserts, &mut scratch);
+        format_lines(
+            &rope,
+            &visible,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            &[],
+            &[],
+            &mut inserts,
+            &mut scratch,
+        );
         // Row 0: real line; rows 1..3: Filler
-        assert_eq!(scratch.display_rows[0].kind, RowKind::LineStart { line_idx: 0 });
-        assert!(scratch.display_rows[1..].iter().all(|r| r.kind == RowKind::Filler));
+        assert_eq!(
+            scratch.display_rows[0].kind,
+            RowKind::LineStart { line_idx: 0 }
+        );
+        assert!(
+            scratch.display_rows[1..]
+                .iter()
+                .all(|r| r.kind == RowKind::Filler)
+        );
     }
 
     #[test]
@@ -745,7 +857,17 @@ mod tests {
         };
         let mut inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(&rope, &visible, 4, &ws, &WrapMode::None, &[], &[], &mut inserts, &mut scratch);
+        format_lines(
+            &rope,
+            &visible,
+            4,
+            &ws,
+            &WrapMode::None,
+            &[],
+            &[],
+            &mut inserts,
+            &mut scratch,
+        );
         (scratch.display_rows, scratch.graphemes)
     }
 
@@ -762,10 +884,17 @@ mod tests {
         // Line 1: 1 Empty sentinel (eol sentinel for empty trailing line).
         assert_eq!(rows.len(), 2);
         let row0_gs = &graphemes[rows[0].graphemes.clone()];
-        assert_eq!(row0_gs.len(), 5, "line 0: 3 content + eol sentinel + newline indicator");
+        assert_eq!(
+            row0_gs.len(),
+            5,
+            "line 0: 3 content + eol sentinel + newline indicator"
+        );
         // Sentinel is at index 3, newline indicator at index 4.
         let sentinel = &row0_gs[3];
-        assert!(matches!(sentinel.content, CellContent::Empty), "index 3 is the eol sentinel");
+        assert!(
+            matches!(sentinel.content, CellContent::Empty),
+            "index 3 is the eol sentinel"
+        );
         assert_eq!(sentinel.col, 3);
         assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
         let nl_indicator = &row0_gs[4];
@@ -775,25 +904,46 @@ mod tests {
 
     #[test]
     fn newline_indicator_trailing_mode_shows_after_content() {
-        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::Trailing, ..WhitespaceConfig::default() };
+        let ws = WhitespaceConfig {
+            newline: crate::pane::WhitespaceRender::Trailing,
+            ..WhitespaceConfig::default()
+        };
         let (_, graphemes) = do_format_ws("abc\n", ws);
         // Trailing: shows after non-ws content, so it appears.
-        assert!(graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
+        assert!(
+            graphemes
+                .iter()
+                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+        );
     }
 
     #[test]
     fn newline_indicator_trailing_mode_blank_line() {
         // Blank lines (only spaces) must NOT get a trailing newline indicator.
-        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::Trailing, ..WhitespaceConfig::default() };
+        let ws = WhitespaceConfig {
+            newline: crate::pane::WhitespaceRender::Trailing,
+            ..WhitespaceConfig::default()
+        };
         let (_, graphemes) = do_format_ws("   \n", ws);
-        assert!(!graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
+        assert!(
+            !graphemes
+                .iter()
+                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+        );
     }
 
     #[test]
     fn newline_indicator_none_mode() {
-        let ws = WhitespaceConfig { newline: crate::pane::WhitespaceRender::None, ..WhitespaceConfig::default() };
+        let ws = WhitespaceConfig {
+            newline: crate::pane::WhitespaceRender::None,
+            ..WhitespaceConfig::default()
+        };
         let (_, graphemes) = do_format_ws("abc\n", ws);
-        assert!(!graphemes.iter().any(|g| matches!(&g.content, CellContent::Indicator(_))));
+        assert!(
+            !graphemes
+                .iter()
+                .any(|g| matches!(&g.content, CellContent::Indicator(_)))
+        );
     }
 
     #[test]
@@ -827,7 +977,17 @@ mod tests {
         };
         let mut inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(&rope, &visible, 4, &ws, &WrapMode::None, &[], &[], &mut inserts, &mut scratch);
+        format_lines(
+            &rope,
+            &visible,
+            4,
+            &ws,
+            &WrapMode::None,
+            &[],
+            &[],
+            &mut inserts,
+            &mut scratch,
+        );
         assert!(matches!(&scratch.graphemes[0].content, CellContent::Indicator(s) if *s == "→"));
         assert_eq!(scratch.graphemes[0].width, 4);
     }
@@ -866,7 +1026,10 @@ mod tests {
         assert_eq!(graphemes.len(), 2);
         assert_eq!(graphemes[0].width, 2);
         assert_eq!(graphemes[0].col, 0);
-        assert!(matches!(graphemes[1].content, CellContent::WidthContinuation));
+        assert!(matches!(
+            graphemes[1].content,
+            CellContent::WidthContinuation
+        ));
         assert_eq!(graphemes[1].col, 2);
     }
 

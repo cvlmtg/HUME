@@ -547,10 +547,17 @@ mod tests {
     fn goto_distant_ancestor() {
         let mut h = History::new(sel_at(0), 6);
         for i in 0..5 {
-            h.record(insert_cs(6 + i, "x"), delete_cs(7 + i, 1), sel_at(i), sel_at(i + 1));
+            h.record(
+                insert_cs(6 + i, "x"),
+                delete_cs(7 + i, 1),
+                sel_at(i),
+                sel_at(i + 1),
+            );
         }
         // Jump from rev5 to root in one call: 5 inverses.
-        let txns = h.goto_revision(RevisionId(0)).expect("should navigate to root");
+        let txns = h
+            .goto_revision(RevisionId(0))
+            .expect("should navigate to root");
         assert_eq!(txns.len(), 5);
         assert_eq!(h.current, RevisionId(0));
     }
@@ -559,7 +566,12 @@ mod tests {
     fn goto_distant_descendant() {
         let mut h = History::new(sel_at(0), 6);
         for i in 0..5 {
-            h.record(insert_cs(6 + i, "x"), delete_cs(7 + i, 1), sel_at(i), sel_at(i + 1));
+            h.record(
+                insert_cs(6 + i, "x"),
+                delete_cs(7 + i, 1),
+                sel_at(i),
+                sel_at(i + 1),
+            );
         }
         h.undo();
         h.undo();
@@ -569,7 +581,9 @@ mod tests {
         assert_eq!(h.current, RevisionId(0));
 
         // Jump from root to rev5 in one call: 5 forwards.
-        let txns = h.goto_revision(RevisionId(5)).expect("should navigate to leaf");
+        let txns = h
+            .goto_revision(RevisionId(5))
+            .expect("should navigate to leaf");
         assert_eq!(txns.len(), 5);
         assert_eq!(h.current, RevisionId(5));
     }
@@ -578,7 +592,12 @@ mod tests {
     fn multiple_sequential_undos() {
         let mut h = History::new(sel_at(0), 6);
         for i in 0..5 {
-            h.record(insert_cs(6 + i, "x"), delete_cs(7 + i, 1), sel_at(i), sel_at(i + 1));
+            h.record(
+                insert_cs(6 + i, "x"),
+                delete_cs(7 + i, 1),
+                sel_at(i),
+                sel_at(i + 1),
+            );
         }
         assert_eq!(h.len(), 6); // root + 5 revisions
         assert_eq!(h.current, RevisionId(5));

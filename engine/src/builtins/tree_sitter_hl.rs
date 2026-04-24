@@ -126,7 +126,12 @@ impl HighlightSource for TreeSitterHighlighter {
         };
 
         // Destructure into split borrows so the compiler sees all fields as disjoint.
-        let TsState { ref tree, ref source, ref mut raw, ref mut cursor } = *state;
+        let TsState {
+            ref tree,
+            ref source,
+            ref mut raw,
+            ref mut cursor,
+        } = *state;
         cursor.set_byte_range(line_start..line_end);
         raw.clear();
 
@@ -136,7 +141,11 @@ impl HighlightSource for TreeSitterHighlighter {
         let mut matches = cursor.matches(&self.query, root, source_bytes);
         while let Some(m) = matches.next() {
             for cap in m.captures {
-                let Some(scope) = self.capture_scopes.get(cap.index as usize).copied().flatten()
+                let Some(scope) = self
+                    .capture_scopes
+                    .get(cap.index as usize)
+                    .copied()
+                    .flatten()
                 else {
                     continue;
                 };

@@ -9,7 +9,7 @@ use pretty_assertions::assert_eq;
 fn auto_pairs_auto_close() {
     // Before a word char: no auto-close.
     let mut ed = editor_from("-[h]>ello\n");
-    ed.handle_key(key('i'));        // enter insert at 'h'
+    ed.handle_key(key('i')); // enter insert at 'h'
     ed.handle_key(key('('));
     assert_eq!(state(&ed), "(-[h]>ello\n");
 
@@ -26,8 +26,8 @@ fn auto_pairs_auto_close() {
 fn auto_pairs_skip_close() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key('('));        // inserts `()`, cursor on `)`
-    ed.handle_key(key(')'));        // skip-close: moves cursor past `)`
+    ed.handle_key(key('(')); // inserts `()`, cursor on `)`
+    ed.handle_key(key(')')); // skip-close: moves cursor past `)`
     assert_eq!(state(&ed), "()-[h]>ello\n");
 }
 
@@ -36,7 +36,7 @@ fn auto_pairs_skip_close() {
 fn auto_pairs_auto_delete() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key('('));        // buffer: `(|)hello` — cursor on `)`
+    ed.handle_key(key('(')); // buffer: `(|)hello` — cursor on `)`
     ed.handle_key(key_backspace()); // should delete both `(` and `)`
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
@@ -63,8 +63,8 @@ fn auto_pairs_symmetric_auto_close() {
 fn auto_pairs_symmetric_skip_close() {
     let mut ed = editor_from("-[x]>\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key('"'));        // inserts `""`, cursor on second `"`
-    ed.handle_key(key('"'));        // skip-close: cursor moves past `"`
+    ed.handle_key(key('"')); // inserts `""`, cursor on second `"`
+    ed.handle_key(key('"')); // skip-close: cursor moves past `"`
     assert_eq!(state(&ed), "\"\"-[x]>\n");
 }
 
@@ -73,7 +73,7 @@ fn auto_pairs_symmetric_skip_close() {
 fn auto_pairs_no_false_skip() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key(')'));        // `)` is not already there — insert normally
+    ed.handle_key(key(')')); // `)` is not already there — insert normally
     assert_eq!(state(&ed), ")-[h]>ello\n");
 }
 
@@ -136,7 +136,7 @@ fn auto_pairs_skip_close_mixed_cursors() {
     // cursor 1 on `)`, cursor 2 on `b` — not all cursors match skip-close.
     let mut ed = editor_from("(-[)]>a-[b]>c\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key(')'));            // fallback: inserts `)` at both positions
+    ed.handle_key(key(')')); // fallback: inserts `)` at both positions
     assert_eq!(state(&ed), "()-[)]>a)-[b]>c\n");
 }
 
@@ -147,7 +147,7 @@ fn auto_pairs_auto_delete_mixed_cursors() {
     // cursor 1 between `()`, cursor 2 between `a`+`b` (not a pair).
     let mut ed = editor_from("(-[)]>a-[b]>c\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key_backspace());     // fallback: each cursor deletes one char backward
+    ed.handle_key(key_backspace()); // fallback: each cursor deletes one char backward
     assert_eq!(state(&ed), "-[)]>-[b]>c\n");
 }
 
@@ -204,4 +204,3 @@ fn normal_wrap_disabled_when_auto_pairs_off() {
     ed.handle_key(key('"'));
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
-

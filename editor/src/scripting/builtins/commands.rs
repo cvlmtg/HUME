@@ -31,12 +31,12 @@
 //! that owns ledger attribution, watchdog protection, and dispatch parity
 //! with `:cmd` and `bind-key!`.
 
-use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
+use steel::rvals::SteelVal;
 
-use crate::scripting::{PendingSteelCmd, SteelCtx};
-use crate::scripting::ledger::Owner;
 use super::require_cmd_ctx;
+use crate::scripting::ledger::Owner;
+use crate::scripting::{PendingSteelCmd, SteelCtx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -52,7 +52,12 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// - `name` conflicts with a core built-in command.
 /// - The same name is defined twice within one eval session.
 /// - Called from a command body (only valid during init.scm or plugin load).
-pub(crate) fn define_command(ctx: &mut SteelCtx, name: String, doc: String, proc: SteelVal) -> SteelResult {
+pub(crate) fn define_command(
+    ctx: &mut SteelCtx,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+) -> SteelResult {
     define_command_inner(ctx, "define-command!", name, doc, proc, false)
 }
 
@@ -68,7 +73,12 @@ pub(crate) fn define_command(ctx: &mut SteelCtx, name: String, doc: String, proc
 /// that `Ctrl-X` continues to work after binding `X` to the Steel command.
 ///
 /// Same error conditions as `(define-command! …)`.
-pub(crate) fn define_command_extend(ctx: &mut SteelCtx, name: String, doc: String, proc: SteelVal) -> SteelResult {
+pub(crate) fn define_command_extend(
+    ctx: &mut SteelCtx,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+) -> SteelResult {
     define_command_inner(ctx, "define-command-extend!", name, doc, proc, true)
 }
 
@@ -100,7 +110,13 @@ fn define_command_inner(
             "{}: '{}' is already defined in this eval session", builtin_name, name);
     }
     let current_owner = ctx.plugin_stack.current_owner();
-    ctx.pending_steel_cmds.push(PendingSteelCmd { name, doc, proc, current_owner, extendable });
+    ctx.pending_steel_cmds.push(PendingSteelCmd {
+        name,
+        doc,
+        proc,
+        current_owner,
+        extendable,
+    });
     Ok(SteelVal::Void)
 }
 
@@ -144,7 +160,7 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
 pub(crate) fn cmd_arg(ctx: &mut SteelCtx) -> SteelResult {
     match ctx.cmd_arg.as_deref() {
         Some(s) => Ok(SteelVal::StringV(s.to_owned().into())),
-        None    => Ok(SteelVal::BoolV(false)),
+        None => Ok(SteelVal::BoolV(false)),
     }
 }
 
@@ -158,7 +174,8 @@ pub(crate) fn cmd_arg(ctx: &mut SteelCtx) -> SteelResult {
 /// command execution.  Returns `"hume"` for any name not in the owner cache
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let owner = ctx.cmd_owners
+    let owner = ctx
+        .cmd_owners
         .get(&name)
         .cloned()
         .unwrap_or_else(|| Owner::Core.to_string());
@@ -174,7 +191,7 @@ pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
 pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
     match ctx.pending_char {
         Some(ch) => Ok(SteelVal::StringV(ch.to_string().into())),
-        None     => Ok(SteelVal::BoolV(false)),
+        None => Ok(SteelVal::BoolV(false)),
     }
 }
 
@@ -192,7 +209,10 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = call_command(&mut ctx, "move-right".to_string()).unwrap_err();
-        assert!(err.to_string().contains("not available during init"), "got: {err}");
+        assert!(
+            err.to_string().contains("not available during init"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -218,7 +238,10 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.is_init = true;
         let err = request_wait_char(&mut ctx, "replace".to_string()).unwrap_err();
-        assert!(err.to_string().contains("not available during init"), "got: {err}");
+        assert!(
+            err.to_string().contains("not available during init"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -274,7 +297,8 @@ mod tests {
     #[test]
     fn command_plugin_known_returns_owner() {
         let mut h = SteelCtxTestHarness::new();
-        h.cmd_owners.insert("my-cmd".to_string(), "core:plum".to_string());
+        h.cmd_owners
+            .insert("my-cmd".to_string(), "core:plum".to_string());
         let mut ctx = h.ctx();
         let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
         assert_eq!(result, SteelVal::StringV("core:plum".into()));

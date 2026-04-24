@@ -213,7 +213,7 @@ mod tests {
     fn home_dir_falls_back_to_homedrive_homepath() {
         let result = home_dir_with(|k| match k {
             "HOMEDRIVE" => Some("C:".to_owned()),
-            "HOMEPATH"  => Some(r"\Users\Alice".to_owned()),
+            "HOMEPATH" => Some(r"\Users\Alice".to_owned()),
             _ => None,
         });
         assert_eq!(result, Some(PathBuf::from(r"C:\Users\Alice")));

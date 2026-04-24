@@ -11,7 +11,12 @@ fn p7_pane_jumps_ctrl_o_backward() {
 
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
-    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 0);
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head),
+        0
+    );
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before, "Ctrl+O returns to pre-jump position");
@@ -44,13 +49,18 @@ fn p7_cross_buffer_ctrl_o() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
-    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("scratch\n"),
+        SelectionSet::default(),
+    ));
+    ed.execute_typed("e", Some(file1.to_str().unwrap()))
+        .unwrap();
     let buf1 = ed.focused_buffer_id();
     let line0_state_f1 = state(&ed);
 
     // Open file2 — switch_to_buffer_with_jump records {file1, line 0} before switching.
-    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(file2.to_str().unwrap()))
+        .unwrap();
     let buf2 = ed.focused_buffer_id();
     assert_ne!(buf1, buf2, "different buffers");
     // Now in file2, cursor at line 0. Jump list: [{scratch}, {file1}], cursor = 2.
@@ -71,12 +81,17 @@ fn p7_close_buffer_prunes_pane_jumps() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
-    ed.execute_typed("e", Some(file1.to_str().unwrap())).unwrap();
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("scratch\n"),
+        SelectionSet::default(),
+    ));
+    ed.execute_typed("e", Some(file1.to_str().unwrap()))
+        .unwrap();
     let buf1 = ed.focused_buffer_id();
 
     // Open file2, recording a jump from file1→file2.
-    ed.execute_typed("e", Some(file2.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(file2.to_str().unwrap()))
+        .unwrap();
     let buf2 = ed.focused_buffer_id();
     assert_ne!(buf1, buf2);
 
@@ -85,6 +100,8 @@ fn p7_close_buffer_prunes_pane_jumps() {
     ed.close_buffer(buf1);
     // The jump list for this pane must not contain any file1 entries.
     let has_buf1_entry = ed.pane_jumps[pid].entries_for_buffer(buf1);
-    assert!(!has_buf1_entry, "pane_jumps should not contain closed buffer entries");
+    assert!(
+        !has_buf1_entry,
+        "pane_jumps should not contain closed buffer entries"
+    );
 }
-

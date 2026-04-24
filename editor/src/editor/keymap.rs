@@ -119,7 +119,10 @@ enum KeyTrieNode {
 
 impl KeyTrie {
     fn new(name: &'static str) -> Self {
-        Self { name, map: HashMap::new() }
+        Self {
+            name,
+            map: HashMap::new(),
+        }
     }
 
     fn bind(&mut self, key: KeyEvent, node: KeyTrieNode) {
@@ -141,9 +144,10 @@ impl KeyTrie {
             self.bind(keys[0], KeyTrieNode::WaitChar(wc));
             return;
         }
-        let entry = self.map.entry(keys[0]).or_insert_with(|| {
-            KeyTrieNode::Node(KeyTrie::new("user"))
-        });
+        let entry = self
+            .map
+            .entry(keys[0])
+            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
         if !matches!(entry, KeyTrieNode::Node(_)) {
             *entry = KeyTrieNode::Node(KeyTrie::new("user"));
         }
@@ -162,9 +166,10 @@ impl KeyTrie {
             self.bind_leaf(keys[0], cmd);
             return;
         }
-        let entry = self.map.entry(keys[0]).or_insert_with(|| {
-            KeyTrieNode::Node(KeyTrie::new("user"))
-        });
+        let entry = self
+            .map
+            .entry(keys[0])
+            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new("user")));
         // If the slot already holds a Leaf or WaitChar, replace with a Node
         // so the prefix can be extended. This may shadow an existing binding.
         if !matches!(entry, KeyTrieNode::Node(_)) {
@@ -181,7 +186,9 @@ impl KeyTrie {
     pub(crate) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
         match keys {
             [] => {}
-            [only] => { self.map.remove(only); }
+            [only] => {
+                self.map.remove(only);
+            }
             [first, rest @ ..] => {
                 if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(first) {
                     sub.remove_sequence(rest);
@@ -257,9 +264,15 @@ impl BindMode {
 
     /// Parse a ledger key of the form `"<mode> <keys>"` back into a `(BindMode, keys)` pair.
     pub(crate) fn from_ledger_prefix(s: &str) -> Option<(Self, &str)> {
-        if let Some(rest) = s.strip_prefix("normal ") { return Some((Self::Normal, rest)); }
-        if let Some(rest) = s.strip_prefix("extend ") { return Some((Self::Extend, rest)); }
-        if let Some(rest) = s.strip_prefix("insert ") { return Some((Self::Insert, rest)); }
+        if let Some(rest) = s.strip_prefix("normal ") {
+            return Some((Self::Normal, rest));
+        }
+        if let Some(rest) = s.strip_prefix("extend ") {
+            return Some((Self::Extend, rest));
+        }
+        if let Some(rest) = s.strip_prefix("insert ") {
+            return Some((Self::Insert, rest));
+        }
         None
     }
 }
@@ -298,14 +311,28 @@ impl Keymap {
     /// After the user completes `keys`, the next character is stored in
     /// `pending_char` and `command` is dispatched.  Interior nodes are created
     /// as needed.  `keys` must not be empty.
-    pub(crate) fn bind_wait_char_user(&mut self, mode: BindMode, keys: &[KeyEvent], command: Cow<'static, str>) {
-        debug_assert!(!keys.is_empty(), "bind_wait_char_user called with empty key sequence");
+    pub(crate) fn bind_wait_char_user(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        command: Cow<'static, str>,
+    ) {
+        debug_assert!(
+            !keys.is_empty(),
+            "bind_wait_char_user called with empty key sequence"
+        );
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
         };
-        trie.bind_wait_char_sequence(keys, WaitCharPending { cmd_name: command, ctrl_extend: false });
+        trie.bind_wait_char_sequence(
+            keys,
+            WaitCharPending {
+                cmd_name: command,
+                ctrl_extend: false,
+            },
+        );
     }
 
     /// Bind a key sequence to a command name in the given mode.
@@ -323,13 +350,22 @@ impl Keymap {
         command: Cow<'static, str>,
         force_extend: bool,
     ) {
-        debug_assert!(!keys.is_empty(), "bind_user_with_extend called with empty key sequence");
+        debug_assert!(
+            !keys.is_empty(),
+            "bind_user_with_extend called with empty key sequence"
+        );
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
         };
-        trie.bind_sequence(keys, KeymapCommand { name: command, force_extend });
+        trie.bind_sequence(
+            keys,
+            KeymapCommand {
+                name: command,
+                force_extend,
+            },
+        );
     }
 
     /// Remove a binding for a key sequence in the given mode.
@@ -351,7 +387,11 @@ impl Keymap {
     /// binding before overwriting it, so the ledger can restore it on plugin
     /// unload — including the `force_extend` flag so extend semantics survive
     /// a bind/rebind/unload cycle.
-    pub(crate) fn lookup_command(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<(String, bool)> {
+    pub(crate) fn lookup_command(
+        &self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+    ) -> Option<(String, bool)> {
         let trie = match mode {
             BindMode::Normal => &self.normal,
             BindMode::Extend => &self.extend,
@@ -369,7 +409,10 @@ impl Keymap {
 /// Construct a [`KeymapCommand`] from a command name string literal.
 macro_rules! cmd {
     ($name:expr) => {
-        KeymapCommand { name: Cow::Borrowed($name), force_extend: false }
+        KeymapCommand {
+            name: Cow::Borrowed($name),
+            force_extend: false,
+        }
     };
 }
 
@@ -378,14 +421,20 @@ macro_rules! cmd {
 /// inherent regardless of kitty mode (e.g. `Ctrl+x` → `select-line`).
 macro_rules! cmd_extend {
     ($name:expr) => {
-        KeymapCommand { name: Cow::Borrowed($name), force_extend: true }
+        KeymapCommand {
+            name: Cow::Borrowed($name),
+            force_extend: true,
+        }
     };
 }
 
 /// Construct a wait-char trie node from a command name string literal.
 macro_rules! wait_char {
     ($cmd_name:expr) => {
-        KeyTrieNode::WaitChar(WaitCharPending { cmd_name: Cow::Borrowed($cmd_name), ctrl_extend: false })
+        KeyTrieNode::WaitChar(WaitCharPending {
+            cmd_name: Cow::Borrowed($cmd_name),
+            ctrl_extend: false,
+        })
     };
 }
 
@@ -541,14 +590,14 @@ fn default_normal_keymap() -> KeyTrie {
     // ── Basic motion ─────────────────────────────────────────────────────────
     // The keymap stores only the base command name. Extend-variant pairing
     // lives in the registry — the dispatcher resolves it at execution time.
-    t.bind_leaf(key!('h'),    cmd!("move-left"));
-    t.bind_leaf(key!(Left),   cmd!("move-left"));
-    t.bind_leaf(key!('l'),    cmd!("move-right"));
-    t.bind_leaf(key!(Right),  cmd!("move-right"));
-    t.bind_leaf(key!('j'),    cmd!("move-down"));
-    t.bind_leaf(key!(Down),   cmd!("move-down"));
-    t.bind_leaf(key!('k'),    cmd!("move-up"));
-    t.bind_leaf(key!(Up),     cmd!("move-up"));
+    t.bind_leaf(key!('h'), cmd!("move-left"));
+    t.bind_leaf(key!(Left), cmd!("move-left"));
+    t.bind_leaf(key!('l'), cmd!("move-right"));
+    t.bind_leaf(key!(Right), cmd!("move-right"));
+    t.bind_leaf(key!('j'), cmd!("move-down"));
+    t.bind_leaf(key!(Down), cmd!("move-down"));
+    t.bind_leaf(key!('k'), cmd!("move-up"));
+    t.bind_leaf(key!(Up), cmd!("move-up"));
 
     // NOTE: Ctrl+h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
     // The dispatcher normalises them: strips CONTROL and passes extend=true to
@@ -565,11 +614,11 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('B'), cmd!("select-prev-WORD"));
 
     // ── Line start / end ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('0'),   cmd!("goto-line-start"));
-    t.bind_leaf(key!(Home),  cmd!("goto-line-start"));
-    t.bind_leaf(key!('$'),   cmd!("goto-line-end"));
-    t.bind_leaf(key!(End),   cmd!("goto-line-end"));
-    t.bind_leaf(key!('^'),   cmd!("goto-first-nonblank"));
+    t.bind_leaf(key!('0'), cmd!("goto-line-start"));
+    t.bind_leaf(key!(Home), cmd!("goto-line-start"));
+    t.bind_leaf(key!('$'), cmd!("goto-line-end"));
+    t.bind_leaf(key!(End), cmd!("goto-line-end"));
+    t.bind_leaf(key!('^'), cmd!("goto-first-nonblank"));
 
     // ── Paragraph motion ──────────────────────────────────────────────────────
     t.bind_leaf(key!('{'), cmd!("prev-paragraph"));
@@ -587,7 +636,7 @@ fn default_normal_keymap() -> KeyTrie {
     // PageUp/PageDown use view.height as count — handled by EditorCmd, not a
     // raw motion count. Extend duality is expressed in the normal way.
     t.bind_leaf(key!(PageDown), cmd!("page-down"));
-    t.bind_leaf(key!(PageUp),   cmd!("page-up"));
+    t.bind_leaf(key!(PageUp), cmd!("page-up"));
     t.bind_leaf(key!(Ctrl + 'd'), cmd!("half-page-down"));
     t.bind_leaf(key!(Ctrl + 'u'), cmd!("half-page-up"));
 
@@ -713,16 +762,16 @@ fn default_insert_keymap() -> KeyTrie {
     let mut t = KeyTrie::new("insert");
 
     // Return to Normal mode.
-    t.bind_leaf(key!(Esc),        cmd!("exit-insert"));
+    t.bind_leaf(key!(Esc), cmd!("exit-insert"));
     t.bind_leaf(key!(Ctrl + 'c'), cmd!("exit-insert"));
 
     // Navigation (no extend in insert mode).
-    t.bind_leaf(key!(Left),  cmd!("move-left"));
+    t.bind_leaf(key!(Left), cmd!("move-left"));
     t.bind_leaf(key!(Right), cmd!("move-right"));
-    t.bind_leaf(key!(Down),  cmd!("move-down"));
-    t.bind_leaf(key!(Up),    cmd!("move-up"));
-    t.bind_leaf(key!(Home),  cmd!("goto-line-start"));
-    t.bind_leaf(key!(End),   cmd!("goto-line-end"));
+    t.bind_leaf(key!(Down), cmd!("move-down"));
+    t.bind_leaf(key!(Up), cmd!("move-up"));
+    t.bind_leaf(key!(Home), cmd!("goto-line-start"));
+    t.bind_leaf(key!(End), cmd!("goto-line-end"));
 
     // Special insert-mode keys (Backspace, Delete, Enter) are handled directly
     // in handle_insert because they interact with auto-pairs logic.
@@ -742,7 +791,13 @@ mod tests {
     #[test]
     fn bind_sequence_single_key() {
         let mut trie = KeyTrie::new("test");
-        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd"), force_extend: false });
+        trie.bind_sequence(
+            &[key!('z')],
+            KeymapCommand {
+                name: Cow::Borrowed("my-cmd"),
+                force_extend: false,
+            },
+        );
         assert!(matches!(trie.walk(&[key!('z')]), WalkResult::Leaf(ref c) if c.name == "my-cmd"));
     }
 
@@ -751,9 +806,15 @@ mod tests {
         let mut trie = KeyTrie::new("test");
         trie.bind_sequence(
             &[key!('g'), key!('g')],
-            KeymapCommand { name: Cow::Borrowed("goto-first-line"), force_extend: false },
+            KeymapCommand {
+                name: Cow::Borrowed("goto-first-line"),
+                force_extend: false,
+            },
         );
-        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
+        assert!(matches!(
+            trie.walk(&[key!('g')]),
+            WalkResult::Interior { .. }
+        ));
         assert!(matches!(
             trie.walk(&[key!('g'), key!('g')]),
             WalkResult::Leaf(ref c) if c.name == "goto-first-line"
@@ -764,13 +825,25 @@ mod tests {
     fn bind_sequence_shadows_existing_leaf() {
         let mut trie = KeyTrie::new("test");
         // Bind `g` as a leaf first.
-        trie.bind_sequence(&[key!('g')], KeymapCommand { name: Cow::Borrowed("old-cmd"), force_extend: false });
+        trie.bind_sequence(
+            &[key!('g')],
+            KeymapCommand {
+                name: Cow::Borrowed("old-cmd"),
+                force_extend: false,
+            },
+        );
         // Now bind `gg` — should convert `g` from Leaf to Node.
         trie.bind_sequence(
             &[key!('g'), key!('g')],
-            KeymapCommand { name: Cow::Borrowed("new-cmd"), force_extend: false },
+            KeymapCommand {
+                name: Cow::Borrowed("new-cmd"),
+                force_extend: false,
+            },
         );
-        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
+        assert!(matches!(
+            trie.walk(&[key!('g')]),
+            WalkResult::Interior { .. }
+        ));
         assert!(matches!(
             trie.walk(&[key!('g'), key!('g')]),
             WalkResult::Leaf(ref c) if c.name == "new-cmd"
@@ -780,7 +853,13 @@ mod tests {
     #[test]
     fn remove_sequence_single_key() {
         let mut trie = KeyTrie::new("test");
-        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd"), force_extend: false });
+        trie.bind_sequence(
+            &[key!('z')],
+            KeymapCommand {
+                name: Cow::Borrowed("my-cmd"),
+                force_extend: false,
+            },
+        );
         trie.remove_sequence(&[key!('z')]);
         assert!(matches!(trie.walk(&[key!('z')]), WalkResult::NoMatch));
     }
@@ -790,18 +869,33 @@ mod tests {
         let mut trie = KeyTrie::new("test");
         trie.bind_sequence(
             &[key!('g'), key!('g')],
-            KeymapCommand { name: Cow::Borrowed("goto-first-line"), force_extend: false },
+            KeymapCommand {
+                name: Cow::Borrowed("goto-first-line"),
+                force_extend: false,
+            },
         );
         trie.remove_sequence(&[key!('g'), key!('g')]);
         // Interior node for `g` remains; leaf `gg` is gone.
-        assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior { .. }));
-        assert!(matches!(trie.walk(&[key!('g'), key!('g')]), WalkResult::NoMatch));
+        assert!(matches!(
+            trie.walk(&[key!('g')]),
+            WalkResult::Interior { .. }
+        ));
+        assert!(matches!(
+            trie.walk(&[key!('g'), key!('g')]),
+            WalkResult::NoMatch
+        ));
     }
 
     #[test]
     fn remove_sequence_nonexistent_is_noop() {
         let mut trie = KeyTrie::new("test");
-        trie.bind_sequence(&[key!('z')], KeymapCommand { name: Cow::Borrowed("my-cmd"), force_extend: false });
+        trie.bind_sequence(
+            &[key!('z')],
+            KeymapCommand {
+                name: Cow::Borrowed("my-cmd"),
+                force_extend: false,
+            },
+        );
         trie.remove_sequence(&[key!('q')]); // q not bound — no-op
         trie.remove_sequence(&[key!('z'), key!('z')]); // path doesn't exist — no-op
         // `z` leaf is untouched.
@@ -811,7 +905,12 @@ mod tests {
     #[test]
     fn bind_user_normal_mode() {
         let mut km = Keymap::default();
-        km.bind_user_with_extend(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"), false);
+        km.bind_user_with_extend(
+            BindMode::Normal,
+            &[key!('z')],
+            Cow::Borrowed("my-cmd"),
+            false,
+        );
         assert!(matches!(
             km.normal.walk(&[key!('z')]),
             WalkResult::Leaf(ref c) if c.name == "my-cmd"
@@ -823,7 +922,12 @@ mod tests {
     #[test]
     fn unbind_user_normal_mode() {
         let mut km = Keymap::default();
-        km.bind_user_with_extend(BindMode::Normal, &[key!('z')], Cow::Borrowed("my-cmd"), false);
+        km.bind_user_with_extend(
+            BindMode::Normal,
+            &[key!('z')],
+            Cow::Borrowed("my-cmd"),
+            false,
+        );
         km.unbind_user(BindMode::Normal, &[key!('z')]);
         assert!(matches!(km.normal.walk(&[key!('z')]), WalkResult::NoMatch));
     }
@@ -840,9 +944,13 @@ mod tests {
     #[test]
     fn single_key_editor_cmd() {
         let trie = default_normal_keymap();
-        assert!(matches!(trie.walk(&[key!('d')]), WalkResult::Leaf(ref cmd) if cmd.name == "delete"));
+        assert!(
+            matches!(trie.walk(&[key!('d')]), WalkResult::Leaf(ref cmd) if cmd.name == "delete")
+        );
         assert!(matches!(trie.walk(&[key!('u')]), WalkResult::Leaf(ref cmd) if cmd.name == "undo"));
-        assert!(matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-at-selection-start"));
+        assert!(
+            matches!(trie.walk(&[key!('i')]), WalkResult::Leaf(ref cmd) if cmd.name == "insert-at-selection-start")
+        );
     }
 
     #[test]
@@ -859,19 +967,29 @@ mod tests {
     fn wait_char_has_correct_names() {
         let trie = default_normal_keymap();
 
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('f')]) else { panic!("expected WaitChar") };
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('f')]) else {
+            panic!("expected WaitChar")
+        };
         assert_eq!(wc.cmd_name, "find-forward");
 
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('t')]) else { panic!("expected WaitChar") };
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('t')]) else {
+            panic!("expected WaitChar")
+        };
         assert_eq!(wc.cmd_name, "till-forward");
 
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('F')]) else { panic!("expected WaitChar") };
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('F')]) else {
+            panic!("expected WaitChar")
+        };
         assert_eq!(wc.cmd_name, "find-backward");
 
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('T')]) else { panic!("expected WaitChar") };
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('T')]) else {
+            panic!("expected WaitChar")
+        };
         assert_eq!(wc.cmd_name, "till-backward");
 
-        let WalkResult::WaitChar(wc) = trie.walk(&[key!('r')]) else { panic!("expected WaitChar") };
+        let WalkResult::WaitChar(wc) = trie.walk(&[key!('r')]) else {
+            panic!("expected WaitChar")
+        };
         assert_eq!(wc.cmd_name, "replace");
     }
 
@@ -879,7 +997,10 @@ mod tests {
     fn multi_key_text_object_interior() {
         let trie = default_normal_keymap();
         // `m` alone → Interior at the match node.
-        assert!(matches!(trie.walk(&[key!('m')]), WalkResult::Interior { name: "match" }));
+        assert!(matches!(
+            trie.walk(&[key!('m')]),
+            WalkResult::Interior { name: "match" }
+        ));
         // `m`, `i` → Interior at the inner node.
         assert!(matches!(
             trie.walk(&[key!('m'), key!('i')]),
@@ -1002,13 +1123,17 @@ mod tests {
     #[test]
     fn insert_esc_exits() {
         let trie = default_insert_keymap();
-        assert!(matches!(trie.walk(&[key!(Esc)]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert"));
+        assert!(
+            matches!(trie.walk(&[key!(Esc)]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert")
+        );
     }
 
     #[test]
     fn insert_arrows_are_motions() {
         let trie = default_insert_keymap();
-        assert!(matches!(trie.walk(&[key!(Left)]), WalkResult::Leaf(ref cmd) if cmd.name == "move-left"));
+        assert!(
+            matches!(trie.walk(&[key!(Left)]), WalkResult::Leaf(ref cmd) if cmd.name == "move-left")
+        );
     }
 
     #[test]
@@ -1024,7 +1149,9 @@ mod tests {
     fn insert_ctrl_c_exits() {
         // Ctrl+c is an alternative exit key in insert mode (same as Esc).
         let trie = default_insert_keymap();
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert"));
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "exit-insert")
+        );
     }
 
     #[test]
@@ -1032,18 +1159,28 @@ mod tests {
         let trie = default_normal_keymap();
         // Ctrl+c is intentionally unbound in normal mode — force-quit must be
         // invoked via :quit or :q to avoid accidental data loss.
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
-            "Ctrl+c must be unbound in normal mode");
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
-            "Ctrl+r should map to redo");
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
-            "Ctrl+x should map to select-line");
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
+            "Ctrl+c must be unbound in normal mode"
+        );
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
+            "Ctrl+r should map to redo"
+        );
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
+            "Ctrl+x should map to select-line"
+        );
         // Ctrl+w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
-            "Ctrl+w must be unbound — pane prefix is Ctrl+p");
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
+            "Ctrl+w must be unbound — pane prefix is Ctrl+p"
+        );
         // Ctrl+p is the pane prefix (Interior node).
-        assert!(matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior { .. }),
-            "Ctrl+p must be the pane prefix Interior node");
+        assert!(
+            matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior { .. }),
+            "Ctrl+p must be the pane prefix Interior node"
+        );
     }
 
     /// Explicit Ctrl+x/X must carry force_extend=true; scroll and jump bindings must not.
@@ -1051,20 +1188,45 @@ mod tests {
     fn force_extend_flags_are_correct() {
         let trie = default_normal_keymap();
 
-        let WalkResult::Leaf(cx) = trie.walk(&[key!(Ctrl + 'x')]) else { panic!() };
-        assert!(cx.force_extend, "Ctrl+x (select-line) must have force_extend=true");
+        let WalkResult::Leaf(cx) = trie.walk(&[key!(Ctrl + 'x')]) else {
+            panic!()
+        };
+        assert!(
+            cx.force_extend,
+            "Ctrl+x (select-line) must have force_extend=true"
+        );
 
-        let WalkResult::Leaf(cx_upper) = trie.walk(&[key!(Ctrl + 'X')]) else { panic!() };
-        assert!(cx_upper.force_extend, "Ctrl+X (select-line-backward) must have force_extend=true");
+        let WalkResult::Leaf(cx_upper) = trie.walk(&[key!(Ctrl + 'X')]) else {
+            panic!()
+        };
+        assert!(
+            cx_upper.force_extend,
+            "Ctrl+X (select-line-backward) must have force_extend=true"
+        );
 
-        let WalkResult::Leaf(cd) = trie.walk(&[key!(Ctrl + 'd')]) else { panic!() };
-        assert!(!cd.force_extend, "Ctrl+d (half-page-down) must have force_extend=false");
+        let WalkResult::Leaf(cd) = trie.walk(&[key!(Ctrl + 'd')]) else {
+            panic!()
+        };
+        assert!(
+            !cd.force_extend,
+            "Ctrl+d (half-page-down) must have force_extend=false"
+        );
 
-        let WalkResult::Leaf(cu) = trie.walk(&[key!(Ctrl + 'u')]) else { panic!() };
-        assert!(!cu.force_extend, "Ctrl+u (half-page-up) must have force_extend=false");
+        let WalkResult::Leaf(cu) = trie.walk(&[key!(Ctrl + 'u')]) else {
+            panic!()
+        };
+        assert!(
+            !cu.force_extend,
+            "Ctrl+u (half-page-up) must have force_extend=false"
+        );
 
-        let WalkResult::Leaf(co) = trie.walk(&[key!(Ctrl + 'o')]) else { panic!() };
-        assert!(!co.force_extend, "Ctrl+o (jump-backward) must have force_extend=false");
+        let WalkResult::Leaf(co) = trie.walk(&[key!(Ctrl + 'o')]) else {
+            panic!()
+        };
+        assert!(
+            !co.force_extend,
+            "Ctrl+o (jump-backward) must have force_extend=false"
+        );
     }
 
     #[test]
@@ -1072,15 +1234,39 @@ mod tests {
         let trie = default_normal_keymap();
         // Spot-check a set of keys that would be ambiguous if duplicated.
         let must_be_bound = [
-            key!('h'), key!('j'), key!('k'), key!('l'),
-            key!('w'), key!('W'), key!('b'), key!('B'),
-            key!('d'), key!('c'), key!('y'), key!('u'),
-            key!('i'), key!('a'), key!('o'), key!('O'),
-            key!('x'), key!('X'), key!('p'), key!('P'),
-            key!('f'), key!('t'), key!('F'), key!('T'), key!('r'),
-            key!('e'), key!(';'), key!(','),
-            key!(Ctrl + 'r'), key!(Ctrl + 'x'),
-            key!(Ctrl + 'o'), key!(Ctrl + 'i'), key!(Tab),
+            key!('h'),
+            key!('j'),
+            key!('k'),
+            key!('l'),
+            key!('w'),
+            key!('W'),
+            key!('b'),
+            key!('B'),
+            key!('d'),
+            key!('c'),
+            key!('y'),
+            key!('u'),
+            key!('i'),
+            key!('a'),
+            key!('o'),
+            key!('O'),
+            key!('x'),
+            key!('X'),
+            key!('p'),
+            key!('P'),
+            key!('f'),
+            key!('t'),
+            key!('F'),
+            key!('T'),
+            key!('r'),
+            key!('e'),
+            key!(';'),
+            key!(','),
+            key!(Ctrl + 'r'),
+            key!(Ctrl + 'x'),
+            key!(Ctrl + 'o'),
+            key!(Ctrl + 'i'),
+            key!(Tab),
             key!(Ctrl + 'p'), // pane prefix (Interior)
         ];
         for k in must_be_bound {

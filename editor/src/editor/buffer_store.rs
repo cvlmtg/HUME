@@ -49,19 +49,23 @@ impl BufferStore {
     /// Returns the first `BufferId` whose `buffer.path == Some(canonical_path)`.
     /// Used by `:e` to deduplicate already-open files.
     pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
-        self.buffers.iter().find_map(|(id, buf)| {
-            buf.path.as_deref().filter(|p| *p == path).map(|_| id)
-        })
+        self.buffers
+            .iter()
+            .find_map(|(id, buf)| buf.path.as_deref().filter(|p| *p == path).map(|_| id))
     }
 
     /// Infallible getter. Panics if `id` was never seeded — that is a caller bug.
     pub(crate) fn get(&self, id: BufferId) -> &Buffer {
-        self.buffers.get(id).expect("BufferStore: unseeded BufferId")
+        self.buffers
+            .get(id)
+            .expect("BufferStore: unseeded BufferId")
     }
 
     /// Infallible mutable getter.
     pub(crate) fn get_mut(&mut self, id: BufferId) -> &mut Buffer {
-        self.buffers.get_mut(id).expect("BufferStore: unseeded BufferId")
+        self.buffers
+            .get_mut(id)
+            .expect("BufferStore: unseeded BufferId")
     }
 
     /// Non-panicking getter — `None` for stale / unknown IDs.
@@ -71,7 +75,9 @@ impl BufferStore {
 
     /// Iterate all open buffers in open-order.  Yields `(BufferId, &Buffer)`.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
-        self.order.iter().filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
+        self.order
+            .iter()
+            .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
     /// Remove `id` from the store.
@@ -107,7 +113,11 @@ impl BufferStore {
     /// Previous buffer in open-order (wraps around). Returns `id` if only one buffer.
     pub(crate) fn prev(&self, current: BufferId) -> BufferId {
         let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);
-        let prev = if pos == 0 { self.order.len().saturating_sub(1) } else { pos - 1 };
+        let prev = if pos == 0 {
+            self.order.len().saturating_sub(1)
+        } else {
+            pos - 1
+        };
         self.order.get(prev).copied().unwrap_or(current)
     }
 
@@ -122,11 +132,11 @@ impl BufferStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use crate::core::text::Text;
     use crate::core::selection::SelectionSet;
+    use crate::core::text::Text;
     use engine::pipeline::{BufferId, EngineView};
     use engine::theme::Theme;
+    use std::sync::Arc;
 
     fn make_id(ev: &mut EngineView) -> BufferId {
         ev.buffers.insert(engine::pipeline::SharedBuffer::new())

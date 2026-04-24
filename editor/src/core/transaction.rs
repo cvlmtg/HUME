@@ -1,7 +1,7 @@
-use crate::core::text::Text;
 use crate::core::changeset::ChangeSet;
 use crate::core::error::TransactionError;
 use crate::core::selection::SelectionSet;
+use crate::core::text::Text;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
 ///
@@ -89,7 +89,6 @@ impl Transaction {
         self.selection.validate(new_buf.len_chars())?;
         Ok((new_buf, self.selection.clone()))
     }
-
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -136,9 +135,12 @@ mod tests {
         assert!(
             matches!(
                 err,
-                TransactionError::Validation(
-                    ValidationError::SelectionOutOfBounds { index: 0, field: "head", value: 99, buf_len: 3 }
-                )
+                TransactionError::Validation(ValidationError::SelectionOutOfBounds {
+                    index: 0,
+                    field: "head",
+                    value: 99,
+                    buf_len: 3
+                })
             ),
             "unexpected error: {err}"
         );
@@ -157,7 +159,10 @@ mod tests {
         assert!(
             matches!(
                 err,
-                TransactionError::Apply(ApplyError::LengthMismatch { buf_len: 3, expected: 10 })
+                TransactionError::Apply(ApplyError::LengthMismatch {
+                    buf_len: 3,
+                    expected: 10
+                })
             ),
             "unexpected error: {err}"
         );

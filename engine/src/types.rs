@@ -58,7 +58,6 @@ impl ResolvedStyle {
     }
 }
 
-
 /// Underline variants supported by modern terminals.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum UnderlineStyle {
@@ -182,7 +181,10 @@ pub enum RowKind {
     /// A continuation row produced by wrapping.
     Wrap { line_idx: usize, wrap_row: u16 },
     /// A virtual row injected by a provider (no buffer line).
-    Virtual { provider_id: u16, anchor_line: usize },
+    Virtual {
+        provider_id: u16,
+        anchor_line: usize,
+    },
     /// A tilde filler row past end of buffer.
     Filler,
 }
@@ -256,7 +258,10 @@ impl EditorMode {
     /// Whether the cursor should render as a bar (Insert/Command/Search/Select)
     /// or a block (Normal/Extend).
     pub fn cursor_is_bar(self) -> bool {
-        matches!(self, EditorMode::Insert | EditorMode::Command | EditorMode::Search | EditorMode::Select)
+        matches!(
+            self,
+            EditorMode::Insert | EditorMode::Command | EditorMode::Search | EditorMode::Select
+        )
     }
 }
 
@@ -270,42 +275,66 @@ mod tests {
 
     #[test]
     fn resolved_style_layer_fg_wins() {
-        let base = ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() };
-        let over = ResolvedStyle { fg: Some(ratatui::style::Color::Blue), ..Default::default() };
+        let base = ResolvedStyle {
+            fg: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        };
+        let over = ResolvedStyle {
+            fg: Some(ratatui::style::Color::Blue),
+            ..Default::default()
+        };
         assert_eq!(base.layer(over).fg, Some(ratatui::style::Color::Blue));
     }
 
     #[test]
     fn resolved_style_layer_preserves_base_when_over_is_none() {
-        let base = ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() };
+        let base = ResolvedStyle {
+            fg: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        };
         let over = ResolvedStyle::default();
         assert_eq!(base.layer(over).fg, Some(ratatui::style::Color::Red));
     }
 
     #[test]
     fn resolved_style_layer_underline_none_preserves_base() {
-        let base = ResolvedStyle { underline: UnderlineStyle::Wavy, ..Default::default() };
+        let base = ResolvedStyle {
+            underline: UnderlineStyle::Wavy,
+            ..Default::default()
+        };
         let over = ResolvedStyle::default(); // underline = None
         assert_eq!(base.layer(over).underline, UnderlineStyle::Wavy);
     }
 
     #[test]
     fn resolved_style_layer_underline_over_wins() {
-        let base = ResolvedStyle { underline: UnderlineStyle::Wavy, ..Default::default() };
-        let over = ResolvedStyle { underline: UnderlineStyle::Solid, ..Default::default() };
+        let base = ResolvedStyle {
+            underline: UnderlineStyle::Wavy,
+            ..Default::default()
+        };
+        let over = ResolvedStyle {
+            underline: UnderlineStyle::Solid,
+            ..Default::default()
+        };
         assert_eq!(base.layer(over).underline, UnderlineStyle::Solid);
     }
 
     #[test]
     fn resolved_style_layer_modifiers_empty_preserves_base() {
-        let base = ResolvedStyle { modifiers: Modifiers::BOLD, ..Default::default() };
+        let base = ResolvedStyle {
+            modifiers: Modifiers::BOLD,
+            ..Default::default()
+        };
         let over = ResolvedStyle::default();
         assert_eq!(base.layer(over).modifiers, Modifiers::BOLD);
     }
 
     #[test]
     fn selection_range_ordered() {
-        let sel = Selection { anchor: 42, head: 7 };
+        let sel = Selection {
+            anchor: 42,
+            head: 7,
+        };
         let (start, end) = sel.range();
         assert!(start <= end);
         assert_eq!(start, 7);
@@ -315,33 +344,77 @@ mod tests {
     #[test]
     fn row_kind_line_idx() {
         assert_eq!(RowKind::LineStart { line_idx: 7 }.line_idx(), Some(7));
-        assert_eq!(RowKind::Wrap { line_idx: 7, wrap_row: 1 }.line_idx(), Some(7));
-        assert_eq!(RowKind::Virtual { provider_id: 0, anchor_line: 7 }.line_idx(), None);
+        assert_eq!(
+            RowKind::Wrap {
+                line_idx: 7,
+                wrap_row: 1
+            }
+            .line_idx(),
+            Some(7)
+        );
+        assert_eq!(
+            RowKind::Virtual {
+                provider_id: 0,
+                anchor_line: 7
+            }
+            .line_idx(),
+            None
+        );
         assert_eq!(RowKind::Filler.line_idx(), None);
     }
 
     #[test]
     fn resolved_style_layer_bg() {
-        let base = ResolvedStyle { bg: Some(ratatui::style::Color::Red), ..Default::default() };
-        let over = ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() };
+        let base = ResolvedStyle {
+            bg: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        };
+        let over = ResolvedStyle {
+            bg: Some(ratatui::style::Color::Blue),
+            ..Default::default()
+        };
         assert_eq!(base.layer(over).bg, Some(ratatui::style::Color::Blue));
         // None over preserves base bg.
-        assert_eq!(base.layer(ResolvedStyle::default()).bg, Some(ratatui::style::Color::Red));
+        assert_eq!(
+            base.layer(ResolvedStyle::default()).bg,
+            Some(ratatui::style::Color::Red)
+        );
     }
 
     #[test]
     fn resolved_style_layer_underline_color() {
-        let base = ResolvedStyle { underline_color: Some(ratatui::style::Color::Green), ..Default::default() };
-        let over = ResolvedStyle { underline_color: Some(ratatui::style::Color::Red), ..Default::default() };
-        assert_eq!(base.layer(over).underline_color, Some(ratatui::style::Color::Red));
-        assert_eq!(base.layer(ResolvedStyle::default()).underline_color, Some(ratatui::style::Color::Green));
+        let base = ResolvedStyle {
+            underline_color: Some(ratatui::style::Color::Green),
+            ..Default::default()
+        };
+        let over = ResolvedStyle {
+            underline_color: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        };
+        assert_eq!(
+            base.layer(over).underline_color,
+            Some(ratatui::style::Color::Red)
+        );
+        assert_eq!(
+            base.layer(ResolvedStyle::default()).underline_color,
+            Some(ratatui::style::Color::Green)
+        );
     }
 
     #[test]
     fn resolved_style_layer_modifiers_union() {
-        let base = ResolvedStyle { modifiers: Modifiers::BOLD, ..Default::default() };
-        let over = ResolvedStyle { modifiers: Modifiers::ITALIC, ..Default::default() };
-        assert_eq!(base.layer(over).modifiers, Modifiers::BOLD | Modifiers::ITALIC);
+        let base = ResolvedStyle {
+            modifiers: Modifiers::BOLD,
+            ..Default::default()
+        };
+        let over = ResolvedStyle {
+            modifiers: Modifiers::ITALIC,
+            ..Default::default()
+        };
+        assert_eq!(
+            base.layer(over).modifiers,
+            Modifiers::BOLD | Modifiers::ITALIC
+        );
     }
 
     #[test]
@@ -358,8 +431,14 @@ mod tests {
         assert_eq!(r.bg, Some(ratatui::style::Color::Blue));
         assert!(r.add_modifier.contains(ratatui::style::Modifier::BOLD));
         assert!(r.add_modifier.contains(ratatui::style::Modifier::ITALIC));
-        assert!(r.add_modifier.contains(ratatui::style::Modifier::CROSSED_OUT));
-        assert!(r.add_modifier.contains(ratatui::style::Modifier::UNDERLINED));
+        assert!(
+            r.add_modifier
+                .contains(ratatui::style::Modifier::CROSSED_OUT)
+        );
+        assert!(
+            r.add_modifier
+                .contains(ratatui::style::Modifier::UNDERLINED)
+        );
     }
 
     #[test]
@@ -388,10 +467,21 @@ mod tests {
 
     #[test]
     fn row_kind_predicates() {
-        assert!(RowKind::Wrap { line_idx: 0, wrap_row: 1 }.is_wrapped_continuation());
+        assert!(
+            RowKind::Wrap {
+                line_idx: 0,
+                wrap_row: 1
+            }
+            .is_wrapped_continuation()
+        );
         assert!(!RowKind::LineStart { line_idx: 0 }.is_wrapped_continuation());
-        assert!(RowKind::Virtual { provider_id: 0, anchor_line: 0 }.is_virtual());
+        assert!(
+            RowKind::Virtual {
+                provider_id: 0,
+                anchor_line: 0
+            }
+            .is_virtual()
+        );
         assert!(!RowKind::Filler.is_virtual());
     }
-
 }

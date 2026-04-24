@@ -21,7 +21,6 @@ pub(crate) struct EditorColors {
     // ── Statusline ────────────────────────────────────────────────────────────
     // Content-area colors (cursor, selection, highlights, gutter) are now
     // handled by the engine's Theme system via `build_default_theme()` below.
-
     /// Base style for the entire statusline row (inverted video fill).
     pub statusline: Style,
 
@@ -102,40 +101,154 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
 
     // ── Cursor ──────────────────────────────────────────────────────────────
     // Primary cursor: bright white block — stands out as the main caret.
-    s("ui.cursor.primary", ResolvedStyle { fg: Some(rgb(0,0,0)),   bg: Some(rgb(255,255,255)), ..Default::default() });
+    s(
+        "ui.cursor.primary",
+        ResolvedStyle {
+            fg: Some(rgb(0, 0, 0)),
+            bg: Some(rgb(255, 255, 255)),
+            ..Default::default()
+        },
+    );
     // Secondary cursors (multi-cursor): dimmer gray block — present but not dominant.
-    s("ui.cursor",         ResolvedStyle { fg: Some(rgb(0,0,0)),       bg: Some(rgb(140,140,160)), ..Default::default() });
+    s(
+        "ui.cursor",
+        ResolvedStyle {
+            fg: Some(rgb(0, 0, 0)),
+            bg: Some(rgb(140, 140, 160)),
+            ..Default::default()
+        },
+    );
     // In bar-cursor modes the terminal cursor is the sole visual indicator —
     // no cell background override so the character underneath stays readable.
     s("ui.cursor.insert", ResolvedStyle::default());
 
     // ── Selection / cursor-line ──────────────────────────────────────────────
-    s("ui.selection",  ResolvedStyle { bg: Some(rgb(68,68,120)), ..Default::default() });
-    s("ui.cursorline", ResolvedStyle { bg: Some(rgb(58,58,58)),  ..Default::default() });
+    s(
+        "ui.selection",
+        ResolvedStyle {
+            bg: Some(rgb(68, 68, 120)),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.cursorline",
+        ResolvedStyle {
+            bg: Some(rgb(58, 58, 58)),
+            ..Default::default()
+        },
+    );
 
     // ── Virtual text / tilde rows ────────────────────────────────────────────
-    s("ui.virtual", ResolvedStyle { fg: Some(dark_gray()), ..Default::default() });
+    s(
+        "ui.virtual",
+        ResolvedStyle {
+            fg: Some(dark_gray()),
+            ..Default::default()
+        },
+    );
 
     // ── Gutter ───────────────────────────────────────────────────────────────
-    s("ui.linenr",          ResolvedStyle { fg: Some(dark_gray()),  ..Default::default() });
+    s(
+        "ui.linenr",
+        ResolvedStyle {
+            fg: Some(dark_gray()),
+            ..Default::default()
+        },
+    );
     // No bg: the cursorline row_bg fill shows through, unifying gutter and content.
-    s("ui.linenr.selected", ResolvedStyle { fg: Some(rgb(200,200,210)), ..Default::default() });
+    s(
+        "ui.linenr.selected",
+        ResolvedStyle {
+            fg: Some(rgb(200, 200, 210)),
+            ..Default::default()
+        },
+    );
 
     // ── Highlights ───────────────────────────────────────────────────────────
-    s("ui.cursor.match",    ResolvedStyle { fg: Some(rgb(220,180,50)), bg: Some(rgb(60,55,20)), modifiers: Modifiers::BOLD, ..Default::default() });
-    s("ui.selection.search",ResolvedStyle { fg: Some(rgb(255,180,80)), bg: Some(rgb(80,40,0)),  ..Default::default() });
+    s(
+        "ui.cursor.match",
+        ResolvedStyle {
+            fg: Some(rgb(220, 180, 50)),
+            bg: Some(rgb(60, 55, 20)),
+            modifiers: Modifiers::BOLD,
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.selection.search",
+        ResolvedStyle {
+            fg: Some(rgb(255, 180, 80)),
+            bg: Some(rgb(80, 40, 0)),
+            ..Default::default()
+        },
+    );
 
     // ── Whitespace ───────────────────────────────────────────────────────────
-    s("ui.whitespace", ResolvedStyle { fg: Some(rgb(70,70,80)), ..Default::default() });
+    s(
+        "ui.whitespace",
+        ResolvedStyle {
+            fg: Some(rgb(70, 70, 80)),
+            ..Default::default()
+        },
+    );
 
     // ── Statusline ───────────────────────────────────────────────────────────
-    s("ui.statusline",              ResolvedStyle { fg: Some(statusline_fg), bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.normal",  ResolvedStyle { fg: Some(statusline_fg), bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.insert",  ResolvedStyle { fg: Some(ratatui::style::Color::Cyan),    bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.extend",  ResolvedStyle { fg: Some(ratatui::style::Color::Yellow),  bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.search",  ResolvedStyle { fg: Some(ratatui::style::Color::Magenta), bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.command", ResolvedStyle { fg: Some(ratatui::style::Color::Green),   bg: Some(statusline_bg), ..Default::default() });
-    s("ui.statusline.mode.select",  ResolvedStyle { fg: Some(ratatui::style::Color::Blue),    bg: Some(statusline_bg), ..Default::default() });
+    s(
+        "ui.statusline",
+        ResolvedStyle {
+            fg: Some(statusline_fg),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.normal",
+        ResolvedStyle {
+            fg: Some(statusline_fg),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.insert",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Cyan),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.extend",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Yellow),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.search",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Magenta),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.command",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Green),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.statusline.mode.select",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Blue),
+            bg: Some(statusline_bg),
+            ..Default::default()
+        },
+    );
 
     engine::theme::Theme::new(styles, ResolvedStyle::default())
 }

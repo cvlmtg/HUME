@@ -27,11 +27,11 @@ pub(crate) enum HookId {
 
 /// Single source of truth: `(HookId variant, Steel symbol name)` pairs.
 const HOOKS: &[(HookId, &str)] = &[
-    (HookId::OnBufferOpen,  "on-buffer-open"),
+    (HookId::OnBufferOpen, "on-buffer-open"),
     (HookId::OnBufferClose, "on-buffer-close"),
-    (HookId::OnBufferSave,  "on-buffer-save"),
-    (HookId::OnEdit,        "on-edit"),
-    (HookId::OnModeChange,  "on-mode-change"),
+    (HookId::OnBufferSave, "on-buffer-save"),
+    (HookId::OnEdit, "on-edit"),
+    (HookId::OnModeChange, "on-mode-change"),
 ];
 
 impl HookId {
@@ -63,13 +63,19 @@ pub(crate) struct HookRegistry {
 impl HookRegistry {
     /// Append `proc` to the handler list for `hook_id`, attributed to `owner`.
     pub(crate) fn register(&mut self, hook_id: HookId, owner: Owner, proc: SteelVal) {
-        self.handlers.entry(hook_id).or_default().push((owner, proc));
+        self.handlers
+            .entry(hook_id)
+            .or_default()
+            .push((owner, proc));
         self.version = self.version.wrapping_add(1);
     }
 
     /// Return the handlers for `hook_id` in registration order.
     pub(crate) fn handlers_for(&self, hook_id: HookId) -> &[(Owner, SteelVal)] {
-        self.handlers.get(&hook_id).map(Vec::as_slice).unwrap_or(&[])
+        self.handlers
+            .get(&hook_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// `true` if no handlers are registered for `hook_id` (fast early-exit path).
@@ -80,9 +86,7 @@ impl HookRegistry {
     /// Remove all handlers attributed to `plugin_id` (called from teardown).
     pub(crate) fn purge_plugin(&mut self, plugin_id: &PluginId) {
         for handlers in self.handlers.values_mut() {
-            handlers.retain(|(owner, _)| {
-                !matches!(owner, Owner::Plugin(pid) if pid == plugin_id)
-            });
+            handlers.retain(|(owner, _)| !matches!(owner, Owner::Plugin(pid) if pid == plugin_id));
         }
     }
 }

@@ -57,11 +57,13 @@ pub(crate) fn compose_row(
     // ── Gutter ────────────────────────────────────────────────────────
     let mut gutter_x = compose_ctx.pane_rect.x;
     for (col_provider, &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter()) {
-        let cell = col_provider.render_row(row.kind, compose_ctx.mode, compose_ctx.primary_head_line);
+        let cell =
+            col_provider.render_row(row.kind, compose_ctx.mode, compose_ctx.primary_head_line);
         let text = cell.as_str();
         // GutterCell.scope is a &'static str, not an interned ScopeId — use
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
-        let scope_style: ratatui::style::Style = compose_ctx.theme.resolve_by_name(cell.scope).into();
+        let scope_style: ratatui::style::Style =
+            compose_ctx.theme.resolve_by_name(cell.scope).into();
         // Cursorline bg is the base; the gutter scope style layers on top.
         // If the scope defines its own bg, it wins; otherwise the row bg shows through.
         let style = if let Some(bg) = row_bg {
@@ -99,7 +101,7 @@ pub(crate) fn compose_row(
             // This ensures the tint extends to the right edge past the last grapheme.
             match row_bg {
                 Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, bg),
-                None     => clear_row_span(buf, content_x_origin, right_edge, y),
+                None => clear_row_span(buf, content_x_origin, right_edge, y),
             }
 
             let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
@@ -219,7 +221,12 @@ pub(crate) fn compose(
 
     // Pre-compute per-column widths into the caller-supplied scratch (no alloc after warmup).
     col_widths.clear();
-    col_widths.extend(compose_ctx.gutter_columns.iter().map(|c| c.width(visible.last_line_idx) as u16));
+    col_widths.extend(
+        compose_ctx
+            .gutter_columns
+            .iter()
+            .map(|c| c.width(visible.last_line_idx) as u16),
+    );
 
     let mut screen_row: u16 = 0;
     // Current line text slice, looked up once per new line_idx.
@@ -240,7 +247,10 @@ pub(crate) fn compose(
                 let rel = line_idx.saturating_sub(visible.line_range.start);
                 current_line_str = if rel < line_text_offsets.len() {
                     let start = line_text_offsets[rel];
-                    let end = line_text_offsets.get(rel + 1).copied().unwrap_or(line_texts.len());
+                    let end = line_text_offsets
+                        .get(rel + 1)
+                        .copied()
+                        .unwrap_or(line_texts.len());
                     &line_texts[start..end]
                 } else {
                     ""
@@ -249,7 +259,17 @@ pub(crate) fn compose(
             _ => {}
         }
 
-        compose_row(row, graphemes, styles, current_line_str, screen_row, col_widths, compose_ctx, buf, None);
+        compose_row(
+            row,
+            graphemes,
+            styles,
+            current_line_str,
+            screen_row,
+            col_widths,
+            compose_ctx,
+            buf,
+            None,
+        );
         screen_row += 1;
     }
 
@@ -267,7 +287,12 @@ pub(crate) fn render_tilde_fillers(
     buf: &mut ratatui::buffer::Buffer,
 ) {
     let mut screen_row = start_screen_row;
-    while screen_row < compose_ctx.visible.content_height.min(compose_ctx.pane_rect.height) {
+    while screen_row
+        < compose_ctx
+            .visible
+            .content_height
+            .min(compose_ctx.pane_rect.height)
+    {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
         clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y);
@@ -283,7 +308,13 @@ pub(crate) fn render_tilde_fillers(
 
 /// Write `text` to the ratatui buffer cell at `(x, y)`, clipping to buffer bounds.
 #[inline]
-fn set_cell(buf: &mut ratatui::buffer::Buffer, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
+fn set_cell(
+    buf: &mut ratatui::buffer::Buffer,
+    x: u16,
+    y: u16,
+    text: &str,
+    style: ratatui::style::Style,
+) {
     let area = buf.area();
     if x < area.x + area.width
         && y < area.y + area.height
@@ -305,10 +336,10 @@ pub fn fill_rect_bg(
     style: ratatui::style::Style,
 ) {
     let area = buf.area();
-    let x0   = rect.x.max(area.x);
-    let y0   = rect.y.max(area.y);
-    let x1   = (rect.x + rect.width).min(area.x + area.width);
-    let y1   = (rect.y + rect.height).min(area.y + area.height);
+    let x0 = rect.x.max(area.x);
+    let y0 = rect.y.max(area.y);
+    let x1 = (rect.x + rect.width).min(area.x + area.width);
+    let y1 = (rect.y + rect.height).min(area.y + area.height);
     for y in y0..y1 {
         for x in x0..x1 {
             buf[(x, y)].set_char(' ').set_style(style);
@@ -320,7 +351,13 @@ pub fn fill_rect_bg(
 ///
 /// Used for cursorline highlighting so the tint extends past the last grapheme.
 #[inline]
-fn fill_row_bg(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
+fn fill_row_bg(
+    buf: &mut ratatui::buffer::Buffer,
+    x_start: u16,
+    x_end: u16,
+    y: u16,
+    bg: ratatui::style::Color,
+) {
     fill_rect_bg(
         buf,
         ratatui::layout::Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
@@ -336,11 +373,15 @@ fn fill_row_bg(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u
 /// Clips silently if `x_end` extends past the buffer boundary.
 #[inline]
 fn clear_row_span(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u16) {
-    if x_start >= x_end { return; }
+    if x_start >= x_end {
+        return;
+    }
     let area = buf.area();
     let x_start = x_start.max(area.x);
     let x_end = x_end.min(area.x + area.width);
-    if x_start >= x_end || y >= area.y + area.height { return; }
+    if x_start >= x_end || y >= area.y + area.height {
+        return;
+    }
     let start = buf.index_of(x_start, y);
     let end = buf.index_of(x_end - 1, y) + 1;
     buf.content[start..end].fill(ratatui::buffer::Cell::default());
@@ -360,11 +401,19 @@ mod tests {
     use ropey::Rope;
 
     fn make_test_buf(w: u16, h: u16) -> ratatui::buffer::Buffer {
-        ratatui::buffer::Buffer::empty(ratatui::layout::Rect { x: 0, y: 0, width: w, height: h })
+        ratatui::buffer::Buffer::empty(ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: w,
+            height: h,
+        })
     }
 
     fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
-        DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes }
+        DisplayRow {
+            kind: RowKind::LineStart { line_idx: 0 },
+            graphemes,
+        }
     }
 
     fn simple_grapheme(col: u16, byte_start: usize, ch_len: usize) -> Grapheme {
@@ -399,10 +448,7 @@ mod tests {
     #[test]
     fn renders_simple_text() {
         let rope = Rope::from_str("hi\n");
-        let graphemes = vec![
-            simple_grapheme(0, 0, 1),
-            simple_grapheme(1, 1, 1),
-        ];
+        let graphemes = vec![simple_grapheme(0, 0, 1), simple_grapheme(1, 1, 1)];
         let rows = vec![simple_row(0..2)];
         let styles = vec![ResolvedStyle::default(); 2];
         let visible = VisibleRange {
@@ -414,16 +460,51 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let pane_rect = ratatui::layout::Rect { x: 0, y: 0, width: 20, height: 5 };
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 5,
+        };
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
-        compose(&rows, &graphemes, &styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
+        let ctx = ComposeCtx {
+            gutter_columns: &[],
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+        };
+        compose(
+            &rows,
+            &graphemes,
+            &styles,
+            &line_texts,
+            &line_text_offsets,
+            &ctx,
+            &mut col_widths,
+            &mut buf,
+        );
 
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "h");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap().symbol(), "i");
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "h"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+                .unwrap()
+                .symbol(),
+            "i"
+        );
     }
 
     #[test]
@@ -441,18 +522,45 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let pane_rect = ratatui::layout::Rect { x: 0, y: 0, width: 20, height: 5 };
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 5,
+        };
         let mut buf = make_test_buf(20, 5);
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(&rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width: 4, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
-        compose(&rows, &graphemes, &styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
+        let ctx = ComposeCtx {
+            gutter_columns: &[],
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width: 4,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+        };
+        compose(
+            &rows,
+            &graphemes,
+            &styles,
+            &line_texts,
+            &line_text_offsets,
+            &ctx,
+            &mut col_widths,
+            &mut buf,
+        );
 
         // Row 0 has 'x', rows 1–4 should have '~'
         for r in 1..5u16 {
             assert_eq!(
-                buf.cell(ratatui::layout::Position { x: 0, y: r }).unwrap().symbol(),
+                buf.cell(ratatui::layout::Position { x: 0, y: r })
+                    .unwrap()
+                    .symbol(),
                 "~",
                 "row {} should be tilde",
                 r
@@ -472,13 +580,38 @@ mod tests {
         w: u16,
         h: u16,
     ) -> ratatui::buffer::Buffer {
-        let pane_rect = ratatui::layout::Rect { x: 0, y: 0, width: w, height: h };
+        let pane_rect = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: w,
+            height: h,
+        };
         let mut buf = make_test_buf(w, h);
         let theme = Theme::default();
         let (line_texts, line_text_offsets) = make_line_texts(rope, visible.line_range.clone());
         let mut col_widths = Vec::new();
-        let ctx = ComposeCtx { gutter_columns: &[], visible: &visible, viewport: &viewport, mode: EditorMode::Normal, primary_head_line: 0, tab_width, tilde_style: ratatui::style::Style::default(), indent_guide_style: ratatui::style::Style::default(), pane_rect, theme: &theme };
-        compose(rows, graphemes, styles, &line_texts, &line_text_offsets, &ctx, &mut col_widths, &mut buf);
+        let ctx = ComposeCtx {
+            gutter_columns: &[],
+            visible: &visible,
+            viewport: &viewport,
+            mode: EditorMode::Normal,
+            primary_head_line: 0,
+            tab_width,
+            tilde_style: ratatui::style::Style::default(),
+            indent_guide_style: ratatui::style::Style::default(),
+            pane_rect,
+            theme: &theme,
+        };
+        compose(
+            rows,
+            graphemes,
+            styles,
+            &line_texts,
+            &line_text_offsets,
+            &ctx,
+            &mut col_widths,
+            &mut buf,
+        );
         buf
     }
 
@@ -489,12 +622,32 @@ mod tests {
         let g = vec![
             simple_grapheme(0, 0, 1), // 'a' on line 0
             simple_grapheme(1, 1, 1), // 'b' on line 0
-            Grapheme { byte_range: 0..1, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'c' on line 1
-            Grapheme { byte_range: 1..2, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // 'd' on line 1
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 3,
+                col: 0,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            }, // 'c' on line 1
+            Grapheme {
+                byte_range: 1..2,
+                char_offset: 4,
+                col: 1,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            }, // 'd' on line 1
         ];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..2 },
-            DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 2..4 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..2,
+            },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 1 },
+                graphemes: 2..4,
+            },
         ];
         let styles = vec![ResolvedStyle::default(); 4];
         let visible = VisibleRange {
@@ -508,8 +661,18 @@ mod tests {
         let viewport = ViewportState::new(20, 5);
         let buf = do_compose(&rope, &rows, &g, &styles, visible, viewport, 4, 20, 5);
         // With skip=1, the first rendered row should show line 1 ("cd").
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "c");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap().symbol(), "d");
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "c"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+                .unwrap()
+                .symbol(),
+            "d"
+        );
     }
 
     #[test]
@@ -537,10 +700,22 @@ mod tests {
         };
         let mut viewport = ViewportState::new(20, 5);
         viewport.horizontal_offset = 2; // skip columns 0 and 1
-        let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
+        let buf = do_compose(
+            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
         // With h_offset=2, screen col 0 shows 'c' (buf col 2).
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "c");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap().symbol(), "d");
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "c"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+                .unwrap()
+                .symbol(),
+            "d"
+        );
     }
 
     #[test]
@@ -558,7 +733,10 @@ mod tests {
                 indent_depth: 2, // 8 spaces / 4 tab_width = depth 2
             })
             .collect();
-        let rows = vec![DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..11 }];
+        let rows = vec![DisplayRow {
+            kind: RowKind::LineStart { line_idx: 0 },
+            graphemes: 0..11,
+        }];
         let styles = vec![ResolvedStyle::default(); 11];
         let visible = VisibleRange {
             line_range: 0..1,
@@ -569,13 +747,30 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
+        let buf = do_compose(
+            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
         // A guide should appear at screen col 4 (k=1, tw=4).
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 4, y: 0 }).unwrap().symbol(), "│");
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 4, y: 0 })
+                .unwrap()
+                .symbol(),
+            "│"
+        );
         // Col 0 has the space content (no guide at depth boundary).
-        assert_ne!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "│");
+        assert_ne!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "│"
+        );
         // Col 8 is where content starts — no guide there.
-        assert_ne!(buf.cell(ratatui::layout::Position { x: 8, y: 0 }).unwrap().symbol(), "│");
+        assert_ne!(
+            buf.cell(ratatui::layout::Position { x: 8, y: 0 })
+                .unwrap()
+                .symbol(),
+            "│"
+        );
     }
 
     #[test]
@@ -592,8 +787,17 @@ mod tests {
             })
             .collect();
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..4 },
-            DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 4..8 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..4,
+            },
+            DisplayRow {
+                kind: RowKind::Wrap {
+                    line_idx: 0,
+                    wrap_row: 1,
+                },
+                graphemes: 4..8,
+            },
         ];
         let styles = vec![ResolvedStyle::default(); 8];
         let visible = VisibleRange {
@@ -605,10 +809,17 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
+        let buf = do_compose(
+            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
         // depth=1 means no inner guides (guides at k in 1..1 — empty range).
         // Also verify wrap row (screen row 1) has no guide either.
-        assert_ne!(buf.cell(ratatui::layout::Position { x: 0, y: 1 }).unwrap().symbol(), "│");
+        assert_ne!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 1 })
+                .unwrap()
+                .symbol(),
+            "│"
+        );
     }
 
     #[test]
@@ -635,11 +846,33 @@ mod tests {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(20, 5);
-        let buf = do_compose(&rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5);
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap().symbol(), "→");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap().symbol(), " ");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 2, y: 0 }).unwrap().symbol(), " ");
-        assert_eq!(buf.cell(ratatui::layout::Position { x: 3, y: 0 }).unwrap().symbol(), " ");
+        let buf = do_compose(
+            &rope, &rows, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 0, y: 0 })
+                .unwrap()
+                .symbol(),
+            "→"
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+                .unwrap()
+                .symbol(),
+            " "
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 2, y: 0 })
+                .unwrap()
+                .symbol(),
+            " "
+        );
+        assert_eq!(
+            buf.cell(ratatui::layout::Position { x: 3, y: 0 })
+                .unwrap()
+                .symbol(),
+            " "
+        );
     }
 
     #[test]
@@ -660,9 +893,15 @@ mod tests {
         // Clear the middle 4 columns of row 1.
         clear_row_span(&mut buf, 3, 7, 1);
         for x in 0..10 {
-            let sym = buf.cell(ratatui::layout::Position { x, y: 1 }).unwrap().symbol();
-            if (3..7).contains(&x) { assert_eq!(sym, " ", "col {x} should be blank"); }
-            else { assert_eq!(sym, "X", "col {x} should be untouched"); }
+            let sym = buf
+                .cell(ratatui::layout::Position { x, y: 1 })
+                .unwrap()
+                .symbol();
+            if (3..7).contains(&x) {
+                assert_eq!(sym, " ", "col {x} should be blank");
+            } else {
+                assert_eq!(sym, "X", "col {x} should be untouched");
+            }
         }
     }
 
@@ -675,8 +914,15 @@ mod tests {
         // x_end extends past the buffer's right edge — should clip, not panic.
         clear_row_span(&mut buf, 8, 20, 0);
         for x in 0..10 {
-            let sym = buf.cell(ratatui::layout::Position { x, y: 0 }).unwrap().symbol();
-            if x >= 8 { assert_eq!(sym, " "); } else { assert_eq!(sym, "X"); }
+            let sym = buf
+                .cell(ratatui::layout::Position { x, y: 0 })
+                .unwrap()
+                .symbol();
+            if x >= 8 {
+                assert_eq!(sym, " ");
+            } else {
+                assert_eq!(sym, "X");
+            }
         }
     }
 

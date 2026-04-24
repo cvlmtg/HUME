@@ -56,7 +56,11 @@ fn kitty_ctrl_w_extends_next_word() {
 fn ctrl_p_starts_pane_prefix() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
     ed.handle_key(key_ctrl('p'));
-    assert_eq!(state(&ed), "-[h]>ello world\n", "Ctrl+p alone must not change state");
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello world\n",
+        "Ctrl+p alone must not change state"
+    );
 }
 
 /// Ctrl+p, w → pane-focus-next stub (not yet implemented).
@@ -67,8 +71,12 @@ fn ctrl_p_w_is_pane_focus_next_stub() {
     ed.handle_key(key('w'));
     assert_eq!(state(&ed), "-[h]>ello world\n", "stub must not move cursor");
     assert!(
-        ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
-        "stub must report not-yet-implemented: {:?}", ed.status_msg,
+        ed.status_msg
+            .as_deref()
+            .unwrap_or("")
+            .contains("not yet implemented"),
+        "stub must report not-yet-implemented: {:?}",
+        ed.status_msg,
     );
 }
 
@@ -83,11 +91,15 @@ fn ctrl_p_directional_stubs_report_not_implemented() {
         ed.handle_key(key_ctrl('p'));
         ed.handle_key(key(second_key));
         assert_eq!(
-            state(&ed), "-[h]>ello world\n",
+            state(&ed),
+            "-[h]>ello world\n",
             "Ctrl+p {second_key}: stub must not move cursor",
         );
         assert!(
-            ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
+            ed.status_msg
+                .as_deref()
+                .unwrap_or("")
+                .contains("not yet implemented"),
             "Ctrl+p {second_key}: stub must report not-yet-implemented: {:?}",
             ed.status_msg,
         );
@@ -135,7 +147,11 @@ fn kitty_ctrl_u_is_not_undo() {
     assert_eq!(ed.doc().text().to_string(), "ello\n");
     // Ctrl+u runs half-page-up (scroll), not undo — text must be unchanged.
     ed.handle_key(key_ctrl('u'));
-    assert_eq!(ed.doc().text().to_string(), "ello\n", "Ctrl+u must not run undo");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ello\n",
+        "Ctrl+u must not run undo"
+    );
 }
 
 /// Ctrl+} extends to the next paragraph (kitty mode).
@@ -174,18 +190,22 @@ fn kitty_ctrl_shift_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
     ed.handle_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "ello\n");
-    ed.handle_key(key('u'));    // regular undo
+    ed.handle_key(key('u')); // regular undo
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     // Ctrl+U should NOT run redo.
     ed.handle_key(key_ctrl('U'));
-    assert_eq!(ed.doc().text().to_string(), "hello\n", "Ctrl+U should be a no-op in kitty mode");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\n",
+        "Ctrl+U should be a no-op in kitty mode"
+    );
 }
 
 // ── Ctrl+d / Ctrl+u — explicit leaf, must NOT extend ─────────────────────
 
 fn scroll_test_editor_kitty() -> Editor {
-    use crate::core::text::Text;
     use crate::core::selection::{Selection, SelectionSet};
+    use crate::core::text::Text;
     // 30 single-char lines — same shape as page_scroll tests.
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);
@@ -204,13 +224,19 @@ fn scroll_test_editor_kitty() -> Editor {
 fn ctrl_d_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
     let before = ed.current_selections().primary();
-    assert_eq!(before.anchor, before.head, "precondition: collapsed selection");
+    assert_eq!(
+        before.anchor, before.head,
+        "precondition: collapsed selection"
+    );
 
     ed.handle_key(key_ctrl('d'));
 
     let after = ed.current_selections().primary();
     // Selection must still be collapsed — anchor == head.
-    assert_eq!(after.anchor, after.head, "Ctrl+d must not extend the selection");
+    assert_eq!(
+        after.anchor, after.head,
+        "Ctrl+d must not extend the selection"
+    );
     // The cursor must have moved (scroll actually did something).
     assert_ne!(after.head, before.head, "Ctrl+d must move the cursor");
 }
@@ -224,7 +250,10 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
     ed.handle_key(key_ctrl('u'));
 
     let after = ed.current_selections().primary();
-    assert_eq!(after.anchor, after.head, "Ctrl+u must not extend the selection");
+    assert_eq!(
+        after.anchor, after.head,
+        "Ctrl+u must not extend the selection"
+    );
 }
 
 /// In sticky Extend mode (`e`), Ctrl+d DOES extend — the explicit-leaf
@@ -239,8 +268,10 @@ fn extend_mode_ctrl_d_extends() {
 
     let after = ed.current_selections().primary();
     // In Extend mode the anchor must not have moved.
-    assert_eq!(after.anchor, before_anchor, "anchor must be pinned in Extend mode");
+    assert_eq!(
+        after.anchor, before_anchor,
+        "anchor must be pinned in Extend mode"
+    );
     // And head must have moved (scroll happened).
     assert_ne!(after.head, before_anchor, "head must move in Extend mode");
 }
-

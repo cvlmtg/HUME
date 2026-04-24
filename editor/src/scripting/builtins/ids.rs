@@ -50,7 +50,10 @@ impl Custom for SteelPaneId {
 /// `(buffer-id? v)` — return `#t` if `v` is an opaque `BufferId`.
 pub(crate) fn is_buffer_id(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
-        v.read().as_any_ref().downcast_ref::<SteelBufferId>().is_some()
+        v.read()
+            .as_any_ref()
+            .downcast_ref::<SteelBufferId>()
+            .is_some()
     } else {
         false
     }
@@ -59,7 +62,10 @@ pub(crate) fn is_buffer_id(val: SteelVal) -> bool {
 /// `(pane-id? v)` — return `#t` if `v` is an opaque `PaneId`.
 pub(crate) fn is_pane_id(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
-        v.read().as_any_ref().downcast_ref::<SteelPaneId>().is_some()
+        v.read()
+            .as_any_ref()
+            .downcast_ref::<SteelPaneId>()
+            .is_some()
     } else {
         false
     }
@@ -72,7 +78,10 @@ pub(crate) fn is_pane_id(val: SteelVal) -> bool {
 
 fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
-        v.read().as_any_ref().downcast_ref::<SteelBufferId>().map(|b| b.0)
+        v.read()
+            .as_any_ref()
+            .downcast_ref::<SteelBufferId>()
+            .map(|b| b.0)
     } else {
         None
     }
@@ -80,7 +89,10 @@ fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
 
 fn downcast_pane_id(val: &SteelVal) -> Option<PaneId> {
     if let SteelVal::Custom(v) = val {
-        v.read().as_any_ref().downcast_ref::<SteelPaneId>().map(|p| p.0)
+        v.read()
+            .as_any_ref()
+            .downcast_ref::<SteelPaneId>()
+            .map(|p| p.0)
     } else {
         None
     }

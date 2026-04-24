@@ -49,7 +49,9 @@ pub struct LineNumberColumn {
 
 impl Default for LineNumberColumn {
     fn default() -> Self {
-        Self { style: LineNumberStyle::Hybrid }
+        Self {
+            style: LineNumberStyle::Hybrid,
+        }
     }
 }
 
@@ -64,7 +66,11 @@ impl LineNumberColumn {
 
     /// Number of digits needed to represent `total_lines`.
     fn digit_count(total_lines: usize) -> u8 {
-        if total_lines == 0 { 1 } else { total_lines.ilog10() as u8 + 1 }
+        if total_lines == 0 {
+            1
+        } else {
+            total_lines.ilog10() as u8 + 1
+        }
     }
 }
 
@@ -108,7 +114,9 @@ impl GutterColumn for LineNumberColumn {
         }
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,12 +133,12 @@ mod tests {
         // width(max_line) must fit the 1-based line number max_line+1.
         // digit_count(n+1) + 1 pad.
         let col = LineNumberColumn::new();
-        assert_eq!(col.width(0), 2);   // max line "1" → 1 digit + 1 pad
-        assert_eq!(col.width(8), 2);   // max line "9" → 1 digit + 1 pad
-        assert_eq!(col.width(9), 3);   // max line "10" → 2 digits + 1 pad
-        assert_eq!(col.width(10), 3);  // max line "11" → 2 digits + 1 pad
-        assert_eq!(col.width(98), 3);  // max line "99" → 2 digits + 1 pad
-        assert_eq!(col.width(99), 4);  // max line "100" → 3 digits + 1 pad
+        assert_eq!(col.width(0), 2); // max line "1" → 1 digit + 1 pad
+        assert_eq!(col.width(8), 2); // max line "9" → 1 digit + 1 pad
+        assert_eq!(col.width(9), 3); // max line "10" → 2 digits + 1 pad
+        assert_eq!(col.width(10), 3); // max line "11" → 2 digits + 1 pad
+        assert_eq!(col.width(98), 3); // max line "99" → 2 digits + 1 pad
+        assert_eq!(col.width(99), 4); // max line "100" → 3 digits + 1 pad
         assert_eq!(col.width(100), 4); // max line "101" → 3 digits + 1 pad
     }
 
@@ -160,14 +168,28 @@ mod tests {
     #[test]
     fn wrap_rows_are_blank() {
         let col = LineNumberColumn::new();
-        let cell = col.render_row(RowKind::Wrap { line_idx: 3, wrap_row: 1 }, EditorMode::Normal, 0);
+        let cell = col.render_row(
+            RowKind::Wrap {
+                line_idx: 3,
+                wrap_row: 1,
+            },
+            EditorMode::Normal,
+            0,
+        );
         assert_eq!(cell.as_str(), " "); // blank
     }
 
     #[test]
     fn virtual_rows_are_blank() {
         let col = LineNumberColumn::new();
-        let cell = col.render_row(RowKind::Virtual { provider_id: 0, anchor_line: 0 }, EditorMode::Normal, 0);
+        let cell = col.render_row(
+            RowKind::Virtual {
+                provider_id: 0,
+                anchor_line: 0,
+            },
+            EditorMode::Normal,
+            0,
+        );
         assert_eq!(cell.as_str(), " ");
     }
 
@@ -200,23 +222,44 @@ mod tests {
 
     #[test]
     fn line_number_style_from_str_all_variants() {
-        assert_eq!("absolute".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Absolute);
-        assert_eq!("relative".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Relative);
-        assert_eq!("hybrid".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Hybrid);
+        assert_eq!(
+            "absolute".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Absolute
+        );
+        assert_eq!(
+            "relative".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Relative
+        );
+        assert_eq!(
+            "hybrid".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Hybrid
+        );
     }
 
     #[test]
     fn line_number_style_from_str_case_insensitive() {
-        assert_eq!("Absolute".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Absolute);
-        assert_eq!("RELATIVE".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Relative);
-        assert_eq!("Hybrid".parse::<LineNumberStyle>().unwrap(), LineNumberStyle::Hybrid);
+        assert_eq!(
+            "Absolute".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Absolute
+        );
+        assert_eq!(
+            "RELATIVE".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Relative
+        );
+        assert_eq!(
+            "Hybrid".parse::<LineNumberStyle>().unwrap(),
+            LineNumberStyle::Hybrid
+        );
     }
 
     #[test]
     fn line_number_style_from_str_error() {
         let err = "invalid".parse::<LineNumberStyle>().unwrap_err();
         assert!(err.contains("invalid"), "error should mention input: {err}");
-        assert!(err.contains("absolute"), "error should list valid values: {err}");
+        assert!(
+            err.contains("absolute"),
+            "error should list valid values: {err}"
+        );
     }
 
     #[test]
@@ -228,7 +271,13 @@ mod tests {
     fn large_line_number_renders_correctly() {
         let col = LineNumberColumn::with_style(LineNumberStyle::Absolute);
         // line_idx = 9_999_998 → display = 9_999_999 (1-based)
-        let cell = col.render_row(RowKind::LineStart { line_idx: 9_999_998 }, EditorMode::Normal, 0);
+        let cell = col.render_row(
+            RowKind::LineStart {
+                line_idx: 9_999_998,
+            },
+            EditorMode::Normal,
+            0,
+        );
         assert_eq!(cell.as_str(), "9999999");
     }
 }

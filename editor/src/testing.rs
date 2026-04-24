@@ -1,3 +1,5 @@
+use crate::core::changeset::ChangeSet;
+use crate::core::selection::{Selection, SelectionSet};
 /// Test DSL for HUME editing operations.
 ///
 /// We use a compact, human-readable string format to express editor state
@@ -37,8 +39,6 @@
 /// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
 /// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
 use crate::core::text::Text;
-use crate::core::changeset::ChangeSet;
-use crate::core::selection::{Selection, SelectionSet};
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 
@@ -69,17 +69,23 @@ impl IntoTestResult for SelectionSet {
 
 /// Legacy `(Text, SelectionSet)` — still emitted by internal helpers.
 impl IntoTestResult for (Text, SelectionSet) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { self }
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
+        self
+    }
 }
 
 /// Standard edit commands.
 impl IntoTestResult for (Text, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { (self.0, self.1) }
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
+        (self.0, self.1)
+    }
 }
 
 /// Paste commands (return displaced text alongside the edited buffer).
 impl IntoTestResult for (Text, SelectionSet, ChangeSet, Vec<String>) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) { (self.0, self.1) }
+    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
+        (self.0, self.1)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -126,9 +132,13 @@ pub(crate) fn parse_state(input: &str) -> (Text, SelectionSet) {
     enum State {
         Normal,
         /// Inside `-[…]>`: anchor was recorded at `anchor_offset`.
-        InForward { anchor_offset: usize },
+        InForward {
+            anchor_offset: usize,
+        },
         /// Inside `<[…]-`: head was recorded at `head_offset`.
-        InBackward { head_offset: usize },
+        InBackward {
+            head_offset: usize,
+        },
     }
 
     let mut state = State::Normal;
@@ -139,13 +149,17 @@ pub(crate) fn parse_state(input: &str) -> (Text, SelectionSet) {
             // ── Open forward: `-[` ────────────────────────────────────────
             (State::Normal, '-') if chars.peek() == Some(&'[') => {
                 chars.next(); // consume '['
-                state = State::InForward { anchor_offset: char_count(&text) };
+                state = State::InForward {
+                    anchor_offset: char_count(&text),
+                };
             }
 
             // ── Open backward: `<[` ───────────────────────────────────────
             (State::Normal, '<') if chars.peek() == Some(&'[') => {
                 chars.next(); // consume '['
-                state = State::InBackward { head_offset: char_count(&text) };
+                state = State::InBackward {
+                    head_offset: char_count(&text),
+                };
             }
 
             // ── Close forward: `]>` ───────────────────────────────────────
@@ -321,8 +335,8 @@ pub(crate) fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
 #[macro_export]
 macro_rules! assert_state {
     ($initial:expr, $op:expr, $expected:expr) => {{
-        use $crate::testing::{parse_state, serialize_state};
         use pretty_assertions::assert_eq;
+        use $crate::testing::{parse_state, serialize_state};
 
         let (buf, sels) = parse_state($initial);
         // Clone before the op: non-mutating commands return only `SelectionSet`,

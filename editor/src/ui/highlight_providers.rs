@@ -27,7 +27,9 @@ pub(crate) struct SharedHighlighter {
 }
 
 impl HighlightSource for SharedHighlighter {
-    fn tier(&self) -> HighlightTier { self.tier }
+    fn tier(&self) -> HighlightTier {
+        self.tier
+    }
 
     fn highlights_for_line(
         &self,
@@ -40,7 +42,9 @@ impl HighlightSource for SharedHighlighter {
         // so binary-search to the first entry for this line.
         let start = data.partition_point(|&(l, _, _)| l < line_idx);
         for &(l, byte_start, byte_end) in &data[start..] {
-            if l != line_idx { break; }
+            if l != line_idx {
+                break;
+            }
             out.push((byte_start, byte_end, self.scope));
         }
     }

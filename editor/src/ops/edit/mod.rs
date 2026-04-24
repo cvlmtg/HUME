@@ -1,7 +1,7 @@
-use crate::core::text::Text;
 use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -110,7 +110,14 @@ pub(crate) fn apply_edit_with_capture<F>(
     mut f: F,
 ) -> (Text, SelectionSet, ChangeSet, Vec<String>)
 where
-    F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>, &mut Vec<String>),
+    F: FnMut(
+        &mut ChangeSetBuilder,
+        &Text,
+        usize,
+        &Selection,
+        &mut Vec<Selection>,
+        &mut Vec<String>,
+    ),
 {
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels = Vec::with_capacity(sels.len());
@@ -137,7 +144,11 @@ where
 
 /// Convenience wrapper around [`apply_edit_with_capture`] for edits that
 /// don't need to capture per-selection output.
-pub(crate) fn apply_edit<F>(buf: Text, sels: SelectionSet, mut f: F) -> (Text, SelectionSet, ChangeSet)
+pub(crate) fn apply_edit<F>(
+    buf: Text,
+    sels: SelectionSet,
+    mut f: F,
+) -> (Text, SelectionSet, ChangeSet)
 where
     F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>),
 {
@@ -235,11 +246,19 @@ where
 
     // When counts mismatch, every selection gets the full joined content.
     // Compute once up front so the closure can borrow it as `&str`.
-    let joined: String = if n_sels != n_vals { values.join("") } else { String::new() };
+    let joined: String = if n_sels != n_vals {
+        values.join("")
+    } else {
+        String::new()
+    };
 
     apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, replaced| {
         // N-to-N if counts match; every selection gets the full joined string otherwise.
-        let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
+        let text: &str = if n_sels == n_vals {
+            &values[i]
+        } else {
+            &joined
+        };
 
         if sel.is_collapsed() {
             replaced.push(String::new()); // cursors displace nothing
@@ -268,7 +287,11 @@ where
             // When text is empty the delete leaves new_pos() at the start of
             // the deleted region; -1 would underflow. Use saturating_sub so
             // the cursor lands at start (the first char after the deletion).
-            let pos = if text.is_empty() { b.new_pos() } else { b.new_pos() - 1 };
+            let pos = if text.is_empty() {
+                b.new_pos()
+            } else {
+                b.new_pos() - 1
+            };
             new_sels.push(Selection::collapsed(pos));
         }
     })
@@ -291,7 +314,11 @@ where
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub(crate) fn insert_char(buf: Text, sels: SelectionSet, ch: char) -> (Text, SelectionSet, ChangeSet) {
+pub(crate) fn insert_char(
+    buf: Text,
+    sels: SelectionSet,
+    ch: char,
+) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -425,7 +452,9 @@ pub(crate) fn paste_after(
     // `last_char` = index of the structural \n. Must be read before `buf` is
     // consumed by `paste_impl`, so we capture it here and move it into the closure.
     let last_char = buf.len_chars() - 1;
-    paste_impl(buf, sels, values, move |buf, sel| (sel.end_inclusive(buf) + 1).min(last_char))
+    paste_impl(buf, sels, values, move |buf, sel| {
+        (sel.end_inclusive(buf) + 1).min(last_char)
+    })
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`).
@@ -470,7 +499,7 @@ pub(crate) fn replace_selections(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end   = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
+        let sel_end = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
 
         // Smart replace: when replacing a single character (cursor selection)
         // and the replacement is a pair character, resolve open/close based on
@@ -515,7 +544,9 @@ pub(crate) fn replace_selections(
             // so the reconstructed selection covers the full original range.
             new_sel_end = b.new_pos() - 1;
 
-            if pos >= sel_end { break; }
+            if pos >= sel_end {
+                break;
+            }
             pos = next;
         }
 
@@ -526,7 +557,6 @@ pub(crate) fn replace_selections(
         new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
     })
 }
-
 
 #[cfg(test)]
 mod tests;

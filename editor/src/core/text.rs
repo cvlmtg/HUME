@@ -35,7 +35,11 @@ fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
         }
         out.push(ch);
     }
-    let ending = if found_crlf { LineEnding::CrLf } else { LineEnding::Lf };
+    let ending = if found_crlf {
+        LineEnding::CrLf
+    } else {
+        LineEnding::Lf
+    };
     (Cow::Owned(out), ending)
 }
 
@@ -98,9 +102,11 @@ impl Text {
 
     /// Create an empty buffer (contains only the structural trailing newline).
     pub(crate) fn empty() -> Self {
-        Self { rope: Rope::from_str("\n"), line_ending: LineEnding::Lf }
+        Self {
+            rope: Rope::from_str("\n"),
+            line_ending: LineEnding::Lf,
+        }
     }
-
 
     /// The line-ending style of the original file.
     ///
@@ -181,7 +187,9 @@ impl Text {
 
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
     pub(crate) fn char_at(&self, char_idx: usize) -> Option<char> {
-        if char_idx >= self.len_chars() { return None; }
+        if char_idx >= self.len_chars() {
+            return None;
+        }
         Some(self.rope.char(char_idx))
     }
 
@@ -220,7 +228,10 @@ impl Text {
         // Clone is O(log n) due to ropey's structural sharing.
         let mut rope = self.rope.clone();
         rope.insert(at, text);
-        Self { rope, line_ending: self.line_ending }
+        Self {
+            rope,
+            line_ending: self.line_ending,
+        }
     }
 
     #[cfg(test)]
@@ -238,9 +249,11 @@ impl Text {
     pub(crate) fn remove(&self, range: Range<usize>) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(range);
-        Self { rope, line_ending: self.line_ending }
+        Self {
+            rope,
+            line_ending: self.line_ending,
+        }
     }
-
 }
 
 // `From<&str>` is the right trait for infallible construction from a string
@@ -337,7 +350,7 @@ mod tests {
     fn from_str_ascii() {
         let buf = Text::from("hello\nworld");
         assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
-        assert_eq!(buf.len_lines(), 3);  // line 0, line 1, trailing empty line
+        assert_eq!(buf.len_lines(), 3); // line 0, line 1, trailing empty line
         assert!(!buf.is_empty());
         assert_eq!(buf.to_string(), "hello\nworld\n");
     }
@@ -392,17 +405,17 @@ mod tests {
     #[test]
     fn line_to_char() {
         let buf = Text::from("hello\nworld\nfoo");
-        assert_eq!(buf.line_to_char(0), 0);  // "hello" starts at 0
-        assert_eq!(buf.line_to_char(1), 6);  // "world" starts after "hello\n"
+        assert_eq!(buf.line_to_char(0), 0); // "hello" starts at 0
+        assert_eq!(buf.line_to_char(1), 6); // "world" starts after "hello\n"
         assert_eq!(buf.line_to_char(2), 12); // "foo" starts after "world\n"
     }
 
     #[test]
     fn char_to_line() {
         let buf = Text::from("hello\nworld\nfoo");
-        assert_eq!(buf.char_to_line(0), 0);  // 'h' is on line 0
-        assert_eq!(buf.char_to_line(5), 0);  // '\n' is still line 0
-        assert_eq!(buf.char_to_line(6), 1);  // 'w' is on line 1
+        assert_eq!(buf.char_to_line(0), 0); // 'h' is on line 0
+        assert_eq!(buf.char_to_line(5), 0); // '\n' is still line 0
+        assert_eq!(buf.char_to_line(6), 1); // 'w' is on line 1
         assert_eq!(buf.char_to_line(12), 2); // 'f' is on line 2
     }
 

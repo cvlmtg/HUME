@@ -69,9 +69,14 @@ impl PluginId {
                     "invalid plugin name '{name}': user and repo must be non-empty valid path segments"
                 ));
             }
-            return Ok(PluginId::User { user: user.to_string(), repo: repo.to_string() });
+            return Ok(PluginId::User {
+                user: user.to_string(),
+                repo: repo.to_string(),
+            });
         }
-        Err(format!("invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'"))
+        Err(format!(
+            "invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'"
+        ))
     }
 }
 
@@ -90,7 +95,7 @@ fn is_valid_segment(s: &str) -> bool {
 impl fmt::Display for PluginId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PluginId::Core(name)          => write!(f, "core:{name}"),
+            PluginId::Core(name) => write!(f, "core:{name}"),
             PluginId::User { user, repo } => write!(f, "{user}/{repo}"),
         }
     }
@@ -99,8 +104,8 @@ impl fmt::Display for PluginId {
 impl fmt::Display for Owner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Owner::Core        => f.write_str("hume"),
-            Owner::User        => f.write_str("user"),
+            Owner::Core => f.write_str("hume"),
+            Owner::User => f.write_str("user"),
             Owner::Plugin(pid) => fmt::Display::fmt(pid, f),
         }
     }
@@ -113,10 +118,10 @@ impl fmt::Display for Owner {
 impl PartialEq for PluginId {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (PluginId::Core(a), PluginId::Core(b)) =>
-                a.eq_ignore_ascii_case(b),
-            (PluginId::User { user: ua, repo: ra }, PluginId::User { user: ub, repo: rb }) =>
-                ua.eq_ignore_ascii_case(ub) && ra.eq_ignore_ascii_case(rb),
+            (PluginId::Core(a), PluginId::Core(b)) => a.eq_ignore_ascii_case(b),
+            (PluginId::User { user: ua, repo: ra }, PluginId::User { user: ub, repo: rb }) => {
+                ua.eq_ignore_ascii_case(ub) && ra.eq_ignore_ascii_case(rb)
+            }
             _ => false,
         }
     }
@@ -132,12 +137,18 @@ impl Hash for PluginId {
         match self {
             PluginId::Core(name) => {
                 0u8.hash(state);
-                for c in name.chars() { c.to_ascii_lowercase().hash(state); }
+                for c in name.chars() {
+                    c.to_ascii_lowercase().hash(state);
+                }
             }
             PluginId::User { user, repo } => {
                 1u8.hash(state);
-                for c in user.chars() { c.to_ascii_lowercase().hash(state); }
-                for c in repo.chars() { c.to_ascii_lowercase().hash(state); }
+                for c in user.chars() {
+                    c.to_ascii_lowercase().hash(state);
+                }
+                for c in repo.chars() {
+                    c.to_ascii_lowercase().hash(state);
+                }
             }
         }
     }
@@ -231,12 +242,22 @@ impl LedgerStack {
         if let Some(ledger) = self.ledgers.iter_mut().find(|l| l.plugin == *plugin) {
             // Only record the first mutation per key for this plugin.
             if !ledger.entries.iter().any(|e| e.key == key) {
-                ledger.entries.push(LedgerEntry { key, prior_value, prior_force_extend, prior_owner });
+                ledger.entries.push(LedgerEntry {
+                    key,
+                    prior_value,
+                    prior_force_extend,
+                    prior_owner,
+                });
             }
         } else {
             self.ledgers.push(Ledger {
                 plugin: plugin.clone(),
-                entries: vec![LedgerEntry { key, prior_value, prior_force_extend, prior_owner }],
+                entries: vec![LedgerEntry {
+                    key,
+                    prior_value,
+                    prior_force_extend,
+                    prior_owner,
+                }],
             });
         }
     }
@@ -379,7 +400,7 @@ mod tests {
     #[test]
     fn parse_dotdot_segment_errors() {
         assert!(PluginId::parse("../evil").is_err());
-        assert!(PluginId::parse("core:../evil").is_err());  // dotdot core name
+        assert!(PluginId::parse("core:../evil").is_err()); // dotdot core name
         assert!(PluginId::parse("core:..").is_err());
         assert!(PluginId::parse("../evil").is_err());
     }
@@ -409,8 +430,14 @@ mod tests {
 
     #[test]
     fn plugin_id_preserves_case_in_display() {
-        assert_eq!(pid("SomeUser/CoolPlugin").to_string(), "SomeUser/CoolPlugin");
-        assert_eq!(pid("core:helix-surround").to_string(), "core:helix-surround");
+        assert_eq!(
+            pid("SomeUser/CoolPlugin").to_string(),
+            "SomeUser/CoolPlugin"
+        );
+        assert_eq!(
+            pid("core:helix-surround").to_string(),
+            "core:helix-surround"
+        );
     }
 
     #[test]
@@ -439,7 +466,13 @@ mod tests {
         let x = pid("user/x");
         let y = pid("user/y");
         stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
+        stack.record(
+            &y,
+            "f".into(),
+            Owner::Plugin(x.clone()),
+            "foo".into(),
+            false,
+        );
         assert_eq!(stack.owner_of("f"), Owner::Plugin(y));
     }
 
@@ -450,7 +483,13 @@ mod tests {
         // First record — should be stored.
         stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
         // Second record for the same key by the same plugin — should be ignored.
-        stack.record(&x, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
+        stack.record(
+            &x,
+            "f".into(),
+            Owner::Plugin(x.clone()),
+            "foo".into(),
+            false,
+        );
         let ledger = stack.ledgers.iter().find(|l| l.plugin == x).unwrap();
         assert_eq!(ledger.entries.len(), 1);
         assert_eq!(ledger.entries[0].prior_value, "find-char");
@@ -487,15 +526,26 @@ mod tests {
         // X: f was find-char / Core
         stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
         // Y: f was foo / X
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
+        stack.record(
+            &y,
+            "f".into(),
+            Owner::Plugin(x.clone()),
+            "foo".into(),
+            false,
+        );
 
         let to_restore = stack.unload(&x);
 
         assert!(to_restore.is_empty(), "f is still live under Y");
-        let y_entry = stack.ledgers.iter()
-            .find(|l| l.plugin == y).unwrap()
-            .entries.iter()
-            .find(|e| e.key == "f").unwrap();
+        let y_entry = stack
+            .ledgers
+            .iter()
+            .find(|l| l.plugin == y)
+            .unwrap()
+            .entries
+            .iter()
+            .find(|e| e.key == "f")
+            .unwrap();
         assert_eq!(y_entry.prior_owner, Owner::Core);
         assert_eq!(y_entry.prior_value, "find-char");
     }
@@ -508,7 +558,13 @@ mod tests {
         // X owns both; Y later takes `f` but never touches `tab-size`.
         stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
         stack.record(&x, "tab-size".into(), Owner::Core, "2".into(), false);
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
+        stack.record(
+            &y,
+            "f".into(),
+            Owner::Plugin(x.clone()),
+            "foo".into(),
+            false,
+        );
 
         let to_restore = stack.unload(&x);
 
@@ -541,22 +597,46 @@ mod tests {
         let y = pid("user/y");
         let z = pid("user/z");
         stack.record(&x, "f".into(), Owner::Core, "find-char".into(), false);
-        stack.record(&y, "f".into(), Owner::Plugin(x.clone()), "foo".into(), false);
-        stack.record(&z, "f".into(), Owner::Plugin(y.clone()), "bar".into(), false);
+        stack.record(
+            &y,
+            "f".into(),
+            Owner::Plugin(x.clone()),
+            "foo".into(),
+            false,
+        );
+        stack.record(
+            &z,
+            "f".into(),
+            Owner::Plugin(y.clone()),
+            "bar".into(),
+            false,
+        );
 
         // Unload X — Y still owns f; Y's prior must now point to Core.
         assert!(stack.unload(&x).is_empty());
-        let y_entry = stack.ledgers.iter()
-            .find(|l| l.plugin == y).unwrap()
-            .entries.iter().find(|e| e.key == "f").unwrap();
+        let y_entry = stack
+            .ledgers
+            .iter()
+            .find(|l| l.plugin == y)
+            .unwrap()
+            .entries
+            .iter()
+            .find(|e| e.key == "f")
+            .unwrap();
         assert_eq!(y_entry.prior_owner, Owner::Core);
         assert_eq!(y_entry.prior_value, "find-char");
 
         // Unload Y — Z still owns f; Z's prior must now point to Core.
         assert!(stack.unload(&y).is_empty());
-        let z_entry = stack.ledgers.iter()
-            .find(|l| l.plugin == z).unwrap()
-            .entries.iter().find(|e| e.key == "f").unwrap();
+        let z_entry = stack
+            .ledgers
+            .iter()
+            .find(|l| l.plugin == z)
+            .unwrap()
+            .entries
+            .iter()
+            .find(|e| e.key == "f")
+            .unwrap();
         assert_eq!(z_entry.prior_owner, Owner::Core);
         assert_eq!(z_entry.prior_value, "find-char");
     }
@@ -567,13 +647,21 @@ mod tests {
     fn round_trip_preserves_prior_force_extend() {
         let mut stack = LedgerStack::default();
         let x = pid("user/x");
-        stack.record(&x, "normal ctrl-x".into(), Owner::Core, "select-line".into(), true);
+        stack.record(
+            &x,
+            "normal ctrl-x".into(),
+            Owner::Core,
+            "select-line".into(),
+            true,
+        );
 
         let to_restore = stack.unload(&x);
 
         assert_eq!(to_restore.len(), 1);
-        assert!(to_restore[0].prior_force_extend,
-            "unload must return prior_force_extend = true so the caller can restore it");
+        assert!(
+            to_restore[0].prior_force_extend,
+            "unload must return prior_force_extend = true so the caller can restore it"
+        );
     }
 
     #[test]
@@ -582,21 +670,40 @@ mod tests {
         let x = pid("user/x");
         let y = pid("user/y");
         // X: ctrl-x was select-line with force_extend = true (built-in baseline).
-        stack.record(&x, "normal ctrl-x".into(), Owner::Core, "select-line".into(), true);
+        stack.record(
+            &x,
+            "normal ctrl-x".into(),
+            Owner::Core,
+            "select-line".into(),
+            true,
+        );
         // Y: ctrl-x was moved to x's non-extending command.
-        stack.record(&y, "normal ctrl-x".into(), Owner::Plugin(x.clone()), "move-right".into(), false);
+        stack.record(
+            &y,
+            "normal ctrl-x".into(),
+            Owner::Plugin(x.clone()),
+            "move-right".into(),
+            false,
+        );
 
         // Unload X — Y still owns ctrl-x; Y's prior must now carry Core baseline
         // AND prior_force_extend = true from X's entry.
         assert!(stack.unload(&x).is_empty());
-        let y_entry = stack.ledgers.iter()
-            .find(|l| l.plugin == y).unwrap()
-            .entries.iter()
-            .find(|e| e.key == "normal ctrl-x").unwrap();
+        let y_entry = stack
+            .ledgers
+            .iter()
+            .find(|l| l.plugin == y)
+            .unwrap()
+            .entries
+            .iter()
+            .find(|e| e.key == "normal ctrl-x")
+            .unwrap();
         assert_eq!(y_entry.prior_owner, Owner::Core);
         assert_eq!(y_entry.prior_value, "select-line");
-        assert!(y_entry.prior_force_extend,
-            "Y's prior_force_extend must be inherited from X after X is spliced out");
+        assert!(
+            y_entry.prior_force_extend,
+            "Y's prior_force_extend must be inherited from X after X is spliced out"
+        );
     }
 
     // ── PluginStack ──────────────────────────────────────────────────────────

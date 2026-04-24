@@ -10,7 +10,10 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
 
 fn ls_output(ed: &mut Editor) -> String {
     ed.execute_typed("ls", None).unwrap();
-    let sv = ed.scratch_view.as_ref().expect(":ls must open a scratch view");
+    let sv = ed
+        .scratch_view
+        .as_ref()
+        .expect(":ls must open a scratch view");
     sv.buf.rope().to_string()
 }
 
@@ -20,8 +23,14 @@ fn ls_output(ed: &mut Editor) -> String {
 fn ls_single_buffer_marks_current() {
     let mut ed = editor_from("-[h]>ello\n");
     let out = ls_output(&mut ed);
-    assert!(out.contains('%'), ":ls must mark the focused buffer with '%'");
-    assert!(!out.contains('#'), ":ls must not show '#' when there is no alternate buffer");
+    assert!(
+        out.contains('%'),
+        ":ls must mark the focused buffer with '%'"
+    );
+    assert!(
+        !out.contains('#'),
+        ":ls must not show '#' when there is no alternate buffer"
+    );
     // Row count: 1 header + 1 buffer
     assert_eq!(out.lines().count(), 2, "must have header + 1 buffer row");
 }
@@ -30,7 +39,10 @@ fn ls_single_buffer_marks_current() {
 fn ls_long_alias_works() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("list-buffers", None).unwrap();
-    assert!(ed.scratch_view.is_some(), ":list-buffers must open a scratch view");
+    assert!(
+        ed.scratch_view.is_some(),
+        ":list-buffers must open a scratch view"
+    );
 }
 
 // ── Multiple buffers ──────────────────────────────────────────────────────────
@@ -50,10 +62,22 @@ fn ls_two_buffers_marks_current_and_alternate() {
     assert_eq!(lines.len(), 4, "header + 3 buffers: scratch, p1, p2");
     let p2_name = p2.file_name().unwrap().to_str().unwrap();
     let p1_name = p1.file_name().unwrap().to_str().unwrap();
-    let current_row = lines.iter().find(|l| l.contains(p2_name)).expect("p2 must have a row");
-    let alternate_row = lines.iter().find(|l| l.contains(p1_name)).expect("p1 must have a row");
-    assert!(current_row.contains('%'), "p2 row must be marked current with '%'");
-    assert!(alternate_row.contains('#'), "p1 row must be marked alternate with '#'");
+    let current_row = lines
+        .iter()
+        .find(|l| l.contains(p2_name))
+        .expect("p2 must have a row");
+    let alternate_row = lines
+        .iter()
+        .find(|l| l.contains(p1_name))
+        .expect("p1 must have a row");
+    assert!(
+        current_row.contains('%'),
+        "p2 row must be marked current with '%'"
+    );
+    assert!(
+        alternate_row.contains('#'),
+        "p1 row must be marked alternate with '#'"
+    );
 }
 
 // ── Dirty indicator ───────────────────────────────────────────────────────────
@@ -88,7 +112,10 @@ fn ls_scratch_buffer_shows_scratch_name() {
     let mut ed = editor_from("-[h]>ello\n");
     let out = ls_output(&mut ed);
     // The initial unnamed buffer has path=None → name is "[scratch]".
-    assert!(out.contains("[scratch]"), ":ls must show '[scratch]' for nameless buffers");
+    assert!(
+        out.contains("[scratch]"),
+        ":ls must show '[scratch]' for nameless buffers"
+    );
 }
 
 // ── Cursor placement ──────────────────────────────────────────────────────────
@@ -115,5 +142,8 @@ fn ls_cursor_on_current_row() {
         .find(|(_, l)| l.contains(p2_name))
         .map(|(i, _)| i)
         .expect("p2 row must be in output");
-    assert_eq!(cursor_line, expected_line, "cursor must be on the current buffer's row");
+    assert_eq!(
+        cursor_line, expected_line,
+        "cursor must be on the current buffer's row"
+    );
 }

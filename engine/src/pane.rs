@@ -90,13 +90,17 @@ impl FromStr for WrapMode {
             format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
         })?;
         if width == 0 {
-            return Err(format!("invalid wrap-mode width in '{s}': must be at least 1"));
+            return Err(format!(
+                "invalid wrap-mode width in '{s}': must be at least 1"
+            ));
         }
         match kind {
             "soft" => Ok(WrapMode::Soft { width }),
             "word" => Ok(WrapMode::Word { width }),
             "indent" => Ok(WrapMode::Indent { width }),
-            _ => Err(format!("invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent")),
+            _ => Err(format!(
+                "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
+            )),
         }
     }
 }
@@ -213,11 +217,14 @@ impl Pane {
 
     /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.
     pub fn remember_scroll(&mut self) {
-        self.saved_scrolls.insert(self.buffer_id, ScrollPosition {
-            top_line: self.viewport.top_line,
-            top_row_offset: self.viewport.top_row_offset,
-            horizontal_offset: self.viewport.horizontal_offset,
-        });
+        self.saved_scrolls.insert(
+            self.buffer_id,
+            ScrollPosition {
+                top_line: self.viewport.top_line,
+                top_row_offset: self.viewport.top_row_offset,
+                horizontal_offset: self.viewport.horizontal_offset,
+            },
+        );
     }
 
     /// Restore the saved scroll for `id`, or reset to top on first visit.
@@ -239,7 +246,11 @@ impl Pane {
     /// Panics in debug builds if the pane has no selections.
     pub fn primary_head_line(&self, rope: &Rope) -> usize {
         debug_assert!(!self.selections.is_empty(), "pane has no selections");
-        let head_char = self.selections.get(self.primary_idx).map(|s| s.head).unwrap_or(0);
+        let head_char = self
+            .selections
+            .get(self.primary_idx)
+            .map(|s| s.head)
+            .unwrap_or(0);
         rope.char_to_line(head_char)
     }
 }
@@ -273,15 +284,30 @@ mod tests {
 
     #[test]
     fn wrap_mode_from_str_variants() {
-        assert_eq!("soft:80".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 80 });
-        assert_eq!("word:40".parse::<WrapMode>().unwrap(), WrapMode::Word { width: 40 });
-        assert_eq!("indent:76".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 76 });
+        assert_eq!(
+            "soft:80".parse::<WrapMode>().unwrap(),
+            WrapMode::Soft { width: 80 }
+        );
+        assert_eq!(
+            "word:40".parse::<WrapMode>().unwrap(),
+            WrapMode::Word { width: 40 }
+        );
+        assert_eq!(
+            "indent:76".parse::<WrapMode>().unwrap(),
+            WrapMode::Indent { width: 76 }
+        );
     }
 
     #[test]
     fn wrap_mode_from_str_case_insensitive() {
-        assert_eq!("Soft:80".parse::<WrapMode>().unwrap(), WrapMode::Soft { width: 80 });
-        assert_eq!("INDENT:76".parse::<WrapMode>().unwrap(), WrapMode::Indent { width: 76 });
+        assert_eq!(
+            "Soft:80".parse::<WrapMode>().unwrap(),
+            WrapMode::Soft { width: 80 }
+        );
+        assert_eq!(
+            "INDENT:76".parse::<WrapMode>().unwrap(),
+            WrapMode::Indent { width: 76 }
+        );
     }
 
     #[test]
@@ -309,16 +335,34 @@ mod tests {
 
     #[test]
     fn whitespace_render_from_str_all_variants() {
-        assert_eq!("none".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::None);
-        assert_eq!("all".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::All);
-        assert_eq!("trailing".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::Trailing);
+        assert_eq!(
+            "none".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::None
+        );
+        assert_eq!(
+            "all".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::All
+        );
+        assert_eq!(
+            "trailing".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::Trailing
+        );
     }
 
     #[test]
     fn whitespace_render_from_str_case_insensitive() {
-        assert_eq!("None".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::None);
-        assert_eq!("ALL".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::All);
-        assert_eq!("Trailing".parse::<WhitespaceRender>().unwrap(), WhitespaceRender::Trailing);
+        assert_eq!(
+            "None".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::None
+        );
+        assert_eq!(
+            "ALL".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::All
+        );
+        assert_eq!(
+            "Trailing".parse::<WhitespaceRender>().unwrap(),
+            WhitespaceRender::Trailing
+        );
     }
 
     #[test]
@@ -356,7 +400,10 @@ mod tests {
 
     fn make_pane_at_char(head_char: usize) -> Pane {
         Pane {
-            selections: vec![Selection { anchor: head_char, head: head_char }],
+            selections: vec![Selection {
+                anchor: head_char,
+                head: head_char,
+            }],
             ..Pane::new(crate::pipeline::BufferId::default())
         }
     }

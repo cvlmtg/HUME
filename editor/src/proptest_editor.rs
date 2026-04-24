@@ -11,8 +11,8 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use proptest::prelude::*;
 
-    use crate::editor::buffer::Buffer;
     use crate::editor::Editor;
+    use crate::editor::buffer::Buffer;
     use crate::testing::parse_state;
 
     // ── Invariant checker ─────────────────────────────────────────────────────
@@ -123,8 +123,8 @@ mod tests {
             Just("-[h]>ello world\n"),
             Just("-[f]>oo\nbar\nbaz\n"),
             Just("-[a]>bcde\nfghij\n"),
-            Just("-[x]>\n"),                    // single-char buffer
-            Just("-[a]>a bb cc aa bb cc\n"),    // repeated words for search
+            Just("-[x]>\n"),                 // single-char buffer
+            Just("-[a]>a bb cc aa bb cc\n"), // repeated words for search
         ]
         .prop_map(|s| {
             let (buf, sels) = parse_state(s);

@@ -1,23 +1,23 @@
-pub(crate) mod core;
-pub(crate) mod ops;
-pub(crate) mod ui;
 pub(crate) mod auto_pairs;
+pub(crate) mod core;
 pub(crate) mod cursor;
+pub(crate) mod editor;
 pub(crate) mod helpers;
+pub(crate) mod ops;
 pub(crate) mod os;
 pub(crate) mod scripting;
 pub(crate) mod settings;
-pub(crate) mod editor;
+pub(crate) mod ui;
 
 // The test DSL is compiled only when running tests. It lives in its own
 // module so every other module can `use crate::testing::*;` inside
 // `#[cfg(test)]` blocks without any runtime cost in release builds.
 #[cfg(test)]
-pub(crate) mod testing;
-#[cfg(test)]
 mod proptest_doc;
 #[cfg(test)]
 mod proptest_editor;
+#[cfg(test)]
+pub(crate) mod testing;
 
 /// Start the editor.
 ///
@@ -27,7 +27,8 @@ pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::err
     os::terminal::install_panic_hook();
 
     let mut editor = editor::Editor::open(file_path)?;
-    let (mut term, kitty_enabled) = os::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
+    let (mut term, kitty_enabled) =
+        os::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
     editor.kitty_enabled = kitty_enabled;
     editor.init_scripting();
 

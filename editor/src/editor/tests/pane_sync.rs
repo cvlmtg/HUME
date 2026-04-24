@@ -27,7 +27,11 @@ fn pane_selections_synced_after_change_command() {
     ed.sync_all_pane_mirrors();
 
     // Cursor must be at char offset 0 (start of "o\n").
-    assert_eq!(pane_head(&ed), 0, "pane head must be at char 0 after 'c' deletes selection");
+    assert_eq!(
+        pane_head(&ed),
+        0,
+        "pane head must be at char 0 after 'c' deletes selection"
+    );
 }
 
 /// After typing a character in Insert mode: the pane cursor must advance.
@@ -41,7 +45,11 @@ fn pane_selections_synced_after_insert_typing() {
     ed.sync_all_pane_mirrors();
 
     // Text is now "xb\n"; cursor sits after 'x', at byte offset 1.
-    assert_eq!(pane_head(&ed), 1, "pane head must be at char 1 after typing 'x'");
+    assert_eq!(
+        pane_head(&ed),
+        1,
+        "pane head must be at char 1 after typing 'x'"
+    );
 }
 
 /// After `Esc` (exit Insert): pane must reflect the final cursor position.
@@ -56,7 +64,11 @@ fn pane_selections_synced_after_exit_insert() {
     ed.sync_all_pane_mirrors();
 
     // 'x' was inserted at byte 2; cursor now sits just after 'x' at byte 3.
-    assert_eq!(pane_head(&ed), 3, "pane head must be at char 3 (after 'x') after Esc");
+    assert_eq!(
+        pane_head(&ed),
+        3,
+        "pane head must be at char 3 (after 'x') after Esc"
+    );
 }
 
 /// When the primary selection is NOT the earliest in the document,
@@ -94,7 +106,10 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
         pane.selections[1].head, 1,
         "pane.selections[1] is 'b' at char 1"
     );
-    assert_eq!(pane.primary_idx, 1, "primary_idx must point to 'b' (index 1)");
+    assert_eq!(
+        pane.primary_idx, 1,
+        "primary_idx must point to 'b' (index 1)"
+    );
 }
 
 /// Backward selections (head < anchor) can cause start()-order to differ from
@@ -119,8 +134,16 @@ fn pane_selections_sorted_by_head_not_start() {
     // In start() order: [B, A].  In head order: [A, B].
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection { anchor: 10, head: 3, horiz: None }, // A — primary
-            Selection { anchor: 0,  head: 8, horiz: None }, // B
+            Selection {
+                anchor: 10,
+                head: 3,
+                horiz: None,
+            }, // A — primary
+            Selection {
+                anchor: 0,
+                head: 8,
+                horiz: None,
+            }, // B
         ],
         0, // primary is A
     );
@@ -133,6 +156,8 @@ fn pane_selections_sorted_by_head_not_start() {
     assert_eq!(pane.selections[0].head, 3, "first in head order is A");
     assert_eq!(pane.selections[1].head, 8, "second in head order is B");
     // Primary (A) ends up at index 0 after sorting.
-    assert_eq!(pane.primary_idx, 0, "primary_idx follows A to its new position");
+    assert_eq!(
+        pane.primary_idx, 0,
+        "primary_idx follows A to its new position"
+    );
 }
-

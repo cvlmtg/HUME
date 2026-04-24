@@ -1,5 +1,5 @@
-use crate::core::text::Text;
 use crate::core::error::ApplyError;
+use crate::core::text::Text;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,14 +223,16 @@ impl ChangeSet {
                     // `checked_add_signed` fails loudly in both debug and release
                     // if delta somehow drives old_pos below zero — matching the
                     // pattern used in `Selection::shift`.
-                    let start = old_pos.checked_add_signed(delta)
+                    let start = old_pos
+                        .checked_add_signed(delta)
                         .expect("changeset apply: rope position underflow");
                     rope.remove(start..start + n);
                     old_pos += n;
                     delta -= *n as isize;
                 }
                 Operation::Insert(s) => {
-                    let pos = old_pos.checked_add_signed(delta)
+                    let pos = old_pos
+                        .checked_add_signed(delta)
                         .expect("changeset apply: rope position underflow");
                     rope.insert(pos, s);
                     delta += s.chars().count() as isize;
@@ -526,9 +528,7 @@ impl ChangeSet {
                         // The outer arms above guarantee A ∈ {Retain, Insert}
                         // and B ∈ {Retain, Delete}. All four combinations are
                         // handled; this arm is unreachable in correct usage.
-                        _ => unreachable!(
-                            "compose: unexpected op pair ({a:?}, {b:?})"
-                        ),
+                        _ => unreachable!("compose: unexpected op pair ({a:?}, {b:?})"),
                     }
 
                     // Borrows from the inner match end here. Now advance both
@@ -561,7 +561,6 @@ impl ChangeSet {
         }
     }
 }
-
 
 pub(crate) mod builder;
 pub(crate) use builder::ChangeSetBuilder;

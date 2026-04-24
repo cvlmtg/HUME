@@ -7,9 +7,9 @@
 
 use crate::core::selection::Selection;
 use crate::cursor::format_row_col;
-use crate::ops::motion::{cmd_move_down, cmd_move_up};
 use crate::ops::MotionMode;
-use engine::format::{format_buffer_line, FormatScratch};
+use crate::ops::motion::{cmd_move_down, cmd_move_up};
+use engine::format::{FormatScratch, format_buffer_line};
 use engine::pane::{WhitespaceConfig, WrapMode};
 use engine::types::CellContent;
 
@@ -28,7 +28,11 @@ use super::Editor;
 /// cells (`char_offset == usize::MAX`) are always skipped.
 ///
 /// Returns `0` if the row has no graphemes at all.
-fn find_char_at_display_col(scratch: &FormatScratch, target_sub_row: usize, target_col: u16) -> usize {
+fn find_char_at_display_col(
+    scratch: &FormatScratch,
+    target_sub_row: usize,
+    target_col: u16,
+) -> usize {
     let Some(row) = scratch.display_rows.get(target_sub_row) else {
         return 0;
     };
@@ -37,8 +41,12 @@ fn find_char_at_display_col(scratch: &FormatScratch, target_sub_row: usize, targ
     // First pass: real content graphemes only (skip Empty sentinel and virtual cells).
     let mut best: Option<(u16, usize)> = None; // (distance, char_offset)
     for g in graphemes {
-        if g.char_offset == usize::MAX { continue; } // virtual/fill cell
-        if matches!(g.content, CellContent::Empty) { continue; } // eol sentinel
+        if g.char_offset == usize::MAX {
+            continue;
+        } // virtual/fill cell
+        if matches!(g.content, CellContent::Empty) {
+            continue;
+        } // eol sentinel
         let dist = target_col.abs_diff(g.col);
         match best {
             None => best = Some((dist, g.char_offset)),
@@ -50,7 +58,9 @@ fn find_char_at_display_col(scratch: &FormatScratch, target_sub_row: usize, targ
     // Fallback: include Empty sentinel (empty lines where it is the only grapheme).
     if best.is_none() {
         for g in graphemes {
-            if g.char_offset == usize::MAX { continue; }
+            if g.char_offset == usize::MAX {
+                continue;
+            }
             let dist = target_col.abs_diff(g.col);
             match best {
                 None => best = Some((dist, g.char_offset)),
@@ -98,7 +108,15 @@ fn visual_move_down_one(
             return head;
         }
         scratch.clear();
-        format_buffer_line(rope, next_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        format_buffer_line(
+            rope,
+            next_line,
+            tab_width,
+            whitespace,
+            wrap_mode,
+            &[],
+            scratch,
+        );
         find_char_at_display_col(scratch, 0, target_col)
     }
 }
@@ -129,7 +147,15 @@ fn visual_move_up_one(
         }
         let prev_line = line - 1;
         scratch.clear();
-        format_buffer_line(rope, prev_line, tab_width, whitespace, wrap_mode, &[], scratch);
+        format_buffer_line(
+            rope,
+            prev_line,
+            tab_width,
+            whitespace,
+            wrap_mode,
+            &[],
+            scratch,
+        );
         let last_sub_row = scratch.display_rows.len().saturating_sub(1);
         find_char_at_display_col(scratch, last_sub_row, target_col)
     }
@@ -148,7 +174,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         // No wrapping — fall back to buffer-line movement.
         // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
         match down {
-            true  => ed.apply_motion(|b, s| cmd_move_down(b, s, count, mode)),
+            true => ed.apply_motion(|b, s| cmd_move_down(b, s, count, mode)),
             false => ed.apply_motion(|b, s| cmd_move_up(b, s, count, mode)),
         }
         return;
@@ -159,18 +185,26 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
 
     // Pass 1: resolve each selection's sticky display column from sel.horiz,
     // computing it fresh on the first j/k press (when horiz is None).
-    let target_cols: Vec<u16> = sels.iter_sorted().map(|sel| {
-        if let Some(col) = sel.horiz {
-            col as u16
-        } else {
-            let line = rope.char_to_line(sel.head);
-            let (_, col) = format_row_col(
-                &rope, line, sel.head, &wrap_mode, tab_width, &whitespace,
-                &mut ed.motion_format_scratch,
-            );
-            col as u16
-        }
-    }).collect();
+    let target_cols: Vec<u16> = sels
+        .iter_sorted()
+        .map(|sel| {
+            if let Some(col) = sel.horiz {
+                col as u16
+            } else {
+                let line = rope.char_to_line(sel.head);
+                let (_, col) = format_row_col(
+                    &rope,
+                    line,
+                    sel.head,
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
+                    &mut ed.motion_format_scratch,
+                );
+                col as u16
+            }
+        })
+        .collect();
 
     // Pass 2: move each selection by `count` display rows, preserving the
     // sticky column in sel.horiz so consecutive j/k presses reuse it.
@@ -181,12 +215,32 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         let mut head = sel.head;
         for _ in 0..count {
             head = if down {
-                visual_move_down_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+                visual_move_down_one(
+                    &rope,
+                    head,
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
+                    target_col,
+                    scratch,
+                )
             } else {
-                visual_move_up_one(&rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+                visual_move_up_one(
+                    &rope,
+                    head,
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
+                    target_col,
+                    scratch,
+                )
             };
         }
-        let anchor = if mode == MotionMode::Extend { sel.anchor } else { head };
+        let anchor = if mode == MotionMode::Extend {
+            sel.anchor
+        } else {
+            head
+        };
         Selection::with_horiz(anchor, head, target_col as u32)
     });
 
@@ -197,13 +251,20 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
 // Public commands
 // ---------------------------------------------------------------------------
 
-pub(super) fn cmd_visual_move_down(ed: &mut Editor, count: usize, mode: MotionMode) -> Result<(), crate::core::error::CommandError> {
+pub(super) fn cmd_visual_move_down(
+    ed: &mut Editor,
+    count: usize,
+    mode: MotionMode,
+) -> Result<(), crate::core::error::CommandError> {
     apply_visual_vertical(ed, count, true, mode);
     Ok(())
 }
 
-pub(super) fn cmd_visual_move_up(ed: &mut Editor, count: usize, mode: MotionMode) -> Result<(), crate::core::error::CommandError> {
+pub(super) fn cmd_visual_move_up(
+    ed: &mut Editor,
+    count: usize,
+    mode: MotionMode,
+) -> Result<(), crate::core::error::CommandError> {
     apply_visual_vertical(ed, count, false, mode);
     Ok(())
 }
-

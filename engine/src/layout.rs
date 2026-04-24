@@ -38,7 +38,10 @@ pub struct VisibleRange {
 ///
 /// Pass the last line index of the entire file so gutter width is stable across scrolling.
 pub fn gutter_width_for_line(gutter_columns: &[Box<dyn GutterColumn>], max_line: usize) -> u16 {
-    gutter_columns.iter().map(|c| c.width(max_line) as u16).sum()
+    gutter_columns
+        .iter()
+        .map(|c| c.width(max_line) as u16)
+        .sum()
 }
 
 /// Compute the `VisibleRange` for a pane given its current state.
@@ -67,7 +70,15 @@ pub fn compute_viewport(
     // trailing `\n`, so ropey always reports one extra empty line at index
     // `last_line_idx`. Real content is lines 0..last_line_idx (exclusive), so
     // `last_line_idx` is the correct exclusive upper bound for the range.
-    let line_range = compute_line_range(rope, top_line, top_skip, viewport.height, content_width, wrap_mode, last_line_idx);
+    let line_range = compute_line_range(
+        rope,
+        top_line,
+        top_skip,
+        viewport.height,
+        content_width,
+        wrap_mode,
+        last_line_idx,
+    );
 
     VisibleRange {
         line_range,
@@ -141,17 +152,21 @@ fn estimate_line_rows(rope: &Rope, line_idx: usize, content_width: u16) -> usize
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::GutterCell;
     use crate::providers::GutterColumn;
     use crate::types::{EditorMode, RowKind, Scope};
-    use crate::providers::GutterCell;
 
     struct _NoGutter;
     impl GutterColumn for _NoGutter {
-        fn width(&self, _: usize) -> u8 { 0 }
+        fn width(&self, _: usize) -> u8 {
+            0
+        }
         fn render_row(&self, _: RowKind, _: EditorMode, _: usize) -> GutterCell {
             GutterCell::blank(Scope("ui.linenr"))
         }
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
     }
 
     #[test]

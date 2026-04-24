@@ -12,7 +12,12 @@ fn goto_first_line_records_jump() {
     // `gg` — goto first line.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
-    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 0);
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head),
+        0
+    );
 
     // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
@@ -81,7 +86,12 @@ fn large_motion_records_jump() {
     ed.handle_key(key('1'));
     ed.handle_key(key('0'));
     ed.handle_key(key('j'));
-    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 10);
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head),
+        10
+    );
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
@@ -100,7 +110,12 @@ fn search_confirm_records_jump() {
     }
     ed.handle_key(key_enter());
     assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.doc().text().char_to_line(ed.current_selections().primary().head), 15);
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head),
+        15
+    );
 
     // jump-backward should return to line 0.
     ed.handle_key(key_ctrl('o'));
@@ -179,11 +194,19 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
 
     // jump-backward should go back to first match.
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(state(&ed), first_match, "jump-backward should return to first match");
+    assert_eq!(
+        state(&ed),
+        first_match,
+        "jump-backward should return to first match"
+    );
 
     // jump-forward MUST return to the second match (the pre-jump-backward position).
     ed.handle_key(key_ctrl('i'));
-    assert_eq!(state(&ed), second_match, "jump-forward should return to second match");
+    assert_eq!(
+        state(&ed),
+        second_match,
+        "jump-forward should return to second match"
+    );
 }
 
 /// search-next + jump-backward + jump-forward round-trip, all matches on different lines.
@@ -212,4 +235,3 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
     ed.handle_key(key_ctrl('i'));
     assert_eq!(state(&ed), state_after_n2);
 }
-

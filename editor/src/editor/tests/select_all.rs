@@ -15,7 +15,11 @@ fn select_all_matches_creates_selection_per_match() {
     }
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.current_selections().len(), 2, "one selection per 'ab' match");
+    assert_eq!(
+        ed.current_selections().len(),
+        2,
+        "one selection per 'ab' match"
+    );
     let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
     assert_eq!(sels[0].start(), 0);
     assert_eq!(sels[1].start(), 6);
@@ -41,7 +45,8 @@ fn select_all_matches_no_search_is_noop() {
 fn select_all_matches_uses_search_register_fallback() {
     use crate::ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.registers.write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
+    ed.registers
+        .write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
     // No live regex — forces register fallback.
     assert!(ed.search_pattern().is_none());
 
@@ -60,7 +65,11 @@ fn select_all_matches_via_m_slash_keybind() {
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
     ed.handle_key(key('m'));
     ed.handle_key(key('/'));
-    assert_eq!(ed.current_selections().len(), 2, "m/ should select all 'ab' matches");
+    assert_eq!(
+        ed.current_selections().len(),
+        2,
+        "m/ should select all 'ab' matches"
+    );
 }
 
 // ── Use selection as search (*) ──────────────────────────────────────────────
@@ -111,13 +120,11 @@ fn star_escapes_metacharacters() {
     // Select "foo.bar" first via `v$` equivalent — use the whole line.
     // Easier: just set up a selection covering "foo.bar".
     let buf = crate::core::text::Text::from("foo.bar\n");
-    let sels = crate::core::selection::SelectionSet::single(
-        crate::core::selection::Selection::new(0, 6),
-    );
+    let sels =
+        crate::core::selection::SelectionSet::single(crate::core::selection::Selection::new(0, 6));
     *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
     ed.set_current_selections(sels);
 
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec!["foo\\.bar"]);
 }
-

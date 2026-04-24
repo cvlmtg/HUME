@@ -3,8 +3,8 @@ use pretty_assertions::assert_eq;
 
 // ── Phase 6 — BufferStore + buffer choke-points ───────────────────────────────
 
-use crate::core::text::Text;
 use crate::core::selection::SelectionSet;
+use crate::core::text::Text;
 
 /// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
 #[test]
@@ -15,7 +15,10 @@ fn p6_open_buffer_seeds_pane_state() {
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
     // pane_state should be seeded for bid2 on the focused pane.
-    assert!(ed.selections_for(ed.focused_pane_id, bid2).is_some(), "pane_state seeded for new buffer");
+    assert!(
+        ed.selections_for(ed.focused_pane_id, bid2).is_some(),
+        "pane_state seeded for new buffer"
+    );
 }
 
 /// `close_buffer` with one other buffer redirects panes and frees the slot.
@@ -29,8 +32,15 @@ fn p6_close_buffer_redirects_to_mru() {
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta — should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta);
-    assert_eq!(ed.focused_buffer_id(), bid_alpha, "focused pane redirected to alpha after closing beta");
-    assert!(ed.buffers.try_get(bid_beta).is_none(), "beta slot freed from BufferStore");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_alpha,
+        "focused pane redirected to alpha after closing beta"
+    );
+    assert!(
+        ed.buffers.try_get(bid_beta).is_none(),
+        "beta slot freed from BufferStore"
+    );
 }
 
 /// `close_buffer` on the last buffer replaces it with scratch (Case C).
@@ -40,14 +50,25 @@ fn p6_close_last_buffer_becomes_scratch() {
     let bid = ed.focused_buffer_id();
     ed.close_buffer(bid);
     // Buffer id stays valid but content is now scratch.
-    assert_eq!(ed.focused_buffer_id(), bid, "same buffer id after scratch replacement");
-    assert_eq!(ed.doc().text().to_string(), "\n", "scratch buffer has structural newline only");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "same buffer id after scratch replacement"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n",
+        "scratch buffer has structural newline only"
+    );
 }
 
 /// `replace_buffer_in_place` reseeds selections and clears scrolls.
 #[test]
 fn p6_replace_buffer_in_place_reseeds() {
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("old content\n"), SelectionSet::default()));
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("old content\n"),
+        SelectionSet::default(),
+    ));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     ed.apply_motion(|b, _sels| {
@@ -58,7 +79,11 @@ fn p6_replace_buffer_in_place_reseeds() {
     ed.replace_buffer_in_place(bid, replacement);
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_selections();
-    assert_eq!(sels.primary().head, 0, "selections reset after replace_buffer_in_place");
+    assert_eq!(
+        sels.primary().head,
+        0,
+        "selections reset after replace_buffer_in_place"
+    );
     assert_eq!(ed.doc().text().to_string(), "new content\n");
 }
 
@@ -91,8 +116,15 @@ fn p6_bd_closes_focused_buffer() {
     let bid_second = ed.open_buffer(Buffer::new(Text::from("second\n"), SelectionSet::default()));
     ed.switch_to_buffer_with_jump(bid_second);
     let _ = ed.execute_typed("bd", None);
-    assert_eq!(ed.focused_buffer_id(), bid_first, "bd closed second, focused pane moved to first");
-    assert!(ed.buffers.try_get(bid_second).is_none(), "second buffer freed");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_first,
+        "bd closed second, focused pane moved to first"
+    );
+    assert!(
+        ed.buffers.try_get(bid_second).is_none(),
+        "second buffer freed"
+    );
 }
 
 /// `:bd!` closes a dirty buffer without error.
@@ -109,7 +141,10 @@ fn p6_bd_force_closes_dirty_buffer() {
     assert!(ed.doc().is_dirty(), "buffer should be dirty after edit");
     // :bd without force should fail.
     let result = ed.execute_typed("bd", None);
-    assert!(result.is_err(), ":bd on dirty buffer without force should fail");
+    assert!(
+        result.is_err(),
+        ":bd on dirty buffer without force should fail"
+    );
     // :bd! should succeed.
     let result = ed.execute_typed("bd!", None);
     assert!(result.is_ok(), ":bd! should close dirty buffer");
@@ -128,12 +163,17 @@ fn colon_split_vsplit_are_stubs() {
         let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();
         assert!(
             err.0.contains("not yet implemented"),
-            ":{cmd} must report not-yet-implemented, got: {:?}", err.0,
+            ":{cmd} must report not-yet-implemented, got: {:?}",
+            err.0,
         );
         // execute_typed also sets status_msg so the user sees the error.
         assert!(
-            ed.status_msg.as_deref().unwrap_or("").contains("not yet implemented"),
-            ":{cmd} must set error status: {:?}", ed.status_msg,
+            ed.status_msg
+                .as_deref()
+                .unwrap_or("")
+                .contains("not yet implemented"),
+            ":{cmd} must set error status: {:?}",
+            ed.status_msg,
         );
     }
 }
@@ -153,15 +193,30 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     // Second pane also views A.
     let pid_2 = ed.open_pane(bid_a);
 
-    assert_eq!(ed.engine_view.panes[pid_1].buffer_id, bid_a, "sanity: pid_1 views A");
-    assert_eq!(ed.engine_view.panes[pid_2].buffer_id, bid_a, "sanity: pid_2 views A");
+    assert_eq!(
+        ed.engine_view.panes[pid_1].buffer_id, bid_a,
+        "sanity: pid_1 views A"
+    );
+    assert_eq!(
+        ed.engine_view.panes[pid_2].buffer_id, bid_a,
+        "sanity: pid_2 views A"
+    );
 
     // Close A; mru_excluding(A) == B (B was opened last, so it's at the MRU tail).
     ed.close_buffer(bid_a);
 
-    assert_eq!(ed.engine_view.panes[pid_1].buffer_id, bid_b, "focused pane redirected to B");
-    assert_eq!(ed.engine_view.panes[pid_2].buffer_id, bid_b, "non-focused pane redirected to B");
-    assert!(ed.buffers.try_get(bid_a).is_none(), "closed buffer freed from store");
+    assert_eq!(
+        ed.engine_view.panes[pid_1].buffer_id, bid_b,
+        "focused pane redirected to B"
+    );
+    assert_eq!(
+        ed.engine_view.panes[pid_2].buffer_id, bid_b,
+        "non-focused pane redirected to B"
+    );
+    assert!(
+        ed.buffers.try_get(bid_a).is_none(),
+        "closed buffer freed from store"
+    );
 }
 
 /// `:e path` opens a new buffer when the file is not already open.
@@ -172,15 +227,25 @@ fn p6_edit_opens_new_buffer() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "file content\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("scratch\n"),
+        SelectionSet::default(),
+    ));
     let initial_bid = ed.focused_buffer_id();
     let canonical = std::fs::canonicalize(&path).unwrap();
     let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(result.is_ok(), ":e should succeed for readable file");
-    assert_ne!(ed.focused_buffer_id(), initial_bid, ":e opened a new buffer");
+    assert_ne!(
+        ed.focused_buffer_id(),
+        initial_bid,
+        ":e opened a new buffer"
+    );
     assert_eq!(ed.doc().text().to_string(), "file content\n");
     // Path stored correctly.
-    assert_eq!(ed.doc().path.as_deref().map(|p| p.as_path()), Some(canonical.as_path()));
+    assert_eq!(
+        ed.doc().path.as_deref().map(|p| p.as_path()),
+        Some(canonical.as_path())
+    );
 }
 
 /// `:e path` deduplicates: switching to an already-open file doesn't create a new buffer.
@@ -191,7 +256,10 @@ fn p6_edit_deduplicates_open_file() {
     let path = dir.path().join("dedup.txt");
     std::fs::write(&path, "dedup\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("scratch\n"),
+        SelectionSet::default(),
+    ));
     // Open the file once.
     let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r1.is_ok());
@@ -203,8 +271,16 @@ fn p6_edit_deduplicates_open_file() {
     // Open the same file again — should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r2.is_ok());
-    assert_eq!(ed.focused_buffer_id(), bid_first_open, "dedup: switched to existing buffer");
-    assert_eq!(ed.buffers.len(), count_after_first, "no new buffer created on dedup");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_first_open,
+        "dedup: switched to existing buffer"
+    );
+    assert_eq!(
+        ed.buffers.len(),
+        count_after_first,
+        "no new buffer created on dedup"
+    );
 }
 
 /// `:e!` reloads the current file even when dirty.
@@ -215,7 +291,10 @@ fn p6_edit_force_reloads_current_file() {
     let path = dir.path().join("reload.txt");
     std::fs::write(&path, "original\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(Text::from("scratch\n"), SelectionSet::default()));
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("scratch\n"),
+        SelectionSet::default(),
+    ));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     // Dirty the buffer.
     ed.handle_key(key('i'));
@@ -228,7 +307,10 @@ fn p6_edit_force_reloads_current_file() {
     // :e! should reload.
     let r = ed.execute_typed("e!", None);
     assert!(r.is_ok(), ":e! should reload");
-    assert_eq!(ed.doc().text().to_string(), "original\n", "reloaded from disk");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "original\n",
+        "reloaded from disk"
+    );
     assert!(!ed.doc().is_dirty(), "not dirty after reload");
 }
-

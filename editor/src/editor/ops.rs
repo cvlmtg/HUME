@@ -34,7 +34,10 @@ pub(crate) fn open_or_dedup(
         return Ok((existing, false));
     }
     let doc = Buffer::from_file(canonical)?;
-    Ok((open_buffer(ev, buffers, pane_state, focused_pane_id, doc), true))
+    Ok((
+        open_buffer(ev, buffers, pane_state, focused_pane_id, doc),
+        true,
+    ))
 }
 
 /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
@@ -88,8 +91,14 @@ pub(crate) fn switch_to_buffer_with_jump(
     current_buffer_id: BufferId,
     target: BufferId,
 ) {
-    let sels = pane_state[focused_pane_id][current_buffer_id].selections.clone();
-    let entry = JumpEntry::new(sels, buffers.get(current_buffer_id).text(), current_buffer_id);
+    let sels = pane_state[focused_pane_id][current_buffer_id]
+        .selections
+        .clone();
+    let entry = JumpEntry::new(
+        sels,
+        buffers.get(current_buffer_id).text(),
+        current_buffer_id,
+    );
     pane_jumps[focused_pane_id].push(entry);
     switch_pane_to_buffer(ev, buffers, pane_state, focused_pane_id, target);
 }
@@ -114,7 +123,8 @@ pub(crate) fn close_buffer(
     match buffers.mru_excluding(id) {
         Some(next) => {
             // Collect before mutating (borrow checker); n≈1 in the single-pane case.
-            let panes_to_redirect: Vec<PaneId> = ev.panes
+            let panes_to_redirect: Vec<PaneId> = ev
+                .panes
                 .iter()
                 .filter(|(_, p)| p.buffer_id == id)
                 .map(|(pid, _)| pid)
@@ -154,7 +164,8 @@ pub(crate) fn replace_buffer_in_place(
     );
     *buffers.get_mut(id) = new_doc;
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
-    let pane_ids: Vec<PaneId> = ev.panes
+    let pane_ids: Vec<PaneId> = ev
+        .panes
         .iter()
         .filter(|(_, p)| p.buffer_id == id)
         .map(|(pid, _)| pid)

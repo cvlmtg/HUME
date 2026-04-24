@@ -8,54 +8,56 @@ use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 
 use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
 use engine::pane::{Pane, ViewportState, WhitespaceConfig, WrapMode};
-use engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId, PaneRenderSettings, RenderContext, SharedBuffer};
+use engine::pipeline::{
+    BufferId, EngineView, LayoutTree, PaneId, PaneRenderSettings, RenderContext, SharedBuffer,
+};
 use engine::types::{EditorMode, Selection as EngineSelection};
 
 use slotmap::SecondaryMap;
 
-use crate::core::changeset::ChangeSet;
-use crate::core::text::Text;
 use self::registry::CommandRegistry;
+use crate::core::changeset::ChangeSet;
+use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
 use crate::editor::buffer::{Buffer, IntoApplyResult};
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::ops::motion::FindKind;
+use crate::ops::pair::find_bracket_pair;
 use crate::ops::register::RegisterSet;
 use crate::ops::search::{find_all_matches, search_match_info};
-use crate::ops::pair::find_bracket_pair;
-use crate::core::selection::{Selection, SelectionSet};
-use crate::settings::EditorSettings;
 use crate::os::terminal::Term;
-use crate::scripting::{EditorSteelRefs, SteelCmdDef, hooks::HookId};
 use crate::scripting::builtins::ids::SteelBufferId;
+use crate::scripting::{EditorSteelRefs, SteelCmdDef, hooks::HookId};
+use crate::settings::EditorSettings;
 use steel::rvals::IntoSteelVal as _;
 
 use self::keymap::{Keymap, WaitCharPending};
 
 pub(crate) mod buffer;
 pub(crate) mod buffer_store;
-pub(crate) mod completion;
-pub(crate) mod ops;
-pub(crate) mod pane_state;
-mod registry;
 mod commands;
+pub(crate) mod completion;
 pub(crate) mod keymap;
 mod mappings;
 mod message_log;
 mod minibuf;
 mod mouse;
+pub(crate) mod ops;
+pub(crate) mod pane_state;
+mod registry;
 pub(super) mod scroll;
 mod visual_move;
 
-pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
-use crate::core::search_state::{SearchPattern, SearchMatches};
 use crate::core::search_state::SearchCursor;
+pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
+use crate::core::search_state::{SearchMatches, SearchPattern};
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
 
-pub(crate) use message_log::{Severity, ScratchView};
 use message_log::MessageLog;
+pub(crate) use message_log::{ScratchView, Severity};
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
@@ -242,7 +244,6 @@ pub(crate) struct Editor {
     pub(crate) kitty_enabled: bool,
 
     // ── Visual-line movement ──────────────────────────────────────────────────
-
     /// Reusable scratch buffer for format operations in visual-line movement.
     ///
     /// Allocated once and reused every j/k press to avoid per-keypress
@@ -250,7 +251,6 @@ pub(crate) struct Editor {
     pub(super) motion_format_scratch: engine::format::FormatScratch,
 
     // ── Dot-repeat fields ─────────────────────────────────────────────────────
-
     /// The last repeatable editing action, available for replay via `.`.
     /// `None` until the user performs a repeatable command.
     pub(super) last_action: Option<RepeatableAction>,
@@ -267,7 +267,6 @@ pub(crate) struct Editor {
     pub(super) explicit_count: bool,
 
     // ── Keyboard macro fields ─────────────────────────────────────────────────
-
     /// Active macro recording session.
     ///
     /// `Some((register, keys))` while recording is in progress; `None` otherwise.
@@ -299,13 +298,11 @@ pub(crate) struct Editor {
     pub(super) is_replaying: bool,
 
     // ── Mouse ─────────────────────────────────────────────────────────────────
-
     /// Anchor char offset set on `MouseButton::Left` down when `mouse_select`
     /// is enabled. Cleared on mouse up.
     pub(super) mouse_drag_anchor: Option<usize>,
 
     // ── Scripting ────────────────────────────────────────────────────────────
-
     /// The embedded Steel scripting host.
     ///
     /// `None` until [`Editor::init_scripting`] is called (immediately after
@@ -314,7 +311,6 @@ pub(crate) struct Editor {
     pub(super) scripting: Option<crate::scripting::ScriptingHost>,
 
     // ── Working directory ─────────────────────────────────────────────────────
-
     /// Current working directory.
     ///
     /// Set at startup; updated by `:cd`. Avoids a `getcwd` syscall every frame.
@@ -325,7 +321,12 @@ pub(crate) struct Editor {
 #[cfg(test)]
 impl std::fmt::Debug for Editor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Editor(buf={:?}, mode={:?})", self.doc().text().to_string(), self.mode)
+        write!(
+            f,
+            "Editor(buf={:?}, mode={:?})",
+            self.doc().text().to_string(),
+            self.mode
+        )
     }
 }
 
@@ -338,11 +339,14 @@ impl std::fmt::Debug for Editor {
 fn write_pane_mirror(pane: &mut engine::pane::Pane, sels: &SelectionSet) {
     let primary_head = sels.primary().head;
     pane.selections.clear();
-    pane.selections.extend(
-        sels.iter_head_sorted()
-            .map(|s| EngineSelection { anchor: s.anchor, head: s.head }),
-    );
-    pane.primary_idx = pane.selections.iter()
+    pane.selections
+        .extend(sels.iter_head_sorted().map(|s| EngineSelection {
+            anchor: s.anchor,
+            head: s.head,
+        }));
+    pane.primary_idx = pane
+        .selections
+        .iter()
         .position(|s| s.head == primary_head)
         .unwrap_or(0);
 }
@@ -364,11 +368,13 @@ impl Editor {
 
         // Intern highlight scopes before registering providers.
         let bracket_scope = engine_view.registry.intern("ui.cursor.match");
-        let search_scope  = engine_view.registry.intern("ui.selection.search");
+        let search_scope = engine_view.registry.intern("ui.selection.search");
 
         // Register the shared highlight data arcs.
-        let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
-        let search_hl_data:  Arc<RwLock<Vec<(usize, usize, usize)>>> = Arc::new(RwLock::new(Vec::new()));
+        let bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
+            Arc::new(RwLock::new(Vec::new()));
+        let search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>> =
+            Arc::new(RwLock::new(Vec::new()));
         let completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>> =
             Arc::new(RwLock::new(None));
 
@@ -377,36 +383,44 @@ impl Editor {
 
         // Build the initial pane.
         let mut providers = engine::providers::ProviderSet::new();
-        providers.add_gutter_column(Box::new(
-            LineNumberColumn::with_style(EngineLineNumberStyle::Hybrid)
+        providers.add_gutter_column(Box::new(LineNumberColumn::with_style(
+            EngineLineNumberStyle::Hybrid,
+        )));
+        providers.add_highlight_source(Box::new(
+            crate::ui::highlight_providers::SharedHighlighter {
+                scope: bracket_scope,
+                tier: engine::providers::HighlightTier::BracketMatch,
+                data: Arc::clone(&bracket_hl_data),
+            },
         ));
-        providers.add_highlight_source(Box::new(crate::ui::highlight_providers::SharedHighlighter {
-            scope: bracket_scope,
-            tier: engine::providers::HighlightTier::BracketMatch,
-            data: Arc::clone(&bracket_hl_data),
-        }));
-        providers.add_highlight_source(Box::new(crate::ui::highlight_providers::SharedHighlighter {
-            scope: search_scope,
-            tier: engine::providers::HighlightTier::SearchMatch,
-            data: Arc::clone(&search_hl_data),
-        }));
+        providers.add_highlight_source(Box::new(
+            crate::ui::highlight_providers::SharedHighlighter {
+                scope: search_scope,
+                tier: engine::providers::HighlightTier::SearchMatch,
+                data: Arc::clone(&search_hl_data),
+            },
+        ));
         providers.add_overlay(Box::new(crate::ui::completion_overlay::CompletionOverlay {
             data: Arc::clone(&completion_view),
         }));
 
         let settings = EditorSettings::default();
 
-        let pane = Pane { providers, ..Pane::new(buffer_id) };
+        let pane = Pane {
+            providers,
+            ..Pane::new(buffer_id)
+        };
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
         let jump_list_capacity = settings.jump_list_capacity;
-        let history_capacity   = settings.history_capacity;
+        let history_capacity = settings.history_capacity;
 
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
         per_pane_bufs.insert(buffer_id, pane_state::fresh_from_buf(&doc));
-        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
+        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
+            SecondaryMap::new();
         pane_state.insert(pane_id, per_pane_bufs);
         let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
         pane_transient.insert(pane_id, PaneTransient::default());
@@ -443,7 +457,10 @@ impl Editor {
             search: SearchState::default(),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
-                m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
+                m.insert(
+                    pane_id,
+                    crate::core::jump_list::JumpList::new(jump_list_capacity),
+                );
                 m
             },
             history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
@@ -494,20 +511,31 @@ impl Editor {
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
+                let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+                    .selections
+                    .primary()
+                    .head;
                 let (vp, gutter_w) = {
                     let pane = &self.engine_view.panes[self.focused_pane_id];
-                    let gw = crate::cursor::gutter_width(pane.providers.gutter_columns(), self.doc().text().len_lines());
+                    let gw = crate::cursor::gutter_width(
+                        pane.providers.gutter_columns(),
+                        self.doc().text().len_lines(),
+                    );
                     (pane.viewport.clone(), gw)
                 };
                 let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 crate::cursor::screen_pos(
-                    &vp, self.doc().text().rope(), cursor_char,
-                    &wrap_mode, tab_width, &whitespace,
+                    &vp,
+                    self.doc().text().rope(),
+                    cursor_char,
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
                     &mut ctx,
-                ).map(|(col, row)| (col + gutter_w, row))
+                )
+                .map(|(col, row)| (col + gutter_w, row))
             } else {
                 None
             };
@@ -525,22 +553,38 @@ impl Editor {
                 self.doc().text().rope()
             };
             let buffer_id = self.focused_buffer_id();
-            let pane_id   = self.focused_pane_id;
+            let pane_id = self.focused_pane_id;
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
             let pane_settings = {
-                let mode = if self.scratch_view.is_some() { EditorMode::Normal } else { self.mode };
-                let wrap_mode  = self.doc().overrides.wrap_mode(&self.settings);
-                let tab_width  = self.doc().overrides.tab_width(&self.settings);
+                let mode = if self.scratch_view.is_some() {
+                    EditorMode::Normal
+                } else {
+                    self.mode
+                };
+                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
+                let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
-                PaneRenderSettings { mode, wrap_mode, tab_width, whitespace }
+                PaneRenderSettings {
+                    mode,
+                    wrap_mode,
+                    tab_width,
+                    whitespace,
+                }
             };
             let engine_view = &self.engine_view;
             term.draw(|frame| {
                 engine_view.render(
-                    frame.area(), frame.buffer_mut(),
+                    frame.area(),
+                    frame.buffer_mut(),
                     |bid| if bid == buffer_id { Some(rope) } else { None },
-                    |pid| if pid == pane_id { pane_settings.clone() } else { PaneRenderSettings::default() },
+                    |pid| {
+                        if pid == pane_id {
+                            pane_settings.clone()
+                        } else {
+                            PaneRenderSettings::default()
+                        }
+                    },
                     Some(&statusline),
                     &mut ctx,
                 );
@@ -591,7 +635,9 @@ impl Editor {
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
             self.sync_search_cache();
-            if self.should_quit { break; }
+            if self.should_quit {
+                break;
+            }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
         crate::os::terminal::reset_cursor_shape()?;
@@ -608,12 +654,17 @@ impl Editor {
     /// written here, immediately before every `render()` call.  Mode and display
     /// settings are resolved lazily via the `get_pane_settings` closure passed to
     /// `render()`.
-    fn prepare_frame(&mut self, terminal_width: u16, terminal_height: u16, ctx: &mut RenderContext) {
+    fn prepare_frame(
+        &mut self,
+        terminal_width: u16,
+        terminal_height: u16,
+        ctx: &mut RenderContext,
+    ) {
         // 1. Sync viewport dimensions.
         // Engine reserves 1 row for the statusline; the pane gets the rest.
         {
             let vp = self.viewport_mut();
-            vp.width  = terminal_width;
+            vp.width = terminal_width;
             vp.height = terminal_height.saturating_sub(1);
         }
 
@@ -633,7 +684,17 @@ impl Editor {
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, &wrap_mode, tab_width, &whitespace, v_margin, h_margin);
+            scroll_into_view(
+                pane,
+                rope,
+                cursor_char,
+                &mut ctx.cursor_format,
+                &wrap_mode,
+                tab_width,
+                &whitespace,
+                v_margin,
+                h_margin,
+            );
             // No highlight updates for scratch view — no search or bracket matches.
         } else {
             // ── Normal document path ──────────────────────────────────────────
@@ -641,11 +702,16 @@ impl Editor {
             // 3. Sync line-number style provider (depends on buffer overrides).
             {
                 let ln_style = self.doc().overrides.line_number_style(&self.settings);
-                self.engine_view.panes[self.focused_pane_id].providers.sync_line_number_style(ln_style);
+                self.engine_view.panes[self.focused_pane_id]
+                    .providers
+                    .sync_line_number_style(ln_style);
             }
 
             // 4. Scroll so the primary cursor stays visible.
-            let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
+            let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+                .selections
+                .primary()
+                .head;
             let v_margin = self.settings.scroll_margin;
             let h_margin = self.settings.scroll_margin_h;
             let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
@@ -655,7 +721,17 @@ impl Editor {
                 let buf_id = self.focused_buffer_id();
                 let rope = self.buffers.get(buf_id).text().rope();
                 let pane = &mut self.engine_view.panes[self.focused_pane_id];
-                scroll_into_view(pane, rope, cursor_char, &mut ctx.cursor_format, &wrap_mode, tab_width, &whitespace, v_margin, h_margin);
+                scroll_into_view(
+                    pane,
+                    rope,
+                    cursor_char,
+                    &mut ctx.cursor_format,
+                    &wrap_mode,
+                    tab_width,
+                    &whitespace,
+                    v_margin,
+                    h_margin,
+                );
             }
 
             // 5. Sync highlight data (search matches, bracket matches) to shared
@@ -694,7 +770,8 @@ impl Editor {
     /// report each one.  Collected into a temporary vec first to satisfy the
     /// borrow checker (both `self.scripting` and `self` are `&mut`).
     pub(crate) fn flush_script_messages(&mut self) {
-        let msgs = self.scripting
+        let msgs = self
+            .scripting
             .as_mut()
             .map(|h| h.pending_messages.drain(..).collect::<Vec<_>>())
             .unwrap_or_default();
@@ -719,7 +796,11 @@ impl Editor {
     /// hook bodies are dispatched after all handlers return.  Errors from
     /// handlers are reported as `Severity::Error`.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
-        if self.scripting.as_ref().is_none_or(|h| h.hooks.is_empty_for(hook_id)) {
+        if self
+            .scripting
+            .as_ref()
+            .is_none_or(|h| h.hooks.is_empty_for(hook_id))
+        {
             return;
         }
         let pid = self.focused_pane_id;
@@ -727,16 +808,17 @@ impl Editor {
         let result = {
             let host = self.scripting.as_mut().expect("checked above");
             host.fire_hook(
-                hook_id, args,
+                hook_id,
+                args,
                 EditorSteelRefs {
-                    settings:          &mut self.settings,
-                    keymap:            &mut self.keymap,
-                    focused_pane_id:   pid,
+                    settings: &mut self.settings,
+                    keymap: &mut self.keymap,
+                    focused_pane_id: pid,
                     focused_buffer_id: bid,
-                    buffers:           Some(&mut self.buffers),
-                    engine_view:       Some(&mut self.engine_view),
-                    pane_state:        Some(&mut self.pane_state),
-                    pane_jumps:        Some(&mut self.pane_jumps),
+                    buffers: Some(&mut self.buffers),
+                    engine_view: Some(&mut self.engine_view),
+                    pane_state: Some(&mut self.pane_state),
+                    pane_jumps: Some(&mut self.pane_jumps),
                 },
             )
         };
@@ -763,7 +845,10 @@ impl Editor {
         // nor HOME (APPDATA on Windows) is set — there is no meaningful place
         // to look for init.scm, so we skip scripting entirely and log a warning.
         let Some(config_dir) = crate::os::dirs::config_dir() else {
-            self.report(Severity::Warning, "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into());
+            self.report(
+                Severity::Warning,
+                "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
+            );
             return;
         };
         let init_path = config_dir.join("init.scm");
@@ -775,12 +860,24 @@ impl Editor {
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
         match &host.data_dir {
-            Some(d) => self.report(Severity::Trace, format!("scripting: data dir = {}", d.display())),
-            None => self.report(Severity::Warning, "scripting: no data directory — HOME/APPDATA unset; user plugins unavailable".into()),
+            Some(d) => self.report(
+                Severity::Trace,
+                format!("scripting: data dir = {}", d.display()),
+            ),
+            None => self.report(
+                Severity::Warning,
+                "scripting: no data directory — HOME/APPDATA unset; user plugins unavailable"
+                    .into(),
+            ),
         }
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
-        match host.eval_init(&init_path, &mut self.settings, &mut self.keymap, builtin_names) {
+        match host.eval_init(
+            &init_path,
+            &mut self.settings,
+            &mut self.keymap,
+            builtin_names,
+        ) {
             Ok(cmds) => self.register_steel_cmds(cmds),
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
@@ -812,9 +909,17 @@ impl Editor {
     ///
     /// Called once per frame from `prepare_frame`, before `render()`.
     pub(crate) fn sync_all_pane_mirrors(&mut self) {
-        let Self { pane_state, engine_view, scratch_view, focused_pane_id, .. } = &mut *self;
+        let Self {
+            pane_state,
+            engine_view,
+            scratch_view,
+            focused_pane_id,
+            ..
+        } = &mut *self;
         for (pid, pane) in engine_view.panes.iter_mut() {
-            if pid == *focused_pane_id && let Some(sv) = scratch_view.as_ref() {
+            if pid == *focused_pane_id
+                && let Some(sv) = scratch_view.as_ref()
+            {
                 write_pane_mirror(pane, &sv.sels);
                 continue;
             }
@@ -828,7 +933,10 @@ impl Editor {
 
     /// Accessor for the focused buffer's active search pattern.
     pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
-        self.buffers.get(self.focused_buffer_id()).search_pattern.as_ref()
+        self.buffers
+            .get(self.focused_buffer_id())
+            .search_pattern
+            .as_ref()
     }
 
     /// Accessor for the focused buffer's match cache.
@@ -868,7 +976,9 @@ impl Editor {
     pub(super) fn update_buffer_matches(&mut self, bid: BufferId) {
         {
             let buf = self.buffers.get(bid);
-            let Some(sp) = buf.search_pattern.as_ref() else { return; };
+            let Some(sp) = buf.search_pattern.as_ref() else {
+                return;
+            };
             let sm = &buf.search_matches;
             if sm.cache == Some((buf.revision_id(), sp.pattern_str.clone())) {
                 return;
@@ -877,7 +987,11 @@ impl Editor {
         let (pattern_str, regex, revision) = {
             let buf = self.buffers.get(bid);
             let sp = buf.search_pattern.as_ref().expect("checked above");
-            (sp.pattern_str.clone(), Arc::clone(&sp.regex), buf.revision_id())
+            (
+                sp.pattern_str.clone(),
+                Arc::clone(&sp.regex),
+                buf.revision_id(),
+            )
         };
 
         let matches = find_all_matches(self.buffers.get(bid).text(), &regex);
@@ -948,11 +1062,17 @@ impl Editor {
                 // Matches are sorted by document order. Binary-search to the first
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
-                let matches = &self.buffers.get(self.focused_buffer_id()).search_matches.matches;
+                let matches = &self
+                    .buffers
+                    .get(self.focused_buffer_id())
+                    .search_matches
+                    .matches;
                 let first = matches.partition_point(|&(start, _)| start < top_char);
                 for &(start, end_incl) in &matches[first..] {
                     let (line, byte_start) = char_to_line_byte(buf, start);
-                    if line > bot_line { break; }
+                    if line > bot_line {
+                        break;
+                    }
                     // end_incl is inclusive char offset; +1 makes it exclusive in chars,
                     // then convert to byte.
                     let end_char = (end_incl + 1).min(buf.len_chars());
@@ -967,7 +1087,10 @@ impl Editor {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.mode != EditorMode::Insert {
-                let head = self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections.primary().head;
+                let head = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+                    .selections
+                    .primary()
+                    .head;
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
@@ -998,20 +1121,28 @@ impl Editor {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if self.completion.is_none()
-            && self.completion_view.read().expect("RwLock not poisoned").is_none()
+            && self
+                .completion_view
+                .read()
+                .expect("RwLock not poisoned")
+                .is_none()
         {
             return;
         }
         use unicode_width::UnicodeWidthChar as _;
         use unicode_width::UnicodeWidthStr as _;
         let view = self.completion.as_ref().map(|state| {
-            let anchor_col = self.minibuf.as_ref().map(|mb| {
-                let pad: u16 = 1;
-                let prompt_w = mb.prompt.width().unwrap_or(1) as u16;
-                let safe_end = state.span_start.min(mb.input.len());
-                let token_col = mb.input[..safe_end].width() as u16;
-                pad + prompt_w + token_col
-            }).unwrap_or(0);
+            let anchor_col = self
+                .minibuf
+                .as_ref()
+                .map(|mb| {
+                    let pad: u16 = 1;
+                    let prompt_w = mb.prompt.width().unwrap_or(1) as u16;
+                    let safe_end = state.span_start.min(mb.input.len());
+                    let token_col = mb.input[..safe_end].width() as u16;
+                    pad + prompt_w + token_col
+                })
+                .unwrap_or(0);
             crate::ui::completion_overlay::CompletionView {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
@@ -1031,9 +1162,18 @@ impl Editor {
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
         let old = self.mode;
         self.mode = mode;
-        if old != mode && self.scripting.as_ref().is_some_and(|h| !h.hooks.is_empty_for(HookId::OnModeChange)) {
-            let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
-            let new_val = mode_name(mode).into_steelval().expect("mode str into_steelval");
+        if old != mode
+            && self
+                .scripting
+                .as_ref()
+                .is_some_and(|h| !h.hooks.is_empty_for(HookId::OnModeChange))
+        {
+            let old_val = mode_name(old)
+                .into_steelval()
+                .expect("mode str into_steelval");
+            let new_val = mode_name(mode)
+                .into_steelval()
+                .expect("mode str into_steelval");
             self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
         }
     }
@@ -1095,14 +1235,18 @@ impl Editor {
         let focused = self.focused_pane_id;
 
         // Collect affected pane IDs before mutating to satisfy the borrow checker.
-        let affected: Vec<PaneId> = self.pane_state.iter()
+        let affected: Vec<PaneId> = self
+            .pane_state
+            .iter()
             .filter_map(|(pid, buf_map)| {
                 (pid != focused && buf_map.contains_key(buf_id)).then_some(pid)
             })
             .collect();
 
         for pid in affected {
-            self.pane_state[pid][buf_id].selections.translate_in_place(cs, rope_pre);
+            self.pane_state[pid][buf_id]
+                .selections
+                .translate_in_place(cs, rope_pre);
         }
     }
 
@@ -1174,7 +1318,9 @@ impl Editor {
     }
 
     fn is_group_open_current(&self) -> bool {
-        self.pane_state[self.focused_pane_id][self.focused_buffer_id()].edit_group.is_some()
+        self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+            .edit_group
+            .is_some()
     }
 
     fn begin_edit_group_current(&mut self) {
@@ -1210,7 +1356,9 @@ impl Editor {
     pub(super) fn begin_insert_session(&mut self) {
         if !self.is_group_open_current() {
             self.begin_edit_group_current();
-            self.insert_session = Some(InsertSession { keystrokes: Vec::new() });
+            self.insert_session = Some(InsertSession {
+                keystrokes: Vec::new(),
+            });
         }
         self.mode = Mode::Insert;
     }
@@ -1256,7 +1404,9 @@ impl Editor {
         self.is_replaying = true;
         while let Some(key) = self.replay_queue.pop_front() {
             self.handle_key(key);
-            if self.should_quit { break; }
+            if self.should_quit {
+                break;
+            }
         }
         self.is_replaying = false;
         self.last_action = saved_action;
@@ -1269,15 +1419,21 @@ impl Editor {
     pub(super) fn register_steel_cmds(&mut self, defs: impl IntoIterator<Item = SteelCmdDef>) {
         for def in defs {
             if self.registry.get_mappable(&def.name).is_some() {
-                self.report(Severity::Error, format!(
-                    "define-command!: '{}' conflicts with existing command", def.name));
+                self.report(
+                    Severity::Error,
+                    format!(
+                        "define-command!: '{}' conflicts with existing command",
+                        def.name
+                    ),
+                );
             } else {
-                self.registry.register(registry::MappableCommand::SteelBacked {
-                    name: def.name.into(),
-                    doc: def.doc.into(),
-                    steel_proc: def.steel_proc,
-                    extendable: def.extendable,
-                });
+                self.registry
+                    .register(registry::MappableCommand::SteelBacked {
+                        name: def.name.into(),
+                        doc: def.doc.into(),
+                        steel_proc: def.steel_proc,
+                        extendable: def.extendable,
+                    });
             }
         }
     }
@@ -1306,7 +1462,10 @@ impl Editor {
 
     /// Dedup-open a canonicalized path: returns `(id, false)` if already open,
     /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
-    pub(super) fn open_or_dedup(&mut self, canonical: &std::path::Path) -> std::io::Result<(BufferId, bool)> {
+    pub(super) fn open_or_dedup(
+        &mut self,
+        canonical: &std::path::Path,
+    ) -> std::io::Result<(BufferId, bool)> {
         if let Some(existing) = self.buffers.find_by_path(canonical) {
             return Ok((existing, false));
         }
@@ -1317,8 +1476,11 @@ impl Editor {
     /// `pane_state`, and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = ops::open_buffer(
-            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
-            self.focused_pane_id, doc,
+            &mut self.engine_view,
+            &mut self.buffers,
+            &mut self.pane_state,
+            self.focused_pane_id,
+            doc,
         );
         let val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
@@ -1332,8 +1494,12 @@ impl Editor {
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
         ops::close_buffer(
-            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
-            &mut self.pane_jumps, self.focused_pane_id, id,
+            &mut self.engine_view,
+            &mut self.buffers,
+            &mut self.pane_state,
+            &mut self.pane_jumps,
+            self.focused_pane_id,
+            id,
         );
         // Fire with the ID that was closed, not the new current buffer.
         let val = SteelBufferId(id).into_steel_val();
@@ -1346,15 +1512,25 @@ impl Editor {
     /// (enforced by debug_assert — `Buffer::from_file` satisfies this by construction).
     pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
         ops::replace_buffer_in_place(
-            &mut self.engine_view, &mut self.buffers, &mut self.pane_state,
-            &mut self.pane_jumps, id, new_doc,
+            &mut self.engine_view,
+            &mut self.buffers,
+            &mut self.pane_state,
+            &mut self.pane_jumps,
+            id,
+            new_doc,
         );
     }
 
     /// Redirect the focused pane to `target` without recording a jump.
     pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.focused_pane_id;
-        ops::switch_pane_to_buffer(&mut self.engine_view, &self.buffers, &mut self.pane_state, pid, target);
+        ops::switch_pane_to_buffer(
+            &mut self.engine_view,
+            &self.buffers,
+            &mut self.pane_state,
+            pid,
+            target,
+        );
     }
 
     /// Redirect the focused pane to `target`, recording the outgoing position
@@ -1365,8 +1541,13 @@ impl Editor {
     pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
         let current = self.focused_buffer_id();
         ops::switch_to_buffer_with_jump(
-            &mut self.engine_view, &self.buffers, &mut self.pane_state,
-            &mut self.pane_jumps, self.focused_pane_id, current, target,
+            &mut self.engine_view,
+            &self.buffers,
+            &mut self.pane_state,
+            &mut self.pane_jumps,
+            self.focused_pane_id,
+            current,
+            target,
         );
     }
 
@@ -1396,7 +1577,7 @@ impl Editor {
         let buffer_id = engine_view.buffers.insert(SharedBuffer::new());
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
-        let history_capacity   = settings.history_capacity;
+        let history_capacity = settings.history_capacity;
         let pane = Pane::new(buffer_id);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
@@ -1405,7 +1586,8 @@ impl Editor {
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
 
-        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> = SecondaryMap::new();
+        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
+            SecondaryMap::new();
         pane_state.insert(pane_id, SecondaryMap::new());
         pane_state::ensure(&mut pane_state, &buffers, pane_id, buffer_id);
         let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
@@ -1437,7 +1619,10 @@ impl Editor {
             search: SearchState::default(),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
-                m.insert(pane_id, crate::core::jump_list::JumpList::new(jump_list_capacity));
+                m.insert(
+                    pane_id,
+                    crate::core::jump_list::JumpList::new(jump_list_capacity),
+                );
                 m
             },
             history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
@@ -1479,9 +1664,10 @@ impl Editor {
         self.pane_state.insert(pid, SecondaryMap::new());
         pane_state::ensure(&mut self.pane_state, &self.buffers, pid, buffer_id);
         self.pane_transient.insert(pid, PaneTransient::default());
-        self.pane_jumps.insert(pid, crate::core::jump_list::JumpList::new(
-            self.settings.jump_list_capacity,
-        ));
+        self.pane_jumps.insert(
+            pid,
+            crate::core::jump_list::JumpList::new(self.settings.jump_list_capacity),
+        );
         pid
     }
 
@@ -1527,7 +1713,10 @@ impl Editor {
         pane: PaneId,
         buf: BufferId,
     ) -> Option<&crate::core::selection::SelectionSet> {
-        self.pane_state.get(pane).and_then(|m| m.get(buf)).map(|s| &s.selections)
+        self.pane_state
+            .get(pane)
+            .and_then(|m| m.get(buf))
+            .map(|s| &s.selections)
     }
 
     /// Execute a typed command string (e.g. `"bd"`, `"e! path"`) programmatically.
@@ -1557,7 +1746,9 @@ impl Editor {
             }
             result
         } else {
-            Err(crate::core::error::CommandError(format!("unknown command: {cmd}")))
+            Err(crate::core::error::CommandError(format!(
+                "unknown command: {cmd}"
+            )))
         }
     }
 }
@@ -1583,19 +1774,37 @@ fn scroll_into_view(
     v_margin: usize,
     h_margin: usize,
 ) {
-    scroll::ensure_cursor_visible(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, v_margin);
-    scroll::ensure_cursor_visible_horizontal(&mut pane.viewport, rope, cursor_char, wrap_mode, tab_width, whitespace, scratch, h_margin);
+    scroll::ensure_cursor_visible(
+        &mut pane.viewport,
+        rope,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+        v_margin,
+    );
+    scroll::ensure_cursor_visible_horizontal(
+        &mut pane.viewport,
+        rope,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+        h_margin,
+    );
 }
 
 /// Map an `EditorMode` to the Steel-facing string name used in hook arguments.
 fn mode_name(m: EditorMode) -> &'static str {
     match m {
-        EditorMode::Normal  => "normal",
-        EditorMode::Insert  => "insert",
-        EditorMode::Extend  => "extend",
+        EditorMode::Normal => "normal",
+        EditorMode::Insert => "insert",
+        EditorMode::Extend => "extend",
         EditorMode::Command => "command",
-        EditorMode::Search  => "search",
-        EditorMode::Select  => "select",
+        EditorMode::Search => "search",
+        EditorMode::Select => "select",
     }
 }
 

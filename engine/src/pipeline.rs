@@ -2,7 +2,9 @@ use slotmap::{SlotMap, new_key_type};
 
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
-use crate::providers::{GutterCell, InlineInsert, StatuslineProvider, TabBarProvider, VirtualLineAnchor};
+use crate::providers::{
+    GutterCell, InlineInsert, StatuslineProvider, TabBarProvider, VirtualLineAnchor,
+};
 use crate::render::ComposeCtx;
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
@@ -169,7 +171,11 @@ impl LayoutTree {
     ) {
         match self {
             LayoutTree::Leaf(id) => out.push((*id, area)),
-            LayoutTree::Split { direction, ratio, children } => {
+            LayoutTree::Split {
+                direction,
+                ratio,
+                children,
+            } => {
                 let (r1, r2) = split_rect(area, *direction == Direction::Vertical, *ratio);
                 children.0.collect_rects_into(r1, out);
                 children.1.collect_rects_into(r2, out);
@@ -276,14 +282,22 @@ impl EngineView {
 
         // ── Render tab bar ────────────────────────────────────────────────────
         if let Some(ref tabbar) = self.tabbar {
-            let tabbar_area = ratatui::layout::Rect { y: area.y, height: 1, ..area };
+            let tabbar_area = ratatui::layout::Rect {
+                y: area.y,
+                height: 1,
+                ..area
+            };
             tabbar.render(tabbar_area, &self.theme, buf);
         }
 
         // ── Render statusline ─────────────────────────────────────────────────
         if let Some(statusline) = statusline {
             let sl_y = area.y + area.height.saturating_sub(1);
-            let sl_area = ratatui::layout::Rect { y: sl_y, height: 1, ..area };
+            let sl_area = ratatui::layout::Rect {
+                y: sl_y,
+                height: 1,
+                ..area
+            };
             statusline.render(sl_area, &self.theme, buf);
         }
 
@@ -293,10 +307,16 @@ impl EngineView {
 
         // ── Render panes ──────────────────────────────────────────────────────
         for (pane_id, rect) in pane_rects.iter().copied() {
-            let Some(pane) = self.panes.get(pane_id) else { continue };
-            let Some(buffer) = self.buffers.get(pane.buffer_id) else { continue };
+            let Some(pane) = self.panes.get(pane_id) else {
+                continue;
+            };
+            let Some(buffer) = self.buffers.get(pane.buffer_id) else {
+                continue;
+            };
             // Resolve the rope from the caller — zero-copy, no clone needed.
-            let Some(rope) = get_rope(pane.buffer_id) else { continue };
+            let Some(rope) = get_rope(pane.buffer_id) else {
+                continue;
+            };
 
             scratch.clear();
 
@@ -313,7 +333,9 @@ impl EngineView {
 
         // ── Render overlays on top (may span panes) ───────────────────────────
         for (pane_id, _rect) in pane_rects.iter().copied() {
-            let Some(pane) = self.panes.get(pane_id) else { continue };
+            let Some(pane) = self.panes.get(pane_id) else {
+                continue;
+            };
             for overlay in &pane.providers.overlays {
                 if overlay.is_active() {
                     overlay.render(pane_area, &self.theme, buf);
@@ -434,7 +456,9 @@ pub(crate) fn render_pane(
     // ── Pre-render: per-frame constant setup ──────────────────────────────
 
     // Selections arrive pre-sorted from the editor; copy once, reuse every row.
-    scratch.style.populate_sorted_sels(&pane_ctx.pane.selections, pane_ctx.pane.primary_idx);
+    scratch
+        .style
+        .populate_sorted_sels(&pane_ctx.pane.selections, pane_ctx.pane.primary_idx);
 
     // Pre-collect virtual lines from all providers; sort by anchor.
     scratch.format.virtual_lines.clear();
@@ -445,12 +469,20 @@ pub(crate) fn render_pane(
             &mut scratch.format.virtual_lines,
         );
     }
-    scratch.format.virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
+    scratch
+        .format
+        .virtual_lines
+        .sort_by_key(|vl| vl.anchor.sort_key());
 
     // Gutter column widths: constant for the entire frame.
     scratch.col_widths.clear();
     scratch.col_widths.extend(
-        pane_ctx.pane.providers.gutter_columns.iter().map(|c| c.width(visible.last_line_idx) as u16),
+        pane_ctx
+            .pane
+            .providers
+            .gutter_columns
+            .iter()
+            .map(|c| c.width(visible.last_line_idx) as u16),
     );
 
     // Bundle per-frame constants so compose_row call sites stay concise.
@@ -476,14 +508,32 @@ pub(crate) fn render_pane(
 
     // ── Fused per-line loop ──────────────────────────────────────────────
     for line_idx in visible.line_range.clone() {
-        drain_virtual_lines(VirtualLineAnchor::Before(line_idx), &mut vc, scratch, &compose_ctx, buf);
-        if vc.is_full() { break; }
+        drain_virtual_lines(
+            VirtualLineAnchor::Before(line_idx),
+            &mut vc,
+            scratch,
+            &compose_ctx,
+            buf,
+        );
+        if vc.is_full() {
+            break;
+        }
 
         render_buffer_line(pane_ctx, line_idx, &mut vc, scratch, &compose_ctx, buf);
-        if vc.is_full() { break; }
+        if vc.is_full() {
+            break;
+        }
 
-        drain_virtual_lines(VirtualLineAnchor::After(line_idx), &mut vc, scratch, &compose_ctx, buf);
-        if vc.is_full() { break; }
+        drain_virtual_lines(
+            VirtualLineAnchor::After(line_idx),
+            &mut vc,
+            scratch,
+            &compose_ctx,
+            buf,
+        );
+        if vc.is_full() {
+            break;
+        }
     }
 
     render::render_tilde_fillers(vc.screen_row, &compose_ctx, buf);
@@ -514,8 +564,17 @@ fn drain_virtual_lines(
             vc.vl_cursor += 1;
             continue;
         }
-        if vc.is_full() { return; }
-        emit_virtual_row(vc.vl_cursor, line_idx, vc.screen_row, scratch, compose_ctx, buf);
+        if vc.is_full() {
+            return;
+        }
+        emit_virtual_row(
+            vc.vl_cursor,
+            line_idx,
+            vc.screen_row,
+            scratch,
+            compose_ctx,
+            buf,
+        );
         vc.vl_cursor += 1;
         vc.screen_row += 1;
     }
@@ -569,20 +628,29 @@ fn render_buffer_line(
             &mut scratch.style,
         );
 
-        scratch.style.styles.resize(scratch.format.graphemes.len(), ResolvedStyle::default());
+        scratch
+            .style
+            .styles
+            .resize(scratch.format.graphemes.len(), ResolvedStyle::default());
 
         let line_start_char = pane_ctx.rope.line_to_char(line_idx);
-        let line_end_char   = pane_ctx.rope.line_to_char(line_idx + 1);
+        let line_end_char = pane_ctx.rope.line_to_char(line_idx + 1);
         // Cursorline highlights only the primary cursor's line.
-        let is_head_line = scratch.style.primary_idx_in_sorted
+        let is_head_line = scratch
+            .style
+            .primary_idx_in_sorted
             .and_then(|i| scratch.style.sorted_sels.get(i))
             .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
         // line_str borrows scratch.format.line_texts; must not clear it inside the loop.
         let line_str = scratch.format.line_texts.as_str();
 
         for row_idx in 0..scratch.format.display_rows.len() {
-            if vc.try_skip() { continue; }
-            if vc.is_full() { break; }
+            if vc.try_skip() {
+                continue;
+            }
+            if vc.is_full() {
+                break;
+            }
 
             // Stage 3 (per row): resolve styles for this display row.
             style::style_row(
@@ -597,7 +665,11 @@ fn render_buffer_line(
             );
 
             // Stage 4 (per row): write to the ratatui buffer.
-            let row_bg = if is_head_line { pane_ctx.theme.ui.cursorline.bg } else { None };
+            let row_bg = if is_head_line {
+                pane_ctx.theme.ui.cursorline.bg
+            } else {
+                None
+            };
             render::compose_row(
                 &scratch.format.display_rows[row_idx],
                 &scratch.format.graphemes,
@@ -650,18 +722,37 @@ fn emit_virtual_row(
 
     // Field-split: read virtual_lines, write graphemes — different sub-struct fields.
     let g_start = scratch.format.graphemes.len();
-    scratch.format.graphemes.extend_from_slice(&scratch.format.virtual_lines[vl_idx].graphemes);
+    scratch
+        .format
+        .graphemes
+        .extend_from_slice(&scratch.format.virtual_lines[vl_idx].graphemes);
     let provider_id = scratch.format.virtual_lines[vl_idx].provider_id;
 
     scratch.format.display_rows.push(DisplayRow {
-        kind: RowKind::Virtual { provider_id, anchor_line: line_idx },
+        kind: RowKind::Virtual {
+            provider_id,
+            anchor_line: line_idx,
+        },
         graphemes: g_start..scratch.format.graphemes.len(),
     });
     // Virtual rows keep default styles (the style stage skips them).
-    scratch.style.styles.resize(scratch.format.graphemes.len(), ResolvedStyle::default());
+    scratch
+        .style
+        .styles
+        .resize(scratch.format.graphemes.len(), ResolvedStyle::default());
 
     let row_idx = scratch.format.display_rows.len() - 1;
-    render::compose_row(&scratch.format.display_rows[row_idx], &scratch.format.graphemes, &scratch.style.styles, "", screen_row, &scratch.col_widths, compose_ctx, buf, None);
+    render::compose_row(
+        &scratch.format.display_rows[row_idx],
+        &scratch.format.graphemes,
+        &scratch.style.styles,
+        "",
+        screen_row,
+        &scratch.col_widths,
+        compose_ctx,
+        buf,
+        None,
+    );
 
     scratch.clear_line();
 }
@@ -676,7 +767,12 @@ mod tests {
     use ratatui::layout::Rect;
 
     fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
-        Rect { x, y, width: w, height: h }
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
     }
 
     // ── split_rect ───────────────────────────────────────────────────────

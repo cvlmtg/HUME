@@ -110,7 +110,10 @@ impl GutterCellContent {
 
 impl GutterCell {
     pub fn blank(scope: Scope) -> Self {
-        Self { content: GutterCellContent::Blank, scope }
+        Self {
+            content: GutterCellContent::Blank,
+            scope,
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -310,26 +313,46 @@ mod tests {
     }
 
     impl HighlightSource for DummyHighlight {
-        fn tier(&self) -> HighlightTier { self.tier }
-        fn highlights_for_line(&self, _: usize, _: &SourceContext, _: &mut Vec<(usize, usize, ScopeId)>) {}
+        fn tier(&self) -> HighlightTier {
+            self.tier
+        }
+        fn highlights_for_line(
+            &self,
+            _: usize,
+            _: &SourceContext,
+            _: &mut Vec<(usize, usize, ScopeId)>,
+        ) {
+        }
     }
 
     struct DummyGutter;
 
     impl GutterColumn for DummyGutter {
-        fn width(&self, _: usize) -> u8 { 0 }
-        fn render_row(&self, _: crate::types::RowKind, _: crate::types::EditorMode, _: usize) -> GutterCell {
+        fn width(&self, _: usize) -> u8 {
+            0
+        }
+        fn render_row(
+            &self,
+            _: crate::types::RowKind,
+            _: crate::types::EditorMode,
+            _: usize,
+        ) -> GutterCell {
             GutterCell::blank(Scope("x"))
         }
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
     }
 
     // ── GutterCellContent::from_number ─────────────────────────────────
 
     fn num_str(n: usize) -> String {
-        GutterCell { content: GutterCellContent::from_number(n), scope: Scope("x") }
-            .as_str()
-            .to_owned()
+        GutterCell {
+            content: GutterCellContent::from_number(n),
+            scope: Scope("x"),
+        }
+        .as_str()
+        .to_owned()
     }
 
     #[test]
@@ -352,7 +375,10 @@ mod tests {
 
     #[test]
     fn gutter_cell_static_and_blank() {
-        let s = GutterCell { content: GutterCellContent::Static("abc"), scope: Scope("x") };
+        let s = GutterCell {
+            content: GutterCellContent::Static("abc"),
+            scope: Scope("x"),
+        };
         assert_eq!(s.as_str(), "abc");
         let b = GutterCell::blank(Scope("x"));
         assert_eq!(b.as_str(), " ");
@@ -364,9 +390,14 @@ mod tests {
     fn sync_line_number_style_updates_line_number_column() {
         use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
         let mut set = ProviderSet::new();
-        set.add_gutter_column(Box::new(LineNumberColumn::with_style(LineNumberStyle::Hybrid)));
+        set.add_gutter_column(Box::new(LineNumberColumn::with_style(
+            LineNumberStyle::Hybrid,
+        )));
         set.sync_line_number_style(LineNumberStyle::Relative);
-        let col = set.gutter_columns[0].as_any_mut().downcast_mut::<LineNumberColumn>().unwrap();
+        let col = set.gutter_columns[0]
+            .as_any_mut()
+            .downcast_mut::<LineNumberColumn>()
+            .unwrap();
         assert_eq!(col.style, LineNumberStyle::Relative);
     }
 
@@ -391,9 +422,13 @@ mod tests {
     #[test]
     fn provider_set_ids_are_sequential_and_unique_across_types() {
         let mut set = ProviderSet::new();
-        let id0 = set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Syntax }));
+        let id0 = set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::Syntax,
+        }));
         let id1 = set.add_gutter_column(Box::new(DummyGutter));
-        let id2 = set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Diagnostic }));
+        let id2 = set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::Diagnostic,
+        }));
         assert_eq!(id0, 0);
         assert_eq!(id1, 1);
         assert_eq!(id2, 2);
@@ -402,15 +437,24 @@ mod tests {
     #[test]
     fn provider_set_highlight_sorted_by_tier() {
         let mut set = ProviderSet::new();
-        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::BracketMatch }));
-        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Syntax }));
-        set.add_highlight_source(Box::new(DummyHighlight { tier: HighlightTier::Diagnostic }));
+        set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::BracketMatch,
+        }));
+        set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::Syntax,
+        }));
+        set.add_highlight_source(Box::new(DummyHighlight {
+            tier: HighlightTier::Diagnostic,
+        }));
 
         let tiers: Vec<_> = set.highlights.iter().map(|h| h.tier()).collect();
-        assert_eq!(tiers, vec![
-            HighlightTier::Syntax,
-            HighlightTier::Diagnostic,
-            HighlightTier::BracketMatch,
-        ]);
+        assert_eq!(
+            tiers,
+            vec![
+                HighlightTier::Syntax,
+                HighlightTier::Diagnostic,
+                HighlightTier::BracketMatch,
+            ]
+        );
     }
 }

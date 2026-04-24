@@ -25,8 +25,5 @@ pub(crate) fn git_clone(url: &str, dest: &str) -> io::Result<ExitStatus> {
 ///
 /// `dir` must already be canonicalized and sandbox-checked by the caller.
 pub(crate) fn git_pull_in(dir: &Path) -> io::Result<ExitStatus> {
-    Command::new("git")
-        .arg("pull")
-        .current_dir(dir)
-        .status()
+    Command::new("git").arg("pull").current_dir(dir).status()
 }

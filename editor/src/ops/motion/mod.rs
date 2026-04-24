@@ -1,5 +1,5 @@
-use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
 
 pub(crate) use super::MotionMode;
 
@@ -51,17 +51,19 @@ pub(crate) fn apply_motion(
 }
 
 mod char_move;
-use char_move::{move_right, move_left, goto_first_line, goto_last_line};
+use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
-use line::{goto_line_start, goto_line_end, goto_first_nonblank, move_down_inner, move_up_inner};
+use line::{goto_first_nonblank, goto_line_end, goto_line_start, move_down_inner, move_up_inner};
 mod word;
-pub(crate) use word::{cmd_select_next_word, cmd_select_next_WORD, cmd_select_prev_word, cmd_select_prev_WORD};
+pub(crate) use word::{
+    cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
+};
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};
 pub(crate) mod line_select;
 pub(crate) use line_select::{cmd_select_line, cmd_select_line_backward};
 pub(crate) mod find;
-pub(crate) use find::{find_char_forward, find_char_backward};
+pub(crate) use find::{find_char_backward, find_char_forward};
 
 #[cfg(test)]
 mod tests;
@@ -158,10 +160,8 @@ motion_cmd!(/// Move or extend cursors up one line, preserving the char-offset c
 // on the first char of the next word. With the new model, `w` already selects
 // the whole word so `e` is redundant.
 
-
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).
     cmd_next_paragraph, next_paragraph);
 motion_cmd!(/// Move or extend cursors to the first empty line above the current paragraph (`[p`).
     cmd_prev_paragraph, prev_paragraph);
-

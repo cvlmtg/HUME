@@ -1,5 +1,5 @@
-use crate::core::text::Text;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::text::Text;
 
 #[cfg(test)]
 mod tests {
@@ -270,7 +270,11 @@ pub(crate) fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
 #[allow(non_snake_case)]
 pub(crate) fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
     let merge = |c: CharClass| {
-        if c == CharClass::Punctuation { CharClass::Word } else { c }
+        if c == CharClass::Punctuation {
+            CharClass::Word
+        } else {
+            c
+        }
     };
     merge(a) != merge(b)
 }

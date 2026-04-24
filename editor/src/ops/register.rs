@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 
-use crate::core::text::Text;
 use crate::core::selection::SelectionSet;
+use crate::core::text::Text;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -160,7 +160,8 @@ pub(crate) fn yank_selections(buf: &Text, sels: &SelectionSet) -> Vec<String> {
             // end_inclusive() gives the last codepoint of the final grapheme
             // (handles multi-codepoint clusters like e + \u{0301}); +1 converts
             // to an exclusive upper bound for the slice.
-            buf.slice(sel.start()..sel.end_inclusive(buf) + 1).to_string()
+            buf.slice(sel.start()..sel.end_inclusive(buf) + 1)
+                .to_string()
         })
         .collect()
 }
@@ -178,7 +179,10 @@ mod tests {
     fn write_and_read() {
         let mut regs = RegisterSet::new();
         regs.write_text(DEFAULT_REGISTER, vec!["hello".to_string()]);
-        assert_eq!(regs.read(DEFAULT_REGISTER).unwrap().as_text(), Some(vec!["hello".to_string()].as_slice()));
+        assert_eq!(
+            regs.read(DEFAULT_REGISTER).unwrap().as_text(),
+            Some(vec!["hello".to_string()].as_slice())
+        );
     }
 
     #[test]
@@ -186,7 +190,10 @@ mod tests {
         let mut regs = RegisterSet::new();
         regs.write_text('0', vec!["first".to_string()]);
         regs.write_text('0', vec!["second".to_string()]);
-        assert_eq!(regs.read('0').unwrap().as_text(), Some(vec!["second".to_string()].as_slice()));
+        assert_eq!(
+            regs.read('0').unwrap().as_text(),
+            Some(vec!["second".to_string()].as_slice())
+        );
     }
 
     #[test]
@@ -217,8 +224,14 @@ mod tests {
         let mut regs = RegisterSet::new();
         regs.write_text('1', vec!["one".to_string()]);
         regs.write_text('2', vec!["two".to_string()]);
-        assert_eq!(regs.read('1').unwrap().as_text(), Some(vec!["one".to_string()].as_slice()));
-        assert_eq!(regs.read('2').unwrap().as_text(), Some(vec!["two".to_string()].as_slice()));
+        assert_eq!(
+            regs.read('1').unwrap().as_text(),
+            Some(vec!["one".to_string()].as_slice())
+        );
+        assert_eq!(
+            regs.read('2').unwrap().as_text(),
+            Some(vec!["two".to_string()].as_slice())
+        );
     }
 
     #[test]
@@ -253,15 +266,18 @@ mod tests {
         regs.write_text('0', vec!["text".to_string()]);
         // now holds text, not a macro
         assert!(regs.read('0').unwrap().as_macro().is_none());
-        assert_eq!(regs.read('0').unwrap().as_text(), Some(vec!["text".to_string()].as_slice()));
+        assert_eq!(
+            regs.read('0').unwrap().as_text(),
+            Some(vec!["text".to_string()].as_slice())
+        );
     }
 
     #[test]
     fn constants_have_expected_values() {
         // Document the register name choices so a future reader sees them tested.
         assert_eq!(BLACK_HOLE_REGISTER, 'b');
-        assert_eq!(SEARCH_REGISTER,    's');
-        assert_eq!(MACRO_REGISTER,     'q');
+        assert_eq!(SEARCH_REGISTER, 's');
+        assert_eq!(MACRO_REGISTER, 'q');
     }
 
     // ── yank_selections ───────────────────────────────────────────────────────
