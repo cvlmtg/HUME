@@ -400,6 +400,10 @@ mod tests {
         assert!(WrapMode::Soft   { width: 80 }.is_wrapping());
         assert!(WrapMode::Word   { width: 80 }.is_wrapping());
         assert!(WrapMode::Indent { width: 80 }.is_wrapping());
+        // Sentinel (width: 0 = terminal width) must still report is_wrapping()
+        // = true; it must not be conflated with WrapMode::None.
+        assert!(WrapMode::Indent { width: 0 }.is_wrapping());
+        assert!(WrapMode::Soft   { width: 0 }.is_wrapping());
     }
 
     #[test]
