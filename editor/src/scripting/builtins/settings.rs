@@ -4,11 +4,11 @@
 //! Records the prior value in the ledger so the change can be reversed when
 //! the plugin is unloaded.
 
-use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
+use steel::rvals::SteelVal;
 
-use crate::settings::{apply_setting, serialize_setting, BufferOverrides, SettingScope};
-use crate::scripting::{ledger::Owner, SteelCtx};
+use crate::scripting::{SteelCtx, ledger::Owner};
+use crate::settings::{BufferOverrides, SettingScope, apply_setting, serialize_setting};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -39,8 +39,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     // representation that `apply_setting` expects.
     let value_str = match &value {
         SteelVal::StringV(s) => s.to_string(),
-        SteelVal::BoolV(b)   => b.to_string(),
-        SteelVal::IntV(n)    => n.to_string(),
+        SteelVal::BoolV(b) => b.to_string(),
+        SteelVal::IntV(n) => n.to_string(),
         _ => steel::stop!(TypeMismatch =>
             "set-option!: second arg (value) must be a string, bool, or integer, got {:?}", value),
     };
@@ -66,7 +66,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     // User-level mutations (top-level init.scm) need no ledger entry
     // because `:reload-config` rebuilds everything from scratch.
     if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(plugin_id, key, prior_owner, prior_value, false);
+        ctx.ledger_stack
+            .record(plugin_id, key, prior_owner, prior_value, false);
     }
 
     Ok(SteelVal::Void)

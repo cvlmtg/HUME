@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 
-use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
 /// Probe for kitty keyboard protocol support by querying the terminal directly.
 ///

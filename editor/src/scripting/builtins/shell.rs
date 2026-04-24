@@ -9,8 +9,8 @@
 
 use std::path::PathBuf;
 
-use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
+use steel::rvals::SteelVal;
 
 use crate::editor::Severity;
 use crate::scripting::SteelCtx;
@@ -24,7 +24,11 @@ use crate::scripting::SteelCtx;
 ///
 /// On success, returns `#<void>`.  On failure (git not found, non-zero exit,
 /// sandbox violation), raises a Steel error.
-pub(crate) fn git_clone(ctx: &mut SteelCtx, url: String, dest: String) -> Result<SteelVal, SteelErr> {
+pub(crate) fn git_clone(
+    ctx: &mut SteelCtx,
+    url: String,
+    dest: String,
+) -> Result<SteelVal, SteelErr> {
     let dest_path = PathBuf::from(&dest);
 
     // The destination doesn't exist yet (git creates it). Sandbox-check the
@@ -32,29 +36,42 @@ pub(crate) fn git_clone(ctx: &mut SteelCtx, url: String, dest: String) -> Result
     if super::fs::has_dotdot(&dest_path) {
         steel::stop!(Generic => "git-clone: dest must not contain '..' components: {dest}");
     }
-    let parent = dest_path.parent().ok_or_else(|| SteelErr::new(
-        steel::rerrs::ErrorKind::Generic,
-        format!("git-clone: dest has no parent directory: {dest}"),
-    ))?;
+    let parent = dest_path.parent().ok_or_else(|| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-clone: dest has no parent directory: {dest}"),
+        )
+    })?;
 
-    let canonical_parent = crate::os::fs::canonicalize(parent)
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
-            format!("git-clone: cannot resolve parent of '{dest}': {e}")))?;
+    let canonical_parent = crate::os::fs::canonicalize(parent).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-clone: cannot resolve parent of '{dest}': {e}"),
+        )
+    })?;
 
     // file_name() is None for paths ending in "." (CurDir); has_dotdot() only
     // rejects ".." (ParentDir).  Hard-error rather than silently joining "".
-    let file_name = dest_path.file_name().ok_or_else(|| SteelErr::new(
-        steel::rerrs::ErrorKind::Generic,
-        format!("git-clone: dest has no file name component: {dest}"),
-    ))?;
+    let file_name = dest_path.file_name().ok_or_else(|| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-clone: dest has no file name component: {dest}"),
+        )
+    })?;
     sandbox_write_check(&canonical_parent.join(file_name), &dest)?;
 
     // Log which git we'll invoke — useful for debugging.
-    ctx.log(Severity::Trace, format!("git-clone: running `git clone {url} {dest}`"));
+    ctx.log(
+        Severity::Trace,
+        format!("git-clone: running `git clone {url} {dest}`"),
+    );
 
-    let status = crate::os::process::git_clone(&url, &dest)
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
-            format!("git-clone: cannot run git: {e}")))?;
+    let status = crate::os::process::git_clone(&url, &dest).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-clone: cannot run git: {e}"),
+        )
+    })?;
 
     if !status.success() {
         steel::stop!(Generic =>
@@ -75,17 +92,26 @@ pub(crate) fn git_clone(ctx: &mut SteelCtx, url: String, dest: String) -> Result
 pub(crate) fn git_pull(ctx: &mut SteelCtx, dir: String) -> Result<SteelVal, SteelErr> {
     let dir_path = PathBuf::from(&dir);
 
-    let canonical = crate::os::fs::canonicalize(&dir_path)
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
-            format!("git-pull: cannot resolve '{dir}': {e}")))?;
+    let canonical = crate::os::fs::canonicalize(&dir_path).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-pull: cannot resolve '{dir}': {e}"),
+        )
+    })?;
 
     sandbox_write_check(&canonical, &dir)?;
 
-    ctx.log(Severity::Trace, format!("git-pull: running `git pull` in {dir}"));
+    ctx.log(
+        Severity::Trace,
+        format!("git-pull: running `git pull` in {dir}"),
+    );
 
-    let status = crate::os::process::git_pull_in(&canonical)
-        .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic,
-            format!("git-pull: cannot run git: {e}")))?;
+    let status = crate::os::process::git_pull_in(&canonical).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("git-pull: cannot run git: {e}"),
+        )
+    })?;
 
     if !status.success() {
         steel::stop!(Generic =>
@@ -103,9 +129,12 @@ pub(crate) fn git_pull(ctx: &mut SteelCtx, dir: String) -> Result<SteelVal, Stee
 fn sandbox_write_check(canonical_path: &std::path::Path, raw: &str) -> Result<(), SteelErr> {
     super::fs::with_data_plugins(|sandbox| {
         if !canonical_path.starts_with(sandbox) {
-            Err(SteelErr::new(steel::rerrs::ErrorKind::Generic, format!(
-                "shell builtin: path '{raw}' is outside the write sandbox (<data>/plugins/)"
-            )))
+            Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!(
+                    "shell builtin: path '{raw}' is outside the write sandbox (<data>/plugins/)"
+                ),
+            ))
         } else {
             Ok(())
         }
@@ -117,9 +146,9 @@ fn sandbox_write_check(canonical_path: &std::path::Path, raw: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scripting::SteelCtxTestHarness;
     use std::fs;
     use tempfile::TempDir;
-    use crate::scripting::SteelCtxTestHarness;
 
     fn setup(tmp: &TempDir) {
         let data_dir = tmp.path().join("hume");
@@ -136,9 +165,11 @@ mod tests {
         let dest = tmp.path().join("evil").to_string_lossy().to_string();
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        let err = git_clone(&mut ctx, "https://example.com/repo.git".into(), dest)
-            .unwrap_err();
-        assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
+        let err = git_clone(&mut ctx, "https://example.com/repo.git".into(), dest).unwrap_err();
+        assert!(
+            err.to_string().contains("sandbox"),
+            "expected sandbox error, got: {err}"
+        );
     }
 
     #[test]
@@ -151,7 +182,10 @@ mod tests {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let err = git_pull(&mut ctx, dir).unwrap_err();
-        assert!(err.to_string().contains("sandbox"), "expected sandbox error, got: {err}");
+        assert!(
+            err.to_string().contains("sandbox"),
+            "expected sandbox error, got: {err}"
+        );
     }
 
     #[test]

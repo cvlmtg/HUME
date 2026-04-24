@@ -1,5 +1,5 @@
-use crate::core::text::Text;
 use crate::core::grapheme::next_grapheme_boundary;
+use crate::core::text::Text;
 use crate::helpers::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────

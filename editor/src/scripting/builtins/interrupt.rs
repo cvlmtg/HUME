@@ -20,8 +20,8 @@
 
 use std::sync::atomic::Ordering;
 
-use steel::rvals::SteelVal;
 use steel::rerrs::SteelErr;
+use steel::rvals::SteelVal;
 
 use crate::scripting::SteelCtx;
 

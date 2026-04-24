@@ -15,10 +15,10 @@
 
 use crossterm::cursor::SetCursorStyle;
 use engine::format::{FormatScratch, count_visual_rows};
-use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
+use engine::layout::gutter_width_for_line;
+use engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use engine::pipeline::RenderContext;
 use engine::providers::GutterColumn;
-use engine::layout::gutter_width_for_line;
 use engine::types::EditorMode;
 
 // ---------------------------------------------------------------------------
@@ -45,32 +45,53 @@ pub(crate) fn screen_pos(
     let scratch = &mut ctx.cursor_format;
     let cursor_line = rope.char_to_line(cursor_char);
     let height = viewport.height as usize;
-    if height == 0 { return None; }
+    if height == 0 {
+        return None;
+    }
 
-    let (cursor_sub, cursor_col) =
-        format_row_col(rope, cursor_line, cursor_char, wrap_mode, tab_width, whitespace, scratch);
+    let (cursor_sub, cursor_col) = format_row_col(
+        rope,
+        cursor_line,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    );
 
     if wrap_mode.is_wrapping() {
         let top_row = viewport.top_row_offset as usize;
         let mut screen_row = 0usize;
 
         for line_idx in viewport.top_line..=cursor_line {
-            let skip = if line_idx == viewport.top_line { top_row } else { 0 };
+            let skip = if line_idx == viewport.top_line {
+                top_row
+            } else {
+                0
+            };
             if line_idx == cursor_line {
                 screen_row += cursor_sub.saturating_sub(skip);
                 break;
             }
             let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
             screen_row += rows.saturating_sub(skip);
-            if screen_row >= height { return None; }
+            if screen_row >= height {
+                return None;
+            }
         }
 
-        if screen_row >= height { return None; }
+        if screen_row >= height {
+            return None;
+        }
         Some((cursor_col as u16, screen_row as u16))
     } else {
-        if cursor_line < viewport.top_line { return None; }
+        if cursor_line < viewport.top_line {
+            return None;
+        }
         let screen_row = cursor_line - viewport.top_line;
-        if screen_row >= height { return None; }
+        if screen_row >= height {
+            return None;
+        }
 
         let col = cursor_col.saturating_sub(viewport.horizontal_offset as usize);
         Some((col as u16, screen_row as u16))
@@ -97,7 +118,16 @@ pub(crate) fn sub_row(
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
 ) -> usize {
-    format_row_col(rope, line_idx, cursor_char, wrap_mode, tab_width, whitespace, scratch).0
+    format_row_col(
+        rope,
+        line_idx,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    )
+    .0
 }
 
 /// The terminal cursor shape for `mode`.
@@ -105,7 +135,11 @@ pub(crate) fn sub_row(
 /// Bar modes (Insert, Command, Search, Select) get `SteadyBar`; all others
 /// get `SteadyBlock`.
 pub(crate) fn shape(mode: EditorMode) -> SetCursorStyle {
-    if mode.cursor_is_bar() { SetCursorStyle::SteadyBar } else { SetCursorStyle::SteadyBlock }
+    if mode.cursor_is_bar() {
+        SetCursorStyle::SteadyBar
+    } else {
+        SetCursorStyle::SteadyBlock
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -134,20 +168,27 @@ pub(crate) fn format_row_col(
     scratch.display_rows.clear();
     scratch.graphemes.clear();
     scratch.line_texts.clear();
-    engine::format::format_buffer_line(rope, line_idx, tab_width, whitespace, wrap_mode, &[], scratch);
+    engine::format::format_buffer_line(
+        rope,
+        line_idx,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        &[],
+        scratch,
+    );
 
     for (i, row) in scratch.display_rows.iter().enumerate() {
         if row.graphemes.is_empty() {
             continue;
         }
         let first = &scratch.graphemes[row.graphemes.start];
-        let last  = &scratch.graphemes[row.graphemes.end - 1];
+        let last = &scratch.graphemes[row.graphemes.end - 1];
         let row_byte_start = first.byte_range.start;
-        let row_byte_end   = last.byte_range.end;
+        let row_byte_end = last.byte_range.end;
         let is_last = i + 1 == scratch.display_rows.len();
 
-        if cursor_byte_in_line >= row_byte_start
-            && (cursor_byte_in_line < row_byte_end || is_last)
+        if cursor_byte_in_line >= row_byte_start && (cursor_byte_in_line < row_byte_end || is_last)
         {
             let col = scratch.graphemes[row.graphemes.clone()]
                 .iter()
@@ -166,7 +207,9 @@ pub(crate) fn format_row_col(
 
     // Fallback: last sub-row, column past last grapheme.
     let last = scratch.display_rows.len().saturating_sub(1);
-    let col = scratch.display_rows.get(last)
+    let col = scratch
+        .display_rows
+        .get(last)
         .filter(|r| !r.graphemes.is_empty())
         .map(|r| {
             let lg = &scratch.graphemes[r.graphemes.end - 1];
@@ -226,9 +269,12 @@ pub(crate) fn screen_to_char_offset(
         let top_row = viewport.top_row_offset as usize;
 
         for line_idx in viewport.top_line..total_lines {
-            let rows =
-                count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
-            let skip = if line_idx == viewport.top_line { top_row } else { 0 };
+            let rows = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
+            let skip = if line_idx == viewport.top_line {
+                top_row
+            } else {
+                0
+            };
             let visible_rows = rows.saturating_sub(skip);
 
             if remaining < visible_rows {
@@ -268,8 +314,7 @@ pub(crate) fn screen_to_char_offset(
         let line_idx = (viewport.top_line + target_row).min(last_real_line);
 
         // Content column = screen column past gutter + horizontal scroll offset.
-        let content_col =
-            (screen_x - gutter_w) as usize + viewport.horizontal_offset as usize;
+        let content_col = (screen_x - gutter_w) as usize + viewport.horizontal_offset as usize;
 
         // Format the line and find the grapheme at `content_col`.
         scratch.display_rows.clear();
@@ -289,7 +334,13 @@ pub(crate) fn screen_to_char_offset(
             return Some(rope.line_to_char(line_idx));
         }
         let row = &scratch.display_rows[0];
-        Some(col_to_char_offset(content_col, row, scratch, rope, line_idx))
+        Some(col_to_char_offset(
+            content_col,
+            row,
+            scratch,
+            rope,
+            line_idx,
+        ))
     }
 }
 
@@ -315,7 +366,10 @@ fn col_to_char_offset(
         }
     }
     // Past the last grapheme — return the last char offset in the row.
-    graphemes.last().map(|g| g.char_offset).unwrap_or_else(|| rope.line_to_char(line_idx))
+    graphemes
+        .last()
+        .map(|g| g.char_offset)
+        .unwrap_or_else(|| rope.line_to_char(line_idx))
 }
 
 /// Find the char offset for `(content_col, target_sub_row)` within
@@ -334,7 +388,15 @@ fn char_at_display_col(
     scratch.display_rows.clear();
     scratch.graphemes.clear();
     scratch.line_texts.clear();
-    engine::format::format_buffer_line(rope, line_idx, tab_width, whitespace, wrap_mode, &[], scratch);
+    engine::format::format_buffer_line(
+        rope,
+        line_idx,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        &[],
+        scratch,
+    );
 
     if scratch.display_rows.is_empty() {
         return Some(rope.line_to_char(line_idx));
@@ -343,7 +405,13 @@ fn char_at_display_col(
     // Clamp target sub-row to the last display row of this line.
     let sub = target_sub.min(scratch.display_rows.len().saturating_sub(1));
     let row = &scratch.display_rows[sub];
-    Some(col_to_char_offset(content_col as usize, row, scratch, rope, line_idx))
+    Some(col_to_char_offset(
+        content_col as usize,
+        row,
+        scratch,
+        rope,
+        line_idx,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +422,7 @@ fn char_at_display_col(
 mod tests {
     use super::*;
     use engine::format::FormatScratch;
-    use engine::pane::{ViewportState, WrapMode, WhitespaceConfig};
+    use engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
     use ropey::Rope;
 
     fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
@@ -363,7 +431,9 @@ mod tests {
         v
     }
 
-    fn ws() -> WhitespaceConfig { WhitespaceConfig::default() }
+    fn ws() -> WhitespaceConfig {
+        WhitespaceConfig::default()
+    }
 
     // ── screen_to_char_offset (no-wrap) ──────────────────────────────────────
 

@@ -78,7 +78,9 @@ fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
     let key_name = &token[consumed..];
 
     if key_name.is_empty() {
-        return Err(format!("key token '{token}' has no key name after modifiers"));
+        return Err(format!(
+            "key token '{token}' has no key name after modifiers"
+        ));
     }
 
     let code = parse_key_code(key_name)?;
@@ -95,21 +97,21 @@ fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
 fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
     let lower = key_name.to_ascii_lowercase();
     match lower.as_str() {
-        "space"                        => return Ok(KeyCode::Char(' ')),
-        "tab"                          => return Ok(KeyCode::Tab),
-        "enter" | "return" | "cr"      => return Ok(KeyCode::Enter),
-        "esc"   | "escape"             => return Ok(KeyCode::Esc),
-        "backspace" | "bs"             => return Ok(KeyCode::Backspace),
-        "delete" | "del"               => return Ok(KeyCode::Delete),
-        "insert" | "ins"               => return Ok(KeyCode::Insert),
-        "home"                         => return Ok(KeyCode::Home),
-        "end"                          => return Ok(KeyCode::End),
-        "pageup"                       => return Ok(KeyCode::PageUp),
-        "pagedown"                     => return Ok(KeyCode::PageDown),
-        "up"                           => return Ok(KeyCode::Up),
-        "down"                         => return Ok(KeyCode::Down),
-        "left"                         => return Ok(KeyCode::Left),
-        "right"                        => return Ok(KeyCode::Right),
+        "space" => return Ok(KeyCode::Char(' ')),
+        "tab" => return Ok(KeyCode::Tab),
+        "enter" | "return" | "cr" => return Ok(KeyCode::Enter),
+        "esc" | "escape" => return Ok(KeyCode::Esc),
+        "backspace" | "bs" => return Ok(KeyCode::Backspace),
+        "delete" | "del" => return Ok(KeyCode::Delete),
+        "insert" | "ins" => return Ok(KeyCode::Insert),
+        "home" => return Ok(KeyCode::Home),
+        "end" => return Ok(KeyCode::End),
+        "pageup" => return Ok(KeyCode::PageUp),
+        "pagedown" => return Ok(KeyCode::PageDown),
+        "up" => return Ok(KeyCode::Up),
+        "down" => return Ok(KeyCode::Down),
+        "left" => return Ok(KeyCode::Left),
+        "right" => return Ok(KeyCode::Right),
         _ => {}
     }
 
@@ -221,15 +223,15 @@ mod tests {
 
     #[test]
     fn named_key_arrows() {
-        assert_eq!(parse("up").unwrap(),    vec![key(KeyCode::Up)]);
-        assert_eq!(parse("down").unwrap(),  vec![key(KeyCode::Down)]);
-        assert_eq!(parse("left").unwrap(),  vec![key(KeyCode::Left)]);
+        assert_eq!(parse("up").unwrap(), vec![key(KeyCode::Up)]);
+        assert_eq!(parse("down").unwrap(), vec![key(KeyCode::Down)]);
+        assert_eq!(parse("left").unwrap(), vec![key(KeyCode::Left)]);
         assert_eq!(parse("right").unwrap(), vec![key(KeyCode::Right)]);
     }
 
     #[test]
     fn function_keys() {
-        assert_eq!(parse("f1").unwrap(),  vec![key(KeyCode::F(1))]);
+        assert_eq!(parse("f1").unwrap(), vec![key(KeyCode::F(1))]);
         assert_eq!(parse("f12").unwrap(), vec![key(KeyCode::F(12))]);
     }
 
@@ -266,10 +268,7 @@ mod tests {
 
     #[test]
     fn shift_tab_normalises_to_backtab() {
-        assert_eq!(
-            parse("shift-tab").unwrap(),
-            vec![shift(KeyCode::BackTab)],
-        );
+        assert_eq!(parse("shift-tab").unwrap(), vec![shift(KeyCode::BackTab)],);
     }
 
     #[test]

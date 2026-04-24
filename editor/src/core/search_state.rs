@@ -79,6 +79,8 @@ pub(crate) struct SearchState {
 
 impl Default for SearchState {
     fn default() -> Self {
-        Self { direction: SearchDirection::Forward }
+        Self {
+            direction: SearchDirection::Forward,
+        }
     }
 }

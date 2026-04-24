@@ -2,7 +2,6 @@ use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
 use crate::core::text::Text;
 
-
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`.
 ///
@@ -194,7 +193,6 @@ pub(crate) fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize)
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }
 
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -217,12 +215,11 @@ mod tests {
         // Walk forward through every grapheme in "hello\n" (6 chars).
         // Each char is its own grapheme, so boundaries are 0,1,2,…,6.
         let buf = Text::from("hello");
-        let boundaries: Vec<usize> =
-            std::iter::successors(Some(0usize), |&c| {
-                let n = next_grapheme_boundary(&buf, c);
-                if n > c { Some(n) } else { None }
-            })
-            .collect();
+        let boundaries: Vec<usize> = std::iter::successors(Some(0usize), |&c| {
+            let n = next_grapheme_boundary(&buf, c);
+            if n > c { Some(n) } else { None }
+        })
+        .collect();
         assert_eq!(boundaries, vec![0, 1, 2, 3, 4, 5, 6]);
     }
 
@@ -301,12 +298,11 @@ mod tests {
         assert_eq!(buf.len_chars(), 13);
 
         let expected = vec![0usize, 1, 2, 3, 4, 5, 6, 11, 12, 13];
-        let got: Vec<usize> =
-            std::iter::successors(Some(0usize), |&c| {
-                let n = next_grapheme_boundary(&buf, c);
-                if n > c { Some(n) } else { None }
-            })
-            .collect();
+        let got: Vec<usize> = std::iter::successors(Some(0usize), |&c| {
+            let n = next_grapheme_boundary(&buf, c);
+            if n > c { Some(n) } else { None }
+        })
+        .collect();
         assert_eq!(got, expected);
     }
 
@@ -439,7 +435,9 @@ mod tests {
     /// comment lines, and fails if any active code contains a forbidden stepping
     /// pattern on a char-position variable.
     fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<_> = rd.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
         for entry in entries {
@@ -476,21 +474,33 @@ mod tests {
         //   char_at(pos - 1) were the original motivating footguns.
         let forbidden = [
             // ── Assignment forms ───────────────────────────────────────────────
-            "pos += 1",   "pos -= 1",
-            "start += 1", "start -= 1",
-            "end += 1",   "end -= 1",
-            "head += 1",  "head -= 1",
-            "anchor += 1","anchor -= 1",
+            "pos += 1",
+            "pos -= 1",
+            "start += 1",
+            "start -= 1",
+            "end += 1",
+            "end -= 1",
+            "head += 1",
+            "head -= 1",
+            "anchor += 1",
+            "anchor -= 1",
             // ── char_at() expression forms ─────────────────────────────────────
-            "char_at(pos + 1)",    "char_at(pos - 1)",
-            "char_at(head + 1)",   "char_at(head - 1)",
-            "char_at(anchor + 1)", "char_at(anchor - 1)",
+            "char_at(pos + 1)",
+            "char_at(pos - 1)",
+            "char_at(head + 1)",
+            "char_at(head - 1)",
+            "char_at(anchor + 1)",
+            "char_at(anchor - 1)",
         ];
 
         let mut violations: Vec<String> = Vec::new();
 
         for path in &paths {
-            let file = path.strip_prefix(root).unwrap_or(path).display().to_string();
+            let file = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .display()
+                .to_string();
             let src = std::fs::read_to_string(path)
                 .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
 

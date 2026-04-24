@@ -16,12 +16,22 @@ fn write_preserves_permissions() {
     let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
     ed.doc_mut().file_meta = Some(meta);
 
-    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    for ch in ":w".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
-    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert!(
+        ed.status_msg
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Written")
+    );
     let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o644, "permissions must be preserved across atomic write");
+    assert_eq!(
+        mode, 0o644,
+        "permissions must be preserved across atomic write"
+    );
 }
 
 #[cfg(unix)]
@@ -39,18 +49,34 @@ fn write_follows_symlink() {
 
     // Open via the symlink — io::read_file should resolve it.
     let (_, meta) = crate::os::io::read_file(&link_path).unwrap();
-    assert_eq!(meta.resolved_path, std::fs::canonicalize(real.path()).unwrap());
+    assert_eq!(
+        meta.resolved_path,
+        std::fs::canonicalize(real.path()).unwrap()
+    );
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.doc_mut().path = Some(Arc::new(link_path.clone()));
     ed.doc_mut().file_meta = Some(meta);
 
-    for ch in ":w".chars() { ed.handle_key(key(ch)); }
+    for ch in ":w".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
-    assert!(ed.status_msg.as_deref().unwrap_or("").starts_with("Written"));
+    assert!(
+        ed.status_msg
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Written")
+    );
     // The symlink must still exist and still be a symlink.
-    assert!(link_path.symlink_metadata().unwrap().file_type().is_symlink());
+    assert!(
+        link_path
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
     // Content was written to the real file.
     assert_eq!(std::fs::read_to_string(real.path()).unwrap(), "hello\n");
 }
@@ -89,7 +115,9 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
     let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
     ed.doc_mut().file_meta = Some(meta);
 
-    for ch in ":w!".chars() { ed.handle_key(key(ch)); }
+    for ch in ":w!".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     // On POSIX rename succeeds without triggering the chmod-retry path, so the
@@ -106,7 +134,9 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 #[test]
 fn colon_wq_bang_force_writes_and_quits() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    for ch in ":wq!".chars() { ed.handle_key(key(ch)); }
+    for ch in ":wq!".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
     assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
@@ -141,4 +171,3 @@ fn insert_at_selection_start_collapsed() {
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
     assert_eq!(ed.mode, Mode::Insert);
 }
-

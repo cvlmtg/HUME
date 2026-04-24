@@ -16,13 +16,12 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::WrapMode;
 
+use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::cursor;
 use crate::ops::MotionMode;
-use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 
 use super::{Editor, Mode};
-
 
 impl Editor {
     /// Dispatch a crossterm [`MouseEvent`] to the appropriate handler.
@@ -32,11 +31,17 @@ impl Editor {
             return;
         }
         match mouse.kind {
-            MouseEventKind::Down(MouseButton::Left) => self.mouse_left_down(mouse.column, mouse.row),
-            MouseEventKind::Drag(MouseButton::Left) => self.mouse_left_drag(mouse.column, mouse.row),
-            MouseEventKind::Up(MouseButton::Left)   => { self.mouse_drag_anchor = None; }
-            MouseEventKind::ScrollUp                => self.mouse_scroll_up(),
-            MouseEventKind::ScrollDown              => self.mouse_scroll_down(),
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.mouse_left_down(mouse.column, mouse.row)
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                self.mouse_left_drag(mouse.column, mouse.row)
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                self.mouse_drag_anchor = None;
+            }
+            MouseEventKind::ScrollUp => self.mouse_scroll_up(),
+            MouseEventKind::ScrollDown => self.mouse_scroll_down(),
             _ => {}
         }
     }
@@ -72,7 +77,9 @@ impl Editor {
 
     fn mouse_left_drag(&mut self, col: u16, row: u16) {
         // Drag events are only received when `mouse_select = true` (mode 1002).
-        let Some(anchor) = self.mouse_drag_anchor else { return };
+        let Some(anchor) = self.mouse_drag_anchor else {
+            return;
+        };
 
         let vp_height = self.engine_view.panes[self.focused_pane_id].viewport.height;
         if row >= vp_height {
@@ -100,7 +107,15 @@ impl Editor {
             let buf_id = self.focused_buffer_id();
             let rope = self.buffers.get(buf_id).text().rope();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            scroll_viewport_up(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, scroll_lines, &mut self.motion_format_scratch);
+            scroll_viewport_up(
+                &mut pane.viewport,
+                rope,
+                &wrap_mode,
+                tab_width,
+                &whitespace,
+                scroll_lines,
+                &mut self.motion_format_scratch,
+            );
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
@@ -126,7 +141,16 @@ impl Editor {
             let rope = self.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            scroll_viewport_down(&mut pane.viewport, rope, &wrap_mode, tab_width, &whitespace, total_lines, scroll_lines, &mut self.motion_format_scratch);
+            scroll_viewport_down(
+                &mut pane.viewport,
+                rope,
+                &wrap_mode,
+                tab_width,
+                &whitespace,
+                total_lines,
+                scroll_lines,
+                &mut self.motion_format_scratch,
+            );
         }
         let vp_after = {
             let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
@@ -144,7 +168,10 @@ impl Editor {
         let buf_id = self.focused_buffer_id();
         let (vp, gutter_w) = {
             let pane = &self.engine_view.panes[self.focused_pane_id];
-            let gw = cursor::gutter_width(pane.providers.gutter_columns(), self.buffers.get(buf_id).text().len_lines());
+            let gw = cursor::gutter_width(
+                pane.providers.gutter_columns(),
+                self.buffers.get(buf_id).text().len_lines(),
+            );
             (pane.viewport.clone(), gw)
         };
         let wrap_mode = self.doc().overrides.wrap_mode(&self.settings);
@@ -152,7 +179,14 @@ impl Editor {
         let whitespace = self.doc().overrides.whitespace(&self.settings);
         let rope = self.buffers.get(buf_id).text().rope();
         cursor::screen_to_char_offset(
-            col, row, gutter_w, &vp, rope, &wrap_mode, tab_width, &whitespace,
+            col,
+            row,
+            gutter_w,
+            &vp,
+            rope,
+            &wrap_mode,
+            tab_width,
+            &whitespace,
             &mut self.motion_format_scratch,
         )
     }
@@ -182,7 +216,14 @@ fn scroll_viewport_up(
                 rows_left -= dec;
             } else if viewport.top_line > 0 {
                 viewport.top_line -= 1;
-                let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, scratch);
+                let rows = count_visual_rows(
+                    rope,
+                    viewport.top_line,
+                    tab_width,
+                    whitespace,
+                    wrap_mode,
+                    scratch,
+                );
                 // Jump to the last sub-row of the new top line.
                 let sub = rows.saturating_sub(1);
                 viewport.top_row_offset = sub as u16;
@@ -231,7 +272,14 @@ fn scroll_viewport_down(
             if viewport.top_line > last_line {
                 break;
             }
-            let rows = count_visual_rows(rope, viewport.top_line, tab_width, whitespace, wrap_mode, scratch);
+            let rows = count_visual_rows(
+                rope,
+                viewport.top_line,
+                tab_width,
+                whitespace,
+                wrap_mode,
+                scratch,
+            );
             let remaining_in_line = rows.saturating_sub(1 + viewport.top_row_offset as usize);
             if rows_left <= remaining_in_line {
                 viewport.top_row_offset += rows_left as u16;
@@ -264,14 +312,18 @@ mod tests {
     use engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
     use ropey::Rope;
 
-    fn ws() -> WhitespaceConfig { WhitespaceConfig::default() }
+    fn ws() -> WhitespaceConfig {
+        WhitespaceConfig::default()
+    }
     const SCROLL_LINES: usize = 3; // default from EditorSettings
 
     // Build a rope with `n` content lines (each "line\n"), plus the structural trailing '\n'.
     // total_lines() == n + 1 (ropey's phantom line).
     fn rope_with_lines(n: usize) -> Rope {
         let mut s = String::new();
-        for i in 0..n { s.push_str(&format!("line{}\n", i)); }
+        for i in 0..n {
+            s.push_str(&format!("line{}\n", i));
+        }
         Rope::from_str(&s)
     }
 
@@ -288,7 +340,16 @@ mod tests {
 
         // Scroll far enough to hit the cap.
         for _ in 0..20 {
-            scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
+            scroll_viewport_down(
+                &mut vp,
+                &rope,
+                &WrapMode::None,
+                4,
+                &ws(),
+                total,
+                SCROLL_LINES,
+                &mut scratch,
+            );
         }
         assert_eq!(vp.top_line, 5, "top_line must not exceed max_top=5");
     }
@@ -301,7 +362,16 @@ mod tests {
         let mut vp = ViewportState::new(80, 10);
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
+        scroll_viewport_down(
+            &mut vp,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            total,
+            SCROLL_LINES,
+            &mut scratch,
+        );
         assert_eq!(vp.top_line, 0, "viewport must not move when file fits");
     }
 
@@ -312,8 +382,20 @@ mod tests {
         let mut vp = ViewportState::new(80, 5);
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &WrapMode::None, 4, &ws(), total, SCROLL_LINES, &mut scratch);
-        assert_eq!(vp.top_line, SCROLL_LINES, "first scroll advances by SCROLL_LINES");
+        scroll_viewport_down(
+            &mut vp,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            total,
+            SCROLL_LINES,
+            &mut scratch,
+        );
+        assert_eq!(
+            vp.top_line, SCROLL_LINES,
+            "first scroll advances by SCROLL_LINES"
+        );
     }
 
     // ── scroll_viewport_up (no-wrap) ────────────────────────────────────────
@@ -325,7 +407,15 @@ mod tests {
         vp.top_line = 1; // only 1 above top
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
+        scroll_viewport_up(
+            &mut vp,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            SCROLL_LINES,
+            &mut scratch,
+        );
         assert_eq!(vp.top_line, 0, "saturating_sub must not underflow");
     }
 
@@ -336,7 +426,15 @@ mod tests {
         vp.top_line = 10;
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
+        scroll_viewport_up(
+            &mut vp,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            SCROLL_LINES,
+            &mut scratch,
+        );
         assert_eq!(vp.top_line, 10 - SCROLL_LINES);
     }
 
@@ -347,7 +445,15 @@ mod tests {
         vp.top_line = 0;
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_up(&mut vp, &rope, &WrapMode::None, 4, &ws(), SCROLL_LINES, &mut scratch);
+        scroll_viewport_up(
+            &mut vp,
+            &rope,
+            &WrapMode::None,
+            4,
+            &ws(),
+            SCROLL_LINES,
+            &mut scratch,
+        );
         assert_eq!(vp.top_line, 0);
         assert_eq!(vp.top_row_offset, 0);
     }
@@ -363,7 +469,16 @@ mod tests {
         let wrap = WrapMode::Soft { width: 80 };
         let mut scratch = FormatScratch::new();
 
-        scroll_viewport_down(&mut vp, &rope, &wrap, 4, &ws(), total, SCROLL_LINES, &mut scratch);
+        scroll_viewport_down(
+            &mut vp,
+            &rope,
+            &wrap,
+            4,
+            &ws(),
+            total,
+            SCROLL_LINES,
+            &mut scratch,
+        );
         assert_eq!(vp.top_line, 0, "no scroll when file fits in viewport");
         assert_eq!(vp.top_row_offset, 0);
     }

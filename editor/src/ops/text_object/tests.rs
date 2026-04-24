@@ -646,8 +646,8 @@ fn extend_text_object_noop_on_no_match() {
     assert_state!(
         "-[h]>ello\n",
         |(buf, sels)| {
-            let s1 = cmd_inner_word(&buf, sels, MotionMode::Move);  // selects "hello" (0,4)
-            cmd_inner_paren(&buf, s1, MotionMode::Extend)// no parens → no-op → "hello" unchanged
+            let s1 = cmd_inner_word(&buf, sels, MotionMode::Move); // selects "hello" (0,4)
+            cmd_inner_paren(&buf, s1, MotionMode::Extend) // no parens → no-op → "hello" unchanged
         },
         "-[hello]>\n"
     );

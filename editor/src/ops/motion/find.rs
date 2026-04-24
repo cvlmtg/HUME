@@ -1,8 +1,8 @@
-use crate::core::text::Text;
+use super::{FindKind, MotionMode, apply_motion};
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::SelectionSet;
+use crate::core::text::Text;
 use crate::helpers::line_end_exclusive;
-use super::{apply_motion, FindKind, MotionMode};
 
 // ── Find/till character motions ───────────────────────────────────────────────
 
@@ -108,4 +108,3 @@ pub(crate) fn find_char_backward(
         }
     })
 }
-

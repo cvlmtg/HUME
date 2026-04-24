@@ -1,7 +1,7 @@
 use super::*;
-use engine::pipeline::{BufferId, PaneId};
-use crate::settings::EditorSettings;
 use crate::editor::keymap::Keymap;
+use crate::settings::EditorSettings;
+use engine::pipeline::{BufferId, PaneId};
 
 fn host() -> ScriptingHost {
     ScriptingHost::new()
@@ -19,14 +19,14 @@ fn test_refs_with_bid<'a>(
     bid: BufferId,
 ) -> EditorSteelRefs<'a> {
     EditorSteelRefs {
-        settings:          s,
-        keymap:            km,
-        focused_pane_id:   PaneId::default(),
+        settings: s,
+        keymap: km,
+        focused_pane_id: PaneId::default(),
         focused_buffer_id: bid,
-        buffers:           None,
-        engine_view:       None,
-        pane_state:        None,
-        pane_jumps:        None,
+        buffers: None,
+        engine_view: None,
+        pane_state: None,
+        pane_jumps: None,
     }
 }
 
@@ -38,7 +38,8 @@ fn set_option_tab_width_integer() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     assert_eq!(s.tab_width, 4);
-    h.eval_source("(set-option! \"tab-width\" 2)", &mut s, &mut km).unwrap();
+    h.eval_source("(set-option! \"tab-width\" 2)", &mut s, &mut km)
+        .unwrap();
     assert_eq!(s.tab_width, 2);
 }
 
@@ -47,7 +48,8 @@ fn set_option_tab_width_string() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    h.eval_source("(set-option! \"tab-width\" \"8\")", &mut s, &mut km).unwrap();
+    h.eval_source("(set-option! \"tab-width\" \"8\")", &mut s, &mut km)
+        .unwrap();
     assert_eq!(s.tab_width, 8);
 }
 
@@ -57,7 +59,8 @@ fn set_option_bool_as_bool() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     assert!(s.mouse_enabled);
-    h.eval_source("(set-option! \"mouse-enabled\" #f)", &mut s, &mut km).unwrap();
+    h.eval_source("(set-option! \"mouse-enabled\" #f)", &mut s, &mut km)
+        .unwrap();
     assert!(!s.mouse_enabled);
 }
 
@@ -66,7 +69,8 @@ fn set_option_unknown_key_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source("(set-option! \"nonexistent\" \"val\")", &mut s, &mut km)
+    let err = h
+        .eval_source("(set-option! \"nonexistent\" \"val\")", &mut s, &mut km)
         .unwrap_err();
     assert!(err.contains("unknown setting"), "got: {err}");
 }
@@ -78,14 +82,16 @@ fn set_option_settings_restored_on_error() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     // First set tab-width to 2...
-    h.eval_source("(set-option! \"tab-width\" 2)", &mut s, &mut km).unwrap();
+    h.eval_source("(set-option! \"tab-width\" 2)", &mut s, &mut km)
+        .unwrap();
     assert_eq!(s.tab_width, 2);
     // Then run a script that errors mid-way: tab-width is set to 8, then a
     // bad setting that raises. The eval errors and the snapshot is restored:
     // tab-width goes back to 2, not left at the partial 8.
     let err = h.eval_source(
         "(set-option! \"tab-width\" 8)\n(set-option! \"bogus\" \"x\")",
-        &mut s, &mut km,
+        &mut s,
+        &mut km,
     );
     assert!(err.is_err(), "expected eval to fail");
     assert_eq!(s.tab_width, 2, "snapshot should have been restored");
@@ -104,9 +110,14 @@ fn cmd_owners_rolled_back_on_error() {
         r#"(push-current-plugin! "user/plugin-a")
            (define-command! "cmd-a" "a" (lambda () (+ 1 0)))
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
-    assert!(h.cmd_owners.contains_key("cmd-a"), "cmd-a should be registered");
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    assert!(
+        h.cmd_owners.contains_key("cmd-a"),
+        "cmd-a should be registered"
+    );
 
     // Now run a script that defines a second command but then errors.
     // cmd-b must NOT appear in cmd_owners after rollback.
@@ -114,11 +125,15 @@ fn cmd_owners_rolled_back_on_error() {
         r#"(push-current-plugin! "user/plugin-b")
            (define-command! "cmd-b" "b" (lambda () (+ 1 0)))
            (set-option! "bogus-key" "x")"#,
-        &mut s, &mut km,
+        &mut s,
+        &mut km,
     );
     assert!(err.is_err(), "expected eval to fail");
     assert!(h.cmd_owners.contains_key("cmd-a"), "cmd-a should survive");
-    assert!(!h.cmd_owners.contains_key("cmd-b"), "cmd-b must be rolled back");
+    assert!(
+        !h.cmd_owners.contains_key("cmd-b"),
+        "cmd-b must be rolled back"
+    );
 }
 
 // ── bind-key! ─────────────────────────────────────────────────────────────
@@ -129,7 +144,12 @@ fn bind_key_does_not_error_on_valid_input() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     // A valid binding should succeed; the trie is verified via keymap's own tests.
-    h.eval_source("(bind-key! \"normal\" \"z\" \"move-right\")", &mut s, &mut km).unwrap();
+    h.eval_source(
+        "(bind-key! \"normal\" \"z\" \"move-right\")",
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -137,7 +157,12 @@ fn bind_key_multi_key_sequence_no_error() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    h.eval_source("(bind-key! \"normal\" \"g h\" \"move-right\")", &mut s, &mut km).unwrap();
+    h.eval_source(
+        "(bind-key! \"normal\" \"g h\" \"move-right\")",
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -145,7 +170,8 @@ fn bind_key_invalid_mode_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source("(bind-key! \"visual\" \"f\" \"cmd\")", &mut s, &mut km)
+    let err = h
+        .eval_source("(bind-key! \"visual\" \"f\" \"cmd\")", &mut s, &mut km)
         .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
@@ -155,7 +181,12 @@ fn bind_key_invalid_key_sequence_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source("(bind-key! \"normal\" \"boguskey\" \"cmd\")", &mut s, &mut km)
+    let err = h
+        .eval_source(
+            "(bind-key! \"normal\" \"boguskey\" \"cmd\")",
+            &mut s,
+            &mut km,
+        )
         .unwrap_err();
     assert!(!err.is_empty(), "expected error for unknown key 'boguskey'");
 }
@@ -169,13 +200,18 @@ fn load_plugin_missing_plugin_declared_not_loaded() {
     let mut km = Keymap::default();
 
     // The plugin doesn't exist on disk — should be declared but not loaded.
-    h.eval_source("(load-plugin \"user/nonexistent-repo\")", &mut s, &mut km).unwrap();
+    h.eval_source("(load-plugin \"user/nonexistent-repo\")", &mut s, &mut km)
+        .unwrap();
 
     // Inspect state via builtins.
     // declared-plugins filters out core:* — user/nonexistent should appear.
     let declared_result = h.eval_source("(declared-plugins)", &mut s, &mut km);
     // Even if we can't inspect the list directly here, the eval should not error.
-    assert!(declared_result.is_ok(), "declared-plugins raised: {:?}", declared_result);
+    assert!(
+        declared_result.is_ok(),
+        "declared-plugins raised: {:?}",
+        declared_result
+    );
 }
 
 #[test]
@@ -183,7 +219,8 @@ fn load_plugin_malformed_name_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source("(load-plugin \"just-a-name\")", &mut s, &mut km)
+    let err = h
+        .eval_source("(load-plugin \"just-a-name\")", &mut s, &mut km)
         .unwrap_err();
     assert!(!err.is_empty(), "expected error for malformed plugin name");
 }
@@ -199,12 +236,17 @@ fn configure_statusline_sets_left_section() {
 
     h.eval_source(
         r#"(configure-statusline! '("Mode" "FileName") '() '("Position"))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
-    assert_eq!(s.statusline.left,   vec![StatusElement::Mode, StatusElement::FileName]);
+    assert_eq!(
+        s.statusline.left,
+        vec![StatusElement::Mode, StatusElement::FileName]
+    );
     assert_eq!(s.statusline.center, vec![]);
-    assert_eq!(s.statusline.right,  vec![StatusElement::Position]);
+    assert_eq!(s.statusline.right, vec![StatusElement::Position]);
 }
 
 #[test]
@@ -219,13 +261,24 @@ fn configure_statusline_all_sections() {
              '("Position" "FileName" "DirtyIndicator")
              '("SearchMatches")
              '("Separator" "Mode"))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
-    assert_eq!(s.statusline.left,
-        vec![StatusElement::Position, StatusElement::FileName, StatusElement::DirtyIndicator]);
+    assert_eq!(
+        s.statusline.left,
+        vec![
+            StatusElement::Position,
+            StatusElement::FileName,
+            StatusElement::DirtyIndicator
+        ]
+    );
     assert_eq!(s.statusline.center, vec![StatusElement::SearchMatches]);
-    assert_eq!(s.statusline.right,  vec![StatusElement::Separator, StatusElement::Mode]);
+    assert_eq!(
+        s.statusline.right,
+        vec![StatusElement::Separator, StatusElement::Mode]
+    );
 }
 
 #[test]
@@ -234,7 +287,8 @@ fn configure_statusline_empty_sections() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    h.eval_source("(configure-statusline! '() '() '())", &mut s, &mut km).unwrap();
+    h.eval_source("(configure-statusline! '() '() '())", &mut s, &mut km)
+        .unwrap();
 
     assert!(s.statusline.left.is_empty());
     assert!(s.statusline.center.is_empty());
@@ -247,10 +301,13 @@ fn configure_statusline_unknown_element_errors() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    let err = h.eval_source(
-        r#"(configure-statusline! '("NotAnElement") '() '())"#,
-        &mut s, &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source(
+            r#"(configure-statusline! '("NotAnElement") '() '())"#,
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
     assert!(err.contains("NotAnElement"), "got: {err}");
 }
 
@@ -263,12 +320,14 @@ fn configure_statusline_new_elements() {
 
     h.eval_source(
         r#"(configure-statusline! '("LineEnding") '() '("Cwd"))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
-    assert_eq!(s.statusline.left,   vec![StatusElement::LineEnding]);
+    assert_eq!(s.statusline.left, vec![StatusElement::LineEnding]);
     assert_eq!(s.statusline.center, vec![]);
-    assert_eq!(s.statusline.right,  vec![StatusElement::Cwd]);
+    assert_eq!(s.statusline.right, vec![StatusElement::Cwd]);
 }
 
 #[test]
@@ -277,7 +336,9 @@ fn configure_statusline_wrong_arity_errors() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    let err = h.eval_source("(configure-statusline! '())", &mut s, &mut km).unwrap_err();
+    let err = h
+        .eval_source("(configure-statusline! '())", &mut s, &mut km)
+        .unwrap_err();
     assert!(!err.is_empty(), "expected arity error");
 }
 
@@ -296,13 +357,18 @@ fn configure_statusline_plugin_unload_restores_default() {
         r#"(push-current-plugin! "user/a")
            (configure-statusline! '("Mode") '() '("Position"))
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     assert_eq!(s.statusline.left, vec![StatusElement::Mode]);
 
     // Tear down plugin A — statusline should revert to the default.
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    assert_eq!(s.statusline.left, default_left, "teardown must restore prior statusline");
+    assert_eq!(
+        s.statusline.left, default_left,
+        "teardown must restore prior statusline"
+    );
 }
 
 #[test]
@@ -322,18 +388,26 @@ fn configure_statusline_two_plugin_chain_splices_correctly() {
            (push-current-plugin! "user/b")
            (configure-statusline! '("FileName") '() '())
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     assert_eq!(s.statusline.left, vec![StatusElement::FileName]);
 
     // Unload A — B still owns statusline; live value unchanged.
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    assert_eq!(s.statusline.left, vec![StatusElement::FileName],
-               "B's live statusline must not be touched when A is unloaded");
+    assert_eq!(
+        s.statusline.left,
+        vec![StatusElement::FileName],
+        "B's live statusline must not be touched when A is unloaded"
+    );
 
     // Unload B — B's prior was rewritten to the default by A's splice.
     h.teardown_plugin("user/b", &mut s, &mut km).unwrap();
-    assert_eq!(s.statusline.left, default_left, "default must be restored after both unloads");
+    assert_eq!(
+        s.statusline.left, default_left,
+        "default must be restored after both unloads"
+    );
 }
 
 #[test]
@@ -346,12 +420,16 @@ fn configure_statusline_user_level_writes_no_ledger_entry() {
 
     h.eval_source(
         r#"(configure-statusline! '("Mode") '() '("Position"))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
     // No ledger entry created for User-level mutations.
-    assert!(h.ledger_stack.ledgers.is_empty(),
-            "user-level configure-statusline! must not add a ledger entry");
+    assert!(
+        h.ledger_stack.ledgers.is_empty(),
+        "user-level configure-statusline! must not add a ledger entry"
+    );
 }
 
 // ── hume/yield! ───────────────────────────────────────────────────────────
@@ -374,10 +452,16 @@ fn hume_yield_with_interrupt_errors() {
     // Pre-set the interrupt flag before the eval.
     h.interrupt_flag.store(true, Ordering::Relaxed);
     let err = h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap_err();
-    assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
+    assert!(
+        err.contains("interrupted"),
+        "expected 'interrupted' in error, got: {err}"
+    );
 
     // eval_source resets the flag after every call.
-    assert!(!h.interrupt_flag.load(Ordering::Relaxed), "flag should be false after eval");
+    assert!(
+        !h.interrupt_flag.load(Ordering::Relaxed),
+        "flag should be false after eval"
+    );
 }
 
 #[test]
@@ -388,11 +472,14 @@ fn hume_yield_stops_loop_when_interrupted() {
 
     // Pre-set so the loop aborts on the very first yield call.
     h.interrupt_flag.store(true, Ordering::Relaxed);
-    let err = h.eval_source(
-        // Without the interrupt flag this loop would run forever.
-        "(let loop () (hume/yield!) (loop))",
-        &mut s, &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source(
+            // Without the interrupt flag this loop would run forever.
+            "(let loop () (hume/yield!) (loop))",
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
     assert!(err.contains("interrupted"), "got: {err}");
 }
 
@@ -405,8 +492,10 @@ fn interrupt_flag_reset_after_eval() {
     // Pre-set the flag; after eval_source it must be cleared.
     h.interrupt_flag.store(true, Ordering::Relaxed);
     h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap_err(); // interrupted via pre-set flag
-    assert!(!h.interrupt_flag.load(Ordering::Relaxed),
-            "interrupt_flag must be false after eval_source returns");
+    assert!(
+        !h.interrupt_flag.load(Ordering::Relaxed),
+        "interrupt_flag must be false after eval_source returns"
+    );
 
     // Subsequent evals with no flag pre-set should succeed normally.
     h.eval_source("(hume/yield!)", &mut s, &mut km).unwrap();
@@ -431,8 +520,10 @@ fn teardown_restores_setting_when_plugin_is_live_owner() {
         r#"(push-current-plugin! "user/a")
            (set-option! "tab-width" 8)
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     assert_eq!(s.tab_width, 8);
 
     // Tear down plugin A — tab-width should be restored to 4 (prior).
@@ -454,8 +545,10 @@ fn teardown_splices_chain_when_later_plugin_owns_key() {
            (push-current-plugin! "user/b")
            (set-option! "tab-width" 2)
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     assert_eq!(s.tab_width, 2);
 
     // Unload A — B still owns tab-width (live value = 2 unchanged).
@@ -480,18 +573,30 @@ fn teardown_restores_keybind() {
         r#"(push-current-plugin! "user/a")
            (bind-key! "normal" "h" "move-right")
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
-    assert_eq!(km.lookup_command(BindMode::Normal, h_key).map(|(n, _)| n).as_deref(), Some("move-right"));
+    assert_eq!(
+        km.lookup_command(BindMode::Normal, h_key)
+            .map(|(n, _)| n)
+            .as_deref(),
+        Some("move-right")
+    );
 
     // Tear down plugin A — 'h' should go back to "move-left".
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    assert_eq!(km.lookup_command(BindMode::Normal, h_key).map(|(n, _)| n).as_deref(), Some("move-left"),
-               "teardown should restore prior keybind");
+    assert_eq!(
+        km.lookup_command(BindMode::Normal, h_key)
+            .map(|(n, _)| n)
+            .as_deref(),
+        Some("move-left"),
+        "teardown should restore prior keybind"
+    );
 }
 
 #[test]
@@ -505,8 +610,10 @@ fn teardown_unbinds_when_key_was_previously_unbound() {
         r#"(push-current-plugin! "user/a")
            (bind-key! "normal" "Q" "move-right")
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -515,8 +622,10 @@ fn teardown_unbinds_when_key_was_previously_unbound() {
 
     // Tear down — 'Q' was unbound before, so it should become unbound again.
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    assert!(km.lookup_command(BindMode::Normal, q_key).is_none(),
-            "binding for unowned key must be removed on teardown");
+    assert!(
+        km.lookup_command(BindMode::Normal, q_key).is_none(),
+        "binding for unowned key must be removed on teardown"
+    );
 }
 
 #[test]
@@ -525,7 +634,8 @@ fn teardown_unknown_plugin_is_noop() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     // No error, no state change.
-    h.teardown_plugin("user/nonexistent", &mut s, &mut km).unwrap();
+    h.teardown_plugin("user/nonexistent", &mut s, &mut km)
+        .unwrap();
     assert_eq!(s.tab_width, 4);
 }
 
@@ -543,19 +653,25 @@ fn command_plugin_returns_plugin_owner_during_eval() {
         r#"(push-current-plugin! "user/myplugin")
            (define-command! "my-cmd" "test cmd" (lambda () (+ 1 0)))
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
     // Verify the owner is queryable during a subsequent eval.
     // We can't call (command-plugin) from Rust directly at exec-time in
     // these unit tests, but we CAN call it during eval_source.
-    let result = h.eval_source(
-        r#"(command-plugin "my-cmd")"#,
-        &mut s, &mut km,
+    let result = h.eval_source(r#"(command-plugin "my-cmd")"#, &mut s, &mut km);
+    assert!(
+        result.is_ok(),
+        "command-plugin should not error: {:?}",
+        result
     );
-    assert!(result.is_ok(), "command-plugin should not error: {:?}", result);
     // The owner is recorded in cmd_owners; verify via the map directly.
-    assert_eq!(h.cmd_owners.get("my-cmd").map(|s| s.as_str()), Some("user/myplugin"));
+    assert_eq!(
+        h.cmd_owners.get("my-cmd").map(|s| s.as_str()),
+        Some("user/myplugin")
+    );
 }
 
 /// Unknown (built-in) commands return "hume".
@@ -578,12 +694,20 @@ fn command_plugin_cleared_on_teardown() {
         r#"(push-current-plugin! "user/myplugin")
            (define-command! "my-cmd" "test cmd" (lambda () (+ 1 0)))
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
-    assert_eq!(h.cmd_owners.get("my-cmd").map(|s| s.as_str()), Some("user/myplugin"));
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    assert_eq!(
+        h.cmd_owners.get("my-cmd").map(|s| s.as_str()),
+        Some("user/myplugin")
+    );
 
     h.teardown_plugin("user/myplugin", &mut s, &mut km).unwrap();
-    assert!(!h.cmd_owners.contains_key("my-cmd"), "teardown should remove from cmd_owners");
+    assert!(
+        !h.cmd_owners.contains_key("my-cmd"),
+        "teardown should remove from cmd_owners"
+    );
 }
 
 // ── define-command-extend! ────────────────────────────────────────────────
@@ -596,16 +720,33 @@ fn define_command_extend_sets_extendable_flag() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    let defs = h.eval_source_raw(
-        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
-           (define-command!        "plain-cmd" "doc" (lambda () (+ 1 0)))"#.to_owned(),
-        Default::default(), &mut s, &mut km,
-    ).expect("eval should succeed");
+    let defs = h
+        .eval_source_raw(
+            r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
+           (define-command!        "plain-cmd" "doc" (lambda () (+ 1 0)))"#
+                .to_owned(),
+            Default::default(),
+            &mut s,
+            &mut km,
+        )
+        .expect("eval should succeed");
 
-    let ext   = defs.iter().find(|d| d.name == "ext-cmd").expect("ext-cmd not found");
-    let plain = defs.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
-    assert!(ext.extendable,   "define-command-extend! should set extendable = true");
-    assert!(!plain.extendable, "define-command! should set extendable = false");
+    let ext = defs
+        .iter()
+        .find(|d| d.name == "ext-cmd")
+        .expect("ext-cmd not found");
+    let plain = defs
+        .iter()
+        .find(|d| d.name == "plain-cmd")
+        .expect("plain-cmd not found");
+    assert!(
+        ext.extendable,
+        "define-command-extend! should set extendable = true"
+    );
+    assert!(
+        !plain.extendable,
+        "define-command! should set extendable = false"
+    );
 }
 
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
@@ -614,50 +755,66 @@ fn define_command_extend_sets_extendable_flag() {
 /// Without `park_timeout` + `unpark`, this would block for the full budget.
 #[test]
 fn watchdog_cancel_wakes_thread_immediately() {
-    let flag   = Arc::new(AtomicBool::new(false));
+    let flag = Arc::new(AtomicBool::new(false));
     let budget = std::time::Duration::from_secs(10);
-    let start  = std::time::Instant::now();
+    let start = std::time::Instant::now();
     let watchdog = EvalWatchdog::arm(Arc::clone(&flag), budget);
     watchdog.cancel();
     // cancel() must return well within the budget; 500 ms is generous.
-    assert!(start.elapsed() < std::time::Duration::from_millis(500),
-            "cancel() took too long: {:?}", start.elapsed());
+    assert!(
+        start.elapsed() < std::time::Duration::from_millis(500),
+        "cancel() took too long: {:?}",
+        start.elapsed()
+    );
     // Flag must not have been set (we cancelled before it fired).
-    assert!(!flag.load(Ordering::Relaxed), "flag must stay false after cancel");
+    assert!(
+        !flag.load(Ordering::Relaxed),
+        "flag must stay false after cancel"
+    );
 }
 
 /// A watchdog with a tiny budget fires and causes (hume/yield!) to abort.
 #[test]
 fn eval_source_raw_watchdog_aborts_runaway() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     let budget = std::time::Duration::from_millis(50);
-    let start  = std::time::Instant::now();
+    let start = std::time::Instant::now();
 
-    let err = h.eval_source_watchdog(
-        // This loop would run forever without the watchdog.
-        "(let loop () (hume/yield!) (loop))",
-        budget,
-        &mut s,
-        &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source_watchdog(
+            // This loop would run forever without the watchdog.
+            "(let loop () (hume/yield!) (loop))",
+            budget,
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
 
-    assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
+    assert!(
+        err.contains("interrupted"),
+        "expected 'interrupted' in error, got: {err}"
+    );
     // Must abort well within a second — if not, the watchdog didn't fire.
-    assert!(start.elapsed() < std::time::Duration::from_secs(1),
-            "eval took too long: {:?}", start.elapsed());
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "eval took too long: {:?}",
+        start.elapsed()
+    );
     // Flag must be reset after eval_source_raw returns.
-    assert!(!h.interrupt_flag.load(Ordering::Relaxed),
-            "interrupt_flag must be false after eval returns");
+    assert!(
+        !h.interrupt_flag.load(Ordering::Relaxed),
+        "interrupt_flag must be false after eval returns"
+    );
 }
 
 /// When the watchdog fires during an eval that had already mutated a
 /// setting, the rollback must restore the original value.
 #[test]
 fn eval_source_raw_watchdog_rollback_on_abort() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     let budget = std::time::Duration::from_millis(50);
 
@@ -665,44 +822,62 @@ fn eval_source_raw_watchdog_rollback_on_abort() {
     assert_eq!(s.tab_width, 4, "precondition: default tab-width is 4");
 
     // Set the option then run forever — rollback must undo the set.
-    let err = h.eval_source_watchdog(
-        r#"(set-option! "tab-width" 99) (let loop () (hume/yield!) (loop))"#,
-        budget,
-        &mut s,
-        &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source_watchdog(
+            r#"(set-option! "tab-width" 99) (let loop () (hume/yield!) (loop))"#,
+            budget,
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
 
-    assert!(err.contains("interrupted"), "expected 'interrupted' in error, got: {err}");
-    assert_eq!(s.tab_width, 4, "rollback must restore tab-width to pre-eval value");
+    assert!(
+        err.contains("interrupted"),
+        "expected 'interrupted' in error, got: {err}"
+    );
+    assert_eq!(
+        s.tab_width, 4,
+        "rollback must restore tab-width to pre-eval value"
+    );
 }
 
 /// call_steel_cmd watchdog fires and aborts a runaway Steel command.
 #[test]
 fn call_steel_cmd_watchdog_aborts_runaway() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
     // Register a command whose body loops forever.
     h.eval_source(
         r#"(define-command! "spin" "spin forever" (lambda () (let loop () (hume/yield!) (loop))))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let steel_proc = "%hume-cmd-spin".to_string();
 
     // Use a tight command budget.
     s.steel_command_budget_ms = 50;
 
     let start = std::time::Instant::now();
-    let err = h.call_steel_cmd(
-        &steel_proc, None, None, test_refs(&mut s, &mut km),
-    ).unwrap_err();
+    let err = h
+        .call_steel_cmd(&steel_proc, None, None, test_refs(&mut s, &mut km))
+        .unwrap_err();
 
-    assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
-    assert!(start.elapsed() < std::time::Duration::from_secs(1),
-            "call_steel_cmd took too long: {:?}", start.elapsed());
-    assert!(!h.interrupt_flag.load(Ordering::Relaxed),
-            "interrupt_flag must be false after call_steel_cmd returns");
+    assert!(
+        err.contains("interrupted"),
+        "expected 'interrupted', got: {err}"
+    );
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "call_steel_cmd took too long: {:?}",
+        start.elapsed()
+    );
+    assert!(
+        !h.interrupt_flag.load(Ordering::Relaxed),
+        "interrupt_flag must be false after call_steel_cmd returns"
+    );
 }
 
 /// Command bodies cannot mutate settings/keymap (is_init = false during
@@ -711,25 +886,33 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 /// Also verifies the budget is read from settings at call time.
 #[test]
 fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
     h.eval_source(
         r#"(define-command! "looper" "loop" (lambda () (let loop () (hume/yield!) (loop))))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let steel_proc = "%hume-cmd-looper".to_string();
 
     assert_eq!(s.tab_width, 4, "precondition");
     s.steel_command_budget_ms = 50;
 
-    let err = h.call_steel_cmd(
-        &steel_proc, None, None, test_refs(&mut s, &mut km),
-    ).unwrap_err();
+    let err = h
+        .call_steel_cmd(&steel_proc, None, None, test_refs(&mut s, &mut km))
+        .unwrap_err();
 
-    assert!(err.contains("interrupted"), "expected 'interrupted', got: {err}");
-    assert_eq!(s.tab_width, 4, "tab-width must be unchanged after interrupt");
+    assert!(
+        err.contains("interrupted"),
+        "expected 'interrupted', got: {err}"
+    );
+    assert_eq!(
+        s.tab_width, 4,
+        "tab-width must be unchanged after interrupt"
+    );
 }
 
 /// Calling an init-only builtin from a Steel command body must raise a Steel
@@ -737,21 +920,25 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
 /// builtins check this flag.
 #[test]
 fn call_steel_cmd_set_option_from_body_returns_steel_error() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
     h.eval_source(
         r#"(define-command! "try-set" "" (lambda () (set-option! "tab-width" 8)))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
-    let err = h.call_steel_cmd(
-        "%hume-cmd-try-set", None, None, test_refs(&mut s, &mut km),
-    ).unwrap_err();
+    let err = h
+        .call_steel_cmd("%hume-cmd-try-set", None, None, test_refs(&mut s, &mut km))
+        .unwrap_err();
 
-    assert!(err.contains("set-option!"),
-        "error must name the failing builtin; got: {err}");
+    assert!(
+        err.contains("set-option!"),
+        "error must name the failing builtin; got: {err}"
+    );
     // Mutation never happened, so the setting is unchanged.
     assert_eq!(s.tab_width, 4, "tab-width must be untouched");
 }
@@ -762,8 +949,8 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
 /// that commands defined with each spelling both queue their sub-commands.
 #[test]
 fn call_bang_and_call_command_both_dispatch() {
-    let mut h  = host();
-    let mut s  = EditorSettings::default();
+    let mut h = host();
+    let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
     h.eval_source(
@@ -771,24 +958,40 @@ fn call_bang_and_call_command_both_dispatch() {
 (define-command! "use-call-bang"    "" (lambda () (call! "move-right")))
 (define-command! "use-call-command" "" (lambda () (call-command! "move-left")))
 "#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
 
-    let (q1, _) = h.call_steel_cmd(
-        "%hume-cmd-use-call-bang", None, None, test_refs(&mut s, &mut km),
-    ).unwrap();
+    let (q1, _) = h
+        .call_steel_cmd(
+            "%hume-cmd-use-call-bang",
+            None,
+            None,
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
     assert_eq!(q1, vec!["move-right"], "call! should queue the command");
 
-    let (q2, _) = h.call_steel_cmd(
-        "%hume-cmd-use-call-command", None, None, test_refs(&mut s, &mut km),
-    ).unwrap();
-    assert_eq!(q2, vec!["move-left"], "call-command! alias should queue the command");
+    let (q2, _) = h
+        .call_steel_cmd(
+            "%hume-cmd-use-call-command",
+            None,
+            None,
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
+    assert_eq!(
+        q2,
+        vec!["move-left"],
+        "call-command! alias should queue the command"
+    );
 }
 
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
-use crate::scripting::hooks::HookId;
 use crate::scripting::builtins::ids::SteelBufferId;
+use crate::scripting::hooks::HookId;
 
 #[test]
 fn register_hook_fires_on_buffer_open() {
@@ -797,13 +1000,19 @@ fn register_hook_fires_on_buffer_open() {
     let mut km = Keymap::default();
     h.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId(bid).into_steel_val();
-    let queue = h.fire_hook(
-        HookId::OnBufferOpen, &[val], test_refs_with_bid(&mut s, &mut km, bid),
-    ).unwrap();
+    let queue = h
+        .fire_hook(
+            HookId::OnBufferOpen,
+            &[val],
+            test_refs_with_bid(&mut s, &mut km, bid),
+        )
+        .unwrap();
     assert_eq!(queue, vec!["move-right"]);
 }
 
@@ -814,13 +1023,19 @@ fn register_hook_fires_on_buffer_close() {
     let mut km = Keymap::default();
     h.eval_source(
         r#"(register-hook! 'on-buffer-close (lambda (bid) (call! "move-left")))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId(bid).into_steel_val();
-    let queue = h.fire_hook(
-        HookId::OnBufferClose, &[val], test_refs_with_bid(&mut s, &mut km, bid),
-    ).unwrap();
+    let queue = h
+        .fire_hook(
+            HookId::OnBufferClose,
+            &[val],
+            test_refs_with_bid(&mut s, &mut km, bid),
+        )
+        .unwrap();
     assert_eq!(queue, vec!["move-left"]);
 }
 
@@ -831,13 +1046,19 @@ fn register_hook_fires_on_buffer_save() {
     let mut km = Keymap::default();
     h.eval_source(
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId(bid).into_steel_val();
-    let queue = h.fire_hook(
-        HookId::OnBufferSave, &[val], test_refs_with_bid(&mut s, &mut km, bid),
-    ).unwrap();
+    let queue = h
+        .fire_hook(
+            HookId::OnBufferSave,
+            &[val],
+            test_refs_with_bid(&mut s, &mut km, bid),
+        )
+        .unwrap();
     assert_eq!(queue, vec!["move-right"]);
 }
 
@@ -850,14 +1071,20 @@ fn register_hook_fires_on_mode_change() {
         r#"(register-hook! 'on-mode-change
               (lambda (old new)
                 (when (equal? new "insert") (call! "move-right"))))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     use steel::rvals::IntoSteelVal as _;
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
-    let queue = h.fire_hook(
-        HookId::OnModeChange, &[old_val, new_val], test_refs(&mut s, &mut km),
-    ).unwrap();
+    let queue = h
+        .fire_hook(
+            HookId::OnModeChange,
+            &[old_val, new_val],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
     assert_eq!(queue, vec!["move-right"]);
 }
 
@@ -866,9 +1093,9 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let queue = h.fire_hook(
-        HookId::OnBufferOpen, &[], test_refs(&mut s, &mut km),
-    ).unwrap();
+    let queue = h
+        .fire_hook(HookId::OnBufferOpen, &[], test_refs(&mut s, &mut km))
+        .unwrap();
     assert!(queue.is_empty());
 }
 
@@ -882,13 +1109,19 @@ fn register_hook_multiple_handlers_all_fire() {
 (register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))
 (register-hook! 'on-buffer-save (lambda (bid) (call! "move-left")))
 "#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId(bid).into_steel_val();
-    let queue = h.fire_hook(
-        HookId::OnBufferSave, &[val], test_refs_with_bid(&mut s, &mut km, bid),
-    ).unwrap();
+    let queue = h
+        .fire_hook(
+            HookId::OnBufferSave,
+            &[val],
+            test_refs_with_bid(&mut s, &mut km, bid),
+        )
+        .unwrap();
     assert_eq!(queue, vec!["move-right", "move-left"]);
 }
 
@@ -898,11 +1131,14 @@ fn teardown_removes_plugin_hooks() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     // Register a hook as part of a plugin.
-    h.plugin_stack.push(ledger::PluginId::parse("user/myplugin").unwrap());
+    h.plugin_stack
+        .push(ledger::PluginId::parse("user/myplugin").unwrap());
     h.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     h.plugin_stack.pop();
     // Hook is registered.
     assert!(!h.hooks.is_empty_for(HookId::OnBufferOpen));
@@ -920,11 +1156,13 @@ fn register_hook_errors_in_command_mode() {
     h.eval_source(
         r#"(define-command! "bad-cmd" "" (lambda ()
              (register-hook! 'on-buffer-open (lambda (bid) #f))))"#,
-        &mut s, &mut km,
-    ).unwrap();
-    let err = h.call_steel_cmd(
-        "%hume-cmd-bad-cmd", None, None, test_refs(&mut s, &mut km),
-    ).unwrap_err();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd("%hume-cmd-bad-cmd", None, None, test_refs(&mut s, &mut km))
+        .unwrap_err();
     assert!(err.contains("can only be called during init"), "got: {err}");
 }
 
@@ -933,10 +1171,13 @@ fn register_hook_unknown_name_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source(
-        r#"(register-hook! 'on-nonexistent (lambda () #f))"#,
-        &mut s, &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source(
+            r#"(register-hook! 'on-nonexistent (lambda () #f))"#,
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
     assert!(err.contains("unknown hook"), "got: {err}");
 }
 
@@ -951,22 +1192,36 @@ fn fire_hook_globals_cleared_between_fires() {
     // Handler reads arg 0 and queues its string representation.
     h.eval_source(
         r#"(register-hook! 'on-mode-change (lambda (old new) (call! new)))"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     use steel::rvals::IntoSteelVal as _;
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
-    let q1 = h.fire_hook(
-        HookId::OnModeChange, &[old_val.clone(), new_val], test_refs(&mut s, &mut km),
-    ).unwrap();
+    let q1 = h
+        .fire_hook(
+            HookId::OnModeChange,
+            &[old_val.clone(), new_val],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
     assert_eq!(q1, vec!["insert"]);
 
     // Second fire with different args — stale *hume.ha1* would give wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
-    let q2 = h.fire_hook(
-        HookId::OnModeChange, &[old_val, new_val2], test_refs(&mut s, &mut km),
-    ).unwrap();
-    assert_eq!(q2, vec!["normal"], "second fire must not see stale globals from first");
+    let q2 = h
+        .fire_hook(
+            HookId::OnModeChange,
+            &[old_val, new_val2],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
+    assert_eq!(
+        q2,
+        vec!["normal"],
+        "second fire must not see stale globals from first"
+    );
 }
 
 // ── bind-key-extend! ──────────────────────────────────────────────────────
@@ -978,15 +1233,21 @@ fn bind_key_extend_creates_force_extending_leaf() {
     let mut km = Keymap::default();
     h.eval_source(
         r#"(bind-key-extend! "normal" "z" "select-line")"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (name, force_extend) = km.lookup_command(BindMode::Normal, z_key)
+    let (name, force_extend) = km
+        .lookup_command(BindMode::Normal, z_key)
         .expect("z must be bound after bind-key-extend!");
     assert_eq!(name, "select-line");
-    assert!(force_extend, "bind-key-extend! must produce force_extend = true");
+    assert!(
+        force_extend,
+        "bind-key-extend! must produce force_extend = true"
+    );
 }
 
 #[test]
@@ -994,14 +1255,13 @@ fn bind_key_does_not_force_extend() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    h.eval_source(
-        r#"(bind-key! "normal" "z" "select-line")"#,
-        &mut s, &mut km,
-    ).unwrap();
+    h.eval_source(r#"(bind-key! "normal" "z" "select-line")"#, &mut s, &mut km)
+        .unwrap();
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
-    let (_, force_extend) = km.lookup_command(BindMode::Normal, z_key)
+    let (_, force_extend) = km
+        .lookup_command(BindMode::Normal, z_key)
         .expect("z must be bound after bind-key!");
     assert!(!force_extend, "bind-key! must produce force_extend = false");
 }
@@ -1011,10 +1271,9 @@ fn bind_key_extend_invalid_mode_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source(
-        r#"(bind-key-extend! "visual" "f" "cmd")"#,
-        &mut s, &mut km,
-    ).unwrap_err();
+    let err = h
+        .eval_source(r#"(bind-key-extend! "visual" "f" "cmd")"#, &mut s, &mut km)
+        .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
 
@@ -1028,11 +1287,18 @@ fn unbind_key_removes_default_binding() {
     use crate::editor::keymap::BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
-    assert!(km.lookup_command(BindMode::Normal, h_key).is_some(), "'h' must be bound by default");
+    assert!(
+        km.lookup_command(BindMode::Normal, h_key).is_some(),
+        "'h' must be bound by default"
+    );
 
-    h.eval_source(r#"(unbind-key! "normal" "h")"#, &mut s, &mut km).unwrap();
+    h.eval_source(r#"(unbind-key! "normal" "h")"#, &mut s, &mut km)
+        .unwrap();
 
-    assert!(km.lookup_command(BindMode::Normal, h_key).is_none(), "'h' must be unbound after unbind-key!");
+    assert!(
+        km.lookup_command(BindMode::Normal, h_key).is_none(),
+        "'h' must be unbound after unbind-key!"
+    );
 }
 
 #[test]
@@ -1041,7 +1307,8 @@ fn unbind_key_noop_on_already_unbound() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     // 'Q' is not in the default keymap.
-    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut s, &mut km).unwrap();
+    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut s, &mut km)
+        .unwrap();
 }
 
 #[test]
@@ -1049,7 +1316,9 @@ fn unbind_key_invalid_mode_errors() {
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let err = h.eval_source(r#"(unbind-key! "visual" "h")"#, &mut s, &mut km).unwrap_err();
+    let err = h
+        .eval_source(r#"(unbind-key! "visual" "h")"#, &mut s, &mut km)
+        .unwrap_err();
     assert!(err.contains("mode"), "got: {err}");
 }
 
@@ -1066,12 +1335,18 @@ fn plugin_unbind_is_restored_on_unload() {
         r#"(push-current-plugin! "user/a")
            (unbind-key! "normal" "h")
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
-    assert!(km.lookup_command(BindMode::Normal, h_key).is_none(), "'h' must be unbound while plugin is loaded");
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    assert!(
+        km.lookup_command(BindMode::Normal, h_key).is_none(),
+        "'h' must be unbound while plugin is loaded"
+    );
 
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    let (name, _) = km.lookup_command(BindMode::Normal, h_key)
+    let (name, _) = km
+        .lookup_command(BindMode::Normal, h_key)
         .expect("'h' must be restored after plugin unload");
     assert_eq!(name, "move-left");
 }
@@ -1089,28 +1364,40 @@ fn plugin_unload_restores_force_extend_on_ctrl_x() {
     let cx_key = &[KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)];
 
     // Verify built-in Ctrl+x has force_extend = true.
-    let (_, built_in_extend) = km.lookup_command(BindMode::Normal, cx_key)
+    let (_, built_in_extend) = km
+        .lookup_command(BindMode::Normal, cx_key)
         .expect("Ctrl+x must be bound in the default keymap");
-    assert!(built_in_extend, "built-in Ctrl+x must have force_extend = true");
+    assert!(
+        built_in_extend,
+        "built-in Ctrl+x must have force_extend = true"
+    );
 
     // Plugin shadows Ctrl+x with a plain (non-extending) binding.
     h.eval_source(
         r#"(push-current-plugin! "user/a")
            (bind-key! "normal" "ctrl-x" "move-right")
            (pop-current-plugin!)"#,
-        &mut s, &mut km,
-    ).unwrap();
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
     let (name, extend_after_shadow) = km.lookup_command(BindMode::Normal, cx_key).unwrap();
     assert_eq!(name, "move-right");
-    assert!(!extend_after_shadow, "plugin bind-key! must set force_extend = false");
+    assert!(
+        !extend_after_shadow,
+        "plugin bind-key! must set force_extend = false"
+    );
 
     // Unload plugin — Ctrl+x must be restored with force_extend = true.
     h.teardown_plugin("user/a", &mut s, &mut km).unwrap();
-    let (restored_name, restored_extend) = km.lookup_command(BindMode::Normal, cx_key)
+    let (restored_name, restored_extend) = km
+        .lookup_command(BindMode::Normal, cx_key)
         .expect("Ctrl+x must be bound after unload");
     assert_eq!(restored_name, "select-line");
-    assert!(restored_extend,
-        "ledger round-trip must restore force_extend = true for built-in Ctrl+x");
+    assert!(
+        restored_extend,
+        "ledger round-trip must restore force_extend = true for built-in Ctrl+x"
+    );
 }
 
 #[test]

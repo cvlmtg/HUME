@@ -15,8 +15,8 @@ use std::collections::VecDeque;
 
 use engine::pipeline::BufferId;
 
-use crate::core::text::Text;
 use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
 
 /// Default capacity — kept here so tests can construct jump lists without
 /// importing `EditorSettings`.
@@ -39,15 +39,27 @@ impl JumpEntry {
     /// `primary_line` from the buffer so callers don't have to.
     pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head);
-        Self { buffer_id, selections, primary_line }
+        Self {
+            buffer_id,
+            selections,
+            primary_line,
+        }
     }
 
     /// Build a jump entry from a pre-motion snapshot.
     ///
     /// Used at call sites that capture the cursor *before* a motion runs, so
     /// `primary_line` is already known and no buffer reference is needed.
-    pub(crate) fn from_pre_motion(pre_primary: Selection, primary_line: usize, buffer_id: BufferId) -> Self {
-        Self { buffer_id, selections: SelectionSet::single(pre_primary), primary_line }
+    pub(crate) fn from_pre_motion(
+        pre_primary: Selection,
+        primary_line: usize,
+        buffer_id: BufferId,
+    ) -> Self {
+        Self {
+            buffer_id,
+            selections: SelectionSet::single(pre_primary),
+            primary_line,
+        }
     }
 }
 
@@ -69,7 +81,11 @@ pub(crate) struct JumpList {
 impl JumpList {
     /// Create a new jump list with the given capacity limit.
     pub(crate) fn new(capacity: usize) -> Self {
-        Self { entries: VecDeque::new(), cursor: 0, capacity }
+        Self {
+            entries: VecDeque::new(),
+            cursor: 0,
+            capacity,
+        }
     }
 
     /// Record a jump. Truncates forward history, deduplicates against the last
@@ -78,7 +94,9 @@ impl JumpList {
         self.entries.truncate(self.cursor);
 
         // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
-        if let Some(last) = self.entries.back_mut()
+        if let Some(last) = self
+            .entries
+            .back_mut()
             .filter(|l| l.primary_line == entry.primary_line && l.buffer_id == entry.buffer_id)
         {
             *last = entry;
@@ -98,12 +116,17 @@ impl JumpList {
     /// in the remaining entries is preserved; clamps to `entries.len()` if the
     /// cursor falls past the end (which means "at the present").
     pub(crate) fn prune_buffer(&mut self, id: BufferId) {
-        let removed_before = self.entries.iter()
+        let removed_before = self
+            .entries
+            .iter()
             .take(self.cursor)
             .filter(|e| e.buffer_id == id)
             .count();
         self.entries.retain(|e| e.buffer_id != id);
-        self.cursor = self.cursor.saturating_sub(removed_before).min(self.entries.len());
+        self.cursor = self
+            .cursor
+            .saturating_sub(removed_before)
+            .min(self.entries.len());
     }
 
     /// Navigate backward. If at the present, saves `current` first so that
@@ -289,7 +312,10 @@ mod tests {
         // matching Vim/Helix: the present is only captured when first entering
         // the jump list from a fresh editing state.
         let e = jl.backward(entry(80, 20)).unwrap();
-        assert_eq!(e.primary_line, 0, "traverses existing history without saving new position");
+        assert_eq!(
+            e.primary_line, 0,
+            "traverses existing history without saving new position"
+        );
 
         // Forward returns to the previously saved "present" (line 10).
         let e = jl.forward().unwrap();
@@ -344,7 +370,10 @@ mod tests {
         jl.prune_buffer(bid_a);
 
         assert_eq!(jl.len(), 2);
-        assert_eq!(jl.cursor, 2, "cursor clamped to end after removing 2 entries before it");
+        assert_eq!(
+            jl.cursor, 2,
+            "cursor clamped to end after removing 2 entries before it"
+        );
         assert!(!jl.entries_for_buffer(bid_a));
     }
 
@@ -382,7 +411,10 @@ mod tests {
         jl.prune_buffer(bid_a);
 
         assert_eq!(jl.len(), 1);
-        assert_eq!(jl.cursor, 0, "cursor stays at 0 — saturating_sub prevents underflow");
+        assert_eq!(
+            jl.cursor, 0,
+            "cursor stays at 0 — saturating_sub prevents underflow"
+        );
     }
 
     /// When all entries belong to the pruned buffer, list and cursor both become 0.
@@ -415,7 +447,10 @@ mod tests {
         // remaining = [B:0, B:2], cursor = 2 (3 − 1 removed before = 2, clamped to min(2,2))
 
         let e = jl.backward(entry_for(99, 99, bid_b)).unwrap();
-        assert_eq!(e.primary_line, 2, "backward from present lands on last remaining entry");
+        assert_eq!(
+            e.primary_line, 2,
+            "backward from present lands on last remaining entry"
+        );
         let e = jl.backward(entry_for(0, 0, bid_b)).unwrap();
         assert_eq!(e.primary_line, 0, "backward again reaches the oldest entry");
     }

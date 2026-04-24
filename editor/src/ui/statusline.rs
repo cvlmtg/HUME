@@ -82,17 +82,17 @@ pub(crate) enum StatusElement {
 impl fmt::Display for StatusElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            StatusElement::Mode           => "Mode",
-            StatusElement::Separator      => "Separator",
-            StatusElement::FileName       => "FileName",
-            StatusElement::Cwd            => "Cwd",
-            StatusElement::Position       => "Position",
-            StatusElement::Selections     => "Selections",
-            StatusElement::KittyProtocol  => "KittyProtocol",
+            StatusElement::Mode => "Mode",
+            StatusElement::Separator => "Separator",
+            StatusElement::FileName => "FileName",
+            StatusElement::Cwd => "Cwd",
+            StatusElement::Position => "Position",
+            StatusElement::Selections => "Selections",
+            StatusElement::KittyProtocol => "KittyProtocol",
             StatusElement::DirtyIndicator => "DirtyIndicator",
-            StatusElement::LineEnding     => "LineEnding",
-            StatusElement::SearchMatches  => "SearchMatches",
-            StatusElement::MiniBuf        => "MiniBuf",
+            StatusElement::LineEnding => "LineEnding",
+            StatusElement::SearchMatches => "SearchMatches",
+            StatusElement::MiniBuf => "MiniBuf",
             StatusElement::MacroRecording => "MacroRecording",
         })
     }
@@ -103,17 +103,17 @@ impl FromStr for StatusElement {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Mode"           => Ok(StatusElement::Mode),
-            "Separator"      => Ok(StatusElement::Separator),
-            "FileName"       => Ok(StatusElement::FileName),
-            "Cwd"            => Ok(StatusElement::Cwd),
-            "Position"       => Ok(StatusElement::Position),
-            "Selections"     => Ok(StatusElement::Selections),
-            "KittyProtocol"  => Ok(StatusElement::KittyProtocol),
+            "Mode" => Ok(StatusElement::Mode),
+            "Separator" => Ok(StatusElement::Separator),
+            "FileName" => Ok(StatusElement::FileName),
+            "Cwd" => Ok(StatusElement::Cwd),
+            "Position" => Ok(StatusElement::Position),
+            "Selections" => Ok(StatusElement::Selections),
+            "KittyProtocol" => Ok(StatusElement::KittyProtocol),
             "DirtyIndicator" => Ok(StatusElement::DirtyIndicator),
-            "LineEnding"     => Ok(StatusElement::LineEnding),
-            "SearchMatches"  => Ok(StatusElement::SearchMatches),
-            "MiniBuf"        => Ok(StatusElement::MiniBuf),
+            "LineEnding" => Ok(StatusElement::LineEnding),
+            "SearchMatches" => Ok(StatusElement::SearchMatches),
+            "MiniBuf" => Ok(StatusElement::MiniBuf),
             "MacroRecording" => Ok(StatusElement::MacroRecording),
             _ => Err(format!(
                 "unknown element '{s}'; valid names: Cwd DirtyIndicator FileName KittyProtocol \
@@ -166,7 +166,6 @@ impl Default for StatusLineConfig {
     }
 }
 
-
 // ── Edge padding ─────────────────────────────────────────────────────────────
 
 /// Prepend a 1-space padding span to the left section.
@@ -201,11 +200,19 @@ fn pad_right(
 
 /// Total display-column width of a rendered section.
 fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
-    spans.iter().map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16).sum()
+    spans
+        .iter()
+        .map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16)
+        .sum()
 }
 
 /// Draw a section's spans left-to-right starting at `x`.
-fn draw_section(screen_buf: &mut ScreenBuf, spans: &[(Cow<'static, str>, Style)], mut x: u16, y: u16) {
+fn draw_section(
+    screen_buf: &mut ScreenBuf,
+    spans: &[(Cow<'static, str>, Style)],
+    mut x: u16,
+    y: u16,
+) {
     for (text, style) in spans {
         screen_buf.set_string(x, y, text.as_ref(), *style);
         x += UnicodeWidthStr::width(text.as_ref()) as u16;
@@ -273,29 +280,32 @@ fn render_statusline(
 ) {
     let config = &editor.settings.statusline;
 
-    let (left_elems, center_elems, right_elems): (&[StatusElement], &[StatusElement], &[StatusElement]) =
-        if editor.minibuf.is_some() {
-            (MINIBUF_LEFT, &[], &config.right)
-        } else {
-            (&config.left, &config.center, &config.right)
-        };
+    let (left_elems, center_elems, right_elems): (
+        &[StatusElement],
+        &[StatusElement],
+        &[StatusElement],
+    ) = if editor.minibuf.is_some() {
+        (MINIBUF_LEFT, &[], &config.right)
+    } else {
+        (&config.left, &config.center, &config.right)
+    };
 
     fill_row_colors(screen_buf, colors, area, y);
 
-    let left_spans  = pad_left(render_section(left_elems, editor, colors), colors);
+    let left_spans = pad_left(render_section(left_elems, editor, colors), colors);
     let center_spans = render_section(center_elems, editor, colors);
-    let right_spans  = pad_right(render_section(right_elems, editor, colors), colors);
+    let right_spans = pad_right(render_section(right_elems, editor, colors), colors);
 
-    let left_w   = section_width(&left_spans);
+    let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);
-    let right_w  = section_width(&right_spans);
+    let right_w = section_width(&right_spans);
 
-    let left_x    = area.x;
-    let left_end  = left_x + left_w;
-    let right_x   = area.right().saturating_sub(right_w);
+    let left_x = area.x;
+    let left_end = left_x + left_w;
+    let right_x = area.right().saturating_sub(right_w);
     let right_fits = right_x >= left_end;
     let right_fence = if right_fits { right_x } else { area.right() };
-    let gap      = right_fence.saturating_sub(left_end);
+    let gap = right_fence.saturating_sub(left_end);
     let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
     let center_fits = !center_spans.is_empty()
         && center_w <= gap
@@ -303,23 +313,31 @@ fn render_statusline(
         && center_x + center_w <= right_fence;
 
     draw_section(screen_buf, &left_spans, left_x, y);
-    if right_fits  { draw_section(screen_buf, &right_spans,  right_x,  y); }
-    if center_fits { draw_section(screen_buf, &center_spans, center_x, y); }
+    if right_fits {
+        draw_section(screen_buf, &right_spans, right_x, y);
+    }
+    if center_fits {
+        draw_section(screen_buf, &center_spans, center_x, y);
+    }
 
     // Minibuf cursor is rendered by the terminal cursor (set_cursor_position +
     // set_color_for_mode in cursor.rs). No cell-level override needed.
 }
 
-fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+fn render_element(
+    seg: StatusElement,
+    editor: &Editor,
+    colors: &EditorColors,
+) -> (Cow<'static, str>, Style) {
     match seg {
         StatusElement::Mode => {
             let (label, style) = match editor.mode {
-                EditorMode::Normal  => ("NOR", colors.status_normal),
-                EditorMode::Extend  => ("EXT", colors.status_extend),
-                EditorMode::Insert  => ("INS", colors.status_insert),
-                EditorMode::Search  => ("SRC", colors.status_search),
+                EditorMode::Normal => ("NOR", colors.status_normal),
+                EditorMode::Extend => ("EXT", colors.status_extend),
+                EditorMode::Insert => ("INS", colors.status_insert),
+                EditorMode::Search => ("SRC", colors.status_search),
                 EditorMode::Command => ("CMD", colors.status_command),
-                EditorMode::Select  => ("SEL", colors.status_select),
+                EditorMode::Select => ("SEL", colors.status_select),
             };
             (Cow::Borrowed(label), style)
         }
@@ -328,7 +346,10 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             let name: &str = if let Some(ref sv) = editor.scratch_view {
                 sv.label
             } else {
-                editor.doc().path.as_deref()
+                editor
+                    .doc()
+                    .path
+                    .as_deref()
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
                     .unwrap_or("[scratch]")
@@ -340,7 +361,10 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
             let head = editor.current_selections().primary().head;
             let head_line = buf.char_to_line(head);
             let col_0 = grapheme_col_in_line(buf, head_line, head);
-            (Cow::Owned(format!("{}:{}", head_line + 1, col_0 + 1)), colors.statusline)
+            (
+                Cow::Owned(format!("{}:{}", head_line + 1, col_0 + 1)),
+                colors.statusline,
+            )
         }
         StatusElement::KittyProtocol => {
             let label = if editor.kitty_enabled { "🐱" } else { "" };
@@ -353,21 +377,26 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
         }
         StatusElement::LineEnding => {
             let label = match editor.doc().text().line_ending() {
-                TextLineEnding::Lf   => "LF",
+                TextLineEnding::Lf => "LF",
                 TextLineEnding::CrLf => "CRLF",
             };
             (Cow::Borrowed(label), colors.statusline)
         }
-        StatusElement::Cwd => {
-            (Cow::Owned(shorten_home(&editor.cwd)), colors.statusline)
-        }
+        StatusElement::Cwd => (Cow::Owned(shorten_home(&editor.cwd)), colors.statusline),
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.current_search_cursor().match_count {
                 if total == 0 {
                     (Cow::Borrowed(""), colors.statusline)
                 } else {
-                    let w = if editor.current_search_cursor().wrapped { "W " } else { "" };
-                    (Cow::Owned(format!("{w}[{current}/{total}]")), colors.statusline)
+                    let w = if editor.current_search_cursor().wrapped {
+                        "W "
+                    } else {
+                        ""
+                    };
+                    (
+                        Cow::Owned(format!("{w}[{current}/{total}]")),
+                        colors.statusline,
+                    )
                 }
             } else {
                 (Cow::Borrowed(""), colors.statusline)
@@ -385,7 +414,10 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
         }
         StatusElement::MacroRecording => {
             if let Some((reg, _)) = &editor.macro_recording {
-                (Cow::Owned(format!("[recording @{reg}]")), colors.status_insert)
+                (
+                    Cow::Owned(format!("[recording @{reg}]")),
+                    colors.status_insert,
+                )
             } else {
                 (Cow::Borrowed(""), colors.statusline)
             }
@@ -393,15 +425,21 @@ fn render_element(seg: StatusElement, editor: &Editor, colors: &EditorColors) ->
     }
 }
 
-fn render_section(elements: &[StatusElement], editor: &Editor, colors: &EditorColors) -> Vec<(Cow<'static, str>, Style)> {
+fn render_section(
+    elements: &[StatusElement],
+    editor: &Editor,
+    colors: &EditorColors,
+) -> Vec<(Cow<'static, str>, Style)> {
     let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
 
     for &seg in elements {
         let (text, style) = render_element(seg, editor, colors);
-        if text.is_empty() { continue; }
+        if text.is_empty() {
+            continue;
+        }
 
         if let Some((prev_text, _)) = spans.last() {
-            let a_ends_space   = prev_text.ends_with(' ');
+            let a_ends_space = prev_text.ends_with(' ');
             let b_starts_space = text.starts_with(' ');
 
             if !a_ends_space && !b_starts_space {
@@ -410,7 +448,10 @@ fn render_section(elements: &[StatusElement], editor: &Editor, colors: &EditorCo
             } else if a_ends_space && b_starts_space {
                 let trimmed = match text {
                     Cow::Borrowed(s) => Cow::Borrowed(s.strip_prefix(' ').unwrap_or(s)),
-                    Cow::Owned(mut s) => { s.drain(..1); Cow::Owned(s) }
+                    Cow::Owned(mut s) => {
+                        s.drain(..1);
+                        Cow::Owned(s)
+                    }
                 };
                 spans.push((trimmed, style));
             } else {
@@ -493,7 +534,10 @@ mod tests {
     // ── MacroRecording element ────────────────────────────────────────────────
 
     fn test_editor() -> crate::editor::Editor {
-        use crate::core::{text::Text, selection::{Selection, SelectionSet}};
+        use crate::core::{
+            selection::{Selection, SelectionSet},
+            text::Text,
+        };
         use crate::editor::buffer::Buffer;
         let text = Text::from("hello\n");
         let sels = SelectionSet::single(Selection::collapsed(0));
@@ -506,7 +550,11 @@ mod tests {
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
-        assert!(text.is_empty(), "expected empty string when not recording, got {:?}", text);
+        assert!(
+            text.is_empty(),
+            "expected empty string when not recording, got {:?}",
+            text
+        );
     }
 
     #[test]
@@ -532,7 +580,10 @@ mod tests {
     // ── LineEnding element ────────────────────────────────────────────────────
 
     fn test_editor_with_text(s: &str) -> crate::editor::Editor {
-        use crate::core::{text::Text, selection::{Selection, SelectionSet}};
+        use crate::core::{
+            selection::{Selection, SelectionSet},
+            text::Text,
+        };
         use crate::editor::buffer::Buffer;
         let text = Text::from(s);
         let sels = SelectionSet::single(Selection::collapsed(0));
@@ -563,7 +614,10 @@ mod tests {
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::Cwd, &ed, &colors);
-        assert!(!text.is_empty(), "Cwd rendered empty; expected a path string");
+        assert!(
+            !text.is_empty(),
+            "Cwd rendered empty; expected a path string"
+        );
     }
 
     // ── center_x arithmetic ───────────────────────────────────────────────────

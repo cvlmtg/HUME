@@ -41,14 +41,14 @@ pub(crate) enum HistoryDir {
 /// minibuffer session and has no meaning between sessions.
 #[derive(Debug)]
 pub(crate) struct History {
-    entries:  VecDeque<String>,
+    entries: VecDeque<String>,
     capacity: usize,
     /// `None` = not currently navigating (at "scratch" / no Up pressed yet).
     /// `Some(i)` = `entries[i]` is currently shown in the minibuffer.
-    cursor:   Option<usize>,
+    cursor: Option<usize>,
     /// The text that was in the minibuffer when the user first pressed Up this
     /// session — restored by Down past the newest entry.
-    scratch:  Option<String>,
+    scratch: Option<String>,
 }
 
 impl History {
@@ -56,7 +56,7 @@ impl History {
         Self {
             entries: VecDeque::new(),
             capacity,
-            cursor:  None,
+            cursor: None,
             scratch: None,
         }
     }
@@ -165,7 +165,7 @@ impl History {
 /// `Editor`; rings are accessed by [`HistoryKind`].
 #[derive(Debug)]
 pub(crate) struct HistoryStore {
-    command:  History,
+    command: History,
     search_f: History,
     search_b: History,
 }
@@ -173,7 +173,7 @@ pub(crate) struct HistoryStore {
 impl HistoryStore {
     pub(crate) fn new(capacity: usize) -> Self {
         Self {
-            command:  History::new(capacity),
+            command: History::new(capacity),
             search_f: History::new(capacity),
             search_b: History::new(capacity),
         }
@@ -182,16 +182,16 @@ impl HistoryStore {
     #[cfg(test)]
     pub(crate) fn get(&self, kind: HistoryKind) -> &History {
         match kind {
-            HistoryKind::Command       => &self.command,
-            HistoryKind::SearchForward  => &self.search_f,
+            HistoryKind::Command => &self.command,
+            HistoryKind::SearchForward => &self.search_f,
             HistoryKind::SearchBackward => &self.search_b,
         }
     }
 
     pub(crate) fn get_mut(&mut self, kind: HistoryKind) -> &mut History {
         match kind {
-            HistoryKind::Command       => &mut self.command,
-            HistoryKind::SearchForward  => &mut self.search_f,
+            HistoryKind::Command => &mut self.command,
+            HistoryKind::SearchForward => &mut self.search_f,
             HistoryKind::SearchBackward => &mut self.search_b,
         }
     }
@@ -203,7 +203,7 @@ impl HistoryStore {
             ':' => Some(HistoryKind::Command),
             '/' => Some(HistoryKind::SearchForward),
             '?' => Some(HistoryKind::SearchBackward),
-            _   => None,
+            _ => None,
         }
     }
 
@@ -228,9 +228,18 @@ impl HistoryStore {
     #[allow(dead_code)]
     pub(crate) fn snapshot(&self) -> Vec<(HistoryKind, Vec<String>)> {
         vec![
-            (HistoryKind::Command,       self.command.entries.iter().cloned().collect()),
-            (HistoryKind::SearchForward,  self.search_f.entries.iter().cloned().collect()),
-            (HistoryKind::SearchBackward, self.search_b.entries.iter().cloned().collect()),
+            (
+                HistoryKind::Command,
+                self.command.entries.iter().cloned().collect(),
+            ),
+            (
+                HistoryKind::SearchForward,
+                self.search_f.entries.iter().cloned().collect(),
+            ),
+            (
+                HistoryKind::SearchBackward,
+                self.search_b.entries.iter().cloned().collect(),
+            ),
         ]
     }
 
@@ -411,9 +420,18 @@ mod tests {
 
     #[test]
     fn kind_for_prompt_maps_colon_slash_question() {
-        assert_eq!(HistoryStore::kind_for_prompt(':'), Some(HistoryKind::Command));
-        assert_eq!(HistoryStore::kind_for_prompt('/'), Some(HistoryKind::SearchForward));
-        assert_eq!(HistoryStore::kind_for_prompt('?'), Some(HistoryKind::SearchBackward));
+        assert_eq!(
+            HistoryStore::kind_for_prompt(':'),
+            Some(HistoryKind::Command)
+        );
+        assert_eq!(
+            HistoryStore::kind_for_prompt('/'),
+            Some(HistoryKind::SearchForward)
+        );
+        assert_eq!(
+            HistoryStore::kind_for_prompt('?'),
+            Some(HistoryKind::SearchBackward)
+        );
         assert_eq!(HistoryStore::kind_for_prompt('⫽'), None);
         assert_eq!(HistoryStore::kind_for_prompt('x'), None);
     }
@@ -429,15 +447,30 @@ mod tests {
         let restored = HistoryStore::restore(snap, 10);
 
         assert_eq!(
-            restored.get(HistoryKind::Command).entries().iter().cloned().collect::<Vec<_>>(),
+            restored
+                .get(HistoryKind::Command)
+                .entries()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
             vec!["w"],
         );
         assert_eq!(
-            restored.get(HistoryKind::SearchForward).entries().iter().cloned().collect::<Vec<_>>(),
+            restored
+                .get(HistoryKind::SearchForward)
+                .entries()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
             vec!["foo"],
         );
         assert_eq!(
-            restored.get(HistoryKind::SearchBackward).entries().iter().cloned().collect::<Vec<_>>(),
+            restored
+                .get(HistoryKind::SearchBackward)
+                .entries()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
             vec!["bar"],
         );
     }

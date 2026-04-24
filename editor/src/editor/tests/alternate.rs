@@ -48,10 +48,18 @@ fn ctrl_6_switches_to_alternate_and_is_involutive() {
     let id_b = ed.focused_buffer_id();
 
     ed.handle_key(key_ctrl('6'));
-    assert_eq!(ed.focused_buffer_id(), id_a, "Ctrl+6 must switch to alternate");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_a,
+        "Ctrl+6 must switch to alternate"
+    );
 
     ed.handle_key(key_ctrl('6'));
-    assert_eq!(ed.focused_buffer_id(), id_b, "Ctrl+6 again returns to starting buffer");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_b,
+        "Ctrl+6 again returns to starting buffer"
+    );
 }
 
 #[test]
@@ -75,9 +83,19 @@ fn ctrl_6_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     let id_before = ed.focused_buffer_id();
     ed.handle_key(key_ctrl('6'));
-    assert_eq!(ed.focused_buffer_id(), id_before, "no buffer change with no alternate");
-    let msg = ed.status_msg.as_deref().expect("warning should be reported");
-    assert!(msg.contains("No alternate buffer"), "unexpected status: {msg:?}");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_before,
+        "no buffer change with no alternate"
+    );
+    let msg = ed
+        .status_msg
+        .as_deref()
+        .expect("warning should be reported");
+    assert!(
+        msg.contains("No alternate buffer"),
+        "unexpected status: {msg:?}"
+    );
 }
 
 // ── %/# expansion in typed commands ──────────────────────────────────────────
@@ -94,8 +112,16 @@ fn colon_e_hash_opens_alternate() {
     let buf_count = ed.buffers.len();
 
     type_cmd(&mut ed, ":e #");
-    assert_eq!(ed.focused_buffer_id(), id_a, ":e # must switch to alternate");
-    assert_eq!(ed.buffers.len(), buf_count, ":e # must not open a duplicate");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_a,
+        ":e # must switch to alternate"
+    );
+    assert_eq!(
+        ed.buffers.len(),
+        buf_count,
+        ":e # must not open a duplicate"
+    );
 }
 
 #[test]
@@ -103,7 +129,10 @@ fn colon_e_hash_errors_with_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":e #");
     let msg = ed.status_msg.as_deref().expect("error should be reported");
-    assert!(msg.contains("No alternate buffer"), "unexpected status: {msg:?}");
+    assert!(
+        msg.contains("No alternate buffer"),
+        "unexpected status: {msg:?}"
+    );
 }
 
 #[test]
@@ -116,7 +145,11 @@ fn colon_e_percent_is_noop_reload() {
     let count_before = ed.buffers.len();
 
     type_cmd(&mut ed, ":e %");
-    assert_eq!(ed.focused_buffer_id(), id_before, ":e % stays on same buffer");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        id_before,
+        ":e % stays on same buffer"
+    );
     assert_eq!(ed.buffers.len(), count_before, ":e % does not duplicate");
 }
 
@@ -133,7 +166,8 @@ fn colon_e_percent_errors_with_no_path() {
 #[test]
 fn goto_alternate_file_is_registered_as_jump() {
     let reg = super::super::registry::CommandRegistry::with_defaults();
-    let cmd = reg.get_mappable("goto-alternate-file")
+    let cmd = reg
+        .get_mappable("goto-alternate-file")
         .expect("goto-alternate-file must be registered");
     assert!(cmd.is_jump(), "goto-alternate-file must have jump:true");
 }

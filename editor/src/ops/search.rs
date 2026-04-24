@@ -11,7 +11,7 @@
 //! (Unicode scalar value) offsets. Conversion is done here at the boundary so
 //! callers work exclusively in char offsets.
 
-use regex_cursor::{engines::meta::Regex, Input, RopeyCursor};
+use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
 use crate::core::text::Text;
 use crate::editor::SearchDirection;
@@ -347,7 +347,10 @@ mod tests {
     fn all_matches_multiple_hits() {
         let b = buf("aababab\n");
         // "ab" at chars 1..2, 3..4, 5..6
-        assert_eq!(find_all_matches(&b, &re("ab")), vec![(1, 2), (3, 4), (5, 6)]);
+        assert_eq!(
+            find_all_matches(&b, &re("ab")),
+            vec![(1, 2), (3, 4), (5, 6)]
+        );
     }
 
     #[test]
@@ -369,7 +372,8 @@ mod tests {
     #[test]
     fn forward_basic() {
         let b = buf("hello world\n");
-        let (s, e, wrapped) = find_next_match(&b, &re("world"), 0, SearchDirection::Forward).unwrap();
+        let (s, e, wrapped) =
+            find_next_match(&b, &re("world"), 0, SearchDirection::Forward).unwrap();
         assert_eq!(s, 6);
         assert_eq!(e, 10);
         assert!(!wrapped);
@@ -387,7 +391,8 @@ mod tests {
     fn forward_wraps() {
         let b = buf("hello world\n");
         // Searching from after "world" (char 11 = '\n') should wrap and find "world".
-        let (s, e, wrapped) = find_next_match(&b, &re("world"), 11, SearchDirection::Forward).unwrap();
+        let (s, e, wrapped) =
+            find_next_match(&b, &re("world"), 11, SearchDirection::Forward).unwrap();
         assert_eq!((s, e), (6, 10));
         assert!(wrapped);
     }
@@ -412,7 +417,8 @@ mod tests {
     fn backward_basic() {
         let b = buf("hello world\n");
         // Search backward from position 11 ('\n') — should find "world" at (6,10).
-        let (s, e, wrapped) = find_next_match(&b, &re("world"), 11, SearchDirection::Backward).unwrap();
+        let (s, e, wrapped) =
+            find_next_match(&b, &re("world"), 11, SearchDirection::Backward).unwrap();
         assert_eq!((s, e), (6, 10));
         assert!(!wrapped);
     }
@@ -421,7 +427,8 @@ mod tests {
     fn backward_wraps() {
         // Searching backward from before the only match should wrap.
         let b = buf("hello world\n");
-        let (s, e, wrapped) = find_next_match(&b, &re("world"), 3, SearchDirection::Backward).unwrap();
+        let (s, e, wrapped) =
+            find_next_match(&b, &re("world"), 3, SearchDirection::Backward).unwrap();
         assert_eq!((s, e), (6, 10));
         assert!(wrapped);
     }
@@ -432,7 +439,8 @@ mod tests {
         // wrap range. This exercises the path where the early-return guard in
         // search_last_in fires and the wrap leg does all the work.
         let b = buf("hello world\n");
-        let (s, e, wrapped) = find_next_match(&b, &re("world"), 0, SearchDirection::Backward).unwrap();
+        let (s, e, wrapped) =
+            find_next_match(&b, &re("world"), 0, SearchDirection::Backward).unwrap();
         assert_eq!((s, e), (6, 10));
         assert!(wrapped);
     }

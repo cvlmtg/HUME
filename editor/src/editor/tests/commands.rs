@@ -48,7 +48,11 @@ fn d_yanks_selection_into_register_before_deleting() {
     ed.handle_key(key('d'));
 
     assert_eq!(ed.doc().text().to_string(), "o\n", "buffer after delete");
-    assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register after delete");
+    assert_eq!(
+        reg(&ed, DEFAULT_REGISTER),
+        &["hell"],
+        "register after delete"
+    );
 }
 
 // ── `y` yanks without modifying the buffer ─────────────────────────────────
@@ -78,12 +82,21 @@ fn p_over_selection_swaps_displaced_text_into_register() {
 
     let mut ed = editor_from("-[hell]>o\n");
     // Seed the register with the text we'll paste.
-    ed.registers.write_text(DEFAULT_REGISTER, vec!["XY".to_string()]);
+    ed.registers
+        .write_text(DEFAULT_REGISTER, vec!["XY".to_string()]);
 
     ed.handle_key(key('p'));
 
-    assert_eq!(ed.doc().text().to_string(), "XYo\n", "pasted text in buffer");
-    assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "displaced text in register");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "XYo\n",
+        "pasted text in buffer"
+    );
+    assert_eq!(
+        reg(&ed, DEFAULT_REGISTER),
+        &["hell"],
+        "displaced text in register"
+    );
 }
 
 // ── `r<char>` pending-key replace sequence ─────────────────────────────────
@@ -99,7 +112,10 @@ fn r_then_char_replaces_every_grapheme_in_selection() {
     assert!(ed.wait_char.is_some(), "wait_char set after 'r'");
 
     ed.handle_key(key('x'));
-    assert!(ed.wait_char.is_none(), "wait_char cleared after replacement char");
+    assert!(
+        ed.wait_char.is_none(),
+        "wait_char cleared after replacement char"
+    );
     assert_eq!(state(&ed), "-[xxxx]>o\n");
 }
 
@@ -111,7 +127,11 @@ fn r_then_esc_cancels_without_side_effects() {
     ed.handle_key(key_esc());
 
     assert!(ed.wait_char.is_none());
-    assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged after cancelled replace");
+    assert_eq!(
+        state(&ed),
+        "-[hell]>o\n",
+        "buffer unchanged after cancelled replace"
+    );
 }
 
 /// Unlike `r`, find/till has extend duality — this exercises that branch
@@ -125,7 +145,11 @@ fn f_then_esc_cancels_without_side_effects() {
 
     assert!(ed.wait_char.is_none(), "wait_char cleared after Esc");
     assert!(ed.pending_char.is_none(), "pending_char not set");
-    assert_eq!(state(&ed), "-[h]>ello a\n", "buffer and cursor unchanged after cancelled find");
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello a\n",
+        "buffer and cursor unchanged after cancelled find"
+    );
 }
 
 // ── `m i w` three-key text-object sequence ─────────────────────────────────
@@ -138,13 +162,24 @@ fn m_i_w_selects_inner_word() {
     let mut ed = editor_from("-[h]>ello world\n");
 
     ed.handle_key(key('m'));
-    assert_eq!(ed.pending_keys.len(), 1, "pending_keys has 'm' after first press");
+    assert_eq!(
+        ed.pending_keys.len(),
+        1,
+        "pending_keys has 'm' after first press"
+    );
 
     ed.handle_key(key('i'));
-    assert_eq!(ed.pending_keys.len(), 2, "pending_keys has 'm','i' after second press");
+    assert_eq!(
+        ed.pending_keys.len(),
+        2,
+        "pending_keys has 'm','i' after second press"
+    );
 
     ed.handle_key(key('w'));
-    assert!(ed.pending_keys.is_empty(), "pending_keys cleared after dispatch");
+    assert!(
+        ed.pending_keys.is_empty(),
+        "pending_keys cleared after dispatch"
+    );
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
 
@@ -159,7 +194,10 @@ fn m_a_unknown_char_falls_through_cleanly() {
     // '~' is not a known text-object char — NoMatch clears pending state.
     ed.handle_key(key('~'));
 
-    assert!(ed.pending_keys.is_empty(), "pending_keys cleared on NoMatch");
+    assert!(
+        ed.pending_keys.is_empty(),
+        "pending_keys cleared on NoMatch"
+    );
     // Selection and buffer are unchanged.
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
@@ -215,10 +253,18 @@ fn x_in_extend_mode_accumulates_lines() {
     ed.handle_key(key('e'));
     // `x` in extend mode: extend to include next line.
     ed.handle_key(key('x'));
-    assert_eq!(state(&ed), "-[hello world\nfoo\n]>bar\n", "lines 1-2 selected");
+    assert_eq!(
+        state(&ed),
+        "-[hello world\nfoo\n]>bar\n",
+        "lines 1-2 selected"
+    );
     // Another `x`: extend to line 3.
     ed.handle_key(key('x'));
-    assert_eq!(state(&ed), "-[hello world\nfoo\nbar\n]>", "lines 1-3 selected");
+    assert_eq!(
+        state(&ed),
+        "-[hello world\nfoo\nbar\n]>",
+        "lines 1-3 selected"
+    );
 }
 
 /// `x` repeated in normal mode walks downward: each press moves to the next line.
@@ -623,4 +669,3 @@ fn mil_on_empty_line_is_noop() {
     ed.handle_key(key('l'));
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
-

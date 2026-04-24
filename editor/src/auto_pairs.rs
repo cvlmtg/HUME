@@ -1,9 +1,9 @@
-use crate::core::text::Text;
 use crate::core::changeset::ChangeSet;
-use crate::ops::edit::apply_edit;
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::{Selection, SelectionSet};
-use crate::helpers::{classify_char, CharClass};
+use crate::core::text::Text;
+use crate::helpers::{CharClass, classify_char};
+use crate::ops::edit::apply_edit;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +57,9 @@ pub(crate) fn insert_pair_close(
         } else {
             // Wrap selection: read the selected text, delete it, re-insert
             // with open/close around it.
-            let end_incl = sel.end_inclusive(buf).min(buf.len_chars().saturating_sub(2));
+            let end_incl = sel
+                .end_inclusive(buf)
+                .min(buf.len_chars().saturating_sub(2));
             let selected: String = buf.slice(start..end_incl + 1).to_string();
             b.delete(end_incl + 1 - start);
             b.insert_char(open);
@@ -78,12 +80,12 @@ pub(crate) fn insert_pair_close(
 ///
 /// Only meaningful for cursor (single-character) selections; for non-cursor
 /// selections the caller should fall back to `delete_char_backward`.
-pub(crate) fn delete_pair(
-    buf: Text,
-    sels: SelectionSet,
-) -> (Text, SelectionSet, ChangeSet) {
+pub(crate) fn delete_pair(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        debug_assert!(sel.is_collapsed(), "delete_pair called on non-collapsed selection");
+        debug_assert!(
+            sel.is_collapsed(),
+            "delete_pair called on non-collapsed selection"
+        );
 
         let p = sel.head;
         let prev = prev_grapheme_boundary(buf, p);
@@ -121,8 +123,8 @@ pub(crate) fn delete_pair(
 pub(crate) fn should_auto_pair_at(buf: &Text, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
     let next_ok = match buf.char_at(head) {
-        None => true,                         // EOF
-        Some(c) if c.is_whitespace() => true, // space, tab, newline, …
+        None => true,                                     // EOF
+        Some(c) if c.is_whitespace() => true,             // space, tab, newline, …
         Some(c) => ap_pairs.iter().any(|p| p.close == c), // a configured close char
     };
     if !next_ok {
@@ -132,7 +134,10 @@ pub(crate) fn should_auto_pair_at(buf: &Text, head: usize, pair: &Pair, ap_pairs
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
     if pair.is_symmetric() && head > 0 {
         let prev_pos = prev_grapheme_boundary(buf, head);
-        if buf.char_at(prev_pos).is_some_and(|c| classify_char(c) == CharClass::Word) {
+        if buf
+            .char_at(prev_pos)
+            .is_some_and(|c| classify_char(c) == CharClass::Word)
+        {
             return false;
         }
     }
@@ -250,11 +255,7 @@ mod tests {
     #[test]
     fn delete_pair_parens() {
         // Text: `(|)` where cursor is on `)`. Both are deleted.
-        assert_state!(
-            "(-[)]>\n",
-            |(buf, sels)| delete_pair(buf, sels),
-            "-[\n]>"
-        );
+        assert_state!("(-[)]>\n", |(buf, sels)| delete_pair(buf, sels), "-[\n]>");
     }
 
     #[test]
@@ -268,20 +269,12 @@ mod tests {
 
     #[test]
     fn delete_pair_square() {
-        assert_state!(
-            "[-[]]>\n",
-            |(buf, sels)| delete_pair(buf, sels),
-            "-[\n]>"
-        );
+        assert_state!("[-[]]>\n", |(buf, sels)| delete_pair(buf, sels), "-[\n]>");
     }
 
     #[test]
     fn delete_pair_quote() {
-        assert_state!(
-            "\"-[\"]>\n",
-            |(buf, sels)| delete_pair(buf, sels),
-            "-[\n]>"
-        );
+        assert_state!("\"-[\"]>\n", |(buf, sels)| delete_pair(buf, sels), "-[\n]>");
     }
 
     #[test]
@@ -297,17 +290,45 @@ mod tests {
 
     fn default_pairs() -> Vec<Pair> {
         vec![
-            Pair { open: '(', close: ')' },
-            Pair { open: '[', close: ']' },
-            Pair { open: '{', close: '}' },
-            Pair { open: '"', close: '"' },
-            Pair { open: '\'', close: '\'' },
-            Pair { open: '`', close: '`' },
+            Pair {
+                open: '(',
+                close: ')',
+            },
+            Pair {
+                open: '[',
+                close: ']',
+            },
+            Pair {
+                open: '{',
+                close: '}',
+            },
+            Pair {
+                open: '"',
+                close: '"',
+            },
+            Pair {
+                open: '\'',
+                close: '\'',
+            },
+            Pair {
+                open: '`',
+                close: '`',
+            },
         ]
     }
 
-    fn paren() -> Pair { Pair { open: '(', close: ')' } }
-    fn quote() -> Pair { Pair { open: '"', close: '"' } }
+    fn paren() -> Pair {
+        Pair {
+            open: '(',
+            close: ')',
+        }
+    }
+    fn quote() -> Pair {
+        Pair {
+            open: '"',
+            close: '"',
+        }
+    }
 
     #[test]
     fn auto_pair_next_alphanumeric_rejects_asymmetric() {

@@ -24,9 +24,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use steel::steel_vm::engine::Engine;
 use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rvals::SteelVal;
+use steel::steel_vm::engine::Engine;
 
 use std::borrow::Cow;
 
@@ -37,7 +37,7 @@ use crate::core::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::pane_state::PaneBufferState;
-use crate::settings::{apply_setting, BufferOverrides, EditorSettings, SettingScope};
+use crate::settings::{BufferOverrides, EditorSettings, SettingScope, apply_setting};
 
 use hooks::HookRegistry;
 use ledger::{LedgerStack, PluginId, PluginStack};
@@ -55,10 +55,14 @@ fn cmd_proc_name(name: &str) -> String {
 }
 
 /// Internal Steel global name for the i-th argument bound during a hook fire.
-fn hook_arg_name(i: usize) -> String { format!("*hume.ha{i}*") }
+fn hook_arg_name(i: usize) -> String {
+    format!("*hume.ha{i}*")
+}
 
 /// Internal Steel global name for the i-th handler proc bound during a hook fire.
-fn hook_proc_name(i: usize) -> String { format!("*hume.hp{i}*") }
+fn hook_proc_name(i: usize) -> String {
+    format!("*hume.hp{i}*")
+}
 
 /// Build the composite hook invocation program for `handler_count` handlers
 /// and `arg_count` arguments.  The result is deterministic and cacheable.
@@ -66,12 +70,16 @@ fn build_hook_program(arg_count: usize, handler_count: usize) -> String {
     // 14 = len("*hume.ha99* ") worst-case per arg; 18 = len("(*hume.hp99*)\n") per handler.
     let mut arg_exprs = String::with_capacity(arg_count * 14);
     for i in 0..arg_count {
-        if i > 0 { arg_exprs.push(' '); }
+        if i > 0 {
+            arg_exprs.push(' ');
+        }
         arg_exprs.push_str(&hook_arg_name(i));
     }
     let mut program = String::with_capacity(handler_count * (18 + arg_exprs.len()));
     for i in 0..handler_count {
-        if i > 0 { program.push('\n'); }
+        if i > 0 {
+            program.push('\n');
+        }
         program.push('(');
         program.push_str(&hook_proc_name(i));
         if arg_count > 0 {
@@ -104,7 +112,7 @@ impl EvalWatchdog {
     fn arm(flag: Arc<AtomicBool>, budget: std::time::Duration) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let thread = {
-            let flag   = Arc::clone(&flag);
+            let flag = Arc::clone(&flag);
             let cancel = Arc::clone(&cancel);
             std::thread::spawn(move || {
                 // park_timeout wakes either when unpark() is called (cancel path)
@@ -245,30 +253,30 @@ impl<'a> SteelCtx<'a> {
         Self {
             settings,
             keymap,
-            plugin_stack:           host.plugin_stack,
-            ledger_stack:           host.ledger_stack,
-            cmd_owners:             host.cmd_owners,
-            hooks:                  host.hooks,
-            pending_messages:       host.pending_messages,
-            data_dir:               host.data_dir,
-            runtime_dir:            host.runtime_dir,
-            declared_plugins:       Vec::new(),
-            loaded_plugins:         Vec::new(),
+            plugin_stack: host.plugin_stack,
+            ledger_stack: host.ledger_stack,
+            cmd_owners: host.cmd_owners,
+            hooks: host.hooks,
+            pending_messages: host.pending_messages,
+            data_dir: host.data_dir,
+            runtime_dir: host.runtime_dir,
+            declared_plugins: Vec::new(),
+            loaded_plugins: Vec::new(),
             builtin_cmd_names,
-            pending_steel_cmds:     Vec::new(),
-            interrupt_flag:         host.interrupt_flag,
-            cmd_queue:              Vec::new(),
-            wait_char_request:      None,
-            pending_char:           None,
-            cmd_arg:                None,
-            is_init:                true,
-            focused_pane_id:        PaneId::default(),
-            focused_buffer_id:      BufferId::default(),
+            pending_steel_cmds: Vec::new(),
+            interrupt_flag: host.interrupt_flag,
+            cmd_queue: Vec::new(),
+            wait_char_request: None,
+            pending_char: None,
+            cmd_arg: None,
+            is_init: true,
+            focused_pane_id: PaneId::default(),
+            focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
-            buffers:                None,
-            engine_view:            None,
-            pane_state:             None,
-            pane_jumps:             None,
+            buffers: None,
+            engine_view: None,
+            pane_state: None,
+            pane_jumps: None,
         }
     }
 
@@ -286,32 +294,32 @@ impl<'a> SteelCtx<'a> {
     ) -> Self {
         let fid = refs.focused_buffer_id;
         Self {
-            settings:               refs.settings,
-            keymap:                 refs.keymap,
-            plugin_stack:           host.plugin_stack,
-            ledger_stack:           host.ledger_stack,
-            cmd_owners:             host.cmd_owners,
-            hooks:                  host.hooks,
-            pending_messages:       host.pending_messages,
-            data_dir:               host.data_dir,
-            runtime_dir:            host.runtime_dir,
-            declared_plugins:       Vec::new(),
-            loaded_plugins:         Vec::new(),
-            builtin_cmd_names:      std::collections::HashSet::new(),
-            pending_steel_cmds:     Vec::new(),
-            interrupt_flag:         host.interrupt_flag,
-            cmd_queue:              Vec::new(),
-            wait_char_request:      None,
+            settings: refs.settings,
+            keymap: refs.keymap,
+            plugin_stack: host.plugin_stack,
+            ledger_stack: host.ledger_stack,
+            cmd_owners: host.cmd_owners,
+            hooks: host.hooks,
+            pending_messages: host.pending_messages,
+            data_dir: host.data_dir,
+            runtime_dir: host.runtime_dir,
+            declared_plugins: Vec::new(),
+            loaded_plugins: Vec::new(),
+            builtin_cmd_names: std::collections::HashSet::new(),
+            pending_steel_cmds: Vec::new(),
+            interrupt_flag: host.interrupt_flag,
+            cmd_queue: Vec::new(),
+            wait_char_request: None,
             pending_char,
             cmd_arg,
-            is_init:                false,
-            focused_pane_id:        refs.focused_pane_id,
-            focused_buffer_id:      fid,
+            is_init: false,
+            focused_pane_id: refs.focused_pane_id,
+            focused_buffer_id: fid,
             live_focused_buffer_id: fid,
-            buffers:                refs.buffers,
-            engine_view:            refs.engine_view,
-            pane_state:             refs.pane_state,
-            pane_jumps:             refs.pane_jumps,
+            buffers: refs.buffers,
+            engine_view: refs.engine_view,
+            pane_state: refs.pane_state,
+            pane_jumps: refs.pane_jumps,
         }
     }
 }
@@ -323,40 +331,50 @@ impl<'a> SteelCtx<'a> {
 /// [`SteelCtxTestHarness::ctx`] to get a `SteelCtx<'_>` that borrows from it.
 #[cfg(test)]
 pub(crate) struct SteelCtxTestHarness {
-    pub(crate) settings:         EditorSettings,
-    pub(crate) keymap:           Keymap,
-    pub(crate) plugin_stack:     PluginStack,
-    pub(crate) ledger_stack:     LedgerStack,
-    pub(crate) cmd_owners:       std::collections::HashMap<String, String>,
-    pub(crate) hooks:            HookRegistry,
+    pub(crate) settings: EditorSettings,
+    pub(crate) keymap: Keymap,
+    pub(crate) plugin_stack: PluginStack,
+    pub(crate) ledger_stack: LedgerStack,
+    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
+    pub(crate) hooks: HookRegistry,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
-    pub(crate) data_dir:         Option<PathBuf>,
-    pub(crate) runtime_dir:      Option<PathBuf>,
-    pub(crate) interrupt_flag:   Arc<AtomicBool>,
+    pub(crate) data_dir: Option<PathBuf>,
+    pub(crate) runtime_dir: Option<PathBuf>,
+    pub(crate) interrupt_flag: Arc<AtomicBool>,
 }
 
 #[cfg(test)]
 impl SteelCtxTestHarness {
     pub(crate) fn new() -> Self {
         Self {
-            settings:         EditorSettings::default(),
-            keymap:           Keymap::default(),
-            plugin_stack:     PluginStack::default(),
-            ledger_stack:     LedgerStack::default(),
-            cmd_owners:       std::collections::HashMap::new(),
-            hooks:            HookRegistry::default(),
+            settings: EditorSettings::default(),
+            keymap: Keymap::default(),
+            plugin_stack: PluginStack::default(),
+            ledger_stack: LedgerStack::default(),
+            cmd_owners: std::collections::HashMap::new(),
+            hooks: HookRegistry::default(),
             pending_messages: Vec::new(),
-            data_dir:         None,
-            runtime_dir:      None,
-            interrupt_flag:   Arc::new(AtomicBool::new(false)),
+            data_dir: None,
+            runtime_dir: None,
+            interrupt_flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Build a `SteelCtx` in command mode (`is_init = false`) borrowing from
     /// this harness.  Inspect harness fields after the call to read side-effects.
     pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
-        let Self { settings, keymap, plugin_stack, ledger_stack, cmd_owners, hooks,
-                   pending_messages, data_dir, runtime_dir, interrupt_flag } = self;
+        let Self {
+            settings,
+            keymap,
+            plugin_stack,
+            ledger_stack,
+            cmd_owners,
+            hooks,
+            pending_messages,
+            data_dir,
+            runtime_dir,
+            interrupt_flag,
+        } = self;
         SteelCtx::new_command(
             HostBundle {
                 plugin_stack,
@@ -364,19 +382,19 @@ impl SteelCtxTestHarness {
                 cmd_owners,
                 hooks,
                 pending_messages,
-                data_dir:       data_dir.as_deref(),
-                runtime_dir:    runtime_dir.as_deref(),
+                data_dir: data_dir.as_deref(),
+                runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
             },
             EditorSteelRefs {
                 settings,
                 keymap,
-                focused_pane_id:   PaneId::default(),
+                focused_pane_id: PaneId::default(),
                 focused_buffer_id: BufferId::default(),
-                buffers:           None,
-                engine_view:       None,
-                pane_state:        None,
-                pane_jumps:        None,
+                buffers: None,
+                engine_view: None,
+                pane_state: None,
+                pane_jumps: None,
             },
             None,
             None,
@@ -392,14 +410,15 @@ impl SteelCtxTestHarness {
 /// to replace the previous 8-parameter sprawl.  All fields have the same
 /// lifetime `'a` so a single `'a` annotation on those methods suffices.
 pub(crate) struct EditorSteelRefs<'a> {
-    pub(crate) settings:          &'a mut EditorSettings,
-    pub(crate) keymap:            &'a mut Keymap,
-    pub(crate) focused_pane_id:   PaneId,
+    pub(crate) settings: &'a mut EditorSettings,
+    pub(crate) keymap: &'a mut Keymap,
+    pub(crate) focused_pane_id: PaneId,
     pub(crate) focused_buffer_id: BufferId,
-    pub(crate) buffers:           Option<&'a mut BufferStore>,
-    pub(crate) engine_view:       Option<&'a mut EngineView>,
-    pub(crate) pane_state:        Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
-    pub(crate) pane_jumps:        Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+    pub(crate) buffers: Option<&'a mut BufferStore>,
+    pub(crate) engine_view: Option<&'a mut EngineView>,
+    pub(crate) pane_state:
+        Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
+    pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
 }
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
@@ -408,16 +427,16 @@ pub(crate) struct EditorSteelRefs<'a> {
 /// and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
 /// Private to this module.
 struct HostBundle<'a> {
-    plugin_stack:     &'a mut PluginStack,
-    ledger_stack:     &'a mut LedgerStack,
-    cmd_owners:       &'a mut std::collections::HashMap<String, String>,
-    hooks:            &'a mut HookRegistry,
+    plugin_stack: &'a mut PluginStack,
+    ledger_stack: &'a mut LedgerStack,
+    cmd_owners: &'a mut std::collections::HashMap<String, String>,
+    hooks: &'a mut HookRegistry,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
-    data_dir:         Option<&'a std::path::Path>,
-    runtime_dir:      Option<&'a std::path::Path>,
+    data_dir: Option<&'a std::path::Path>,
+    runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
-    interrupt_flag:   Arc<AtomicBool>,
+    interrupt_flag: Arc<AtomicBool>,
 }
 
 // ── run_steel ─────────────────────────────────────────────────────────────────
@@ -428,10 +447,10 @@ struct HostBundle<'a> {
 /// Used by `eval_source_raw`, `call_steel_cmd`, and `fire_hook` to avoid
 /// repeating the same arm / eval / cancel / reset ceremony in each entry point.
 fn run_steel<'a>(
-    engine:     &mut Engine,
-    ctx:        &mut SteelCtx<'a>,
-    program:    String,
-    budget_ms:  u64,
+    engine: &mut Engine,
+    ctx: &mut SteelCtx<'a>,
+    program: String,
+    budget_ms: u64,
 ) -> Result<(), String> {
     let watchdog = EvalWatchdog::arm(
         Arc::clone(&ctx.interrupt_flag),
@@ -440,7 +459,10 @@ fn run_steel<'a>(
     let result = engine
         .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
         .consume_once(|engine, args| {
-            let ctx_val = args.into_iter().next().expect("with_mut_reference yields one arg");
+            let ctx_val = args
+                .into_iter()
+                .next()
+                .expect("with_mut_reference yields one arg");
             engine.update_value(HUME_CTX, ctx_val);
             let res = engine.compile_and_run_raw_program(program);
             engine.update_value(HUME_CTX, SteelVal::Void);
@@ -466,12 +488,12 @@ fn run_steel<'a>(
 /// `pending_messages` is intentionally NOT reverted — messages from the
 /// failed eval are preserved so the user can see what went wrong.
 struct EvalSnapshot {
-    settings:     EditorSettings,
-    keymap:       Keymap,
+    settings: EditorSettings,
+    keymap: Keymap,
     plugin_stack: PluginStack,
     ledger_stack: LedgerStack,
-    cmd_owners:   std::collections::HashMap<String, String>,
-    hooks:        HookRegistry,
+    cmd_owners: std::collections::HashMap<String, String>,
+    hooks: HookRegistry,
     /// Version of `hooks` at capture time — used to skip the write-back in
     /// `restore` when no hooks were registered during the failed eval.
     hooks_version_at_capture: u32,
@@ -480,22 +502,22 @@ struct EvalSnapshot {
 impl EvalSnapshot {
     fn capture(settings: &EditorSettings, keymap: &Keymap, host: &ScriptingHost) -> Self {
         Self {
-            settings:     settings.clone(),
-            keymap:       keymap.clone(),
+            settings: settings.clone(),
+            keymap: keymap.clone(),
             plugin_stack: host.plugin_stack.clone(),
             ledger_stack: host.ledger_stack.clone(),
-            cmd_owners:   host.cmd_owners.clone(),
-            hooks:        host.hooks.clone(),
+            cmd_owners: host.cmd_owners.clone(),
+            hooks: host.hooks.clone(),
             hooks_version_at_capture: host.hooks.version,
         }
     }
 
     fn restore(self, settings: &mut EditorSettings, keymap: &mut Keymap, host: &mut ScriptingHost) {
-        *settings           = self.settings;
-        *keymap             = self.keymap;
-        host.plugin_stack   = self.plugin_stack;
-        host.ledger_stack   = self.ledger_stack;
-        host.cmd_owners     = self.cmd_owners;
+        *settings = self.settings;
+        *keymap = self.keymap;
+        host.plugin_stack = self.plugin_stack;
+        host.ledger_stack = self.ledger_stack;
+        host.cmd_owners = self.cmd_owners;
         // Skip write-back when no hooks were registered during the failed eval.
         if host.hooks.version != self.hooks_version_at_capture {
             host.hooks = self.hooks;
@@ -567,7 +589,7 @@ impl ScriptingHost {
     /// Resolves base directories eagerly so builtins can use them without
     /// re-reading environment variables on every call.
     pub(crate) fn new() -> Self {
-        let data_dir    = crate::os::dirs::data_dir();
+        let data_dir = crate::os::dirs::data_dir();
         let runtime_dir = crate::os::dirs::runtime_dir();
         // Initialize the fs builtin directory TLS before the engine registers
         // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
@@ -577,15 +599,15 @@ impl ScriptingHost {
         builtins::register_all(&mut engine);
         Self {
             engine,
-            plugin_stack:        PluginStack::default(),
-            ledger_stack:        LedgerStack::default(),
-            cmd_owners:          std::collections::HashMap::new(),
-            hooks:               HookRegistry::default(),
-            pending_messages:    Vec::new(),
+            plugin_stack: PluginStack::default(),
+            ledger_stack: LedgerStack::default(),
+            cmd_owners: std::collections::HashMap::new(),
+            hooks: HookRegistry::default(),
+            pending_messages: Vec::new(),
             data_dir,
             runtime_dir,
-            interrupt_flag:      Arc::new(AtomicBool::new(false)),
-            hook_program_cache:  std::collections::HashMap::new(),
+            interrupt_flag: Arc::new(AtomicBool::new(false)),
+            hook_program_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -640,8 +662,8 @@ impl ScriptingHost {
         settings: &mut EditorSettings,
         keymap: &mut Keymap,
     ) -> Result<Vec<String>, String> {
-        let plugin_id = PluginId::parse(plugin_name)
-            .map_err(|e| format!("teardown-plugin: {e}"))?;
+        let plugin_id =
+            PluginId::parse(plugin_name).map_err(|e| format!("teardown-plugin: {e}"))?;
         self.hooks.purge_plugin(&plugin_id);
         let to_restore = self.ledger_stack.unload(&plugin_id);
 
@@ -679,17 +701,19 @@ impl ScriptingHost {
     ) -> Result<(Vec<String>, Vec<SteelCmdDef>), String> {
         let cmds_to_remove = self.teardown_plugin(plugin_name, settings, keymap)?;
 
-        let plugin_id = PluginId::parse(plugin_name)
-            .map_err(|e| format!("reload-plugin: {e}"))?;
+        let plugin_id = PluginId::parse(plugin_name).map_err(|e| format!("reload-plugin: {e}"))?;
         let path = builtins::plugins::resolve_path_for_name(
             plugin_name,
             self.runtime_dir.as_deref(),
             self.data_dir.as_deref(),
-        ).map_err(|e| format!("reload-plugin: {e}"))?;
+        )
+        .map_err(|e| format!("reload-plugin: {e}"))?;
 
         let new_cmds = match path {
-            Some(p) => self.eval_plugin_with_attribution(&plugin_id, &p, settings, keymap, builtin_names)?,
-            None    => Vec::new(),
+            Some(p) => {
+                self.eval_plugin_with_attribution(&plugin_id, &p, settings, keymap, builtin_names)?
+            }
+            None => Vec::new(),
         };
         Ok((cmds_to_remove, new_cmds))
     }
@@ -747,14 +771,33 @@ impl ScriptingHost {
         // The explicit block ensures steel_ctx is dropped (releasing all borrows)
         // before snapshot.restore() needs &mut self again.
         let (eval_result, pending_steel_cmds) = {
-            let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
-                       pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
+            let Self {
+                engine,
+                plugin_stack,
+                ledger_stack,
+                cmd_owners,
+                hooks,
+                pending_messages,
+                data_dir,
+                runtime_dir,
+                interrupt_flag,
+                ..
+            } = &mut *self;
 
             let mut steel_ctx = SteelCtx::new_init(
-                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
-                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
-                             interrupt_flag: Arc::clone(interrupt_flag) },
-                settings, keymap, builtin_names,
+                HostBundle {
+                    plugin_stack,
+                    ledger_stack,
+                    cmd_owners,
+                    hooks,
+                    pending_messages,
+                    data_dir: data_dir.as_deref(),
+                    runtime_dir: runtime_dir.as_deref(),
+                    interrupt_flag: Arc::clone(interrupt_flag),
+                },
+                settings,
+                keymap,
+                builtin_names,
             );
 
             let result = run_steel(engine, &mut steel_ctx, source, budget_ms);
@@ -796,7 +839,8 @@ impl ScriptingHost {
                 );
             }
             // Record the owner string for `(command-plugin …)` introspection.
-            self.cmd_owners.insert(cmd.name.clone(), cmd.current_owner.to_string());
+            self.cmd_owners
+                .insert(cmd.name.clone(), cmd.current_owner.to_string());
             defs.push(SteelCmdDef {
                 name: cmd.name,
                 doc: cmd.doc,
@@ -835,14 +879,33 @@ impl ScriptingHost {
         let invocation = format!("({steel_proc})");
 
         let (result, cmd_queue, wait_char_request) = {
-            let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
-                       pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
+            let Self {
+                engine,
+                plugin_stack,
+                ledger_stack,
+                cmd_owners,
+                hooks,
+                pending_messages,
+                data_dir,
+                runtime_dir,
+                interrupt_flag,
+                ..
+            } = &mut *self;
 
             let mut steel_ctx = SteelCtx::new_command(
-                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
-                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
-                             interrupt_flag: Arc::clone(interrupt_flag) },
-                refs, pending_char, cmd_arg,
+                HostBundle {
+                    plugin_stack,
+                    ledger_stack,
+                    cmd_owners,
+                    hooks,
+                    pending_messages,
+                    data_dir: data_dir.as_deref(),
+                    runtime_dir: runtime_dir.as_deref(),
+                    interrupt_flag: Arc::clone(interrupt_flag),
+                },
+                refs,
+                pending_char,
+                cmd_arg,
             );
 
             let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
@@ -869,12 +932,15 @@ impl ScriptingHost {
         refs: EditorSteelRefs<'a>,
     ) -> Result<Vec<String>, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> = self.hooks
+        let handler_procs: Vec<SteelVal> = self
+            .hooks
             .handlers_for(hook_id)
             .iter()
             .map(|(_, proc)| proc.clone())
             .collect();
-        if handler_procs.is_empty() { return Ok(vec![]); }
+        if handler_procs.is_empty() {
+            return Ok(vec![]);
+        }
 
         // Pre-bind each arg global.
         for (i, arg) in args.iter().enumerate() {
@@ -887,7 +953,8 @@ impl ScriptingHost {
         }
 
         // Look up (or build once) the composite invocation program.
-        let program = self.hook_program_cache
+        let program = self
+            .hook_program_cache
             .entry((args.len(), handler_procs.len()))
             .or_insert_with(|| build_hook_program(args.len(), handler_procs.len()))
             .clone();
@@ -895,14 +962,33 @@ impl ScriptingHost {
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
 
         let (result, cmd_queue) = {
-            let Self { engine, plugin_stack, ledger_stack, cmd_owners, hooks,
-                       pending_messages, data_dir, runtime_dir, interrupt_flag, .. } = &mut *self;
+            let Self {
+                engine,
+                plugin_stack,
+                ledger_stack,
+                cmd_owners,
+                hooks,
+                pending_messages,
+                data_dir,
+                runtime_dir,
+                interrupt_flag,
+                ..
+            } = &mut *self;
 
             let mut steel_ctx = SteelCtx::new_command(
-                HostBundle { plugin_stack, ledger_stack, cmd_owners, hooks, pending_messages,
-                             data_dir: data_dir.as_deref(), runtime_dir: runtime_dir.as_deref(),
-                             interrupt_flag: Arc::clone(interrupt_flag) },
-                refs, None, None,
+                HostBundle {
+                    plugin_stack,
+                    ledger_stack,
+                    cmd_owners,
+                    hooks,
+                    pending_messages,
+                    data_dir: data_dir.as_deref(),
+                    runtime_dir: runtime_dir.as_deref(),
+                    interrupt_flag: Arc::clone(interrupt_flag),
+                },
+                refs,
+                None,
+                None,
             );
 
             let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
@@ -961,8 +1047,14 @@ fn restore_ledger_entry(
         // Setting key — restore via apply_setting.
         if !entry.prior_value.is_empty() {
             let mut dummy = BufferOverrides::default();
-            apply_setting(SettingScope::Global, &entry.key, &entry.prior_value, settings, &mut dummy)
-                .map_err(|e| format!("restoring setting '{}': {e}", entry.key))?;
+            apply_setting(
+                SettingScope::Global,
+                &entry.key,
+                &entry.prior_value,
+                settings,
+                &mut dummy,
+            )
+            .map_err(|e| format!("restoring setting '{}': {e}", entry.key))?;
         }
     }
     Ok(())

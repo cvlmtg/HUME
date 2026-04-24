@@ -1,9 +1,12 @@
-use crate::core::text::Text;
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, line_content_end, line_end_exclusive, CharClass};
-use crate::core::selection::{Selection, SelectionSet};
-use super::pair::{find_bracket_pair, find_quote_pair};
 use super::MotionMode;
+use super::pair::{find_bracket_pair, find_quote_pair};
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
+use crate::helpers::{
+    CharClass, classify_char, is_WORD_boundary, is_word_boundary, line_content_end,
+    line_end_exclusive,
+};
 
 // ── Text object framework ──────────────────────────────────────────────────────
 
@@ -88,7 +91,7 @@ fn apply_text_object_by_mode(
     f: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move   => apply_text_object(buf, sels, f),
+        MotionMode::Move => apply_text_object(buf, sels, f),
         MotionMode::Extend => apply_text_object_extend(buf, sels, f),
     }
 }
@@ -132,7 +135,6 @@ pub(crate) fn cmd_inner_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -
 pub(crate) fn cmd_around_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, around_line)
 }
-
 
 // ── Word / WORD ────────────────────────────────────────────────────────────────
 
@@ -279,24 +281,30 @@ fn around_word_impl(
 }
 
 pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_word_impl(b, pos, is_word_boundary))
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        inner_word_impl(b, pos, is_word_boundary)
+    })
 }
 
 pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| around_word_impl(b, pos, is_word_boundary))
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        around_word_impl(b, pos, is_word_boundary)
+    })
 }
-
 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_inner_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_word_impl(b, pos, is_WORD_boundary))
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        inner_word_impl(b, pos, is_WORD_boundary)
+    })
 }
 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_around_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, |b, pos| around_word_impl(b, pos, is_WORD_boundary))
+    apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+        around_word_impl(b, pos, is_WORD_boundary)
+    })
 }
-
 
 // ── Brackets ───────────────────────────────────────────────────────────────────
 
@@ -315,11 +323,23 @@ fn around_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(us
 
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
-        pub(crate) fn $inner_name(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_bracket(b, pos, $open, $close))
+        pub(crate) fn $inner_name(
+            buf: &Text,
+            sels: SelectionSet,
+            mode: MotionMode,
+        ) -> SelectionSet {
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+                inner_bracket(b, pos, $open, $close)
+            })
         }
-        pub(crate) fn $around_name(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| around_bracket(b, pos, $open, $close))
+        pub(crate) fn $around_name(
+            buf: &Text,
+            sels: SelectionSet,
+            mode: MotionMode,
+        ) -> SelectionSet {
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+                around_bracket(b, pos, $open, $close)
+            })
         }
     };
 }
@@ -346,10 +366,18 @@ fn around_quote(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
 
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
-        pub(crate) fn $inner_name(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $inner_name(
+            buf: &Text,
+            sels: SelectionSet,
+            mode: MotionMode,
+        ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_quote(b, pos, $quote))
         }
-        pub(crate) fn $around_name(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+        pub(crate) fn $around_name(
+            buf: &Text,
+            sels: SelectionSet,
+            mode: MotionMode,
+        ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| around_quote(b, pos, $quote))
         }
     };
@@ -367,7 +395,8 @@ quote_cmds!(cmd_inner_backtick, cmd_around_backtick, '`');
 /// Tightest means innermost — for nested structures, we want the closest pair.
 fn find_tightest_bracket_pair(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
-    PAIRS.iter()
+    PAIRS
+        .iter()
         .filter_map(|&(open, close)| find_bracket_pair(buf, pos, open, close))
         .min_by_key(|&(o, c)| c - o)
 }
@@ -383,12 +412,12 @@ fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<(us
         return Vec::new();
     }
     let content_start = open_pos + 1;
-    let content_end   = close_pos - 1; // inclusive
+    let content_end = close_pos - 1; // inclusive
 
-    let mut segments  = Vec::new();
+    let mut segments = Vec::new();
     let mut seg_start = content_start;
-    let mut depth     = 0usize;
-    let mut i         = content_start;
+    let mut depth = 0usize;
+    let mut i = content_start;
 
     while i <= content_end {
         match buf.char_at(i) {
@@ -422,7 +451,7 @@ fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
     }
     // pos is in a gap (on a comma). Return the next segment.
     for idx in 0..segments.len().saturating_sub(1) {
-        let (_, prev_end)    = segments[idx];
+        let (_, prev_end) = segments[idx];
         let (next_start, _) = segments[idx + 1];
         if pos > prev_end && pos < next_start {
             return Some(idx + 1);
@@ -453,7 +482,7 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
         return None;
     }
 
-    let idx             = which_segment(&segments, pos)?;
+    let idx = which_segment(&segments, pos)?;
     let (raw_start, raw_end) = segments[idx];
 
     // Trim leading whitespace. next_grapheme_boundary is required here because
@@ -533,11 +562,13 @@ pub(crate) fn cmd_inner_argument(buf: &Text, sels: SelectionSet, mode: MotionMod
     apply_text_object_by_mode(buf, sels, mode, inner_argument)
 }
 
-pub(crate) fn cmd_around_argument(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_around_argument(
+    buf: &Text,
+    sels: SelectionSet,
+    mode: MotionMode,
+) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, around_argument)
 }
-
-
 
 #[cfg(test)]
 mod tests;

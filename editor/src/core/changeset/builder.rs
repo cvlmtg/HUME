@@ -1,4 +1,4 @@
-use super::{push_merge, ChangeSet, Operation};
+use super::{ChangeSet, Operation, push_merge};
 
 // ── ChangeSetBuilder ─────────────────────────────────────────────────────────
 
@@ -138,4 +138,3 @@ impl ChangeSetBuilder {
         }
     }
 }
-

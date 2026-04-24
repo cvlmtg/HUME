@@ -168,7 +168,8 @@ impl Buffer {
 
         // self.text is still pre-edit here — safe to call invert.
         let inverse_cs = cs.invert(&self.text);
-        self.history.record(cs.clone(), inverse_cs, sels, new_sels.clone());
+        self.history
+            .record(cs.clone(), inverse_cs, sels, new_sels.clone());
         self.text = new_text;
         (new_sels, displaced, cs)
     }
@@ -184,11 +185,11 @@ impl Buffer {
         edit_group: &mut Option<EditGroup>,
         cmd: impl FnOnce(Text, SelectionSet) -> R,
     ) -> (SelectionSet, Option<Vec<String>>, ChangeSet) {
-        let group = edit_group.as_mut()
+        let group = edit_group
+            .as_mut()
             .expect("apply_edit_grouped called without an open group");
 
-        let (new_text, new_sels, cs, displaced) =
-            cmd(self.text.clone(), sels).into_apply_result();
+        let (new_text, new_sels, cs, displaced) = cmd(self.text.clone(), sels).into_apply_result();
 
         group.cs = Some(match group.cs.take() {
             None => cs.clone(),
@@ -208,7 +209,10 @@ impl Buffer {
         edit_group: &mut Option<EditGroup>,
         pre_sels: SelectionSet,
     ) {
-        debug_assert!(edit_group.is_none(), "begin_edit_group called with group already open");
+        debug_assert!(
+            edit_group.is_none(),
+            "begin_edit_group called with group already open"
+        );
         *edit_group = Some(EditGroup {
             text_snapshot: self.text.clone(),
             pre_sels,
@@ -225,11 +229,14 @@ impl Buffer {
         edit_group: &mut Option<EditGroup>,
         post_sels: SelectionSet,
     ) {
-        let group = edit_group.take().expect("commit_edit_group called without an open group");
+        let group = edit_group
+            .take()
+            .expect("commit_edit_group called without an open group");
 
         if let Some(cs) = group.cs {
             let inverse_cs = cs.invert(&group.text_snapshot);
-            self.history.record(cs, inverse_cs, group.pre_sels, post_sels);
+            self.history
+                .record(cs, inverse_cs, group.pre_sels, post_sels);
         }
     }
 
@@ -292,7 +299,6 @@ impl Buffer {
             }
         }
     }
-
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -321,16 +327,23 @@ mod tests {
     }
 
     impl DocHelper {
-        fn apply_edit<R: IntoApplyResult>(&mut self, cmd: impl FnOnce(Text, SelectionSet) -> R) -> Option<Vec<String>> {
+        fn apply_edit<R: IntoApplyResult>(
+            &mut self,
+            cmd: impl FnOnce(Text, SelectionSet) -> R,
+        ) -> Option<Vec<String>> {
             let sels = std::mem::take(&mut self.sels);
             let (new_sels, displaced, _cs) = self.buf.apply_edit(sels, cmd);
             self.sels = new_sels;
             displaced
         }
 
-        fn apply_edit_grouped<R: IntoApplyResult>(&mut self, cmd: impl FnOnce(Text, SelectionSet) -> R) -> Option<Vec<String>> {
+        fn apply_edit_grouped<R: IntoApplyResult>(
+            &mut self,
+            cmd: impl FnOnce(Text, SelectionSet) -> R,
+        ) -> Option<Vec<String>> {
             let sels = std::mem::take(&mut self.sels);
-            let (new_sels, displaced, _cs) = self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
+            let (new_sels, displaced, _cs) =
+                self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
             self.sels = new_sels;
             displaced
         }
@@ -361,11 +374,21 @@ mod tests {
             self.buf.goto_revision(&mut self.sels, target);
         }
 
-        fn text(&self) -> &Text { self.buf.text() }
-        fn sels(&self) -> &SelectionSet { &self.sels }
-        fn is_dirty(&self) -> bool { self.buf.is_dirty() }
-        fn mark_saved(&mut self) { self.buf.mark_saved(); }
-        fn can_undo(&self) -> bool { self.buf.can_undo() }
+        fn text(&self) -> &Text {
+            self.buf.text()
+        }
+        fn sels(&self) -> &SelectionSet {
+            &self.sels
+        }
+        fn is_dirty(&self) -> bool {
+            self.buf.is_dirty()
+        }
+        fn mark_saved(&mut self) {
+            self.buf.mark_saved();
+        }
+        fn can_undo(&self) -> bool {
+            self.buf.can_undo()
+        }
     }
 
     fn state(d: &DocHelper) -> String {
@@ -375,7 +398,11 @@ mod tests {
     fn doc(input: &str) -> DocHelper {
         let (text, sels) = parse_state(input);
         let buf = Buffer::new(text, sels.clone());
-        DocHelper { buf, sels, edit_group: None }
+        DocHelper {
+            buf,
+            sels,
+            edit_group: None,
+        }
     }
 
     // ── insert_char ───────────────────────────────────────────────────────────

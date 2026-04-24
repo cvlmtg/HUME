@@ -45,10 +45,7 @@ fn builder_merges_adjacent_deletes() {
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(
-        cs.ops,
-        vec![Operation::Delete(5), Operation::Retain(5)]
-    );
+    assert_eq!(cs.ops, vec![Operation::Delete(5), Operation::Retain(5)]);
 }
 
 #[test]
@@ -185,9 +182,9 @@ fn apply_insert_at_end() {
     // "hello\n" = 6 chars; insert " world" before the trailing \n.
     let buf = Text::from("hello");
     let mut b = ChangeSetBuilder::new(6);
-    b.retain(5);         // retain "hello"
+    b.retain(5); // retain "hello"
     b.insert(" world");
-    b.retain_rest();     // retain "\n"
+    b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
     assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello world\n");
@@ -412,11 +409,8 @@ fn invert_insert() {
     let inv = cs.invert(&buf);
 
     assert_eq!(inv.len_before, 8); // "XXhello\n"
-    assert_eq!(inv.len_after, 6);  // back to "hello\n"
-    assert_eq!(
-        inv.ops,
-        vec![Operation::Delete(2), Operation::Retain(6)]
-    );
+    assert_eq!(inv.len_after, 6); // back to "hello\n"
+    assert_eq!(inv.ops, vec![Operation::Delete(2), Operation::Retain(6)]);
 }
 
 #[test]
@@ -431,7 +425,7 @@ fn invert_delete() {
     let inv = cs.invert(&buf);
 
     assert_eq!(inv.len_before, 3); // "lo\n"
-    assert_eq!(inv.len_after, 6);  // back to "hello\n"
+    assert_eq!(inv.len_after, 6); // back to "hello\n"
     assert_eq!(
         inv.ops,
         vec![Operation::Insert("hel".into()), Operation::Retain(3)]
@@ -694,8 +688,8 @@ fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
     proptest::collection::vec(
         (
             prop_oneof![Just(0u8), Just(1u8), Just(2u8)], // 0=retain, 1=delete, 2=insert
-            1..=5usize,                                    // segment length
-            arb_text(4),                                   // text for inserts
+            1..=5usize,                                   // segment length
+            arb_text(4),                                  // text for inserts
         ),
         0..=max_ops,
     )
@@ -736,7 +730,7 @@ fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
         // Retain any unconsumed content chars, then always retain the
         // structural trailing \n — user edits must never delete it.
         builder.retain(remaining); // no-op if remaining == 0
-        builder.retain(1);         // structural \n
+        builder.retain(1); // structural \n
         builder.finish()
     })
 }
@@ -904,7 +898,13 @@ fn apply_returns_err_on_length_mismatch() {
     let cs = b.finish();
 
     let err = cs.apply(&buf).unwrap_err();
-    assert_eq!(err, ApplyError::LengthMismatch { buf_len: 3, expected: 10 });
+    assert_eq!(
+        err,
+        ApplyError::LengthMismatch {
+            buf_len: 3,
+            expected: 10
+        }
+    );
     // Original buffer is untouched.
     assert_eq!(buf.to_string(), "hi\n");
 }

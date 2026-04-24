@@ -119,12 +119,12 @@ impl MiniBuffer {
                 self.cursor = next_grapheme(&self.input, self.cursor);
                 MiniBufferEvent::CursorMoved
             }
-            KeyCode::Tab    => MiniBufferEvent::CompleteRequested { reverse: false },
+            KeyCode::Tab => MiniBufferEvent::CompleteRequested { reverse: false },
             KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
             // Up/Down are handled by the caller (mode-specific history ring).
             // Do NOT bind Ctrl+N / Ctrl+P here — those are reserved for
             // future completion-popup navigation.
-            KeyCode::Up   => MiniBufferEvent::HistoryPrev,
+            KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
             _ => MiniBufferEvent::Ignored,
         }
@@ -137,14 +137,22 @@ impl MiniBuffer {
 ///
 /// If `cursor` is already at 0 (start of string), returns 0.
 fn prev_grapheme(s: &str, cursor: usize) -> usize {
-    s[..cursor].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0)
+    s[..cursor]
+        .grapheme_indices(true)
+        .next_back()
+        .map(|(i, _)| i)
+        .unwrap_or(0)
 }
 
 /// Return the byte offset immediately after the grapheme cluster that starts at `cursor`.
 ///
 /// If `cursor` is at or past the end of the string, returns `s.len()`.
 fn next_grapheme(s: &str, cursor: usize) -> usize {
-    s[cursor..].grapheme_indices(true).next().map(|(_, g)| cursor + g.len()).unwrap_or(s.len())
+    s[cursor..]
+        .grapheme_indices(true)
+        .next()
+        .map(|(_, g)| cursor + g.len())
+        .unwrap_or(s.len())
 }
 
 /// Walk back from `cursor` over trailing whitespace, then over one run of
@@ -155,17 +163,29 @@ fn next_grapheme(s: &str, cursor: usize) -> usize {
 /// `/` (and `\` on Windows) is treated as a separator so that path arguments
 /// delete one component at a time (`/tmp/alpha/one.txt` → `/tmp/alpha/` → …).
 fn word_boundary_back(s: &str, cursor: usize) -> usize {
-    let is_sep = |slice: &str| slice.chars().all(|c| c.is_whitespace() || crate::os::path::is_path_sep(c));
+    let is_sep = |slice: &str| {
+        slice
+            .chars()
+            .all(|c| c.is_whitespace() || crate::os::path::is_path_sep(c))
+    };
     let mut i = cursor;
     // Phase 1: skip trailing separators (whitespace or '/').
     while i > 0 {
         let prev = prev_grapheme(s, i);
-        if is_sep(&s[prev..i]) { i = prev; } else { break; }
+        if is_sep(&s[prev..i]) {
+            i = prev;
+        } else {
+            break;
+        }
     }
     // Phase 2: consume the run of non-separator graphemes.
     while i > 0 {
         let prev = prev_grapheme(s, i);
-        if !is_sep(&s[prev..i]) { i = prev; } else { break; }
+        if !is_sep(&s[prev..i]) {
+            i = prev;
+        } else {
+            break;
+        }
     }
     i
 }

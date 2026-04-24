@@ -16,10 +16,10 @@ pub(crate) mod settings;
 pub(crate) mod shell;
 pub(crate) mod statusline;
 
+use steel::rerrs::SteelErr;
+use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
-use steel::rvals::SteelVal;
-use steel::rerrs::SteelErr;
 
 use super::HUME_CTX;
 
@@ -82,86 +82,106 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // the first `&mut SteelCtx` argument via register_fn_with_ctx.
 
     // Config / settings
-    engine.register_fn_with_ctx(HUME_CTX, "set-option!",          settings::set_option);
-    engine.register_fn_with_ctx(HUME_CTX, "configure-statusline!", statusline::configure_statusline);
+    engine.register_fn_with_ctx(HUME_CTX, "set-option!", settings::set_option);
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "configure-statusline!",
+        statusline::configure_statusline,
+    );
 
     // Step budget
     engine.register_fn_with_ctx(HUME_CTX, "hume/yield!", interrupt::hume_yield);
 
     // Keymap
-    engine.register_fn_with_ctx(HUME_CTX, "bind-key!",        keymap_bind::bind_key);
+    engine.register_fn_with_ctx(HUME_CTX, "bind-key!", keymap_bind::bind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-key-extend!", keymap_bind::bind_key_extend);
-    engine.register_fn_with_ctx(HUME_CTX, "unbind-key!",      keymap_bind::unbind_key);
-    engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!",  keymap_bind::bind_wait_char);
+    engine.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
+    engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
 
     // Plugin lifecycle (called from the Scheme-side load-plugin)
-    engine.register_fn_with_ctx(HUME_CTX, "push-declared-plugin!", plugins::push_declared_plugin);
-    engine.register_fn_with_ctx(HUME_CTX, "push-loaded-plugin!",   plugins::push_loaded_plugin);
-    engine.register_fn_with_ctx(HUME_CTX, "push-current-plugin!",  plugins::push_current_plugin);
-    engine.register_fn_with_ctx(HUME_CTX, "pop-current-plugin!",   plugins::pop_current_plugin);
-    engine.register_fn_with_ctx(HUME_CTX, "resolve-plugin-path",   plugins::resolve_plugin_path);
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "push-declared-plugin!",
+        plugins::push_declared_plugin,
+    );
+    engine.register_fn_with_ctx(HUME_CTX, "push-loaded-plugin!", plugins::push_loaded_plugin);
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "push-current-plugin!",
+        plugins::push_current_plugin,
+    );
+    engine.register_fn_with_ctx(HUME_CTX, "pop-current-plugin!", plugins::pop_current_plugin);
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "resolve-plugin-path",
+        plugins::resolve_plugin_path,
+    );
 
     // Plugin introspection
-    engine.register_fn_with_ctx(HUME_CTX, "loaded-plugins",   plugins::loaded_plugins);
+    engine.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
     engine.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
 
     // Hook registration — init-only
     engine.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);
 
     // Steel command definition and composition
-    engine.register_fn_with_ctx(HUME_CTX, "define-command!",        commands::define_command);
-    engine.register_fn_with_ctx(HUME_CTX, "define-command-extend!", commands::define_command_extend);
-    engine.register_fn_with_ctx(HUME_CTX, "call!",              commands::call_command);
+    engine.register_fn_with_ctx(HUME_CTX, "define-command!", commands::define_command);
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "define-command-extend!",
+        commands::define_command_extend,
+    );
+    engine.register_fn_with_ctx(HUME_CTX, "call!", commands::call_command);
     // Back-compat alias — prefer call! in new code.
-    engine.register_fn_with_ctx(HUME_CTX, "call-command!",      commands::call_command);
+    engine.register_fn_with_ctx(HUME_CTX, "call-command!", commands::call_command);
     engine.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
-    engine.register_fn_with_ctx(HUME_CTX, "pending-char",       commands::pending_char);
-    engine.register_fn_with_ctx(HUME_CTX, "cmd-arg",            commands::cmd_arg);
-    engine.register_fn_with_ctx(HUME_CTX, "command-plugin",     commands::command_plugin);
+    engine.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
+    engine.register_fn_with_ctx(HUME_CTX, "cmd-arg", commands::cmd_arg);
+    engine.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
 
     // Shell — narrow git wrappers only (no generic run-process)
     engine.register_fn_with_ctx(HUME_CTX, "git-clone", shell::git_clone);
-    engine.register_fn_with_ctx(HUME_CTX, "git-pull",  shell::git_pull);
+    engine.register_fn_with_ctx(HUME_CTX, "git-pull", shell::git_pull);
 
     // Logging — push messages to the editor message log
     engine.register_fn_with_ctx(HUME_CTX, "log!", fs::log_msg);
 
     // Opaque ID predicates and equality — context-free; no SteelCtx needed.
-    engine.register_fn("buffer-id?",  ids::is_buffer_id);
-    engine.register_fn("pane-id?",    ids::is_pane_id);
+    engine.register_fn("buffer-id?", ids::is_buffer_id);
+    engine.register_fn("pane-id?", ids::is_pane_id);
     engine.register_fn("buffer-id=?", ids::buffer_id_equal);
-    engine.register_fn("pane-id=?",   ids::pane_id_equal);
+    engine.register_fn("pane-id=?", ids::pane_id_equal);
 
     // Multi-buffer read-only builtins
     engine.register_fn_with_ctx(HUME_CTX, "current-buffer", buffers::current_buffer);
-    engine.register_fn_with_ctx(HUME_CTX, "current-pane",   buffers::current_pane);
-    engine.register_fn_with_ctx(HUME_CTX, "buffers",        buffers::buffers);
-    engine.register_fn_with_ctx(HUME_CTX, "panes",          buffers::panes);
-    engine.register_fn_with_ctx(HUME_CTX, "buffer-path",    buffers::buffer_path);
-    engine.register_fn_with_ctx(HUME_CTX, "buffer-name",    buffers::buffer_name);
-    engine.register_fn_with_ctx(HUME_CTX, "buffer-dirty?",  buffers::buffer_dirty);
+    engine.register_fn_with_ctx(HUME_CTX, "current-pane", buffers::current_pane);
+    engine.register_fn_with_ctx(HUME_CTX, "buffers", buffers::buffers);
+    engine.register_fn_with_ctx(HUME_CTX, "panes", buffers::panes);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-path", buffers::buffer_path);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-name", buffers::buffer_name);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-dirty?", buffers::buffer_dirty);
 
     // Multi-buffer mutating builtins
-    engine.register_fn_with_ctx(HUME_CTX, "open-buffer!",      buffers::open_buffer);
-    engine.register_fn_with_ctx(HUME_CTX, "close-buffer!",     buffers::close_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);
+    engine.register_fn_with_ctx(HUME_CTX, "close-buffer!", buffers::close_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
 
     // Pane stubs — reserved names for M9+ :split feature.
     // These never use SteelCtx so they register as plain register_fn.
-    engine.register_fn("open-pane!",       buffers::open_pane);
-    engine.register_fn("close-pane!",      buffers::close_pane);
-    engine.register_fn("focus-pane!",      buffers::focus_pane);
-    engine.register_fn("pane-buffer",      buffers::pane_buffer);
+    engine.register_fn("open-pane!", buffers::open_pane);
+    engine.register_fn("close-pane!", buffers::close_pane);
+    engine.register_fn("focus-pane!", buffers::focus_pane);
+    engine.register_fn("pane-buffer", buffers::pane_buffer);
     engine.register_fn("pane-set-buffer!", buffers::pane_set_buffer);
 
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
-    engine.register_value("data-dir",     SteelVal::FuncV(fs::data_dir));
-    engine.register_value("runtime-dir",  SteelVal::FuncV(fs::runtime_dir));
-    engine.register_value("path-join",    SteelVal::FuncV(fs::path_join));
+    engine.register_value("data-dir", SteelVal::FuncV(fs::data_dir));
+    engine.register_value("runtime-dir", SteelVal::FuncV(fs::runtime_dir));
+    engine.register_value("path-join", SteelVal::FuncV(fs::path_join));
     engine.register_value("path-exists?", SteelVal::FuncV(fs::path_exists));
-    engine.register_value("list-dir",     SteelVal::FuncV(fs::list_dir));
-    engine.register_value("make-dir",     SteelVal::FuncV(fs::make_dir));
-    engine.register_value("delete-dir",   SteelVal::FuncV(fs::delete_dir));
+    engine.register_value("list-dir", SteelVal::FuncV(fs::list_dir));
+    engine.register_value("make-dir", SteelVal::FuncV(fs::make_dir));
+    engine.register_value("delete-dir", SteelVal::FuncV(fs::delete_dir));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm; HUME_CTX is not yet set but the

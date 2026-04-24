@@ -10,12 +10,18 @@ fn macro_qq_records_into_register_q() {
     let mut ed = editor_from("-[a]>bcd\n");
     // First `Q` sets the pending state — recording hasn't started yet.
     ed.handle_key(key('Q'));
-    assert!(ed.macro_recording.is_none(), "recording not started until register name given");
+    assert!(
+        ed.macro_recording.is_none(),
+        "recording not started until register name given"
+    );
     assert!(ed.macro_pending.is_some(), "pending should be set after Q");
 
     // Second `Q` is consumed as the register name — recording starts now.
     ed.handle_key(key('Q'));
-    assert!(ed.macro_recording.is_some(), "recording should start after Q<reg>");
+    assert!(
+        ed.macro_recording.is_some(),
+        "recording should start after Q<reg>"
+    );
     assert_eq!(ed.macro_recording.as_ref().unwrap().0, 'q');
 
     // Record a motion: j (move down)
@@ -23,13 +29,24 @@ fn macro_qq_records_into_register_q() {
 
     // Stop recording: Q
     ed.handle_key(key('Q'));
-    assert!(ed.macro_recording.is_none(), "recording should stop after stop-Q");
+    assert!(
+        ed.macro_recording.is_none(),
+        "recording should stop after stop-Q"
+    );
 
     // Register 'q' should now hold a macro with [j] (not the register-name Q or stop Q)
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec());
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec());
     assert!(keys.is_some(), "register q should hold a macro");
     let keys = keys.unwrap();
-    assert_eq!(keys.len(), 1, "only the j key should be recorded, not Q keys");
+    assert_eq!(
+        keys.len(),
+        1,
+        "only the j key should be recorded, not Q keys"
+    );
     assert_eq!(keys[0].code, KeyCode::Char('j'));
 }
 
@@ -44,7 +61,11 @@ fn macro_q_digit_records_into_named_register() {
     ed.handle_key(key('j'));
     ed.handle_key(key('Q'));
     assert!(ed.macro_recording.is_none());
-    let keys = ed.registers.read('0').and_then(|r| r.as_macro()).map(|k| k.to_vec());
+    let keys = ed
+        .registers
+        .read('0')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec());
     assert!(keys.is_some());
     assert_eq!(keys.unwrap()[0].code, KeyCode::Char('j'));
 }
@@ -56,8 +77,14 @@ fn macro_q_esc_cancels() {
     ed.handle_key(key('Q'));
     assert!(ed.macro_pending.is_some(), "pending should be set after Q");
     ed.handle_key(key_esc());
-    assert!(ed.macro_pending.is_none(), "pending should be cleared after Esc");
-    assert!(ed.macro_recording.is_none(), "no recording should have started");
+    assert!(
+        ed.macro_pending.is_none(),
+        "pending should be cleared after Esc"
+    );
+    assert!(
+        ed.macro_recording.is_none(),
+        "no recording should have started"
+    );
 }
 
 /// `q Esc` cancels: no replay is queued.
@@ -126,13 +153,22 @@ fn macro_replay_empty_register_is_noop() {
 
     // `q` must arm macro_pending — proving the dispatch path ran.
     ed.handle_key(key('q'));
-    assert!(ed.macro_pending.is_some(), "macro_pending should be set after q");
+    assert!(
+        ed.macro_pending.is_some(),
+        "macro_pending should be set after q"
+    );
 
     // Register 'z' has never been written — macro_pending is consumed but
     // no keys are queued and state is unchanged.
     ed.handle_key(key('z'));
-    assert!(ed.macro_pending.is_none(), "macro_pending should be consumed after register key");
-    assert!(ed.replay_queue.is_empty(), "no keys queued for unset register");
+    assert!(
+        ed.macro_pending.is_none(),
+        "macro_pending should be consumed after register key"
+    );
+    assert!(
+        ed.replay_queue.is_empty(),
+        "no keys queued for unset register"
+    );
     assert_eq!(state(&ed), before, "state unchanged");
 }
 
@@ -146,11 +182,14 @@ fn macro_no_nested_recording_during_replay() {
     // Manually seed a macro that contains `Q Q j` into register 'q'.
     // We can't record this via the normal path (Q would stop recording),
     // so we write directly to the register.
-    ed.registers.write_macro('q', vec![
-        KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
-        KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
-        KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
-    ]);
+    ed.registers.write_macro(
+        'q',
+        vec![
+            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+        ],
+    );
 
     // Trigger replay: qq
     ed.handle_key(key('q'));
@@ -159,8 +198,14 @@ fn macro_no_nested_recording_during_replay() {
     ed.drain_replay_queue();
 
     // Recording should NOT have started — the Q intercept is suppressed during replay
-    assert!(ed.macro_recording.is_none(), "nested recording must be suppressed");
-    assert!(ed.macro_pending.is_none(), "macro_pending must not be armed after replay");
+    assert!(
+        ed.macro_recording.is_none(),
+        "nested recording must be suppressed"
+    );
+    assert!(
+        ed.macro_pending.is_none(),
+        "macro_pending must not be armed after replay"
+    );
 }
 
 /// A macro whose last key is `Q` must not arm `macro_pending` after replay.
@@ -173,10 +218,13 @@ fn macro_trailing_q_does_not_arm_pending() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     // Seed a macro ending with Q (can't be recorded normally).
-    ed.registers.write_macro('q', vec![
-        KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
-        KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
-    ]);
+    ed.registers.write_macro(
+        'q',
+        vec![
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE),
+        ],
+    );
 
     // Replay: qq
     ed.handle_key(key('q'));
@@ -184,10 +232,15 @@ fn macro_trailing_q_does_not_arm_pending() {
 
     ed.drain_replay_queue();
 
-    assert!(ed.macro_recording.is_none(), "recording must not have started");
-    assert!(ed.macro_pending.is_none(), "macro_pending must not be armed by trailing Q");
+    assert!(
+        ed.macro_recording.is_none(),
+        "recording must not have started"
+    );
+    assert!(
+        ed.macro_pending.is_none(),
+        "macro_pending must not be armed by trailing Q"
+    );
 }
-
 
 /// Status bar shows `[recording @q]` during recording and nothing when idle.
 ///
@@ -225,8 +278,19 @@ fn macro_records_insert_mode_keys() {
     ed.handle_key(key('Q'));
 
     // The recorded macro should contain: i, x, Esc (3 keys)
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec()).unwrap();
-    assert_eq!(keys.len(), 3, "expected i, x, Esc — got {} keys: {:?}", keys.len(), keys);
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec())
+        .unwrap();
+    assert_eq!(
+        keys.len(),
+        3,
+        "expected i, x, Esc — got {} keys: {:?}",
+        keys.len(),
+        keys
+    );
     assert_eq!(keys[0].code, KeyCode::Char('i'));
     assert_eq!(keys[1].code, KeyCode::Char('x'));
     assert_eq!(keys[2].code, KeyCode::Esc);
@@ -261,8 +325,15 @@ fn macro_replay_with_count() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    let end_line = ed.doc().text().char_to_line(ed.current_selections().primary().head);
-    assert_eq!(end_line, 3, "expected cursor on line 3, got line {}", end_line);
+    let end_line = ed
+        .doc()
+        .text()
+        .char_to_line(ed.current_selections().primary().head);
+    assert_eq!(
+        end_line, 3,
+        "expected cursor on line 3, got line {}",
+        end_line
+    );
 }
 
 /// Replaying a register that holds text (not a macro) is a no-op.
@@ -276,8 +347,13 @@ fn macro_replay_of_text_register_is_noop() {
 
     // Yank puts text into the default register.
     ed.handle_key(key('y'));
-    assert!(ed.registers.read(DEFAULT_REGISTER).and_then(|r| r.as_text()).is_some(),
-        "default register should hold text after yank");
+    assert!(
+        ed.registers
+            .read(DEFAULT_REGISTER)
+            .and_then(|r| r.as_text())
+            .is_some(),
+        "default register should hold text after yank"
+    );
 
     let before = state(&ed);
 
@@ -287,7 +363,10 @@ fn macro_replay_of_text_register_is_noop() {
     assert!(ed.macro_pending.is_some());
     ed.handle_key(key('0'));
     assert!(ed.macro_pending.is_none());
-    assert!(ed.replay_queue.is_empty(), "text register must not enqueue any keys");
+    assert!(
+        ed.replay_queue.is_empty(),
+        "text register must not enqueue any keys"
+    );
     assert_eq!(state(&ed), before, "state must be unchanged");
 }
 
@@ -305,13 +384,23 @@ fn macro_with_find_char() {
     ed.handle_key(key('x'));
     ed.handle_key(key('Q'));
 
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec()).unwrap();
-    assert_eq!(keys.len(), 2, "macro should contain exactly 2 keys (f and x), got {:?}", keys);
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec())
+        .unwrap();
+    assert_eq!(
+        keys.len(),
+        2,
+        "macro should contain exactly 2 keys (f and x), got {:?}",
+        keys
+    );
     assert_eq!(keys[0].code, KeyCode::Char('f'));
     assert_eq!(keys[1].code, KeyCode::Char('x'));
 
     // After recording, cursor is on first 'x'. Move to 'c' so replay can find next 'x'.
-    ed.handle_key(key('l'));  // step right to 'c'
+    ed.handle_key(key('l')); // step right to 'c'
 
     let before_pos = ed.current_selections().primary().head;
     let before_char = ed.doc().text().char_at(before_pos);
@@ -323,7 +412,11 @@ fn macro_with_find_char() {
 
     let after_pos = ed.current_selections().primary().head;
     assert!(after_pos > before_pos, "cursor should have moved right");
-    assert_eq!(ed.doc().text().char_at(after_pos), Some('x'), "cursor should be on 'x' after replay");
+    assert_eq!(
+        ed.doc().text().char_at(after_pos),
+        Some('x'),
+        "cursor should be on 'x' after replay"
+    );
     let _ = before_char;
 }
 
@@ -351,8 +444,10 @@ fn macro_insert_mode_round_trip() {
 
     let after = state(&ed);
     assert_ne!(after, before, "replay should have modified the buffer");
-    assert!(ed.doc().text().to_string().matches('x').count() == 2,
-        "there should be two 'x' chars — one from recording, one from replay");
+    assert!(
+        ed.doc().text().to_string().matches('x').count() == 2,
+        "there should be two 'x' chars — one from recording, one from replay"
+    );
 }
 
 /// After replaying a macro, `.` must repeat the last *editing* action, not
@@ -364,7 +459,11 @@ fn macro_replay_preserves_dot_repeat() {
     // Perform a `d` (delete) to establish last_action = "delete".
     ed.handle_key(key('d'));
     let action_after_delete = ed.last_action.as_ref().map(|a| a.command.as_ref());
-    assert_eq!(action_after_delete, Some("delete"), "last_action should be 'delete'");
+    assert_eq!(
+        action_after_delete,
+        Some("delete"),
+        "last_action should be 'delete'"
+    );
 
     // Record a `j` motion macro (not repeatable — should not overwrite last_action).
     ed.handle_key(key('Q'));
@@ -379,8 +478,12 @@ fn macro_replay_preserves_dot_repeat() {
 
     // last_action must still be "delete", not whatever the macro did.
     let action_after_replay = ed.last_action.as_ref().map(|a| a.command.as_ref());
-    assert_eq!(action_after_replay, Some("delete"),
-        "dot-repeat must survive macro replay; got {:?}", action_after_replay);
+    assert_eq!(
+        action_after_replay,
+        Some("delete"),
+        "dot-repeat must survive macro replay; got {:?}",
+        action_after_replay
+    );
 }
 
 /// Pressing `q` while recording should be silently captured as a recorded key
@@ -397,15 +500,31 @@ fn macro_q_during_recording_is_captured() {
     ed.handle_key(key('q'));
 
     // Must not have changed pending or replay state.
-    assert!(ed.macro_pending.is_none(), "q during recording must not arm macro_pending");
-    assert!(ed.replay_queue.is_empty(), "q during recording must not enqueue replay");
+    assert!(
+        ed.macro_pending.is_none(),
+        "q during recording must not arm macro_pending"
+    );
+    assert!(
+        ed.replay_queue.is_empty(),
+        "q during recording must not enqueue replay"
+    );
 
     // Stop recording.
     ed.handle_key(key('Q'));
 
     // The `q` must have been captured as a recorded key.
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec()).unwrap();
-    assert_eq!(keys.len(), 1, "macro should contain exactly 1 key (the q), got {:?}", keys);
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec())
+        .unwrap();
+    assert_eq!(
+        keys.len(),
+        1,
+        "macro should contain exactly 1 key (the q), got {:?}",
+        keys
+    );
     assert_eq!(keys[0].code, KeyCode::Char('q'));
 }
 
@@ -416,10 +535,13 @@ fn macro_recursive_replay_suppressed() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     // Seed a macro `[q, q]` (self-replay) into 'q' manually.
-    ed.registers.write_macro('q', vec![
-        KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
-        KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
-    ]);
+    ed.registers.write_macro(
+        'q',
+        vec![
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+        ],
+    );
 
     // Replay: qq. The macro contains `qq` which should be suppressed.
     ed.handle_key(key('q'));
@@ -427,9 +549,18 @@ fn macro_recursive_replay_suppressed() {
     ed.drain_replay_queue();
 
     // Neither recording nor pending should be armed.
-    assert!(ed.macro_recording.is_none(), "nested recording must not start");
-    assert!(ed.macro_pending.is_none(), "macro_pending must not be armed after replay");
-    assert!(ed.replay_queue.is_empty(), "replay queue must be empty after drain");
+    assert!(
+        ed.macro_recording.is_none(),
+        "nested recording must not start"
+    );
+    assert!(
+        ed.macro_pending.is_none(),
+        "macro_pending must not be armed after replay"
+    );
+    assert!(
+        ed.replay_queue.is_empty(),
+        "replay queue must be empty after drain"
+    );
 }
 
 /// `QQ Q` — record with zero keys, then stop. The register should hold an
@@ -445,7 +576,11 @@ fn macro_empty_recording() {
     ed.handle_key(key('Q'));
 
     // Register 'q' should hold an empty macro (Some, but zero keys).
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec());
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec());
     assert!(keys.is_some(), "register should hold a macro (not None)");
     assert!(keys.unwrap().is_empty(), "macro should have zero keys");
 
@@ -453,7 +588,11 @@ fn macro_empty_recording() {
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
-    assert_eq!(state(&ed), before, "replay of empty macro must not change state");
+    assert_eq!(
+        state(&ed),
+        before,
+        "replay of empty macro must not change state"
+    );
 }
 
 /// `Esc` while recording should be captured as a key (stopping insert/extend),
@@ -479,8 +618,19 @@ fn macro_esc_during_recording_is_captured() {
     assert!(ed.macro_recording.is_none());
 
     // Macro should contain Esc and j.
-    let keys = ed.registers.read('q').and_then(|r| r.as_macro()).map(|k| k.to_vec()).unwrap();
-    assert_eq!(keys.len(), 2, "expected [Esc, j], got {} keys: {:?}", keys.len(), keys);
+    let keys = ed
+        .registers
+        .read('q')
+        .and_then(|r| r.as_macro())
+        .map(|k| k.to_vec())
+        .unwrap();
+    assert_eq!(
+        keys.len(),
+        2,
+        "expected [Esc, j], got {} keys: {:?}",
+        keys.len(),
+        keys
+    );
     assert_eq!(keys[0].code, KeyCode::Esc);
     assert_eq!(keys[1].code, KeyCode::Char('j'));
 }
@@ -497,9 +647,15 @@ fn macro_count_prefix_before_record_does_not_leak() {
     ed.handle_key(key('q')); // register name
 
     // Recording should have started cleanly.
-    assert!(ed.macro_recording.is_some(), "recording should start after Q<reg>");
+    assert!(
+        ed.macro_recording.is_some(),
+        "recording should start after Q<reg>"
+    );
     // Count must be consumed/cleared.
-    assert!(ed.count.is_none(), "count must be cleared after Q<reg> sequence");
+    assert!(
+        ed.count.is_none(),
+        "count must be cleared after Q<reg> sequence"
+    );
 
     ed.handle_key(key('Q')); // stop
     assert!(ed.macro_recording.is_none());
@@ -524,11 +680,18 @@ fn macro_replay_undo() {
     ed.drain_replay_queue();
 
     let after_replay = state(&ed);
-    assert_ne!(after_replay, before_replay, "replay should have changed state");
+    assert_ne!(
+        after_replay, before_replay,
+        "replay should have changed state"
+    );
 
     // Undo should restore to the pre-replay state.
     ed.handle_key(key('u'));
-    assert_eq!(state(&ed), before_replay, "undo after replay should restore pre-replay state");
+    assert_eq!(
+        state(&ed),
+        before_replay,
+        "undo after replay should restore pre-replay state"
+    );
 }
 
 /// Record into register 1, undo, then replay — the edit should be reapplied.
@@ -550,7 +713,10 @@ fn macro_q1_replay_after_undo() {
     // Q: stop recording
     ed.handle_key(key('Q'));
     assert!(ed.macro_recording.is_none());
-    assert!(ed.registers.read('1').and_then(|r| r.as_macro()).is_some(), "macro saved");
+    assert!(
+        ed.registers.read('1').and_then(|r| r.as_macro()).is_some(),
+        "macro saved"
+    );
 
     // Undo the edit
     ed.handle_key(key('u'));
@@ -565,4 +731,3 @@ fn macro_q1_replay_after_undo() {
 
     assert_ne!(state(&ed), before, "replay should have changed the state");
 }
-

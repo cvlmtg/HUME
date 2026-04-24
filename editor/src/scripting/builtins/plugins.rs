@@ -5,10 +5,10 @@
 //! These are called from the Scheme-side `load-plugin` wrapper defined in the
 //! bootstrap; see `mod.rs` for the Scheme source.
 
-use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::scripting::{ledger::PluginId, SteelCtx};
+use crate::scripting::{SteelCtx, ledger::PluginId};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,11 @@ fn steel_parse_err(e: String) -> SteelErr {
 pub(crate) fn push_declared_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     // Validate before recording so declared-plugins never contains junk.
     PluginId::parse(&name).map_err(steel_parse_err)?;
-    if !ctx.declared_plugins.iter().any(|d| d.eq_ignore_ascii_case(&name)) {
+    if !ctx
+        .declared_plugins
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&name))
+    {
         ctx.declared_plugins.push(name);
     }
     Ok(SteelVal::Void)
@@ -37,7 +41,11 @@ pub(crate) fn push_declared_plugin(ctx: &mut SteelCtx, name: String) -> SteelRes
 /// `(push-loaded-plugin! name)` — append to the loaded-plugins list
 /// (case-insensitive dedup, no validation — caller already validated).
 pub(crate) fn push_loaded_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    if !ctx.loaded_plugins.iter().any(|l| l.eq_ignore_ascii_case(&name)) {
+    if !ctx
+        .loaded_plugins
+        .iter()
+        .any(|l| l.eq_ignore_ascii_case(&name))
+    {
         ctx.loaded_plugins.push(name);
     }
     Ok(SteelVal::Void)
@@ -76,16 +84,17 @@ pub(crate) fn resolve_path_for_name(
 ) -> Result<Option<std::path::PathBuf>, String> {
     let plugin_id = PluginId::parse(name)?;
     let path = match plugin_id {
-        PluginId::Core(core_name) => {
-            runtime_dir.map(|rt| {
-                rt.join("plugins").join("core").join(&core_name).join("plugin.scm")
-            })
-        }
+        PluginId::Core(core_name) => runtime_dir.map(|rt| {
+            rt.join("plugins")
+                .join("core")
+                .join(&core_name)
+                .join("plugin.scm")
+        }),
         // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
         // resolved — return None rather than panicking.
-        PluginId::User { user, repo } => data_dir.map(|d| {
-            d.join("plugins").join(&user).join(&repo).join("plugin.scm")
-        }),
+        PluginId::User { user, repo } => {
+            data_dir.map(|d| d.join("plugins").join(&user).join(&repo).join("plugin.scm"))
+        }
     };
     // Probe existence without a pre-flight `.exists()` to avoid TOCTOU.
     // NotFound → plugin absent (Ok(None)); other errors propagate.
@@ -107,7 +116,7 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     match path {
         Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
-        None    => Ok(SteelVal::BoolV(false)),
+        None => Ok(SteelVal::BoolV(false)),
     }
 }
 
@@ -154,7 +163,9 @@ mod tests {
     #[test]
     fn parse_user_plugin_name() {
         let id = PluginId::parse("user/repo").unwrap();
-        assert!(matches!(id, PluginId::User { ref user, ref repo } if user == "user" && repo == "repo"));
+        assert!(
+            matches!(id, PluginId::User { ref user, ref repo } if user == "user" && repo == "repo")
+        );
     }
 
     #[test]
@@ -179,10 +190,10 @@ mod tests {
     #[test]
     fn invalid_segments() {
         // Segment validation exercised via PluginId::parse.
-        assert!(PluginId::parse("core:").is_err());       // empty
-        assert!(PluginId::parse("core:.").is_err());      // dot
-        assert!(PluginId::parse("core:..").is_err());     // dotdot
-        assert!(PluginId::parse("./b").is_err());         // slash without user
-        assert!(PluginId::parse("a\0b/repo").is_err());   // NUL in user
+        assert!(PluginId::parse("core:").is_err()); // empty
+        assert!(PluginId::parse("core:.").is_err()); // dot
+        assert!(PluginId::parse("core:..").is_err()); // dotdot
+        assert!(PluginId::parse("./b").is_err()); // slash without user
+        assert!(PluginId::parse("a\0b/repo").is_err()); // NUL in user
     }
 }

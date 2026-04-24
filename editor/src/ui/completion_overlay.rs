@@ -57,16 +57,20 @@ impl OverlayProvider for CompletionOverlay {
         let guard = self.data.read().expect("RwLock not poisoned");
         let Some(view) = guard.as_ref() else { return };
 
-        if view.rows.is_empty() { return; }
+        if view.rows.is_empty() {
+            return;
+        }
 
         let inner_rows = (view.rows.len() as u16).min(MAX_POPUP_ROWS);
 
         // Compute the visible slice (scroll window to keep `selected` visible).
         let selected = view.selected.min(view.rows.len().saturating_sub(1));
-        let (scroll_offset, visible_rows) = visible_window(&view.rows, selected, inner_rows as usize);
+        let (scroll_offset, visible_rows) =
+            visible_window(&view.rows, selected, inner_rows as usize);
 
         // Content width = widest candidate string.
-        let inner_w = visible_rows.iter()
+        let inner_w = visible_rows
+            .iter()
             .map(|r| unicode_display_width(r))
             .max()
             .unwrap_or(0) as u16;
@@ -76,18 +80,23 @@ impl OverlayProvider for CompletionOverlay {
         let outer_w = (inner_w + 2).min(pane_area.width);
 
         // Need room for at least one border row on each side plus one content row.
-        if outer_h < 3 || outer_w < 3 { return; }
+        if outer_h < 3 || outer_w < 3 {
+            return;
+        }
 
         // Position: just above the statusline.
         // Shift left by 1 so the text column aligns under the token in the input.
         let popup_y = pane_area.y + pane_area.height - outer_h;
-        let popup_x = view.anchor_col
+        let popup_x = view
+            .anchor_col
             .saturating_sub(1)
             .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
 
-        let bg_style       = Style::default().bg(POPUP_BG);
-        let border_style   = Style::default().fg(BORDER_FG).bg(POPUP_BG);
-        let selected_style = Style::default().bg(POPUP_BG).add_modifier(Modifier::REVERSED);
+        let bg_style = Style::default().bg(POPUP_BG);
+        let border_style = Style::default().fg(BORDER_FG).bg(POPUP_BG);
+        let selected_style = Style::default()
+            .bg(POPUP_BG)
+            .add_modifier(Modifier::REVERSED);
 
         // 1. Fill the entire outer rectangle with the popup background.
         //    This gives a solid, opaque backdrop — no buffer content bleeds through.
@@ -96,7 +105,7 @@ impl OverlayProvider for CompletionOverlay {
 
         // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
         if view.border {
-            let right  = popup_x + outer_w - 1;
+            let right = popup_x + outer_w - 1;
             let bottom = popup_y + outer_h - 1;
             // Number of ─ characters to fill between the two corner columns.
             let fill_w = (outer_w - 2) as usize;
@@ -148,7 +157,8 @@ fn visible_window(rows: &[String], selected: usize, max_height: usize) -> (usize
         return (0, rows);
     }
     // Keep `selected` visible by anchoring the window.
-    let start = selected.saturating_sub(max_height / 2)
+    let start = selected
+        .saturating_sub(max_height / 2)
         .min(total - max_height);
     (start, &rows[start..start + max_height])
 }

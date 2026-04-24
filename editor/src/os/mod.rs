@@ -47,10 +47,10 @@ fn has_kitty_response(buf: &[u8]) -> bool {
             let mut j = i + 3;
             while j < buf.len() {
                 match buf[j] {
-                    b'u' => return true,          // kitty flags response
-                    b'c' => break,                // DA1 — skip and keep scanning
+                    b'u' => return true, // kitty flags response
+                    b'c' => break,       // DA1 — skip and keep scanning
                     b'0'..=b'9' | b';' => j += 1,
-                    _ => break,                   // unexpected byte, abandon sequence
+                    _ => break, // unexpected byte, abandon sequence
                 }
             }
             i = j + 1;

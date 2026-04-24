@@ -22,7 +22,10 @@ pub struct ScopeRegistry {
 
 impl ScopeRegistry {
     pub fn new() -> Self {
-        Self { map: HashMap::new(), names: Vec::new() }
+        Self {
+            map: HashMap::new(),
+            names: Vec::new(),
+        }
     }
 
     /// Return the [`ScopeId`] for `name`, interning it if not yet seen.
@@ -92,7 +95,6 @@ pub struct UiScopes {
     /// Primary selection highlight. Falls back to `selection` if unset.
     pub selection_primary: ResolvedStyle,
 }
-
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -171,7 +173,10 @@ impl Theme {
             "ScopeId {:?} is out of range — was bake() called after all providers were registered?",
             id
         );
-        self.baked.get(id.0 as usize).copied().unwrap_or(self.default)
+        self.baked
+            .get(id.0 as usize)
+            .copied()
+            .unwrap_or(self.default)
     }
 
     /// Resolve a scope name via the dot-notation fallback chain.
@@ -239,8 +244,20 @@ mod tests {
 
     fn make_theme() -> Theme {
         let mut styles = HashMap::new();
-        styles.insert("keyword", ResolvedStyle { fg: Some(Color::Blue), ..Default::default() });
-        styles.insert("keyword.operator", ResolvedStyle { fg: Some(Color::Cyan), ..Default::default() });
+        styles.insert(
+            "keyword",
+            ResolvedStyle {
+                fg: Some(Color::Blue),
+                ..Default::default()
+            },
+        );
+        styles.insert(
+            "keyword.operator",
+            ResolvedStyle {
+                fg: Some(Color::Cyan),
+                ..Default::default()
+            },
+        );
         Theme::new(styles, ResolvedStyle::default())
     }
 
@@ -291,7 +308,13 @@ mod tests {
     #[test]
     fn multi_level_fallback() {
         let mut styles = HashMap::new();
-        styles.insert("a.b", ResolvedStyle { fg: Some(Color::Green), ..Default::default() });
+        styles.insert(
+            "a.b",
+            ResolvedStyle {
+                fg: Some(Color::Green),
+                ..Default::default()
+            },
+        );
         let mut theme = Theme::new(styles, ResolvedStyle::default());
 
         let mut reg = ScopeRegistry::new();
@@ -319,13 +342,19 @@ mod tests {
     #[test]
     fn resolve_by_name_direct() {
         let theme = make_theme();
-        assert_eq!(theme.resolve_by_name(Scope("keyword.operator")).fg, Some(Color::Cyan));
+        assert_eq!(
+            theme.resolve_by_name(Scope("keyword.operator")).fg,
+            Some(Color::Cyan)
+        );
     }
 
     #[test]
     fn resolve_by_name_fallback() {
         let theme = make_theme();
-        assert_eq!(theme.resolve_by_name(Scope("keyword.function")).fg, Some(Color::Blue));
+        assert_eq!(
+            theme.resolve_by_name(Scope("keyword.function")).fg,
+            Some(Color::Blue)
+        );
     }
 
     #[test]
@@ -341,7 +370,10 @@ mod tests {
         let mut styles = HashMap::new();
         styles.insert(
             "ui.cursorline",
-            ResolvedStyle { bg: Some(Color::Blue), ..Default::default() },
+            ResolvedStyle {
+                bg: Some(Color::Blue),
+                ..Default::default()
+            },
         );
         let theme = Theme::new(styles, ResolvedStyle::default());
         // theme.bake() NOT called — ui.cursorline must still be correct.

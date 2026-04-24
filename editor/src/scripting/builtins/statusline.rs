@@ -22,10 +22,10 @@
 //! `init.scm` mutations (attribution = `User`) write no ledger entry — reload
 //! rebuilds from scratch.
 
-use steel::rvals::SteelVal;
 use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rvals::SteelVal;
 
-use crate::scripting::{ledger::Owner, SteelCtx};
+use crate::scripting::{SteelCtx, ledger::Owner};
 use crate::settings::serialize_setting;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
@@ -41,21 +41,29 @@ const SETTING_KEY: &str = "statusline";
 /// list, and a generic error if any element name is unrecognised.
 fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement>, SteelErr> {
     match val {
-        SteelVal::ListV(lst) => {
-            lst.iter()
-                .map(|v| match v {
-                    SteelVal::StringV(s) => s.parse::<StatusElement>().map_err(|e| {
-                        SteelErr::new(ErrorKind::Generic,
-                            format!("configure-statusline!: {e}"))
-                    }),
-                    _ => Err(SteelErr::new(ErrorKind::TypeMismatch,
-                        format!("configure-statusline!: {section} section expects a list of \
-                                 strings, got {:?}", v))),
-                })
-                .collect()
-        }
-        _ => Err(SteelErr::new(ErrorKind::TypeMismatch,
-            format!("configure-statusline!: {section} section must be a list, got {:?}", val))),
+        SteelVal::ListV(lst) => lst
+            .iter()
+            .map(|v| match v {
+                SteelVal::StringV(s) => s.parse::<StatusElement>().map_err(|e| {
+                    SteelErr::new(ErrorKind::Generic, format!("configure-statusline!: {e}"))
+                }),
+                _ => Err(SteelErr::new(
+                    ErrorKind::TypeMismatch,
+                    format!(
+                        "configure-statusline!: {section} section expects a list of \
+                                 strings, got {:?}",
+                        v
+                    ),
+                )),
+            })
+            .collect(),
+        _ => Err(SteelErr::new(
+            ErrorKind::TypeMismatch,
+            format!(
+                "configure-statusline!: {section} section must be a list, got {:?}",
+                val
+            ),
+        )),
     }
 }
 
@@ -71,15 +79,24 @@ fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement
 /// Only valid during `init.scm` or plugin load.  When called from a plugin body,
 /// the prior config is serialized and recorded in the ledger so it can be
 /// restored via `apply_setting` when the plugin unloads.
-pub(crate) fn configure_statusline(ctx: &mut SteelCtx, left: SteelVal, center: SteelVal, right: SteelVal) -> SteelResult {
+pub(crate) fn configure_statusline(
+    ctx: &mut SteelCtx,
+    left: SteelVal,
+    center: SteelVal,
+    right: SteelVal,
+) -> SteelResult {
     if !ctx.is_init {
         steel::stop!(Generic =>
             "configure-statusline!: only valid during init.scm or plugin load, not from a Steel command body");
     }
-    let left   = parse_element_list(&left,   "left")?;
+    let left = parse_element_list(&left, "left")?;
     let center = parse_element_list(&center, "center")?;
-    let right  = parse_element_list(&right,  "right")?;
-    let new_cfg = StatusLineConfig { left, center, right };
+    let right = parse_element_list(&right, "right")?;
+    let new_cfg = StatusLineConfig {
+        left,
+        center,
+        right,
+    };
 
     // Capture prior state for the ledger before overwriting — same pattern as set_option.
     let prior_value = serialize_setting(ctx.settings, SETTING_KEY).unwrap_or_default();
@@ -91,7 +108,13 @@ pub(crate) fn configure_statusline(ctx: &mut SteelCtx, left: SteelVal, center: S
     // Only record a ledger entry for plugin-attributed mutations; User-level
     // mutations (top-level init.scm) are rebuilt from scratch on :reload-config.
     if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(plugin_id, SETTING_KEY.to_string(), prior_owner, prior_value, false);
+        ctx.ledger_stack.record(
+            plugin_id,
+            SETTING_KEY.to_string(),
+            prior_owner,
+            prior_value,
+            false,
+        );
     }
     Ok(SteelVal::Void)
 }
@@ -105,16 +128,16 @@ mod tests {
     #[test]
     fn known_elements_parse() {
         for (name, expected) in [
-            ("Mode",           StatusElement::Mode),
-            ("Separator",      StatusElement::Separator),
-            ("FileName",       StatusElement::FileName),
-            ("Cwd",            StatusElement::Cwd),
-            ("Position",       StatusElement::Position),
-            ("KittyProtocol",  StatusElement::KittyProtocol),
+            ("Mode", StatusElement::Mode),
+            ("Separator", StatusElement::Separator),
+            ("FileName", StatusElement::FileName),
+            ("Cwd", StatusElement::Cwd),
+            ("Position", StatusElement::Position),
+            ("KittyProtocol", StatusElement::KittyProtocol),
             ("DirtyIndicator", StatusElement::DirtyIndicator),
-            ("LineEnding",     StatusElement::LineEnding),
-            ("SearchMatches",  StatusElement::SearchMatches),
-            ("MiniBuf",        StatusElement::MiniBuf),
+            ("LineEnding", StatusElement::LineEnding),
+            ("SearchMatches", StatusElement::SearchMatches),
+            ("MiniBuf", StatusElement::MiniBuf),
             ("MacroRecording", StatusElement::MacroRecording),
         ] {
             let got = name.parse::<StatusElement>().unwrap();

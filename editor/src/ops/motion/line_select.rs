@@ -1,7 +1,7 @@
+use super::MotionMode;
+use crate::core::selection::{Selection, SelectionSet};
 use crate::core::text::Text;
 use crate::helpers::line_end_exclusive;
-use crate::core::selection::{Selection, SelectionSet};
-use super::MotionMode;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -39,7 +39,10 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
                 let (tgt_start, tgt_end) = if sel.end() + 1 >= end_excl {
                     // Already ends on `\n` — target next line.
                     let next_line = bottom_line + 1;
-                    (buf.line_to_char(next_line), line_end_exclusive(buf, next_line) - 1)
+                    (
+                        buf.line_to_char(next_line),
+                        line_end_exclusive(buf, next_line) - 1,
+                    )
                 } else {
                     // Expand to cover full lines.
                     let top_line = buf.char_to_line(sel.start());
@@ -63,7 +66,11 @@ pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) 
 /// `Extend` — grows the selection upward to cover the current line. If the selection
 /// already starts at a line boundary, accumulates the previous line. Always produces
 /// a backward selection (anchor=bottom `\n`, head=top start).
-pub(crate) fn cmd_select_line_backward(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_line_backward(
+    buf: &Text,
+    sels: SelectionSet,
+    mode: MotionMode,
+) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         match mode {
             MotionMode::Move => {
@@ -88,7 +95,10 @@ pub(crate) fn cmd_select_line_backward(buf: &Text, sels: SelectionSet, mode: Mot
                 let (tgt_start, tgt_end) = if sel.start() == top_line_start {
                     // Already starts at line boundary — target previous line.
                     let prev_line = top_line - 1;
-                    (buf.line_to_char(prev_line), line_end_exclusive(buf, prev_line) - 1)
+                    (
+                        buf.line_to_char(prev_line),
+                        line_end_exclusive(buf, prev_line) - 1,
+                    )
                 } else {
                     // Expand to cover full lines.
                     let bottom_line = buf.char_to_line(sel.end());
@@ -103,4 +113,3 @@ pub(crate) fn cmd_select_line_backward(buf: &Text, sels: SelectionSet, mode: Mot
     result.debug_assert_valid(buf);
     result
 }
-

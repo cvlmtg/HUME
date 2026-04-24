@@ -168,15 +168,30 @@ fn extend_search_next_extends_selection() {
 fn esc_in_normal_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search_pattern().is_some(), "pre-condition: search pattern is set");
-    assert!(ed.current_search_cursor().match_count.is_some(), "pre-condition: cache is populated");
+    assert!(
+        ed.search_pattern().is_some(),
+        "pre-condition: search pattern is set"
+    );
+    assert!(
+        ed.current_search_cursor().match_count.is_some(),
+        "pre-condition: cache is populated"
+    );
 
     ed.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     ed.sync_search_cache();
 
-    assert!(ed.search_pattern().is_none(), "search pattern should be cleared by Esc");
-    assert!(ed.current_search_cursor().match_count.is_none(), "match_count should be cleared by Esc");
-    assert!(ed.search_matches().matches.is_empty(), "matches should be cleared by Esc");
+    assert!(
+        ed.search_pattern().is_none(),
+        "search pattern should be cleared by Esc"
+    );
+    assert!(
+        ed.current_search_cursor().match_count.is_none(),
+        "match_count should be cleared by Esc"
+    );
+    assert!(
+        ed.search_matches().matches.is_empty(),
+        "matches should be cleared by Esc"
+    );
 }
 
 /// `:clear-search` in Command mode clears the active search regex and its cached state.
@@ -184,7 +199,10 @@ fn esc_in_normal_clears_search() {
 fn command_clear_search_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
-    assert!(ed.search_pattern().is_some(), "pre-condition: search pattern is set");
+    assert!(
+        ed.search_pattern().is_some(),
+        "pre-condition: search pattern is set"
+    );
 
     // :clear-search (canonical name)
     ed.handle_key(key(':'));
@@ -195,10 +213,18 @@ fn command_clear_search_clears_search() {
     ed.sync_search_cache();
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.search_pattern().is_none(), "search pattern should be cleared by :clear-search");
-    assert!(ed.current_search_cursor().match_count.is_none(), "match_count should be cleared by :clear-search");
-    assert!(ed.search_matches().matches.is_empty(), "matches should be cleared by :clear-search");
-
+    assert!(
+        ed.search_pattern().is_none(),
+        "search pattern should be cleared by :clear-search"
+    );
+    assert!(
+        ed.current_search_cursor().match_count.is_none(),
+        "match_count should be cleared by :clear-search"
+    );
+    assert!(
+        ed.search_matches().matches.is_empty(),
+        "matches should be cleared by :clear-search"
+    );
 }
 
 // ── Select within (s) ────────────────────────────────────────────────────────
@@ -218,7 +244,11 @@ fn select_within_enters_select_mode() {
     let mut ed = editor_from("-[hello world]>\n");
     ed.handle_key(key('s'));
     assert_eq!(ed.mode, Mode::Select);
-    assert!(ed.pane_transient[ed.focused_pane_id].pre_select_sels.is_some());
+    assert!(
+        ed.pane_transient[ed.focused_pane_id]
+            .pre_select_sels
+            .is_some()
+    );
     assert!(ed.minibuf.is_some());
     assert_eq!(ed.minibuf.as_ref().unwrap().prompt, '⫽');
 }
@@ -233,7 +263,11 @@ fn select_within_confirm_replaces_selections() {
     ed.handle_key(key_enter());
 
     assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.pane_transient[ed.focused_pane_id].pre_select_sels.is_none());
+    assert!(
+        ed.pane_transient[ed.focused_pane_id]
+            .pre_select_sels
+            .is_none()
+    );
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);
     assert_eq!(ed.current_selections().primary().anchor, 0);
@@ -274,7 +308,8 @@ fn select_within_does_not_overwrite_search_register() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     // Simulate a prior search by writing directly to the search register (as
     // search confirm does).
-    ed.registers.write_text(SEARCH_REGISTER, vec!["cd".to_string()]);
+    ed.registers
+        .write_text(SEARCH_REGISTER, vec!["cd".to_string()]);
     // Select within using a different pattern.
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
@@ -330,7 +365,9 @@ fn select_within_multiple_selections_finds_matches_in_each() {
     ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
-    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    for ch in "aa".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     // One "aa" from each original selection → 2 selections total.
@@ -362,13 +399,20 @@ fn select_within_drops_selections_with_no_match() {
     ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
-    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    for ch in "aa".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     // Only one match (from the first selection).
     assert_eq!(ed.current_selections().len(), 1);
     assert_eq!(ed.current_selections().primary().start(), 0);
-    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc().text()), 1);
+    assert_eq!(
+        ed.current_selections()
+            .primary()
+            .end_inclusive(ed.doc().text()),
+        1
+    );
 }
 
 /// When NO selection contains a match, the original selections are restored.
@@ -376,13 +420,7 @@ fn select_within_drops_selections_with_no_match() {
 fn select_within_multiple_selections_no_match_restores_all() {
     use crate::core::selection::{Selection, SelectionSet};
     let mut ed = editor_from("-[aa bb cc]>\n");
-    let two_sels = SelectionSet::from_vec(
-        vec![
-            Selection::new(0, 1),
-            Selection::new(3, 4),
-        ],
-        0,
-    );
+    let two_sels = SelectionSet::from_vec(vec![Selection::new(0, 1), Selection::new(3, 4)], 0);
     ed.set_current_selections(two_sels.clone());
 
     let original = state(&ed);
@@ -393,7 +431,11 @@ fn select_within_multiple_selections_no_match_restores_all() {
     // Confirm with a non-empty pattern that has no matches. Live preview already
     // restored the originals, so confirm keeps them in place.
     ed.handle_key(key_enter());
-    assert_eq!(ed.current_selections().len(), 2, "original two selections should be restored");
+    assert_eq!(
+        ed.current_selections().len(),
+        2,
+        "original two selections should be restored"
+    );
 }
 
 /// Primary index after select-within tracks to the first match within the
@@ -413,13 +455,19 @@ fn select_within_primary_tracks_original_primary() {
     ed.set_current_selections(two_sels);
 
     ed.handle_key(key('s'));
-    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    for ch in "aa".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     assert_eq!(ed.current_selections().len(), 2);
     // Primary must be the match from the original primary selection (6..7).
     let primary = ed.current_selections().primary();
-    assert_eq!(primary.start(), 6, "primary should come from the original primary selection");
+    assert_eq!(
+        primary.start(),
+        6,
+        "primary should come from the original primary selection"
+    );
 }
 
 /// Esc after live-preview with multiple selections restores all originals.
@@ -442,12 +490,18 @@ fn select_within_esc_restores_multiple_selections() {
     let original = state(&ed);
 
     ed.handle_key(key('s'));
-    for ch in "aa".chars() { ed.handle_key(key(ch)); }
+    for ch in "aa".chars() {
+        ed.handle_key(key(ch));
+    }
     // Live preview shrinks "aa bb" → "aa", so state differs.
     assert_ne!(state(&ed), original);
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.current_selections().len(), 2, "both original selections restored");
+    assert_eq!(
+        ed.current_selections().len(),
+        2,
+        "both original selections restored"
+    );
     assert_eq!(state(&ed), original);
 }
 
@@ -462,14 +516,18 @@ fn search_n_after_select_within_uses_original_search() {
 
     // Search for "ab", confirm → lands on first "ab".
     ed.handle_key(key('/'));
-    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    for ch in "ab".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
     assert_eq!(state(&ed), "xx -[ab]> cd ab cd\n");
 
     // Select the whole line and split on "cd".
     ed.handle_key(key('%'));
     ed.handle_key(key('s'));
-    for ch in "cd".chars() { ed.handle_key(key(ch)); }
+    for ch in "cd".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     // `n` must jump to an "ab", not a "cd".
@@ -489,14 +547,18 @@ fn search_n_after_cancelled_select_within_uses_original_search() {
 
     // Search for "ab", confirm.
     ed.handle_key(key('/'));
-    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    for ch in "ab".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
     assert_eq!(state(&ed), "xx -[ab]> cd ab cd\n");
 
     // Select all, start select-within with "cd", then cancel.
     ed.handle_key(key('%'));
     ed.handle_key(key('s'));
-    for ch in "cd".chars() { ed.handle_key(key(ch)); }
+    for ch in "cd".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_esc());
 
     // `n` must still find "ab".
@@ -515,10 +577,15 @@ fn search_regex_survives_select_within_confirm() {
     assert!(ed.search_pattern().is_some());
 
     ed.handle_key(key('s'));
-    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    for ch in "ab".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
-    assert!(ed.search_pattern().is_some(), "search pattern should survive select-within confirm");
+    assert!(
+        ed.search_pattern().is_some(),
+        "search pattern should survive select-within confirm"
+    );
 }
 
 /// A prior search pattern must survive a select-within cancel.
@@ -528,10 +595,15 @@ fn search_regex_survives_select_within_cancel() {
     assert!(ed.search_pattern().is_some());
 
     ed.handle_key(key('s'));
-    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    for ch in "ab".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_esc());
 
-    assert!(ed.search_pattern().is_some(), "search pattern should survive select-within cancel");
+    assert!(
+        ed.search_pattern().is_some(),
+        "search pattern should survive select-within cancel"
+    );
 }
 
 /// `s` + confirm with no prior search — pressing `n` afterward should be a
@@ -543,7 +615,9 @@ fn search_n_after_select_within_with_no_prior_search() {
     assert!(reg(&ed, 's').is_empty());
 
     ed.handle_key(key('s'));
-    for ch in "ab".chars() { ed.handle_key(key(ch)); }
+    for ch in "ab".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 
     let before = state(&ed);
@@ -587,9 +661,18 @@ fn search_n_merges_with_overlapping_secondary() {
     ed.handle_key(key('n'));
 
     // After merge: one selection covering the second "ab".
-    assert_eq!(ed.current_selections().len(), 1, "overlapping selections must merge");
+    assert_eq!(
+        ed.current_selections().len(),
+        1,
+        "overlapping selections must merge"
+    );
     assert_eq!(ed.current_selections().primary().start(), 6);
-    assert_eq!(ed.current_selections().primary().end_inclusive(ed.doc().text()), 7);
+    assert_eq!(
+        ed.current_selections()
+            .primary()
+            .end_inclusive(ed.doc().text()),
+        7
+    );
 }
 
 // ── Search history ────────────────────────────────────────────────────────────
@@ -597,14 +680,18 @@ fn search_n_merges_with_overlapping_secondary() {
 /// Helper: submit a forward search through the minibuffer.
 fn search_forward(ed: &mut Editor, pattern: &str) {
     ed.handle_key(key('/'));
-    for ch in pattern.chars() { ed.handle_key(key(ch)); }
+    for ch in pattern.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 }
 
 /// Helper: submit a backward search.
 fn search_backward(ed: &mut Editor, pattern: &str) {
     ed.handle_key(key('?'));
-    for ch in pattern.chars() { ed.handle_key(key(ch)); }
+    for ch in pattern.chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
 }
 
@@ -624,7 +711,9 @@ fn search_history_is_separate_from_command_history() {
     // Submit a command, then open search — command history must not bleed in.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key(':'));
-    for ch in "messages".chars() { ed.handle_key(key(ch)); }
+    for ch in "messages".chars() {
+        ed.handle_key(key(ch));
+    }
     ed.handle_key(key_enter());
     // Open forward search and press Up — history should be empty.
     ed.handle_key(key('/'));
@@ -659,7 +748,9 @@ fn search_recall_updates_live_preview() {
     assert_eq!(state(&ed), "-[hello]> world\n");
     // Open search, type something else so live search moves cursor, then Up to recall.
     ed.handle_key(key('/'));
-    for ch in "world".chars() { ed.handle_key(key(ch)); }
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
     // Live search: cursor should now be on "world".
     assert_eq!(state(&ed), "hello -[world]>\n");
     // Up recalls "hello" and updates live search.
@@ -678,7 +769,9 @@ fn search_down_walks_forward_and_restores_scratch() {
 
     ed.handle_key(key('/'));
     // Type something as scratch before navigating.
-    for ch in "typed".chars() { ed.handle_key(key(ch)); }
+    for ch in "typed".chars() {
+        ed.handle_key(key(ch));
+    }
     assert_eq!(ed.minibuf.as_ref().unwrap().input, "typed");
 
     // Up walks back: "beta", then "alpha".
@@ -727,4 +820,3 @@ fn search_edit_after_recall_demotes_to_scratch() {
 
     ed.handle_key(key_esc());
 }
-

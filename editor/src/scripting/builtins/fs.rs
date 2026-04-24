@@ -23,12 +23,12 @@
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};
 
-use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::rerrs::{ErrorKind, SteelErr};
+use steel::rvals::{IntoSteelVal, SteelVal};
 
+use super::one_string;
 use crate::editor::Severity;
 use crate::scripting::SteelCtx;
-use super::one_string;
 
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
@@ -37,13 +37,13 @@ struct ScriptDirs {
     /// to Scheme.  On Windows the canonical form carries a `\\?\` prefix that
     /// the NT object manager does not accept with forward slashes, so we expose
     /// the plain drive-letter form instead (e.g. `C:\Users\…\hume`).
-    data_dir_display:    Option<PathBuf>,
+    data_dir_display: Option<PathBuf>,
     /// `<runtime>/` as a display path (same UNC reasoning).
     runtime_dir_display: Option<PathBuf>,
     /// Canonical `<data>/plugins/` — the write-path sandbox root.
     /// `None` when `data_dir` is `None`; every write sandbox check then fails
     /// closed.
-    data_plugins:    Option<PathBuf>,
+    data_plugins: Option<PathBuf>,
     /// Canonical `<runtime>/plugins/` — allowed for read-path ops only.
     runtime_plugins: Option<PathBuf>,
 }
@@ -81,7 +81,9 @@ fn strip_unc_prefix(p: PathBuf) -> PathBuf {
 
 #[cfg(not(windows))]
 #[inline]
-fn strip_unc_prefix(p: PathBuf) -> PathBuf { p }
+fn strip_unc_prefix(p: PathBuf) -> PathBuf {
+    p
+}
 
 /// Initialize the directory TLS.  Must be called exactly once during
 /// [`crate::scripting::ScriptingHost::new`] before any builtins are invoked.
@@ -100,10 +102,12 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
         crate::os::fs::canonicalize(&p).unwrap_or(p)
     });
     let canonical_runtime = runtime_dir.and_then(|rt| crate::os::fs::canonicalize(&rt).ok());
-    let runtime_dir_display = canonical_runtime.as_ref().map(|rt| strip_unc_prefix(rt.clone()));
-    let runtime_plugins = canonical_runtime.as_ref().and_then(|rt| {
-        crate::os::fs::canonicalize(&rt.join("plugins")).ok()
-    });
+    let runtime_dir_display = canonical_runtime
+        .as_ref()
+        .map(|rt| strip_unc_prefix(rt.clone()));
+    let runtime_plugins = canonical_runtime
+        .as_ref()
+        .and_then(|rt| crate::os::fs::canonicalize(&rt.join("plugins")).ok());
     // Store canonical forms for sandbox prefix checks; display forms for Scheme
     // consumption.  If the runtime dir doesn't exist leave it as None.
     SCRIPT_DIRS.with(|cell| {
@@ -119,7 +123,8 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
 fn with_dirs<R>(f: impl FnOnce(&ScriptDirs) -> R) -> R {
     SCRIPT_DIRS.with(|cell| {
         let borrow = cell.borrow();
-        f(borrow.as_ref()
+        f(borrow
+            .as_ref()
             .expect("SCRIPT_DIRS not initialized — ScriptingHost::new() must call fs::init_dirs"))
     })
 }
@@ -132,21 +137,32 @@ fn with_dirs<R>(f: impl FnOnce(&ScriptDirs) -> R) -> R {
 pub(crate) fn with_data_plugins<R>(f: impl FnOnce(&Path) -> R) -> Result<R, SteelErr> {
     with_dirs(|dirs| match dirs.data_plugins.as_deref() {
         Some(p) => Ok(f(p)),
-        None => Err(SteelErr::new(ErrorKind::Generic,
-            "no data directory — HOME/APPDATA unset; write operations unavailable".to_string())),
+        None => Err(SteelErr::new(
+            ErrorKind::Generic,
+            "no data directory — HOME/APPDATA unset; write operations unavailable".to_string(),
+        )),
     })
 }
 
 // ── Sandbox predicates ────────────────────────────────────────────────────────
 
 fn is_under_write_sandbox(canonical: &Path) -> bool {
-    with_dirs(|dirs| dirs.data_plugins.as_deref().is_some_and(|p| canonical.starts_with(p)))
+    with_dirs(|dirs| {
+        dirs.data_plugins
+            .as_deref()
+            .is_some_and(|p| canonical.starts_with(p))
+    })
 }
 
 fn is_under_read_sandbox(canonical: &Path) -> bool {
     with_dirs(|dirs| {
-        dirs.data_plugins.as_deref().is_some_and(|p| canonical.starts_with(p))
-            || dirs.runtime_plugins.as_deref().is_some_and(|rp| canonical.starts_with(rp))
+        dirs.data_plugins
+            .as_deref()
+            .is_some_and(|p| canonical.starts_with(p))
+            || dirs
+                .runtime_plugins
+                .as_deref()
+                .is_some_and(|rp| canonical.starts_with(rp))
     })
 }
 
@@ -169,9 +185,11 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::CurDir    => {}
-            Component::ParentDir => { out.pop(); }
-            other                => out.push(other),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
         }
     }
     out
@@ -210,7 +228,11 @@ fn canonical_ancestor_join(path: &Path) -> Option<PathBuf> {
 ///
 /// `severity` must be one of the symbols `'trace`, `'info`, `'warn`, or
 /// `'error`.  Any other value raises a Steel error.
-pub(crate) fn log_msg(ctx: &mut SteelCtx, severity: SteelVal, message: String) -> Result<SteelVal, SteelErr> {
+pub(crate) fn log_msg(
+    ctx: &mut SteelCtx,
+    severity: SteelVal,
+    message: String,
+) -> Result<SteelVal, SteelErr> {
     let sev_str = match &severity {
         SteelVal::SymbolV(s) => s.as_str().to_string(),
         _ => steel::stop!(TypeMismatch =>
@@ -218,10 +240,10 @@ pub(crate) fn log_msg(ctx: &mut SteelCtx, severity: SteelVal, message: String) -
     };
     let sev = match sev_str.as_str() {
         "trace" => Severity::Trace,
-        "info"  => Severity::Info,
-        "warn"  => Severity::Warning,
+        "info" => Severity::Info,
+        "warn" => Severity::Warning,
         "error" => Severity::Error,
-        other   => steel::stop!(Generic =>
+        other => steel::stop!(Generic =>
             "log!: unknown severity '{}', expected 'trace, 'info, 'warn, or 'error", other),
     };
     ctx.pending_messages.push((sev, message));
@@ -241,7 +263,9 @@ pub(crate) fn data_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         steel::stop!(ArityMismatch => "data-dir expects 0 args, got {}", args.len());
     }
     with_dirs(|dirs| match &dirs.data_dir_display {
-        Some(p) => p.to_string_lossy().as_ref()
+        Some(p) => p
+            .to_string_lossy()
+            .as_ref()
             .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
         None => Ok(SteelVal::BoolV(false)),
@@ -258,7 +282,9 @@ pub(crate) fn runtime_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         steel::stop!(ArityMismatch => "runtime-dir expects 0 args, got {}", args.len());
     }
     with_dirs(|dirs| match &dirs.runtime_dir_display {
-        Some(p) => p.to_string_lossy().as_ref()
+        Some(p) => p
+            .to_string_lossy()
+            .as_ref()
             .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string())),
         None => Ok(SteelVal::BoolV(false)),
@@ -288,7 +314,9 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
                 "path-join: arg {} must be a string, got {:?}", i, arg),
         }
     }
-    result.to_string_lossy().as_ref()
+    result
+        .to_string_lossy()
+        .as_ref()
         .into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()))
 }
@@ -310,12 +338,16 @@ pub(crate) fn path_exists(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let (for_sandbox, exists) = match crate::os::fs::canonicalize(&path) {
         Ok(canonical) => (canonical, true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let ancestor = canonical_ancestor_join(&path)
-                .unwrap_or_else(|| normalize_lexical(&path));
+            let ancestor =
+                canonical_ancestor_join(&path).unwrap_or_else(|| normalize_lexical(&path));
             (ancestor, false)
         }
-        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
-            format!("path-exists?: cannot canonicalize '{}': {e}", raw))),
+        Err(e) => {
+            return Err(SteelErr::new(
+                ErrorKind::Generic,
+                format!("path-exists?: cannot canonicalize '{}': {e}", raw),
+            ));
+        }
     };
 
     if !is_under_read_sandbox(&for_sandbox) {
@@ -340,11 +372,16 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let canonical = match crate::os::fs::canonicalize(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Vec::<SteelVal>::new().into_steelval()
+            return Vec::<SteelVal>::new()
+                .into_steelval()
                 .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
         }
-        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
-            format!("list-dir: cannot canonicalize '{raw}': {e}"))),
+        Err(e) => {
+            return Err(SteelErr::new(
+                ErrorKind::Generic,
+                format!("list-dir: cannot canonicalize '{raw}': {e}"),
+            ));
+        }
     };
 
     if !is_under_read_sandbox(&canonical) {
@@ -352,19 +389,25 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     }
 
     if !canonical.is_dir() {
-        return Vec::<SteelVal>::new().into_steelval()
+        return Vec::<SteelVal>::new()
+            .into_steelval()
             .map_err(|e| SteelErr::new(ErrorKind::ConversionError, e.to_string()));
     }
 
     let mut names: Vec<String> = crate::os::fs::read_dir(&canonical)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic,
-            format!("list-dir: cannot read '{raw}': {e}")))?
+        .map_err(|e| {
+            SteelErr::new(
+                ErrorKind::Generic,
+                format!("list-dir: cannot read '{raw}': {e}"),
+            )
+        })?
         .filter_map(|entry| entry.ok().and_then(|e| e.file_name().into_string().ok()))
         .collect();
 
     names.sort();
 
-    let vals: Vec<SteelVal> = names.into_iter()
+    let vals: Vec<SteelVal> = names
+        .into_iter()
         .map(|s| SteelVal::StringV(s.into()))
         .collect();
 
@@ -389,18 +432,24 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     // path.  Instead we canonicalize the deepest existing ancestor and rejoin
     // the non-existing suffix.  `has_dotdot` above rules out traversal attacks
     // that lexical resolution cannot catch.
-    let effective = canonical_ancestor_join(&path)
-        .ok_or_else(|| SteelErr::new(ErrorKind::Generic,
-            format!("make-dir: cannot resolve any ancestor of '{raw}'")))?;
+    let effective = canonical_ancestor_join(&path).ok_or_else(|| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("make-dir: cannot resolve any ancestor of '{raw}'"),
+        )
+    })?;
 
     if !is_under_write_sandbox(&effective) {
         steel::stop!(Generic =>
             "make-dir: path is outside the write sandbox (<data>/plugins/): {}", raw);
     }
 
-    crate::os::fs::create_dir_all(&path)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic,
-            format!("make-dir: cannot create '{}': {e}", raw)))?;
+    crate::os::fs::create_dir_all(&path).map_err(|e| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("make-dir: cannot create '{}': {e}", raw),
+        )
+    })?;
     Ok(SteelVal::Void)
 }
 
@@ -421,8 +470,12 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let canonical = match crate::os::fs::canonicalize(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
-        Err(e) => return Err(SteelErr::new(ErrorKind::Generic,
-            format!("delete-dir: cannot resolve path '{raw}': {e}"))),
+        Err(e) => {
+            return Err(SteelErr::new(
+                ErrorKind::Generic,
+                format!("delete-dir: cannot resolve path '{raw}': {e}"),
+            ));
+        }
     };
 
     if !is_under_write_sandbox(&canonical) {
@@ -431,9 +484,12 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
             canonical.display());
     }
 
-    crate::os::fs::remove_dir_all(&canonical)
-        .map_err(|e| SteelErr::new(ErrorKind::Generic,
-            format!("delete-dir: cannot remove '{}': {e}", canonical.display())))?;
+    crate::os::fs::remove_dir_all(&canonical).map_err(|e| {
+        SteelErr::new(
+            ErrorKind::Generic,
+            format!("delete-dir: cannot remove '{}': {e}", canonical.display()),
+        )
+    })?;
     Ok(SteelVal::Void)
 }
 
@@ -449,7 +505,7 @@ mod tests {
     // tests run in separate threads, concurrent tests don't interfere.
     fn setup(tmp: &TempDir) -> PathBuf {
         let data_dir = tmp.path().join("hume");
-        let plugins  = data_dir.join("plugins");
+        let plugins = data_dir.join("plugins");
         fs::create_dir_all(&plugins).unwrap();
         init_dirs(Some(data_dir), None);
         plugins
@@ -465,7 +521,9 @@ mod tests {
         fs::create_dir_all(&plugin_dir).unwrap();
         fs::write(plugin_dir.join("plugin.scm"), b"; test").unwrap();
 
-        let args = vec![SteelVal::StringV(plugin_dir.to_string_lossy().to_string().into())];
+        let args = vec![SteelVal::StringV(
+            plugin_dir.to_string_lossy().to_string().into(),
+        )];
         assert!(delete_dir(&args).is_ok());
         assert!(!plugin_dir.exists());
     }
@@ -505,7 +563,8 @@ mod tests {
         let args = vec![SteelVal::StringV(escape.into())];
         let err = delete_dir(&args).unwrap_err();
         assert!(
-            err.to_string().contains("outside the write sandbox") || err.to_string().contains("cannot resolve"),
+            err.to_string().contains("outside the write sandbox")
+                || err.to_string().contains("cannot resolve"),
             "expected sandbox error, got: {err}"
         );
     }
@@ -520,7 +579,9 @@ mod tests {
         fs::create_dir_all(plugins.join("alpha")).unwrap();
         fs::write(plugins.join("file.txt"), b"").unwrap();
 
-        let args = vec![SteelVal::StringV(plugins.to_string_lossy().to_string().into())];
+        let args = vec![SteelVal::StringV(
+            plugins.to_string_lossy().to_string().into(),
+        )];
         let result = list_dir(&args).unwrap();
 
         // Extract string values from the list.
@@ -555,12 +616,16 @@ mod tests {
         let plugins = setup(&tmp);
 
         let existing = plugins.to_string_lossy().to_string();
-        assert_eq!(path_exists(&[SteelVal::StringV(existing.into())]).unwrap(),
-                   SteelVal::BoolV(true));
+        assert_eq!(
+            path_exists(&[SteelVal::StringV(existing.into())]).unwrap(),
+            SteelVal::BoolV(true)
+        );
 
         let missing = plugins.join("nobody").to_string_lossy().to_string();
-        assert_eq!(path_exists(&[SteelVal::StringV(missing.into())]).unwrap(),
-                   SteelVal::BoolV(false));
+        assert_eq!(
+            path_exists(&[SteelVal::StringV(missing.into())]).unwrap(),
+            SteelVal::BoolV(false)
+        );
     }
 
     // ── make-dir ─────────────────────────────────────────────────────────────
@@ -570,7 +635,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let plugins = setup(&tmp);
         let target = plugins.join("user/new-repo");
-        let args = vec![SteelVal::StringV(target.to_string_lossy().to_string().into())];
+        let args = vec![SteelVal::StringV(
+            target.to_string_lossy().to_string().into(),
+        )];
         assert!(make_dir(&args).is_ok());
         assert!(target.is_dir());
     }
@@ -589,7 +656,10 @@ mod tests {
         let plugins = setup(&tmp);
         let bad = format!("{}/user/../../../evil", plugins.display());
         let err = make_dir(&[SteelVal::StringV(bad.into())]).unwrap_err();
-        assert!(err.to_string().contains(".."), "expected .. error, got: {err}");
+        assert!(
+            err.to_string().contains(".."),
+            "expected .. error, got: {err}"
+        );
     }
 
     // ── log! ─────────────────────────────────────────────────────────────────
@@ -598,7 +668,12 @@ mod tests {
     fn log_msg_valid_severity() {
         let mut h = crate::scripting::SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        log_msg(&mut ctx, SteelVal::SymbolV("info".into()), "hello".to_string()).unwrap();
+        log_msg(
+            &mut ctx,
+            SteelVal::SymbolV("info".into()),
+            "hello".to_string(),
+        )
+        .unwrap();
         drop(ctx);
         assert_eq!(h.pending_messages.len(), 1);
         assert_eq!(h.pending_messages[0].1, "hello");
@@ -675,7 +750,8 @@ mod tests {
         // Steel lists are `ListV` holding an immutable-list; convert through
         // `into_iter` which is implemented for the SteelVal list type.
         match val {
-            SteelVal::ListV(list) => list.into_iter()
+            SteelVal::ListV(list) => list
+                .into_iter()
                 .map(|v| match v {
                     SteelVal::StringV(s) => s.to_string(),
                     _ => panic!("expected string in list, got {v:?}"),

@@ -87,7 +87,7 @@ fn find_repeat_noop_when_no_prior_find() {
 #[test]
 fn find_forward_extend_mode() {
     let mut ed = editor_from("-[h]>ello a world\n");
-    ed.handle_key(key('e'));    // toggle extend
+    ed.handle_key(key('e')); // toggle extend
     ed.handle_key(key('f'));
     ed.handle_key(key('a'));
     assert_eq!(state(&ed), "-[hello a]> world\n");
@@ -118,4 +118,3 @@ fn find_repeat_exclusive_kind_preserved() {
     // should land on the space before second 'a', not on 'a' itself
     assert_eq!(state(&ed), "hello a world-[ ]>a end\n");
 }
-

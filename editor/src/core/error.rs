@@ -130,12 +130,20 @@ impl std::error::Error for ValidationError {}
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValidationError::SelectionOutOfBounds { index, field, value, buf_len } => write!(
+            ValidationError::SelectionOutOfBounds {
+                index,
+                field,
+                value,
+                buf_len,
+            } => write!(
                 f,
                 "selection {index}: {field} {value} is out of bounds for buffer of length {buf_len}"
             ),
             ValidationError::EmptyBuffer => {
-                write!(f, "buffer length is 0 — buffer must always have at least one char (the structural \\n)")
+                write!(
+                    f,
+                    "buffer length is 0 — buffer must always have at least one char (the structural \\n)"
+                )
             }
         }
     }

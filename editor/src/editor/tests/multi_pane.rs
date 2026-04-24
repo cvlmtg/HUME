@@ -29,11 +29,19 @@ fn d1_selections_are_pane_owned() {
 
     // Back to pane A: head must be 2, not 6.
     ed.switch_focused_pane(pid_a);
-    assert_eq!(ed.current_selections().primary().head, 2, "pane A head after switch");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        2,
+        "pane A head after switch"
+    );
 
     // Back to pane B: head must be 6, not 2.
     ed.switch_focused_pane(pid_b);
-    assert_eq!(ed.current_selections().primary().head, 6, "pane B head after switch");
+    assert_eq!(
+        ed.current_selections().primary().head,
+        6,
+        "pane B head after switch"
+    );
 }
 
 /// D4a — `Buffer.search_pattern` is shared across all panes on the same buffer;
@@ -61,10 +69,16 @@ fn d4a_search_pattern_is_per_buffer() {
     };
 
     // Pane A and pane B see different cursors even though they share the buffer.
-    assert_eq!(ed.pane_state[pid_a][bid].search_cursor.match_count, Some((1, 3)));
+    assert_eq!(
+        ed.pane_state[pid_a][bid].search_cursor.match_count,
+        Some((1, 3))
+    );
     assert!(!ed.pane_state[pid_a][bid].search_cursor.wrapped);
 
-    assert_eq!(ed.pane_state[pid_b][bid].search_cursor.match_count, Some((2, 3)));
+    assert_eq!(
+        ed.pane_state[pid_b][bid].search_cursor.match_count,
+        Some((2, 3))
+    );
     assert!(ed.pane_state[pid_b][bid].search_cursor.wrapped);
 }
 
@@ -87,14 +101,18 @@ fn d4b_sticky_col_is_per_selection() {
     // CS that inserts at the start of line 0 only: "abc\n" → "Xabc\n"
     // This touches line 0 but not line 1, so horiz on line-1 head should survive.
     let mut b = ChangeSetBuilder::new(rope.len_chars());
-    b.insert("X");   // insert at start
+    b.insert("X"); // insert at start
     b.retain_rest();
     let cs = b.finish();
 
     sels.translate_in_place(&cs, &rope);
     // Head moved from 4 to 5 (past the inserted 'X'), horiz preserved.
     assert_eq!(sels.primary().head, 5, "head mapped past insert");
-    assert_eq!(sels.primary().horiz, Some(0), "horiz preserved on untouched line");
+    assert_eq!(
+        sels.primary().horiz,
+        Some(0),
+        "horiz preserved on untouched line"
+    );
 
     // Now a CS that touches line 1 (inserts at position of 'd'): horiz should reset.
     // Re-build sels with the updated head but set horiz back to show it was latched.
@@ -107,14 +125,18 @@ fn d4b_sticky_col_is_per_selection() {
     let text2 = Text::from("Xabc\ndef\n");
     let rope2 = text2.rope().clone();
     let mut b2 = ChangeSetBuilder::new(rope2.len_chars());
-    b2.retain(5);   // skip "Xabc\n"
+    b2.retain(5); // skip "Xabc\n"
     b2.insert("Y"); // insert at line 1
     b2.retain_rest();
     let cs2 = b2.finish();
 
     sels2.translate_in_place(&cs2, &rope2);
     // Head moved past insert; horiz must be reset because line 1 was touched.
-    assert_eq!(sels2.primary().horiz, None, "horiz reset when head's line is touched");
+    assert_eq!(
+        sels2.primary().horiz,
+        None,
+        "horiz reset when head's line is touched"
+    );
 }
 
 /// D5 — `EditGroup` is per-(pane, buffer); insert sessions are independent across
@@ -128,23 +150,41 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
-    assert!(ed.pane_state[pid_a][bid].edit_group.is_none(), "no group before i");
+    assert!(
+        ed.pane_state[pid_a][bid].edit_group.is_none(),
+        "no group before i"
+    );
     ed.handle_key(key('i'));
-    assert!(ed.pane_state[pid_a][bid].edit_group.is_some(), "group open after i");
+    assert!(
+        ed.pane_state[pid_a][bid].edit_group.is_some(),
+        "group open after i"
+    );
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
-    assert!(ed.pane_state[pid_a][bid].edit_group.is_none(), "group committed on Esc");
+    assert!(
+        ed.pane_state[pid_a][bid].edit_group.is_none(),
+        "group committed on Esc"
+    );
 
     let rev_after_a = ed.doc().revision_id();
 
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
-    assert!(ed.pane_state[pid_b][bid].edit_group.is_none(), "pane B starts with no group");
+    assert!(
+        ed.pane_state[pid_b][bid].edit_group.is_none(),
+        "pane B starts with no group"
+    );
     ed.handle_key(key('i'));
-    assert!(ed.pane_state[pid_b][bid].edit_group.is_some(), "pane B group opens");
+    assert!(
+        ed.pane_state[pid_b][bid].edit_group.is_some(),
+        "pane B group opens"
+    );
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
-    assert!(ed.pane_state[pid_b][bid].edit_group.is_none(), "pane B group committed");
+    assert!(
+        ed.pane_state[pid_b][bid].edit_group.is_none(),
+        "pane B group committed"
+    );
 
     let rev_after_b = ed.doc().revision_id();
 
@@ -155,7 +195,11 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     ed.switch_focused_pane(pid_a);
     ed.handle_key(key('u'));
     ed.handle_key(key('u'));
-    assert_eq!(ed.doc().text().to_string(), "abc\n", "two undos restore original");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\n",
+        "two undos restore original"
+    );
 }
 
 /// D6 — `pane_transient[pid]` snapshots are per-pane and never aliased.
@@ -176,12 +220,22 @@ fn d6_search_mode_snapshot_is_per_pane() {
 
     // Pane A snapshot is independent of pane B.
     assert_eq!(
-        ed.pane_transient[pid_a].pre_search_sels.as_ref().unwrap().primary().head,
+        ed.pane_transient[pid_a]
+            .pre_search_sels
+            .as_ref()
+            .unwrap()
+            .primary()
+            .head,
         1,
         "pane A pre_search_sels head"
     );
     assert_eq!(
-        ed.pane_transient[pid_b].pre_search_sels.as_ref().unwrap().primary().head,
+        ed.pane_transient[pid_b]
+            .pre_search_sels
+            .as_ref()
+            .unwrap()
+            .primary()
+            .head,
         3,
         "pane B pre_search_sels head"
     );
@@ -189,7 +243,10 @@ fn d6_search_mode_snapshot_is_per_pane() {
     // Clearing pane A's snapshot does not affect pane B.
     ed.pane_transient[pid_a].pre_search_sels = None;
     assert!(ed.pane_transient[pid_a].pre_search_sels.is_none());
-    assert!(ed.pane_transient[pid_b].pre_search_sels.is_some(), "pane B unaffected");
+    assert!(
+        ed.pane_transient[pid_b].pre_search_sels.is_some(),
+        "pane B unaffected"
+    );
 }
 
 /// D2 — An edit in the focused pane translates non-acting pane selections via the CS.
@@ -288,8 +345,16 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     // After deleting chars 1-4, pane B's two cursors at 2 and 4 both map to
     // the deletion point (1); they must merge into a single cursor at 1.
     let pane_b_sels = ed.selections_for(pid_b, bid).unwrap();
-    assert_eq!(pane_b_sels.len(), 1, "collapsed selections must merge after propagation");
-    assert_eq!(pane_b_sels.primary().head, 1, "merged cursor at deletion point");
+    assert_eq!(
+        pane_b_sels.len(),
+        1,
+        "collapsed selections must merge after propagation"
+    );
+    assert_eq!(
+        pane_b_sels.primary().head,
+        1,
+        "merged cursor at deletion point"
+    );
 }
 
 /// Non-focused pane engine mirror is updated by `sync_all_pane_mirrors` after
@@ -330,9 +395,11 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 
     // Engine mirror for pane B must now reflect the translated position.
     let mirror_head = ed.engine_view.panes[pid_b].selections[0].head;
-    assert_eq!(mirror_head, 4, "pane B engine mirror head reflects translated position");
+    assert_eq!(
+        mirror_head, 4,
+        "pane B engine mirror head reflects translated position"
+    );
 }
-
 
 // ── ensure() contract tests ────────────────────────────────────────────────────
 
@@ -383,8 +450,7 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     // and returns a state with the initial selections.
     let state = pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid2);
     assert_eq!(
-        state.selections,
-        expected_sels,
+        state.selections, expected_sels,
         "ensure must seed with buffer's initial_sels on first visit",
     );
 }

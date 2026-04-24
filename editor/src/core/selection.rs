@@ -1,7 +1,7 @@
 use crate::core::changeset::{Assoc, ChangeSet};
-use crate::core::text::Text;
 use crate::core::error::ValidationError;
 use crate::core::grapheme::next_grapheme_boundary;
+use crate::core::text::Text;
 
 /// A single selection range within a buffer.
 ///
@@ -41,13 +41,21 @@ pub(crate) struct Selection {
 impl Selection {
     /// A collapsed selection at `pos` (anchor == head == pos). `horiz: None`.
     pub(crate) fn collapsed(pos: usize) -> Self {
-        Self { anchor: pos, head: pos, horiz: None }
+        Self {
+            anchor: pos,
+            head: pos,
+            horiz: None,
+        }
     }
 
     /// A directional range from `anchor` to `head`. `horiz: None`.
     /// Passing `anchor == head` produces a single-character selection.
     pub(crate) fn new(anchor: usize, head: usize) -> Self {
-        Self { anchor, head, horiz: None }
+        Self {
+            anchor,
+            head,
+            horiz: None,
+        }
     }
 
     /// A directional selection with a preserved sticky display column.
@@ -56,7 +64,11 @@ impl Selection {
     /// vertical moves. All other code uses [`new`] or [`collapsed`] which reset
     /// `horiz` to `None` by construction.
     pub(crate) fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
-        Self { anchor, head, horiz: Some(horiz) }
+        Self {
+            anchor,
+            head,
+            horiz: Some(horiz),
+        }
     }
 
     /// Create a selection spanning `[start, end]` with an explicit direction.
@@ -123,7 +135,11 @@ impl Selection {
     /// the head moved to a potentially different column.
     #[must_use]
     pub(crate) fn flip(self) -> Self {
-        Self { anchor: self.head, head: self.anchor, horiz: None }
+        Self {
+            anchor: self.head,
+            head: self.anchor,
+            horiz: None,
+        }
     }
 
     /// Move both anchor and head by `delta` chars (positive = forward).
@@ -142,13 +158,21 @@ impl Selection {
         // previous `(x as isize + delta) as usize` cast pair, this fails loudly
         // in *both* debug and release builds — the cast silently wraps in
         // release, producing a huge position that corrupts the buffer.
-        let anchor = self.anchor.checked_add_signed(delta)
+        let anchor = self
+            .anchor
+            .checked_add_signed(delta)
             .expect("shift underflow: anchor cannot go below zero");
-        let head = self.head.checked_add_signed(delta)
+        let head = self
+            .head
+            .checked_add_signed(delta)
             .expect("shift underflow: head cannot go below zero");
         // Shifting changes the absolute position but not the column relationship,
         // so preserve horiz.
-        Self { anchor, head, horiz: self.horiz }
+        Self {
+            anchor,
+            head,
+            horiz: self.horiz,
+        }
     }
 }
 
@@ -185,14 +209,20 @@ impl Default for SelectionSet {
     /// selections" invariant). Matches the stdlib pattern — `Default` is always
     /// a valid state.
     fn default() -> Self {
-        Self { selections: vec![Selection::collapsed(0)], primary: 0 }
+        Self {
+            selections: vec![Selection::collapsed(0)],
+            primary: 0,
+        }
     }
 }
 
 impl SelectionSet {
     /// Create a set with a single selection. This is the normal starting state.
     pub(crate) fn single(sel: Selection) -> Self {
-        Self { selections: vec![sel], primary: 0 }
+        Self {
+            selections: vec![sel],
+            primary: 0,
+        }
     }
 
     /// The primary (focused) selection.
@@ -248,7 +278,10 @@ impl SelectionSet {
     {
         let primary = self.primary;
         let selections = self.selections.into_iter().map(&mut f).collect();
-        Self { selections, primary }
+        Self {
+            selections,
+            primary,
+        }
     }
 
     /// Apply `f` to every selection, then merge any overlapping results.
@@ -335,17 +368,13 @@ impl SelectionSet {
                     }
                 }
                 // Track where the primary ended up.
-                if primary_before.start() >= last.start()
-                    && primary_before.end() <= last.end()
-                {
+                if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
                     new_primary = write;
                 }
             } else {
                 // No overlap — finalize the current write slot, then advance.
                 let done = &self.selections[write];
-                if done.start() >= primary_before.start()
-                    && done.end() <= primary_before.end()
-                {
+                if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
                     new_primary = write;
                 }
                 write += 1;
@@ -357,9 +386,7 @@ impl SelectionSet {
 
         // Check the final write slot for primary.
         let done = &self.selections[write];
-        if done.start() >= primary_before.start()
-            && done.end() <= primary_before.end()
-        {
+        if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
             new_primary = write;
         }
 
@@ -367,7 +394,10 @@ impl SelectionSet {
         // length without reallocating — the capacity stays the same.
         self.selections.truncate(write + 1);
 
-        Self { selections: self.selections, primary: new_primary }
+        Self {
+            selections: self.selections,
+            primary: new_primary,
+        }
     }
 
     /// Build a `SelectionSet` directly from a non-empty `Vec<Selection>`,
@@ -378,7 +408,10 @@ impl SelectionSet {
     pub(crate) fn from_vec(selections: Vec<Selection>, primary: usize) -> Self {
         assert!(!selections.is_empty(), "SelectionSet must not be empty");
         assert!(primary < selections.len(), "primary index out of bounds");
-        Self { selections, primary }
+        Self {
+            selections,
+            primary,
+        }
     }
 
     // ── Selection-set manipulation ────────────────────────────────────────────
@@ -388,7 +421,10 @@ impl SelectionSet {
     /// All other selections are dropped. The primary index resets to 0.
     pub(crate) fn keep_primary(self) -> Self {
         let primary = self.selections[self.primary];
-        Self { selections: vec![primary], primary: 0 }
+        Self {
+            selections: vec![primary],
+            primary: 0,
+        }
     }
 
     /// Remove the selection at `idx` and return the updated set.
@@ -441,7 +477,10 @@ impl SelectionSet {
     #[inline]
     pub(crate) fn debug_assert_valid(&self, buf: &Text) {
         let buf_len = buf.len_chars();
-        debug_assert!(buf_len > 0, "Text must have at least 1 char (the structural \\n)");
+        debug_assert!(
+            buf_len > 0,
+            "Text must have at least 1 char (the structural \\n)"
+        );
         debug_assert!(
             buf.char_at(buf_len - 1) == Some('\n'),
             "Text must end with structural '\\n', but last char is {:?}",
@@ -566,7 +605,7 @@ impl SelectionSet {
         for sel in &mut self.selections {
             let pre_line = rope_pre.char_to_line(sel.head);
             sel.anchor = cs.map_pos(sel.anchor, Assoc::After);
-            sel.head   = cs.map_pos(sel.head,   Assoc::After);
+            sel.head = cs.map_pos(sel.head, Assoc::After);
             if cs.touches_line(rope_pre, pre_line) {
                 sel.horiz = None;
             }
@@ -647,22 +686,16 @@ mod tests {
     #[test]
     fn merge_no_overlap() {
         // Two disjoint selections — should stay separate.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 3), Selection::new(5, 8)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 3), Selection::new(5, 8)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 2);
     }
 
     #[test]
     fn merge_overlapping_selections() {
         // (anchor=0,head=5) and (anchor=3,head=8) overlap — should merge.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 5), Selection::new(3, 8)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(3, 8)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 1);
         assert_eq!(set.primary().start(), 0);
         assert_eq!(set.primary().end(), 8);
@@ -671,11 +704,8 @@ mod tests {
     #[test]
     fn merge_adjacent_selections() {
         // (anchor=0,head=3) and (anchor=3,head=6) touch at offset 3 — should merge.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 3), Selection::new(3, 6)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 3), Selection::new(3, 6)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 1);
         assert_eq!(set.primary().start(), 0);
         assert_eq!(set.primary().end(), 6);
@@ -683,33 +713,24 @@ mod tests {
 
     #[test]
     fn merge_duplicate_selections() {
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(2, 5), Selection::new(2, 5)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(2, 5), Selection::new(2, 5)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 1);
     }
 
     #[test]
     fn merge_contained_selection() {
         // (anchor=0,head=8) fully contains (anchor=2,head=5) — should merge.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 8), Selection::new(2, 5)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 8), Selection::new(2, 5)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 1);
         assert_eq!(set.primary().end(), 8);
     }
 
     #[test]
     fn merge_idempotent() {
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 5), Selection::new(3, 8)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(3, 8)], 0)
+            .merge_overlapping();
         let set2 = set.clone().merge_overlapping();
         assert_eq!(set, set2);
     }
@@ -735,27 +756,24 @@ mod tests {
         // Two backward selections that overlap: (anchor=8, head=3) and
         // (anchor=10, head=5). After sorting by start(), the merge should
         // produce a single backward selection spanning 3–10.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(8, 3), Selection::new(10, 5)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(8, 3), Selection::new(10, 5)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 1);
         let s = set.primary();
         assert_eq!(s.start(), 3);
         assert_eq!(s.end(), 10);
         // Merged result should be backward (head < anchor).
-        assert!(s.head < s.anchor, "merged backward selections should stay backward");
+        assert!(
+            s.head < s.anchor,
+            "merged backward selections should stay backward"
+        );
     }
 
     #[test]
     fn merge_sorts_unsorted_input() {
         // Pass selections out of order — merge should sort them first.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(5, 8), Selection::new(0, 3)],
-            0,
-        )
-        .merge_overlapping();
+        let set = SelectionSet::from_vec(vec![Selection::new(5, 8), Selection::new(0, 3)], 0)
+            .merge_overlapping();
         assert_eq!(set.len(), 2);
         assert_eq!(set.selections[0].start(), 0);
         assert_eq!(set.selections[1].start(), 5);
@@ -773,10 +791,7 @@ mod tests {
 
     #[test]
     fn replace_updates_selection() {
-        let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5)],
-            0,
-        );
+        let set = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(5)], 0);
         let updated = set.replace(1, Selection::collapsed(10));
         assert_eq!(updated.selections[1].head, 10);
     }
@@ -787,10 +802,7 @@ mod tests {
     fn map_and_merge_collapses_to_same_position() {
         // Two cursors at different positions that a motion maps to the same
         // spot — e.g. "go to end of line" when both are on the same line.
-        let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(2), Selection::collapsed(7)],
-            0,
-        );
+        let set = SelectionSet::from_vec(vec![Selection::collapsed(2), Selection::collapsed(7)], 0);
         let merged = set.map_and_merge(|_| Selection::collapsed(10));
         assert_eq!(merged.len(), 1);
         assert_eq!(merged.primary().head, 10);
@@ -824,7 +836,11 @@ mod tests {
     #[test]
     fn keep_primary_drops_others() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             1, // primary is the middle one
         );
         let kept = set.keep_primary();
@@ -845,7 +861,11 @@ mod tests {
     #[test]
     fn remove_before_primary_shifts_primary_down() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             2, // primary is the last one
         );
         let result = set.remove(0); // remove first
@@ -857,7 +877,11 @@ mod tests {
     #[test]
     fn remove_primary_advances_to_next() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             1, // primary is the middle one
         );
         let result = set.remove(1); // remove the primary
@@ -869,7 +893,11 @@ mod tests {
     #[test]
     fn remove_primary_at_end_wraps_to_first() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             2, // primary is the last one
         );
         let result = set.remove(2);
@@ -881,7 +909,11 @@ mod tests {
     #[test]
     fn remove_after_primary_leaves_primary_unchanged() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             0, // primary is the first one
         );
         let result = set.remove(2); // remove last
@@ -902,7 +934,11 @@ mod tests {
     #[test]
     fn cycle_primary_forward() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             0,
         );
         let cycled = set.cycle_primary(1);
@@ -914,7 +950,11 @@ mod tests {
     #[test]
     fn cycle_primary_forward_wraps() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             2,
         );
         let cycled = set.cycle_primary(1);
@@ -924,7 +964,11 @@ mod tests {
     #[test]
     fn cycle_primary_backward() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             2,
         );
         let cycled = set.cycle_primary(-1);
@@ -934,7 +978,11 @@ mod tests {
     #[test]
     fn cycle_primary_backward_wraps() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             0,
         );
         let cycled = set.cycle_primary(-1);
@@ -948,14 +996,10 @@ mod tests {
         assert_eq!(cycled, set);
     }
 
-
     #[test]
     fn map_and_merge_overlapping_ranges() {
         // Two non-overlapping selections that a motion causes to overlap.
-        let set = SelectionSet::from_vec(
-            vec![Selection::new(0, 3), Selection::new(5, 8)],
-            0,
-        );
+        let set = SelectionSet::from_vec(vec![Selection::new(0, 3), Selection::new(5, 8)], 0);
         // Shift both left by 3 — first becomes (0,0) clamped, second (2,5).
         // In practice the first wraps, so let's do a simpler overlap:
         // map both to the same range.
@@ -1022,7 +1066,11 @@ mod tests {
     #[test]
     fn iter_sorted_yields_ascending_order() {
         let set = SelectionSet::from_vec(
-            vec![Selection::collapsed(0), Selection::collapsed(5), Selection::collapsed(10)],
+            vec![
+                Selection::collapsed(0),
+                Selection::collapsed(5),
+                Selection::collapsed(10),
+            ],
             2, // primary is last
         );
         let starts: Vec<usize> = set.iter_sorted().map(|s| s.start()).collect();
@@ -1062,7 +1110,10 @@ mod tests {
         let set = SelectionSet::single(Selection::new(10, 1));
         assert!(matches!(
             set.validate(5),
-            Err(crate::core::error::ValidationError::SelectionOutOfBounds { field: "anchor", .. })
+            Err(crate::core::error::ValidationError::SelectionOutOfBounds {
+                field: "anchor",
+                ..
+            })
         ));
     }
 

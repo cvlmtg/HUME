@@ -61,7 +61,11 @@ impl StyleScratch {
         );
         self.sorted_sels.clear();
         self.sorted_sels.extend_from_slice(selections);
-        self.primary_idx_in_sorted = if selections.is_empty() { None } else { Some(primary_idx) };
+        self.primary_idx_in_sorted = if selections.is_empty() {
+            None
+        } else {
+            Some(primary_idx)
+        };
     }
 
     /// Reset all buffers to empty, retaining allocated capacity.
@@ -79,7 +83,9 @@ impl StyleScratch {
 }
 
 impl Default for StyleScratch {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +149,12 @@ impl<'a> HighlightStack<'a> {
     ///
     /// Each `theme.resolve(id)` call is an O(1) `Vec` index into the baked
     /// style array — no hashing on the per-grapheme hot path.
-    fn layer_at(&mut self, byte_offset: usize, mut base: ResolvedStyle, theme: &Theme) -> ResolvedStyle {
+    fn layer_at(
+        &mut self,
+        byte_offset: usize,
+        mut base: ResolvedStyle,
+        theme: &Theme,
+    ) -> ResolvedStyle {
         // Syntax (lowest)
         if let Some(id) = self.syntax.scope_at(byte_offset) {
             base = base.layer(theme.resolve(id));
@@ -254,8 +265,26 @@ pub(crate) fn style_row(
     scratch: &mut StyleScratch,
 ) {
     let primary_idx = scratch.primary_idx_in_sorted;
-    collect_selection_spans(line_start_char, line_end_char, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.sel_spans, &mut scratch.primary_sel_span);
-    collect_head_cols(line_start_char, line_end_char, &scratch.sorted_sels, primary_idx, graphemes, &row.graphemes, &mut scratch.head_cols, &mut scratch.primary_head_col);
+    collect_selection_spans(
+        line_start_char,
+        line_end_char,
+        &scratch.sorted_sels,
+        primary_idx,
+        graphemes,
+        &row.graphemes,
+        &mut scratch.sel_spans,
+        &mut scratch.primary_sel_span,
+    );
+    collect_head_cols(
+        line_start_char,
+        line_end_char,
+        &scratch.sorted_sels,
+        primary_idx,
+        graphemes,
+        &row.graphemes,
+        &mut scratch.head_cols,
+        &mut scratch.primary_head_col,
+    );
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
@@ -284,11 +313,16 @@ pub(crate) fn style_row(
         style = hl.layer_at(g.byte_range.start, style, theme);
 
         // Tier 1: selection (primary wins over secondary for style; both are highlighted)
-        let in_primary_sel = scratch.primary_sel_span
+        let in_primary_sel = scratch
+            .primary_sel_span
             .is_some_and(|(s, e)| g.col >= s && g.col < e);
         if in_primary_sel {
             style = style.layer(theme.ui.selection_primary);
-        } else if scratch.sel_spans.iter().any(|&(s, e)| g.col >= s && g.col < e) {
+        } else if scratch
+            .sel_spans
+            .iter()
+            .any(|&(s, e)| g.col >= s && g.col < e)
+        {
             style = style.layer(theme.ui.selection);
         }
 
@@ -339,7 +373,9 @@ pub fn resolve_styles(
     scratch.populate_sorted_sels(selections, primary_idx);
 
     let mut current_line: Option<usize> = None;
-    scratch.styles.resize(graphemes.len(), ResolvedStyle::default());
+    scratch
+        .styles
+        .resize(graphemes.len(), ResolvedStyle::default());
 
     for row in rows {
         let line_idx = match row.kind.line_idx() {
@@ -360,8 +396,20 @@ pub fn resolve_styles(
         // Char range for this line: selections are char-offset based.
         let line_start_char = rope.line_to_char(line_idx);
         let line_end_char = rope.line_to_char(line_idx + 1);
-        let is_head_line = scratch.sorted_sels.iter().any(|s| s.head >= line_start_char && s.head < line_end_char);
-        style_row(row, graphemes, line_start_char, line_end_char, is_head_line, mode, theme, scratch);
+        let is_head_line = scratch
+            .sorted_sels
+            .iter()
+            .any(|s| s.head >= line_start_char && s.head < line_end_char);
+        style_row(
+            row,
+            graphemes,
+            line_start_char,
+            line_end_char,
+            is_head_line,
+            mode,
+            theme,
+            scratch,
+        );
     }
 }
 
@@ -394,7 +442,7 @@ fn collect_selection_spans(
     let row_gs = &graphemes[row_range.clone()];
     // Use byte_range to detect the empty-line sentinel (byte_range 0..0 = no real content).
     let row_first_byte = row_gs.first().map_or(usize::MAX, |g| g.byte_range.start);
-    let row_last_byte  = row_gs.last().map_or(0, |g| g.byte_range.end);
+    let row_last_byte = row_gs.last().map_or(0, |g| g.byte_range.end);
     // Char-based wrap-segment boundaries for the intersection check below.
     let row_first_char = row_gs.first().map_or(usize::MAX, |g| g.char_offset);
     // row_last_char_excl: char immediately after the last grapheme on this row.
@@ -501,7 +549,6 @@ fn char_offset_to_col(
     })
 }
 
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -510,7 +557,9 @@ fn char_offset_to_col(
 mod tests {
     use super::*;
     use crate::theme::{ScopeRegistry, Theme};
-    use crate::types::{DisplayRow, Grapheme, RowKind, ScopeId, Selection, CellContent, ResolvedStyle};
+    use crate::types::{
+        CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, ScopeId, Selection,
+    };
     use std::collections::HashMap;
 
     fn make_graphemes(count: usize) -> Vec<Grapheme> {
@@ -527,7 +576,10 @@ mod tests {
     }
 
     fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
-        DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes }
+        DisplayRow {
+            kind: RowKind::LineStart { line_idx: 0 },
+            graphemes,
+        }
     }
 
     fn default_theme() -> Theme {
@@ -540,10 +592,26 @@ mod tests {
         let graphemes = make_graphemes(3);
         let rows = vec![make_row(0..3)];
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &[], 0, EditorMode::Normal, &[], &default_theme(), &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &[],
+            0,
+            EditorMode::Normal,
+            &[],
+            &default_theme(),
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         assert_eq!(scratch.styles.len(), 3);
-        assert!(scratch.styles.iter().all(|s| *s == ResolvedStyle::default()));
+        assert!(
+            scratch
+                .styles
+                .iter()
+                .all(|s| *s == ResolvedStyle::default())
+        );
     }
 
     #[test]
@@ -555,11 +623,28 @@ mod tests {
 
         // Theme with a cursor style so we can detect the override.
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Grapheme at col 2 (index 2) should have the cursor style.
         assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red));
@@ -600,22 +685,41 @@ mod tests {
         let rows = vec![make_row(0..6)]; // all 6 graphemes in one row
 
         let mut styles_map = std::collections::HashMap::new();
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         // Line selection: anchor=0, head=5 (the '\n').
         let selections = vec![Selection { anchor: 0, head: 5 }];
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // The eol sentinel at index 5 must have the cursor style.
         assert_eq!(
-            scratch.styles[5].fg, Some(ratatui::style::Color::Red),
+            scratch.styles[5].fg,
+            Some(ratatui::style::Color::Red),
             "eol sentinel (head on \\n) must receive cursor styling"
         );
         // The 'o' grapheme (index 4) must NOT have cursor styling (it's in selection, not head).
         assert_ne!(
-            scratch.styles[4].fg, Some(ratatui::style::Color::Red),
+            scratch.styles[4].fg,
+            Some(ratatui::style::Color::Red),
             "grapheme before \\n must not have cursor styling"
         );
     }
@@ -669,15 +773,40 @@ mod tests {
         let selections = vec![Selection { anchor: 1, head: 3 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         assert_eq!(scratch.styles[0].bg, None, "col 0 outside selection");
-        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Red), "col 1 inside selection");
-        assert_eq!(scratch.styles[2].bg, Some(ratatui::style::Color::Red), "col 2 inside selection");
+        assert_eq!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Red),
+            "col 1 inside selection"
+        );
+        assert_eq!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Red),
+            "col 2 inside selection"
+        );
     }
 
     #[test]
@@ -685,26 +814,85 @@ mod tests {
         // Two lines; cursor on line 0.
         // "ab\ncd": a=char0, b=char1, \n=char2, c=char3, d=char4
         let rope = ropey::Rope::from_str("ab\ncd");
-        let g0 = Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g1 = Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g2 = Grapheme { byte_range: 0..1, char_offset: 3, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
-        let g3 = Grapheme { byte_range: 1..2, char_offset: 4, col: 1, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 };
+        let g0 = Grapheme {
+            byte_range: 0..1,
+            char_offset: 0,
+            col: 0,
+            width: 1,
+            content: crate::types::CellContent::Grapheme,
+            indent_depth: 0,
+        };
+        let g1 = Grapheme {
+            byte_range: 1..2,
+            char_offset: 1,
+            col: 1,
+            width: 1,
+            content: crate::types::CellContent::Grapheme,
+            indent_depth: 0,
+        };
+        let g2 = Grapheme {
+            byte_range: 0..1,
+            char_offset: 3,
+            col: 0,
+            width: 1,
+            content: crate::types::CellContent::Grapheme,
+            indent_depth: 0,
+        };
+        let g3 = Grapheme {
+            byte_range: 1..2,
+            char_offset: 4,
+            col: 1,
+            width: 1,
+            content: crate::types::CellContent::Grapheme,
+            indent_depth: 0,
+        };
         let graphemes = vec![g0, g1, g2, g3];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..2 },
-            DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 2..4 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..2,
+            },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 1 },
+                graphemes: 2..4,
+            },
         ];
         let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Green), ..Default::default() });
+        styles_map.insert(
+            "ui.cursorline",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Green),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
-        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Green), "line 0 has cursorline bg");
-        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Green), "line 0 has cursorline bg");
+        assert_eq!(
+            scratch.styles[0].bg,
+            Some(ratatui::style::Color::Green),
+            "line 0 has cursorline bg"
+        );
+        assert_eq!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Green),
+            "line 0 has cursorline bg"
+        );
         assert_eq!(scratch.styles[2].bg, None, "line 1 has no cursorline bg");
         assert_eq!(scratch.styles[3].bg, None, "line 1 has no cursorline bg");
     }
@@ -717,14 +905,41 @@ mod tests {
         let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursor.insert", ResolvedStyle { fg: Some(ratatui::style::Color::Green), ..Default::default() });
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor.insert",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Green),
+                ..Default::default()
+            },
+        );
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Insert, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Insert,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
-        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Green), "Insert uses ui.cursor.insert scope");
+        assert_eq!(
+            scratch.styles[0].fg,
+            Some(ratatui::style::Color::Green),
+            "Insert uses ui.cursor.insert scope"
+        );
     }
 
     #[test]
@@ -733,14 +948,44 @@ mod tests {
         // "a\nb\nc": a=char0, \n=char1, b=char2, \n=char3, c=char4
         let rope = ropey::Rope::from_str("a\nb\nc");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..1, char_offset: 2, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..1, char_offset: 4, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 0,
+                col: 0,
+                width: 1,
+                content: crate::types::CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 2,
+                col: 0,
+                width: 1,
+                content: crate::types::CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 4,
+                col: 0,
+                width: 1,
+                content: crate::types::CellContent::Grapheme,
+                indent_depth: 0,
+            },
         ];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
-            DisplayRow { kind: RowKind::LineStart { line_idx: 1 }, graphemes: 1..2 },
-            DisplayRow { kind: RowKind::LineStart { line_idx: 2 }, graphemes: 2..3 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..1,
+            },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 1 },
+                graphemes: 1..2,
+            },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 2 },
+                graphemes: 2..3,
+            },
         ];
         let selections = vec![
             Selection { anchor: 0, head: 0 },
@@ -748,36 +993,101 @@ mod tests {
         ];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        styles_map.insert(
+            "ui.cursorline",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
-        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "line 0 head line");
+        assert_eq!(
+            scratch.styles[0].bg,
+            Some(ratatui::style::Color::Blue),
+            "line 0 head line"
+        );
         assert_eq!(scratch.styles[1].bg, None, "line 1 no head line");
-        assert_eq!(scratch.styles[2].bg, Some(ratatui::style::Color::Blue), "line 2 head line");
+        assert_eq!(
+            scratch.styles[2].bg,
+            Some(ratatui::style::Color::Blue),
+            "line 2 head line"
+        );
     }
 
     #[test]
     fn virtual_rows_keep_default_style() {
         let rope = ropey::Rope::from_str("ab");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: crate::types::CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 0..0, char_offset: usize::MAX, col: 0, width: 1, content: crate::types::CellContent::Virtual("hint"), indent_depth: 0 },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 0,
+                col: 0,
+                width: 1,
+                content: crate::types::CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 0..0,
+                char_offset: usize::MAX,
+                col: 0,
+                width: 1,
+                content: crate::types::CellContent::Virtual("hint"),
+                indent_depth: 0,
+            },
         ];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..1 },
-            DisplayRow { kind: RowKind::Virtual { provider_id: 0, anchor_line: 0 }, graphemes: 1..2 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..1,
+            },
+            DisplayRow {
+                kind: RowKind::Virtual {
+                    provider_id: 0,
+                    anchor_line: 0,
+                },
+                graphemes: 1..2,
+            },
         ];
         let selections = vec![Selection { anchor: 0, head: 0 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursorline", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        styles_map.insert(
+            "ui.cursorline",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Virtual row grapheme stays at default style.
         assert_eq!(scratch.styles[1], ResolvedStyle::default());
@@ -798,15 +1108,46 @@ mod tests {
         ];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursor.primary", ResolvedStyle { fg: Some(ratatui::style::Color::Yellow), ..Default::default() });
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor.primary",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Yellow),
+                ..Default::default()
+            },
+        );
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
-        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Yellow), "primary head gets ui.cursor.primary");
-        assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red), "secondary head gets ui.cursor");
+        assert_eq!(
+            scratch.styles[0].fg,
+            Some(ratatui::style::Color::Yellow),
+            "primary head gets ui.cursor.primary"
+        );
+        assert_eq!(
+            scratch.styles[2].fg,
+            Some(ratatui::style::Color::Red),
+            "secondary head gets ui.cursor"
+        );
         assert_eq!(scratch.styles[1].fg, None, "non-head grapheme unchanged");
     }
 
@@ -822,19 +1163,58 @@ mod tests {
         ];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.selection.primary", ResolvedStyle { bg: Some(ratatui::style::Color::Cyan), ..Default::default() });
-        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        styles_map.insert(
+            "ui.selection.primary",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Cyan),
+                ..Default::default()
+            },
+        );
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Primary selection: cols 0 and 1 (bytes 0..2)
-        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Cyan), "col 0 in primary selection");
-        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Cyan), "col 1 in primary selection");
+        assert_eq!(
+            scratch.styles[0].bg,
+            Some(ratatui::style::Color::Cyan),
+            "col 0 in primary selection"
+        );
+        assert_eq!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Cyan),
+            "col 1 in primary selection"
+        );
         // Secondary selection: cols 3 and 4 (bytes 3..5)
-        assert_eq!(scratch.styles[3].bg, Some(ratatui::style::Color::Blue), "col 3 in secondary selection");
-        assert_eq!(scratch.styles[4].bg, Some(ratatui::style::Color::Blue), "col 4 in secondary selection");
+        assert_eq!(
+            scratch.styles[3].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 3 in secondary selection"
+        );
+        assert_eq!(
+            scratch.styles[4].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 4 in secondary selection"
+        );
         // Col 2 is between selections
         assert_eq!(scratch.styles[2].bg, None, "col 2 outside both selections");
     }
@@ -851,15 +1231,40 @@ mod tests {
         ];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Both heads get ui.cursor via dot-notation fallback.
-        assert_eq!(scratch.styles[0].fg, Some(ratatui::style::Color::Red), "primary falls back to ui.cursor");
-        assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red), "secondary uses ui.cursor");
+        assert_eq!(
+            scratch.styles[0].fg,
+            Some(ratatui::style::Color::Red),
+            "primary falls back to ui.cursor"
+        );
+        assert_eq!(
+            scratch.styles[2].fg,
+            Some(ratatui::style::Color::Red),
+            "secondary uses ui.cursor"
+        );
     }
 
     #[test]
@@ -871,30 +1276,101 @@ mod tests {
         // "abcde" has no newlines so all chars are on line 0 with absolute char offsets 0..5.
         let rope = ropey::Rope::from_str("abcde");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 2..3, char_offset: 2, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 3..4, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 }, // wrap segment
-            Grapheme { byte_range: 4..5, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 0,
+                col: 0,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 1..2,
+                char_offset: 1,
+                col: 1,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 2..3,
+                char_offset: 2,
+                col: 2,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 3..4,
+                char_offset: 3,
+                col: 0,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            }, // wrap segment
+            Grapheme {
+                byte_range: 4..5,
+                char_offset: 4,
+                col: 1,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
         ];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
-            DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..3,
+            },
+            DisplayRow {
+                kind: RowKind::Wrap {
+                    line_idx: 0,
+                    wrap_row: 1,
+                },
+                graphemes: 3..5,
+            },
         ];
         let selections = vec![Selection { anchor: 1, head: 1 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.cursor", ResolvedStyle { fg: Some(ratatui::style::Color::Red), ..Default::default() });
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                fg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Selection head at byte 1 → col 1 in the first segment.
-        assert_eq!(scratch.styles[1].fg, Some(ratatui::style::Color::Red), "selection head at col 1 in first segment");
+        assert_eq!(
+            scratch.styles[1].fg,
+            Some(ratatui::style::Color::Red),
+            "selection head at col 1 in first segment"
+        );
         // Second segment graphemes must NOT have the head style.
-        assert_eq!(scratch.styles[3].fg, None, "wrap segment col 0 must not show head style");
-        assert_eq!(scratch.styles[4].fg, None, "wrap segment col 1 must not show head style");
+        assert_eq!(
+            scratch.styles[3].fg, None,
+            "wrap segment col 0 must not show head style"
+        );
+        assert_eq!(
+            scratch.styles[4].fg, None,
+            "wrap segment col 1 must not show head style"
+        );
     }
 
     #[test]
@@ -904,31 +1380,106 @@ mod tests {
         // produce a selection highlight on segment 1 at all.
         let rope = ropey::Rope::from_str("abcde");
         let graphemes = vec![
-            Grapheme { byte_range: 0..1, char_offset: 0, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 1..2, char_offset: 1, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 2..3, char_offset: 2, col: 2, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 3..4, char_offset: 3, col: 0, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
-            Grapheme { byte_range: 4..5, char_offset: 4, col: 1, width: 1, content: CellContent::Grapheme, indent_depth: 0 },
+            Grapheme {
+                byte_range: 0..1,
+                char_offset: 0,
+                col: 0,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 1..2,
+                char_offset: 1,
+                col: 1,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 2..3,
+                char_offset: 2,
+                col: 2,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 3..4,
+                char_offset: 3,
+                col: 0,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
+            Grapheme {
+                byte_range: 4..5,
+                char_offset: 4,
+                col: 1,
+                width: 1,
+                content: CellContent::Grapheme,
+                indent_depth: 0,
+            },
         ];
         let rows = vec![
-            DisplayRow { kind: RowKind::LineStart { line_idx: 0 }, graphemes: 0..3 },
-            DisplayRow { kind: RowKind::Wrap { line_idx: 0, wrap_row: 1 }, graphemes: 3..5 },
+            DisplayRow {
+                kind: RowKind::LineStart { line_idx: 0 },
+                graphemes: 0..3,
+            },
+            DisplayRow {
+                kind: RowKind::Wrap {
+                    line_idx: 0,
+                    wrap_row: 1,
+                },
+                graphemes: 3..5,
+            },
         ];
         let selections = vec![Selection { anchor: 0, head: 2 }];
 
         let mut styles_map = HashMap::new();
-        styles_map.insert("ui.selection", ResolvedStyle { bg: Some(ratatui::style::Color::Blue), ..Default::default() });
+        styles_map.insert(
+            "ui.selection",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Blue),
+                ..Default::default()
+            },
+        );
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(&rows, &graphemes, &selections, 0, EditorMode::Normal, &[], &theme, &rope, None, &mut scratch);
+        resolve_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            0,
+            EditorMode::Normal,
+            &[],
+            &theme,
+            &rope,
+            None,
+            &mut scratch,
+        );
 
         // Segment 0: cols 0 and 1 should be highlighted (selection spans bytes 0..2).
-        assert_eq!(scratch.styles[0].bg, Some(ratatui::style::Color::Blue), "col 0 in selection");
-        assert_eq!(scratch.styles[1].bg, Some(ratatui::style::Color::Blue), "col 1 in selection");
+        assert_eq!(
+            scratch.styles[0].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 0 in selection"
+        );
+        assert_eq!(
+            scratch.styles[1].bg,
+            Some(ratatui::style::Color::Blue),
+            "col 1 in selection"
+        );
         assert_eq!(scratch.styles[2].bg, None, "col 2 outside selection");
         // Segment 1: no selection highlight at all.
-        assert_eq!(scratch.styles[3].bg, None, "wrap segment col 0 must not show selection");
-        assert_eq!(scratch.styles[4].bg, None, "wrap segment col 1 must not show selection");
+        assert_eq!(
+            scratch.styles[3].bg, None,
+            "wrap segment col 0 must not show selection"
+        );
+        assert_eq!(
+            scratch.styles[4].bg, None,
+            "wrap segment col 1 must not show selection"
+        );
     }
 }

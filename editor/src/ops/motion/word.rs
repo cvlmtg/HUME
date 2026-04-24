@@ -1,8 +1,8 @@
-use crate::core::text::Text;
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::helpers::{classify_char, is_word_boundary, is_WORD_boundary, CharClass};
-use crate::core::selection::{Selection, SelectionSet};
 use super::MotionMode;
+use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::core::selection::{Selection, SelectionSet};
+use crate::core::text::Text;
+use crate::helpers::{CharClass, classify_char, is_WORD_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
@@ -322,42 +322,77 @@ pub(super) fn apply_word_select_extend_backward(
     result
 }
 
-
 /// Select or extend to the next word (`w`): branches on `mode`.
 ///
 /// `Move` — re-anchors on each press (fresh forward selection spanning the word).
 /// `Extend` — unions the next word range with the existing selection.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_word(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_next_word(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     match mode {
-        MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary)),
-        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_word_boundary)),
+        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
+            select_next_word(b, pos, is_word_boundary)
+        }),
+        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
+            select_next_word(b, pos, is_word_boundary)
+        }),
     }
 }
 
 /// Select or extend to the next WORD (`W`): like `w` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_next_WORD(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_next_WORD(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     match mode {
-        MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary)),
-        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| select_next_word(b, pos, is_WORD_boundary)),
+        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
+            select_next_word(b, pos, is_WORD_boundary)
+        }),
+        MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
+            select_next_word(b, pos, is_WORD_boundary)
+        }),
     }
 }
 
 /// Select or extend to the previous word (`b`): branches on `mode`.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_word(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_prev_word(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     match mode {
-        MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary)),
-        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_word_boundary)),
+        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
+            select_prev_word(b, pos, is_word_boundary)
+        }),
+        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
+            select_prev_word(b, pos, is_word_boundary)
+        }),
     }
 }
 
 /// Select or extend to the previous WORD (`B`): like `b` but treats word+punct as one class.
 #[allow(non_snake_case)]
-pub(crate) fn cmd_select_prev_WORD(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+pub(crate) fn cmd_select_prev_WORD(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
     match mode {
-        MotionMode::Move   => apply_word_select(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary)),
-        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| select_prev_word(b, pos, is_WORD_boundary)),
+        MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
+            select_prev_word(b, pos, is_WORD_boundary)
+        }),
+        MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
+            select_prev_word(b, pos, is_WORD_boundary)
+        }),
     }
 }
