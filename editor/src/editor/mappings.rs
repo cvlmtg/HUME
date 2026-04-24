@@ -1283,11 +1283,8 @@ pub(super) fn parse_typed_command(input: &str) -> (&str, bool, Option<&str>) {
         .find(|(_, c)| !(c.is_ascii_alphabetic() || *c == '-' || *c == '_'))
         .map(|(i, _)| i)
         .unwrap_or(input.len());
-    let (cmd_end, force) = if input[name_end..].starts_with('!') {
-        (name_end + 1, true)
-    } else {
-        (name_end, false)
-    };
+    let force = input[name_end..].starts_with('!');
+    let cmd_end = name_end + usize::from(force);
     let cmd = &input[..name_end];
     let rest = input[cmd_end..].trim();
     let arg = if rest.is_empty() { None } else { Some(rest) };
