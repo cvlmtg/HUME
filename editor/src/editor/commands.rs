@@ -1420,7 +1420,18 @@ pub(super) fn typed_buffer(
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
 /// four-step resolution order.
 fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> {
+    use crate::editor::buffer::Buffer;
     use std::path::Path;
+
+    // Label used in ambiguity messages: full path when available, literal
+    // `*scratch*` otherwise. Unambiguous regardless of whether the collision
+    // was on basename or prefix.
+    let label = |buf: &Buffer| -> String {
+        buf.path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
+    };
 
     // 1. Numeric 1-based index.
     if let Ok(n) = arg.parse::<usize>() {
@@ -1455,19 +1466,10 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     match exact.len() {
         1 => return Ok(exact[0]),
         n if n > 1 => {
-            let paths: Vec<String> = exact
-                .iter()
-                .filter_map(|&id| {
-                    ed.buffers
-                        .get(id)
-                        .path
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                })
-                .collect();
+            let labels: Vec<String> = exact.iter().map(|&id| label(ed.buffers.get(id))).collect();
             return Err(CommandError(format!(
                 "ambiguous buffer name '{arg}': {}",
-                paths.join(", ")
+                labels.join(", ")
             )));
         }
         _ => {} // fall through to prefix match
@@ -1484,13 +1486,13 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         0 => Err(CommandError(format!("no buffer matching '{arg}'"))),
         1 => Ok(prefix_matches[0]),
         _ => {
-            let names: Vec<String> = prefix_matches
+            let labels: Vec<String> = prefix_matches
                 .iter()
-                .map(|&id| ed.buffers.get(id).display_name())
+                .map(|&id| label(ed.buffers.get(id)))
                 .collect();
             Err(CommandError(format!(
                 "ambiguous prefix '{arg}': {}",
-                names.join(", ")
+                labels.join(", ")
             )))
         }
     }
