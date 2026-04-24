@@ -1420,23 +1420,17 @@ pub(super) fn typed_buffer(
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
 /// four-step resolution order.
 fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> {
-    use crate::editor::buffer::Buffer;
     use std::path::Path;
-
-    let display_name = |buf: &Buffer| -> String {
-        buf.path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
-    };
 
     // 1. Numeric 1-based index.
     if let Ok(n) = arg.parse::<usize>() {
+        let idx = n
+            .checked_sub(1)
+            .ok_or_else(|| CommandError(format!("no buffer at index {n}")))?;
         return ed
             .buffers
             .iter()
-            .nth(n.wrapping_sub(1))
+            .nth(idx)
             .map(|(id, _)| id)
             .ok_or_else(|| CommandError(format!("no buffer at index {n}")));
     }
@@ -1455,7 +1449,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     let exact: Vec<BufferId> = ed
         .buffers
         .iter()
-        .filter(|(_, buf)| display_name(buf) == arg)
+        .filter(|(_, buf)| buf.display_name() == arg)
         .map(|(id, _)| id)
         .collect();
     match exact.len() {
@@ -1483,7 +1477,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     let prefix_matches: Vec<BufferId> = ed
         .buffers
         .iter()
-        .filter(|(_, buf)| display_name(buf).starts_with(arg))
+        .filter(|(_, buf)| buf.display_name().starts_with(arg))
         .map(|(id, _)| id)
         .collect();
     match prefix_matches.len() {
@@ -1492,7 +1486,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         _ => {
             let names: Vec<String> = prefix_matches
                 .iter()
-                .map(|&id| display_name(ed.buffers.get(id)))
+                .map(|&id| ed.buffers.get(id).display_name())
                 .collect();
             Err(CommandError(format!(
                 "ambiguous prefix '{arg}': {}",

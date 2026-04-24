@@ -134,21 +134,17 @@ pub(crate) struct BufferNameCompleter;
 
 impl Completer for BufferNameCompleter {
     fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
-        // arg_start: byte offset after the command + space
         let (arg_start, prefix) = arg_prefix(input, cursor);
 
-        // Helper: (basename_or_scratch, full_path_replacement).
+        // (display-basename, full-path replacement for the command).
         let entry_for = |buf: &crate::editor::buffer::Buffer| -> (String, String) {
-            if let Some(path) = &buf.path {
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.display().to_string());
-                (name, path.display().to_string())
-            } else {
-                let s = crate::editor::buffer::Buffer::SCRATCH_BUFFER_NAME.to_owned();
-                (s.clone(), s)
-            }
+            let base = buf.display_name();
+            let replacement = buf
+                .path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| base.clone());
+            (base, replacement)
         };
 
         // Count how many open buffers share each basename (for disambiguation).
@@ -167,7 +163,7 @@ impl Completer for BufferNameCompleter {
                 if !base.starts_with(prefix) {
                     return None;
                 }
-                let display = if name_count.get(&base).copied().unwrap_or(0) >= 2 {
+                let display = if *name_count.get(&base).expect("base was counted above") >= 2 {
                     // Two or more buffers share this basename — show parent dir.
                     if let Some(parent) = buf.path.as_ref().and_then(|p| p.parent()) {
                         format!("{base}  ({}/)", crate::os::path::shorten_home(parent))
