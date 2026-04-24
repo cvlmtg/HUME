@@ -131,6 +131,15 @@ impl Buffer {
         self.history.initial_sels().clone()
     }
 
+    /// The name shown in the UI: basename for named buffers, `*scratch*` for unnamed ones.
+    pub(crate) fn display_name(&self) -> String {
+        self.path
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| Self::SCRATCH_BUFFER_NAME.to_owned())
+    }
+
     /// `true` if the buffer has unsaved changes.
     ///
     /// Comparing revision IDs means undoing back to the save point correctly

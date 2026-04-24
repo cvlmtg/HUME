@@ -13,7 +13,6 @@ use super::{
     ids::{SteelBufferId, SteelPaneId},
     require_cmd_ctx,
 };
-use crate::editor::buffer::Buffer;
 use crate::scripting::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -137,13 +136,8 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
             format!("buffer-name: invalid buffer id {id:?}"),
         )
     })?;
-    let name = buf
-        .path
-        .as_deref()
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-        .unwrap_or(Buffer::SCRATCH_BUFFER_NAME);
-    name.into_steelval()
+    buf.display_name()
+        .into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
 }
 
