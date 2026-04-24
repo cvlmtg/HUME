@@ -1,7 +1,8 @@
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
@@ -106,6 +107,32 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     ed.doc_mut().path = Some(Arc::new(path));
     ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)
+}
+
+// ── cwd guard ─────────────────────────────────────────────────────────────────
+
+// Process cwd is global state. Any test that calls `set_current_dir` must hold
+// this mutex for its entire duration so tests do not race on cwd.
+static CWD_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Acquire the cwd lock, save the current directory, and restore it on drop.
+struct CwdGuard {
+    saved: PathBuf,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl CwdGuard {
+    fn new() -> Self {
+        let lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let saved = std::env::current_dir().expect("current_dir");
+        CwdGuard { saved, _lock: lock }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.saved);
+    }
 }
 
 mod alternate;

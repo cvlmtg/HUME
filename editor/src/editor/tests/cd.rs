@@ -1,34 +1,6 @@
 use super::*;
-use std::path::PathBuf;
-use std::sync::Mutex;
 
 use pretty_assertions::assert_eq;
-
-// Process cwd is global state. Serialise tests that call `set_current_dir`
-// so they do not race with each other.
-static CWD_MUTEX: Mutex<()> = Mutex::new(());
-
-/// Acquire the cwd lock, save the current dir, and restore it on drop.
-struct CwdGuard {
-    saved: PathBuf,
-    _lock: std::sync::MutexGuard<'static, ()>,
-}
-
-impl CwdGuard {
-    fn new() -> Self {
-        let lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let saved = std::env::current_dir().expect("current_dir");
-        CwdGuard { saved, _lock: lock }
-    }
-}
-
-impl Drop for CwdGuard {
-    fn drop(&mut self) {
-        // Best-effort restore; ignore errors in case the saved dir no longer
-        // exists (unusual, but not worth panicking from a destructor).
-        let _ = std::env::set_current_dir(&self.saved);
-    }
-}
 
 // ── set_cwd ───────────────────────────────────────────────────────────────────
 
