@@ -34,6 +34,21 @@ fn backspace_on_empty_input_cancels() {
 }
 
 #[test]
+fn backspace_clearing_last_char_keeps_minibuf_open() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('l'));
+    ed.handle_key(key_backspace());
+    // First Backspace clears the single char but leaves the minibuffer open.
+    assert_eq!(ed.mode, Mode::Command);
+    assert_eq!(ed.minibuf.as_ref().expect("minibuf still open").input, "");
+    // Second Backspace (cursor already at 0) dismisses.
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+}
+
+#[test]
 fn backspace_removes_last_char() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));

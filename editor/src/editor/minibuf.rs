@@ -31,8 +31,13 @@ pub(super) enum MiniBufferEvent {
     ConfirmEmpty,
     /// Input changed (char typed or deleted), input is now non-empty.
     Edited,
-    /// Backspace made the input empty (search keeps the buffer open but resets position).
+    /// Backspace deleted the last character, leaving the input empty.
+    /// Search/select use this to restore their snapshot but stay open.
+    /// Command mode keeps the minibuffer open so a second Backspace is needed.
     EmptiedByBackspace,
+    /// Backspace was pressed when the cursor was already at position 0 (input empty).
+    /// All modes treat this as a cancel / dismiss request.
+    BackspaceOnEmpty,
     /// Cursor moved left/right; content unchanged.
     CursorMoved,
     /// Tab (forward) or Shift-Tab (reverse) pressed — caller should cycle completions.
@@ -80,7 +85,7 @@ impl MiniBuffer {
             }
             KeyCode::Backspace => {
                 if self.cursor == 0 {
-                    MiniBufferEvent::EmptiedByBackspace
+                    MiniBufferEvent::BackspaceOnEmpty
                 } else {
                     let prev = prev_grapheme(&self.input, self.cursor);
                     self.input.drain(prev..self.cursor);
