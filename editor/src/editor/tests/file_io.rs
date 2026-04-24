@@ -171,3 +171,112 @@ fn insert_at_selection_start_collapsed() {
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
     assert_eq!(ed.mode, Mode::Insert);
 }
+
+// ── :e on already-open buffers ────────────────────────────────────────────────
+
+#[test]
+#[cfg(not(windows))]
+fn edit_existing_buffer_switches_without_reread() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("existing.txt");
+    std::fs::write(&path, "original\n").unwrap();
+    let canonical = std::fs::canonicalize(&path).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    // Dirty the in-memory buffer.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "buffer must be dirty before :e");
+
+    // :e <same-path> on an already-open buffer must switch without re-reading.
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(
+        ed.doc().path.as_ref().map(|p| p.as_path()),
+        Some(canonical.as_path()),
+        ":e same-path must stay on the buffer"
+    );
+    assert!(
+        ed.doc().is_dirty(),
+        "dirty flag must be preserved — buffer was not re-read"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn edit_deleted_file_with_open_buffer_switches_and_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("deleted.txt");
+    std::fs::write(&path, "content\n").unwrap();
+    let canonical = std::fs::canonicalize(&path).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    // Delete from disk while buffer stays open.
+    std::fs::remove_file(&canonical).unwrap();
+    assert!(!canonical.exists(), "precondition: file must be gone");
+
+    ed.execute_typed("e", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(
+        ed.doc().path.as_ref().map(|p| p.as_path()),
+        Some(canonical.as_path()),
+        ":e <deleted-path> must switch to the open buffer"
+    );
+    assert!(
+        ed.status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("no longer exists")),
+        "must warn that the file is gone, got: {:?}",
+        ed.status_msg.as_deref()
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn edit_deleted_file_with_no_buffer_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("never_opened.txt");
+    // Path never existed — no buffer open for it.
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("e", Some(path.to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("No such file") || err.to_string().contains("os error"),
+        "must error with ENOENT when no buffer is open, got: {err}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn edit_relative_path_matches_existing_buffer() {
+    // Open a file by absolute path, then :e its basename from the same dir.
+    // The lexical-absolute fallback in find_buffer_by_path_arg must match.
+    let _cwd = CwdGuard::new();
+    let dir = tempfile::tempdir().unwrap();
+    let canonical_dir = std::fs::canonicalize(&dir).unwrap();
+    let path = canonical_dir.join("relpath_test.txt");
+    std::fs::write(&path, "hello\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    // Switch to scratch, then :cd to the file's directory.
+    ed.execute_typed("b", Some("*scratch*")).unwrap();
+    assert!(ed.doc().path.is_none(), "must be on scratch");
+    ed.execute_typed("cd", Some(canonical_dir.to_str().unwrap()))
+        .unwrap();
+
+    // :e with just the basename must switch to the already-open buffer.
+    ed.execute_typed("e", Some("relpath_test.txt")).unwrap();
+    assert_eq!(
+        ed.doc().path.as_ref().map(|p| p.as_path()),
+        Some(path.as_path()),
+        ":e <relative> must switch to the already-open buffer"
+    );
+}

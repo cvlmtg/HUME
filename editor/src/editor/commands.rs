@@ -1296,6 +1296,17 @@ pub(super) fn typed_edit(
 
     if let Some(path_str) = arg {
         let expanded = crate::os::path::expand(path_str);
+
+        // If a buffer is already open for this path, switch without re-reading.
+        // Matches Vim semantics and covers the deleted-from-disk case.
+        if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
+            if bid != ed.focused_buffer_id() {
+                ed.switch_to_buffer_with_jump(bid);
+            }
+            warn_if_file_gone(ed, bid);
+            return Ok(());
+        }
+
         let path = Path::new(expanded.as_ref());
         let canonical = std::fs::canonicalize(path)
             .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
@@ -1414,7 +1425,42 @@ pub(super) fn typed_buffer(
     if bid != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(bid);
     }
+    warn_if_file_gone(ed, bid);
     Ok(())
+}
+
+/// Find an open buffer matching a path argument.
+///
+/// Tries `fs::canonicalize` first (resolves symlinks, requires the file to
+/// exist), then falls back to `std::path::absolute` (pure lexical: joins with
+/// cwd, removes `.`/`..`, no filesystem access). The fallback keeps buffers
+/// reachable after their backing file has been deleted.
+fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
+    if let Ok(canonical) = std::fs::canonicalize(arg)
+        && let Some(bid) = ed.buffers.find_by_path(&canonical)
+    {
+        return Some(bid);
+    }
+    let abs = std::path::absolute(arg).ok()?;
+    ed.buffers.find_by_path(&abs)
+}
+
+/// Emit a warning if `bid`'s backing file no longer exists on disk.
+fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
+    let path = ed
+        .buffers
+        .get(bid)
+        .path
+        .as_deref()
+        .map(|p| p.as_path().to_path_buf());
+    if let Some(p) = path
+        && !p.exists()
+    {
+        ed.report(
+            Severity::Warning,
+            format!("{}: file no longer exists on disk", p.display()),
+        );
+    }
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
@@ -1446,13 +1492,10 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .ok_or_else(|| CommandError(format!("no buffer at index {n}")));
     }
 
-    // 2. Absolute path — canonicalize then find_by_path.
+    // 2. Absolute path — match an open buffer by canonical OR lexical path.
+    //    Lexical fallback keeps buffers reachable after their file is deleted.
     if Path::new(arg).is_absolute() {
-        let canonical =
-            std::fs::canonicalize(arg).map_err(|e| CommandError(format!("{arg}: {e}")))?;
-        return ed
-            .buffers
-            .find_by_path(&canonical)
+        return find_buffer_by_path_arg(ed, arg)
             .ok_or_else(|| CommandError(format!("{arg}: not an open buffer")));
     }
 

@@ -274,6 +274,85 @@ fn buffer_bang_force_is_ignored() {
     );
 }
 
+// ── :b on a buffer whose backing file has been deleted ───────────────────────
+
+#[test]
+#[cfg(not(windows))]
+fn buffer_switch_to_deleted_file_by_path() {
+    let (p1, t1) = temp_file("file1\n");
+    let canonical = std::fs::canonicalize(&p1).unwrap();
+    let (p2, _t2) = temp_file("file2\n");
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
+    // Delete p1 from disk while its buffer stays open.
+    drop(t1);
+    assert!(!canonical.exists(), "precondition: file must be gone");
+
+    ed.execute_typed("b", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(
+        ed.doc().path.as_ref().map(|p| p.as_path()),
+        Some(canonical.as_path()),
+        ":b <deleted-path> must still switch to the open buffer"
+    );
+    assert!(
+        ed.status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("no longer exists")),
+        "must warn that the file is gone, got: {:?}",
+        ed.status_msg.as_deref()
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn buffer_switch_to_deleted_file_by_basename() {
+    let (p1, t1) = temp_file("file1\n");
+    let canonical = std::fs::canonicalize(&p1).unwrap();
+    let (p2, _t2) = temp_file("file2\n");
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
+    drop(t1);
+
+    let basename = canonical.file_name().unwrap().to_str().unwrap();
+    ed.execute_typed("b", Some(basename)).unwrap();
+    assert_eq!(
+        ed.doc().path.as_ref().map(|p| p.as_path()),
+        Some(canonical.as_path()),
+        ":b <basename> must switch even when the file is deleted"
+    );
+    assert!(
+        ed.status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("no longer exists")),
+        "must warn that the file is gone, got: {:?}",
+        ed.status_msg.as_deref()
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn buffer_switch_to_live_file_no_warning() {
+    let (p1, _t1) = temp_file("file1\n");
+    let canonical = std::fs::canonicalize(&p1).unwrap();
+    let (p2, _t2) = temp_file("file2\n");
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
+
+    ed.execute_typed("b", Some(canonical.to_str().unwrap()))
+        .unwrap();
+    assert!(
+        !ed.status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("no longer exists")),
+        ":b on a live file must not warn 'no longer exists', got: {:?}",
+        ed.status_msg.as_deref()
+    );
+}
+
 // ── Ctrl+O restores position after :b ────────────────────────────────────────
 
 #[test]
