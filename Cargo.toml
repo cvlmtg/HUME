@@ -2,6 +2,9 @@
 members = ["engine", "editor"]
 resolver = "2"
 
+[profile.dev.package."*"]
+opt-level = 2
+
 [workspace.dependencies]
 ropey = "1.6.1"
 unicode-segmentation = "1.13.2"
