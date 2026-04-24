@@ -806,7 +806,7 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            MiniBufferEvent::EmptiedByBackspace => {
+            MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
                 // Restore position when pattern is fully erased, but stay in Search mode.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
@@ -947,7 +947,7 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            MiniBufferEvent::EmptiedByBackspace => {
+            MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
                 // Restore original selections when pattern is fully erased.
                 self.restore_select_snapshot();
             }
@@ -1044,14 +1044,19 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            // Backspace at column 0 or on the last character cancels (Kakoune behaviour).
-            MiniBufferEvent::EmptiedByBackspace => {
+            // Backspace on already-empty input: dismiss.
+            MiniBufferEvent::BackspaceOnEmpty => {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            // Any edit or cursor move while completion is open dismisses the popup
-            // and demotes any active history recall back to scratch.
-            MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
+            // Any edit, cursor move, or Backspace that clears to empty dismisses the
+            // completion popup and demotes any active history recall back to scratch.
+            // EmptiedByBackspace keeps the minibuffer open (showing just the prompt)
+            // so a second Backspace is needed to dismiss — avoids accidental closure
+            // when the user deletes a one-char typo.
+            MiniBufferEvent::EmptiedByBackspace
+            | MiniBufferEvent::Edited
+            | MiniBufferEvent::CursorMoved => {
                 self.completion = None;
                 self.history
                     .get_mut(HistoryKind::Command)
