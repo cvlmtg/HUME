@@ -565,7 +565,7 @@ impl Editor {
                     self.mode
                 };
                 let (raw_wrap, len_lines) = if let Some(ref sv) = self.scratch_view {
-                    (self.settings.wrap_mode.clone(), sv.buf.len_lines())
+                    (self.settings.wrap_mode, sv.buf.len_lines())
                 } else {
                     (self.doc().overrides.wrap_mode(&self.settings), self.doc().text().len_lines())
                 };
