@@ -820,3 +820,40 @@ fn search_edit_after_recall_demotes_to_scratch() {
 
     ed.handle_key(key_esc());
 }
+
+/// Backspace on an empty search input (second Backspace in the sequence
+/// `/f` → Backspace → Backspace) must dismiss and return to Normal.
+///
+/// Mirrors command mode: `EmptiedByBackspace` stays open; `BackspaceOnEmpty`
+/// cancels.
+#[test]
+fn search_backspace_on_empty_dismisses() {
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    // /f → Backspace: EmptiedByBackspace — input empty, but stay in Search.
+    ed.handle_key(key('/'));
+    ed.handle_key(key('f'));
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.mode, Mode::Search, "first Backspace must keep Search open");
+    assert!(ed.minibuf.is_some());
+    assert_eq!(state(&ed), "-[h]>ello world\n"); // snapshot restored
+
+    // Second Backspace: BackspaceOnEmpty — dismiss.
+    ed.handle_key(key_backspace());
+    assert_eq!(ed.mode, Mode::Normal, "second Backspace must dismiss");
+    assert!(ed.minibuf.is_none());
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+}
+
+/// Backspace when the search input was empty from the start must dismiss
+/// immediately (no EmptiedByBackspace intermediate step).
+#[test]
+fn search_backspace_on_empty_from_start_dismisses() {
+    let mut ed = editor_from("-[h]>ello world\n");
+
+    ed.handle_key(key('/'));
+    ed.handle_key(key_backspace()); // BackspaceOnEmpty right away
+    assert_eq!(ed.mode, Mode::Normal);
+    assert!(ed.minibuf.is_none());
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+}
