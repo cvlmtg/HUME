@@ -806,11 +806,16 @@ impl Editor {
                 self.set_mode(Mode::Normal);
                 self.close_minibuf();
             }
-            MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
-                // Restore position when pattern is fully erased, but stay in Search mode.
+            MiniBufferEvent::EmptiedByBackspace => {
+                // First Backspace cleared the last character — restore position but
+                // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
                 self.clear_buffer_search(bid);
+            }
+            MiniBufferEvent::BackspaceOnEmpty => {
+                // Input already empty — user pressed Backspace a second time to dismiss.
+                self.cancel_search();
             }
             MiniBufferEvent::Edited => {
                 if let Some(k) = self
