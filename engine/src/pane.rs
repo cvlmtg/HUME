@@ -116,15 +116,16 @@ impl WrapMode {
     /// Concrete wrap column, or `None` if wrapping is off.
     ///
     /// The caller must have already resolved the `width: 0` sentinel via
-    /// `WrapMode::resolve(content_width)` — passing an unresolved sentinel is a
-    /// bug and will panic in debug builds.
+    /// `WrapMode::resolve(content_width)` — passing an unresolved sentinel is
+    /// a bug and panics in both debug and release. The alternative (returning
+    /// `None` or `Some(0)`) would silently format at column 0 in production.
     pub fn wrap_width(&self) -> Option<u16> {
         match self {
             WrapMode::None => None,
             WrapMode::Soft { width }
             | WrapMode::Word { width }
             | WrapMode::Indent { width } => {
-                debug_assert!(
+                assert!(
                     *width != 0,
                     "wrap_width() received unresolved sentinel (width: 0) — \
                      call WrapMode::resolve(content_width) before reaching the engine",
