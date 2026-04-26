@@ -1273,10 +1273,12 @@ impl Editor {
 
 /// Parse a typed-command string into `(cmd, force, arg)`.
 ///
-/// Command name = longest `[A-Za-z_-]` prefix. One optional trailing `!` is
-/// consumed as `force = true`. Everything after is the argument (whitespace-
-/// trimmed). Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`,
-/// and `:w foo.txt` all parse correctly.
+/// Command name = longest `[A-Za-z_-]` prefix. Digits are deliberately
+/// excluded (Vim convention) so `:b1` parses as `cmd="b"` `arg="1"` — see
+/// `:help :command-name`. One optional trailing `!` is consumed as
+/// `force = true`. Everything after is the argument (whitespace-trimmed).
+/// Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`, and
+/// `:w foo.txt` all parse correctly.
 pub(super) fn parse_typed_command(input: &str) -> (&str, bool, Option<&str>) {
     let name_end = input
         .char_indices()
@@ -1372,6 +1374,31 @@ mod tests {
             assert!(
                 !reg.get_mappable(name).expect(name).is_visual_move(),
                 "'{name}' should have visual_move: false"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_typed_command_table() {
+        use super::parse_typed_command;
+        let cases: &[(&str, &str, bool, Option<&str>)] = &[
+            ("",              "",             false, None),           // empty
+            ("!",             "",             true,  None),           // lone bang
+            ("e",             "e",            false, None),           // bare command
+            ("e!",            "e",            true,  None),           // force, no arg
+            ("e!path",        "e",            true,  Some("path")),   // force adjacent to arg
+            ("e foo",         "e",            false, Some("foo")),    // space-separated arg
+            ("e   foo  ",     "e",            false, Some("foo")),    // arg trimming
+            ("list-buffers",  "list-buffers", false, None),           // hyphenated name
+            ("b#",            "b",            false, Some("#")),      // non-alpha arg
+            ("b#alt",         "b",            false, Some("#alt")),   // alternate-buffer style
+        ];
+        for &(input, cmd, force, arg) in cases {
+            let (got_cmd, got_force, got_arg) = parse_typed_command(input);
+            assert_eq!(
+                (got_cmd, got_force, got_arg),
+                (cmd, force, arg),
+                "parse_typed_command({input:?})"
             );
         }
     }
