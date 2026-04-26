@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use slotmap::SecondaryMap;
 
+use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::Selection;
@@ -63,7 +64,7 @@ pub struct ScrollPosition {
 /// For `Soft`, `Word`, and `Indent`, `width: 0` is a sentinel meaning "wrap at
 /// the content width" (pane width minus gutter). Call `WrapMode::resolve(content_width)`
 /// to substitute a concrete column count before handing the mode to engine code.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum WrapMode {
     /// No wrapping — horizontal scroll.
     #[default]
@@ -128,7 +129,7 @@ impl WrapMode {
                     "wrap_width() received unresolved sentinel (width: 0) — \
                      call WrapMode::resolve(content_width) before reaching the engine",
                 );
-                (*width != 0).then_some(*width)
+                Some(*width)
             }
         }
     }
@@ -244,6 +245,18 @@ impl Pane {
             primary_idx: 0,
             providers: ProviderSet::new(),
         }
+    }
+
+    /// Width available for text after subtracting the gutter, clamped to at least 1.
+    ///
+    /// `total_lines` is the buffer's current line count (used to size the line-number column).
+    /// Call this before `WrapMode::resolve` to get the concrete wrap column.
+    pub fn content_width(&self, total_lines: usize) -> u16 {
+        let gutter_w = gutter_width_for_line(
+            self.providers.gutter_columns(),
+            total_lines.saturating_sub(1),
+        );
+        self.viewport.width.saturating_sub(gutter_w).max(1)
     }
 
     /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.

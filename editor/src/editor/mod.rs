@@ -570,9 +570,7 @@ impl Editor {
                     (self.doc().overrides.wrap_mode(&self.settings), self.doc().text().len_lines())
                 };
                 let pane = &self.engine_view.panes[self.focused_pane_id];
-                let gutter_w = crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-                let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
-                let wrap_mode = raw_wrap.resolve(content_width);
+                let wrap_mode = raw_wrap.resolve(pane.content_width(len_lines));
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 PaneRenderSettings {
@@ -704,10 +702,7 @@ impl Editor {
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             let pane = &self.engine_view.panes[self.focused_pane_id];
-            let gutter_w =
-                crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-            let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
-            let wrap_mode = raw_wrap.resolve(content_width);
+            let wrap_mode = raw_wrap.resolve(pane.content_width(len_lines));
             PaneRenderSettings { mode: self.mode, wrap_mode, tab_width, whitespace }
         };
         let engine_view = &self.engine_view;
@@ -770,9 +765,7 @@ impl Editor {
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            let gutter_w = crate::cursor::gutter_width(pane.providers.gutter_columns(), sv.buf.len_lines());
-            let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
-            let wrap_mode = self.settings.wrap_mode.clone().resolve(content_width);
+            let wrap_mode = self.settings.wrap_mode.resolve(pane.content_width(sv.buf.len_lines()));
             scroll_into_view(
                 pane,
                 rope,
@@ -810,13 +803,10 @@ impl Editor {
                 let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
                 let len_lines = self.buffers.get(buf_id).text().len_lines();
                 let rope = self.buffers.get(buf_id).text().rope();
-                let (gutter_w, viewport_width) = {
+                let wrap_mode = {
                     let pane = &self.engine_view.panes[self.focused_pane_id];
-                    (crate::cursor::gutter_width(pane.providers.gutter_columns(), len_lines),
-                     pane.viewport.width)
+                    raw_wrap.resolve(pane.content_width(len_lines))
                 };
-                let content_width = viewport_width.saturating_sub(gutter_w).max(1);
-                let wrap_mode = raw_wrap.resolve(content_width);
                 let pane = &mut self.engine_view.panes[self.focused_pane_id];
                 scroll_into_view(
                     pane,

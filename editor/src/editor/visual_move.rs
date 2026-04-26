@@ -180,16 +180,10 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         return;
     }
 
-    let gutter_w = {
+    let wrap_mode = {
         let pane = &ed.engine_view.panes[ed.focused_pane_id];
-        crate::cursor::gutter_width(pane.providers.gutter_columns(), ed.doc().text().len_lines())
+        raw_wrap.resolve(pane.content_width(ed.doc().text().len_lines()))
     };
-    let content_width = ed.engine_view.panes[ed.focused_pane_id]
-        .viewport
-        .width
-        .saturating_sub(gutter_w)
-        .max(1);
-    let wrap_mode = raw_wrap.resolve(content_width);
 
     let rope = ed.doc().text().rope().clone();
     let sels = ed.current_selections().clone();
