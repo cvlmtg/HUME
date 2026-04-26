@@ -93,8 +93,13 @@ pub(crate) fn restore() -> io::Result<()> {
         }
     };
 
-    // Pop kitty keyboard protocol first. Harmless on legacy terminals — no
-    // flags were pushed, so the sequence is silently ignored.
+    // Close any deferred-paint envelope first: a panic mid-frame can leave the
+    // terminal expecting an EndSynchronizedUpdate, and most (but not all) emit
+    // the held buffer on alt-screen exit. Sending it explicitly is harmless if
+    // no envelope was open.
+    try_op(execute!(stdout(), EndSynchronizedUpdate));
+    // Pop kitty keyboard protocol. Harmless on legacy terminals — no flags
+    // were pushed, so the sequence is silently ignored.
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
     // Disable all mouse tracking modes. The `l` (low) sequences are harmless
     // no-ops if the corresponding mode was never enabled.
