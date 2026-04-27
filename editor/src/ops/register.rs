@@ -45,6 +45,23 @@ pub(crate) const MACRO_REGISTER: char = 'q';
 /// storage with a warning when the clipboard is unavailable (headless CI/SSH).
 pub(crate) const CLIPBOARD_REGISTER: char = 'c';
 
+/// Returns `true` if `ch` is a valid register name for macro recording/replay.
+///
+/// Accepts the default macro register (`q`) and the numbered storage registers
+/// (`0`–`9`). Special registers (`b`, `c`, `s`) are not valid macro targets.
+pub(crate) fn is_valid_macro_register(ch: char) -> bool {
+    ch == MACRO_REGISTER || ch.is_ascii_digit()
+}
+
+/// Returns `true` if `ch` is a valid register name for the `"<reg>` prefix.
+///
+/// Accepts the numbered storage registers (`0`–`9`), black hole (`b`), and
+/// clipboard (`c`). The default register (`"`) and search register (`s`) are
+/// intentionally excluded — users cannot explicitly name them.
+pub(crate) fn is_valid_register_name(ch: char) -> bool {
+    ch.is_ascii_digit() || ch == CLIPBOARD_REGISTER || ch == BLACK_HOLE_REGISTER
+}
+
 /// The content of a register — either yanked text or a recorded macro.
 ///
 /// Registers are single-slot: the last write wins. Writing a macro to a register

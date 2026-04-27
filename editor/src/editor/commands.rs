@@ -37,7 +37,7 @@ use engine::types::EditorMode;
 
 use super::{ScratchView, Severity};
 
-use super::{Editor, FindChar, MiniBuffer, Mode, SearchDirection};
+use super::{Editor, FindChar, MiniBuffer, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
 use crate::ops::motion::FindKind;
 
@@ -174,31 +174,26 @@ pub(super) fn cmd_exit_insert(
 impl Editor {
     /// Return the register targeted by the current command.
     ///
-    /// If the user supplied a `"<reg>` prefix (stored in `register_pending`),
-    /// that register is consumed (one-shot) and returned. Otherwise the default
-    /// register is returned. Call once per command at entry — calling twice would
-    /// return `DEFAULT_REGISTER` on the second call because the pending is cleared.
+    /// If the user supplied a `"<reg>` prefix, that register is consumed (one-shot)
+    /// and returned. Otherwise the default register is returned. Call once per
+    /// command at entry — calling twice returns `DEFAULT_REGISTER` on the second
+    /// call because the pending state is cleared by `take()`.
     pub(super) fn active_register(&mut self) -> char {
-        self.register_pending.take().unwrap_or(DEFAULT_REGISTER)
+        match self.register_prefix.take() {
+            Some(RegisterPrefix::Selected(c)) => c,
+            _ => DEFAULT_REGISTER,
+        }
     }
 
-    /// Write `values` to a named register, routing `'c'` through the OS clipboard.
+    /// Write `values` into `name`, routing `'c'` through the OS clipboard.
     ///
-    /// For the clipboard register (`'c'`):
-    ///   - Serialises the values to a single blob (`values.join("\n")`) and writes
-    ///     to the OS clipboard via `arboard`. On failure, logs a warning once.
-    ///   - Always also writes to the in-memory register `'c'` as a mirror, so
-    ///     subsequent reads work even when the clipboard server is unavailable.
-    ///
-    /// For all other registers: delegates to `RegisterSet::write_text`.
+    /// On clipboard failure logs a warning; always mirrors to in-memory 'c' so
+    /// reads work even when the clipboard server is unavailable.
     pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
         if name == CLIPBOARD_REGISTER {
             let blob = values.join("\n");
             if let Err(e) = self.clipboard.write(&blob) {
-                self.report(
-                    super::Severity::Warning,
-                    format!("system clipboard unavailable ({e}), using in-memory 'c'"),
-                );
+                self.warn_clipboard_unavailable(&e);
             }
             // Always mirror to in-memory so reads fall back correctly.
             self.registers.write_text(CLIPBOARD_REGISTER, values);
@@ -207,34 +202,32 @@ impl Editor {
         }
     }
 
-    /// Read text from a named register, routing `'c'` through the OS clipboard.
+    /// Read text from `name`, routing `'c'` through the OS clipboard.
     ///
-    /// For the clipboard register (`'c'`):
-    ///   - Reads from the OS clipboard. On success, normalises CRLF to LF.
-    ///   - On failure, logs a warning and falls back to the in-memory mirror.
-    ///
-    /// For all other registers: delegates to `RegisterSet::read`.
+    /// On clipboard failure logs a warning and falls back to the in-memory mirror.
     pub(super) fn read_register_text(&mut self, name: char) -> Option<Vec<String>> {
         if name == CLIPBOARD_REGISTER {
             match self.clipboard.read() {
-                Ok(text) => Some(vec![text.replace("\r\n", "\n")]),
+                Ok(text) => Some(vec![text]),
                 Err(e) => {
-                    self.report(
-                        super::Severity::Warning,
-                        format!("system clipboard unavailable ({e}), using in-memory 'c'"),
-                    );
-                    self.registers
-                        .read(CLIPBOARD_REGISTER)
-                        .and_then(|r| r.as_text())
-                        .map(|v| v.to_vec())
+                    self.warn_clipboard_unavailable(&e);
+                    self.read_in_memory(CLIPBOARD_REGISTER)
                 }
             }
         } else {
-            self.registers
-                .read(name)
-                .and_then(|r| r.as_text())
-                .map(|v| v.to_vec())
+            self.read_in_memory(name)
         }
+    }
+
+    fn warn_clipboard_unavailable(&mut self, err: &str) {
+        self.report(
+            super::Severity::Warning,
+            format!("system clipboard unavailable ({err}), using in-memory 'c'"),
+        );
+    }
+
+    fn read_in_memory(&self, name: char) -> Option<Vec<String>> {
+        self.registers.read(name).and_then(|r| r.as_text()).map(|v| v.to_vec())
     }
 }
 
