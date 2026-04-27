@@ -259,8 +259,8 @@ pub(super) fn cmd_change(
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.begin_insert_session();
     ed.doc_edit_grouped(delete_selection);
-    // write_register after the edit group — it may emit a Warning via report(),
-    // which must not land inside the insert-session group.
+    // write_register after begin_insert_session so the clipboard warning (if
+    // any) is logged after the keystroke-recording session opens, not during it.
     ed.write_register(reg, yanked);
     Ok(())
 }

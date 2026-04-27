@@ -423,4 +423,15 @@ mod tests {
             "(ab-[)]>c(de-[)]>f\n"
         );
     }
+
+    #[test]
+    fn wrap_multi_line_selection() {
+        // Selection spans a newline; the structural trailing `\n` must not be
+        // included in the wrap — end_inclusive clamping to len_chars()-2 guards this.
+        assert_state!(
+            "-[foo\nbar]> baz\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '"', '"'),
+            "\"foo\nbar-[\"]> baz\n"
+        );
+    }
 }

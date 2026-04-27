@@ -233,11 +233,12 @@ impl Editor {
         if let Some(RegisterPrefix::Awaiting) = self.register_prefix {
             self.register_prefix = None;
             if let KeyCode::Char(ch) = key.code
+                && key.modifiers == KeyModifiers::NONE
                 && is_valid_register_name(ch)
             {
                 self.register_prefix = Some(RegisterPrefix::Selected(ch));
             }
-            // Invalid char or non-Char key: cancel silently (key is swallowed).
+            // Invalid char, modified key, or non-Char key: cancel silently (key is swallowed).
             // Count accumulated before `"` is preserved for the next command.
             return;
         }

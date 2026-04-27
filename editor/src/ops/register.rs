@@ -56,8 +56,9 @@ pub(crate) fn is_valid_macro_register(ch: char) -> bool {
 /// Returns `true` if `ch` is a valid register name for the `"<reg>` prefix.
 ///
 /// Accepts the numbered storage registers (`0`–`9`), black hole (`b`), and
-/// clipboard (`c`). The default register (`"`) and search register (`s`) are
-/// intentionally excluded — users cannot explicitly name them.
+/// clipboard (`c`). The default register (`"`), search register (`s`), and
+/// macro register (`q`) are intentionally excluded — `q` is written via `Q`
+/// recording, not the prefix; the others cannot be explicitly named.
 pub(crate) fn is_valid_register_name(ch: char) -> bool {
     ch.is_ascii_digit() || ch == CLIPBOARD_REGISTER || ch == BLACK_HOLE_REGISTER
 }
