@@ -1,17 +1,18 @@
-;;; helix-surround — Helix-compat md/mr surround shortcuts
+;;; helix-surround — Helix-compat ms/md/mr surround shortcuts
 ;;;
-;;; Adds the Helix-style two-key surround sequences on top of the built-in
-;;; `ms` + char (select-surround) commands:
+;;; Replaces HUME's built-in `ms` (select-surround) and `mw` (surround-add)
+;;; bindings with the Helix layout:
+;;;
+;;;   ms + char  — wrap each selection with `char` (and its pair-close)
+;;;                same as HUME's default `mw + char`, just at the Helix key
 ;;;
 ;;;   md + char  — delete the surrounding delimiter pair
-;;;                equivalent to `ms` + char → `d`
 ;;;
-;;;   mr + char  — select the surrounding pair, then wait for the replacement
-;;;                char (dispatches `replace` with that char as pending_char)
-;;;                equivalent to `ms` + char → `r` + new_char
+;;;   mr + char + new_char  — replace the surrounding pair with `new_char`
 ;;;
-;;; The underlying `surround-*` selection commands are Rust builtins; this
-;;; plugin wires them into the two-key sequences Helix users expect.
+;;; The select-surround commands (`surround-paren`, etc.) remain registered
+;;; and reachable via the typed-command interface; only the `ms` keybinding
+;;; is rerouted. `mw` is unbound while this plugin is loaded.
 ;;;
 ;;; Usage in init.scm:
 ;;;   (load-plugin "core:helix-surround")
@@ -57,8 +58,16 @@
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
+;; ms + char → add surround (Helix layout). This overwrites HUME's default
+;; `ms` sub-trie (select-surround); use the typed-command names directly if
+;; you still need the selection variants.
+(bind-wait-char! "normal" "m s" "surround-add")
+
 ;; md + char → delete surround (any recognised delimiter)
 (bind-wait-char! "normal" "m d" "helix-delete-surround")
 
 ;; mr + char → replace surround (select old pair, then wait for new char)
 (bind-wait-char! "normal" "m r" "helix-replace-surround")
+
+;; Hide HUME's default `mw + char` (surround-add) — Helix uses `ms` for that.
+(unbind-key! "normal" "m w")
