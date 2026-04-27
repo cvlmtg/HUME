@@ -816,6 +816,15 @@ impl CommandRegistry {
             cmd_surround_backtick
         );
 
+        // ── Surround add ──────────────────────────────────────────────────────
+        ecmd(
+            "surround-add",
+            "Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair.",
+            cmd_surround_add,
+        )
+        .repeatable()
+        .reg(self);
+
         // ── Edit commands ─────────────────────────────────────────────────────
         edit!(
             "delete-char-forward",
@@ -1295,7 +1304,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 126;
+    const EXPECTED_COMMAND_COUNT: usize = 127;
 
     #[test]
     fn registry_has_expected_count() {

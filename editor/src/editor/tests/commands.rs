@@ -815,3 +815,70 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
         "pasted from in-memory mirror"
     );
 }
+
+// ── surround-add (`mw`) ───────────────────────────────────────────────────────
+
+#[test]
+fn mw_wraps_with_bracket() {
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), "[bar-[]]>\n");
+}
+
+#[test]
+fn mw_wraps_with_brace_via_close_char() {
+    // `mw}` should normalize to the pair `{` `}`.
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('}'));
+    assert_eq!(state(&ed), "{bar-[}]>\n");
+}
+
+#[test]
+fn mw_wraps_symmetric_quote() {
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('"'));
+    assert_eq!(state(&ed), "\"bar-[\"]>\n");
+}
+
+#[test]
+fn mw_wraps_unknown_char_symmetric() {
+    // `*` is not a configured pair — wraps symmetrically open == close == `*`.
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('*'));
+    assert_eq!(state(&ed), "*bar-[*]>\n");
+}
+
+#[test]
+fn mw_wraps_multi_cursor() {
+    let mut ed = editor_from("-[ab]>c-[de]>f\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('('));
+    assert_eq!(state(&ed), "(ab-[)]>c(de-[)]>f\n");
+}
+
+#[test]
+fn mw_wraps_cursor_one_char() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), "[h-[]]>ello\n");
+}
+
+#[test]
+fn mw_esc_cancels() {
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_esc()); // cancel before typing the delimiter
+    assert_eq!(state(&ed), "-[bar]>\n");
+}
