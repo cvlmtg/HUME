@@ -882,3 +882,34 @@ fn mw_esc_cancels() {
     ed.handle_key(key_esc()); // cancel before typing the delimiter
     assert_eq!(state(&ed), "-[bar]>\n");
 }
+
+#[test]
+fn mw_wraps_when_auto_pairs_disabled() {
+    // surround-add uses the pairs table only as a lookup; it ignores the
+    // auto-pairs-enabled flag. `mw[` must still wrap even when auto-pairs are off.
+    let mut ed = editor_from("-[bar]>\n");
+    ed.settings.auto_pairs_enabled = false;
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), "[bar-[]]>\n");
+}
+
+// ── Register prefix persistence across non-register commands ────────────────
+
+/// `"5` arms the prefix; `l` (a motion) does not consume it; the next `y` writes
+/// to register 5. This is the intended sticky behaviour — the prefix persists
+/// until a register-consuming command runs or Esc cancels it.
+#[test]
+fn register_prefix_persists_across_motion() {
+    use crate::ops::register::DEFAULT_REGISTER;
+
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('l')); // motion — does not consume the prefix
+    ed.handle_key(key('y')); // yank targets register 5, not DEFAULT
+
+    assert!(!reg(&ed, '5').is_empty(), "register '5' written after motion");
+    assert!(reg(&ed, DEFAULT_REGISTER).is_empty(), "DEFAULT_REGISTER untouched");
+}
