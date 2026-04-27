@@ -60,16 +60,15 @@ pub(crate) fn wrap_each_selection(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
-        b.retain(start - b.old_pos());
         let end_incl = sel
             .end_inclusive(buf)
             .min(buf.len_chars().saturating_sub(2));
-        let selected: String = buf.slice(start..end_incl + 1).to_string();
-        b.delete(end_incl + 1 - start);
+        b.retain(start - b.old_pos());
         b.insert_char(open);
-        b.insert(&selected);
+        b.retain(end_incl + 1 - start); // copy selected text through — no String alloc
         b.insert_char(close);
-        // Cursor on the close char. new_pos - 1 is safe: we inserted open + selected + close (≥ 2 chars).
+        // Cursor on the close char. new_pos - 1 is safe: close is always preceded by
+        // at least open + one retained char (HUME selections are ≥ 1 char).
         new_sels.push(Selection::collapsed(b.new_pos() - 1));
     })
 }
