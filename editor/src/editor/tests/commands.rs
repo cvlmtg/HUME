@@ -669,3 +669,149 @@ fn mil_on_empty_line_is_noop() {
     ed.handle_key(key('l'));
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
+
+// ── Register prefix `"<reg>` ────────────────────────────────────────────────
+
+/// `"5y` must write text into register '5', leaving DEFAULT_REGISTER empty.
+#[test]
+fn register_prefix_routes_yank_to_named_register() {
+    use crate::ops::register::DEFAULT_REGISTER;
+
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('y'));
+
+    assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged");
+    assert_eq!(reg(&ed, '5'), &["hell"], "register '5' populated");
+    assert!(
+        reg(&ed, DEFAULT_REGISTER).is_empty(),
+        "DEFAULT_REGISTER untouched"
+    );
+}
+
+/// After `"5y`, the prefix is consumed. The next bare `y` writes to DEFAULT.
+#[test]
+fn register_prefix_clears_after_one_operation() {
+    use crate::ops::register::DEFAULT_REGISTER;
+
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('y'));
+
+    // Now the prefix is cleared — move right to get a different selection,
+    // then yank again without a prefix.
+    ed.handle_key(key('l')); // move right
+    ed.handle_key(key('y')); // bare yank
+
+    // The second yank targeted DEFAULT_REGISTER, not '5'.
+    assert!(!reg(&ed, DEFAULT_REGISTER).is_empty(), "DEFAULT_REGISTER written by bare y");
+    // '5' is unchanged from the first yank.
+    assert_eq!(reg(&ed, '5'), &["hell"], "register '5' unchanged");
+}
+
+/// `Esc` after `"` cancels the prefix — the next `y` targets DEFAULT_REGISTER.
+#[test]
+fn esc_cancels_register_prefix() {
+    use crate::ops::register::DEFAULT_REGISTER;
+
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key_esc()); // cancel
+    ed.handle_key(key('y'));
+
+    assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "default register populated");
+    assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
+}
+
+/// `"3p` must paste from register '3', not DEFAULT_REGISTER.
+#[test]
+fn paste_from_named_register() {
+    use crate::ops::register::DEFAULT_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.registers.write_text('3', vec!["hello".to_string()]);
+    // Seed DEFAULT so we can verify it was NOT used.
+    ed.registers.write_text(DEFAULT_REGISTER, vec!["wrong".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('3'));
+    ed.handle_key(key('p'));
+
+    assert!(
+        ed.doc().text().to_string().contains("hello"),
+        "pasted from register '3'"
+    );
+    assert!(
+        !ed.doc().text().to_string().contains("wrong"),
+        "DEFAULT_REGISTER not used"
+    );
+}
+
+/// `"by` discards the yank — DEFAULT_REGISTER must remain empty.
+#[test]
+fn black_hole_register_via_prefix() {
+    use crate::ops::register::{BLACK_HOLE_REGISTER, DEFAULT_REGISTER};
+
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('y'));
+
+    assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged");
+    assert!(
+        reg(&ed, DEFAULT_REGISTER).is_empty(),
+        "DEFAULT_REGISTER untouched"
+    );
+    assert!(
+        ed.registers.read(BLACK_HOLE_REGISTER).is_none(),
+        "black hole register returns None"
+    );
+}
+
+// ── Clipboard register fallback (in-memory mirror) ─────────────────────────
+
+/// When the system clipboard is unavailable, `"cy` falls back to the in-memory
+/// mirror and logs a Warning. The mirror is then used by `"cp`.
+#[test]
+fn clipboard_register_falls_back_to_memory_when_unavailable() {
+    use crate::editor::Severity;
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[hello]>\n");
+    // Simulate a headless environment with no clipboard server.
+    ed.clipboard.force_unavailable();
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key('y'));
+
+    // A Warning must have been logged.
+    assert!(
+        ed.message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning),
+        "expected a Warning for clipboard unavailable"
+    );
+
+    // In-memory mirror must hold the yanked text.
+    assert_eq!(
+        reg(&ed, CLIPBOARD_REGISTER),
+        &["hello"],
+        "in-memory mirror populated"
+    );
+
+    // Move right so cursor is now on 'o', giving a distinct selection.
+    ed.handle_key(key('l'));
+
+    // `"cp` should read from the in-memory mirror and paste "hello".
+    ed.handle_key(key('"'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key('p'));
+
+    assert!(
+        ed.doc().text().to_string().contains("hello"),
+        "pasted from in-memory mirror"
+    );
+}

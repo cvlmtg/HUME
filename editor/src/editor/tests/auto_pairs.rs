@@ -153,12 +153,16 @@ fn auto_pairs_auto_delete_mixed_cursors() {
 
 // ── Normal-mode pair-wrap ─────────────────────────────────────────────────────
 
-/// With a selection active, typing `"` in normal mode wraps it with `""`.
+/// `"` is the register-prefix key — it never pair-wraps in Normal mode, even
+/// with a non-collapsed selection. Pressing `"` starts the register prefix;
+/// without a following valid register name + command, the state is unchanged.
 #[test]
-fn normal_wrap_selection_double_quote() {
+fn normal_wrap_selection_double_quote_is_register_prefix() {
     let mut ed = editor_from("foo -[bar]> baz\n");
+    // `"` starts the register prefix (no pair-wrap).
     ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "foo \"bar-[\"]> baz\n");
+    // No operation fired — state is unchanged.
+    assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
 
 /// `(` is bound to cycle-primary-backward and retains that behaviour even
@@ -171,7 +175,8 @@ fn normal_wrap_bound_key_not_intercepted() {
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
 
-/// A collapsed cursor + `"` in normal mode is silently swallowed (no binding).
+/// A collapsed cursor + `"` in normal mode starts the register prefix (no-op
+/// if not followed by a valid register name + command).
 #[test]
 fn normal_wrap_noop_on_cursor() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
@@ -179,24 +184,25 @@ fn normal_wrap_noop_on_cursor() {
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
 }
 
-/// Multi-cursor: two selections both get wrapped independently.
+/// Multi-cursor: `"` starts the register prefix regardless of selection shape.
 #[test]
 fn normal_wrap_multi_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
+    // `"` starts the register prefix — no wrap, state unchanged.
     ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "\"foo-[\"]> \"bar-[\"]>\n");
+    assert_eq!(state(&ed), "-[foo]> -[bar]>\n");
 }
 
-/// Multi-line selection: wrapping spans the newline cleanly.
-/// The structural trailing `\n` is excluded from the wrap via end_inclusive clamping.
+/// Multi-line selection: `"` starts the register prefix — no pair-wrap.
 #[test]
 fn normal_wrap_multi_line_selection() {
     let mut ed = editor_from("-[foo\nbar]> baz\n");
     ed.handle_key(key('"'));
-    assert_eq!(state(&ed), "\"foo\nbar-[\"]> baz\n");
+    assert_eq!(state(&ed), "-[foo\nbar]> baz\n");
 }
 
-/// When auto-pairs is disabled, the pair char is swallowed even with a selection.
+/// When auto-pairs is disabled, `"` still starts the register prefix
+/// (pair-wrap was already a no-op for `"` from normal mode).
 #[test]
 fn normal_wrap_disabled_when_auto_pairs_off() {
     let mut ed = editor_from("foo -[bar]> baz\n");

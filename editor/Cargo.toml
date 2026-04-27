@@ -14,6 +14,7 @@ ratatui.workspace = true
 crossterm = "0.29"
 tempfile = "3"
 regex-cursor = "0.1.5"
+arboard = "3"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs"] }
