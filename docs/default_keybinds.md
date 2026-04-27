@@ -141,19 +141,42 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 | `m w `` ` `` | `` ` … ` `` |
 | `m w <other>` | `<other> … <other>` |
 
+> **Note:** bare `[` and `]` (without a preceding `m` prefix) are bound to kill-ring cycling (`paste-ring-older` / `paste-ring-newer`). `m w [`, `m i [`, `m a [`, and `m s [` are unaffected — the `[` there is consumed as part of the multi-key sequence, not dispatched as a standalone command.
+
 ### Edit
 
 | Key | Command |
 |-----|---------|
-| `d` | Yank into default register, then delete selections |
-| `c` | Yank, delete selections, enter insert mode (one undo group) |
-| `y` | Yank selections into default register |
-| `p` | Paste after selection |
-| `P` | Paste before selection |
+| `d` | Delete selections; push deleted text onto the kill ring |
+| `c` | Delete selections, push onto kill ring, enter insert mode (one undo group) |
+| `y` | Yank selections: write to system clipboard **and** push onto kill ring |
+| `p` | Smart-p paste after selection (see below) |
+| `P` | Smart-p paste before selection (see below) |
+| `[` | Cycle kill ring one step older and paste after |
+| `]` | Cycle kill ring one step newer and paste after |
 | `r <char>` | Replace every character in each selection with `<char>` |
 | `u` | Undo |
 | `U` / `Ctrl+r` | Redo |
 | `.` | Repeat last editing action |
+
+#### Smart-p paste heuristic
+
+`p` and `P` decide what to paste based on the last command:
+
+- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (most recently deleted or yanked text). This preserves the `dp` char-swap and `xdp` line-swap muscle memory.
+- **Otherwise** — reads the system clipboard. This is the path for cross-app paste: copy in a browser, then bare `p` in HUME.
+
+`[` and `]` always read the kill ring and cycle one step older / newer on each press. They reset when any other command fires.
+
+To force a specific source, use the register prefix `"`:
+
+| Sequence | Source |
+|----------|--------|
+| `"cp` | System clipboard explicitly |
+| `"0p` – `"9p` | Kill ring slot 0 (head) through 9 (oldest) |
+| `"cy` | Write clipboard only (no kill ring push) |
+| `"5y` | Write named register 5 (no kill ring push, no clipboard) |
+| `"by` | Discard (black hole) |
 
 ### Selection Manipulation
 
@@ -189,6 +212,19 @@ Macros are stored in registers. Register `q` is the default.
 | `q q` | Replay register `q` |
 | `q <reg>` | Replay named register (`0`–`9`) |
 | `<count> q q` | Replay register `q` `<count>` times |
+
+### Register Prefix (`"`)
+
+Prefix any yank, delete, change, or paste command with `"<reg>` to target a specific register instead of the kill ring / clipboard.
+
+| Prefix | Effect on the following command |
+|--------|---------------------------------|
+| `"c` | Use system clipboard (`y` writes clipboard only; `p` reads clipboard) |
+| `"0` – `"9` | Use named register slot 0–9 (`y` writes slot, `p` reads slot) |
+| `"b` | Black hole — discard (only meaningful for `y`/`d`/`c`) |
+| `"<letter>` | Use the named in-memory register |
+
+The prefix is sticky across motions and text objects, but consumed (cleared) by the first register-consuming command (`y`, `d`, `c`, `p`, `P`). Press `Esc` to cancel a pending prefix.
 
 ### Jump List
 
