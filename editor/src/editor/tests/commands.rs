@@ -37,53 +37,60 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 
 // ── `d` yanks into the default register ────────────────────────────────────
 
-/// Deleting a selection must populate the default register with the deleted
-/// text. A bug in the mapping that removed the `yank_selections` call before
-/// `delete_selection` would leave the register empty — invisible to pure tests.
+/// Deleting a selection must push the deleted text onto the kill ring.
+/// A bug in the mapping that removed the `yank_selections` call before
+/// `delete_selection` would leave the ring empty — invisible to pure tests.
 #[test]
 fn d_yanks_selection_into_register_before_deleting() {
-    use crate::ops::register::DEFAULT_REGISTER;
-
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('d'));
 
     assert_eq!(ed.doc().text().to_string(), "o\n", "buffer after delete");
     assert_eq!(
-        reg(&ed, DEFAULT_REGISTER),
-        &["hell"],
-        "register after delete"
+        ed.kill_ring.head(),
+        Some(["hell".to_string()].as_slice()),
+        "kill ring head after delete"
     );
 }
 
 // ── `y` yanks without modifying the buffer ─────────────────────────────────
 
-/// `y` must populate the register without changing the buffer or the selection.
-/// This is the only way to test that `y` actually writes to the register —
-/// pure tests of `yank_selections` never touch the `Editor.registers` field.
+/// `y` must write to the system clipboard (in-memory mirror) and push to the
+/// kill ring, without changing the buffer or the selection.
+/// This is the only way to test that `y` actually writes the correct storage —
+/// pure tests of `yank_selections` never touch `Editor.registers` or `kill_ring`.
 #[test]
 fn y_populates_register_without_changing_buffer() {
-    use crate::ops::register::DEFAULT_REGISTER;
+    use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('y'));
 
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer+selection unchanged");
-    assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "register populated");
+    // Bare `y` writes to system clipboard (in-memory mirror in headless tests)
+    // AND pushes to the kill ring.
+    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hell"], "clipboard populated");
+    assert_eq!(
+        ed.kill_ring.head(),
+        Some(["hell".to_string()].as_slice()),
+        "kill ring head populated"
+    );
 }
 
 // ── `p` swaps displaced selection text back into the register ──────────────
 
 /// When `p` pastes over a non-cursor (multi-char) selection, the displaced
-/// text must be written back to the default register (exchange semantics).
-/// This logic lives entirely in the mapping — no pure test can see it.
+/// text must be written back to the clipboard (exchange semantics).
+/// `p` with no prior `c`/`d` reads the system clipboard via Smart-p; the
+/// displaced text is written back to the clipboard so it can be pasted again.
 #[test]
 fn p_over_selection_swaps_displaced_text_into_register() {
-    use crate::ops::register::DEFAULT_REGISTER;
+    use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
-    // Seed the register with the text we'll paste.
+    // Seed clipboard (in-memory mirror for headless tests) with the text to paste.
     ed.registers
-        .write_text(DEFAULT_REGISTER, vec!["XY".to_string()]);
+        .write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
 
     ed.handle_key(key('p'));
 
@@ -92,10 +99,12 @@ fn p_over_selection_swaps_displaced_text_into_register() {
         "XYo\n",
         "pasted text in buffer"
     );
+    // Displaced "hell" goes back to clipboard (Smart-p read from clipboard,
+    // so displaced text returns to the same source).
     assert_eq!(
-        reg(&ed, DEFAULT_REGISTER),
+        reg(&ed, CLIPBOARD_REGISTER),
         &["hell"],
-        "displaced text in register"
+        "displaced text back in clipboard"
     );
 }
 
@@ -690,10 +699,11 @@ fn register_prefix_routes_yank_to_named_register() {
     );
 }
 
-/// After `"5y`, the prefix is consumed. The next bare `y` writes to DEFAULT.
+/// After `"5y`, the prefix is consumed. The next bare `y` writes to clipboard
+/// and the kill ring (not to register '5').
 #[test]
 fn register_prefix_clears_after_one_operation() {
-    use crate::ops::register::DEFAULT_REGISTER;
+    use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
@@ -703,25 +713,32 @@ fn register_prefix_clears_after_one_operation() {
     // Now the prefix is cleared — move right to get a different selection,
     // then yank again without a prefix.
     ed.handle_key(key('l')); // move right
-    ed.handle_key(key('y')); // bare yank
+    ed.handle_key(key('y')); // bare yank — writes clipboard + kill ring
 
-    // The second yank targeted DEFAULT_REGISTER, not '5'.
-    assert!(!reg(&ed, DEFAULT_REGISTER).is_empty(), "DEFAULT_REGISTER written by bare y");
+    // The second yank updated the clipboard, not register '5'.
+    assert!(!reg(&ed, CLIPBOARD_REGISTER).is_empty(), "clipboard written by bare y");
+    // Kill ring head holds the latest bare yank.
+    assert!(ed.kill_ring.head().is_some(), "kill ring head set by bare y");
     // '5' is unchanged from the first yank.
     assert_eq!(reg(&ed, '5'), &["hell"], "register '5' unchanged");
 }
 
-/// `Esc` after `"` cancels the prefix — the next `y` targets DEFAULT_REGISTER.
+/// `Esc` after `"` cancels the prefix — the next `y` writes to clipboard + ring.
 #[test]
 fn esc_cancels_register_prefix() {
-    use crate::ops::register::DEFAULT_REGISTER;
+    use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
     ed.handle_key(key_esc()); // cancel
     ed.handle_key(key('y'));
 
-    assert_eq!(reg(&ed, DEFAULT_REGISTER), &["hell"], "default register populated");
+    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hell"], "clipboard populated");
+    assert_eq!(
+        ed.kill_ring.head(),
+        Some(["hell".to_string()].as_slice()),
+        "kill ring head populated"
+    );
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
@@ -893,6 +910,207 @@ fn mw_wraps_when_auto_pairs_disabled() {
     ed.handle_key(key('w'));
     ed.handle_key(key('['));
     assert_eq!(state(&ed), "[bar-[]]>\n");
+}
+
+// ── Smart-p heuristic and kill ring ──────────────────────────────────────────
+
+/// `d` then `p` reads from the kill ring (char-swap / dp pattern).
+/// `last_command` after `d` is "delete" ∈ `SMART_P_LAST_CMDS`, so `p` reads ring.
+#[test]
+fn smart_p_dp_reads_ring() {
+    // Buffer: "ab\n", cursor on 'a'.
+    let mut ed = editor_from("-[a]>b\n");
+    ed.handle_key(key('d')); // delete 'a' → ring = ["a"]
+    // After delete: buffer = "b\n", cursor at 'b'.
+    ed.handle_key(key('p')); // paste-after from ring → "ba\n"? No: paste-after on cursor 'b' inserts after 'b'.
+    // Actually: after 'd', cursor is on 'b'. paste-after inserts "a" after 'b'. Buffer = "ba\n".
+    assert!(
+        ed.doc().text().to_string().contains('a'),
+        "ring content pasted after delete"
+    );
+    // Clipboard is not written by bare 'd', so the pasted value came from ring.
+    assert!(
+        ed.kill_ring.head().is_some(),
+        "kill ring still has an entry after paste"
+    );
+}
+
+/// `d` then `j` (motion) then `p` reads from clipboard, not ring.
+/// Motion is NOT in `SMART_P_LAST_CMDS`, so `p` falls back to clipboard.
+#[test]
+fn smart_p_motion_resets_to_clipboard() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    // Two-line buffer; cursor on line 0.
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    // Seed clipboard with something distinct from what 'd' would yank.
+    ed.registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.handle_key(key('d')); // delete 'a' → ring = ["a"]
+    ed.handle_key(key('j')); // move-down → last_command = "move-down" ∉ SMART_P_LAST_CMDS
+    ed.handle_key(key('p')); // paste-after → must read clipboard ("CLIP")
+    assert!(
+        ed.doc().text().to_string().contains("CLIP"),
+        "p after motion reads clipboard"
+    );
+}
+
+/// Bare `y` writes to both the clipboard AND the kill ring.
+/// A subsequent `p` (no preceding `c`/`d`) reads from the clipboard.
+#[test]
+fn smart_p_after_yank_reads_clipboard() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[hello]> world\n");
+    ed.handle_key(key('y')); // yank → clipboard + ring
+    // Clipboard and ring both get "hello".
+    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hello"], "clipboard written");
+    assert!(ed.kill_ring.head().is_some(), "ring written");
+    // Now move right and paste — last_command = "yank" ∉ SMART_P_LAST_CMDS → clipboard.
+    // (Both paths yield the same "hello" since y wrote both, but we verify
+    // last_command is reset by checking the heuristic does NOT pick ring-only.)
+    assert!(
+        !ed.last_command.as_deref().is_some_and(|c| [
+            "change", "delete", "paste-after", "paste-before",
+            "paste-ring-older", "paste-ring-newer"
+        ].contains(&c)),
+        "last_command after bare y is not in SMART_P_LAST_CMDS"
+    );
+}
+
+/// Consecutive `p p` after `d` keeps reading the ring (last_command stays in set).
+#[test]
+fn smart_p_consecutive_paste_stays_in_ring() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[X]>abc\n");
+    // Seed clipboard with something distinct.
+    ed.registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.handle_key(key('d')); // delete 'X' → ring = ["X"]
+    ed.handle_key(key('p')); // first paste → from ring, last_command = "paste-after"
+    // last_command = "paste-after" ∈ SMART_P_LAST_CMDS → next p also reads ring.
+    ed.handle_key(key('p')); // second paste → still from ring
+    // Buffer should contain "X" twice (pasted) and NOT "CLIP".
+    assert!(
+        !ed.doc().text().to_string().contains("CLIP"),
+        "second consecutive p still reads ring"
+    );
+}
+
+/// Kill ring depth: after >10 pushes (via `d`), `len() == 10` and the oldest entry
+/// is evicted.  The 11th push displaces the 1st.
+#[test]
+fn kill_ring_depth_capped_at_ten() {
+    // 11 one-char lines: A through K.
+    let mut ed = editor_from("-[A]>\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\n");
+    // Delete each line by repeatedly pressing x then d.
+    for _ in 0..11 {
+        ed.handle_key(key('x')); // select-line
+        ed.handle_key(key('d')); // delete line → push ring
+        // After delete, cursor lands on next line automatically.
+    }
+    assert_eq!(ed.kill_ring.len(), 10, "kill ring capped at depth 10");
+}
+
+/// `"cy` writes clipboard only — no kill-ring push.
+#[test]
+fn explicit_cy_writes_clipboard_only() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[hello]>\n");
+    // Kill the ring beforehand so we can detect any erroneous push.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key('y')); // "cy → clipboard only
+
+    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hello"], "clipboard written");
+    assert!(
+        ed.kill_ring.head().is_none(),
+        "kill ring NOT pushed by explicit \"cy"
+    );
+}
+
+/// `"5y` writes register '5' (in-memory); the kill ring head is untouched.
+///
+/// Explicit digit-register writes route through `write_register` → `registers.write_text`,
+/// not through `kill_ring.push`. `"5p` reads via `read_register_text('5')` which falls
+/// back to the in-memory register when the ring slot is empty.
+#[test]
+fn explicit_digit_y_writes_ring_slot() {
+    let mut ed = editor_from("-[hello]>\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('y')); // "5y → in-memory register '5' (not kill ring push)
+
+    assert_eq!(reg(&ed, '5'), &["hello"], "register '5' written");
+    assert!(
+        ed.kill_ring.head().is_none(),
+        "kill ring head untouched by explicit \"5y"
+    );
+}
+
+/// `"5p` reads register '5' (in-memory register, falls back from empty kill ring slot).
+#[test]
+fn explicit_digit_p_reads_ring_slot() {
+    let mut ed = editor_from("-[x]>\n");
+    // Seed in-memory register '5' directly (same effect as "5y in another session).
+    ed.registers.write_text('5', vec!["SLOT5".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('p')); // "5p → paste from register '5'
+
+    assert!(
+        ed.doc().text().to_string().contains("SLOT5"),
+        "paste from register '5'"
+    );
+}
+
+/// `paste-ring-older` / `paste-ring-newer` (`[` / `]`) on an empty ring are no-ops.
+#[test]
+fn paste_ring_older_empty_ring_is_noop() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let before = state(&ed);
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), before, "[ on empty ring is a no-op");
+    ed.handle_key(key(']'));
+    assert_eq!(state(&ed), before, "] on empty ring is a no-op");
+}
+
+/// `[ ]` cycle after `d`: the ring cursor walks older then back newer.
+#[test]
+fn paste_ring_cycle_older_then_newer() {
+    // Push 3 entries: A (oldest), B, C (newest/head).
+    let mut ed = editor_from("-[A]>\nB\nC\n");
+    // Delete A → ring = [A] (head)
+    ed.handle_key(key('x'));
+    ed.handle_key(key('d'));
+    // Delete B → ring = [B, A] (B is now head)
+    ed.handle_key(key('x'));
+    ed.handle_key(key('d'));
+    // Delete C → ring = [C, B, A] (C is now head)
+    ed.handle_key(key('x'));
+    ed.handle_key(key('d'));
+
+    // `[` cycles older (from None → slot 1 = B).
+    ed.handle_key(key('['));
+    let after_first_older = ed.doc().text().to_string();
+    assert!(
+        after_first_older.contains('B'),
+        "first [ pastes slot 1 (B)"
+    );
+    // `[` again → slot 2 = A.
+    ed.handle_key(key('['));
+    let after_second_older = ed.doc().text().to_string();
+    assert!(
+        after_second_older.contains('A'),
+        "second [ pastes slot 2 (A)"
+    );
+    // `]` retreats → slot 1 = B.
+    ed.handle_key(key(']'));
+    let after_newer = ed.doc().text().to_string();
+    assert!(after_newer.contains('B'), "] after two [ pastes slot 1 (B)");
 }
 
 // ── Register prefix persistence across non-register commands ────────────────

@@ -25,7 +25,7 @@ use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::ops::motion::FindKind;
 use crate::ops::pair::find_bracket_pair;
-use crate::ops::register::RegisterSet;
+use crate::ops::register::{KillRing, RegisterSet};
 use crate::ops::search::{find_all_matches, search_match_info};
 use crate::os::terminal::Term;
 use crate::scripting::builtins::ids::SteelBufferId;
@@ -174,6 +174,11 @@ pub(crate) struct Editor {
     /// `dispatch_editor_cmd`. Always `None` between commands.
     pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
+    /// Kill ring — bounded history of yanked / deleted text.
+    ///
+    /// Bare `y`/`c`/`d` push here; `[`/`]` cycle through it; `"<digit>p` reads
+    /// slot N. Depth = 10, matching named digit registers `"0`–`"9`.
+    pub(super) kill_ring: KillRing,
     /// Wrapper around the OS clipboard (`arboard`).
     ///
     /// `None` handle when the clipboard server is unreachable (headless CI/SSH).
@@ -183,8 +188,15 @@ pub(crate) struct Editor {
     ///
     /// `None` = idle. `Some(Awaiting)` = `"` pressed, next char is the register name.
     /// `Some(Selected(c))` = register armed for the next yank/delete/change/paste.
-    /// Consumed by `active_register()`; cleared on Esc or invalid input.
+    /// Consumed by `take_register_prefix()`; cleared on Esc or invalid input.
     pub(super) register_prefix: Option<RegisterPrefix>,
+    /// Name of the most recently dispatched command. Updated by every command
+    /// in `execute_keymap_command` (gated by `!is_replaying` so macro replay
+    /// uses the "macro-replay" sentinel instead of underlying command names).
+    ///
+    /// The Smart-p heuristic reads this to decide whether bare `p` should read
+    /// the kill ring head or the system clipboard.
+    pub(super) last_command: Option<Cow<'static, str>>,
     pub(super) should_quit: bool,
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
@@ -461,8 +473,10 @@ impl Editor {
             wait_char: None,
             pending_char: None,
             registers: RegisterSet::new(),
+            kill_ring: KillRing::new(),
             clipboard: clipboard::SystemClipboard::new(),
             register_prefix: None,
+            last_command: None,
             should_quit: false,
             minibuf: None,
             completion: None,
@@ -1511,6 +1525,10 @@ impl Editor {
     /// Saves and restores `last_action` so replay does not corrupt dot-repeat.
     pub(crate) fn drain_replay_queue(&mut self) {
         let saved_action = self.last_action.take();
+        // Freeze the Smart-p heuristic for the duration: individual commands
+        // inside the macro must not update last_command (is_replaying gates that),
+        // and after replay p should read the clipboard, not the ring.
+        self.last_command = Some(Cow::Borrowed("macro-replay"));
         self.is_replaying = true;
         while let Some(key) = self.replay_queue.pop_front() {
             self.handle_key(key);
@@ -1711,8 +1729,10 @@ impl Editor {
             wait_char: None,
             pending_char: None,
             registers: RegisterSet::new(),
-            clipboard: clipboard::SystemClipboard::new(),
+            kill_ring: KillRing::new(),
+            clipboard: clipboard::SystemClipboard::new_unavailable(),
             register_prefix: None,
+            last_command: None,
             should_quit: false,
             minibuf: None,
             completion: None,

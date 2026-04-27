@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crossterm::event::KeyEvent;
 
@@ -19,12 +19,14 @@ use crate::core::text::Text;
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
-// DEFAULT_REGISTER is an internal sentinel used when the user does not name a
-// register explicitly. It is never typed — the editor layer writes to it
-// automatically on every yank/delete.
+// DEFAULT_REGISTER was an internal sentinel for the default register before
+// Smart-p. Retained only for tests that verify the register `'"'` was not
+// written to by bare yank/delete (the kill ring is used instead).
 
-/// The default register — receives all yanks and deletes when the user does not
-/// name an explicit register. This is an internal sentinel; users never type it.
+/// The `"` character that was once used as the default register name.
+/// Only referenced in tests; the kill ring has replaced the default register
+/// for bare yank/change/delete.
+#[cfg(test)]
 pub(crate) const DEFAULT_REGISTER: char = '"';
 
 /// The black-hole register (`b`) — writes are silently discarded, reads return `None`.
@@ -114,8 +116,6 @@ impl Register {
 /// Each register holds a [`RegisterContent`] — either yanked text or a recorded macro.
 ///
 /// Special registers (enforced here):
-/// - `DEFAULT_REGISTER` (`'"'`): internal default; all yanks/deletes go here
-///   when no register is explicitly named.
 /// - `BLACK_HOLE_REGISTER` (`'b'`): writes discarded silently; reads return `None`.
 ///
 /// Named registers `'0'`–`'9'` are user storage. Special registers `'c'`
@@ -164,6 +164,101 @@ impl RegisterSet {
     }
 }
 
+// ── KillRing ──────────────────────────────────────────────────────────────────
+
+/// Bounded ring buffer of deleted / yanked text entries.
+///
+/// Newest entry is always at index 0 (the "head"). The 10 slots map 1-to-1
+/// with the named registers `"0`–`"9`, giving every ring entry two access
+/// paths: `"<digit>p` by name and `[`/`]` by cycling.
+///
+/// The cycle cursor (`cycle`) tracks the current `[`/`]` paste position and is
+/// reset whenever any command other than `paste-ring-older` / `paste-ring-newer`
+/// is dispatched.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct KillRing {
+    /// Entries newest-first; max `KILL_RING_DEPTH` entries.
+    entries: VecDeque<Vec<String>>,
+    /// Active `[`/`]` cycle position; `None` means idle (head will be used next).
+    pub(crate) cycle: Option<usize>,
+}
+
+/// Maximum number of entries the kill ring retains, matching the 10 named
+/// digit registers `"0`–`"9`.
+pub(crate) const KILL_RING_DEPTH: usize = 10;
+
+impl KillRing {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Push a new entry to the head of the ring, evicting the oldest if full.
+    /// Resets the cycle cursor so the next `[`/`]` starts from the new head.
+    pub(crate) fn push(&mut self, values: Vec<String>) {
+        self.entries.push_front(values);
+        if self.entries.len() > KILL_RING_DEPTH {
+            self.entries.pop_back();
+        }
+        self.cycle = None;
+    }
+
+    /// Borrow the head entry (most recently pushed), if any.
+    pub(crate) fn head(&self) -> Option<&[String]> {
+        self.entries.front().map(Vec::as_slice)
+    }
+
+    /// Borrow ring slot `n` (0-based), where 0 = head.
+    ///
+    /// Used by `"<digit>p` to read the N-th most recent entry.
+    pub(crate) fn slot(&self, n: usize) -> Option<&[String]> {
+        self.entries.get(n).map(Vec::as_slice)
+    }
+
+    /// Advance the cycle cursor one step older and return that entry.
+    ///
+    /// `None → Some(1)`, `Some(n) → Some(n+1)`, clamped at `entries.len() - 1`.
+    /// Returns `None` when the ring is empty.
+    pub(crate) fn cycle_older(&mut self) -> Option<&[String]> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let next = match self.cycle {
+            None => 1,
+            Some(n) => (n + 1).min(self.entries.len() - 1),
+        };
+        self.cycle = Some(next);
+        self.entries.get(next).map(Vec::as_slice)
+    }
+
+    /// Retreat the cycle cursor one step newer and return that entry.
+    ///
+    /// `None → Some(0)` (head), `Some(n) → Some(n.saturating_sub(1))`.
+    /// Returns `None` when the ring is empty.
+    pub(crate) fn cycle_newer(&mut self) -> Option<&[String]> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let next = match self.cycle {
+            None | Some(0) => 0,
+            Some(n) => n - 1,
+        };
+        self.cycle = Some(next);
+        self.entries.get(next).map(Vec::as_slice)
+    }
+
+    /// Reset the cycle cursor to idle. Called whenever a non-`[`/`]` command
+    /// is dispatched so the next `[` starts from slot 1 (one step past the head).
+    pub(crate) fn reset_cycle(&mut self) {
+        self.cycle = None;
+    }
+
+    /// Number of entries currently in the ring. Used in tests.
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
 /// Extract the text of each selection from the buffer, in document order.
 ///
 /// Returns one `String` per selection. This is the content that gets stored in
@@ -172,7 +267,7 @@ impl RegisterSet {
 /// ```text
 /// let yanked = yank_selections(&buf, &sels);
 /// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
-/// registers.write_text(DEFAULT_REGISTER, yanked);
+/// kill_ring.push(yanked);
 /// ```
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
@@ -363,5 +458,105 @@ mod tests {
         // Empty buffer is just "\n"; cursor on it — yank captures the newline.
         let (buf, sels) = parse_state("-[\n]>");
         assert_eq!(yank_selections(&buf, &sels), vec!["\n"]);
+    }
+
+    // ── KillRing ──────────────────────────────────────────────────────────────
+
+    fn vs(s: &str) -> Vec<String> {
+        vec![s.to_string()]
+    }
+
+    #[test]
+    fn kill_ring_push_head_eviction() {
+        let mut ring = KillRing::new();
+        for i in 0..15usize {
+            ring.push(vs(&i.to_string()));
+        }
+        assert_eq!(ring.len(), KILL_RING_DEPTH);
+        // Head is the last pushed value.
+        assert_eq!(ring.head(), Some(vs("14").as_slice()));
+        // Oldest retained is slot 9 (the 6th push from the end: 14,13,12,11,10,9).
+        assert_eq!(ring.slot(KILL_RING_DEPTH - 1), Some(vs("5").as_slice()));
+    }
+
+    #[test]
+    fn kill_ring_head_empty() {
+        let ring = KillRing::new();
+        assert!(ring.head().is_none());
+    }
+
+    #[test]
+    fn kill_ring_slot_access() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        ring.push(vs("c")); // head
+        assert_eq!(ring.slot(0), Some(vs("c").as_slice())); // head
+        assert_eq!(ring.slot(1), Some(vs("b").as_slice()));
+        assert_eq!(ring.slot(2), Some(vs("a").as_slice()));
+        assert!(ring.slot(3).is_none());
+    }
+
+    #[test]
+    fn kill_ring_cycle_older_clamps() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b")); // head (slot 0)
+        // cycle_older once: slot 1 ("a")
+        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
+        assert_eq!(ring.cycle, Some(1));
+        // cycle_older again: still slot 1 (clamped at len - 1)
+        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
+        assert_eq!(ring.cycle, Some(1));
+    }
+
+    #[test]
+    fn kill_ring_cycle_newer_from_none() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        // cycle_newer with no prior cycle: returns head (slot 0)
+        assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
+        assert_eq!(ring.cycle, Some(0));
+    }
+
+    #[test]
+    fn kill_ring_cycle_older_then_newer() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        ring.push(vs("c")); // head
+        ring.cycle_older(); // slot 1 ("b")
+        ring.cycle_older(); // slot 2 ("a")
+        let result = ring.cycle_newer(); // back to slot 1 ("b")
+        assert_eq!(result, Some(vs("b").as_slice()));
+        assert_eq!(ring.cycle, Some(1));
+    }
+
+    #[test]
+    fn kill_ring_push_resets_cycle() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        ring.cycle_older();
+        assert_eq!(ring.cycle, Some(1));
+        ring.push(vs("c")); // push resets cycle
+        assert_eq!(ring.cycle, None);
+    }
+
+    #[test]
+    fn kill_ring_reset_cycle() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        ring.cycle_older();
+        ring.reset_cycle();
+        assert_eq!(ring.cycle, None);
+    }
+
+    #[test]
+    fn kill_ring_empty_cycle_older_returns_none() {
+        let mut ring = KillRing::new();
+        assert!(ring.cycle_older().is_none());
     }
 }

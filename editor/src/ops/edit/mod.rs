@@ -413,7 +413,7 @@ pub(crate) fn delete_char_backward(
 /// ```text
 /// let yanked = yank_selections(&buf, &sels);
 /// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
-/// registers.write(DEFAULT_REGISTER, yanked);
+/// kill_ring.push(yanked);
 /// ```
 pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and

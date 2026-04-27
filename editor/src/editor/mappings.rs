@@ -573,6 +573,14 @@ impl Editor {
             return;
         };
         {
+            // Reset the kill-ring cycle cursor whenever we leave the `[`/`]` pair.
+            // Must happen before dispatch so the cycle index is clean for the incoming
+            // paste-ring-older/newer commands themselves.
+            const CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-newer"];
+            if !self.is_replaying && !CYCLE_CMDS.contains(&name.as_ref()) {
+                self.kill_ring.reset_cycle();
+            }
+
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
             let char_arg = self.pending_char;
 
@@ -685,6 +693,12 @@ impl Editor {
                     char_arg,
                     insert_keys: Vec::new(),
                 });
+            }
+
+            // Update last_command AFTER dispatch so do_paste reads the *previous*
+            // command, not the paste command itself.
+            if !self.is_replaying {
+                self.last_command = Some(name);
             }
         }
     }

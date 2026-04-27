@@ -680,6 +680,10 @@ fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('y'), cmd!("yank"));
     t.bind_leaf(key!('p'), cmd!("paste-after"));
     t.bind_leaf(key!('P'), cmd!("paste-before"));
+    // Kill-ring cycle: `[` walks older, `]` walks newer; each press also pastes.
+    // These claim the bracket namespace (accepted design trade-off).
+    t.bind_leaf(key!('['), cmd!("paste-ring-older"));
+    t.bind_leaf(key!(']'), cmd!("paste-ring-newer"));
     t.bind_leaf(key!('u'), cmd!("undo"));
     t.bind_leaf(key!('U'), cmd!("redo"));
     // `r` (no Ctrl) → wait for replacement char; `Ctrl+r` → redo.

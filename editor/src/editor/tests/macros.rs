@@ -342,22 +342,10 @@ fn macro_replay_with_count() {
 /// registers. The queue must stay empty and the state unchanged.
 #[test]
 fn macro_replay_of_text_register_is_noop() {
-    use crate::ops::register::DEFAULT_REGISTER;
     let mut ed = editor_from("-[a]>bcd\n");
-
-    // Yank puts text into the default register.
-    ed.handle_key(key('y'));
-    assert!(
-        ed.registers
-            .read(DEFAULT_REGISTER)
-            .and_then(|r| r.as_text())
-            .is_some(),
-        "default register should hold text after yank"
-    );
-
     let before = state(&ed);
 
-    // Try to replay from the default register (which holds text, not a macro).
+    // Write text (not a macro) directly into register '0', then try to replay.
     ed.registers.write_text('0', vec!["some text".into()]);
     ed.handle_key(key('q'));
     assert!(ed.macro_pending.is_some());

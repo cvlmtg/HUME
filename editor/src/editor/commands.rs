@@ -19,13 +19,13 @@ use crate::core::selection::{Selection, SelectionSet};
 use crate::core::text::Text;
 use crate::helpers::is_word_boundary;
 use crate::ops::MotionMode;
-use crate::ops::edit::{delete_selection, insert_char};
+use crate::ops::edit::{delete_selection, insert_char, paste_after, paste_before};
 use crate::ops::surround::wrap_each_selection;
 use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
     find_char_backward, find_char_forward,
 };
-use crate::ops::register::{CLIPBOARD_REGISTER, DEFAULT_REGISTER, SEARCH_REGISTER, yank_selections};
+use crate::ops::register::{CLIPBOARD_REGISTER, SEARCH_REGISTER, yank_selections};
 use crate::ops::search::{
     compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
 };
@@ -171,17 +171,30 @@ pub(super) fn cmd_exit_insert(
 
 // ── Register helpers ──────────────────────────────────────────────────────────
 
+/// Commands that keep the Smart-p heuristic in "ring" mode.
+///
+/// `p` / `P` read the kill-ring head when `last_command` is one of these;
+/// otherwise they fall back to the system clipboard. The `[`/`]` ring-cycle
+/// commands are included so that consecutive pastes keep reading the ring.
+const SMART_P_LAST_CMDS: &[&str] = &[
+    "change",
+    "delete",
+    "paste-after",
+    "paste-before",
+    "paste-ring-older",
+    "paste-ring-newer",
+];
+
 impl Editor {
-    /// Return the register targeted by the current command.
+    /// Consume the pending `"<reg>` prefix and return the explicit register name,
+    /// or `None` if no prefix was typed (bare default case).
     ///
-    /// If the user supplied a `"<reg>` prefix, that register is consumed (one-shot)
-    /// and returned. Otherwise the default register is returned. Call once per
-    /// command at entry — calling twice returns `DEFAULT_REGISTER` on the second
-    /// call because the pending state is cleared by `take()`.
-    pub(super) fn active_register(&mut self) -> char {
+    /// Call once per command at entry — calling twice returns `None` on the
+    /// second call because the pending state is cleared by `take()`.
+    pub(super) fn take_register_prefix(&mut self) -> Option<char> {
         match self.register_prefix.take() {
-            Some(RegisterPrefix::Selected(c)) => c,
-            _ => DEFAULT_REGISTER,
+            Some(RegisterPrefix::Selected(c)) => Some(c),
+            _ => None,
         }
     }
 
@@ -202,7 +215,20 @@ impl Editor {
         }
     }
 
-    /// Read text from `name`, routing `'c'` through the OS clipboard.
+    /// Write `values` to the system clipboard only (no kill-ring push).
+    fn write_clipboard(&mut self, values: &[String]) {
+        let blob = values.join("\n");
+        if let Err(e) = self.clipboard.write(&blob) {
+            self.warn_clipboard_unavailable(&e);
+        }
+        self.registers.write_text(CLIPBOARD_REGISTER, values.to_vec());
+    }
+
+    /// Read text from an explicitly named register.
+    ///
+    /// `'c'` → OS clipboard (with in-memory fallback).
+    /// `'0'`–`'9'` → kill-ring slot N (fallback to in-memory if ring slot empty).
+    /// All others → in-memory `RegisterSet`.
     ///
     /// On clipboard failure logs a warning and falls back to the in-memory mirror.
     pub(super) fn read_register_text(&mut self, name: char) -> Option<Vec<String>> {
@@ -214,8 +240,25 @@ impl Editor {
                     self.read_in_memory(CLIPBOARD_REGISTER)
                 }
             }
+        } else if name.is_ascii_digit() {
+            let slot = (name as u8 - b'0') as usize;
+            self.kill_ring
+                .slot(slot)
+                .map(|s| s.to_vec())
+                .or_else(|| self.read_in_memory(name))
         } else {
             self.read_in_memory(name)
+        }
+    }
+
+    /// Read clipboard text (for Smart-p fallback).
+    fn read_clipboard_text(&mut self) -> Option<Vec<String>> {
+        match self.clipboard.read() {
+            Ok(text) => Some(vec![text]),
+            Err(e) => {
+                self.warn_clipboard_unavailable(&e);
+                self.read_in_memory(CLIPBOARD_REGISTER)
+            }
         }
     }
 
@@ -234,51 +277,77 @@ impl Editor {
 // ── Edit composites ───────────────────────────────────────────────────────────
 
 /// Yank selections into the active register, then delete them.
+///
+/// **Bare default** (no `"<reg>` prefix): pushes to the kill ring only.
+/// Clipboard is not written — use `"cy` / `"cp` for explicit clipboard ops.
+///
+/// **Explicit register**: routes through `write_register` as before.
 pub(super) fn cmd_delete(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.doc_edit(delete_selection);
-    ed.write_register(reg, yanked);
+    match ed.take_register_prefix() {
+        None => ed.kill_ring.push(yanked),
+        Some(reg) => ed.write_register(reg, yanked),
+    }
     Ok(())
 }
 
 /// Yank, delete, then enter insert mode — all in one undo group.
 ///
-/// `begin_insert_session` opens the group so the delete and everything typed
-/// before Esc form one undo step.
+/// **Bare default**: pushes to kill ring only. Same Smart-p routing as `cmd_delete`.
 pub(super) fn cmd_change(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.begin_insert_session();
     ed.doc_edit_grouped(delete_selection);
-    // write_register after begin_insert_session so the clipboard warning (if
-    // any) is logged after the keystroke-recording session opens, not during it.
-    ed.write_register(reg, yanked);
+    match ed.take_register_prefix() {
+        // write after begin_insert_session so any clipboard warning is logged
+        // after the keystroke-recording session opens, not during it.
+        None => ed.kill_ring.push(yanked),
+        Some(reg) => ed.write_register(reg, yanked),
+    }
     Ok(())
 }
 
-/// Yank selections into the active register without deleting.
+/// Yank selections without deleting.
+///
+/// **Bare default**: writes to the system clipboard AND pushes to the kill ring.
+/// This is the only operation that reaches both destinations without an explicit
+/// prefix — the intent of bare `y` is always "I want this in the clipboard".
+///
+/// **Explicit register**: routes through `write_register` (e.g. `"cy` → clipboard
+/// only, `"5y` → in-memory register 5).
 pub(super) fn cmd_yank(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
-    ed.write_register(reg, yanked);
+    match ed.take_register_prefix() {
+        None => {
+            ed.write_clipboard(&yanked);
+            ed.kill_ring.push(yanked);
+        }
+        Some(reg) => ed.write_register(reg, yanked),
+    }
     Ok(())
 }
 
-/// Shared body for paste commands: read the active register, run `paste_fn`,
-/// then write displaced text back if any selection was non-cursor (replace-and-swap).
+/// Shared body for paste commands: resolve what to read (Smart-p or explicit
+/// register), run `paste_fn`, then write displaced text back if any selection
+/// was non-cursor (replace-and-swap).
+///
+/// **Bare default** (no `"<reg>` prefix): Smart-p — ring head or clipboard.
+/// **`"<digit>`**: kill-ring slot N.
+/// **`"c`**: system clipboard.
+/// **`"b`**: black hole (paste always no-ops).
 fn do_paste(
     ed: &mut Editor,
     paste_fn: impl Fn(
@@ -292,13 +361,45 @@ fn do_paste(
         Vec<String>,
     ),
 ) {
-    let reg = ed.active_register();
-    if let Some(values) = ed.read_register_text(reg) {
+    // Determine source and whether we should write displaced text back.
+    enum PasteSource { Ring, Clipboard, Register(char) }
+    let (values, source) = match ed.take_register_prefix() {
+        None => {
+            let prefer_ring = ed
+                .last_command
+                .as_deref()
+                .is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
+            if prefer_ring {
+                let v = ed.kill_ring.head().map(|s| s.to_vec());
+                (v, PasteSource::Ring)
+            } else {
+                let v = ed.read_clipboard_text();
+                (v, PasteSource::Clipboard)
+            }
+        }
+        Some(c) if c.is_ascii_digit() => {
+            let slot = (c as u8 - b'0') as usize;
+            let v = ed.kill_ring.slot(slot).map(|s| s.to_vec())
+                .or_else(|| ed.read_in_memory(c));
+            (v, PasteSource::Ring)
+        }
+        Some(c) => {
+            let v = ed.read_register_text(c);
+            (v, PasteSource::Register(c))
+        }
+    };
+
+    if let Some(values) = values {
         let (displaced, _cs) = ed.doc_edit(|b, s| paste_fn(b, s, &values));
         if let Some(displaced) = displaced
             && displaced.iter().any(|s| !s.is_empty())
         {
-            ed.write_register(reg, displaced);
+            // Write displaced text back to the same source that was read from.
+            match source {
+                PasteSource::Ring => ed.kill_ring.push(displaced),
+                PasteSource::Clipboard => ed.write_clipboard(&displaced),
+                PasteSource::Register(c) => ed.write_register(c, displaced),
+            }
         }
     }
 }
@@ -310,7 +411,6 @@ pub(super) fn cmd_paste_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    use crate::ops::edit::paste_after;
     do_paste(ed, paste_after);
     Ok(())
 }
@@ -321,8 +421,37 @@ pub(super) fn cmd_paste_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    use crate::ops::edit::paste_before;
     do_paste(ed, paste_before);
+    Ok(())
+}
+
+/// Cycle the kill ring one step older and paste-after.
+///
+/// Each press walks one entry further back in the ring (clamped at the oldest).
+/// The cycle cursor is reset by any non-`[`/`]` command dispatch.
+pub(super) fn cmd_paste_ring_older(
+    ed: &mut Editor,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    if let Some(values) = ed.kill_ring.cycle_older().map(|s| s.to_vec()) {
+        ed.doc_edit(|b, s| paste_after(b, s, &values));
+    }
+    Ok(())
+}
+
+/// Cycle the kill ring one step newer and paste-after.
+///
+/// Retreats the cycle cursor one step toward the head. If the cursor is already
+/// at the head (slot 0), stays there.
+pub(super) fn cmd_paste_ring_newer(
+    ed: &mut Editor,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    if let Some(values) = ed.kill_ring.cycle_newer().map(|s| s.to_vec()) {
+        ed.doc_edit(|b, s| paste_after(b, s, &values));
+    }
     Ok(())
 }
 
