@@ -949,6 +949,20 @@ impl CommandRegistry {
         )
         .repeatable()
         .reg(self);
+        ecmd(
+            "paste-ring-older",
+            "Cycle kill ring one step older and paste-after.",
+            cmd_paste_ring_older,
+        )
+        .repeatable()
+        .reg(self);
+        ecmd(
+            "paste-ring-newer",
+            "Cycle kill ring one step newer and paste-after.",
+            cmd_paste_ring_newer,
+        )
+        .repeatable()
+        .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd("redo", "Redo the last undone change.", cmd_redo).reg(self);
 
@@ -1304,7 +1318,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 127;
+    const EXPECTED_COMMAND_COUNT: usize = 129;
 
     #[test]
     fn registry_has_expected_count() {

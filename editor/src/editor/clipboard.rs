@@ -29,6 +29,16 @@ impl SystemClipboard {
         }
     }
 
+    /// Create a clipboard instance whose handle is already dropped.
+    ///
+    /// All read/write calls return `Err`, hitting the in-memory fallback.
+    /// Used by `Editor::for_testing` so proptest never reaches the real
+    /// NSPasteboard (which throws uncatchable ObjC exceptions in test threads).
+    #[cfg(test)]
+    pub(crate) fn new_unavailable() -> Self {
+        Self { handle: None }
+    }
+
     /// Drop the clipboard handle, forcing all subsequent read/write calls to fail.
     /// Used in tests to exercise the in-memory fallback path without requiring
     /// a real clipboard server.
