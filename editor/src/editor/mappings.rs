@@ -488,24 +488,6 @@ impl Editor {
             WalkResult::NoMatch => {
                 self.pending_keys.clear();
                 self.count = None;
-
-                // Pair-wrap: unbound pair-open key with a non-collapsed selection → wrap.
-                if let KeyCode::Char(ch) = key.code
-                    && !key.modifiers.contains(KeyModifiers::CONTROL)
-                {
-                    let (ap_enabled, ap_pairs) =
-                        self.doc().overrides.auto_pairs_ref(&self.settings);
-                    if ap_enabled
-                        && let Some(pair) = ap_pairs.iter().find(|p| p.open == ch)
-                        && self
-                            .current_selections()
-                            .iter_sorted()
-                            .any(|s| !s.is_collapsed())
-                    {
-                        let (open, close) = (pair.open, pair.close);
-                        self.doc_edit(|b, s| insert_pair_close(b, s, open, close));
-                    }
-                }
             }
         }
     }

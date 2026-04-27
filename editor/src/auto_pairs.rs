@@ -24,18 +24,13 @@ impl Pair {
 // ── Edit functions ────────────────────────────────────────────────────────────
 
 /// Insert an opening bracket and its matching close, placing the cursor
-/// between them. If the selection is non-empty, wrap the selected text with
-/// the pair instead.
+/// between them.
 ///
 /// **Cursor selection** (anchor == head):
 /// - Inserts `open` + `close` at the cursor position.
 /// - Cursor lands on `close` so subsequent typed characters appear between
 ///   the pair (HUME's inclusive model: cursor sits on the character it will
 ///   displace, so typing pushes it right without an extra motion).
-///
-/// **Non-cursor selection**:
-/// - Wraps the selected text: `open` + selected_text + `close`.
-/// - Cursor lands on `close`.
 ///
 /// Multi-cursor: every selection is processed independently by `apply_edit`.
 pub(crate) fn insert_pair_close(
@@ -44,30 +39,14 @@ pub(crate) fn insert_pair_close(
     open: char,
     close: char,
 ) -> (Text, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    apply_edit(buf, sels, |b, _buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
-
-        if sel.is_collapsed() {
-            // Simple auto-close: insert open + close.
-            b.insert_char(open);
-            b.insert_char(close);
-            // Cursor on `close`. new_pos - 1 is safe: we just inserted 2 chars.
-            new_sels.push(Selection::collapsed(b.new_pos() - 1));
-        } else {
-            // Wrap selection: read the selected text, delete it, re-insert
-            // with open/close around it.
-            let end_incl = sel
-                .end_inclusive(buf)
-                .min(buf.len_chars().saturating_sub(2));
-            let selected: String = buf.slice(start..end_incl + 1).to_string();
-            b.delete(end_incl + 1 - start);
-            b.insert_char(open);
-            b.insert(&selected);
-            b.insert_char(close);
-            // Cursor on the close bracket. new_pos - 1 is safe: we just inserted open + selected + close (≥ 2 chars).
-            new_sels.push(Selection::collapsed(b.new_pos() - 1));
-        }
+        // Simple auto-close: insert open + close.
+        b.insert_char(open);
+        b.insert_char(close);
+        // Cursor on `close`. new_pos - 1 is safe: we just inserted 2 chars.
+        new_sels.push(Selection::collapsed(b.new_pos() - 1));
     })
 }
 
@@ -209,44 +188,6 @@ mod tests {
             "-[a]>b-[c]>d\n",
             |(buf, sels)| insert_pair_close(buf, sels, '(', ')'),
             "(-[)]>ab(-[)]>cd\n"
-        );
-    }
-
-    // ── insert_pair_close — wrap selection ────────────────────────────────────
-
-    #[test]
-    fn wrap_forward_selection() {
-        assert_state!(
-            "-[hello]>\n",
-            |(buf, sels)| insert_pair_close(buf, sels, '(', ')'),
-            "(hello-[)]>\n"
-        );
-    }
-
-    #[test]
-    fn wrap_backward_selection() {
-        assert_state!(
-            "<[hello]-\n",
-            |(buf, sels)| insert_pair_close(buf, sels, '(', ')'),
-            "(hello-[)]>\n"
-        );
-    }
-
-    #[test]
-    fn wrap_partial_word() {
-        assert_state!(
-            "foo -[bar]> baz\n",
-            |(buf, sels)| insert_pair_close(buf, sels, '[', ']'),
-            "foo [bar-[]]> baz\n"
-        );
-    }
-
-    #[test]
-    fn wrap_multi_cursor_selections() {
-        assert_state!(
-            "-[ab]>c-[de]>f\n",
-            |(buf, sels)| insert_pair_close(buf, sels, '(', ')'),
-            "(ab-[)]>c(de-[)]>f\n"
         );
     }
 

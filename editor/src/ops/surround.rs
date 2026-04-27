@@ -6,9 +6,11 @@
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 
+use crate::core::changeset::ChangeSet;
 use crate::core::selection::{Selection, SelectionSet};
 use crate::core::text::Text;
 use crate::ops::MotionMode;
+use crate::ops::edit::apply_edit;
 use crate::ops::pair::{find_bracket_pair, find_quote_pair};
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
@@ -42,6 +44,34 @@ fn is_closing(ch: char) -> bool {
 
 fn is_symmetric(ch: char) -> bool {
     PAIRS.iter().any(|&(o, c)| o == c && o == ch)
+}
+
+// ── Wrap selections ──────────────────────────────────────────────────────────
+
+/// Wrap every selection — including single-char cursors — with `open` + selected_text + `close`.
+///
+/// Cursor placement: lands on the `close` character after the wrapped content.
+/// Multi-cursor: each selection is wrapped independently via `apply_edit`.
+pub(crate) fn wrap_each_selection(
+    buf: Text,
+    sels: SelectionSet,
+    open: char,
+    close: char,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let start = sel.start();
+        b.retain(start - b.old_pos());
+        let end_incl = sel
+            .end_inclusive(buf)
+            .min(buf.len_chars().saturating_sub(2));
+        let selected: String = buf.slice(start..end_incl + 1).to_string();
+        b.delete(end_incl + 1 - start);
+        b.insert_char(open);
+        b.insert(&selected);
+        b.insert_char(close);
+        // Cursor on the close char. new_pos - 1 is safe: we inserted open + selected + close (≥ 2 chars).
+        new_sels.push(Selection::collapsed(b.new_pos() - 1));
+    })
 }
 
 // ── Smart replace resolution ─────────────────────────────────────────────────
@@ -143,6 +173,7 @@ surround_cmd!(cmd_surround_backtick, quote, '`');
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_state;
     use crate::core::selection::{Selection, SelectionSet};
     use crate::core::text::Text;
 
@@ -345,5 +376,52 @@ mod tests {
     #[test]
     fn smart_replace_non_pair_replacement_literal() {
         assert_eq!(smart_replace_char('x', '(', 0), 'x');
+    }
+
+    // ── wrap_each_selection ──────────────────────────────────────────────────
+
+    #[test]
+    fn wrap_cursor_selection() {
+        assert_state!(
+            "-[h]>ello\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '[', ']'),
+            "[h-[]]>ello\n"
+        );
+    }
+
+    #[test]
+    fn wrap_forward_selection() {
+        assert_state!(
+            "-[hello]>\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+            "(hello-[)]>\n"
+        );
+    }
+
+    #[test]
+    fn wrap_backward_selection() {
+        assert_state!(
+            "<[hello]-\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+            "(hello-[)]>\n"
+        );
+    }
+
+    #[test]
+    fn wrap_partial_word() {
+        assert_state!(
+            "foo -[bar]> baz\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '[', ']'),
+            "foo [bar-[]]> baz\n"
+        );
+    }
+
+    #[test]
+    fn wrap_multi_cursor_selections() {
+        assert_state!(
+            "-[ab]>c-[de]>f\n",
+            |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+            "(ab-[)]>c(de-[)]>f\n"
+        );
     }
 }

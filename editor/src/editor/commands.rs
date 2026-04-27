@@ -20,6 +20,7 @@ use crate::core::text::Text;
 use crate::helpers::is_word_boundary;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, insert_char};
+use crate::ops::surround::wrap_each_selection;
 use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
     find_char_backward, find_char_forward,
@@ -476,6 +477,31 @@ pub(super) fn cmd_replace(
     if let Some(ch) = ed.pending_char.take() {
         ed.doc_edit(|b, s| replace_selections(b, s, ch));
     }
+    Ok(())
+}
+
+// ── Surround add ─────────────────────────────────────────────────────────────
+
+/// Wrap every selection with a pair determined by the next typed character.
+///
+/// Reads the delimiter from `ed.pending_char`. Looks up the configured pair
+/// (so `mw[` and `mw]` both wrap with `[` `]`); falls back to symmetric
+/// (open == close == ch) for characters not in any configured pair (e.g. `mw*`).
+pub(super) fn cmd_surround_add(
+    ed: &mut Editor,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let Some(ch) = ed.pending_char.take() else {
+        return Ok(());
+    };
+    let (_ap_enabled, ap_pairs) = ed.doc().overrides.auto_pairs_ref(&ed.settings);
+    let (open, close) = ap_pairs
+        .iter()
+        .find(|p| p.open == ch || p.close == ch)
+        .map(|p| (p.open, p.close))
+        .unwrap_or((ch, ch));
+    ed.doc_edit(|b, s| wrap_each_selection(b, s, open, close));
     Ok(())
 }
 

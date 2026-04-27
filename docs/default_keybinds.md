@@ -126,6 +126,21 @@ Selects both delimiters of the surrounding pair (useful before `d`, `r`, etc.).
 | `m s '` | Surrounding `'...'` |
 | `m s `` ` `` | Surrounding `` `...` `` |
 
+### Surround Add (`m w`)
+
+Wrap each selection with a delimiter pair. Press `m w` then a character; if it's a configured pair char, the selection is wrapped with the matching open/close pair. Any other character wraps symmetrically with itself on both sides.
+
+| Sequence | Wraps with |
+|----------|------------|
+| `m w (` or `)` | `( … )` |
+| `m w [` or `]` | `[ … ]` |
+| `m w {` or `}` | `{ … }` |
+| `m w <` or `>` | `< … >` |
+| `m w "` | `" … "` |
+| `m w '` | `' … '` |
+| `m w `` ` `` | `` ` … ` `` |
+| `m w <other>` | `<other> … <other>` |
+
 ### Edit
 
 | Key | Command |
