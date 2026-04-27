@@ -153,9 +153,8 @@ fn auto_pairs_auto_delete_mixed_cursors() {
 
 // ── Normal-mode pair chars ────────────────────────────────────────────────────
 //
-// Surround-add is now `mw<char>`, not the old NoMatch fallback.
-// Pressing a bare pair char in Normal mode is a no-op (unbound or runs its
-// existing keybind) — it never wraps a selection.
+// In Normal mode, pair characters are no-ops or run their existing keybind.
+// Wrapping a selection requires the explicit `mw<char>` command.
 
 /// `"` is the register-prefix key — starts the register prefix, not a wrap.
 #[test]
@@ -181,6 +180,7 @@ fn normal_wrap_bound_key_not_intercepted() {
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
 
+/// Collapsed cursor + `"` — register-prefix mode entered, buffer unchanged.
 #[test]
 fn normal_wrap_noop_on_cursor() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
@@ -188,6 +188,7 @@ fn normal_wrap_noop_on_cursor() {
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
 }
 
+/// Multi-cursor: `"` arms register-prefix, no wrapping occurs.
 #[test]
 fn normal_wrap_multi_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
@@ -195,6 +196,7 @@ fn normal_wrap_multi_cursor() {
     assert_eq!(state(&ed), "-[foo]> -[bar]>\n");
 }
 
+/// Multi-line selection + `"` — register-prefix mode, buffer unchanged.
 #[test]
 fn normal_wrap_multi_line_selection() {
     let mut ed = editor_from("-[foo\nbar]> baz\n");
@@ -202,6 +204,7 @@ fn normal_wrap_multi_line_selection() {
     assert_eq!(state(&ed), "-[foo\nbar]> baz\n");
 }
 
+/// Auto-pairs off: `"` still only arms the register-prefix.
 #[test]
 fn normal_wrap_disabled_when_auto_pairs_off() {
     let mut ed = editor_from("foo -[bar]> baz\n");

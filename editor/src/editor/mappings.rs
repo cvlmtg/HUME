@@ -22,29 +22,12 @@ use super::Severity;
 use super::keymap::{WaitCharPending, WalkResult};
 use engine::types::EditorMode;
 
-use crate::ops::register::MACRO_REGISTER;
+use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
 use super::{Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
 use crate::scripting::EditorSteelRefs;
 
-/// Valid register names for macro recording/replay: `q` (default) and `0`–`9`.
-///
-/// `q` is the default macro register (`QQ`/`qq`). The digits `0`–`9` are the
-/// named storage registers. Other letters (special registers like `b`, `c`, `s`)
-/// are not valid macro targets.
-fn is_valid_macro_register(ch: char) -> bool {
-    ch == MACRO_REGISTER || ch.is_ascii_digit()
-}
-
-/// Valid register names for the `"<reg>` explicit-register prefix.
-///
-/// Accepts the 10 named storage registers (`0`–`9`), black hole (`b`), and
-/// clipboard (`c`). The default register (`"`) and search register (`s`) are
-/// intentionally excluded — users cannot explicitly name them.
-fn is_valid_register_name(ch: char) -> bool {
-    ch.is_ascii_digit() || ch == crate::ops::register::CLIPBOARD_REGISTER || ch == crate::ops::register::BLACK_HOLE_REGISTER
-}
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.
 ///
@@ -186,8 +169,7 @@ impl Editor {
             self.pending_keys.clear();
             self.count = None;
             self.macro_pending = None; // cancel any pending q/Q register-name prompt
-            self.register_prefix = None; // cancel any pending "<reg> awaiting-name state
-            self.register_pending = None; // cancel any pending "<reg> register selection
+            self.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
             if self.mode == EditorMode::Extend {
                 self.mode = EditorMode::Normal;
@@ -248,11 +230,12 @@ impl Editor {
         // After `"`, the next keypress names the register for the upcoming
         // yank/delete/change/paste. Valid names: '0'–'9', 'b' (black hole), 'c'
         // (clipboard). Invalid chars or Esc cancel silently.
-        if let Some(RegisterPrefix::AwaitingName) = self.register_prefix.take() {
+        if let Some(RegisterPrefix::Awaiting) = self.register_prefix {
+            self.register_prefix = None;
             if let KeyCode::Char(ch) = key.code
                 && is_valid_register_name(ch)
             {
-                self.register_pending = Some(ch);
+                self.register_prefix = Some(RegisterPrefix::Selected(ch));
             }
             // Invalid char or non-Char key: cancel silently (key is swallowed).
             // Count accumulated before `"` is preserved for the next command.
@@ -308,7 +291,7 @@ impl Editor {
                     // Register prefix: `"<reg>` selects the named register for the
                     // upcoming yank/delete/change/paste. Set pending state; the next
                     // keypress will be consumed as the register name.
-                    self.register_prefix = Some(RegisterPrefix::AwaitingName);
+                    self.register_prefix = Some(RegisterPrefix::Awaiting);
                     return;
                 }
                 _ => {}

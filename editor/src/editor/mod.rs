@@ -112,13 +112,12 @@ pub(super) enum MacroPending {
 }
 
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
-///
-/// Set when the user presses `"` in normal mode; cleared when the next keypress
-/// is consumed as the register name (or cancelled on Esc / invalid input).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RegisterPrefix {
-    /// `"` was pressed — waiting for a register name.
-    AwaitingName,
+    /// `"` pressed — waiting for the register-name character.
+    Awaiting,
+    /// Register name received; armed for the next yank/delete/change/paste.
+    Selected(char),
 }
 
 // ── Find/till state ───────────────────────────────────────────────────────────
@@ -180,16 +179,12 @@ pub(crate) struct Editor {
     /// `None` handle when the clipboard server is unreachable (headless CI/SSH).
     /// Must not be placed in the Steel context — `arboard::Clipboard` is not Send.
     pub(super) clipboard: clipboard::SystemClipboard,
-    /// Pending two-keystroke register-prefix command.
+    /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     ///
-    /// Set when `"` is pressed; the next keypress is consumed as the register name.
-    /// Cleared (and cancelled) on Esc or invalid input.
+    /// `None` = idle. `Some(Awaiting)` = `"` pressed, next char is the register name.
+    /// `Some(Selected(c))` = register armed for the next yank/delete/change/paste.
+    /// Consumed by `active_register()`; cleared on Esc or invalid input.
     pub(super) register_prefix: Option<RegisterPrefix>,
-    /// Register selected by the `"<reg>` prefix for the next yank/delete/change/paste.
-    ///
-    /// `None` means use `DEFAULT_REGISTER`. Consumed (set back to `None`) by
-    /// `active_register()` after one operation, and cleared on Esc.
-    pub(super) register_pending: Option<char>,
     pub(super) should_quit: bool,
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
@@ -468,7 +463,6 @@ impl Editor {
             registers: RegisterSet::new(),
             clipboard: clipboard::SystemClipboard::new(),
             register_prefix: None,
-            register_pending: None,
             should_quit: false,
             minibuf: None,
             completion: None,
@@ -1719,7 +1713,6 @@ impl Editor {
             registers: RegisterSet::new(),
             clipboard: clipboard::SystemClipboard::new(),
             register_prefix: None,
-            register_pending: None,
             should_quit: false,
             minibuf: None,
             completion: None,
