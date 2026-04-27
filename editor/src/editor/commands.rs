@@ -24,7 +24,7 @@ use crate::ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
     find_char_backward, find_char_forward,
 };
-use crate::ops::register::{DEFAULT_REGISTER, SEARCH_REGISTER, yank_selections};
+use crate::ops::register::{CLIPBOARD_REGISTER, DEFAULT_REGISTER, SEARCH_REGISTER, yank_selections};
 use crate::ops::search::{
     compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
 };
@@ -168,17 +168,87 @@ pub(super) fn cmd_exit_insert(
     Ok(())
 }
 
+// ── Register helpers ──────────────────────────────────────────────────────────
+
+impl Editor {
+    /// Return the register targeted by the current command.
+    ///
+    /// If the user supplied a `"<reg>` prefix (stored in `register_pending`),
+    /// that register is consumed (one-shot) and returned. Otherwise the default
+    /// register is returned. Call once per command at entry — calling twice would
+    /// return `DEFAULT_REGISTER` on the second call because the pending is cleared.
+    pub(super) fn active_register(&mut self) -> char {
+        self.register_pending.take().unwrap_or(DEFAULT_REGISTER)
+    }
+
+    /// Write `values` to a named register, routing `'c'` through the OS clipboard.
+    ///
+    /// For the clipboard register (`'c'`):
+    ///   - Serialises the values to a single blob (`values.join("\n")`) and writes
+    ///     to the OS clipboard via `arboard`. On failure, logs a warning once.
+    ///   - Always also writes to the in-memory register `'c'` as a mirror, so
+    ///     subsequent reads work even when the clipboard server is unavailable.
+    ///
+    /// For all other registers: delegates to `RegisterSet::write_text`.
+    pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
+        if name == CLIPBOARD_REGISTER {
+            let blob = values.join("\n");
+            if let Err(e) = self.clipboard.write(&blob) {
+                self.report(
+                    super::Severity::Warning,
+                    format!("system clipboard unavailable ({e}), using in-memory 'c'"),
+                );
+            }
+            // Always mirror to in-memory so reads fall back correctly.
+            self.registers.write_text(CLIPBOARD_REGISTER, values);
+        } else {
+            self.registers.write_text(name, values);
+        }
+    }
+
+    /// Read text from a named register, routing `'c'` through the OS clipboard.
+    ///
+    /// For the clipboard register (`'c'`):
+    ///   - Reads from the OS clipboard. On success, normalises CRLF to LF.
+    ///   - On failure, logs a warning and falls back to the in-memory mirror.
+    ///
+    /// For all other registers: delegates to `RegisterSet::read`.
+    pub(super) fn read_register_text(&mut self, name: char) -> Option<Vec<String>> {
+        if name == CLIPBOARD_REGISTER {
+            match self.clipboard.read() {
+                Ok(text) => Some(vec![text.replace("\r\n", "\n")]),
+                Err(e) => {
+                    self.report(
+                        super::Severity::Warning,
+                        format!("system clipboard unavailable ({e}), using in-memory 'c'"),
+                    );
+                    self.registers
+                        .read(CLIPBOARD_REGISTER)
+                        .and_then(|r| r.as_text())
+                        .map(|v| v.to_vec())
+                }
+            }
+        } else {
+            self.registers
+                .read(name)
+                .and_then(|r| r.as_text())
+                .map(|v| v.to_vec())
+        }
+    }
+}
+
 // ── Edit composites ───────────────────────────────────────────────────────────
 
-/// Yank selections into the default register, then delete them.
+/// Yank selections into the active register, then delete them.
 pub(super) fn cmd_delete(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.doc_edit(delete_selection);
-    ed.registers.write_text(DEFAULT_REGISTER, yanked);
+    ed.write_register(reg, yanked);
     Ok(())
 }
 
@@ -191,25 +261,29 @@ pub(super) fn cmd_change(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.begin_insert_session();
     ed.doc_edit_grouped(delete_selection);
-    ed.registers.write_text(DEFAULT_REGISTER, yanked);
+    // write_register after the edit group — it may emit a Warning via report(),
+    // which must not land inside the insert-session group.
+    ed.write_register(reg, yanked);
     Ok(())
 }
 
-/// Yank selections into the default register without deleting.
+/// Yank selections into the active register without deleting.
 pub(super) fn cmd_yank(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let reg = ed.active_register();
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
-    ed.registers.write_text(DEFAULT_REGISTER, yanked);
+    ed.write_register(reg, yanked);
     Ok(())
 }
 
-/// Shared body for paste commands: read the default register, run `paste_fn`,
+/// Shared body for paste commands: read the active register, run `paste_fn`,
 /// then write displaced text back if any selection was non-cursor (replace-and-swap).
 fn do_paste(
     ed: &mut Editor,
@@ -224,15 +298,13 @@ fn do_paste(
         Vec<String>,
     ),
 ) {
-    if let Some(reg) = ed.registers.read(DEFAULT_REGISTER)
-        && let Some(values) = reg.as_text()
-    {
-        let values = values.to_vec();
+    let reg = ed.active_register();
+    if let Some(values) = ed.read_register_text(reg) {
         let (displaced, _cs) = ed.doc_edit(|b, s| paste_fn(b, s, &values));
         if let Some(displaced) = displaced
             && displaced.iter().any(|s| !s.is_empty())
         {
-            ed.registers.write_text(DEFAULT_REGISTER, displaced);
+            ed.write_register(reg, displaced);
         }
     }
 }

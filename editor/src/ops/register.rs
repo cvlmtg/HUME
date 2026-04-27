@@ -40,6 +40,11 @@ pub(crate) const SEARCH_REGISTER: char = 's';
 /// Can also hold yanked text if the user explicitly writes to it.
 pub(crate) const MACRO_REGISTER: char = 'q';
 
+/// The system clipboard register (`c`).
+/// Reads and writes the OS clipboard via `arboard`. Falls back to in-memory
+/// storage with a warning when the clipboard is unavailable (headless CI/SSH).
+pub(crate) const CLIPBOARD_REGISTER: char = 'c';
+
 /// The content of a register — either yanked text or a recorded macro.
 ///
 /// Registers are single-slot: the last write wins. Writing a macro to a register
@@ -278,6 +283,7 @@ mod tests {
         assert_eq!(BLACK_HOLE_REGISTER, 'b');
         assert_eq!(SEARCH_REGISTER, 's');
         assert_eq!(MACRO_REGISTER, 'q');
+        assert_eq!(CLIPBOARD_REGISTER, 'c');
     }
 
     // ── yank_selections ───────────────────────────────────────────────────────
