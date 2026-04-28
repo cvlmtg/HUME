@@ -241,24 +241,9 @@ impl Editor {
                 }
             }
         } else if name.is_ascii_digit() {
-            let slot = (name as u8 - b'0') as usize;
-            self.kill_ring
-                .slot(slot)
-                .map(|s| s.to_vec())
-                .or_else(|| self.read_in_memory(name))
+            self.read_digit_register(name)
         } else {
             self.read_in_memory(name)
-        }
-    }
-
-    /// Read clipboard text (for Smart-p fallback).
-    fn read_clipboard_text(&mut self) -> Option<Vec<String>> {
-        match self.clipboard.read() {
-            Ok(text) => Some(vec![text]),
-            Err(e) => {
-                self.warn_clipboard_unavailable(&e);
-                self.read_in_memory(CLIPBOARD_REGISTER)
-            }
         }
     }
 
@@ -271,6 +256,12 @@ impl Editor {
 
     fn read_in_memory(&self, name: char) -> Option<Vec<String>> {
         self.registers.read(name).and_then(|r| r.as_text()).map(|v| v.to_vec())
+    }
+
+    fn read_digit_register(&self, name: char) -> Option<Vec<String>> {
+        debug_assert!(name.is_ascii_digit());
+        let slot = (name as u8 - b'0') as usize;
+        self.kill_ring.slot(slot).map(|s| s.to_vec()).or_else(|| self.read_in_memory(name))
     }
 }
 
@@ -307,9 +298,8 @@ pub(super) fn cmd_change(
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
     ed.begin_insert_session();
     ed.doc_edit_grouped(delete_selection);
+    // After begin_insert_session so clipboard warnings are logged inside the session.
     match ed.take_register_prefix() {
-        // write after begin_insert_session so any clipboard warning is logged
-        // after the keystroke-recording session opens, not during it.
         None => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
     }
@@ -361,7 +351,6 @@ fn do_paste(
         Vec<String>,
     ),
 ) {
-    // Determine source and whether we should write displaced text back.
     enum PasteSource { Ring, Clipboard, Register(char) }
     let (values, source) = match ed.take_register_prefix() {
         None => {
@@ -373,15 +362,12 @@ fn do_paste(
                 let v = ed.kill_ring.head().map(|s| s.to_vec());
                 (v, PasteSource::Ring)
             } else {
-                let v = ed.read_clipboard_text();
+                let v = ed.read_register_text(CLIPBOARD_REGISTER);
                 (v, PasteSource::Clipboard)
             }
         }
         Some(c) if c.is_ascii_digit() => {
-            let slot = (c as u8 - b'0') as usize;
-            let v = ed.kill_ring.slot(slot).map(|s| s.to_vec())
-                .or_else(|| ed.read_in_memory(c));
-            (v, PasteSource::Ring)
+            (ed.read_digit_register(c), PasteSource::Ring)
         }
         Some(c) => {
             let v = ed.read_register_text(c);
@@ -394,7 +380,6 @@ fn do_paste(
         if let Some(displaced) = displaced
             && displaced.iter().any(|s| !s.is_empty())
         {
-            // Write displaced text back to the same source that was read from.
             match source {
                 PasteSource::Ring => ed.kill_ring.push(displaced),
                 PasteSource::Clipboard => ed.write_clipboard(&displaced),
