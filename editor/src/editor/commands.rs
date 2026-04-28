@@ -171,12 +171,19 @@ pub(super) fn cmd_exit_insert(
 
 // ── Register helpers ──────────────────────────────────────────────────────────
 
-/// Commands that keep the Smart-p heuristic in "ring" mode.
-///
-/// `p` / `P` read the kill-ring head when `last_command` is one of these;
-/// otherwise they fall back to the system clipboard. The `[`/`]` ring-cycle
-/// commands are included so that consecutive pastes keep reading the ring.
-const SMART_P_LAST_CMDS: &[&str] = &[
+// ── Kill-ring command name sets ───────────────────────────────────────────────
+// Two aspects of the same lifecycle, kept adjacent so they're maintained
+// together:
+//
+//  SMART_P_LAST_CMDS — the allow-list for the Smart-p heuristic: bare `p`/`P`
+//    reads the kill-ring head when the most recent command is in this set.
+//
+//  RING_CYCLE_CMDS — commands that must NOT reset the `[`/`]` cycle cursor.
+//    Any other dispatched command calls `kill_ring.reset_cycle()`.
+
+/// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
+/// head when `last_command` is one of these; otherwise reads the clipboard.
+pub(super) const SMART_P_LAST_CMDS: &[&str] = &[
     "change",
     "delete",
     "paste-after",
@@ -184,6 +191,10 @@ const SMART_P_LAST_CMDS: &[&str] = &[
     "paste-ring-older",
     "paste-ring-newer",
 ];
+
+/// Commands that must not reset the kill-ring cycle cursor; every other
+/// dispatch resets it so the next `[` starts from slot 1.
+pub(super) const RING_CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-newer"];
 
 impl Editor {
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
@@ -261,7 +272,10 @@ impl Editor {
     fn read_digit_register(&self, name: char) -> Option<Vec<String>> {
         debug_assert!(name.is_ascii_digit());
         let slot = (name as u8 - b'0') as usize;
-        self.kill_ring.slot(slot).map(|s| s.to_vec()).or_else(|| self.read_in_memory(name))
+        // Kill ring is the authoritative source for digit registers — no in-memory
+        // fallback. This keeps "5y (in-memory named slot) and "5p (ring slot N)
+        // orthogonal so a "5y write can never be silently shadowed by an older ring entry.
+        self.kill_ring.slot(slot).map(|s| s.to_vec())
     }
 }
 
@@ -413,14 +427,20 @@ pub(super) fn cmd_paste_before(
 /// Cycle the kill ring one step older and paste-after.
 ///
 /// Each press walks one entry further back in the ring (clamped at the oldest).
-/// The cycle cursor is reset by any non-`[`/`]` command dispatch.
+/// The cycle cursor is reset by any non-`[`/`]` command dispatch, or when
+/// displaced text from a selection paste is pushed onto the ring head.
 pub(super) fn cmd_paste_ring_older(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if let Some(values) = ed.kill_ring.cycle_older().map(|s| s.to_vec()) {
-        ed.doc_edit(|b, s| paste_after(b, s, &values));
+        let (displaced, _cs) = ed.doc_edit(|b, s| paste_after(b, s, &values));
+        if let Some(displaced) = displaced
+            && displaced.iter().any(|s| !s.is_empty())
+        {
+            ed.kill_ring.push(displaced);
+        }
     }
     Ok(())
 }
@@ -428,14 +448,20 @@ pub(super) fn cmd_paste_ring_older(
 /// Cycle the kill ring one step newer and paste-after.
 ///
 /// Retreats the cycle cursor one step toward the head. If the cursor is already
-/// at the head (slot 0), stays there.
+/// at the head (slot 0), stays there. Displaced text from a selection paste is
+/// pushed onto the ring head (resetting the cycle cursor).
 pub(super) fn cmd_paste_ring_newer(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if let Some(values) = ed.kill_ring.cycle_newer().map(|s| s.to_vec()) {
-        ed.doc_edit(|b, s| paste_after(b, s, &values));
+        let (displaced, _cs) = ed.doc_edit(|b, s| paste_after(b, s, &values));
+        if let Some(displaced) = displaced
+            && displaced.iter().any(|s| !s.is_empty())
+        {
+            ed.kill_ring.push(displaced);
+        }
     }
     Ok(())
 }
