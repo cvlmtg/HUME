@@ -681,11 +681,9 @@ fn mil_on_empty_line_is_noop() {
 
 // ── Register prefix `"<reg>` ────────────────────────────────────────────────
 
-/// `"5y` must write text into register '5', leaving DEFAULT_REGISTER empty.
+/// `"5y` must write text into register '5', leaving `'"'` empty.
 #[test]
 fn register_prefix_routes_yank_to_named_register() {
-    use crate::ops::register::DEFAULT_REGISTER;
-
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
@@ -693,10 +691,7 @@ fn register_prefix_routes_yank_to_named_register() {
 
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged");
     assert_eq!(reg(&ed, '5'), &["hell"], "register '5' populated");
-    assert!(
-        reg(&ed, DEFAULT_REGISTER).is_empty(),
-        "DEFAULT_REGISTER untouched"
-    );
+    assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
 }
 
 /// After `"5y`, the prefix is consumed. The next bare `y` writes to clipboard
@@ -742,15 +737,13 @@ fn esc_cancels_register_prefix() {
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
-/// `"3p` must paste from register '3', not DEFAULT_REGISTER.
+/// `"3p` must paste from register '3'.
 #[test]
 fn paste_from_named_register() {
-    use crate::ops::register::DEFAULT_REGISTER;
-
     let mut ed = editor_from("-[x]>\n");
     ed.registers.write_text('3', vec!["hello".to_string()]);
-    // Seed DEFAULT so we can verify it was NOT used.
-    ed.registers.write_text(DEFAULT_REGISTER, vec!["wrong".to_string()]);
+    // Seed '"' so we can verify it was NOT used.
+    ed.registers.write_text('"', vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
@@ -762,14 +755,14 @@ fn paste_from_named_register() {
     );
     assert!(
         !ed.doc().text().to_string().contains("wrong"),
-        "DEFAULT_REGISTER not used"
+        "'\"' register not used"
     );
 }
 
-/// `"by` discards the yank — DEFAULT_REGISTER must remain empty.
+/// `"by` discards the yank — `'"'` must remain empty.
 #[test]
 fn black_hole_register_via_prefix() {
-    use crate::ops::register::{BLACK_HOLE_REGISTER, DEFAULT_REGISTER};
+    use crate::ops::register::BLACK_HOLE_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
@@ -777,10 +770,7 @@ fn black_hole_register_via_prefix() {
     ed.handle_key(key('y'));
 
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged");
-    assert!(
-        reg(&ed, DEFAULT_REGISTER).is_empty(),
-        "DEFAULT_REGISTER untouched"
-    );
+    assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
     assert!(
         ed.registers.read(BLACK_HOLE_REGISTER).is_none(),
         "black hole register returns None"
@@ -1120,14 +1110,12 @@ fn paste_ring_cycle_older_then_newer() {
 /// until a register-consuming command runs or Esc cancels it.
 #[test]
 fn register_prefix_persists_across_motion() {
-    use crate::ops::register::DEFAULT_REGISTER;
-
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
     ed.handle_key(key('l')); // motion — does not consume the prefix
-    ed.handle_key(key('y')); // yank targets register 5, not DEFAULT
+    ed.handle_key(key('y')); // yank targets register 5, not '"'
 
     assert!(!reg(&ed, '5').is_empty(), "register '5' written after motion");
-    assert!(reg(&ed, DEFAULT_REGISTER).is_empty(), "DEFAULT_REGISTER untouched");
+    assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
 }

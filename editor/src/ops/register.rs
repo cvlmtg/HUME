@@ -19,16 +19,6 @@ use crate::core::text::Text;
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
-// DEFAULT_REGISTER was an internal sentinel for the default register before
-// Smart-p. Retained only for tests that verify the register `'"'` was not
-// written to by bare yank/delete (the kill ring is used instead).
-
-/// The `"` character that was once used as the default register name.
-/// Only referenced in tests; the kill ring has replaced the default register
-/// for bare yank/change/delete.
-#[cfg(test)]
-pub(crate) const DEFAULT_REGISTER: char = '"';
-
 /// The black-hole register (`b`) — writes are silently discarded, reads return `None`.
 /// Use `"by` to yank without touching the default register.
 pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
@@ -180,7 +170,7 @@ pub(crate) struct KillRing {
     /// Entries newest-first; max `KILL_RING_DEPTH` entries.
     entries: VecDeque<Vec<String>>,
     /// Active `[`/`]` cycle position; `None` means idle (head will be used next).
-    pub(crate) cycle: Option<usize>,
+    cycle: Option<usize>,
 }
 
 /// Maximum number of entries the kill ring retains, matching the 10 named
@@ -296,9 +286,9 @@ mod tests {
     #[test]
     fn write_and_read() {
         let mut regs = RegisterSet::new();
-        regs.write_text(DEFAULT_REGISTER, vec!["hello".to_string()]);
+        regs.write_text('"', vec!["hello".to_string()]);
         assert_eq!(
-            regs.read(DEFAULT_REGISTER).unwrap().as_text(),
+            regs.read('"').unwrap().as_text(),
             Some(vec!["hello".to_string()].as_slice())
         );
     }
