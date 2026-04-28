@@ -63,9 +63,8 @@ pub(crate) fn wrap_each_selection(
         let end_incl = sel
             .end_inclusive(buf)
             .min(buf.len_chars().saturating_sub(2));
-        // When the cursor sits on the structural trailing '\n' (only possible when
-        // the buffer holds no other content), there is nothing to wrap. Skip so that
-        // insert_char(close) is never placed after the structural '\n'.
+        // When `start` sits on (or past) the structural trailing '\n', there's nothing
+        // user-visible to wrap. Skip so `insert_char(close)` is never placed after '\n'.
         if start >= buf.len_chars() - 1 {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
