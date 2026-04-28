@@ -78,16 +78,16 @@
 ;; Uses define-command-extend! so Ctrl-J / Ctrl-K still work (one-shot extend).
 ;;
 ;; (define-command-extend! "move-down-select-word"
-;;   "Move down one visual line, then select inner word."
+;;   "Move down one visual line, then select the nearest word on that line."
 ;;   (lambda ()
 ;;     (call! "move-down")
-;;     (call! "inner-word")))
+;;     (call! "select-word-nearest-on-line")))
 ;;
 ;; (define-command-extend! "move-up-select-word"
-;;   "Move up one visual line, then select inner word."
+;;   "Move up one visual line, then select the nearest word on that line."
 ;;   (lambda ()
 ;;     (call! "move-up")
-;;     (call! "inner-word")))
+;;     (call! "select-word-nearest-on-line")))
 ;;
 ;; (bind-key! "normal" "j" "move-down-select-word")
 ;; (bind-key! "normal" "k" "move-up-select-word")

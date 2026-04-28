@@ -62,6 +62,7 @@ use crate::ops::text_object::{
     cmd_around_single_quote, cmd_around_word, cmd_inner_WORD, cmd_inner_angle, cmd_inner_argument,
     cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line,
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
+    cmd_select_word_nearest_on_line,
 };
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
@@ -677,6 +678,11 @@ impl CommandRegistry {
 
         // ── Text objects — word ───────────────────────────────────────────────
         selection!("inner-word", "Select inner word.", cmd_inner_word);
+        selection!(
+            "select-word-nearest-on-line",
+            "Select inner word; on whitespace snap to nearest word on the same line.",
+            cmd_select_word_nearest_on_line
+        );
         selection!(
             "around-word",
             "Select word plus surrounding whitespace.",
@@ -1318,7 +1324,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 129;
+    const EXPECTED_COMMAND_COUNT: usize = 130;
 
     #[test]
     fn registry_has_expected_count() {
