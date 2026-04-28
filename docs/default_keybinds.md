@@ -220,11 +220,13 @@ Prefix any yank, delete, change, or paste command with `"<reg>` to target a spec
 | Prefix | Effect on the following command |
 |--------|---------------------------------|
 | `"c` | Use system clipboard (`y` writes clipboard only; `p` reads clipboard) |
-| `"0` – `"9` | Use named register slot 0–9 (`y` writes slot, `p` reads slot) |
+| `"0` – `"9` | **`p`/`P`**: read kill ring slot N (no fallback; no-op if ring is shorter than N+1 entries). **`y`**: write to the in-memory named register (no kill ring push, no clipboard). Write and read use orthogonal storage — see note below. |
 | `"b` | Black hole — discard (only meaningful for `y`/`d`/`c`) |
 | `"<letter>` | Use the named in-memory register |
 
 The prefix is sticky across motions and text objects, but consumed (cleared) by the first register-consuming command (`y`, `d`, `c`, `p`, `P`). Press `Esc` to cancel a pending prefix.
+
+> **Digit register note**: `"5y` and `"5p` use independent storage. `"5y` writes the in-memory named register '5'; `"5p` reads kill ring slot 5 (the 6th-most-recent kill). The in-memory write is never read back by `"5p`. This keeps the ring as the single source of truth for digit pastes while still letting you squirrel text away in a named slot via `"5y`. For symmetric named storage, prefer letter registers (`"ay`, `"ap`).
 
 ### Jump List
 

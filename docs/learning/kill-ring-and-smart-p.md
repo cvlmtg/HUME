@@ -146,8 +146,20 @@ Prefixing any of them with a register name bypasses the heuristic:
 | Prefix | Behaviour |
 |--------|-----------|
 | `"c` | System clipboard: yank writes clipboard only (no ring push); paste always reads clipboard |
-| `"0`–`"9` | Named kill-ring slot: yank writes the slot directly; paste reads the slot |
+| `"0`–`"9` | **Paste** reads kill ring slot N (the N-th-most-recent kill, 0 = head). **Yank** writes the in-memory named register only — it does not push the ring. |
 | `"b` | Black hole: yank discards; paste reads nothing |
+
+The digit prefixes expose a deliberate asymmetry: the kill ring is a
+push-only stack — you can't write to a specific slot by name. So `"5y` and
+`"5p` use independent storage. `"5y` writes the in-memory named register '5'
+(the same kind as `"ay`). `"5p` reads kill ring slot 5 — the 6th-most-recent
+kill — which has no relationship to anything `"5y` wrote. If you need
+symmetric named storage that round-trips `"5y "5p`, use a letter register
+(`"ay "ap`) instead.
+
+The one displacement note: when `"<digit>p` pastes over a non-cursor selection,
+the displaced text is pushed onto the ring head (slot 0), not written back to
+the source slot (since digit slots are read-only from the ring's perspective).
 
 Smart-p is a default for the bare keys, not a constraint on the register
 system. If the heuristic ever routes to the wrong source, the register
