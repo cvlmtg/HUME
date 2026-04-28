@@ -624,7 +624,7 @@ pub(super) fn cmd_repeat(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let Some(action) = ed.last_action.take() else {
+    let Some(action) = ed.last_repeatable_action.take() else {
         return Ok(());
     };
 
@@ -660,7 +660,7 @@ pub(super) fn cmd_repeat(
     // Close the insert session / edit group:
     // - For insert commands: `end_insert_session` commits the group (delete +
     //   typed text as one undo step). `insert_session` is `None` here (replay
-    //   suppressed it), so no keystrokes are moved into `last_action`.
+    //   suppressed it), so no keystrokes are moved into `last_repeatable_action`.
     // - For non-insert commands: the group is empty (no `apply_edit_grouped`
     //   calls), so `commit_edit_group` is a no-op and the command's own
     //   `apply_edit` revision stands alone in history.
@@ -671,10 +671,10 @@ pub(super) fn cmd_repeat(
     }
 
     // Restore the original action so `.` can be pressed again.
-    // `execute_keymap_command` may have overwritten `last_action` during
+    // `execute_keymap_command` may have overwritten `last_repeatable_action` during
     // replay; this final assignment ensures the stored action is always the
     // one the user actually performed.
-    ed.last_action = Some(action);
+    ed.last_repeatable_action = Some(action);
     Ok(())
 }
 

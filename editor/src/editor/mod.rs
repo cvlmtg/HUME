@@ -287,7 +287,7 @@ pub(crate) struct Editor {
     // ── Dot-repeat fields ─────────────────────────────────────────────────────
     /// The last repeatable editing action, available for replay via `.`.
     /// `None` until the user performs a repeatable command.
-    pub(super) last_action: Option<RepeatableAction>,
+    pub(super) last_repeatable_action: Option<RepeatableAction>,
     /// Active insert session, present between [`begin_insert_session`] and
     /// [`end_insert_session`]. Keystroke recording for dot-repeat lives here.
     /// `None` at all other times — including during replay, where the replay
@@ -489,7 +489,7 @@ impl Editor {
             keymap: Keymap::default(),
             last_find: None,
             kitty_enabled: false,
-            last_action: None,
+            last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),
@@ -705,7 +705,7 @@ impl Editor {
             // populates the queue (e.g. the register name after `Q`) causes
             // replay to run immediately — the results are visible on the very
             // next frame rather than requiring an additional keypress.
-            // `last_action` is saved/restored so replay does not corrupt dot-repeat.
+            // `last_repeatable_action` is saved/restored so replay does not corrupt dot-repeat.
             self.drain_replay_queue();
             // One cache update covers the entire replay batch — the search
             // cache only changes when the buffer revision changes, so calling
@@ -1490,12 +1490,12 @@ impl Editor {
     /// Exit Insert mode and finalise the undo/repeat state.
     ///
     /// Commits the open edit group (creating one undo step for the whole
-    /// insert session) and moves the recorded keystrokes into `last_action`
+    /// insert session) and moves the recorded keystrokes into `last_repeatable_action`
     /// for dot-repeat, then sets the mode to Normal.
     pub(super) fn end_insert_session(&mut self) {
         self.commit_edit_group_current();
         if let (Some(session), Some(action)) =
-            (self.insert_session.take(), self.last_action.as_mut())
+            (self.insert_session.take(), self.last_repeatable_action.as_mut())
         {
             action.insert_keys = session.keystrokes;
         }
@@ -1522,9 +1522,9 @@ impl Editor {
     /// when the last key in the macro is `Q` (where `replay_queue.is_empty()`
     /// would already be `true` and would fail to suppress it).
     ///
-    /// Saves and restores `last_action` so replay does not corrupt dot-repeat.
+    /// Saves and restores `last_repeatable_action` so replay does not corrupt dot-repeat.
     pub(crate) fn drain_replay_queue(&mut self) {
-        let saved_action = self.last_action.take();
+        let saved_action = self.last_repeatable_action.take();
         // Freeze the Smart-p heuristic for the duration: individual commands
         // inside the macro must not update last_command (is_replaying gates that),
         // and after replay p should read the clipboard, not the ring.
@@ -1537,7 +1537,7 @@ impl Editor {
             }
         }
         self.is_replaying = false;
-        self.last_action = saved_action;
+        self.last_repeatable_action = saved_action;
     }
 
     // ── Scripting helpers ─────────────────────────────────────────────────────
@@ -1745,7 +1745,7 @@ impl Editor {
             keymap: keymap::Keymap::default(),
             last_find: None,
             kitty_enabled: false,
-            last_action: None,
+            last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,
             search: SearchState::default(),

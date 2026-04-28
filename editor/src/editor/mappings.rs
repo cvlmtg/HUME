@@ -684,10 +684,10 @@ impl Editor {
 
             // Record repeatable actions for `.` replay.
             // Skips non-repeatable commands (motions, selections, undo, etc.).
-            // During replay `cmd_repeat` restores `last_action` after the fact,
+            // During replay `cmd_repeat` restores `last_repeatable_action` after the fact,
             // so any transient overwrite here is harmless.
             if reg_cmd.is_repeatable() {
-                self.last_action = Some(super::RepeatableAction {
+                self.last_repeatable_action = Some(super::RepeatableAction {
                     command: name.clone(),
                     count,
                     char_arg,
