@@ -1600,12 +1600,7 @@ impl Editor {
         Ok((self.open_buffer(Buffer::from_file(canonical)?), true))
     }
 
-    /// Open additional files at startup, after scripting is initialised.
-    ///
-    /// Each path goes through the same expansion + canonicalization + dedup
-    /// logic as `:e <path>`, but without switching focus — the first buffer
-    /// (opened by `Editor::open`) stays current. Per-file errors are logged as
-    /// warnings and do not abort the remaining paths.
+    /// Open additional files without switching focus; errors are logged as warnings.
     pub(crate) fn open_extra_files(&mut self, paths: &[PathBuf]) {
         for path in paths {
             if let Err(e) = self.try_open_extra(path) {

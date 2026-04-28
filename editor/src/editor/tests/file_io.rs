@@ -325,7 +325,7 @@ fn open_extra_files_deduplicates() {
 
     let mut ed = Editor::open(Some(canonical.clone())).unwrap();
     // Pass the same path twice — must still result in exactly one buffer.
-    ed.open_extra_files(&[canonical.clone(), canonical.clone()]);
+    ed.open_extra_files(&[canonical.clone(), canonical]);
 
     assert_eq!(ed.buffers.len(), 1, "duplicate paths must not open new buffers");
 }
@@ -340,7 +340,7 @@ fn open_extra_files_nonexistent_logs_warning() {
     let mut ed = Editor::open(Some(canonical.clone())).unwrap();
     let nonexistent = std::path::PathBuf::from("/tmp/hume_test_nonexistent_xyz_404.txt");
 
-    ed.open_extra_files(&[nonexistent.clone()]);
+    ed.open_extra_files(&[nonexistent]);
 
     assert_eq!(ed.buffers.len(), 1, "failed open must not add a buffer");
     assert!(
