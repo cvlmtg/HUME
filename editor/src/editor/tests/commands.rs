@@ -737,25 +737,32 @@ fn esc_cancels_register_prefix() {
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
-/// `"3p` must paste from register '3'.
+/// `"3p` must paste from kill ring slot 3, not the system clipboard.
 #[test]
 fn paste_from_named_register() {
-    let mut ed = editor_from("-[x]>\n");
-    ed.registers.write_text('3', vec!["hello".to_string()]);
-    // Seed '"' so we can verify it was NOT used.
-    ed.registers.write_text('"', vec!["wrong".to_string()]);
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    // Push 4 entries so slot 3 holds "P" (first-deleted = oldest = slot 3).
+    let mut ed = editor_from("-[P]>QRS\n");
+    for _ in 0..4 {
+        ed.handle_key(key('d')); // delete each char in turn
+    }
+    // ring: slot 0 = "S" (newest), slot 1 = "R", slot 2 = "Q", slot 3 = "P"
+
+    // Seed clipboard with "wrong" so we can verify it is NOT used.
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
-    ed.handle_key(key('p'));
+    ed.handle_key(key('p')); // "3p → ring slot 3 = "P"
 
     assert!(
-        ed.doc().text().to_string().contains("hello"),
-        "pasted from register '3'"
+        ed.doc().text().to_string().contains('P'),
+        "pasted from ring slot 3"
     );
     assert!(
         !ed.doc().text().to_string().contains("wrong"),
-        "'\"' register not used"
+        "clipboard not used"
     );
 }
 
@@ -1021,13 +1028,12 @@ fn explicit_cy_writes_clipboard_only() {
     );
 }
 
-/// `"5y` writes register '5' (in-memory); the kill ring head is untouched.
+/// `"5y` writes the in-memory named register '5'; kill ring is not touched.
 ///
-/// Explicit digit-register writes route through `write_register` → `registers.write_text`,
-/// not through `kill_ring.push`. `"5p` reads via `read_register_text('5')` which falls
-/// back to the in-memory register when the ring slot is empty.
+/// Digit-register writes route through `write_register` → `registers.write_text`,
+/// not through `kill_ring.push`. The in-memory and ring storage are orthogonal.
 #[test]
-fn explicit_digit_y_writes_ring_slot() {
+fn explicit_digit_y_writes_in_memory_only() {
     let mut ed = editor_from("-[hello]>\n");
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
@@ -1040,20 +1046,45 @@ fn explicit_digit_y_writes_ring_slot() {
     );
 }
 
-/// `"5p` reads register '5' (in-memory register, falls back from empty kill ring slot).
+/// `"5p` reads kill ring slot 5; no in-memory fallback.
+/// Fill the ring past slot 5 so the slot has a real entry.
 #[test]
 fn explicit_digit_p_reads_ring_slot() {
-    let mut ed = editor_from("-[x]>\n");
-    // Seed in-memory register '5' directly (same effect as "5y in another session).
-    ed.registers.write_text('5', vec!["SLOT5".to_string()]);
-
+    let mut ed = editor_from("-[a]>bcdefg\n");
+    // Push 6 entries via bare `d` so ring slot 5 (the 6th-newest, 0-based) has data.
+    // After each delete the buffer shrinks by one char; delete 'a' through 'f'.
+    for _ in 0..6 {
+        ed.handle_key(key('d'));
+    }
+    // ring slots: 0=f, 1=e, 2=d, 3=c, 4=b, 5=a
+    // Clear pending prefix state, then do "5p.
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
-    ed.handle_key(key('p')); // "5p → paste from register '5'
+    ed.handle_key(key('p')); // "5p → ring slot 5 = "a"
 
     assert!(
-        ed.doc().text().to_string().contains("SLOT5"),
-        "paste from register '5'"
+        ed.doc().text().to_string().contains('a'),
+        "paste from kill ring slot 5"
+    );
+}
+
+/// `"5p` returns nothing when the ring has fewer than 6 entries (no in-memory fallback).
+#[test]
+fn explicit_digit_p_no_inmemory_fallback() {
+    let mut ed = editor_from("-[x]>\n");
+    // Seed in-memory register '5' — this must NOT be read by "5p.
+    ed.registers.write_text('5', vec!["INMEM".to_string()]);
+    // Ring is empty (no deletes/yanks), so ring slot 5 is also absent.
+
+    let before = state(&ed);
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('p')); // "5p → ring slot 5 absent → no-op
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "\"5p must be a no-op when the ring has no slot 5 (in-memory '5' is not a fallback)"
     );
 }
 
@@ -1101,6 +1132,35 @@ fn paste_ring_cycle_older_then_newer() {
     ed.handle_key(key(']'));
     let after_newer = ed.doc().text().to_string();
     assert!(after_newer.contains('B'), "] after two [ pastes slot 1 (B)");
+}
+
+/// `[` over a non-cursor selection: displaced text must be pushed onto the kill
+/// ring head rather than silently dropped.
+#[test]
+fn paste_ring_cycle_preserves_displaced_text() {
+    // Build a ring with 2 entries so `[` reaches slot 1.
+    let mut ed = editor_from("-[X]>Y\nZ\n");
+    // Delete X → ring = [X]
+    ed.handle_key(key('d'));
+    // Delete Y → ring = [Y, X] (Y is head at slot 0, X at slot 1)
+    ed.handle_key(key('d'));
+
+    // Manually arm a 2-char selection so paste-after triggers replace-and-swap.
+    // Use `x` (select-char) and extend with `l` to have sel=[Z].
+    // Actually: after two deletes the buffer is "\nZ\n", cursor on '\n'.
+    // Move to next line to reach 'Z', then `x` selects 'Z'.
+    ed.handle_key(key('j')); // move to 'Z' line
+    ed.handle_key(key('x')); // select 'Z' (non-cursor selection)
+
+    // `[` → cycle older → reads slot 1 (X), pastes over 'Z'. Displaced = "Z".
+    ed.handle_key(key('['));
+
+    // Displaced 'Z' must now be on the ring head.
+    assert_eq!(
+        ed.kill_ring.head(),
+        Some(["Z".to_string()].as_slice()),
+        "displaced text 'Z' must be pushed to ring head after [ over selection"
+    );
 }
 
 // ── Register prefix persistence across non-register commands ────────────────
