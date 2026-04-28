@@ -2,10 +2,9 @@ use std::path::PathBuf;
 use std::process;
 
 fn main() {
-    // Optional first argument is the file to open.
-    let file_path: Option<PathBuf> = std::env::args().nth(1).map(PathBuf::from);
+    let file_paths: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
 
-    if let Err(e) = hume::run(file_path) {
+    if let Err(e) = hume::run(file_paths) {
         eprintln!("hume: {e}");
         process::exit(1);
     }
