@@ -439,21 +439,21 @@ fn macro_insert_mode_round_trip() {
 }
 
 /// After replaying a macro, `.` must repeat the last *editing* action, not
-/// the macro itself. `last_action` is saved/restored around the replay drain.
+/// the macro itself. `last_repeatable_action` is saved/restored around the replay drain.
 #[test]
 fn macro_replay_preserves_dot_repeat() {
     let mut ed = editor_from("-[a]>bc\nxyz\n");
 
-    // Perform a `d` (delete) to establish last_action = "delete".
+    // Perform a `d` (delete) to establish last_repeatable_action = "delete".
     ed.handle_key(key('d'));
-    let action_after_delete = ed.last_action.as_ref().map(|a| a.command.as_ref());
+    let action_after_delete = ed.last_repeatable_action.as_ref().map(|a| a.command.as_ref());
     assert_eq!(
         action_after_delete,
         Some("delete"),
-        "last_action should be 'delete'"
+        "last_repeatable_action should be 'delete'"
     );
 
-    // Record a `j` motion macro (not repeatable — should not overwrite last_action).
+    // Record a `j` motion macro (not repeatable — should not overwrite last_repeatable_action).
     ed.handle_key(key('Q'));
     ed.handle_key(key('Q'));
     ed.handle_key(key('j'));
@@ -464,8 +464,8 @@ fn macro_replay_preserves_dot_repeat() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    // last_action must still be "delete", not whatever the macro did.
-    let action_after_replay = ed.last_action.as_ref().map(|a| a.command.as_ref());
+    // last_repeatable_action must still be "delete", not whatever the macro did.
+    let action_after_replay = ed.last_repeatable_action.as_ref().map(|a| a.command.as_ref());
     assert_eq!(
         action_after_replay,
         Some("delete"),

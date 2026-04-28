@@ -88,7 +88,7 @@ fn dot_with_explicit_count_overrides() {
     // Two-digit test: press `2` then `.` to apply 2 copies of the delete.
     // Re-select "b":
     ed.handle_key(key('w')); // select "b"
-    ed.handle_key(key('d')); // delete "b" (now last_action.count=1)
+    ed.handle_key(key('d')); // delete "b" (now last_repeatable_action.count=1)
 
     // Select "c":
     ed.handle_key(key('w')); // select "c"
@@ -96,7 +96,7 @@ fn dot_with_explicit_count_overrides() {
     // Since `d` doesn't loop on count, this effectively runs `d` with count=2,
     // but `d` ignores count entirely (_count). The key point is `explicit_count`
     // is set and the stored count (1) is NOT used — the passed count (2) is.
-    // We verify last_action.count is reset to the stored 1 after replay.
+    // We verify last_repeatable_action.count is reset to the stored 1 after replay.
     ed.handle_key(key('2'));
     ed.handle_key(key('.'));
     // Just verify it doesn't panic and the buffer changed.
@@ -111,18 +111,18 @@ fn dot_without_count_uses_original() {
     // Actually let's test with `d` — record with count, replay without.
     // `d` ignores count anyway, so let's use a simpler repeatable: paste.
     // Use `i` + text + Esc with count, then `.` without count.
-    // Actually the simplest: just verify last_action.count is preserved.
+    // Actually the simplest: just verify last_repeatable_action.count is preserved.
     let mut ed = editor_from("-[hi]> world\n");
 
-    // `d` (count ignored by the command, but stored as 1 in last_action).
+    // `d` (count ignored by the command, but stored as 1 in last_repeatable_action).
     ed.handle_key(key('d'));
-    assert_eq!(ed.last_action.as_ref().unwrap().count, 1);
+    assert_eq!(ed.last_repeatable_action.as_ref().unwrap().count, 1);
 
     // Move to "world", hit `.` without a count.
     ed.handle_key(key('w'));
     ed.handle_key(key('.'));
-    // last_action.count should still be 1 after replay.
-    assert_eq!(ed.last_action.as_ref().unwrap().count, 1);
+    // last_repeatable_action.count should still be 1 after replay.
+    assert_eq!(ed.last_repeatable_action.as_ref().unwrap().count, 1);
     // The delete should have happened.
     assert!(!ed.doc().text().to_string().contains("world"));
 }
@@ -212,7 +212,7 @@ fn dot_after_find_is_noop() {
     let state_after_find = state(&ed);
 
     // `.` should have nothing recorded and leave state unchanged.
-    assert!(ed.last_action.is_none());
+    assert!(ed.last_repeatable_action.is_none());
     ed.handle_key(key('.'));
     assert_eq!(state(&ed), state_after_find);
 }
