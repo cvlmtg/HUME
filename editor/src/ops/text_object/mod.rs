@@ -286,6 +286,115 @@ pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -
     })
 }
 
+/// Find the nearest word on the same line as `head`, bounded to the current line.
+///
+/// - If `head` is on a word or punctuation char, returns its inner-word range
+///   (identical to `inner_word_impl`).
+/// - If `head` is on whitespace or EOL, scans left and right within the
+///   current line (never crossing line boundaries) to find the closest word.
+///   "Closest" is measured as the distance from `head` to the nearest edge of
+///   each candidate word; ties go to the previous (left) word.
+/// - Returns `None` when no word exists on the line (no-op for the caller).
+fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
+    let class = classify_char(buf.char_at(head)?);
+
+    // Fast path: head is already on a word/punct — delegate to inner_word_impl.
+    if class != CharClass::Space && class != CharClass::Eol {
+        return inner_word_impl(buf, head, is_word_boundary);
+    }
+
+    let line = buf.char_to_line(head);
+    let line_start = buf.line_to_char(line);
+    let line_end_excl = line_end_exclusive(buf, line);
+
+    // Scan LEFT within the line for the first non-whitespace grapheme.
+    let prev_anchor = {
+        let mut pos = head;
+        let mut found = None;
+        while pos > line_start {
+            pos = prev_grapheme_boundary(buf, pos);
+            let c = classify_char(buf.char_at(pos)?);
+            if c != CharClass::Space && c != CharClass::Eol {
+                found = Some(pos);
+                break;
+            }
+        }
+        found
+    };
+
+    // Scan RIGHT within the line (stopping before the newline) for the first
+    // non-whitespace grapheme. The structural '\n' at line_end_excl - 1 is
+    // Eol, so the guard `next_pos < line_end_excl` already excludes it.
+    let next_anchor = {
+        let mut pos = head;
+        let mut found = None;
+        loop {
+            let next_pos = next_grapheme_boundary(buf, pos);
+            if next_pos >= line_end_excl {
+                break;
+            }
+            let c = classify_char(buf.char_at(next_pos)?);
+            if c != CharClass::Space && c != CharClass::Eol {
+                found = Some(next_pos);
+                break;
+            }
+            pos = next_pos;
+        }
+        found
+    };
+
+    match (prev_anchor, next_anchor) {
+        (None, None) => None,
+        (Some(p), None) => inner_word_impl(buf, p, is_word_boundary),
+        (None, Some(n)) => inner_word_impl(buf, n, is_word_boundary),
+        (Some(p), Some(n)) => {
+            // Pick the word whose nearest edge is closer to `head`; tie → prev.
+            // `p` is the last char of the prev word's run (nearest edge = p itself).
+            // `n` is the first char of the next word's run (nearest edge = n itself).
+            let dist_prev = head.saturating_sub(p);
+            let dist_next = n.saturating_sub(head);
+            let anchor = if dist_next < dist_prev { n } else { p };
+            inner_word_impl(buf, anchor, is_word_boundary)
+        }
+    }
+}
+
+/// Select inner word, snapping to the nearest word on the same line when the
+/// cursor sits on whitespace. Preserves `sel.horiz` so the sticky visual column
+/// (set by `move-down` / `move-up`) survives through this step.
+///
+/// In `Extend` mode the matched word range is unioned with the existing
+/// selection, matching the behaviour of `inner-word` in extend mode.
+pub(crate) fn cmd_select_word_nearest_on_line(
+    buf: &Text,
+    sels: SelectionSet,
+    mode: MotionMode,
+) -> SelectionSet {
+    let result = sels.map_and_merge(|sel| {
+        let Some((start, end)) = nearest_word_on_line(buf, sel.head) else {
+            return sel; // no candidate word on this line — leave selection intact
+        };
+        match mode {
+            MotionMode::Move => match sel.horiz {
+                Some(h) => Selection::with_horiz(start, end, h),
+                None => Selection::new(start, end),
+            },
+            MotionMode::Extend => {
+                let forward = sel.anchor <= sel.head;
+                let new_start = sel.start().min(start);
+                let new_end = sel.end().max(end);
+                let s = Selection::directed(new_start, new_end, forward);
+                match sel.horiz {
+                    Some(h) => Selection::with_horiz(s.anchor, s.head, h),
+                    None => s,
+                }
+            }
+        }
+    });
+    result.debug_assert_valid(buf);
+    result
+}
+
 pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
         around_word_impl(b, pos, is_word_boundary)

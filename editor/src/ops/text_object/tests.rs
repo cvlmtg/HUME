@@ -1,5 +1,6 @@
 use super::*;
 use crate::assert_state;
+use crate::core::selection::{Selection, SelectionSet};
 
 // ── Line ──────────────────────────────────────────────────────────────────
 
@@ -955,5 +956,161 @@ fn extend_inner_argument_basic() {
         "foo(aaa, -[b]>bb, ccc)\n",
         |(buf, sels)| cmd_inner_argument(&buf, sels, MotionMode::Extend),
         "foo(aaa, -[bbb]>, ccc)\n"
+    );
+}
+
+// ── select-word-nearest-on-line ────────────────────────────────────────────
+
+#[test]
+fn nearest_on_word_selects_inner_word() {
+    // Head lands mid-word — same as inner-word.
+    assert_state!(
+        "hello wor-[l]>d foo\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "hello -[world]> foo\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_prev_closer() {
+    // "foo   bar" — head on first space (index 3); dist to "foo" end (2) = 1,
+    // dist to "bar" start (6) = 3. Prev is closer → select "foo".
+    assert_state!(
+        "foo-[ ]>  bar\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "-[foo]>   bar\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_next_closer() {
+    // "foo   bar" — head on last space (index 5); dist to "foo" end (2) = 3,
+    // dist to "bar" start (6) = 1. Next is closer → select "bar".
+    assert_state!(
+        "foo  -[ ]>bar\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "foo   -[bar]>\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_tie_picks_prev() {
+    // "foo   bar" — head on middle space (index 4); dist to "foo" end (2) = 2,
+    // dist to "bar" start (6) = 2. Exact tie → prev → select "foo".
+    assert_state!(
+        "foo -[ ]> bar\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "-[foo]>   bar\n"
+    );
+}
+
+#[test]
+fn nearest_at_line_start_whitespace_no_cross_to_prev_line() {
+    // Cursor is on the leading space of line 1. Prev word ("end") is on line 0 —
+    // must NOT be selected. Next word ("start") on the same line is selected.
+    assert_state!(
+        "end\n-[ ]>start\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "end\n -[start]>\n"
+    );
+}
+
+#[test]
+fn nearest_at_line_end_whitespace_no_cross_to_next_line() {
+    // Cursor is on trailing space before the newline on line 0. Next word
+    // ("next") is on line 1 — must NOT be selected. Prev word ("end") is
+    // selected.
+    assert_state!(
+        "end -[ ]>\nnext\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "-[end]>  \nnext\n"
+    );
+}
+
+#[test]
+fn nearest_on_blank_line_is_noop() {
+    // A line with only a newline has no words — selection unchanged.
+    assert_state!(
+        "hello\n-[\n]>world\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "hello\n-[\n]>world\n"
+    );
+}
+
+#[test]
+fn nearest_on_whitespace_only_line_is_noop() {
+    // A line of pure spaces has no words — selection unchanged.
+    assert_state!(
+        "hello\n-[ ]>  \nworld\n",
+        |(buf, sels)| cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move),
+        "hello\n-[ ]>  \nworld\n"
+    );
+}
+
+#[test]
+fn nearest_preserves_horiz_on_word() {
+    // sel.horiz = Some(5) must survive the snap to a word.
+    let buf = Text::from("hello world\n");
+    let sels = SelectionSet::single(Selection::with_horiz(6, 6, 5));
+    let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
+    let sel = result.primary();
+    // "world" spans chars 6–10.
+    assert_eq!((sel.anchor, sel.head), (6, 10), "expected word range");
+    assert_eq!(sel.horiz, Some(5), "horiz must be preserved");
+}
+
+#[test]
+fn nearest_preserves_horiz_on_whitespace() {
+    // Head on space, horiz = Some(3). After snapping to "hi", horiz still Some(3).
+    let buf = Text::from("hi   world\n");
+    //                    0123456789
+    // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
+    let sels = SelectionSet::single(Selection::with_horiz(3, 3, 3));
+    let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
+    let sel = result.primary();
+    assert_eq!((sel.anchor, sel.head), (0, 1), "expected 'hi' range");
+    assert_eq!(sel.horiz, Some(3), "horiz must be preserved");
+}
+
+#[test]
+fn nearest_no_horiz_is_cleared() {
+    // When input sel has horiz=None, output must also have horiz=None.
+    let buf = Text::from("hello world\n");
+    let sels = SelectionSet::single(Selection::new(6, 6));
+    let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
+    let sel = result.primary();
+    assert_eq!(sel.horiz, None, "horiz must stay None");
+}
+
+#[test]
+fn nearest_extend_grows_selection_to_snapped_word() {
+    // Simulates Ctrl+j with an existing selection:
+    // Buffer: "hello\n     world\n"
+    //          0 1 2 3 4 5 | 6 7 8 9 10 11 12 13 14 15 16
+    //         h e l l o \n  _ _ _ _  _ w  o  r  l  d \n
+    // After move-down in extend mode: anchor stays at 0, head lands at 10 (space).
+    // nearest_word finds "world" = [11,15] (only next word on this line).
+    // new_end = max(10, 15) = 15 → selection grows from [0,10] to [0,15].
+    let buf = Text::from("hello\n     world\n");
+    let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
+    let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Extend);
+    let sel = result.primary();
+    assert_eq!(
+        (sel.anchor, sel.head),
+        (0, 15),
+        "extend must grow selection to include snapped word"
+    );
+    assert!(sel.anchor <= sel.head, "selection must remain forward");
+}
+
+#[test]
+fn nearest_extend_preserves_horiz() {
+    let buf = Text::from("hello world\n");
+    let sels = SelectionSet::single(Selection::with_horiz(0, 5, 7)); // anchor=0, head=5 (space)
+    let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Extend);
+    assert_eq!(
+        result.primary().horiz,
+        Some(7),
+        "horiz must survive extend mode"
     );
 }
