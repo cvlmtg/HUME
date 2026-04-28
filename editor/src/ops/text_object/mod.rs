@@ -322,9 +322,7 @@ fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
         found
     };
 
-    // Scan RIGHT within the line (stopping before the newline) for the first
-    // non-whitespace grapheme. The structural '\n' at line_end_excl - 1 is
-    // Eol, so the guard `next_pos < line_end_excl` already excludes it.
+    // Scan RIGHT within the line for the first non-whitespace grapheme.
     let next_anchor = {
         let mut pos = head;
         let mut found = None;
