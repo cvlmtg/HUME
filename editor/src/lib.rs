@@ -23,10 +23,15 @@ pub(crate) mod testing;
 ///
 /// Installs the panic hook, initialises the terminal, runs the event loop,
 /// and restores the terminal on exit (clean or panicking).
-pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     os::terminal::install_panic_hook();
 
-    let mut editor = editor::Editor::open(file_path)?;
+    let (first, rest) = match file_paths.split_first() {
+        Some((first, rest)) => (Some(first.clone()), rest),
+        None => (None, &[][..]),
+    };
+
+    let mut editor = editor::Editor::open(first)?;
     let (mut term, kitty_enabled) =
         os::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
     editor.kitty_enabled = kitty_enabled;
@@ -34,6 +39,8 @@ pub fn run(file_path: Option<std::path::PathBuf>) -> Result<(), Box<dyn std::err
     // editor chrome while Steel initialises, rather than a blank alt-screen.
     editor.draw_once(&mut term)?;
     editor.init_scripting();
+    // Open remaining paths after scripting init so OnBufferOpen hooks fire.
+    editor.open_extra_files(rest);
 
     let result = editor.run(&mut term);
 

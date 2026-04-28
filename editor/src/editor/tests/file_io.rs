@@ -280,3 +280,74 @@ fn edit_relative_path_matches_existing_buffer() {
         ":e <relative> must switch to the already-open buffer"
     );
 }
+
+// ── open_extra_files ──────────────────────────────────────────────────────────
+
+#[test]
+#[cfg(not(windows))]
+fn open_extra_files_opens_all_paths() {
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f1.path(), "file one\n").unwrap();
+    std::fs::write(f2.path(), "file two\n").unwrap();
+
+    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
+    let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical1.clone())).unwrap();
+    let first_id = ed.focused_buffer_id();
+
+    ed.open_extra_files(&[canonical2.clone()]);
+
+    assert_eq!(ed.buffers.len(), 2, "both files must be open");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        first_id,
+        "focus must stay on the first file"
+    );
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical1.as_path()),
+        "current buffer must still be the first file"
+    );
+    assert!(
+        ed.buffers.find_by_path(&canonical2).is_some(),
+        "second file must be present in the buffer store"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn open_extra_files_deduplicates() {
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f1.path(), "hello\n").unwrap();
+    let canonical = std::fs::canonicalize(f1.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical.clone())).unwrap();
+    // Pass the same path twice — must still result in exactly one buffer.
+    ed.open_extra_files(&[canonical.clone(), canonical.clone()]);
+
+    assert_eq!(ed.buffers.len(), 1, "duplicate paths must not open new buffers");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn open_extra_files_nonexistent_logs_warning() {
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f1.path(), "hello\n").unwrap();
+    let canonical = std::fs::canonicalize(f1.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical.clone())).unwrap();
+    let nonexistent = std::path::PathBuf::from("/tmp/hume_test_nonexistent_xyz_404.txt");
+
+    ed.open_extra_files(&[nonexistent.clone()]);
+
+    assert_eq!(ed.buffers.len(), 1, "failed open must not add a buffer");
+    assert!(
+        ed.message_log.entries().any(|e| {
+            e.severity == crate::editor::message_log::Severity::Warning
+                && e.text.contains("hume_test_nonexistent_xyz_404.txt")
+        }),
+        "a warning must be logged for the missing file"
+    );
+}
