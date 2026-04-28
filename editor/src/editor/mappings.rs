@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use std::sync::Arc;
 
-use super::commands::{cmd_clear_search, search_sel};
+use super::commands::{cmd_clear_search, search_sel, RING_CYCLE_CMDS};
 use super::registry::MappableCommand;
 use crate::auto_pairs::{delete_pair, insert_pair_close};
 use crate::core::jump_list::JumpEntry;
@@ -576,8 +576,7 @@ impl Editor {
             // Reset the kill-ring cycle cursor whenever we leave the `[`/`]` pair.
             // Must happen before dispatch so the cycle index is clean for the incoming
             // paste-ring-older/newer commands themselves.
-            const CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-newer"];
-            if !self.is_replaying && !CYCLE_CMDS.contains(&name.as_ref()) {
+            if !self.is_replaying && !RING_CYCLE_CMDS.contains(&name.as_ref()) {
                 self.kill_ring.reset_cycle();
             }
 

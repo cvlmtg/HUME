@@ -297,7 +297,7 @@ fn open_extra_files_opens_all_paths() {
     let mut ed = Editor::open(Some(canonical1.clone())).unwrap();
     let first_id = ed.focused_buffer_id();
 
-    ed.open_extra_files(&[canonical2.clone()]);
+    ed.open_extra_files(std::slice::from_ref(&canonical2));
 
     assert_eq!(ed.buffers.len(), 2, "both files must be open");
     assert_eq!(

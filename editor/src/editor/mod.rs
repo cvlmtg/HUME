@@ -192,7 +192,8 @@ pub(crate) struct Editor {
     pub(super) register_prefix: Option<RegisterPrefix>,
     /// Name of the most recently dispatched command. Updated by every command
     /// in `execute_keymap_command` (gated by `!is_replaying` so macro replay
-    /// uses the "macro-replay" sentinel instead of underlying command names).
+    /// does not overwrite it). Holds the sentinel `"macro-replay"` for the
+    /// entire duration of macro replay — see `drain_replay_queue`.
     ///
     /// The Smart-p heuristic reads this to decide whether bare `p` should read
     /// the kill ring head or the system clipboard.
