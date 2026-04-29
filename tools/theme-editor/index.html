@@ -595,14 +595,14 @@ function Preview({ pal, sc }) {
   var stBgR = stBg !== "transparent" ? stBg : BG;
 
   return (
-    <div style={{ background: BG, borderRadius: 8, overflow: "hidden", border: "1px solid " + brd, fontFamily: MONO, fontSize: 13, lineHeight: "20px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-      <div style={{ display: "flex", alignItems: "center", padding: "6px 14px", borderBottom: "1px solid " + brd, background: stBgR, gap: 8 }}>
+    <div style={{ background: BG, borderRadius: 8, overflow: "hidden", border: "1px solid #2a2d3a", fontFamily: MONO, fontSize: 13, lineHeight: "20px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "6px 14px", borderBottom: "1px solid #2a2d3a", background: "#1a1b26", gap: 8 }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diagnostic.error") }} />
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diagnostic.warning") }} />
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diff.plus") }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f56" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ffbd2e" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#27c93f" }} />
         </div>
-        <span style={{ color: lnr, fontSize: 11 }}>theme.rs</span>
+        <span style={{ color: "#5c6086", fontSize: 11 }}>theme.rs</span>
       </div>
       <div style={{ padding: "4px 0", overflowX: "auto" }}>
         {CODE.map(function(line) {
@@ -786,15 +786,15 @@ function HelixThemeEditor() {
             })}
           </div>
 
-          <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89"), fontFamily: MONO, fontSize: 12 }}>
-            <div style={{ padding: "4px 12px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), color: fgc("ui.linenr", scopes, adjPalette, "#565f89"), fontSize: 10, borderBottom: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89") }}>diff preview</div>
+          <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid #2a2d3a", fontFamily: MONO, fontSize: 12 }}>
+            <div style={{ padding: "4px 12px", background: "#1a1b26", color: "#5c6086", fontSize: 10, borderBottom: "1px solid #2a2d3a" }}>diff preview</div>
             {[["diff.plus", "+ added line"], ["diff.minus", "- removed line"], ["diff.delta", "~ changed line"]].map(function(item) {
               var c = fgc(item[0], scopes, adjPalette, "#888");
               return <div key={item[0]} style={{ padding: "4px 12px", background: c + "15", color: c }}>{item[1]}</div>;
             })}
           </div>
 
-          <div style={{ borderRadius: 6, padding: "12px 16px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), border: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89"), fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
+          <div style={{ borderRadius: 6, padding: "12px 16px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), border: "1px solid #2a2d3a", fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
             <div style={{ color: fgc("markup.heading", scopes, adjPalette, "#7aa2f7"), fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{"# Markup Preview"}</div>
             <div style={{ color: fgc("ui.foreground", scopes, adjPalette, "#c0caf5") }}>
               {"Normal text with "}
