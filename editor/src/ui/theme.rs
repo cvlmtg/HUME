@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
 
 use engine::types::{Modifiers, ResolvedStyle};
 
@@ -44,7 +44,9 @@ pub(crate) struct EditorColors {
 }
 
 impl EditorColors {
+    #[cfg(test)]
     pub(crate) fn default() -> Self {
+        use ratatui::style::{Color, Modifier};
         let reversed = Style::new().add_modifier(Modifier::REVERSED);
         Self {
             statusline: reversed,
@@ -54,6 +56,24 @@ impl EditorColors {
             status_search: reversed.fg(Color::Magenta),
             status_command: reversed.fg(Color::Green),
             status_select: reversed.fg(Color::Blue),
+        }
+    }
+
+    pub(crate) fn from_theme(theme: &engine::theme::Theme) -> Self {
+        use engine::types::Scope;
+
+        let style_for = |s: &'static str| -> Style {
+            theme.resolve_by_name(Scope(s)).into()
+        };
+
+        Self {
+            statusline: style_for("ui.statusline"),
+            status_normal: style_for("ui.statusline.mode.normal"),
+            status_insert: style_for("ui.statusline.mode.insert"),
+            status_extend: style_for("ui.statusline.mode.extend"),
+            status_search: style_for("ui.statusline.mode.search"),
+            status_command: style_for("ui.statusline.mode.command"),
+            status_select: style_for("ui.statusline.mode.select"),
         }
     }
 }
@@ -251,4 +271,70 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
     );
 
     engine::theme::Theme::new(styles, ResolvedStyle::default())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use engine::types::ResolvedStyle;
+    use ratatui::style::{Color, Style};
+
+    use super::*;
+
+    fn make_theme_with_statusline(
+        base_fg: Color,
+        base_bg: Color,
+        insert_fg: Color,
+    ) -> engine::theme::Theme {
+        let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+        styles.insert(
+            "ui.statusline",
+            ResolvedStyle { fg: Some(base_fg), bg: Some(base_bg), ..Default::default() },
+        );
+        styles.insert(
+            "ui.statusline.mode.insert",
+            ResolvedStyle { fg: Some(insert_fg), bg: Some(base_bg), ..Default::default() },
+        );
+        engine::theme::Theme::new(styles, ResolvedStyle::default())
+    }
+
+    #[test]
+    fn from_theme_reads_statusline_scope() {
+        let theme = make_theme_with_statusline(Color::Red, Color::Green, Color::Cyan);
+        let colors = EditorColors::from_theme(&theme);
+
+        // Independent oracle: expected values come from the input scopes, not from from_theme.
+        let want_base = Style::default().fg(Color::Red).bg(Color::Green);
+        let want_insert = Style::default().fg(Color::Cyan).bg(Color::Green);
+
+        assert_eq!(colors.statusline, want_base);
+        assert_eq!(colors.status_insert, want_insert);
+    }
+
+    #[test]
+    fn from_theme_fallback_to_statusline_when_mode_missing() {
+        // Only "ui.statusline" is defined; all mode-specific keys are absent.
+        // The dot-fallback chain must resolve each ui.statusline.mode.* to ui.statusline.
+        let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+        styles.insert(
+            "ui.statusline",
+            ResolvedStyle { fg: Some(Color::White), bg: Some(Color::DarkGray), ..Default::default() },
+        );
+        let theme = engine::theme::Theme::new(styles, ResolvedStyle::default());
+        let colors = EditorColors::from_theme(&theme);
+
+        let want = Style::default().fg(Color::White).bg(Color::DarkGray);
+        assert_eq!(colors.statusline, want);
+        assert_eq!(colors.status_normal, want);
+        assert_eq!(colors.status_insert, want);
+        assert_eq!(colors.status_extend, want);
+        assert_eq!(colors.status_search, want);
+        assert_eq!(colors.status_command, want);
+        assert_eq!(colors.status_select, want);
+    }
 }
