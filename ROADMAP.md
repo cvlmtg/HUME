@@ -124,7 +124,7 @@
 - [x] **PLUM plugin manager** (`core:plum`): design and implement the bundled Steel plugin for discovery, install, update, remove. Git-based (`username/repo`), no registry. Core plugins use `core:name` namespace. PLUM is declared in `init.scm` like any other plugin — disabling it just removes management commands.
 - [x] **`load-plugin` pipeline**: Rust-side `load-plugin` implementation with per-plugin isolation. Each plugin gets its own `eval_init` call; conflicts (command name shadowing, alias collision) abort that plugin's registration and roll back its side effects. The loading order follows declaration order in `init.scm`. Conflict errors surface via the message log with clear attribution (e.g. "plugin X: command 'foo' conflicts with plugin Y, plugin X not loaded").
 
-### M7 — Daily usability (mostly complete)
+### M7 — Daily usability (complete)
 - [x] **Multi-buffer model refactor**: replaced `Editor` singletons with `buffers: BufferStore` + `current: BufferId`. Added `ed.doc()` / `ed.doc_mut()` / `ed.focused_buffer_id()` accessors. Multi-pane scaffolding (`PaneBufferState`, `open_pane`, `switch_focused_pane`, `close_pane`) and per-pane jump list. `:split` / `:vsplit` registered as stubs.
 - [x] **`:e` / `:edit <path>`**: open a file into a new buffer, make it current. `:e!` reloads current buffer from disk (discards unsaved changes). `:e` with no arg = reload current.
 - [x] **`:bnext` / `:bprev` / `:bd` / `:bd!`**: navigate the buffer list. `:bd` guards dirty; `:bd!` force-closes.
@@ -142,7 +142,13 @@
 - [x] **Smart-p paste with kill ring**: bare `y` writes system clipboard + push kill ring; bare `c`/`d` push kill ring only; bare `p` reads ring head when `last_command ∈ {delete, change, paste-after, paste-before, paste-ring-older, paste-ring-newer}`, else reads clipboard. `[` / `]` cycle ring older/newer and paste-after (depth 10, matching `"0`–`"9`). `last_command` on `Editor` updated after every dispatch; macro replay sets sentinel `"macro-replay"` and freezes updates during drain so `p` reads clipboard after replay. Fixes a pre-existing `wrap_each_selection` bug on empty buffers; disables live clipboard in test editors (`SystemClipboard::new_unavailable`) to prevent ObjC exceptions in proptest.
 - [x] **CLI: multiple file paths at startup**: `hume a.txt b.txt c.txt` opens all three as separate buffers; the first becomes current. Changes `run(Option<PathBuf>)` → `run(Vec<PathBuf>)` in `editor/src/lib.rs` and `editor/src/main.rs`.
 
-### M8 — Syntax awareness (planned)
+### M8 — Theming (planned)
+- [ ] **Helix theme editor**: import the standalone HTML theme editor, integrate it into the repo, and fix known bugs.
+- [ ] **Theming**: hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`.
+- [ ] **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
+- [ ] **Default theme**: replace the hardcoded colors with a proper named theme using the new scope system.
+
+### M9 — Syntax awareness (planned)
 - [ ] **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
 - [ ] **Syntax highlighting via tree-sitter**: grammar loading, parse-on-edit pipeline, highlight spans in renderer.
 - [ ] **Incremental tree-sitter parsing**: translate document edits (`ChangeSet`) into tree-sitter `InputEdit` operations for incremental re-parsing rather than a full re-parse on each edit. The `SharedBuffer.tree` field already exists; this wires up the update path.
@@ -156,7 +162,7 @@
   4. **`set-buffer-option!` builtin** in `editor/src/scripting/builtins/settings.rs`: same shape as `set-option!` but calls `apply_setting(SettingScope::Buffer, …)` on `ctx.active_overrides`. Valid only during `call_steel_cmd` (where a buffer is active); raise an error if called at init time.
 - [ ] **Code folding** (tree-sitter powered collapse/expand)
 
-### M9 — Splits (planned)
+### M10 — Splits (planned)
 
 - **Splits & pane focus (`:split` / `:vsplit` / pane focus commands)**: stubs already registered; multi-pane scaffolding on `Editor` is split-ready. Requires a layout engine to render side-by-side views.
   - **Design note — move `wrap_mode` onto `Pane` when wiring splits**: wrap is a view property whose correct value depends on pane width, not buffer content. Two panes sharing a buffer at different widths (e.g. asymmetric `:vsplit`, or a narrow navigation pane alongside a wide editor) each want their own wrap mode; today's global + `Buffer.overrides` model forces both panes to agree. Implementation sketch (pattern previously prototyped in the deleted `old-multi-buffer` branch): add `pub wrap_mode: WrapMode` to `engine::pane::Pane`; initialise from `EditorSettings::wrap_mode` at pane creation (`Pane::new`); in the format pipeline (`engine/src/pipeline.rs`, the `render_pane` path) read from `pane_ctx.pane.wrap_mode` instead of the global setting. Keep `tab_width` and `whitespace` on `Buffer.overrides` — they are document/author preferences, not view preferences, and the per-filetype override story (`set-buffer-option!` above) already covers them. `Editor.mode` stays global (decided invariant, see `project_multibuf_focus_switch_normal_only` memory).
@@ -177,9 +183,7 @@
 - **LSP support** (Rust transport + Steel behavior layer): completions, diagnostics, hover, go-to-definition, `textDocument/rename`. Depends on Steel, tree-sitter, multiple buffers.
 - **Virtual lines / decoration layer** (inline diagnostics, ghost text, code lenses, inlay hints): depends on LSP.
 - **Unified decoration system**: replace the current separate provider traits (`GutterColumn`, `HighlightSource`, `VirtualLineSource`, `InlineDecoration`, `OverlayProvider`) with a single `Decoration` trait offering `decorate_line()`, `decorate_grapheme()`, and `render_virtual_lines()` callbacks. Makes adding a new decoration type a single trait impl rather than a new provider trait plus pipeline plumbing. Inspired by Helix's `DecorationManager`. Worthwhile once the decoration surface is stable (post-LSP).
-- **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
 - **Steel builtin to register custom completers**: Steel-side API for plugins to register `Completer` implementations dispatched by command name (same shape as `CommandCompleter` / `PathCompleter` / `BufferNameCompleter` in `editor/src/editor/completion.rs`). Lets plugin-defined `:` commands offer tab completion for their arguments. Post-M7; depends on the `Completer` trait staying stable. **Design note**: fuzzy matching stays out of core — plugins own ranking (fzy/fzf/skim-style scoring are a matter of taste), the core only does prefix matching.
 - Git gutter signs (plugin candidate — keep out of core, implement via Steel once scripting lands)
 - File watcher (detect external file changes, prompt to reload)
 - Documentation: Markdown guides, auto-generated command reference, in-editor `:help`
-- Theming: Hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`
