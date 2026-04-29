@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Helix Theme Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #11111b; overflow: hidden; }
+    #root { height: 100vh; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #363a4f; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #45475a; }
+    select { cursor: pointer; }
+    select option { background: #24273a; color: #cad3f5; }
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+const { useState, useCallback, useMemo, useRef } = React;
+
+const MONO = "'JetBrains Mono','Fira Code',monospace";
+
+function hexToHSL(hex) {
+  var r = parseInt(hex.slice(1, 3), 16) / 255;
+  var g = parseInt(hex.slice(3, 5), 16) / 255;
+  var b = parseInt(hex.slice(5, 7), 16) / 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b);
+  var h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    var d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return [h * 360, s * 100, l * 100];
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(100, s)) / 100;
+  l = Math.max(0, Math.min(100, l)) / 100;
+  var c = (1 - Math.abs(2 * l - 1)) * s;
+  var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  var m = l - c / 2;
+  var r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  var toH = function(v) { var hx = Math.round((v + m) * 255).toString(16); return hx.length === 1 ? "0" + hx : hx; };
+  return "#" + toH(r) + toH(g) + toH(b);
+}
+
+function adjustColor(hex, hShift, sShift, lShift) {
+  if (!hex || !hex.startsWith("#") || hex.length < 7) return hex;
+  var hsl = hexToHSL(hex);
+  return hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
+}
+
+function adjustPalette(pal, hShift, sShift, lShift) {
+  if (hShift === 0 && sShift === 0 && lShift === 0) return pal;
+  var out = {};
+  for (var k of Object.keys(pal)) {
+    out[k] = adjustColor(pal[k], hShift, sShift, lShift);
+  }
+  return out;
+}
+
+function stripComment(line) {
+  var inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    if (line[i] === '"' && (i === 0 || line[i-1] !== '\\')) inQ = !inQ;
+    if (line[i] === '#' && !inQ) return line.slice(0, i);
+  }
+  return line;
+}
+
+function countChars(s, open, close) {
+  var d = 0, inQ = false;
+  for (var i = 0; i < s.length; i++) {
+    if (s[i] === '"' && (i === 0 || s[i-1] !== '\\')) inQ = !inQ;
+    if (!inQ && s[i] === open) d++;
+    if (!inQ && s[i] === close) d--;
+  }
+  return d;
+}
+
+function splitPairs(s) {
+  var pairs = [], cur = "", depth = 0, inQ = false;
+  for (var i = 0; i < s.length; i++) {
+    var c = s[i];
+    if (c === '"' && (i === 0 || s[i-1] !== '\\')) inQ = !inQ;
+    if (!inQ) {
+      if (c === '[' || c === '{') depth++;
+      if (c === ']' || c === '}') depth--;
+      if (c === ',' && depth === 0) { pairs.push(cur.trim()); cur = ""; continue; }
+    }
+    cur += c;
+  }
+  if (cur.trim()) pairs.push(cur.trim());
+  return pairs;
+}
+
+function parseInlineVal(s) {
+  s = s.trim();
+  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  if (s.startsWith('{') && s.endsWith('}')) return parseInlineTable(s);
+  if (s.startsWith('[')) return s;
+  return s;
+}
+
+function parseInlineTable(s) {
+  var inner = s.slice(1, -1).trim();
+  if (!inner) return {};
+  var obj = {};
+  var pairs = splitPairs(inner);
+  for (var i = 0; i < pairs.length; i++) {
+    var eq = pairs[i].indexOf('=');
+    if (eq === -1) continue;
+    var k = pairs[i].slice(0, eq).trim().replace(/^"|"$/g, "");
+    var v = pairs[i].slice(eq + 1).trim();
+    obj[k] = parseInlineVal(v);
+  }
+  return obj;
+}
+
+function parseTOML(text) {
+  var result = {};
+  var cur = result;
+  var lines = text.split("\n");
+  var i = 0;
+  while (i < lines.length) {
+    var line = stripComment(lines[i]).trim();
+    i++;
+    if (!line) continue;
+
+    var sec = line.match(/^\[([^\]]+)\]$/);
+    if (sec) {
+      cur = result;
+      var parts = sec[1].split(".");
+      for (var p = 0; p < parts.length; p++) {
+        if (!cur[parts[p]]) cur[parts[p]] = {};
+        cur = cur[parts[p]];
+      }
+      continue;
+    }
+
+    var eq = line.indexOf('=');
+    if (eq === -1) continue;
+    var key = line.slice(0, eq).trim().replace(/^"|"$/g, "");
+    var val = line.slice(eq + 1).trim();
+
+    var braceDepth = countChars(val, '{', '}');
+    var bracketDepth = countChars(val, '[', ']');
+    while ((braceDepth > 0 || bracketDepth > 0) && i < lines.length) {
+      var nextLine = stripComment(lines[i]).trim();
+      i++;
+      val += " " + nextLine;
+      braceDepth += countChars(nextLine, '{', '}');
+      bracketDepth += countChars(nextLine, '[', ']');
+    }
+    val = val.trim();
+
+    if (val.startsWith('{') && val.endsWith('}')) {
+      cur[key] = parseInlineTable(val);
+    } else if (val.startsWith('"') && val.endsWith('"')) {
+      cur[key] = val.slice(1, -1);
+    } else {
+      cur[key] = val;
+    }
+  }
+  return result;
+}
+
+function exportTOML(palette, scopes) {
+  let out = "[palette]\n";
+  for (const [k, v] of Object.entries(palette)) {
+    out += '"' + k + '" = "' + v + '"\n';
+  }
+  out += "\n";
+  const sections = {};
+  for (const [k, v] of Object.entries(scopes)) {
+    const dot = k.lastIndexOf(".");
+    if (dot === -1) {
+      if (typeof v === "object") {
+        const parts = Object.entries(v).map(function(e) { return e[0] + ' = "' + e[1] + '"'; }).join(", ");
+        out += '"' + k + '" = { ' + parts + " }\n";
+      } else {
+        out += '"' + k + '" = "' + v + '"\n';
+      }
+    } else {
+      const sec = k.slice(0, dot);
+      const key = k.slice(dot + 1);
+      if (!sections[sec]) sections[sec] = [];
+      sections[sec].push([key, v]);
+    }
+  }
+  for (const [sec, entries] of Object.entries(sections)) {
+    out += "\n[" + sec + "]\n";
+    for (const [key, v] of entries) {
+      if (typeof v === "object") {
+        const parts = Object.entries(v).map(function(e) { return e[0] + ' = "' + e[1] + '"'; }).join(", ");
+        out += '"' + key + '" = { ' + parts + " }\n";
+      } else {
+        out += '"' + key + '" = "' + v + '"\n';
+      }
+    }
+  }
+  return out;
+}
+
+const SCOPES = [
+  ["UI", [
+    "ui.background", "ui.foreground", "ui.cursor", "ui.cursor.match",
+    "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected",
+    "ui.statusline", "ui.statusline.normal", "ui.statusline.insert",
+    "ui.popup", "ui.menu", "ui.menu.selected", "ui.window", "ui.gutter",
+  ]],
+  ["Syntax", [
+    "comment", "constant", "constant.numeric", "constant.character",
+    "constant.character.escape", "string", "string.special",
+    "keyword", "keyword.control", "keyword.function", "keyword.operator",
+    "operator", "function", "function.method", "function.macro",
+    "tag", "type", "type.builtin",
+    "variable", "variable.builtin", "variable.parameter",
+    "label", "punctuation", "punctuation.bracket", "punctuation.delimiter",
+    "namespace", "attribute", "module",
+  ]],
+  ["Markup", [
+    "markup.heading", "markup.bold", "markup.italic",
+    "markup.link", "markup.raw", "markup.list",
+  ]],
+  ["Diff", ["diff.plus", "diff.minus", "diff.delta"]],
+  ["Diagnostic", [
+    "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
+  ]],
+];
+
+const ALL_SCOPES = SCOPES.flatMap(function(s) { return s[1]; });
+
+const DEFAULT_PAL = {
+  black: "#1a1b26", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
+  blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#c0caf5",
+  orange: "#ff9e64", gray: "#565f89", "light-gray": "#a9b1d6", "dark-gray": "#33374c",
+};
+
+const DEFAULT_SC = {
+  "ui.background": "black", "ui.foreground": "white", "ui.cursor": "blue",
+  "ui.cursor.match": "yellow", "ui.selection": "dark-gray",
+  "ui.selection.primary": "dark-gray", "ui.linenr": "gray",
+  "ui.linenr.selected": "yellow",
+  "ui.statusline": { fg: "white", bg: "dark-gray" },
+  "ui.statusline.normal": { fg: "black", bg: "blue" },
+  "ui.statusline.insert": { fg: "black", bg: "green" },
+  "ui.popup": { fg: "white", bg: "dark-gray" },
+  "ui.menu": { fg: "white", bg: "dark-gray" },
+  "ui.menu.selected": { fg: "black", bg: "blue" },
+  "ui.window": "gray", "ui.gutter": "gray",
+  comment: "gray", constant: "orange", "constant.numeric": "orange",
+  "constant.character": "orange", "constant.character.escape": "magenta",
+  string: "green", "string.special": "cyan",
+  keyword: "magenta", "keyword.control": "magenta",
+  "keyword.function": "magenta", "keyword.operator": "cyan",
+  operator: "cyan", "function": "blue", "function.method": "blue",
+  "function.macro": "cyan", tag: "red", type: "yellow",
+  "type.builtin": "yellow", variable: "white",
+  "variable.builtin": "red", "variable.parameter": "orange",
+  label: "cyan", punctuation: "light-gray",
+  "punctuation.bracket": "light-gray", "punctuation.delimiter": "light-gray",
+  namespace: "magenta", attribute: "yellow", module: "magenta",
+  "markup.heading": "blue", "markup.bold": "orange",
+  "markup.italic": "magenta", "markup.link": "cyan",
+  "markup.raw": "green", "markup.list": "red",
+  "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
+  "diagnostic.error": "red", "diagnostic.warning": "yellow",
+  "diagnostic.info": "blue", "diagnostic.hint": "cyan",
+};
+
+function resolve(val, pal) {
+  if (!val) return null;
+  if (typeof val === "object") return { fg: resolve(val.fg, pal), bg: resolve(val.bg, pal) };
+  if (val.startsWith("#")) return val;
+  return pal[val] || val;
+}
+
+function scopeLookup(id, sc, pal) {
+  var key = id;
+  while (key) {
+    if (sc[key] !== undefined && sc[key] !== "") {
+      return resolve(sc[key], pal);
+    }
+    var dot = key.lastIndexOf(".");
+    if (dot === -1) break;
+    key = key.slice(0, dot);
+  }
+  return null;
+}
+
+function fgc(id, sc, pal, fb) {
+  var c = scopeLookup(id, sc, pal);
+  if (!c) return fb;
+  return typeof c === "object" ? (c.fg || fb) : c;
+}
+
+function bgc(id, sc, pal, fb) {
+  var c = scopeLookup(id, sc, pal);
+  if (!c) return fb;
+  return typeof c === "object" ? (c.bg || fb) : "transparent";
+}
+
+function Acc({ title, open, onToggle, count, children }) {
+  return (
+    <div style={{ borderBottom: "1px solid #2a2d3a" }}>
+      <button onClick={onToggle} style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 14px", background: open ? "#1e2030" : "transparent", border: "none",
+        cursor: "pointer", color: "#c8cdd8", fontSize: 12, fontFamily: MONO,
+        fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "inline-block", transform: open ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s", fontSize: 10 }}>
+            {"\u25B6"}
+          </span>
+          {title}
+        </span>
+        {count != null && (
+          <span style={{ background: "#363a4f", color: "#8087a2", borderRadius: 8, padding: "1px 7px", fontSize: 10 }}>{count}</span>
+        )}
+      </button>
+      {open && (
+        <div style={{ padding: "6px 10px 10px", background: "#181926", maxHeight: "50vh", overflowY: "auto" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Swatch({ color, size }) {
+  return (
+    <span style={{
+      display: "inline-block", width: size || 10, height: size || 10, borderRadius: 2,
+      background: color || "transparent", border: "1px solid rgba(255,255,255,0.15)", flexShrink: 0,
+    }} />
+  );
+}
+
+function ScopeRow({ id, value, palette, onChange }) {
+  const isObj = typeof value === "object" && value !== null;
+  const fgVal = isObj ? (value.fg || "") : (value || "");
+  const bgVal = isObj ? (value.bg || "") : "";
+  const hasBg = isObj || id.startsWith("ui.");
+  const palNames = Object.keys(palette);
+
+  const [fgCustom, setFgCustom] = useState(false);
+  const [bgCustom, setBgCustom] = useState(false);
+  const [fgHex, setFgHex] = useState("");
+  const [bgHex, setBgHex] = useState("");
+
+  const emit = function(newFg, newBg) {
+    if (hasBg) { onChange({ fg: newFg, bg: newBg }); }
+    else { onChange(newFg); }
+  };
+
+  const sel = {
+    background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5",
+    borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: MONO,
+    flex: 1, minWidth: 0, outline: "none",
+  };
+
+  var rFg = resolve(fgVal, palette);
+  var rBg = resolve(bgVal, palette);
+
+  function renderSelect(val, isCustom, hexVal, setCustom, setHex, isBgField) {
+    var handleSel = function(e) {
+      var v = e.target.value;
+      if (v === "__custom__") { setCustom(true); return; }
+      setCustom(false);
+      if (isBgField) { emit(fgVal, v); }
+      else { emit(v, bgVal); }
+    };
+    var handleHex = function(e) {
+      setHex(e.target.value);
+      if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
+        if (isBgField) { emit(fgVal, e.target.value); }
+        else { emit(e.target.value, bgVal); }
+      }
+    };
+    return (
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <select value={isCustom ? "__custom__" : val} onChange={handleSel} style={sel}>
+          <option value="">{"-- none --"}</option>
+          {palNames.map(function(n) { return <option key={n} value={n}>{n}</option>; })}
+          <option value="__custom__">{"Custom hex"}</option>
+        </select>
+        {isCustom && (
+          <input type="text" placeholder="#ff00aa" value={hexVal} onChange={handleHex}
+            style={{ background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: MONO, outline: "none", width: "100%", marginTop: 3, boxSizing: "border-box" }} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "6px 4px", borderBottom: "1px solid #1e2030" }}>
+      <div style={{ fontSize: 11, color: "#8087a2", marginBottom: 4, fontFamily: MONO, display: "flex", alignItems: "center", gap: 6 }}>
+        <Swatch color={rFg} />
+        {hasBg && <Swatch color={rBg} />}
+        <span style={{ opacity: 0.7 }}>{id}</span>
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ fontSize: 9, color: "#5b6078", width: 16, flexShrink: 0 }}>FG</span>
+        {renderSelect(fgVal, fgCustom, fgHex, setFgCustom, setFgHex, false)}
+      </div>
+      {hasBg && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+          <span style={{ fontSize: 9, color: "#5b6078", width: 16, flexShrink: 0 }}>BG</span>
+          {renderSelect(bgVal, bgCustom, bgHex, setBgCustom, setBgHex, true)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+var CODE = [
+  { n: 1, t: [["use ", "keyword"], ["std", "namespace"], ["::", "punctuation.delimiter"], ["collections", "module"], ["::", "punctuation.delimiter"], ["HashMap", "type"], [";", "punctuation.delimiter"]] },
+  { n: 2, t: [] },
+  { n: 3, t: [["/// A theme palette for the editor", "comment"]] },
+  { n: 4, t: [["pub ", "keyword"], ["struct ", "keyword"], ["Theme", "type"], [" {", "punctuation.bracket"]] },
+  { n: 5, sel: true, t: [["    name", "variable"], [":", "punctuation.delimiter"], [" String", "type.builtin"], [",", "punctuation.delimiter"]] },
+  { n: 6, t: [["    colors", "variable"], [":", "punctuation.delimiter"], [" HashMap", "type"], ["<", "punctuation.bracket"], ["String", "type.builtin"], [", ", "punctuation.delimiter"], ["Color", "type"], [">", "punctuation.bracket"], [",", "punctuation.delimiter"]] },
+  { n: 7, t: [["}", "punctuation.bracket"]] },
+  { n: 8, t: [] },
+  { n: 9, t: [["impl ", "keyword"], ["Theme", "type"], [" {", "punctuation.bracket"]] },
+  { n: 10, t: [["    pub ", "keyword"], ["fn ", "keyword.function"], ["new", "function"], ["(", "punctuation.bracket"], ["name", "variable.parameter"], [": ", "punctuation.delimiter"], ["&", "operator"], ["str", "type.builtin"], [")", "punctuation.bracket"], [" -> ", "operator"], ["Self", "type.builtin"], [" {", "punctuation.bracket"]] },
+  { n: 11, t: [["        let ", "keyword"], ["count", "variable"], [" = ", "operator"], ["42", "constant.numeric"], [";", "punctuation.delimiter"]] },
+  { n: 12, t: [["        let ", "keyword"], ["msg", "variable"], [" = ", "operator"], ['"Theme loaded"', "string"], [";", "punctuation.delimiter"]] },
+  { n: 13, t: [["        println!", "function.macro"], ["(", "punctuation.bracket"], ['"{}"', "string"], [", ", "punctuation.delimiter"], ["msg", "variable"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
+  { n: 14, t: [["        Self", "type.builtin"], [" { ", "punctuation.bracket"], ["name", "variable"], [": ", "punctuation.delimiter"], ["name", "variable.parameter"], [".", "punctuation.delimiter"], ["to_string", "function.method"], ["()", "punctuation.bracket"], [" }", "punctuation.bracket"]] },
+  { n: 15, t: [["    }", "punctuation.bracket"]] },
+  { n: 16, t: [["}", "punctuation.bracket"]] },
+  { n: 17, t: [] },
+];
+
+function Preview({ pal, sc }) {
+  var BG = bgc("ui.background", sc, pal, "#1a1b26");
+  var FG = fgc("ui.foreground", sc, pal, fgc("ui.text", sc, pal, "#c0caf5"));
+  var lnr = fgc("ui.linenr", sc, pal, "#565f89");
+  var lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
+  var selBg = bgc("ui.selection", sc, pal, "#33374c");
+  var curFg = fgc("ui.cursor", sc, pal, null);
+  var curBg = bgc("ui.cursor", sc, pal, "#7aa2f7");
+  var stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
+  var stBg = bgc("ui.statusline", sc, pal, "#33374c");
+  var mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
+  var mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
+  var brd = fgc("ui.window", sc, pal, "#565f89");
+  var s = function(id) { return fgc(id, sc, pal, FG); };
+  var stBgR = stBg !== "transparent" ? stBg : BG;
+
+  return (
+    <div style={{ background: BG, borderRadius: 8, overflow: "hidden", border: "1px solid " + brd, fontFamily: MONO, fontSize: 13, lineHeight: "20px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "6px 14px", borderBottom: "1px solid " + brd, background: stBgR, gap: 8 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diagnostic.error") }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diagnostic.warning") }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: s("diff.plus") }} />
+        </div>
+        <span style={{ color: lnr, fontSize: 11 }}>theme.rs</span>
+      </div>
+      <div style={{ padding: "4px 0", overflowX: "auto" }}>
+        {CODE.map(function(line) {
+          var isCur = line.n === 5;
+          return (
+            <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? selBg + "44" : "transparent", minHeight: 20 }}>
+              <span style={{ display: "inline-block", width: 44, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
+              <span style={{ background: line.sel ? selBg + "88" : "transparent", borderRadius: line.sel ? 2 : 0, padding: line.sel ? "0 2px" : "0" }}>
+                {line.t.length === 0 && <span>{"\u00a0"}</span>}
+                {line.t.map(function(tok, i) {
+                  var col = tok[1] ? s(tok[1]) : FG;
+                  return (
+                    <span key={i} style={{ color: col, fontStyle: tok[1] === "comment" ? "italic" : "normal" }}>{tok[0]}</span>
+                  );
+                })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid " + brd, fontSize: 11, fontFamily: MONO }}>
+        <span style={{ padding: "3px 10px", background: mnBg, color: mnFg, fontWeight: 700 }}>NOR</span>
+        <span style={{ padding: "3px 10px", background: stBgR, color: stFg, flex: 1 }}>theme.rs [+]</span>
+        <span style={{ padding: "3px 10px", background: stBgR, color: lnr }}>5:1</span>
+        <span style={{ padding: "3px 10px", background: stBgR, color: lnr }}>UTF-8 rust</span>
+      </div>
+    </div>
+  );
+}
+
+function HelixThemeEditor() {
+  var _s = useState;
+  var _c = useCallback;
+  var [palette, setPalette] = _s(Object.assign({}, DEFAULT_PAL));
+  var [scopes, setScopes] = _s(Object.assign({}, DEFAULT_SC));
+  var [newName, setNewName] = _s("");
+  var [newColor, setNewColor] = _s("#ffffff");
+  var [filter, setFilter] = _s("");
+  var [catFilter, setCatFilter] = _s("All");
+  var [hShift, setHShift] = _s(0);
+  var [sShift, setSShift] = _s(0);
+  var [lShift, setLShift] = _s(0);
+
+  var adjPalette = useMemo(function() {
+    return adjustPalette(palette, hShift, sShift, lShift);
+  }, [palette, hShift, sShift, lShift]);
+  var [palOpen, setPalOpen] = _s(true);
+  var [scOpen, setScOpen] = _s(true);
+  var [hslOpen, setHslOpen] = _s(true);
+  var fileRef = useRef(null);
+
+  var handleImport = _c(function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var parsed = parseTOML(ev.target.result);
+        if (parsed.palette) setPalette(parsed.palette);
+        setHShift(0); setSShift(0); setLShift(0);
+        var ns = {};
+        var SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
+        for (var _k of Object.keys(parsed)) {
+          if (_k === "palette" || _k === "inherits") continue;
+          var v = parsed[_k];
+          if (typeof v === "string") { ns[_k] = v; }
+          else if (typeof v === "object") {
+            var isScopeDef = Object.keys(v).some(function(k) { return SCOPE_KEYS.indexOf(k) !== -1; });
+            if (isScopeDef) {
+              ns[_k] = v;
+            } else {
+              for (var sk of Object.keys(v)) {
+                var sv = v[sk];
+                if (typeof sv === "string") { ns[_k + "." + sk] = sv; }
+                else if (typeof sv === "object") { ns[_k + "." + sk] = sv; }
+              }
+            }
+          }
+        }
+        if (Object.keys(ns).length > 0) setScopes(ns);
+      } catch (err) {
+        console.error("Parse error", err);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, []);
+
+  var handleExport = _c(function() {
+    var toml = exportTOML(adjPalette, scopes);
+    var blob = new Blob([toml], { type: "application/toml" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "theme.toml";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [adjPalette, scopes]);
+
+  var addColor = function() {
+    if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
+      setPalette(function(p) { var n = Object.assign({}, p); n[newName.trim()] = newColor; return n; });
+      setNewName("");
+      setNewColor("#ffffff");
+    }
+  };
+
+  var cats = ["All"].concat(SCOPES.map(function(s) { return s[0]; }));
+
+  var filtered = useMemo(function() {
+    return ALL_SCOPES.filter(function(id) {
+      if (catFilter !== "All") {
+        var found = SCOPES.find(function(s) { return s[1].includes(id); });
+        if (found && found[0] !== catFilter) return false;
+      }
+      if (filter && id.toLowerCase().indexOf(filter.toLowerCase()) === -1) return false;
+      return true;
+    });
+  }, [filter, catFilter]);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#11111b", color: "#cdd6f4", fontFamily: MONO, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "12px 20px", background: "#181825", borderBottom: "1px solid #2a2d3a", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "#cba6f7", letterSpacing: "0.04em" }}>
+          {"\u2B21 helix theme editor"}
+        </span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="file" ref={fileRef} accept=".toml" onChange={handleImport} style={{ display: "none" }} />
+          <button onClick={function() { fileRef.current && fileRef.current.click(); }} style={{ background: "#313244", color: "#cdd6f4", border: "1px solid #45475a", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: MONO, fontSize: 12 }}>
+            {"Import TOML"}
+          </button>
+          <button onClick={handleExport} style={{ background: "#89b4fa", color: "#11111b", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: MONO, fontSize: 12, fontWeight: 600 }}>
+            {"Export TOML"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <div style={{ flex: 1, padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
+          <Preview pal={adjPalette} sc={scopes} />
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {["diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint"].map(function(d) {
+              var c = fgc(d, scopes, adjPalette, "#888");
+              return (
+                <div key={d} style={{ padding: "6px 14px", borderRadius: 6, background: c + "18", borderLeft: "3px solid " + c, color: c, fontSize: 11, fontFamily: MONO }}>
+                  {d.split(".")[1]}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89"), fontFamily: MONO, fontSize: 12 }}>
+            <div style={{ padding: "4px 12px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), color: fgc("ui.linenr", scopes, adjPalette, "#565f89"), fontSize: 10, borderBottom: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89") }}>diff preview</div>
+            {[["diff.plus", "+ added line"], ["diff.minus", "- removed line"], ["diff.delta", "~ changed line"]].map(function(item) {
+              var c = fgc(item[0], scopes, adjPalette, "#888");
+              return <div key={item[0]} style={{ padding: "4px 12px", background: c + "15", color: c }}>{item[1]}</div>;
+            })}
+          </div>
+
+          <div style={{ borderRadius: 6, padding: "12px 16px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), border: "1px solid " + fgc("ui.window", scopes, adjPalette, "#565f89"), fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
+            <div style={{ color: fgc("markup.heading", scopes, adjPalette, "#7aa2f7"), fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{"# Markup Preview"}</div>
+            <div style={{ color: fgc("ui.foreground", scopes, adjPalette, "#c0caf5") }}>
+              {"Normal text with "}
+              <span style={{ color: fgc("markup.bold", scopes, adjPalette, "#ff9e64"), fontWeight: 700 }}>{"**bold**"}</span>
+              {" and "}
+              <span style={{ color: fgc("markup.italic", scopes, adjPalette, "#bb9af7"), fontStyle: "italic" }}>{"_italic_"}</span>
+              {" and "}
+              <span style={{ color: fgc("markup.link", scopes, adjPalette, "#7dcfff"), textDecoration: "underline" }}>{"[link](url)"}</span>
+            </div>
+            <div style={{ color: fgc("markup.list", scopes, adjPalette, "#f7768e") }}>{"- list item"}</div>
+            <span style={{ color: fgc("markup.raw", scopes, adjPalette, "#9ece6a"), background: fgc("markup.raw", scopes, adjPalette, "#9ece6a") + "15", padding: "1px 5px", borderRadius: 3 }}>{"`code`"}</span>
+          </div>
+        </div>
+
+        <div style={{ width: 340, flexShrink: 0, background: "#1e1e2e", borderLeft: "1px solid #2a2d3a", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          <Acc title="Palette" open={palOpen} onToggle={function() { setPalOpen(!palOpen); }} count={Object.keys(palette).length}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {Object.entries(palette).map(function(entry) {
+                var name = entry[0];
+                var color = entry[1];
+                return (
+                  <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px", borderBottom: "1px solid #1e2030" }}>
+                    <input type="color" value={color} onChange={function(e) { setPalette(function(p) { var n = Object.assign({}, p); n[name] = e.target.value; return n; }); }} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 12, color: "#cad3f5", fontFamily: MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                    <span style={{ fontSize: 10, color: "#5b6078", fontFamily: MONO, flexShrink: 0 }}>{color}</span>
+                    <button onClick={function() { setPalette(function(p) { var n = Object.assign({}, p); delete n[name]; return n; }); }} style={{ background: "none", border: "none", color: "#5b6078", cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0 }} title="Remove">{"\u00D7"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", paddingTop: 6, borderTop: "1px solid #2a2d3a" }}>
+              <input type="color" value={newColor} onChange={function(e) { setNewColor(e.target.value); }} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
+              <input type="text" value={newName} onChange={function(e) { setNewName(e.target.value); }} placeholder="name" onKeyDown={function(e) { if (e.key === "Enter") addColor(); }} style={{ flex: 1, background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: MONO, outline: "none", minWidth: 0 }} />
+              <button onClick={addColor} style={{ background: "#a6e3a1", color: "#11111b", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontFamily: MONO, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{"+"}</button>
+            </div>
+          </Acc>
+
+          <Acc title="Scopes" open={scOpen} onToggle={function() { setScOpen(!scOpen); }} count={ALL_SCOPES.length}>
+            <div style={{ marginBottom: 8 }}>
+              <input type="text" value={filter} onChange={function(e) { setFilter(e.target.value); }} placeholder="Filter scopes..." style={{ width: "100%", boxSizing: "border-box", background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "5px 8px", fontSize: 11, fontFamily: MONO, outline: "none", marginBottom: 6 }} />
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {cats.map(function(c) {
+                  return (
+                    <button key={c} onClick={function() { setCatFilter(c); }} style={{ background: catFilter === c ? "#89b4fa" : "#313244", color: catFilter === c ? "#11111b" : "#8087a2", border: "none", borderRadius: 10, padding: "2px 9px", fontSize: 10, fontFamily: MONO, cursor: "pointer", fontWeight: catFilter === c ? 600 : 400 }}>{c}</button>
+                  );
+                })}
+              </div>
+            </div>
+            {filtered.map(function(id) {
+              return (
+                <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={function(v) { setScopes(function(s) { return Object.assign({}, s, { [id]: v }); }); }} />
+              );
+            })}
+          </Acc>
+
+          <Acc title="Global HSL" open={hslOpen} onToggle={function() { setHslOpen(!hslOpen); }}>
+            {[
+              { label: "Hue", value: hShift, set: setHShift, min: -180, max: 180, unit: "\u00B0" },
+              { label: "Saturation", value: sShift, set: setSShift, min: -100, max: 100, unit: "%" },
+              { label: "Lightness", value: lShift, set: setLShift, min: -100, max: 100, unit: "%" },
+            ].map(function(sl) {
+              return (
+                <div key={sl.label} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: "#8087a2", fontFamily: MONO }}>{sl.label}</span>
+                    <span style={{ fontSize: 11, color: "#cad3f5", fontFamily: MONO, minWidth: 50, textAlign: "right" }}>
+                      {(sl.value > 0 ? "+" : "") + sl.value + sl.unit}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="range" min={sl.min} max={sl.max} value={sl.value} onChange={function(e) { sl.set(Number(e.target.value)); }}
+                      style={{ flex: 1, accentColor: "#89b4fa", height: 4, cursor: "pointer" }} />
+                    <button onClick={function() { sl.set(0); }}
+                      style={{ background: "none", border: "1px solid #363a4f", color: "#5b6078", borderRadius: 3, padding: "1px 6px", cursor: "pointer", fontFamily: MONO, fontSize: 10, flexShrink: 0 }}
+                      title="Reset">
+                      {"\u21BA"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", gap: 6, marginTop: 4, borderTop: "1px solid #2a2d3a", paddingTop: 8 }}>
+              <button onClick={function() { setHShift(0); setSShift(0); setLShift(0); }}
+                style={{ flex: 1, background: "#313244", color: "#8087a2", border: "1px solid #363a4f", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10 }}>
+                {"Reset All"}
+              </button>
+              <button onClick={function() { setPalette(Object.assign({}, adjPalette)); setHShift(0); setSShift(0); setLShift(0); }}
+                style={{ flex: 1, background: "#89b4fa", color: "#11111b", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10, fontWeight: 600 }}>
+                {"Apply to Palette"}
+              </button>
+            </div>
+          </Acc>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(HelixThemeEditor));
+  </script>
+</body>
+</html>
