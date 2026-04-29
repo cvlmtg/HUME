@@ -30,13 +30,14 @@ const { useState, useCallback, useMemo, useRef } = React;
 const MONO = "'JetBrains Mono','Fira Code',monospace";
 
 function hexToHSL(hex) {
-  var r = parseInt(hex.slice(1, 3), 16) / 255;
-  var g = parseInt(hex.slice(3, 5), 16) / 255;
-  var b = parseInt(hex.slice(5, 7), 16) / 255;
-  var max = Math.max(r, g, b), min = Math.min(r, g, b);
-  var h = 0, s = 0, l = (max + min) / 2;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
   if (max !== min) {
-    var d = max - min;
+    const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
     else if (max === g) h = ((b - r) / d + 2) / 6;
@@ -49,95 +50,82 @@ function hslToHex(h, s, l) {
   h = ((h % 360) + 360) % 360;
   s = Math.max(0, Math.min(100, s)) / 100;
   l = Math.max(0, Math.min(100, l)) / 100;
-  var c = (1 - Math.abs(2 * l - 1)) * s;
-  var x = c * (1 - Math.abs((h / 60) % 2 - 1));
-  var m = l - c / 2;
-  var r = 0, g = 0, b = 0;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
   if (h < 60) { r = c; g = x; }
   else if (h < 120) { r = x; g = c; }
   else if (h < 180) { g = c; b = x; }
   else if (h < 240) { g = x; b = c; }
   else if (h < 300) { r = x; b = c; }
   else { r = c; b = x; }
-  var toH = function(v) { var hx = Math.round((v + m) * 255).toString(16); return hx.length === 1 ? "0" + hx : hx; };
+  const toH = v => { const hx = Math.round((v + m) * 255).toString(16); return hx.length === 1 ? "0" + hx : hx; };
   return "#" + toH(r) + toH(g) + toH(b);
 }
 
 function adjustColor(hex, hShift, sShift, lShift) {
   if (!hex || !hex.startsWith("#") || hex.length < 7) return hex;
-  var hsl = hexToHSL(hex);
+  const hsl = hexToHSL(hex);
   return hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
 }
 
 function adjustPalette(pal, hShift, sShift, lShift) {
   if (hShift === 0 && sShift === 0 && lShift === 0) return pal;
-  var out = {};
-  for (var k of Object.keys(pal)) {
-    out[k] = adjustColor(pal[k], hShift, sShift, lShift);
-  }
+  const out = {};
+  for (const k of Object.keys(pal)) out[k] = adjustColor(pal[k], hShift, sShift, lShift);
   return out;
 }
 
-// F3: track inDouble/inSingle/escape state correctly in all three scanners.
-// The old `s[i-1] !== '\\'` heuristic misread `"\\"` (escaped backslash
-// followed by an unescaped quote) and silently ignored single-quoted strings.
+// Shared string-aware scanner. Yields { i, c, inStr } for every character;
+// inStr=true while inside a "..." or '...' literal (delimiters and escapes included).
+// Handles: single-quoted strings, escaped backslashes in double-quoted strings,
+// quoted TOML keys containing dots or '=', and inline array/table values.
+function* scanString(s) {
+  let inDouble = false, inSingle = false, escape = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; yield { i, c, inStr: true }; continue; }
+    if (inDouble) {
+      if (c === '\\') { escape = true; yield { i, c, inStr: true }; continue; }
+      if (c === '"') { inDouble = false; yield { i, c, inStr: true }; continue; }
+      yield { i, c, inStr: true }; continue;
+    }
+    if (inSingle) {
+      if (c === "'") { inSingle = false; yield { i, c, inStr: true }; continue; }
+      yield { i, c, inStr: true }; continue;
+    }
+    if (c === '"') { inDouble = true; yield { i, c, inStr: true }; continue; }
+    if (c === "'") { inSingle = true; yield { i, c, inStr: true }; continue; }
+    yield { i, c, inStr: false };
+  }
+}
 
 function stripComment(line) {
-  var inDouble = false, inSingle = false, escape = false;
-  for (var i = 0; i < line.length; i++) {
-    var c = line[i];
-    if (escape) { escape = false; continue; }
-    if (inDouble) {
-      if (c === '\\') { escape = true; continue; }
-      if (c === '"') inDouble = false;
-      continue;
-    }
-    if (inSingle) { if (c === "'") inSingle = false; continue; }
-    if (c === '"') { inDouble = true; continue; }
-    if (c === "'") { inSingle = true; continue; }
-    if (c === '#') return line.slice(0, i);
+  for (const { i, c, inStr } of scanString(line)) {
+    if (!inStr && c === '#') return line.slice(0, i);
   }
   return line;
 }
 
 function countChars(s, open, close) {
-  var d = 0, inDouble = false, inSingle = false, escape = false;
-  for (var i = 0; i < s.length; i++) {
-    var c = s[i];
-    if (escape) { escape = false; continue; }
-    if (inDouble) {
-      if (c === '\\') { escape = true; continue; }
-      if (c === '"') inDouble = false;
-      continue;
+  let d = 0;
+  for (const { c, inStr } of scanString(s)) {
+    if (!inStr) {
+      if (c === open) d++;
+      if (c === close) d--;
     }
-    if (inSingle) { if (c === "'") inSingle = false; continue; }
-    if (c === '"') { inDouble = true; continue; }
-    if (c === "'") { inSingle = true; continue; }
-    if (c === open) d++;
-    if (c === close) d--;
   }
   return d;
 }
 
 function splitPairs(s) {
-  var pairs = [], cur = "", depth = 0;
-  var inDouble = false, inSingle = false, escape = false;
-  for (var i = 0; i < s.length; i++) {
-    var c = s[i];
-    if (escape) { escape = false; cur += c; continue; }
-    if (inDouble) {
-      if (c === '\\') { escape = true; cur += c; continue; }
-      if (c === '"') inDouble = false;
-      cur += c; continue;
-    }
-    if (inSingle) {
-      if (c === "'") inSingle = false;
-      cur += c; continue;
-    }
-    if (c === '"') { inDouble = true; cur += c; continue; }
-    if (c === "'") { inSingle = true; cur += c; continue; }
-    if (c === '[' || c === '{') depth++;
-    if (c === ']' || c === '}') depth--;
+  const pairs = [];
+  let cur = "", depth = 0;
+  for (const { c, inStr } of scanString(s)) {
+    if (inStr) { cur += c; continue; }
+    if (c === '[' || c === '{') { depth++; cur += c; continue; }
+    if (c === ']' || c === '}') { depth--; cur += c; continue; }
     if (c === ',' && depth === 0) { pairs.push(cur.trim()); cur = ""; continue; }
     cur += c;
   }
@@ -145,123 +133,84 @@ function splitPairs(s) {
   return pairs;
 }
 
-// F4: split a TOML dotted key (e.g. `a."b.c"` or `"ui.cursor"`) on dots
-// that lie outside any string literal, then strip the surrounding quotes from
-// each segment. A single quoted segment ("ui.cursor") returns one element.
+// Split a TOML dotted key (e.g. `a."b.c"` or `"ui.cursor"`) on dots outside
+// string literals, then strip surrounding quotes from each segment.
 function splitDottedKey(s) {
-  var parts = [], cur = "";
-  var inDouble = false, inSingle = false, escape = false;
-  for (var i = 0; i < s.length; i++) {
-    var c = s[i];
-    if (escape) { escape = false; cur += c; continue; }
-    if (inDouble) {
-      if (c === '\\') { escape = true; cur += c; continue; }
-      if (c === '"') inDouble = false;
-      cur += c; continue;
-    }
-    if (inSingle) {
-      if (c === "'") inSingle = false;
-      cur += c; continue;
-    }
-    if (c === '"') { inDouble = true; cur += c; continue; }
-    if (c === "'") { inSingle = true; cur += c; continue; }
-    if (c === '.') {
-      parts.push(cur.trim().replace(/^["']|["']$/g, ""));
-      cur = ""; continue;
-    }
+  const parts = [];
+  let cur = "";
+  for (const { c, inStr } of scanString(s)) {
+    if (inStr) { cur += c; continue; }
+    if (c === '.') { parts.push(cur.trim().replace(/^["']|["']$/g, "")); cur = ""; continue; }
     cur += c;
   }
   if (cur.trim()) parts.push(cur.trim().replace(/^["']|["']$/g, ""));
   return parts;
 }
 
-// F1: parse a TOML inline array into a JS array.
 function parseInlineArray(s) {
-  var inner = s.slice(1, -1).trim();
+  const inner = s.slice(1, -1).trim();
   if (!inner) return [];
-  // splitPairs handles commas at depth 0 and strings correctly
-  var elems = splitPairs(inner);
-  var result = [];
-  for (var i = 0; i < elems.length; i++) {
-    var e = elems[i].trim();
-    if (e === '') continue; // tolerate trailing comma
-    result.push(parseInlineVal(e));
-  }
-  return result;
+  return splitPairs(inner).map(e => parseInlineVal(e));
 }
 
 function parseInlineVal(s) {
   s = s.trim();
   if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
-  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1); // F2: literal strings
+  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
   if (s.startsWith('{') && s.endsWith('}')) return parseInlineTable(s);
-  if (s.startsWith('[') && s.endsWith(']')) return parseInlineArray(s); // F1
+  if (s.startsWith('[') && s.endsWith(']')) return parseInlineArray(s);
   return s;
 }
 
 function parseInlineTable(s) {
-  var inner = s.slice(1, -1).trim();
+  const inner = s.slice(1, -1).trim();
   if (!inner) return {};
-  var obj = {};
-  var pairs = splitPairs(inner);
-  for (var i = 0; i < pairs.length; i++) {
-    var eq = pairs[i].indexOf('=');
+  const obj = {};
+  for (const pair of splitPairs(inner)) {
+    const eq = pair.indexOf('=');
     if (eq === -1) continue;
-    var k = pairs[i].slice(0, eq).trim().replace(/^["']|["']$/g, ""); // F2: allow single-quoted keys
-    var v = pairs[i].slice(eq + 1).trim();
-    obj[k] = parseInlineVal(v);
+    const k = pair.slice(0, eq).trim().replace(/^["']|["']$/g, "");
+    obj[k] = parseInlineVal(pair.slice(eq + 1).trim());
   }
   return obj;
 }
 
 function parseTOML(text) {
-  var result = {};
-  var cur = result;
-  var lines = text.split("\n");
-  var i = 0;
+  const result = {};
+  let cur = result;
+  const lines = text.split("\n");
+  let i = 0;
   while (i < lines.length) {
-    var line = stripComment(lines[i]).trim();
+    const line = stripComment(lines[i]).trim();
     i++;
     if (!line) continue;
 
-    var sec = line.match(/^\[([^\]]+)\]$/);
+    const sec = line.match(/^\[([^\]]+)\]$/);
     if (sec) {
       cur = result;
-      // F4: split section name on dots outside strings; strip per-segment quotes
-      var parts = splitDottedKey(sec[1]);
-      for (var p = 0; p < parts.length; p++) {
-        if (!cur[parts[p]]) cur[parts[p]] = {};
-        cur = cur[parts[p]];
+      for (const part of splitDottedKey(sec[1])) {
+        if (!cur[part]) cur[part] = {};
+        cur = cur[part];
       }
       continue;
     }
 
-    // F4: find '=' outside string literals (keys may contain quoted '=')
-    var eq = -1;
-    { var inD = false, inS = false, esc = false;
-      for (var j = 0; j < line.length; j++) {
-        var ch = line[j];
-        if (esc) { esc = false; continue; }
-        if (inD) { if (ch === '\\') { esc = true; continue; } if (ch === '"') inD = false; continue; }
-        if (inS) { if (ch === "'") inS = false; continue; }
-        if (ch === '"') { inD = true; continue; }
-        if (ch === "'") { inS = true; continue; }
-        if (ch === '=') { eq = j; break; }
-      }
+    // Find '=' outside string literals (keys may contain quoted '=').
+    let eq = -1;
+    for (const { i: pos, c, inStr } of scanString(line)) {
+      if (!inStr && c === '=') { eq = pos; break; }
     }
     if (eq === -1) continue;
 
-    // F4: use splitDottedKey then join for the flat data model Helix themes expect.
-    // "ui.cursor" → ["ui.cursor"] → "ui.cursor" (single quoted segment, stays flat).
-    // ui.cursor  → ["ui","cursor"] → "ui.cursor" (bare dotted key, same flat result).
-    var keyRaw = line.slice(0, eq).trim();
-    var key = splitDottedKey(keyRaw).join(".");
-    var val = line.slice(eq + 1).trim();
+    // "ui.cursor" → ["ui.cursor"] → "ui.cursor"; ui.cursor → ["ui","cursor"] → "ui.cursor".
+    // Both produce the same flat key to match the shape upstream Helix themes use.
+    const key = splitDottedKey(line.slice(0, eq).trim()).join(".");
+    let val = line.slice(eq + 1).trim();
 
-    var braceDepth = countChars(val, '{', '}');
-    var bracketDepth = countChars(val, '[', ']');
+    let braceDepth = countChars(val, '{', '}');
+    let bracketDepth = countChars(val, '[', ']');
     while ((braceDepth > 0 || bracketDepth > 0) && i < lines.length) {
-      var nextLine = stripComment(lines[i]).trim();
+      const nextLine = stripComment(lines[i]).trim();
       i++;
       val += " " + nextLine;
       braceDepth += countChars(nextLine, '{', '}');
@@ -272,11 +221,11 @@ function parseTOML(text) {
     if (val.startsWith('{') && val.endsWith('}')) {
       cur[key] = parseInlineTable(val);
     } else if (val.startsWith('[') && val.endsWith(']')) {
-      cur[key] = parseInlineArray(val); // F1
+      cur[key] = parseInlineArray(val);
     } else if (val.startsWith('"') && val.endsWith('"')) {
       cur[key] = val.slice(1, -1);
     } else if (val.startsWith("'") && val.endsWith("'")) {
-      cur[key] = val.slice(1, -1); // F2
+      cur[key] = val.slice(1, -1);
     } else {
       cur[key] = val;
     }
@@ -284,42 +233,35 @@ function parseTOML(text) {
   return result;
 }
 
-// F5: single value formatter used by exportTOML so arrays and nested tables
-// are never erroneously wrapped in double quotes.
+// Single value formatter — arrays and nested tables are never wrapped in quotes.
 function formatVal(v) {
-  if (Array.isArray(v)) {
-    return "[ " + v.map(formatVal).join(", ") + " ]";
-  }
-  if (typeof v === "string") {
-    return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  }
+  if (Array.isArray(v)) return "[ " + v.map(formatVal).join(", ") + " ]";
+  if (typeof v === "string") return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
   if (typeof v === "object" && v !== null) {
-    var parts = Object.entries(v).map(function(e) { return e[0] + " = " + formatVal(e[1]); }).join(", ");
+    const parts = Object.entries(v).map(([k, val]) => k + " = " + formatVal(val)).join(", ");
     return "{ " + parts + " }";
   }
-  return String(v); // boolean, number
+  return String(v);
 }
 
-// Pull scope definitions out of a parsed TOML object. Skips `palette` (a
-// section in TOML) and `inherits` (the parent theme reference). Promotes
-// nested sections (e.g. `[ui]` with bare `cursor = "..."` inside) into flat
-// dotted keys ("ui.cursor"), matching the data shape the editor uses.
+// Pull scope definitions from a parsed TOML object. Skips `palette` and `inherits`.
+// Promotes nested sections (e.g. `[ui]` with bare `cursor = "..."`) into flat
+// dotted keys ("ui.cursor"), matching the shape the editor uses.
 function extractScopes(parsed) {
-  var ns = {};
-  var SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
-  for (var _k of Object.keys(parsed)) {
+  const ns = {};
+  const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
+  for (const _k of Object.keys(parsed)) {
     if (_k === "palette" || _k === "inherits") continue;
-    var v = parsed[_k];
-    if (typeof v === "string") { ns[_k] = v; }
-    else if (typeof v === "object" && v !== null) {
-      var isScopeDef = Object.keys(v).some(function(k) { return SCOPE_KEYS.indexOf(k) !== -1; });
+    const v = parsed[_k];
+    if (typeof v === "string") {
+      ns[_k] = v;
+    } else if (typeof v === "object" && v !== null) {
+      const isScopeDef = Object.keys(v).some(k => SCOPE_KEYS.includes(k));
       if (isScopeDef) {
         ns[_k] = v;
       } else {
-        for (var sk of Object.keys(v)) {
-          var sv = v[sk];
-          if (typeof sv === "string") { ns[_k + "." + sk] = sv; }
-          else if (typeof sv === "object") { ns[_k + "." + sk] = sv; }
+        for (const [sk, sv] of Object.entries(v)) {
+          ns[_k + "." + sk] = sv;
         }
       }
     }
@@ -328,20 +270,14 @@ function extractScopes(parsed) {
 }
 
 // Emit every scope as a flat top-level quoted dotted key, then [palette] last.
-// We can't use [section] headers for scope grouping: TOML section semantics
-// merge a `[diff]` header with an existing top-level `"diff" = "overlay"` into
-// one nested object, and `extractScopes` then treats it as a single scope and
-// loses the sub-keys. Flat keys avoid the collision entirely and match the
-// shape of upstream Helix themes (rose_pine, etc.).
+// We avoid [section] headers: TOML section semantics would merge a `[diff]` header
+// with an existing top-level `"diff" = "overlay"` into one nested object, losing
+// sub-keys after extractScopes. Flat keys match upstream Helix themes (rose_pine, etc.).
 function exportTOML(palette, scopes) {
   let out = "";
-  for (const [k, v] of Object.entries(scopes)) {
-    out += '"' + k + '" = ' + formatVal(v) + '\n';
-  }
+  for (const [k, v] of Object.entries(scopes)) out += '"' + k + '" = ' + formatVal(v) + '\n';
   out += "\n[palette]\n";
-  for (const [k, v] of Object.entries(palette)) {
-    out += '"' + k + '" = ' + formatVal(v) + '\n';
-  }
+  for (const [k, v] of Object.entries(palette)) out += '"' + k + '" = ' + formatVal(v) + '\n';
   return out;
 }
 
@@ -372,7 +308,7 @@ const SCOPES = [
   ]],
 ];
 
-const ALL_SCOPES = SCOPES.flatMap(function(s) { return s[1]; });
+const ALL_SCOPES = SCOPES.flatMap(([, items]) => items);
 
 const DEFAULT_PAL = {
   black: "#1a1b26", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
@@ -420,12 +356,10 @@ function resolve(val, pal) {
 }
 
 function scopeLookup(id, sc, pal) {
-  var key = id;
+  let key = id;
   while (key) {
-    if (sc[key] !== undefined && sc[key] !== "") {
-      return resolve(sc[key], pal);
-    }
-    var dot = key.lastIndexOf(".");
+    if (sc[key] !== undefined && sc[key] !== "") return resolve(sc[key], pal);
+    const dot = key.lastIndexOf(".");
     if (dot === -1) break;
     key = key.slice(0, dot);
   }
@@ -433,13 +367,13 @@ function scopeLookup(id, sc, pal) {
 }
 
 function fgc(id, sc, pal, fb) {
-  var c = scopeLookup(id, sc, pal);
+  const c = scopeLookup(id, sc, pal);
   if (!c) return fb;
   return typeof c === "object" ? (c.fg || fb) : c;
 }
 
 function bgc(id, sc, pal, fb) {
-  var c = scopeLookup(id, sc, pal);
+  const c = scopeLookup(id, sc, pal);
   if (!c) return fb;
   return typeof c === "object" ? (c.bg || fb) : "transparent";
 }
@@ -455,7 +389,7 @@ function Acc({ title, open, onToggle, count, children }) {
       }}>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ display: "inline-block", transform: open ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s", fontSize: 10 }}>
-            {"\u25B6"}
+            {"▶"}
           </span>
           {title}
         </span>
@@ -493,9 +427,9 @@ function ScopeRow({ id, value, palette, onChange }) {
   const [fgHex, setFgHex] = useState("");
   const [bgHex, setBgHex] = useState("");
 
-  const emit = function(newFg, newBg) {
-    if (hasBg) { onChange({ fg: newFg, bg: newBg }); }
-    else { onChange(newFg); }
+  const emit = (newFg, newBg) => {
+    if (hasBg) onChange({ fg: newFg, bg: newBg });
+    else onChange(newFg);
   };
 
   const sel = {
@@ -504,29 +438,27 @@ function ScopeRow({ id, value, palette, onChange }) {
     flex: 1, minWidth: 0, outline: "none",
   };
 
-  var rFg = resolve(fgVal, palette);
-  var rBg = resolve(bgVal, palette);
+  const rFg = resolve(fgVal, palette);
+  const rBg = resolve(bgVal, palette);
 
   function renderSelect(val, isCustom, hexVal, setCustom, setHex, isBgField) {
-    var handleSel = function(e) {
-      var v = e.target.value;
+    const handleSel = e => {
+      const v = e.target.value;
       if (v === "__custom__") { setCustom(true); return; }
       setCustom(false);
-      if (isBgField) { emit(fgVal, v); }
-      else { emit(v, bgVal); }
+      if (isBgField) emit(fgVal, v); else emit(v, bgVal);
     };
-    var handleHex = function(e) {
+    const handleHex = e => {
       setHex(e.target.value);
       if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
-        if (isBgField) { emit(fgVal, e.target.value); }
-        else { emit(e.target.value, bgVal); }
+        if (isBgField) emit(fgVal, e.target.value); else emit(e.target.value, bgVal);
       }
     };
     return (
       <div style={{ flex: 1, minWidth: 0 }}>
         <select value={isCustom ? "__custom__" : val} onChange={handleSel} style={sel}>
           <option value="">{"-- none --"}</option>
-          {palNames.map(function(n) { return <option key={n} value={n}>{n}</option>; })}
+          {palNames.map(n => <option key={n} value={n}>{n}</option>)}
           <option value="__custom__">{"Custom hex"}</option>
         </select>
         {isCustom && (
@@ -558,7 +490,7 @@ function ScopeRow({ id, value, palette, onChange }) {
   );
 }
 
-var CODE = [
+const CODE = [
   { n: 1, t: [["use ", "keyword"], ["std", "namespace"], ["::", "punctuation.delimiter"], ["collections", "module"], ["::", "punctuation.delimiter"], ["HashMap", "type"], [";", "punctuation.delimiter"]] },
   { n: 2, t: [] },
   { n: 3, t: [["/// A theme palette for the editor", "comment"]] },
@@ -579,20 +511,18 @@ var CODE = [
 ];
 
 function Preview({ pal, sc }) {
-  var BG = bgc("ui.background", sc, pal, "#1a1b26");
-  var FG = fgc("ui.foreground", sc, pal, fgc("ui.text", sc, pal, "#c0caf5"));
-  var lnr = fgc("ui.linenr", sc, pal, "#565f89");
-  var lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
-  var selBg = bgc("ui.selection", sc, pal, "#33374c");
-  var curFg = fgc("ui.cursor", sc, pal, null);
-  var curBg = bgc("ui.cursor", sc, pal, "#7aa2f7");
-  var stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
-  var stBg = bgc("ui.statusline", sc, pal, "#33374c");
-  var mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
-  var mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
-  var brd = fgc("ui.window", sc, pal, "#565f89");
-  var s = function(id) { return fgc(id, sc, pal, FG); };
-  var stBgR = stBg !== "transparent" ? stBg : BG;
+  const BG = bgc("ui.background", sc, pal, "#1a1b26");
+  const FG = fgc("ui.foreground", sc, pal, fgc("ui.text", sc, pal, "#c0caf5"));
+  const lnr = fgc("ui.linenr", sc, pal, "#565f89");
+  const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
+  const selBg = bgc("ui.selection", sc, pal, "#33374c");
+  const stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
+  const stBg = bgc("ui.statusline", sc, pal, "#33374c");
+  const mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
+  const mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
+  const brd = fgc("ui.window", sc, pal, "#565f89");
+  const fg = id => fgc(id, sc, pal, FG);
+  const statusBg = stBg !== "transparent" ? stBg : BG;
 
   return (
     <div style={{ background: BG, borderRadius: 8, overflow: "hidden", border: "1px solid #2a2d3a", fontFamily: MONO, fontSize: 13, lineHeight: "20px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
@@ -605,19 +535,16 @@ function Preview({ pal, sc }) {
         <span style={{ color: "#5c6086", fontSize: 11 }}>theme.rs</span>
       </div>
       <div style={{ padding: "4px 0", overflowX: "auto" }}>
-        {CODE.map(function(line) {
-          var isCur = line.n === 5;
+        {CODE.map(line => {
+          const isCur = line.n === 5;
           return (
             <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? selBg + "44" : "transparent", minHeight: 20 }}>
               <span style={{ display: "inline-block", width: 44, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
               <span style={{ background: line.sel ? selBg + "88" : "transparent", borderRadius: line.sel ? 2 : 0, padding: line.sel ? "0 2px" : "0", whiteSpace: "pre" }}>
-                {line.t.length === 0 && <span>{"\u00a0"}</span>}
-                {line.t.map(function(tok, i) {
-                  var col = tok[1] ? s(tok[1]) : FG;
-                  return (
-                    <span key={i} style={{ color: col, fontStyle: tok[1] === "comment" ? "italic" : "normal" }}>{tok[0]}</span>
-                  );
-                })}
+                {line.t.length === 0 && <span>{" "}</span>}
+                {line.t.map((tok, i) => (
+                  <span key={i} style={{ color: tok[1] ? fg(tok[1]) : FG, fontStyle: tok[1] === "comment" ? "italic" : "normal" }}>{tok[0]}</span>
+                ))}
               </span>
             </div>
           );
@@ -625,60 +552,55 @@ function Preview({ pal, sc }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid " + brd, fontSize: 11, fontFamily: MONO }}>
         <span style={{ padding: "3px 10px", background: mnBg, color: mnFg, fontWeight: 700 }}>NOR</span>
-        <span style={{ padding: "3px 10px", background: stBgR, color: stFg, flex: 1 }}>theme.rs [+]</span>
-        <span style={{ padding: "3px 10px", background: stBgR, color: lnr }}>5:1</span>
-        <span style={{ padding: "3px 10px", background: stBgR, color: lnr }}>UTF-8 rust</span>
+        <span style={{ padding: "3px 10px", background: statusBg, color: stFg, flex: 1 }}>theme.rs [+]</span>
+        <span style={{ padding: "3px 10px", background: statusBg, color: lnr }}>5:1</span>
+        <span style={{ padding: "3px 10px", background: statusBg, color: lnr }}>UTF-8 rust</span>
       </div>
     </div>
   );
 }
 
 function HelixThemeEditor() {
-  var _s = useState;
-  var _c = useCallback;
-  var [palette, setPalette] = _s(Object.assign({}, DEFAULT_PAL));
-  var [scopes, setScopes] = _s(Object.assign({}, DEFAULT_SC));
-  var [newName, setNewName] = _s("");
-  var [newColor, setNewColor] = _s("#ffffff");
-  var [filter, setFilter] = _s("");
-  var [catFilter, setCatFilter] = _s("All");
-  var [hShift, setHShift] = _s(0);
-  var [sShift, setSShift] = _s(0);
-  var [lShift, setLShift] = _s(0);
-
-  var adjPalette = useMemo(function() {
-    return adjustPalette(palette, hShift, sShift, lShift);
-  }, [palette, hShift, sShift, lShift]);
-  var [palOpen, setPalOpen] = _s(true);
-  var [scOpen, setScOpen] = _s(true);
-  var [hslOpen, setHslOpen] = _s(true);
+  const [palette, setPalette] = useState(() => ({...DEFAULT_PAL}));
+  const [scopes, setScopes] = useState(() => ({...DEFAULT_SC}));
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("#ffffff");
+  const [filter, setFilter] = useState("");
+  const [catFilter, setCatFilter] = useState("All");
+  const [hShift, setHShift] = useState(0);
+  const [sShift, setSShift] = useState(0);
+  const [lShift, setLShift] = useState(0);
+  const adjPalette = useMemo(() => adjustPalette(palette, hShift, sShift, lShift), [palette, hShift, sShift, lShift]);
+  const [palOpen, setPalOpen] = useState(true);
+  const [scOpen, setScOpen] = useState(true);
+  const [hslOpen, setHslOpen] = useState(true);
   // Inherits handling: child themes (`inherits = "..."`) only override the
   // parent's palette/scopes. We stash the child's overrides, show a banner
   // asking the user to import the parent, then merge child-on-top when it
   // arrives. `loadedParent` tracks whether a non-inherits theme is loaded so
   // the order can be reversed (parent first, then child).
-  var [pendingChild, setPendingChild] = _s(null);
-  var [inheritBanner, setInheritBanner] = _s(null);
-  var [loadedParent, setLoadedParent] = _s(false);
-  var fileRef = useRef(null);
+  const [pendingChild, setPendingChild] = useState(null);
+  const [inheritBanner, setInheritBanner] = useState(null);
+  const [loadedParent, setLoadedParent] = useState(false);
+  const fileRef = useRef(null);
 
-  var handleImport = _c(function(e) {
-    var file = e.target.files && e.target.files[0];
+  const handleImport = useCallback(e => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(ev) {
+    const reader = new FileReader();
+    reader.onload = ev => {
       try {
-        var parsed = parseTOML(ev.target.result);
-        var newPalette = parsed.palette || {};
-        var newScopes = extractScopes(parsed);
-        var hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
+        const parsed = parseTOML(ev.target.result);
+        const newPalette = parsed.palette || {};
+        const newScopes = extractScopes(parsed);
+        const hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
         setHShift(0); setSShift(0); setLShift(0);
 
         if (hasInherits) {
           if (loadedParent) {
-            // Parent is already loaded — merge child overrides on top.
-            setPalette(function(p) { return Object.assign({}, p, newPalette); });
-            setScopes(function(s) { return Object.assign({}, s, newScopes); });
+            // Parent already loaded — merge child overrides on top.
+            setPalette(p => ({...p, ...newPalette}));
+            setScopes(s => ({...s, ...newScopes}));
             setPendingChild(null);
             setInheritBanner(null);
           } else {
@@ -692,8 +614,8 @@ function HelixThemeEditor() {
         } else {
           if (pendingChild) {
             // Child was imported first; this is the parent. Parent first, child on top.
-            setPalette(Object.assign({}, newPalette, pendingChild.palette));
-            setScopes(Object.assign({}, newScopes, pendingChild.scopes));
+            setPalette({...newPalette, ...pendingChild.palette});
+            setScopes({...newScopes, ...pendingChild.scopes});
             setPendingChild(null);
             setInheritBanner(null);
           } else {
@@ -711,47 +633,44 @@ function HelixThemeEditor() {
     e.target.value = "";
   }, [loadedParent, pendingChild]);
 
-  var handleExport = _c(function() {
-    var toml = exportTOML(adjPalette, scopes);
-    var blob = new Blob([toml], { type: "application/toml" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
+  const handleExport = useCallback(() => {
+    const toml = exportTOML(adjPalette, scopes);
+    const blob = new Blob([toml], { type: "application/toml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url;
     a.download = "theme.toml";
     a.click();
     URL.revokeObjectURL(url);
   }, [adjPalette, scopes]);
 
-  var addColor = function() {
+  const addColor = () => {
     if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
-      setPalette(function(p) { var n = Object.assign({}, p); n[newName.trim()] = newColor; return n; });
+      setPalette(p => ({...p, [newName.trim()]: newColor}));
       setNewName("");
       setNewColor("#ffffff");
     }
   };
 
-  var cats = ["All"].concat(SCOPES.map(function(s) { return s[0]; }));
+  const cats = ["All"].concat(SCOPES.map(([name]) => name));
 
-  var filtered = useMemo(function() {
-    return ALL_SCOPES.filter(function(id) {
-      if (catFilter !== "All") {
-        var found = SCOPES.find(function(s) { return s[1].includes(id); });
-        if (found && found[0] !== catFilter) return false;
-      }
-      if (filter && id.toLowerCase().indexOf(filter.toLowerCase()) === -1) return false;
-      return true;
-    });
-  }, [filter, catFilter]);
+  const filtered = useMemo(() => ALL_SCOPES.filter(id => {
+    if (catFilter !== "All") {
+      const cat = SCOPES.find(([, items]) => items.includes(id));
+      if (cat && cat[0] !== catFilter) return false;
+    }
+    return !filter || id.toLowerCase().includes(filter.toLowerCase());
+  }), [filter, catFilter]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#11111b", color: "#cdd6f4", fontFamily: MONO, display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "12px 20px", background: "#181825", borderBottom: "1px solid #2a2d3a", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <span style={{ fontSize: 18, fontWeight: 700, color: "#cba6f7", letterSpacing: "0.04em" }}>
-          {"\u2B21 helix theme editor"}
+          {"⬡ helix theme editor"}
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <input type="file" ref={fileRef} accept=".toml" onChange={handleImport} style={{ display: "none" }} />
-          <button onClick={function() { fileRef.current && fileRef.current.click(); }} style={{ background: "#313244", color: "#cdd6f4", border: "1px solid #45475a", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: MONO, fontSize: 12 }}>
+          <button onClick={() => fileRef.current?.click()} style={{ background: "#313244", color: "#cdd6f4", border: "1px solid #45475a", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: MONO, fontSize: 12 }}>
             {"Import TOML"}
           </button>
           <button onClick={handleExport} style={{ background: "#89b4fa", color: "#11111b", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: MONO, fontSize: 12, fontWeight: 600 }}>
@@ -767,7 +686,7 @@ function HelixThemeEditor() {
             <code style={{ background: "#1f1a0e", padding: "1px 6px", borderRadius: 3, color: "#fab387" }}>{inheritBanner.parent + ".toml"}</code>
             {" — import the parent file to apply its scopes. Child overrides are stashed and will be re-applied on top."}
           </span>
-          <button onClick={function() { setInheritBanner(null); setPendingChild(null); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
+          <button onClick={() => { setInheritBanner(null); setPendingChild(null); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
         </div>
       )}
 
@@ -776,8 +695,8 @@ function HelixThemeEditor() {
           <Preview pal={adjPalette} sc={scopes} />
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {["diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint"].map(function(d) {
-              var c = fgc(d, scopes, adjPalette, "#888");
+            {["diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint"].map(d => {
+              const c = fgc(d, scopes, adjPalette, "#888");
               return (
                 <div key={d} style={{ padding: "6px 14px", borderRadius: 6, background: c + "18", borderLeft: "3px solid " + c, color: c, fontSize: 11, fontFamily: MONO }}>
                   {d.split(".")[1]}
@@ -788,9 +707,9 @@ function HelixThemeEditor() {
 
           <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid #2a2d3a", fontFamily: MONO, fontSize: 12 }}>
             <div style={{ padding: "4px 12px", background: "#1a1b26", color: "#5c6086", fontSize: 10, borderBottom: "1px solid #2a2d3a" }}>diff preview</div>
-            {[["diff.plus", "+ added line"], ["diff.minus", "- removed line"], ["diff.delta", "~ changed line"]].map(function(item) {
-              var c = fgc(item[0], scopes, adjPalette, "#888");
-              return <div key={item[0]} style={{ padding: "4px 12px", background: c + "15", color: c }}>{item[1]}</div>;
+            {[["diff.plus", "+ added line"], ["diff.minus", "- removed line"], ["diff.delta", "~ changed line"]].map(([scope, label]) => {
+              const c = fgc(scope, scopes, adjPalette, "#888");
+              return <div key={scope} style={{ padding: "4px 12px", background: c + "15", color: c }}>{label}</div>;
             })}
           </div>
 
@@ -810,78 +729,68 @@ function HelixThemeEditor() {
         </div>
 
         <div style={{ width: 340, flexShrink: 0, background: "#1e1e2e", borderLeft: "1px solid #2a2d3a", overflowY: "auto", display: "flex", flexDirection: "column" }}>
-          <Acc title="Palette" open={palOpen} onToggle={function() { setPalOpen(!palOpen); }} count={Object.keys(palette).length}>
+          <Acc title="Palette" open={palOpen} onToggle={() => setPalOpen(!palOpen)} count={Object.keys(palette).length}>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {Object.entries(palette).map(function(entry) {
-                var name = entry[0];
-                var color = entry[1];
-                return (
-                  <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px", borderBottom: "1px solid #1e2030" }}>
-                    <input type="color" value={color} onChange={function(e) { setPalette(function(p) { var n = Object.assign({}, p); n[name] = e.target.value; return n; }); }} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 12, color: "#cad3f5", fontFamily: MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-                    <span style={{ fontSize: 10, color: "#5b6078", fontFamily: MONO, flexShrink: 0 }}>{color}</span>
-                    <button onClick={function() { setPalette(function(p) { var n = Object.assign({}, p); delete n[name]; return n; }); }} style={{ background: "none", border: "none", color: "#5b6078", cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0 }} title="Remove">{"\u00D7"}</button>
-                  </div>
-                );
-              })}
+              {Object.entries(palette).map(([name, color]) => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px", borderBottom: "1px solid #1e2030" }}>
+                  <input type="color" value={color} onChange={e => setPalette(p => ({...p, [name]: e.target.value}))} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 12, color: "#cad3f5", fontFamily: MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                  <span style={{ fontSize: 10, color: "#5b6078", fontFamily: MONO, flexShrink: 0 }}>{color}</span>
+                  <button onClick={() => setPalette(p => { const n = {...p}; delete n[name]; return n; })} style={{ background: "none", border: "none", color: "#5b6078", cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0 }} title="Remove">{"×"}</button>
+                </div>
+              ))}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", paddingTop: 6, borderTop: "1px solid #2a2d3a" }}>
-              <input type="color" value={newColor} onChange={function(e) { setNewColor(e.target.value); }} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
-              <input type="text" value={newName} onChange={function(e) { setNewName(e.target.value); }} placeholder="name" onKeyDown={function(e) { if (e.key === "Enter") addColor(); }} style={{ flex: 1, background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: MONO, outline: "none", minWidth: 0 }} />
+              <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: "1px solid #363a4f", borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0 }} />
+              <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="name" onKeyDown={e => { if (e.key === "Enter") addColor(); }} style={{ flex: 1, background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: MONO, outline: "none", minWidth: 0 }} />
               <button onClick={addColor} style={{ background: "#a6e3a1", color: "#11111b", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontFamily: MONO, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{"+"}</button>
             </div>
           </Acc>
 
-          <Acc title="Scopes" open={scOpen} onToggle={function() { setScOpen(!scOpen); }} count={ALL_SCOPES.length}>
+          <Acc title="Scopes" open={scOpen} onToggle={() => setScOpen(!scOpen)} count={ALL_SCOPES.length}>
             <div style={{ marginBottom: 8 }}>
-              <input type="text" value={filter} onChange={function(e) { setFilter(e.target.value); }} placeholder="Filter scopes..." style={{ width: "100%", boxSizing: "border-box", background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "5px 8px", fontSize: 11, fontFamily: MONO, outline: "none", marginBottom: 6 }} />
+              <input type="text" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter scopes..." style={{ width: "100%", boxSizing: "border-box", background: "#24273a", border: "1px solid #363a4f", color: "#cad3f5", borderRadius: 4, padding: "5px 8px", fontSize: 11, fontFamily: MONO, outline: "none", marginBottom: 6 }} />
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {cats.map(function(c) {
-                  return (
-                    <button key={c} onClick={function() { setCatFilter(c); }} style={{ background: catFilter === c ? "#89b4fa" : "#313244", color: catFilter === c ? "#11111b" : "#8087a2", border: "none", borderRadius: 10, padding: "2px 9px", fontSize: 10, fontFamily: MONO, cursor: "pointer", fontWeight: catFilter === c ? 600 : 400 }}>{c}</button>
-                  );
-                })}
+                {cats.map(c => (
+                  <button key={c} onClick={() => setCatFilter(c)} style={{ background: catFilter === c ? "#89b4fa" : "#313244", color: catFilter === c ? "#11111b" : "#8087a2", border: "none", borderRadius: 10, padding: "2px 9px", fontSize: 10, fontFamily: MONO, cursor: "pointer", fontWeight: catFilter === c ? 600 : 400 }}>{c}</button>
+                ))}
               </div>
             </div>
-            {filtered.map(function(id) {
-              return (
-                <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={function(v) { setScopes(function(s) { return Object.assign({}, s, { [id]: v }); }); }} />
-              );
-            })}
+            {filtered.map(id => (
+              <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={v => setScopes(s => ({...s, [id]: v}))} />
+            ))}
           </Acc>
 
-          <Acc title="Global HSL" open={hslOpen} onToggle={function() { setHslOpen(!hslOpen); }}>
+          <Acc title="Global HSL" open={hslOpen} onToggle={() => setHslOpen(!hslOpen)}>
             {[
-              { label: "Hue", value: hShift, set: setHShift, min: -180, max: 180, unit: "\u00B0" },
+              { label: "Hue", value: hShift, set: setHShift, min: -180, max: 180, unit: "°" },
               { label: "Saturation", value: sShift, set: setSShift, min: -100, max: 100, unit: "%" },
               { label: "Lightness", value: lShift, set: setLShift, min: -100, max: 100, unit: "%" },
-            ].map(function(sl) {
-              return (
-                <div key={sl.label} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                    <span style={{ fontSize: 11, color: "#8087a2", fontFamily: MONO }}>{sl.label}</span>
-                    <span style={{ fontSize: 11, color: "#cad3f5", fontFamily: MONO, minWidth: 50, textAlign: "right" }}>
-                      {(sl.value > 0 ? "+" : "") + sl.value + sl.unit}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="range" min={sl.min} max={sl.max} value={sl.value} onChange={function(e) { sl.set(Number(e.target.value)); }}
-                      style={{ flex: 1, accentColor: "#89b4fa", height: 4, cursor: "pointer" }} />
-                    <button onClick={function() { sl.set(0); }}
-                      style={{ background: "none", border: "1px solid #363a4f", color: "#5b6078", borderRadius: 3, padding: "1px 6px", cursor: "pointer", fontFamily: MONO, fontSize: 10, flexShrink: 0 }}
-                      title="Reset">
-                      {"\u21BA"}
-                    </button>
-                  </div>
+            ].map(sl => (
+              <div key={sl.label} style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, color: "#8087a2", fontFamily: MONO }}>{sl.label}</span>
+                  <span style={{ fontSize: 11, color: "#cad3f5", fontFamily: MONO, minWidth: 50, textAlign: "right" }}>
+                    {(sl.value > 0 ? "+" : "") + sl.value + sl.unit}
+                  </span>
                 </div>
-              );
-            })}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="range" min={sl.min} max={sl.max} value={sl.value} onChange={e => sl.set(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: "#89b4fa", height: 4, cursor: "pointer" }} />
+                  <button onClick={() => sl.set(0)}
+                    style={{ background: "none", border: "1px solid #363a4f", color: "#5b6078", borderRadius: 3, padding: "1px 6px", cursor: "pointer", fontFamily: MONO, fontSize: 10, flexShrink: 0 }}
+                    title="Reset">
+                    {"↺"}
+                  </button>
+                </div>
+              </div>
+            ))}
             <div style={{ display: "flex", gap: 6, marginTop: 4, borderTop: "1px solid #2a2d3a", paddingTop: 8 }}>
-              <button onClick={function() { setHShift(0); setSShift(0); setLShift(0); }}
+              <button onClick={() => { setHShift(0); setSShift(0); setLShift(0); }}
                 style={{ flex: 1, background: "#313244", color: "#8087a2", border: "1px solid #363a4f", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10 }}>
                 {"Reset All"}
               </button>
-              <button onClick={function() { setPalette(Object.assign({}, adjPalette)); setHShift(0); setSShift(0); setLShift(0); }}
+              <button onClick={() => { setPalette({...adjPalette}); setHShift(0); setSShift(0); setLShift(0); }}
                 style={{ flex: 1, background: "#89b4fa", color: "#11111b", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10, fontWeight: 600 }}>
                 {"Apply to Palette"}
               </button>
