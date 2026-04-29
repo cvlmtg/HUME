@@ -86,6 +86,52 @@ pub(super) fn ensure_cursor_visible_horizontal(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+/// Scroll the viewport so the cursor's display row lands at `target_row`
+/// (0-based) inside the visible area. Used by `zz`/`zt`/`zb`-style commands.
+///
+/// Top-of-buffer is clamped to `top_line == 0`; bottom-of-buffer is *not*
+/// clamped (vim/Helix semantics — empty rows past EOF are allowed).
+pub(super) fn scroll_cursor_to_row(
+    viewport: &mut ViewportState,
+    rope: &ropey::Rope,
+    cursor_char: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
+    target_row: usize,
+) {
+    let cursor_line = rope.char_to_line(cursor_char);
+
+    if !wrap_mode.is_wrapping() {
+        viewport.top_line = cursor_line.saturating_sub(target_row);
+        viewport.top_row_offset = 0;
+        return;
+    }
+
+    let cursor_sub = cursor::sub_row(
+        rope,
+        cursor_line,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    );
+    scroll_backward_from_cursor(
+        viewport,
+        rope,
+        cursor_line,
+        cursor_sub,
+        target_row,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------

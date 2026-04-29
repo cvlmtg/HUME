@@ -583,6 +583,19 @@ fn build_pane_trie() -> KeyTrie {
     t
 }
 
+// ── View (`z`) sub-trie ──────────────────────────────────────────────────────
+//
+// Vim-style viewport repositioning. `zz` centres the cursor row, `zt` puts it
+// at the top, `zb` puts it at the bottom. Cursor position is unchanged.
+
+fn build_view_trie() -> KeyTrie {
+    let mut t = KeyTrie::new("view");
+    t.bind_leaf(key!('z'), cmd!("center-view-on-cursor"));
+    t.bind_leaf(key!('t'), cmd!("top-view-on-cursor"));
+    t.bind_leaf(key!('b'), cmd!("bottom-view-on-cursor"));
+    t
+}
+
 // ── Default Normal keymap ─────────────────────────────────────────────────────
 
 fn default_normal_keymap() -> KeyTrie {
@@ -725,6 +738,10 @@ fn default_normal_keymap() -> KeyTrie {
     // ── Goto prefix ───────────────────────────────────────────────────────────
     // `g` → second key (goto commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));
+
+    // ── View prefix ───────────────────────────────────────────────────────────
+    // `z` → second key (zz/zt/zb viewport repositioning).
+    t.bind(key!('z'), KeyTrieNode::Node(build_view_trie()));
 
     // ── Match prefix (`m`) ────────────────────────────────────────────────────
     // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
