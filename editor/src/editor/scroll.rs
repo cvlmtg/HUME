@@ -42,10 +42,10 @@ pub(super) fn ensure_cursor_visible(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Adjust `viewport.horizontal_offset` so the cursor's display column is
-/// visible with `h_margin` columns of look-ahead. When wrapping is active,
-/// horizontal offset is forced to 0 (wrapping handles long lines).
+/// Adjust `viewport.horizontal_offset` so the cursor's display column stays
+/// visible. When wrapping is active, horizontal offset is forced to 0
+/// (wrapping handles long lines). The horizontal margin is fixed —
+/// `scrolloff` only governs the vertical axis.
 pub(super) fn ensure_cursor_visible_horizontal(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
@@ -54,8 +54,9 @@ pub(super) fn ensure_cursor_visible_horizontal(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     scratch: &mut FormatScratch,
-    h_margin: usize,
 ) {
+    const H_MARGIN: usize = 5;
+
     if wrap_mode.is_wrapping() {
         viewport.horizontal_offset = 0;
         return;
@@ -76,7 +77,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
         return;
     }
 
-    let margin = h_margin.min(content_width / 2);
+    let margin = H_MARGIN.min(content_width / 2);
     let offset = viewport.horizontal_offset as usize;
 
     if cursor_col < offset + margin {

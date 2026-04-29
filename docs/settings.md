@@ -14,8 +14,7 @@ These settings can only be set globally (not overridden per-buffer).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `scroll-margin` | integer | `3` | Vertical scroll margin: number of lines to keep visible above and below the cursor |
-| `scroll-margin-h` | integer | `5` | Horizontal scroll margin: number of columns to keep visible left and right of the cursor (for non-wrapping lines) |
+| `scrolloff` | integer | `3` | Number of lines to keep visible above and below the cursor |
 | `mouse-scroll-lines` | integer | `3` | Number of lines to scroll per mouse wheel tick |
 | `mouse-enabled` | bool | `true` | Enable mouse support |
 | `mouse-select` | bool | `false` | Allow click-to-move and click-drag selection with the mouse |
@@ -92,7 +91,7 @@ Apply a global setting. Equivalent to `:set global key=value`. Validation failur
 ```scheme
 (set-option! "tab-width" "2")
 (set-option! "wrap-mode" "none")
-(set-option! "scroll-margin" "5")
+(set-option! "scrolloff" "5")
 ```
 
 ### `(keymap-bind! mode key-sequence command)`

@@ -754,7 +754,7 @@ pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 // These commands scroll the viewport so the primary selection head lands at a
 // chosen display row. Cursor position is unchanged — only `viewport.top_line`
 // (and `top_row_offset` in wrap mode) move. The per-frame `scroll_into_view`
-// in `prepare_frame` honours `scroll_margin`, so as long as the targeted row
+// in `prepare_frame` honours `scrolloff`, so as long as the targeted row
 // sits inside `[margin, height - margin)` the auto-scroll is a no-op and the
 // chosen position survives.
 
