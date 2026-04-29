@@ -234,11 +234,11 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
     fn render(
         &self,
         area: ratatui::layout::Rect,
-        _theme: &engine::theme::Theme,
+        theme: &engine::theme::Theme,
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let editor = self.editor;
-        let colors = EditorColors::default();
+        let colors = EditorColors::from_theme(theme);
         let y = area.y;
 
         if editor.minibuf.is_none() {
