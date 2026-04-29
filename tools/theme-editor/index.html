@@ -327,29 +327,20 @@ function extractScopes(parsed) {
   return ns;
 }
 
+// Emit every scope as a flat top-level quoted dotted key, then [palette] last.
+// We can't use [section] headers for scope grouping: TOML section semantics
+// merge a `[diff]` header with an existing top-level `"diff" = "overlay"` into
+// one nested object, and `extractScopes` then treats it as a single scope and
+// loses the sub-keys. Flat keys avoid the collision entirely and match the
+// shape of upstream Helix themes (rose_pine, etc.).
 function exportTOML(palette, scopes) {
-  let out = "[palette]\n";
-  for (const [k, v] of Object.entries(palette)) {
+  let out = "";
+  for (const [k, v] of Object.entries(scopes)) {
     out += '"' + k + '" = ' + formatVal(v) + '\n';
   }
-  out += "\n";
-  const sections = {};
-  for (const [k, v] of Object.entries(scopes)) {
-    const dot = k.lastIndexOf(".");
-    if (dot === -1) {
-      out += '"' + k + '" = ' + formatVal(v) + '\n';
-    } else {
-      const sec = k.slice(0, dot);
-      const key = k.slice(dot + 1);
-      if (!sections[sec]) sections[sec] = [];
-      sections[sec].push([key, v]);
-    }
-  }
-  for (const [sec, entries] of Object.entries(sections)) {
-    out += "\n[" + sec + "]\n";
-    for (const [key, v] of entries) {
-      out += '"' + key + '" = ' + formatVal(v) + '\n';
-    }
+  out += "\n[palette]\n";
+  for (const [k, v] of Object.entries(palette)) {
+    out += '"' + k + '" = ' + formatVal(v) + '\n';
   }
   return out;
 }
