@@ -54,19 +54,14 @@ fn load_recursive(
         });
     }
 
-    let (canonical, path) = find_theme_file(name, search_paths)?;
+    let (canonical, source) = find_theme_file(name, search_paths)?;
 
-    // Cycle detection via canonical path (already resolved by find_theme_file).
+    // Cycle detection via canonical path.
     if !visited.insert(canonical) {
         return Err(ThemeError::Cycle {
             name: name.to_owned(),
         });
     }
-
-    let source = std::fs::read_to_string(&path).map_err(|e| ThemeError::Io {
-        name: name.to_owned(),
-        error: e,
-    })?;
 
     let doc: toml::Value = source.parse().map_err(ThemeError::Parse)?;
     let table = doc
@@ -83,8 +78,8 @@ fn load_recursive(
             load_recursive(parent_name, search_paths, visited, depth + 1)?;
         scopes = parent_scopes;
         default = parent_default;
-        // Parent palette isn't available to us here (it was used to build scopes),
-        // but child's own palette is merged below — child palette names win.
+        // Parent palette is not exposed to the child — it was consumed while
+        // resolving the parent's scopes. Child defines its own palette below.
     }
 
     // ── Parse [palette] (if any) ──────────────────────────────────────────────
@@ -137,7 +132,7 @@ fn parse_scope_value(
             })
         }
         toml::Value::Table(t) => parse_style_table(key, t, palette),
-        other => Err(ThemeError::BadColor {
+        other => Err(ThemeError::BadScopeValue {
             key: key.to_owned(),
             value: format!("{other:?}"),
         }),
@@ -163,14 +158,14 @@ fn parse_style_table(
     }
     if let Some(v) = t.get("underline") {
         if let Some(s) = v.as_str() {
-            style.underline = parse_underline(s);
+            style.underline = parse_underline(key, s)?;
         } else if let Some(ut) = v.as_table() {
             // `underline = { color = "#...", style = "..." }` (Helix extended form)
             if let Some(color_v) = ut.get("color").and_then(|c| c.as_str()) {
                 style.underline_color = Some(resolve_color(key, color_v, palette)?);
             }
             if let Some(style_v) = ut.get("style").and_then(|s| s.as_str()) {
-                style.underline = parse_underline(style_v);
+                style.underline = parse_underline(key, style_v)?;
             }
         }
     }
@@ -235,7 +230,8 @@ fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError> {
     match s {
         "bold" => Ok(Modifiers::BOLD),
         "italic" => Ok(Modifiers::ITALIC),
-        "strikethrough" => Ok(Modifiers::STRIKETHROUGH),
+        // Accept both "strikethrough" (HUME name) and "crossed_out" (Helix name).
+        "strikethrough" | "crossed_out" => Ok(Modifiers::STRIKETHROUGH),
         // Treat unrecognized modifiers as errors so themes don't silently lose styling.
         _ => Err(ThemeError::BadModifier {
             key: key.to_owned(),
@@ -244,13 +240,16 @@ fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError> {
     }
 }
 
-fn parse_underline(s: &str) -> UnderlineStyle {
+fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
     match s {
-        "line" | "solid" => UnderlineStyle::Solid,
-        "curl" | "wavy" | "undercurl" => UnderlineStyle::Wavy,
-        "dotted" => UnderlineStyle::Dotted,
-        "dashed" => UnderlineStyle::Dashed,
-        _ => UnderlineStyle::None,
+        "line" | "solid" => Ok(UnderlineStyle::Solid),
+        "curl" | "wavy" | "undercurl" => Ok(UnderlineStyle::Wavy),
+        "dotted" => Ok(UnderlineStyle::Dotted),
+        "dashed" => Ok(UnderlineStyle::Dashed),
+        _ => Err(ThemeError::BadUnderline {
+            key: key.to_owned(),
+            value: s.to_owned(),
+        }),
     }
 }
 
@@ -258,10 +257,16 @@ fn parse_underline(s: &str) -> UnderlineStyle {
 // File discovery
 // ---------------------------------------------------------------------------
 
+/// Returns `(canonical_path, source)`.
+///
+/// Reads the file first (matching on `NotFound` to skip to the next search dir),
+/// then canonicalizes the path for cycle detection. Canonicalize failure after a
+/// successful read uses the unresolved path as the cycle key — safe because a
+/// deleted-after-read file cannot form a cycle.
 fn find_theme_file(
     name: &str,
     search_paths: &[PathBuf],
-) -> Result<(PathBuf, PathBuf), ThemeError> {
+) -> Result<(PathBuf, String), ThemeError> {
     // Reject names with path separators or suspicious segments.
     if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
         return Err(ThemeError::NotFound {
@@ -271,8 +276,14 @@ fn find_theme_file(
     let filename = format!("{name}.toml");
     for dir in search_paths {
         let candidate = dir.join(&filename);
-        match std::fs::canonicalize(&candidate) {
-            Ok(canonical) => return Ok((canonical, candidate)),
+        match std::fs::read_to_string(&candidate) {
+            Ok(source) => {
+                // Canonicalize after read — residual race only affects cycle-key
+                // accuracy, not file content. Not a security prefix check.
+                let canonical =
+                    std::fs::canonicalize(&candidate).unwrap_or(candidate);
+                return Ok((canonical, source));
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
                 return Err(ThemeError::Io {
@@ -410,7 +421,7 @@ inherits = "base"
     }
 
     #[test]
-    fn inherits_palette_child_extends_parent_palette() {
+    fn inherits_child_has_independent_palette() {
         let dir = TempDir::new().unwrap();
         write_theme(
             dir.path(),
@@ -527,6 +538,44 @@ blue = "#0000ff"
         assert!(
             matches!(err, ThemeError::BadModifier { .. }),
             "expected BadModifier, got: {err}"
+        );
+    }
+
+    // ── crossed_out (Helix name for strikethrough) ────────────────────────────
+
+    #[test]
+    fn crossed_out_is_accepted_as_strikethrough() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "helix_compat",
+            r##"
+"keyword" = { fg = "#ff0000", modifiers = ["crossed_out"] }
+"##,
+        );
+        let theme = load_theme("helix_compat", &paths(dir.path())).unwrap();
+        let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
+        assert!(kw.modifiers.contains(Modifiers::STRIKETHROUGH));
+    }
+
+    // ── Bad underline style ───────────────────────────────────────────────────
+
+    #[test]
+    fn bad_underline_is_error() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "bad_underline",
+            r##"
+"keyword" = { fg = "#ff0000", underline = "squiggly" }
+"##,
+        );
+        let err = load_theme("bad_underline", &paths(dir.path()))
+            .err()
+            .expect("expected an Err result");
+        assert!(
+            matches!(err, ThemeError::BadUnderline { .. }),
+            "expected BadUnderline, got: {err}"
         );
     }
 
