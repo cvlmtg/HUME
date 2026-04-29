@@ -162,4 +162,5 @@ mod per_pane_jumps;
 mod search;
 mod select_all;
 mod surround;
+mod view_scroll;
 mod visual_move;

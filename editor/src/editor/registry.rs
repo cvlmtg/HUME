@@ -1069,6 +1069,27 @@ impl CommandRegistry {
         .extendable()
         .reg(self);
 
+        // ── Editor commands — view-trie scroll (zz / zt / zb) ─────────────────
+        // Reposition the viewport without moving the cursor.
+        ecmd(
+            "center-view-on-cursor",
+            "Scroll so the primary selection head sits at the vertical center of the viewport.",
+            cmd_view_center,
+        )
+        .reg(self);
+        ecmd(
+            "top-view-on-cursor",
+            "Scroll so the primary selection head sits at the top of the viewport.",
+            cmd_view_top,
+        )
+        .reg(self);
+        ecmd(
+            "bottom-view-on-cursor",
+            "Scroll so the primary selection head sits at the bottom of the viewport.",
+            cmd_view_bottom,
+        )
+        .reg(self);
+
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
         ecmd(
@@ -1336,7 +1357,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 132;
+    const EXPECTED_COMMAND_COUNT: usize = 135;
 
     #[test]
     fn registry_has_expected_count() {
