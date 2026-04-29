@@ -1,0 +1,86 @@
+# Gruvbox dark theme for HUME.
+# Ported from the Helix gruvbox theme (MIT licensed, © Helix contributors).
+# Exercises the full Helix TOML feature set: palette indirection, dotted scopes,
+# modifiers, and underline styles. A real off-the-shelf Helix theme loads unchanged.
+#
+# Note: [palette] must come after all scope definitions (TOML section semantics).
+
+# ── Cursor ────────────────────────────────────────────────────────────────────
+"ui.cursor.primary" = { fg = "bg0", bg = "fg0" }
+"ui.cursor"         = { fg = "bg0", bg = "fg3" }
+"ui.cursor.insert"  = {}
+
+# ── Selection / cursor-line ───────────────────────────────────────────────────
+"ui.selection"  = { bg = "bg3" }
+"ui.cursorline" = { bg = "bg1" }
+
+# ── Virtual text ──────────────────────────────────────────────────────────────
+"ui.virtual" = { fg = "bg3" }
+
+# ── Gutter ────────────────────────────────────────────────────────────────────
+"ui.linenr"          = { fg = "bg4" }
+"ui.linenr.selected" = { fg = "fg2" }
+
+# ── Highlights ────────────────────────────────────────────────────────────────
+"ui.cursor.match"     = { fg = "bright_yellow", bg = "bg1", modifiers = ["bold"] }
+"ui.selection.search" = { fg = "bright_orange",  bg = "bg1" }
+
+# ── Whitespace ────────────────────────────────────────────────────────────────
+"ui.whitespace" = { fg = "bg3" }
+
+# ── Statusline ────────────────────────────────────────────────────────────────
+"ui.statusline"              = { fg = "bg0",  bg = "fg4" }
+"ui.statusline.mode.normal"  = { fg = "bg0",  bg = "fg4" }
+"ui.statusline.mode.insert"  = { fg = "bg0",  bg = "bright_blue" }
+"ui.statusline.mode.extend"  = { fg = "bg0",  bg = "bright_yellow" }
+"ui.statusline.mode.search"  = { fg = "bg0",  bg = "bright_purple" }
+"ui.statusline.mode.command" = { fg = "bg0",  bg = "bright_green" }
+"ui.statusline.mode.select"  = { fg = "bg0",  bg = "bright_blue" }
+
+# ── Syntax ────────────────────────────────────────────────────────────────────
+"comment"             = { fg = "gray", modifiers = ["italic"] }
+"constant"            = "bright_purple"
+"constant.numeric"    = "bright_purple"
+"constant.character"  = "bright_purple"
+"string"              = "bright_green"
+"type"                = "bright_yellow"
+"type.builtin"        = { fg = "bright_yellow", modifiers = ["bold"] }
+"keyword"             = "red"
+"keyword.control"     = "red"
+"keyword.operator"    = "orange"
+"keyword.function"    = { fg = "red", modifiers = ["bold"] }
+"function"            = "bright_green"
+"function.builtin"    = { fg = "bright_green", modifiers = ["bold"] }
+"variable"            = "fg1"
+"variable.builtin"    = { fg = "orange", modifiers = ["bold"] }
+"operator"            = "orange"
+"punctuation"         = "fg3"
+"label"               = "bright_blue"
+
+[palette]
+# Gruvbox dark palette (retro groove color scheme)
+bg0   = "#282828"
+bg1   = "#3c3836"
+bg2   = "#504945"
+bg3   = "#665c54"
+bg4   = "#7c6f64"
+fg0   = "#fbf1c7"
+fg1   = "#ebdbb2"
+fg2   = "#d5c4a1"
+fg3   = "#bdae93"
+fg4   = "#a89984"
+gray  = "#928374"
+red              = "#cc241d"
+green            = "#98971a"
+yellow           = "#d79921"
+blue             = "#458588"
+purple           = "#b16286"
+aqua             = "#689d6a"
+orange           = "#d65d0e"
+bright_red       = "#fb4934"
+bright_green     = "#b8bb26"
+bright_yellow    = "#fabd2f"
+bright_blue      = "#83a598"
+bright_purple    = "#d3869b"
+bright_aqua      = "#8ec07c"
+bright_orange    = "#fe8019"

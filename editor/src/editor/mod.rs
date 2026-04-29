@@ -1013,6 +1013,38 @@ impl Editor {
             self.report(sev, text);
         }
         self.scripting = Some(host);
+        // Load theme set by (set-option! 'theme "…") in init.scm.
+        if !self.settings.theme.is_empty() {
+            let name = self.settings.theme.clone();
+            self.load_theme_by_name(&name);
+        }
+    }
+
+    // ── Theme loading ─────────────────────────────────────────────────────────
+
+    /// Load a theme by name and apply it to the engine view.
+    ///
+    /// Searches `<config_dir>/themes/<name>.toml` first, then
+    /// `<runtime_dir>/themes/<name>.toml`.  On success the engine view's theme
+    /// is replaced and re-baked against the live scope registry.  On failure a
+    /// warning is logged and the current theme is left unchanged.
+    pub(crate) fn load_theme_by_name(&mut self, name: &str) {
+        let mut search_paths: Vec<PathBuf> = Vec::new();
+        if let Some(cfg) = crate::os::dirs::config_dir() {
+            search_paths.push(cfg.join("themes"));
+        }
+        if let Some(rt) = crate::os::dirs::runtime_dir() {
+            search_paths.push(rt.join("themes"));
+        }
+        match engine::theme::loader::load_theme(name, &search_paths) {
+            Ok(mut theme) => {
+                theme.bake(&self.engine_view.registry);
+                self.engine_view.theme = theme;
+            }
+            Err(e) => {
+                self.report(Severity::Warning, format!("theme '{name}': {e}"));
+            }
+        }
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────

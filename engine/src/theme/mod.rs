@@ -1,3 +1,6 @@
+pub mod error;
+pub mod loader;
+
 use std::collections::HashMap;
 
 use crate::types::{ResolvedStyle, Scope, ScopeId};
@@ -118,24 +121,35 @@ pub struct UiScopes {
 /// `keyword.function` → `keyword` → default.
 pub struct Theme {
     /// Source map: written once at construction, read by `bake()` and
-    /// `resolve_by_name()`. Never mutated after `new()`.
-    raw: HashMap<&'static str, ResolvedStyle>,
+    /// `resolve_by_name()`. Never mutated after construction.
+    raw: HashMap<String, ResolvedStyle>,
     /// Per-[`ScopeId`] resolved styles. Populated by `bake()`.
     /// `baked[id.0]` is the style for the scope with that id.
     baked: Vec<ResolvedStyle>,
     /// Default style used when no scope matches.
     pub default: ResolvedStyle,
     /// Pre-resolved styles for hot-path UI scopes. Always valid (computed in
-    /// `new()` and re-computed in `bake()`).
+    /// construction and re-computed in `bake()`).
     pub ui: UiScopes,
 }
 
 impl Theme {
-    /// Build a theme from a raw `scope → style` map.
+    /// Build a theme from a `scope → style` map with static string keys.
     ///
-    /// `ui` fields are resolved immediately from `styles`, so callers can use
-    /// `theme.ui.*` before calling `bake()`.
+    /// Used by [`crate::ui::theme::build_default_theme`] and tests that work
+    /// with compile-time string literals. `ui` fields are resolved immediately
+    /// from `styles`, so callers can use `theme.ui.*` before calling `bake()`.
     pub fn new(styles: HashMap<&'static str, ResolvedStyle>, default: ResolvedStyle) -> Self {
+        let owned: HashMap<String, ResolvedStyle> =
+            styles.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        Self::from_owned(owned, default)
+    }
+
+    /// Build a theme from a `scope → style` map with owned string keys.
+    ///
+    /// Used by [`loader::load_theme`] which produces `String` scope names from
+    /// TOML parsing.
+    pub fn from_owned(styles: HashMap<String, ResolvedStyle>, default: ResolvedStyle) -> Self {
         let mut t = Self {
             raw: styles,
             baked: Vec::new(),
@@ -158,7 +172,7 @@ impl Theme {
         for i in 0..registry.len() {
             self.baked[i] = self.resolve_raw(registry.name_of(ScopeId(i as u16)));
         }
-        // Re-populate ui in case bake() is called after new() (idempotent).
+        // Re-populate ui in case bake() is called after construction (idempotent).
         self.ui = self.compute_ui();
     }
 
@@ -188,6 +202,29 @@ impl Theme {
         self.resolve_raw(scope.0)
     }
 
+    /// Return `true` if this scope name has an explicit entry in the raw map.
+    ///
+    /// Used by `:theme-debug` to build the dot-notation fallback chain display.
+    pub fn raw_contains(&self, key: &str) -> bool {
+        self.raw.contains_key(key)
+    }
+
+    /// Walk the dot-notation fallback chain for `s`, returning the resolved style.
+    ///
+    /// `"keyword.function"` tries `"keyword.function"`, then `"keyword"`, then returns `default`.
+    pub(crate) fn resolve_raw(&self, s: &str) -> ResolvedStyle {
+        let mut cur = s;
+        loop {
+            if let Some(&style) = self.raw.get(cur) {
+                return style;
+            }
+            match cur.rfind('.') {
+                Some(dot) => cur = &cur[..dot],
+                None => return self.default,
+            }
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────
 
     fn compute_ui(&self) -> UiScopes {
@@ -213,23 +250,11 @@ impl Theme {
             selection_primary: self.resolve_raw("ui.selection.primary"),
         }
     }
-
-    fn resolve_raw(&self, mut s: &'static str) -> ResolvedStyle {
-        loop {
-            if let Some(&style) = self.raw.get(s) {
-                return style;
-            }
-            match s.rfind('.') {
-                Some(dot) => s = &s[..dot],
-                None => return self.default,
-            }
-        }
-    }
 }
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::new(HashMap::new(), ResolvedStyle::default())
+        Self::from_owned(HashMap::new(), ResolvedStyle::default())
     }
 }
 
@@ -409,5 +434,39 @@ mod tests {
     fn registry_get_returns_none_for_unknown() {
         let reg = ScopeRegistry::new();
         assert_eq!(reg.get("unknown"), None);
+    }
+
+    // ── Theme::from_owned (loader path) ──────────────────────────────────
+
+    #[test]
+    fn from_owned_resolves_same_as_new() {
+        let static_styles: HashMap<&'static str, ResolvedStyle> = {
+            let mut m = HashMap::new();
+            m.insert(
+                "keyword",
+                ResolvedStyle {
+                    fg: Some(Color::Blue),
+                    ..Default::default()
+                },
+            );
+            m
+        };
+        let owned_styles: HashMap<String, ResolvedStyle> = {
+            let mut m = HashMap::new();
+            m.insert(
+                "keyword".to_string(),
+                ResolvedStyle {
+                    fg: Some(Color::Blue),
+                    ..Default::default()
+                },
+            );
+            m
+        };
+        let t1 = Theme::new(static_styles, ResolvedStyle::default());
+        let t2 = Theme::from_owned(owned_styles, ResolvedStyle::default());
+        assert_eq!(
+            t1.resolve_by_name(Scope("keyword.function")).fg,
+            t2.resolve_by_name(Scope("keyword.function")).fg,
+        );
     }
 }

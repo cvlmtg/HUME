@@ -1220,6 +1220,12 @@ pub(super) fn typed_set(
     if result.is_ok() && key == "history-capacity" {
         ed.history.set_capacity(ed.settings.history_capacity);
     }
+    if result.is_ok() && key == "theme" && scope == "global" {
+        let name = ed.settings.theme.clone();
+        if !name.is_empty() {
+            ed.load_theme_by_name(&name);
+        }
+    }
     result.map_err(CommandError)
 }
 
@@ -1856,4 +1862,104 @@ pub(super) fn typed_vsplit(
     _force: bool,
 ) -> Result<(), CommandError> {
     Err(CommandError(":vsplit not yet implemented".into()))
+}
+
+/// `:theme <name>` — load a theme by name from the theme search path.
+///
+/// On success the engine view's theme is replaced and re-baked.
+/// On failure a warning is shown and the current theme is left unchanged.
+pub(super) fn typed_theme(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
+        let current = if ed.settings.theme.is_empty() {
+            "default (built-in)".to_owned()
+        } else {
+            ed.settings.theme.clone()
+        };
+        ed.report(Severity::Info, format!("Current theme: {current}"));
+        return Ok(());
+    };
+    ed.load_theme_by_name(name);
+    // Update settings regardless of success — if load fails, the warning already
+    // appeared; persisting the name lets init.scm re-try on reload.
+    ed.settings.theme = name.to_owned();
+    Ok(())
+}
+
+/// `:theme-debug` — print the resolved style chain for key UI scopes.
+///
+/// Reports the scope name, resolution chain, and final fg/bg/modifiers for
+/// the cursor, selection, and cursorline scopes from the active theme.
+pub(super) fn typed_theme_debug(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    use ratatui::style::Color;
+
+    fn color_str(c: Option<Color>) -> String {
+        match c {
+            Some(Color::Rgb(r, g, b)) => format!("#{r:02x}{g:02x}{b:02x}"),
+            Some(other) => format!("{other:?}"),
+            None => "-".to_owned(),
+        }
+    }
+
+    fn scope_chain(theme: &engine::theme::Theme, scope: &str) -> String {
+        // Walk the dot-notation prefix chain and collect names that have entries.
+        let mut chain: Vec<&str> = Vec::new();
+        let mut cur = scope;
+        loop {
+            if theme.raw_contains(cur) {
+                chain.push(cur);
+            }
+            match cur.rfind('.') {
+                Some(dot) => cur = &cur[..dot],
+                None => break,
+            }
+        }
+        if chain.is_empty() {
+            format!("{scope} → default")
+        } else {
+            chain.join(" → ")
+        }
+    }
+
+    let theme = &ed.engine_view.theme;
+    let name = if ed.settings.theme.is_empty() {
+        "default (built-in)"
+    } else {
+        &ed.settings.theme
+    };
+
+    let scopes = [
+        "ui.cursor.primary",
+        "ui.cursor",
+        "ui.cursor.insert",
+        "ui.selection",
+        "ui.cursorline",
+        "ui.statusline",
+    ];
+
+    let mut lines = vec![format!("Theme: {name}")];
+    for scope in scopes {
+        let style = theme.resolve_by_name(engine::types::Scope(scope));
+        let chain = scope_chain(theme, scope);
+        lines.push(format!(
+            "  {scope}: chain={chain} fg={} bg={}{}",
+            color_str(style.fg),
+            color_str(style.bg),
+            if style.modifiers.is_empty() {
+                String::new()
+            } else {
+                format!(" modifiers={:?}", style.modifiers)
+            },
+        ));
+    }
+
+    ed.report(Severity::Info, lines.join("\n"));
+    Ok(())
 }

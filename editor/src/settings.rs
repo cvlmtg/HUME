@@ -73,6 +73,9 @@ macro_rules! parse_setting {
     ($value:expr, $key:expr, from_str) => {
         $value.parse()
     };
+    ($value:expr, $key:expr, string) => {
+        Ok::<String, String>(($value).to_owned())
+    };
 }
 
 // ── Settings definition ───────────────────────────────────────────────────────
@@ -255,6 +258,7 @@ define_settings! {
         "steel-init-budget-ms"    => steel_init_budget_ms:    usize = 10_000, parser: usize_nonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
         "popup-border" => popup_border: bool = true, parser: bool;
+        "theme" => theme: String = String::new(), parser: string;
     }
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
@@ -316,6 +320,7 @@ pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<
         "steel-init-budget-ms" => settings.steel_init_budget_ms.to_string(),
         "steel-command-budget-ms" => settings.steel_command_budget_ms.to_string(),
         "popup-border" => settings.popup_border.to_string(),
+        "theme" => settings.theme.clone(),
         "tab-width" => settings.tab_width.to_string(),
         "wrap-mode" => match settings.wrap_mode {
             engine::pane::WrapMode::None => "none".to_string(),

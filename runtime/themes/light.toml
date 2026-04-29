@@ -1,0 +1,49 @@
+# HUME built-in light theme.
+# Inherits from dark and overrides the colors that need to change for a light
+# terminal background. Exercises the `inherits` loader path.
+#
+# Note: [palette] must come after all scope definitions (TOML section semantics).
+
+inherits = "dark"
+
+# ── Cursor ────────────────────────────────────────────────────────────────────
+"ui.cursor.primary" = { fg = "white", bg = "black" }
+"ui.cursor"         = { fg = "white", bg = "mid_gray" }
+
+# ── Selection / cursor-line ───────────────────────────────────────────────────
+"ui.selection"  = { bg = "selection" }
+"ui.cursorline" = { bg = "cursor_line" }
+
+# ── Gutter ────────────────────────────────────────────────────────────────────
+"ui.linenr"          = { fg = "mid_gray" }
+"ui.linenr.selected" = { fg = "#303030" }
+
+# ── Highlights ────────────────────────────────────────────────────────────────
+"ui.cursor.match"     = { fg = "#7c5c00", bg = "#fde68a", modifiers = ["bold"] }
+"ui.selection.search" = { fg = "#7c2800", bg = "#fed7aa" }
+
+# ── Whitespace ────────────────────────────────────────────────────────────────
+"ui.whitespace" = { fg = "#c0c0c8" }
+
+# ── Statusline ────────────────────────────────────────────────────────────────
+"ui.statusline"              = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.mode.normal"  = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.mode.insert"  = { fg = "white",         bg = "cyan" }
+"ui.statusline.mode.extend"  = { fg = "white",         bg = "yellow" }
+"ui.statusline.mode.search"  = { fg = "white",         bg = "magenta" }
+"ui.statusline.mode.command" = { fg = "white",         bg = "green" }
+"ui.statusline.mode.select"  = { fg = "white",         bg = "blue" }
+
+[palette]
+white        = "#f5f5f5"
+black        = "#1a1a1a"
+mid_gray     = "#9090a0"
+cursor_line  = "#e8e8f0"
+selection    = "#b8b8e8"
+statusline   = "#1a1a1a"
+statusline_fg = "#f5f5f5"
+cyan         = "#007878"
+yellow       = "#787800"
+magenta      = "#780078"
+green        = "#007800"
+blue         = "#0000bb"

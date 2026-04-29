@@ -1178,7 +1178,7 @@ impl Editor {
         // Dispatch to the right completer based on command + input shape.
         use crate::editor::completion::{
             BufferNameCompleter, CommandCompleter, Completer, CompletionResult, CompletionState,
-            PathCompleter,
+            PathCompleter, ThemeCompleter,
         };
 
         let result: CompletionResult = {
@@ -1205,6 +1205,7 @@ impl Editor {
                             PathCompleter { dirs_only: true }.complete(&input, cursor, &ctx)
                         }
                         Some("buffer") => BufferNameCompleter.complete(&input, cursor, &ctx),
+                        Some("theme") => ThemeCompleter.complete(&input, cursor, &ctx),
                         // `:bd` ignores its argument; skip completion to
                         // avoid a misleading pick-then-close-current-buffer UX.
                         _ => return,
