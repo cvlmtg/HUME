@@ -15,7 +15,7 @@
 ;;   "auto-pairs-enabled" bool      #t       — insert matching close delimiter
 ;;   "line-number-style"  string    "hybrid" — "absolute", "relative", "hybrid"
 ;;   "wrap-mode"          string    "indent" — "none", "word", "indent"
-;;   "scroll-margin"      integer   3        — lines kept above/below cursor
+;;   "scrolloff"          integer   3        — lines kept above/below cursor
 ;;   "mouse-enabled"      bool      #t       — enable mouse support
 ;;   "mouse-select"       bool      #f       — mouse drag creates a selection
 

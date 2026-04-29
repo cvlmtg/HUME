@@ -247,8 +247,7 @@ macro_rules! define_settings {
 
 define_settings! {
     global {
-        "scroll-margin"       => scroll_margin:       usize = 3,    parser: usize;
-        "scroll-margin-h"     => scroll_margin_h:     usize = 5,    parser: usize;
+        "scrolloff"           => scrolloff:           usize = 3,    parser: usize;
         "mouse-scroll-lines"  => mouse_scroll_lines:  usize = 3,    parser: usize;
         "mouse-enabled"       => mouse_enabled:       bool  = true, parser: bool;
         "mouse-select"        => mouse_select:        bool  = false, parser: bool;
@@ -309,8 +308,7 @@ define_settings! {
 /// `apply_setting(SettingScope::Global, …)` must have a matching arm here.
 pub(crate) fn serialize_setting(settings: &EditorSettings, key: &str) -> Option<String> {
     Some(match key {
-        "scroll-margin" => settings.scroll_margin.to_string(),
-        "scroll-margin-h" => settings.scroll_margin_h.to_string(),
+        "scrolloff" => settings.scrolloff.to_string(),
         "mouse-scroll-lines" => settings.mouse_scroll_lines.to_string(),
         "mouse-enabled" => settings.mouse_enabled.to_string(),
         "mouse-select" => settings.mouse_select.to_string(),
@@ -482,8 +480,7 @@ mod tests {
     #[test]
     fn editor_settings_default_matches_old_constants() {
         let s = EditorSettings::default();
-        assert_eq!(s.scroll_margin, 3);
-        assert_eq!(s.scroll_margin_h, 5);
+        assert_eq!(s.scrolloff, 3);
         assert_eq!(s.mouse_scroll_lines, 3);
         assert!(s.mouse_enabled);
         assert!(!s.mouse_select);
@@ -598,13 +595,8 @@ mod tests {
     }
 
     #[test]
-    fn set_global_scroll_margin() {
-        assert_eq!(global("scroll-margin", "1").unwrap().scroll_margin, 1);
-    }
-
-    #[test]
-    fn set_global_scroll_margin_h() {
-        assert_eq!(global("scroll-margin-h", "10").unwrap().scroll_margin_h, 10);
+    fn set_global_scrolloff() {
+        assert_eq!(global("scrolloff", "1").unwrap().scrolloff, 1);
     }
 
     #[test]
@@ -760,12 +752,12 @@ mod tests {
 
     #[test]
     fn set_global_invalid_value_errors() {
-        assert!(global("scroll-margin", "abc").is_err());
+        assert!(global("scrolloff", "abc").is_err());
     }
 
     #[test]
     fn set_global_empty_value_errors() {
-        assert!(global("scroll-margin", "").is_err());
+        assert!(global("scrolloff", "").is_err());
         assert!(global("tab-width", "").is_err());
         assert!(global("mouse-enabled", "").is_err());
     }
@@ -843,7 +835,7 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         let err =
-            apply_setting(SettingScope::Text, "scroll-margin", "3", &mut s, &mut ov).unwrap_err();
+            apply_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
             "expected 'global-only' in error: {err}"
@@ -855,8 +847,7 @@ mod tests {
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         for key in [
-            "scroll-margin",
-            "scroll-margin-h",
+            "scrolloff",
             "mouse-scroll-lines",
             "mouse-enabled",
             "mouse-select",
@@ -914,8 +905,7 @@ mod tests {
         let s = EditorSettings::default();
         // Every key known to apply_setting must be serializable.
         let keys = [
-            "scroll-margin",
-            "scroll-margin-h",
+            "scrolloff",
             "mouse-scroll-lines",
             "mouse-enabled",
             "mouse-select",

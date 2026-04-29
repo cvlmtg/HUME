@@ -798,8 +798,7 @@ impl Editor {
             // The real document and all highlight providers are untouched.
             let cursor_char = sv.sels.primary().head;
             let rope = sv.buf.rope();
-            let v_margin = self.settings.scroll_margin;
-            let h_margin = self.settings.scroll_margin_h;
+            let scrolloff = self.settings.scrolloff;
             let tab_width = self.settings.tab_width;
             let whitespace = self.settings.whitespace.clone();
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
@@ -812,8 +811,7 @@ impl Editor {
                 &wrap_mode,
                 tab_width,
                 &whitespace,
-                v_margin,
-                h_margin,
+                scrolloff,
             );
             // No highlight updates for scratch view — no search or bracket matches.
         } else {
@@ -832,8 +830,7 @@ impl Editor {
                 .selections
                 .primary()
                 .head;
-            let v_margin = self.settings.scroll_margin;
-            let h_margin = self.settings.scroll_margin_h;
+            let scrolloff = self.settings.scrolloff;
             let tab_width = self.doc().overrides.tab_width(&self.settings);
             let whitespace = self.doc().overrides.whitespace(&self.settings);
             {
@@ -854,8 +851,7 @@ impl Editor {
                     &wrap_mode,
                     tab_width,
                     &whitespace,
-                    v_margin,
-                    h_margin,
+                    scrolloff,
                 );
             }
 
@@ -1946,8 +1942,7 @@ fn scroll_into_view(
     wrap_mode: &WrapMode,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
-    v_margin: usize,
-    h_margin: usize,
+    scrolloff: usize,
 ) {
     scroll::ensure_cursor_visible(
         &mut pane.viewport,
@@ -1957,7 +1952,7 @@ fn scroll_into_view(
         tab_width,
         whitespace,
         scratch,
-        v_margin,
+        scrolloff,
     );
     scroll::ensure_cursor_visible_horizontal(
         &mut pane.viewport,
@@ -1967,7 +1962,6 @@ fn scroll_into_view(
         tab_width,
         whitespace,
         scratch,
-        h_margin,
     );
 }
 
