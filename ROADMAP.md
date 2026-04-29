@@ -143,7 +143,7 @@
 - [x] **CLI: multiple file paths at startup**: `hume a.txt b.txt c.txt` opens all three as separate buffers; the first becomes current. Changes `run(Option<PathBuf>)` → `run(Vec<PathBuf>)` in `editor/src/lib.rs` and `editor/src/main.rs`.
 
 ### M8 — Theming (planned)
-- [ ] **Helix theme editor**: import the standalone HTML theme editor, integrate it into the repo, and fix known bugs.
+- [x] **Helix theme editor**: import the standalone HTML theme editor, integrate it into the repo, and fix known bugs.
 - [ ] **Theming**: hierarchical scopes (Helix-compatible), Steel + Helix TOML theme formats, `:theme-debug`.
 - [ ] **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
 - [ ] **Default theme**: replace the hardcoded colors with a proper named theme using the new scope system.
