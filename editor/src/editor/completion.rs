@@ -290,6 +290,64 @@ impl Completer for PathCompleter {
     }
 }
 
+// ── ThemeCompleter ────────────────────────────────────────────────────────────
+
+/// Completes theme names for `:theme`.
+///
+/// Scans `<config_dir>/themes/*.toml` and `<runtime_dir>/themes/*.toml`,
+/// strips the `.toml` extension, deduplicates (user theme wins over bundled),
+/// and filters by the current prefix.
+pub(crate) struct ThemeCompleter;
+
+impl Completer for ThemeCompleter {
+    fn complete(&self, input: &str, cursor: usize, _ctx: &CompletionCtx<'_>) -> CompletionResult {
+        let (arg_start, prefix) = arg_prefix(input, cursor);
+
+        let mut search_dirs: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(cfg) = crate::os::dirs::config_dir() {
+            search_dirs.push(cfg.join("themes"));
+        }
+        if let Some(rt) = crate::os::dirs::runtime_dir() {
+            search_dirs.push(rt.join("themes"));
+        }
+
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut candidates: Vec<Completion> = Vec::new();
+
+        for dir in &search_dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                    continue;
+                }
+                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                // User themes (earlier in search_dirs) shadow bundled themes.
+                if !seen.insert(stem.to_owned()) {
+                    continue;
+                }
+                if stem.starts_with(prefix) && stem != prefix {
+                    candidates.push(Completion {
+                        replacement: stem.to_owned(),
+                        display: stem.to_owned(),
+                    });
+                }
+            }
+        }
+
+        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
+        CompletionResult {
+            span_start: arg_start,
+            candidates,
+        }
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Extract the argument prefix for commands that take a single argument.

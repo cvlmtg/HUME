@@ -1277,6 +1277,18 @@ impl CommandRegistry {
             typed_vsplit
         );
         typed_cmd!(
+            "theme",
+            "Load a theme by name: :theme <name>. No arg shows current theme.",
+            &[],
+            typed_theme
+        );
+        typed_cmd!(
+            "theme-debug",
+            "Show resolved styles for key UI scopes of the active theme.",
+            &[],
+            typed_theme_debug
+        );
+        typed_cmd!(
             "change-directory",
             "Change the working directory.",
             &["cd"],
@@ -1324,7 +1336,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 130;
+    const EXPECTED_COMMAND_COUNT: usize = 132;
 
     #[test]
     fn registry_has_expected_count() {

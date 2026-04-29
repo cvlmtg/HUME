@@ -1,0 +1,54 @@
+# HUME built-in dark theme.
+# A flat, no-dependency theme for dark terminals (the editor default aesthetic).
+# All colors are explicit hex values so this file exercises the basic loader path.
+#
+# Note: [palette] must come after all scope definitions (TOML section semantics).
+
+# ── Cursor ────────────────────────────────────────────────────────────────────
+"ui.cursor.primary" = { fg = "black", bg = "white" }
+"ui.cursor"         = { fg = "black", bg = "mid_gray" }
+"ui.cursor.insert"  = {}
+
+# ── Selection / cursor-line ───────────────────────────────────────────────────
+"ui.selection"  = { bg = "selection" }
+"ui.cursorline" = { bg = "cursor_line" }
+
+# ── Virtual text / tilde rows ─────────────────────────────────────────────────
+"ui.virtual" = { fg = "dark_gray" }
+
+# ── Gutter ────────────────────────────────────────────────────────────────────
+"ui.linenr"          = { fg = "dark_gray" }
+"ui.linenr.selected" = { fg = "#c8c8d2" }
+
+# ── Highlights ────────────────────────────────────────────────────────────────
+"ui.cursor.match"    = { fg = "#dcb432", bg = "#3c3714", modifiers = ["bold"] }
+"ui.selection.search" = { fg = "#ffb450", bg = "#502800" }
+
+# ── Whitespace ────────────────────────────────────────────────────────────────
+"ui.whitespace" = { fg = "#464650" }
+
+# ── Statusline ────────────────────────────────────────────────────────────────
+"ui.statusline"              = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.mode.normal"  = { fg = "statusline_fg", bg = "statusline" }
+"ui.statusline.mode.insert"  = { fg = "cyan",          bg = "statusline" }
+"ui.statusline.mode.extend"  = { fg = "yellow",        bg = "statusline" }
+"ui.statusline.mode.search"  = { fg = "magenta",       bg = "statusline" }
+"ui.statusline.mode.command" = { fg = "green",         bg = "statusline" }
+"ui.statusline.mode.select"  = { fg = "blue",          bg = "statusline" }
+
+[palette]
+fg           = "#d0d0d0"
+bg           = "#1a1a1a"
+black        = "#000000"
+white        = "#ffffff"
+dark_gray    = "#808080"
+mid_gray     = "#8c8ca0"
+cursor_line  = "#3a3a3a"
+selection    = "#444478"
+statusline   = "#ffffff"
+statusline_fg = "#000000"
+cyan         = "#00cdcd"
+yellow       = "#cdcd00"
+magenta      = "#cd00cd"
+green        = "#00cd00"
+blue         = "#0000ee"

@@ -12,5 +12,7 @@ bitflags = "2"
 slotmap = "1"
 tree-sitter = "0.24"
 streaming-iterator = "0.1"
+toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 [dev-dependencies]
+tempfile = "3"
