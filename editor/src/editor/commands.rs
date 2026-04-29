@@ -11,6 +11,9 @@
 //! The `count` parameter is the user's numeric prefix (default 1). Commands
 //! that don't use a count accept it and ignore it (`_count`).
 
+/// Display label used when no named theme is active (the compiled-in default).
+const DEFAULT_THEME_LABEL: &str = "default (built-in)";
+
 use std::sync::Arc;
 
 use crate::core::grapheme::next_grapheme_boundary;
@@ -1875,7 +1878,7 @@ pub(super) fn typed_theme(
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current = if ed.settings.theme.is_empty() {
-            "default (built-in)".to_owned()
+            DEFAULT_THEME_LABEL.to_owned()
         } else {
             ed.settings.theme.clone()
         };
@@ -1930,7 +1933,7 @@ pub(super) fn typed_theme_debug(
 
     let theme = &ed.engine_view.theme;
     let name = if ed.settings.theme.is_empty() {
-        "default (built-in)"
+        DEFAULT_THEME_LABEL
     } else {
         &ed.settings.theme
     };

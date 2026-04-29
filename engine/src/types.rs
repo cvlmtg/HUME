@@ -67,7 +67,6 @@ pub enum UnderlineStyle {
     Wavy,
     Dotted,
     Dashed,
-    Undercurl,
 }
 
 bitflags! {

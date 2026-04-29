@@ -1029,14 +1029,7 @@ impl Editor {
     /// is replaced and re-baked against the live scope registry.  On failure a
     /// warning is logged and the current theme is left unchanged.
     pub(crate) fn load_theme_by_name(&mut self, name: &str) {
-        let mut search_paths: Vec<PathBuf> = Vec::new();
-        if let Some(cfg) = crate::os::dirs::config_dir() {
-            search_paths.push(cfg.join("themes"));
-        }
-        if let Some(rt) = crate::os::dirs::runtime_dir() {
-            search_paths.push(rt.join("themes"));
-        }
-        match engine::theme::loader::load_theme(name, &search_paths) {
+        match engine::theme::loader::load_theme(name, &theme_search_paths()) {
             Ok(mut theme) => {
                 theme.bake(&self.engine_view.registry);
                 self.engine_view.theme = theme;
@@ -1990,6 +1983,22 @@ fn mode_name(m: EditorMode) -> &'static str {
 /// Convert a char-offset position to a line-relative byte offset.
 ///
 /// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
+/// Ordered list of directories to search for theme TOML files.
+///
+/// Config themes (user-defined) are listed before runtime themes (bundled) so
+/// that user overrides shadow built-in ones. Both [`Editor::load_theme_by_name`]
+/// and [`ThemeCompleter`] use this list as the single source of truth.
+pub(super) fn theme_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(cfg) = crate::os::dirs::config_dir() {
+        paths.push(cfg.join("themes"));
+    }
+    if let Some(rt) = crate::os::dirs::runtime_dir() {
+        paths.push(rt.join("themes"));
+    }
+    paths
+}
+
 /// from the start of the line — suitable for building highlight spans that the
 /// engine expects in line-relative byte coordinates.
 fn char_to_line_byte(buf: &Text, char_pos: usize) -> (usize, usize) {
