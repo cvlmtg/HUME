@@ -1885,10 +1885,9 @@ pub(super) fn typed_theme(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    ed.load_theme_by_name(name);
-    // Update settings regardless of success — if load fails, the warning already
-    // appeared; persisting the name lets init.scm re-try on reload.
-    ed.settings.theme = name.to_owned();
+    if ed.load_theme_by_name(name) {
+        ed.settings.theme = name.to_owned();
+    }
     Ok(())
 }
 

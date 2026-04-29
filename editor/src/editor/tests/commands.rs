@@ -1179,3 +1179,41 @@ fn register_prefix_persists_across_motion() {
     assert!(!reg(&ed, '5').is_empty(), "register '5' written after motion");
     assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
 }
+
+// ── Bundled theme loading (end-to-end wiring) ─────────────────────────────────
+
+/// Smoke-test all three bundled themes through the full loader → bake → resolve
+/// pipeline. Catches wiring regressions (bad paths, parse errors, missing palette
+/// entries) without needing a running editor.
+#[test]
+fn bundled_themes_load_and_resolve() {
+    use std::path::PathBuf;
+    let themes_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
+    let paths = vec![themes_dir];
+
+    for name in ["dark", "light", "gruvbox"] {
+        let mut theme = engine::theme::loader::load_theme(name, &paths)
+            .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
+        let mut reg = engine::theme::ScopeRegistry::new();
+        reg.intern("ui.cursor.primary");
+        reg.intern("ui.selection");
+        theme.bake(&reg);
+        let style = theme.resolve_by_name(engine::types::Scope("ui.cursor.primary"));
+        assert!(
+            style.fg.is_some() || style.bg.is_some(),
+            "bundled theme '{name}': ui.cursor.primary has neither fg nor bg"
+        );
+    }
+}
+
+/// `load_theme_by_name` reports failure via the message log and returns `false`;
+/// the theme stays unchanged.
+#[test]
+fn load_theme_by_name_fails_gracefully() {
+    let mut ed = editor_from("-[a]>b\n");
+    let ok = ed.load_theme_by_name("no_such_theme_xyz");
+    assert!(!ok, "expected false for nonexistent theme");
+    // Failure warning ends up in the message log, not as an error result.
+    assert!(ed.message_log.has_unseen(), "expected a warning message");
+}

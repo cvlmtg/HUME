@@ -1028,14 +1028,17 @@ impl Editor {
     /// `<runtime_dir>/themes/<name>.toml`.  On success the engine view's theme
     /// is replaced and re-baked against the live scope registry.  On failure a
     /// warning is logged and the current theme is left unchanged.
-    pub(crate) fn load_theme_by_name(&mut self, name: &str) {
+    /// Returns `true` if the theme was loaded and applied successfully.
+    pub(crate) fn load_theme_by_name(&mut self, name: &str) -> bool {
         match engine::theme::loader::load_theme(name, &theme_search_paths()) {
             Ok(mut theme) => {
                 theme.bake(&self.engine_view.registry);
                 self.engine_view.theme = theme;
+                true
             }
             Err(e) => {
-                self.report(Severity::Warning, format!("theme '{name}': {e}"));
+                self.report(Severity::Warning, format!("{e}"));
+                false
             }
         }
     }
@@ -1980,9 +1983,6 @@ fn mode_name(m: EditorMode) -> &'static str {
     }
 }
 
-/// Convert a char-offset position to a line-relative byte offset.
-///
-/// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
 /// Ordered list of directories to search for theme TOML files.
 ///
 /// Config themes (user-defined) are listed before runtime themes (bundled) so
@@ -1999,6 +1999,9 @@ pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     paths
 }
 
+/// Convert a char-offset position to a line-relative byte offset.
+///
+/// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
 /// from the start of the line — suitable for building highlight spans that the
 /// engine expects in line-relative byte coordinates.
 fn char_to_line_byte(buf: &Text, char_pos: usize) -> (usize, usize) {
