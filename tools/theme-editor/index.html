@@ -300,6 +300,33 @@ function formatVal(v) {
   return String(v); // boolean, number
 }
 
+// Pull scope definitions out of a parsed TOML object. Skips `palette` (a
+// section in TOML) and `inherits` (the parent theme reference). Promotes
+// nested sections (e.g. `[ui]` with bare `cursor = "..."` inside) into flat
+// dotted keys ("ui.cursor"), matching the data shape the editor uses.
+function extractScopes(parsed) {
+  var ns = {};
+  var SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
+  for (var _k of Object.keys(parsed)) {
+    if (_k === "palette" || _k === "inherits") continue;
+    var v = parsed[_k];
+    if (typeof v === "string") { ns[_k] = v; }
+    else if (typeof v === "object" && v !== null) {
+      var isScopeDef = Object.keys(v).some(function(k) { return SCOPE_KEYS.indexOf(k) !== -1; });
+      if (isScopeDef) {
+        ns[_k] = v;
+      } else {
+        for (var sk of Object.keys(v)) {
+          var sv = v[sk];
+          if (typeof sv === "string") { ns[_k + "." + sk] = sv; }
+          else if (typeof sv === "object") { ns[_k + "." + sk] = sv; }
+        }
+      }
+    }
+  }
+  return ns;
+}
+
 function exportTOML(palette, scopes) {
   let out = "[palette]\n";
   for (const [k, v] of Object.entries(palette)) {
@@ -634,6 +661,14 @@ function HelixThemeEditor() {
   var [palOpen, setPalOpen] = _s(true);
   var [scOpen, setScOpen] = _s(true);
   var [hslOpen, setHslOpen] = _s(true);
+  // Inherits handling: child themes (`inherits = "..."`) only override the
+  // parent's palette/scopes. We stash the child's overrides, show a banner
+  // asking the user to import the parent, then merge child-on-top when it
+  // arrives. `loadedParent` tracks whether a non-inherits theme is loaded so
+  // the order can be reversed (parent first, then child).
+  var [pendingChild, setPendingChild] = _s(null);
+  var [inheritBanner, setInheritBanner] = _s(null);
+  var [loadedParent, setLoadedParent] = _s(false);
   var fileRef = useRef(null);
 
   var handleImport = _c(function(e) {
@@ -643,35 +678,47 @@ function HelixThemeEditor() {
     reader.onload = function(ev) {
       try {
         var parsed = parseTOML(ev.target.result);
-        if (parsed.palette) setPalette(parsed.palette);
+        var newPalette = parsed.palette || {};
+        var newScopes = extractScopes(parsed);
+        var hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
         setHShift(0); setSShift(0); setLShift(0);
-        var ns = {};
-        var SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
-        for (var _k of Object.keys(parsed)) {
-          if (_k === "palette" || _k === "inherits") continue;
-          var v = parsed[_k];
-          if (typeof v === "string") { ns[_k] = v; }
-          else if (typeof v === "object") {
-            var isScopeDef = Object.keys(v).some(function(k) { return SCOPE_KEYS.indexOf(k) !== -1; });
-            if (isScopeDef) {
-              ns[_k] = v;
-            } else {
-              for (var sk of Object.keys(v)) {
-                var sv = v[sk];
-                if (typeof sv === "string") { ns[_k + "." + sk] = sv; }
-                else if (typeof sv === "object") { ns[_k + "." + sk] = sv; }
-              }
-            }
+
+        if (hasInherits) {
+          if (loadedParent) {
+            // Parent is already loaded — merge child overrides on top.
+            setPalette(function(p) { return Object.assign({}, p, newPalette); });
+            setScopes(function(s) { return Object.assign({}, s, newScopes); });
+            setPendingChild(null);
+            setInheritBanner(null);
+          } else {
+            // No parent yet — apply child for visual feedback, stash for later
+            // merge, and show the banner so the user knows to import the parent.
+            setPalette(newPalette);
+            setScopes(newScopes);
+            setPendingChild({ palette: newPalette, scopes: newScopes });
+            setInheritBanner({ parent: parsed.inherits });
           }
+        } else {
+          if (pendingChild) {
+            // Child was imported first; this is the parent. Parent first, child on top.
+            setPalette(Object.assign({}, newPalette, pendingChild.palette));
+            setScopes(Object.assign({}, newScopes, pendingChild.scopes));
+            setPendingChild(null);
+            setInheritBanner(null);
+          } else {
+            setPalette(newPalette);
+            setScopes(newScopes);
+            setInheritBanner(null);
+          }
+          setLoadedParent(true);
         }
-        if (Object.keys(ns).length > 0) setScopes(ns);
       } catch (err) {
         console.error("Parse error", err);
       }
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, []);
+  }, [loadedParent, pendingChild]);
 
   var handleExport = _c(function() {
     var toml = exportTOML(adjPalette, scopes);
@@ -721,6 +768,17 @@ function HelixThemeEditor() {
           </button>
         </div>
       </div>
+
+      {inheritBanner && (
+        <div style={{ padding: "8px 20px", background: "#3a2f1a", borderBottom: "1px solid #4a3f2a", color: "#f9e2af", fontFamily: MONO, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span>
+            {"This theme inherits from "}
+            <code style={{ background: "#1f1a0e", padding: "1px 6px", borderRadius: 3, color: "#fab387" }}>{inheritBanner.parent + ".toml"}</code>
+            {" — import the parent file to apply its scopes. Child overrides are stashed and will be re-applied on top."}
+          </span>
+          <button onClick={function() { setInheritBanner(null); setPendingChild(null); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
+        </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: 1, padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
