@@ -54,13 +54,9 @@ fn load_recursive(
         });
     }
 
-    let path = find_theme_file(name, search_paths)?;
+    let (canonical, path) = find_theme_file(name, search_paths)?;
 
-    // Cycle detection via canonical path.
-    let canonical = std::fs::canonicalize(&path).map_err(|e| ThemeError::Io {
-        name: name.to_owned(),
-        error: e,
-    })?;
+    // Cycle detection via canonical path (already resolved by find_theme_file).
     if !visited.insert(canonical) {
         return Err(ThemeError::Cycle {
             name: name.to_owned(),
@@ -262,7 +258,10 @@ fn parse_underline(s: &str) -> UnderlineStyle {
 // File discovery
 // ---------------------------------------------------------------------------
 
-fn find_theme_file(name: &str, search_paths: &[PathBuf]) -> Result<PathBuf, ThemeError> {
+fn find_theme_file(
+    name: &str,
+    search_paths: &[PathBuf],
+) -> Result<(PathBuf, PathBuf), ThemeError> {
     // Reject names with path separators or suspicious segments.
     if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
         return Err(ThemeError::NotFound {
@@ -272,8 +271,15 @@ fn find_theme_file(name: &str, search_paths: &[PathBuf]) -> Result<PathBuf, Them
     let filename = format!("{name}.toml");
     for dir in search_paths {
         let candidate = dir.join(&filename);
-        if candidate.exists() {
-            return Ok(candidate);
+        match std::fs::canonicalize(&candidate) {
+            Ok(canonical) => return Ok((canonical, candidate)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(ThemeError::Io {
+                    name: name.to_owned(),
+                    error: e,
+                })
+            }
         }
     }
     Err(ThemeError::NotFound {

@@ -303,19 +303,11 @@ impl Completer for ThemeCompleter {
     fn complete(&self, input: &str, cursor: usize, _ctx: &CompletionCtx<'_>) -> CompletionResult {
         let (arg_start, prefix) = arg_prefix(input, cursor);
 
-        let mut search_dirs: Vec<std::path::PathBuf> = Vec::new();
-        if let Some(cfg) = crate::os::dirs::config_dir() {
-            search_dirs.push(cfg.join("themes"));
-        }
-        if let Some(rt) = crate::os::dirs::runtime_dir() {
-            search_dirs.push(rt.join("themes"));
-        }
-
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut candidates: Vec<Completion> = Vec::new();
 
-        for dir in &search_dirs {
-            let entries = match std::fs::read_dir(dir) {
+        for dir in &super::theme_search_paths() {
+            let entries = match crate::os::fs::read_dir(dir) {
                 Ok(e) => e,
                 Err(_) => continue,
             };
