@@ -10,7 +10,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #11111b; overflow: hidden; }
-    #root { height: 100vh; }
+    #root { height: 100vh; overflow-y: auto; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #363a4f; border-radius: 3px; }
@@ -619,7 +619,7 @@ function Preview({ pal, sc }) {
           return (
             <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? selBg + "44" : "transparent", minHeight: 20 }}>
               <span style={{ display: "inline-block", width: 44, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
-              <span style={{ background: line.sel ? selBg + "88" : "transparent", borderRadius: line.sel ? 2 : 0, padding: line.sel ? "0 2px" : "0" }}>
+              <span style={{ background: line.sel ? selBg + "88" : "transparent", borderRadius: line.sel ? 2 : 0, padding: line.sel ? "0 2px" : "0", whiteSpace: "pre" }}>
                 {line.t.length === 0 && <span>{"\u00a0"}</span>}
                 {line.t.map(function(tok, i) {
                   var col = tok[1] ? s(tok[1]) : FG;
