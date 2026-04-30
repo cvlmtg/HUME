@@ -1355,6 +1355,19 @@ impl Editor {
         self.buffers.get_mut(bid)
     }
 
+    /// Resolved formatting context for the focused doc and pane:
+    /// `(wrap_mode, tab_width, whitespace)`. The wrap_mode has its `width: 0`
+    /// sentinel substituted via `pane.content_width(...)` — safe to hand to
+    /// engine code. `wrap_mode.is_wrapping()` matches the unresolved value.
+    pub(super) fn focused_format_context(&self) -> (WrapMode, u8, WhitespaceConfig) {
+        let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+        let tab_width = self.doc().overrides.tab_width(&self.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.settings);
+        let pane = &self.engine_view.panes[self.focused_pane_id];
+        let wrap_mode = raw_wrap.resolve(pane.content_width(self.doc().text().len_lines()));
+        (wrap_mode, tab_width, whitespace)
+    }
+
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
     /// The focused pane's selections for the current buffer.

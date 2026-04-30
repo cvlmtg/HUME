@@ -473,4 +473,81 @@ mod tests {
         assert_eq!(v.top_line, 2);
         assert_eq!(v.top_row_offset, 0);
     }
+
+    // ── zt / zb interaction with scrolloff ───────────────────────────────────
+    //
+    // `cmd_view_top` calls `scroll_cursor_to_row(target=0)`. That alone places
+    // the cursor at display row 0. `prepare_frame` then runs the standard
+    // `ensure_cursor_visible` with `scrolloff` and trims the cursor inward —
+    // vim's "smart scrolloff" semantics. The doc-comment on the zz/zt/zb block
+    // documents this; this test pins the behaviour so a future change to
+    // either function can't silently break the contract.
+
+    #[test]
+    fn zt_then_scrolloff_trims_cursor_inward() {
+        // 50 lines, no wrap, height=24, scrolloff=3. Cursor on line 25.
+        let r = rope(&"a\n".repeat(50));
+        let mut v = viewport(0, 24, 80);
+        let cursor_char = r.line_to_char(25);
+
+        // 1) `zt`: target_row = 0 → top_line = cursor_line.
+        scroll_cursor_to_row(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::None,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            0,
+        );
+        assert_eq!(v.top_line, 25, "zt places top at cursor line");
+
+        // 2) Per-frame correction: scrolloff = 3 trims cursor inward by 3 rows.
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::None,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            3,
+        );
+        assert_eq!(v.top_line, 22, "scrolloff trims top inward by margin (3)");
+    }
+
+    #[test]
+    fn zb_then_scrolloff_trims_cursor_inward() {
+        // height=24, scrolloff=3. Cursor on line 25, target = height-1 = 23.
+        let r = rope(&"a\n".repeat(50));
+        let mut v = viewport(0, 24, 80);
+        let cursor_char = r.line_to_char(25);
+
+        scroll_cursor_to_row(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::None,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            23,
+        );
+        assert_eq!(v.top_line, 2, "zb places cursor on display row 23");
+
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::None,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            3,
+        );
+        // cursor_line=25, top=2, height=24, margin=3 → cursor at row 23 = height-margin-1.
+        // bottom branch fires: top_line = 25 - (24-3-1) = 25 - 20 = 5.
+        assert_eq!(v.top_line, 5, "scrolloff trims top up by margin (3)");
+    }
 }

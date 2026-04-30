@@ -357,7 +357,10 @@ fn select_word_nearest_scopes_to_visual_subrow() {
 }
 
 /// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
-/// the head forward — no oscillation.
+/// the head forward — no oscillation. The bug this guards against was:
+///   j → head=76 (space); select → head=75 ('+', wrong row);
+///   j → head=76 again;   select → head=75 again. (oscillation)
+/// With the fix the second select must land strictly past the first.
 #[test]
 fn select_word_nearest_no_oscillation_on_repeated_j() {
     let mut ed = word_wrap_editor();
@@ -374,14 +377,22 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     // First j + select: lands on "ratatui" (head = 83).
     ed.handle_key(key('j'));
     call_select(&mut ed);
-    let head_after_first = ed.current_selections().primary().head;
-    assert_eq!(head_after_first, 83);
+    let head_after_first_select = ed.current_selections().primary().head;
+    assert_eq!(head_after_first_select, 83);
 
-    // Second j: must advance past 83 (crosses to next buffer line).
+    // Second j: must advance past 83 (crosses to line 1, sub-row 0 → 's' at 85).
     ed.handle_key(key('j'));
     let head_after_second_j = ed.current_selections().primary().head;
-    assert_ne!(
-        head_after_second_j, head_after_first,
-        "second j must advance — no oscillation"
+    assert!(
+        head_after_second_j > head_after_first_select,
+        "second j must advance past {head_after_first_select}; got {head_after_second_j}"
+    );
+
+    // Second select: must land strictly past the first select — never back.
+    call_select(&mut ed);
+    let head_after_second_select = ed.current_selections().primary().head;
+    assert!(
+        head_after_second_select > head_after_first_select,
+        "second select must advance past {head_after_first_select}; got {head_after_second_select} (oscillation)"
     );
 }

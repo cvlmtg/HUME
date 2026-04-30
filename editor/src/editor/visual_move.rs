@@ -169,11 +169,9 @@ fn visual_move_up_one(
 /// When wrapping is off every buffer line is exactly one display row, so we
 /// fall back to the pure buffer-line motions to avoid any overhead.
 fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: MotionMode) {
-    let raw_wrap = ed.doc().overrides.wrap_mode(&ed.settings);
-    let tab_width = ed.doc().overrides.tab_width(&ed.settings);
-    let whitespace = ed.doc().overrides.whitespace(&ed.settings);
+    let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
-    if !raw_wrap.is_wrapping() {
+    if !wrap_mode.is_wrapping() {
         // No wrapping — fall back to buffer-line movement.
         // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
         match down {
@@ -182,11 +180,6 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         }
         return;
     }
-
-    let wrap_mode = {
-        let pane = &ed.engine_view.panes[ed.focused_pane_id];
-        raw_wrap.resolve(pane.content_width(ed.doc().text().len_lines()))
-    };
 
     let rope = ed.doc().text().rope().clone();
     let sels = ed.current_selections().clone();
@@ -333,19 +326,12 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), crate::core::error::CommandError> {
-    let raw_wrap = ed.doc().overrides.wrap_mode(&ed.settings);
-    let tab_width = ed.doc().overrides.tab_width(&ed.settings);
-    let whitespace = ed.doc().overrides.whitespace(&ed.settings);
+    let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
-    if !raw_wrap.is_wrapping() {
+    if !wrap_mode.is_wrapping() {
         ed.apply_motion(|buf, sels| cmd_select_word_nearest_on_line(buf, sels, mode));
         return Ok(());
     }
-
-    let wrap_mode = {
-        let pane = &ed.engine_view.panes[ed.focused_pane_id];
-        raw_wrap.resolve(pane.content_width(ed.doc().text().len_lines()))
-    };
 
     let buf = ed.doc().text().clone(); // O(log n) — rope structural sharing
     let sels = ed.current_selections().clone();
@@ -372,6 +358,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         apply_nearest_word_result(sel, found, mode)
     });
 
+    new_sels.debug_assert_valid(&buf);
     ed.set_current_selections(new_sels);
     Ok(())
 }
