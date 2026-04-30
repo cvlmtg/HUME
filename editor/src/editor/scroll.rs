@@ -219,7 +219,23 @@ fn ensure_cursor_visible_wrapped(
         }
     }
 
-    // ── Cursor below the viewport ────────────────────────────────────────────
+    // ── Cursor too close to the top edge ────────────────────────────────────
+    if display_row < margin {
+        scroll_backward_from_cursor(
+            viewport,
+            rope,
+            cursor_line,
+            cursor_sub,
+            margin,
+            wrap_mode,
+            tab_width,
+            whitespace,
+            scratch,
+        );
+        return;
+    }
+
+    // ── Cursor too close to the bottom edge ──────────────────────────────────
     if display_row >= height.saturating_sub(margin) {
         let target_row = height.saturating_sub(margin).saturating_sub(1);
         scroll_backward_from_cursor(
@@ -399,5 +415,62 @@ mod tests {
             &mut scratch,
         );
         assert_eq!(sub1, 1);
+    }
+
+    // ── ensure_cursor_visible (wrap) top/bottom margin enforcement ───────────
+    //
+    // 10 lines of "ab\n". Under Soft{width:2}, "ab" fills the wrap column
+    // exactly → 1 display row per line. Total: 10 display rows. Using the
+    // wrapped code path (Soft is_wrapping=true) even though no line wraps.
+    // Viewport height=8, margin=2.
+    //
+    // Top test: cursor at line 3, viewport top also at line 3 → display_row=0.
+    //   scroll_backward(target=2) walks back 2 lines → top_line=1.
+    //   cursor lands at display_row=2 = margin.
+    //
+    // Bottom test: cursor at line 7, viewport top=0 → display_row=7 ≥ 6.
+    //   scroll_backward(target=5) walks back 5 lines → top_line=2.
+    //   cursor lands at display_row=5 = height-1-margin.
+
+    #[test]
+    fn wrap_cursor_within_top_margin_scrolls_up() {
+        let r = rope(&"ab\n".repeat(10));
+        let mut v = ViewportState::new(2, 8);
+        v.top_line = 3;
+        v.top_row_offset = 0;
+        let cursor_char = r.line_to_char(3);
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::Soft { width: 2 },
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            2,
+        );
+        assert_eq!(v.top_line, 1);
+        assert_eq!(v.top_row_offset, 0);
+    }
+
+    #[test]
+    fn wrap_cursor_within_bottom_margin_scrolls_down() {
+        let r = rope(&"ab\n".repeat(10));
+        let mut v = ViewportState::new(2, 8);
+        v.top_line = 0;
+        v.top_row_offset = 0;
+        let cursor_char = r.line_to_char(7);
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &WrapMode::Soft { width: 2 },
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            2,
+        );
+        assert_eq!(v.top_line, 2);
+        assert_eq!(v.top_row_offset, 0);
     }
 }
