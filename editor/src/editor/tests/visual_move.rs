@@ -301,3 +301,87 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
         "head enters last sub-row of previous buffer line"
     );
 }
+
+// ── select-word-nearest-on-line: wrap-aware bounds ───────────────────────────
+//
+// Buffer layout (wrap=76):
+//   Line 0: 75 'a's + "+ ratatui\n"  (total 85 chars, 0..84)
+//            sub-row 0: chars  0..75  (75 'a's and '+' at col 75)
+//            sub-row 1: chars 76..84  (' ' at col 0, "ratatui", '\n')
+//   Line 1: "short\n"  (chars 85..90)
+//
+// Char map:
+//   75  = '+'
+//   76  = ' '  (leading whitespace of sub-row 1 — the wrap-breaking space)
+//   77  = 'r'  (start of "ratatui")
+//   83  = 'i'  (end of "ratatui")
+//   84  = '\n'
+//   85  = 's'  (start of "short")
+
+fn word_wrap_editor() -> Editor {
+    use crate::core::selection::{Selection, SelectionSet};
+    use crate::core::text::Text;
+    let content = format!("{}+ ratatui\nshort\n", "a".repeat(75));
+    let buf = Text::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(0));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.settings.wrap_mode = engine::pane::WrapMode::Indent { width: 76 };
+    ed
+}
+
+/// `select-word-nearest-on-line` in wrap mode must snap to the word *on the
+/// current visual sub-row*, not across the wrap boundary.
+///
+/// After `move-down` from col 0 of sub-row 0, head lands on the leading space
+/// of sub-row 1 (char 76). The nearest-word scan must find "ratatui" (forward,
+/// same sub-row), NOT '+' (backward, previous sub-row).
+#[test]
+fn select_word_nearest_scopes_to_visual_subrow() {
+    let mut ed = word_wrap_editor();
+
+    // j: head moves to char 76 (leading space of sub-row 1).
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head, 76);
+
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        1,
+        false,
+        None,
+    );
+
+    let sel = ed.current_selections().primary();
+    assert_ne!(sel.head, 75, "must NOT snap to '+' across the wrap boundary");
+    assert_eq!(sel.head, 83, "must snap to 'ratatui' (last char = 'i' at char 83)");
+    assert_eq!(sel.horiz, Some(0), "horiz preserved through snap");
+}
+
+/// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
+/// the head forward — no oscillation.
+#[test]
+fn select_word_nearest_no_oscillation_on_repeated_j() {
+    let mut ed = word_wrap_editor();
+
+    let call_select = |ed: &mut Editor| {
+        ed.execute_keymap_command(
+            std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+            1,
+            false,
+            None,
+        )
+    };
+
+    // First j + select: lands on "ratatui" (head = 83).
+    ed.handle_key(key('j'));
+    call_select(&mut ed);
+    let head_after_first = ed.current_selections().primary().head;
+    assert_eq!(head_after_first, 83);
+
+    // Second j: must advance past 83 (crosses to next buffer line).
+    ed.handle_key(key('j'));
+    let head_after_second_j = ed.current_selections().primary().head;
+    assert_ne!(
+        head_after_second_j, head_after_first,
+        "second j must advance — no oscillation"
+    );
+}
