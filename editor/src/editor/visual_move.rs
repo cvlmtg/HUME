@@ -347,18 +347,17 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         raw_wrap.resolve(pane.content_width(ed.doc().text().len_lines()))
     };
 
-    let rope = ed.doc().text().rope().clone();
     let buf = ed.doc().text().clone(); // O(log n) — rope structural sharing
     let sels = ed.current_selections().clone();
 
     let scratch = &mut ed.motion_format_scratch;
     let new_sels = sels.map_and_merge(|sel| {
-        let buf_line = rope.char_to_line(sel.head);
+        let buf_line = buf.char_to_line(sel.head);
         let (sub_row, _) =
-            format_row_col(&rope, buf_line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
+            format_row_col(buf.rope(), buf_line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
 
         let (line_start, line_end_excl) =
-            sub_row_char_bounds(scratch, sub_row, buf_line, &rope).unwrap_or_else(|| {
+            sub_row_char_bounds(scratch, sub_row, buf_line, buf.rope()).unwrap_or_else(|| {
                 // Degenerate: fall back to full buffer line.
                 let ls = buf.line_to_char(buf_line);
                 let le = if buf_line + 1 < buf.len_lines() {
