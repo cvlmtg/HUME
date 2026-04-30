@@ -286,16 +286,24 @@ pub(crate) fn cmd_inner_word(buf: &Text, sels: SelectionSet, mode: MotionMode) -
     })
 }
 
-/// Find the nearest word on the same line as `head`, bounded to the current line.
+/// Find the nearest word within `[line_start, line_end_excl)` from `head`.
 ///
 /// - If `head` is on a word or punctuation char, returns its inner-word range
 ///   (identical to `inner_word_impl`).
-/// - If `head` is on whitespace or EOL, scans left and right within the
-///   current line (never crossing line boundaries) to find the closest word.
-///   "Closest" is measured as the distance from `head` to the nearest edge of
-///   each candidate word; ties go to the previous (left) word.
-/// - Returns `None` when no word exists on the line (no-op for the caller).
-fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
+/// - If `head` is on whitespace or EOL, scans left and right within the given
+///   bounds to find the closest word. "Closest" is measured as the distance
+///   from `head` to the nearest edge of each candidate word; ties go to the
+///   previous (left) word.
+/// - Returns `None` when no word exists within the bounds.
+///
+/// Callers supply bounds explicitly so this helper can be scoped to either a
+/// buffer line (no-wrap path) or a visual sub-row (wrap path).
+pub(crate) fn nearest_word_on_line(
+    buf: &Text,
+    head: usize,
+    line_start: usize,
+    line_end_excl: usize,
+) -> Option<(usize, usize)> {
     let class = classify_char(buf.char_at(head)?);
 
     // Fast path: head is already on a word/punct — delegate to inner_word_impl.
@@ -303,11 +311,7 @@ fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
         return inner_word_impl(buf, head, is_word_boundary);
     }
 
-    let line = buf.char_to_line(head);
-    let line_start = buf.line_to_char(line);
-    let line_end_excl = line_end_exclusive(buf, line);
-
-    // Scan LEFT within the line for the first non-whitespace grapheme.
+    // Scan LEFT within the given bounds for the first non-whitespace grapheme.
     let prev_anchor = {
         let mut pos = head;
         let mut found = None;
@@ -322,7 +326,7 @@ fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
         found
     };
 
-    // Scan RIGHT within the line for the first non-whitespace grapheme.
+    // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
     let next_anchor = {
         let mut pos = head;
         let mut found = None;
@@ -357,9 +361,43 @@ fn nearest_word_on_line(buf: &Text, head: usize) -> Option<(usize, usize)> {
     }
 }
 
-/// Select inner word, snapping to the nearest word on the same line when the
-/// cursor sits on whitespace. Preserves `sel.horiz` so the sticky visual column
-/// (set by `move-down` / `move-up`) survives through this step.
+/// Apply the result of `nearest_word_on_line` to `sel` according to `mode`,
+/// preserving `sel.horiz` throughout.
+///
+/// Returns `sel` unchanged when `found` is `None` (no candidate word in bounds).
+/// Shared by the buffer-line path in `cmd_select_word_nearest_on_line` and the
+/// wrap-aware path in `cmd_visual_select_word_nearest_on_line`.
+pub(crate) fn apply_nearest_word_result(
+    sel: Selection,
+    found: Option<(usize, usize)>,
+    mode: MotionMode,
+) -> Selection {
+    let Some((start, end)) = found else { return sel };
+    match mode {
+        MotionMode::Move => match sel.horiz {
+            Some(h) => Selection::with_horiz(start, end, h),
+            None => Selection::new(start, end),
+        },
+        MotionMode::Extend => {
+            let forward = sel.anchor <= sel.head;
+            let new_start = sel.start().min(start);
+            let new_end = sel.end().max(end);
+            let s = Selection::directed(new_start, new_end, forward);
+            match sel.horiz {
+                Some(h) => Selection::with_horiz(s.anchor, s.head, h),
+                None => s,
+            }
+        }
+    }
+}
+
+/// Select inner word, snapping to the nearest word on the same buffer line when
+/// the cursor sits on whitespace. Preserves `sel.horiz` so the sticky visual
+/// column (set by `move-down` / `move-up`) survives through this step.
+///
+/// In wrap mode, `cmd_visual_select_word_nearest_on_line` (in `editor/visual_move.rs`)
+/// should be used instead — it scopes the search to the current visual sub-row,
+/// preventing the snap from reaching across a wrap boundary.
 ///
 /// In `Extend` mode the matched word range is unioned with the existing
 /// selection, matching the behaviour of `inner-word` in extend mode.
@@ -369,25 +407,11 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
-        let Some((start, end)) = nearest_word_on_line(buf, sel.head) else {
-            return sel; // no candidate word on this line — leave selection intact
-        };
-        match mode {
-            MotionMode::Move => match sel.horiz {
-                Some(h) => Selection::with_horiz(start, end, h),
-                None => Selection::new(start, end),
-            },
-            MotionMode::Extend => {
-                let forward = sel.anchor <= sel.head;
-                let new_start = sel.start().min(start);
-                let new_end = sel.end().max(end);
-                let s = Selection::directed(new_start, new_end, forward);
-                match sel.horiz {
-                    Some(h) => Selection::with_horiz(s.anchor, s.head, h),
-                    None => s,
-                }
-            }
-        }
+        let line = buf.char_to_line(sel.head);
+        let line_start = buf.line_to_char(line);
+        let line_end_excl = line_end_exclusive(buf, line);
+        let found = nearest_word_on_line(buf, sel.head, line_start, line_end_excl);
+        apply_nearest_word_result(sel, found, mode)
     });
     result.debug_assert_valid(buf);
     result

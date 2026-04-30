@@ -746,8 +746,10 @@ pub(super) fn cmd_half_page_up(
     cmd_visual_move_up(ed, count, mode)
 }
 
-// Visual-line movement lives in visual_move.rs; re-export for the registry glob.
-pub(super) use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
+// Visual-line commands live in visual_move.rs; re-export for the registry glob.
+pub(super) use super::visual_move::{
+    cmd_visual_move_down, cmd_visual_move_up, cmd_visual_select_word_nearest_on_line,
+};
 
 // ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────
 //
