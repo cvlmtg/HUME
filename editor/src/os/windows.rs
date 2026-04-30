@@ -90,7 +90,9 @@ unsafe fn run_probe(
     // ManuallyDrop prevents closing the underlying OS handle when dropped —
     // we borrowed these handles from GetStdHandle, we don't own them.
     let query = b"\x1B[?u\x1B[>q\x1B[c";
-    let mut stdout_file = ManuallyDrop::new(File::from_raw_handle(stdout_handle as _));
+    // SAFETY: handle is a valid Win32 HANDLE from GetStdHandle (caller guarantee);
+    // ManuallyDrop prevents File::drop from closing it.
+    let mut stdout_file = ManuallyDrop::new(unsafe { File::from_raw_handle(stdout_handle as _) });
     if stdout_file.write_all(query).is_err() {
         return Ok(false);
     }
@@ -100,7 +102,8 @@ unsafe fn run_probe(
     // quickly, so remaining time naturally bounds the subsequent reads.
     let mut response = Vec::with_capacity(256);
     let mut buf = [0u8; 256]; // large enough for kitty + XTVERSION + DA1
-    let mut stdin_file = ManuallyDrop::new(File::from_raw_handle(stdin_handle as _));
+    // SAFETY: same as stdout_file above.
+    let mut stdin_file = ManuallyDrop::new(unsafe { File::from_raw_handle(stdin_handle as _) });
     let deadline = Instant::now() + Duration::from_millis(500);
 
     loop {
@@ -112,7 +115,8 @@ unsafe fn run_probe(
             break;
         }
 
-        if WaitForSingleObject(stdin_handle, remaining_ms) != WAIT_OBJECT_0 {
+        // SAFETY: stdin_handle is a valid Win32 HANDLE (caller guarantee).
+        if unsafe { WaitForSingleObject(stdin_handle, remaining_ms) } != WAIT_OBJECT_0 {
             break; // timeout or error
         }
 
