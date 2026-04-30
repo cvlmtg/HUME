@@ -755,26 +755,16 @@ pub(super) use super::visual_move::{
 //
 // These commands scroll the viewport so the primary selection head lands at a
 // chosen display row. Cursor position is unchanged — only `viewport.top_line`
-// (and `top_row_offset` in wrap mode) move. The per-frame `scroll_into_view`
-// in `prepare_frame` honours `scrolloff`, so as long as the targeted row
-// sits inside `[margin, height - margin)` the auto-scroll is a no-op and the
-// chosen position survives.
+// (and `top_row_offset` in wrap mode) move. On the next frame
+// `scroll_into_view` in `prepare_frame` re-applies `scrolloff`: `zz` lands
+// inside `[margin, height - margin)` and survives untouched, while `zt`/`zb`
+// target row 0 / `height-1` and get trimmed inward by `margin` rows. The
+// trim is vim's "smart scrolloff" behaviour and is intentional.
 
 fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
-    let buf_id = ed.focused_buffer_id();
-    let cursor_char = ed.pane_state[ed.focused_pane_id][buf_id]
-        .selections
-        .primary()
-        .head;
-    let tab_width = ed.doc().overrides.tab_width(&ed.settings);
-    let whitespace = ed.doc().overrides.whitespace(&ed.settings);
-    let raw_wrap = ed.doc().overrides.wrap_mode(&ed.settings);
-    let len_lines = ed.buffers.get(buf_id).text().len_lines();
-    let rope = ed.buffers.get(buf_id).text().rope().clone();
-    let wrap_mode = {
-        let pane = &ed.engine_view.panes[ed.focused_pane_id];
-        raw_wrap.resolve(pane.content_width(len_lines))
-    };
+    let cursor_char = ed.current_selections().primary().head;
+    let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
+    let rope = ed.doc().text().rope().clone();
     let pane = &mut ed.engine_view.panes[ed.focused_pane_id];
     super::scroll::scroll_cursor_to_row(
         &mut pane.viewport,
