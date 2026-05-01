@@ -512,14 +512,15 @@ impl Editor {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
-                            // ap_pairs not used here — NLL ends the borrow before this call.
+                            // NLL ends the `ap_pairs` borrow at its last use (the `find` above),
+                            // so `&mut self.pane_state` here does not conflict with it.
                             doc_ops::apply_motion(
                                 &self.buffers, &mut self.pane_state, focused, buf,
                                 |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                             );
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
-                            // ap_pairs last used in the condition above; NLL ends the borrow.
+                            // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                             doc_ops::apply_doc_edit_grouped(
                                 &mut self.buffers, &mut self.pane_state, focused, buf,
                                 |b, s| insert_pair_close(b, s, open, close),
@@ -536,7 +537,7 @@ impl Editor {
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        // ap_pairs last used in the condition above; NLL ends the borrow.
+                        // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                         doc_ops::apply_motion(
                             &self.buffers, &mut self.pane_state, focused, buf,
                             |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
@@ -567,7 +568,7 @@ impl Editor {
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
                 if ap_enabled && self.is_between_pair(ap_pairs) {
-                    // ap_pairs last used in the condition above; NLL ends the borrow.
+                    // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     doc_ops::apply_doc_edit_grouped(
                         &mut self.buffers, &mut self.pane_state, focused, buf,
                         delete_pair,

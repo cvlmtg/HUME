@@ -231,7 +231,7 @@ pub(crate) fn load_theme_by_name(
             true
         }
         Err(e) => {
-            let text = format!("{e}");
+            let text = e.to_string();
             message_log.push(Severity::Warning, text.clone());
             *status_msg = Some(text);
             false

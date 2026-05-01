@@ -1025,7 +1025,8 @@ impl Editor {
 
     // ── Theme loading ─────────────────────────────────────────────────────────
 
-    /// Thin delegator for tests — logic lives in `ops::load_theme_by_name`.
+    /// Test-only wrapper: splits the three disjoint `Editor` fields so tests can
+    /// load a theme via `&mut self` without manual field extraction.
     #[cfg(test)]
     pub(crate) fn load_theme_by_name(&mut self, name: &str) -> bool {
         ops::load_theme_by_name(
@@ -1102,7 +1103,8 @@ impl Editor {
         &mut self.pane_state[self.focused_pane_id][bid].search_cursor
     }
 
-    /// Thin delegator — called by the event loop and `with_search_regex`.
+    /// Recompute the match list and pane search cursor for the focused buffer,
+    /// if stale. No-op when no search is active.
     pub(super) fn sync_search_cache(&mut self) {
         let pid = self.focused_pane_id;
         let bid = self.focused_buffer_id();
@@ -1310,14 +1312,14 @@ impl Editor {
             .is_some()
     }
 
-    /// Thin delegator — called by `begin_insert_session` and `cmd_repeat`.
+    /// Open a new edit group on the focused (pane, buffer) pair.
     fn begin_edit_group_current(&mut self) {
         let pane_id = self.focused_pane_id;
         let buf_id = self.focused_buffer_id();
         doc_ops::begin_edit_group(&self.buffers, &mut self.pane_state, pane_id, buf_id);
     }
 
-    /// Thin delegator — called by `end_insert_session` and `cmd_repeat`.
+    /// Commit and close the open edit group on the focused (pane, buffer) pair.
     fn commit_edit_group_current(&mut self) {
         let pane_id = self.focused_pane_id;
         let buf_id = self.focused_buffer_id();

@@ -258,25 +258,16 @@ impl Editor {
     /// On clipboard failure logs a warning; always mirrors to in-memory 'c' so
     /// reads work even when the clipboard server is unavailable.
     pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
-        if name == CLIPBOARD_REGISTER {
-            let blob = values.join("\n");
-            if let Err(e) = self.clipboard.write(&blob) {
-                self.warn_clipboard_unavailable(&e);
-            }
-            // Always mirror to in-memory so reads fall back correctly.
-            self.registers.write_text(CLIPBOARD_REGISTER, values);
-        } else {
-            self.registers.write_text(name, values);
+        if let Some(w) = register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values) {
+            self.warn_clipboard_unavailable(&w);
         }
     }
 
     /// Write `values` to the system clipboard only (no kill-ring push).
     fn write_clipboard(&mut self, values: &[String]) {
-        let blob = values.join("\n");
-        if let Err(e) = self.clipboard.write(&blob) {
-            self.warn_clipboard_unavailable(&e);
+        if let Some(w) = register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values) {
+            self.warn_clipboard_unavailable(&w);
         }
-        self.registers.write_text(CLIPBOARD_REGISTER, values.to_vec());
     }
 
     fn warn_clipboard_unavailable(&mut self, err: &str) {
@@ -364,11 +355,6 @@ pub(super) fn cmd_yank(
 /// **`"<digit>`**: kill-ring slot N.
 /// **`"c`**: system clipboard.
 /// **`"b`**: black hole (paste always no-ops).
-///
-/// Uses `register_ops` and `doc_ops` free functions so borrows of
-/// `ed.kill_ring`, `ed.registers`, and `ed.clipboard` are disjoint from the
-/// `&mut ed.buffers` / `&mut ed.pane_state` taken by `apply_doc_edit`,
-/// eliminating the `Vec<String>` / `SelectionSet` clones the old code needed.
 fn do_paste(
     ed: &mut Editor,
     paste_fn: impl Fn(

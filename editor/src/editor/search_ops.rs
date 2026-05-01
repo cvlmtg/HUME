@@ -18,7 +18,7 @@ use slotmap::SecondaryMap;
 
 use engine::pipeline::{BufferId, PaneId};
 
-use crate::core::search_state::SearchCursor;
+use crate::core::search_state::{SearchCursor, SearchMatches};
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use crate::ops::search::{find_all_matches, search_match_info};
@@ -32,7 +32,7 @@ pub(crate) fn clear_buffer_search(
 ) {
     let buf = buffers.get_mut(bid);
     buf.search_pattern = None;
-    buf.search_matches = Default::default();
+    buf.search_matches = SearchMatches::default();
     for buf_map in pane_state.values_mut() {
         if let Some(state) = buf_map.get_mut(bid) {
             state.search_cursor = SearchCursor::default();
