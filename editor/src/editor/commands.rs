@@ -39,7 +39,7 @@ use engine::pipeline::BufferId;
 use engine::types::EditorMode;
 
 use super::{ScratchView, Severity};
-use super::{doc_ops, register_ops};
+use super::{doc_ops, register_ops, search_ops};
 
 use super::{Editor, FindChar, MiniBuffer, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
@@ -1150,7 +1150,7 @@ pub(super) fn cmd_clear_search(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = ed.focused_buffer_id();
-    ed.clear_buffer_search(bid);
+    search_ops::clear_buffer_search(&mut ed.buffers, &mut ed.pane_state, bid);
     Ok(())
 }
 

@@ -25,7 +25,6 @@ use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::ops::motion::FindKind;
 use crate::ops::pair::find_bracket_pair;
 use crate::ops::register::{KillRing, RegisterSet};
-use crate::ops::search::{find_all_matches, search_match_info};
 use crate::os::terminal::Term;
 use crate::scripting::builtins::ids::SteelBufferId;
 use crate::scripting::{EditorSteelRefs, SteelCmdDef, hooks::HookId};
@@ -49,12 +48,15 @@ pub(crate) mod ops;
 pub(crate) mod pane_state;
 pub(crate) mod register_ops;
 mod registry;
+pub(crate) mod search_ops;
 pub(super) mod scroll;
 mod visual_move;
 
 use crate::core::search_state::SearchCursor;
 pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
-use crate::core::search_state::{SearchMatches, SearchPattern};
+use crate::core::search_state::SearchPattern;
+#[cfg(test)]
+use crate::core::search_state::SearchMatches;
 
 pub(crate) use minibuf::MiniBuffer;
 use minibuf::MiniBufferEvent;
@@ -1106,87 +1108,11 @@ impl Editor {
         &mut self.pane_state[self.focused_pane_id][bid].search_cursor
     }
 
-    /// Clear the active search state for buffer `bid`: drop the pattern,
-    /// reset the match cache, and reset every pane's search cursor.
-    pub(crate) fn clear_buffer_search(&mut self, bid: BufferId) {
-        let buf = self.buffers.get_mut(bid);
-        buf.search_pattern = None;
-        buf.search_matches = SearchMatches::default();
-        for buf_map in self.pane_state.values_mut() {
-            if let Some(state) = buf_map.get_mut(bid) {
-                state.search_cursor = SearchCursor::default();
-            }
-        }
-    }
-
-    /// Recompute the match list for `bid` if the pattern or revision changed.
-    ///
-    /// No-op when no search is active. Designed so calling it per-key is cheap —
-    /// the cache check short-circuits before any regex work when nothing changed.
-    pub(super) fn update_buffer_matches(&mut self, bid: BufferId) {
-        {
-            let buf = self.buffers.get(bid);
-            let Some(sp) = buf.search_pattern.as_ref() else {
-                return;
-            };
-            let sm = &buf.search_matches;
-            if sm.cache == Some((buf.revision_id(), sp.pattern_str.clone())) {
-                return;
-            }
-        }
-        let (pattern_str, regex, revision) = {
-            let buf = self.buffers.get(bid);
-            let sp = buf.search_pattern.as_ref().expect("checked above");
-            (
-                sp.pattern_str.clone(),
-                Arc::clone(&sp.regex),
-                buf.revision_id(),
-            )
-        };
-
-        let matches = find_all_matches(self.buffers.get(bid).text(), &regex);
-        let sm = &mut self.buffers.get_mut(bid).search_matches;
-        sm.matches = matches;
-        sm.cache = Some((revision, pattern_str));
-    }
-
-    /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
-    ///
-    /// Short-circuits when head position, match-list revision, and pattern
-    /// all match the cached values — zero regex work on cache hit.
-    pub(super) fn update_pane_cursor(&mut self, pid: PaneId, bid: BufferId) {
-        let head = self.pane_state[pid][bid].selections.primary().head;
-        {
-            let sm = &self.buffers.get(bid).search_matches;
-            let cur = &self.pane_state[pid][bid].search_cursor;
-            if cur.cache_head == Some(head) && cur.cache_matches == sm.cache {
-                return;
-            }
-        }
-
-        let (match_count, cache_matches) = {
-            let sm = &self.buffers.get(bid).search_matches;
-            if sm.cache.is_none() {
-                // Buffer has no active search — cursor should be default.
-                return;
-            }
-            let count = search_match_info(&sm.matches, head);
-            (Some(count), sm.cache.clone())
-        };
-
-        let cursor = &mut self.pane_state[pid][bid].search_cursor;
-        cursor.match_count = match_count;
-        cursor.cache_head = Some(head);
-        cursor.cache_matches = cache_matches;
-    }
-
-    /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for the
-    /// focused pane/buffer. Replaces the old `update_search_cache`.
+    /// Thin delegator — called by the event loop and `with_search_regex`.
     pub(super) fn sync_search_cache(&mut self) {
-        let bid = self.focused_buffer_id();
         let pid = self.focused_pane_id;
-        self.update_buffer_matches(bid);
-        self.update_pane_cursor(pid, bid);
+        let bid = self.focused_buffer_id();
+        search_ops::sync_search_cache(&mut self.buffers, &mut self.pane_state, pid, bid);
     }
 
     /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers

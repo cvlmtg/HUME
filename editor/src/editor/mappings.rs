@@ -24,7 +24,7 @@ use engine::types::EditorMode;
 
 use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
-use super::{doc_ops, Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
+use super::{doc_ops, search_ops, Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
 use crate::scripting::EditorSteelRefs;
 
@@ -871,7 +871,7 @@ impl Editor {
                 // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
-                self.clear_buffer_search(bid);
+                search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
             }
             MiniBufferEvent::BackspaceOnEmpty => {
                 // Input already empty — user pressed Backspace a second time to dismiss.
@@ -920,7 +920,7 @@ impl Editor {
             self.set_current_selections(sels);
         }
         let bid = self.focused_buffer_id();
-        self.clear_buffer_search(bid);
+        search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
         self.mode = Mode::Normal;
         self.close_minibuf();
     }
@@ -938,7 +938,7 @@ impl Editor {
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
             let bid = self.focused_buffer_id();
-            self.clear_buffer_search(bid);
+            search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
             return;
         };
 
