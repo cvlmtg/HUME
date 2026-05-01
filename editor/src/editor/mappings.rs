@@ -803,13 +803,12 @@ impl Editor {
     /// If the new selection overlaps an existing secondary, both are merged
     /// into one — so the total selection count may decrease.
     pub(super) fn set_primary_selection(&mut self, new_sel: Selection) {
-        let idx = self.current_selections().primary_index();
-        let new_sels = self
-            .current_selections()
-            .clone()
-            .replace(idx, new_sel)
-            .merge_overlapping();
-        self.set_current_selections(new_sels);
+        let pid = self.focused_pane_id;
+        let bid = self.focused_buffer_id();
+        let idx = self.pane_state[pid][bid].selections.primary_index();
+        // mem::take avoids a clone: move out, compute, write back.
+        let sels = std::mem::take(&mut self.pane_state[pid][bid].selections);
+        self.pane_state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
     }
 
     // ── Snapshot restore helpers ────────────────────────────────────────────────
@@ -817,18 +816,20 @@ impl Editor {
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
         let pid = self.focused_pane_id;
-        if let Some(ref sels) = self.pane_transient[pid].pre_search_sels {
-            let sels = sels.clone();
-            self.set_current_selections(sels);
+        let bid = self.focused_buffer_id();
+        // pane_transient and pane_state are disjoint fields — no &mut self needed.
+        if let Some(sels) = self.pane_transient[pid].pre_search_sels.as_ref() {
+            self.pane_state[pid][bid].selections = sels.clone();
         }
     }
 
     /// Restore selections from the select-mode snapshot without consuming it.
     fn restore_select_snapshot(&mut self) {
         let pid = self.focused_pane_id;
-        if let Some(ref sels) = self.pane_transient[pid].pre_select_sels {
-            let sels = sels.clone();
-            self.set_current_selections(sels);
+        let bid = self.focused_buffer_id();
+        // pane_transient and pane_state are disjoint fields — no &mut self needed.
+        if let Some(sels) = self.pane_transient[pid].pre_select_sels.as_ref() {
+            self.pane_state[pid][bid].selections = sels.clone();
         }
     }
 
