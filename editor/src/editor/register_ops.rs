@@ -1,0 +1,94 @@
+//! Free functions for register and clipboard operations.
+//!
+//! Extracted from `impl Editor` so the same logic can be called by both the
+//! `Editor` methods (thin delegators) and command bodies that hold disjoint
+//! borrows from other `Editor` fields — avoiding the whole-struct `&mut self`
+//! lock that forces callers to clone captured text.
+//!
+//! Each function that may emit a clipboard warning returns `Option<String>`
+//! (the warning message). Callers report it via `ed.report(Severity::Warning, …)`.
+
+use crate::editor::clipboard::SystemClipboard;
+use crate::ops::register::{KillRing, RegisterSet, CLIPBOARD_REGISTER};
+
+/// Read text from an explicitly named register.
+///
+/// Returns `(values, warning)` where `warning` is `Some(msg)` when the OS
+/// clipboard was unavailable and the in-memory `'c'` mirror was used instead.
+///
+/// - `'c'` → OS clipboard (in-memory fallback on failure).
+/// - `'0'`–`'9'` → kill-ring slot N (no fallback).
+/// - All others → in-memory `RegisterSet`.
+pub(crate) fn read_register_text(
+    registers: &RegisterSet,
+    clipboard: &mut SystemClipboard,
+    kill_ring: &KillRing,
+    name: char,
+) -> (Option<Vec<String>>, Option<String>) {
+    if name == CLIPBOARD_REGISTER {
+        match clipboard.read() {
+            Ok(text) => (Some(vec![text]), None),
+            Err(e) => {
+                let warning = clipboard_warn(&e);
+                let fallback = registers
+                    .read(CLIPBOARD_REGISTER)
+                    .and_then(|r| r.as_text())
+                    .map(|v| v.to_vec());
+                (fallback, Some(warning))
+            }
+        }
+    } else if name.is_ascii_digit() {
+        (read_digit_register(kill_ring, name), None)
+    } else {
+        let v = registers.read(name).and_then(|r| r.as_text()).map(|v| v.to_vec());
+        (v, None)
+    }
+}
+
+/// Borrow kill-ring slot corresponding to a digit register name `'0'`–`'9'`.
+pub(crate) fn read_digit_register(kill_ring: &KillRing, name: char) -> Option<Vec<String>> {
+    debug_assert!(name.is_ascii_digit());
+    let slot = (name as u8 - b'0') as usize;
+    // Kill ring is authoritative for digit registers — no in-memory fallback.
+    kill_ring.slot(slot).map(|s| s.to_vec())
+}
+
+/// Write `values` into named register `name`, routing `'c'` through the OS clipboard.
+///
+/// Returns `Some(warning)` if the clipboard write failed; the in-memory mirror
+/// is always updated regardless.
+pub(crate) fn write_register(
+    registers: &mut RegisterSet,
+    clipboard: &mut SystemClipboard,
+    name: char,
+    values: Vec<String>,
+) -> Option<String> {
+    if name == CLIPBOARD_REGISTER {
+        let blob = values.join("\n");
+        let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
+        registers.write_text(CLIPBOARD_REGISTER, values);
+        warning
+    } else {
+        registers.write_text(name, values);
+        None
+    }
+}
+
+/// Write `values` to the system clipboard only (no kill-ring push).
+///
+/// Returns `Some(warning)` if the clipboard write failed; the in-memory `'c'`
+/// mirror is always updated.
+pub(crate) fn write_clipboard(
+    registers: &mut RegisterSet,
+    clipboard: &mut SystemClipboard,
+    values: &[String],
+) -> Option<String> {
+    let blob = values.join("\n");
+    let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
+    registers.write_text(CLIPBOARD_REGISTER, values.to_vec());
+    warning
+}
+
+fn clipboard_warn(err: &str) -> String {
+    format!("system clipboard unavailable ({err}), using in-memory 'c'")
+}

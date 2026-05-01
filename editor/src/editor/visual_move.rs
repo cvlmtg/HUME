@@ -16,7 +16,7 @@ use engine::format::{FormatScratch, format_buffer_line};
 use engine::pane::{WhitespaceConfig, WrapMode};
 use engine::types::CellContent;
 
-use super::Editor;
+use super::{doc_ops, Editor};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -174,9 +174,15 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
     if !wrap_mode.is_wrapping() {
         // No wrapping — fall back to buffer-line movement.
         // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
+        let focused = ed.focused_pane_id;
+        let buf = ed.focused_buffer_id();
         match down {
-            true => ed.apply_motion(|b, s| cmd_move_down(b, s, count, mode)),
-            false => ed.apply_motion(|b, s| cmd_move_up(b, s, count, mode)),
+            true => doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+                cmd_move_down(b, s, count, mode)
+            }),
+            false => doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+                cmd_move_up(b, s, count, mode)
+            }),
         }
         return;
     }
@@ -329,7 +335,11 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
     if !wrap_mode.is_wrapping() {
-        ed.apply_motion(|buf, sels| cmd_select_word_nearest_on_line(buf, sels, mode));
+        let focused = ed.focused_pane_id;
+        let buf_id = ed.focused_buffer_id();
+        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |buf, sels| {
+            cmd_select_word_nearest_on_line(buf, sels, mode)
+        });
         return Ok(());
     }
 

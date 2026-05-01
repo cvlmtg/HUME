@@ -5,6 +5,7 @@ use pretty_assertions::assert_eq;
 
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
+use crate::editor::doc_ops;
 
 /// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
 #[test]
@@ -71,7 +72,8 @@ fn p6_replace_buffer_in_place_reseeds() {
     ));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
-    ed.apply_motion(|b, _sels| {
+    let focused = ed.focused_pane_id;
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, bid, |b, _sels| {
         let head = b.len_chars().saturating_sub(2);
         SelectionSet::single(crate::core::selection::Selection::collapsed(head))
     });

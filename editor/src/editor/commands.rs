@@ -39,6 +39,7 @@ use engine::pipeline::BufferId;
 use engine::types::EditorMode;
 
 use super::{ScratchView, Severity};
+use super::{doc_ops, register_ops};
 
 use super::{Editor, FindChar, MiniBuffer, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
@@ -51,7 +52,11 @@ pub(super) fn cmd_insert_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|_b, sels| sels.map(|s| Selection::collapsed(s.start())));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+        sels.map(|s| Selection::collapsed(s.start()))
+    });
     ed.begin_insert_session();
     Ok(())
 }
@@ -61,7 +66,11 @@ pub(super) fn cmd_insert_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_move_right(b, s, 1, MotionMode::Move)
+    });
     ed.begin_insert_session();
     Ok(())
 }
@@ -71,7 +80,11 @@ pub(super) fn cmd_insert_at_line_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|b, s| cmd_goto_first_nonblank(b, s, 1, MotionMode::Move));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
+    });
     ed.begin_insert_session();
     Ok(())
 }
@@ -81,8 +94,14 @@ pub(super) fn cmd_insert_at_line_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move));
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_goto_line_end(b, s, 1, MotionMode::Move)
+    });
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_move_right(b, s, 1, MotionMode::Move)
+    });
     ed.begin_insert_session();
     Ok(())
 }
@@ -94,7 +113,11 @@ pub(super) fn cmd_insert_at_selection_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|_b, sels| sels.map(|sel| Selection::collapsed(sel.start())));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+        sels.map(|sel| Selection::collapsed(sel.start()))
+    });
     ed.begin_insert_session();
     Ok(())
 }
@@ -109,7 +132,9 @@ pub(super) fn cmd_insert_at_selection_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.apply_motion(|b, sels| {
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.len_chars() - 1;
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
@@ -128,10 +153,18 @@ pub(super) fn cmd_open_line_below(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    ed.apply_motion(|b, s| cmd_goto_line_end(b, s, 1, MotionMode::Move));
-    ed.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
-    ed.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_goto_line_end(b, s, 1, MotionMode::Move)
+    });
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_move_right(b, s, 1, MotionMode::Move)
+    });
+    doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        insert_char(b, s, '\n')
+    });
     Ok(())
 }
 
@@ -141,10 +174,18 @@ pub(super) fn cmd_open_line_above(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    ed.apply_motion(|b, s| cmd_goto_line_start(b, s, 1, MotionMode::Move));
-    ed.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
-    ed.apply_motion(|b, s| cmd_move_left(b, s, 1, MotionMode::Move));
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_goto_line_start(b, s, 1, MotionMode::Move)
+    });
+    doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        insert_char(b, s, '\n')
+    });
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_move_left(b, s, 1, MotionMode::Move)
+    });
     Ok(())
 }
 
@@ -238,47 +279,11 @@ impl Editor {
         self.registers.write_text(CLIPBOARD_REGISTER, values.to_vec());
     }
 
-    /// Read text from an explicitly named register.
-    ///
-    /// `'c'` → OS clipboard (with in-memory fallback).
-    /// `'0'`–`'9'` → kill-ring slot N (fallback to in-memory if ring slot empty).
-    /// All others → in-memory `RegisterSet`.
-    ///
-    /// On clipboard failure logs a warning and falls back to the in-memory mirror.
-    pub(super) fn read_register_text(&mut self, name: char) -> Option<Vec<String>> {
-        if name == CLIPBOARD_REGISTER {
-            match self.clipboard.read() {
-                Ok(text) => Some(vec![text]),
-                Err(e) => {
-                    self.warn_clipboard_unavailable(&e);
-                    self.read_in_memory(CLIPBOARD_REGISTER)
-                }
-            }
-        } else if name.is_ascii_digit() {
-            self.read_digit_register(name)
-        } else {
-            self.read_in_memory(name)
-        }
-    }
-
     fn warn_clipboard_unavailable(&mut self, err: &str) {
         self.report(
             super::Severity::Warning,
             format!("system clipboard unavailable ({err}), using in-memory 'c'"),
         );
-    }
-
-    fn read_in_memory(&self, name: char) -> Option<Vec<String>> {
-        self.registers.read(name).and_then(|r| r.as_text()).map(|v| v.to_vec())
-    }
-
-    fn read_digit_register(&self, name: char) -> Option<Vec<String>> {
-        debug_assert!(name.is_ascii_digit());
-        let slot = (name as u8 - b'0') as usize;
-        // Kill ring is the authoritative source for digit registers — no in-memory
-        // fallback. This keeps "5y (in-memory named slot) and "5p (ring slot N)
-        // orthogonal so a "5y write can never be silently shadowed by an older ring entry.
-        self.kill_ring.slot(slot).map(|s| s.to_vec())
     }
 }
 
@@ -296,7 +301,9 @@ pub(super) fn cmd_delete(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
-    ed.doc_edit(delete_selection);
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_doc_edit(&mut ed.buffers, &mut ed.pane_state, focused, buf, delete_selection);
     match ed.take_register_prefix() {
         None => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
@@ -313,8 +320,10 @@ pub(super) fn cmd_change(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let yanked = yank_selections(ed.doc().text(), ed.current_selections());
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    ed.doc_edit_grouped(delete_selection);
+    doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, delete_selection);
     // After begin_insert_session so clipboard warnings are logged inside the session.
     match ed.take_register_prefix() {
         None => ed.kill_ring.push(yanked),
@@ -355,6 +364,11 @@ pub(super) fn cmd_yank(
 /// **`"<digit>`**: kill-ring slot N.
 /// **`"c`**: system clipboard.
 /// **`"b`**: black hole (paste always no-ops).
+///
+/// Uses `register_ops` and `doc_ops` free functions so borrows of
+/// `ed.kill_ring`, `ed.registers`, and `ed.clipboard` are disjoint from the
+/// `&mut ed.buffers` / `&mut ed.pane_state` taken by `apply_doc_edit`,
+/// eliminating the `Vec<String>` / `SelectionSet` clones the old code needed.
 fn do_paste(
     ed: &mut Editor,
     paste_fn: impl Fn(
@@ -368,39 +382,107 @@ fn do_paste(
         Vec<String>,
     ),
 ) {
-    enum PasteSource { Ring, Clipboard, Register(char) }
-    let (values, source) = match ed.take_register_prefix() {
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+
+    match ed.take_register_prefix() {
         None => {
             let prefer_ring = ed
                 .last_command
                 .as_deref()
                 .is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
             if prefer_ring {
-                let v = ed.kill_ring.head().map(|s| s.to_vec());
-                (v, PasteSource::Ring)
+                // Borrow kill_ring immutably; apply_doc_edit takes &mut buffers /
+                // &mut pane_state — disjoint fields, so no clone needed.
+                if let Some(head) = ed.kill_ring.head() {
+                    let (displaced, _) = doc_ops::apply_doc_edit(
+                        &mut ed.buffers,
+                        &mut ed.pane_state,
+                        focused,
+                        buf,
+                        |b, s| paste_fn(b, s, head),
+                    );
+                    // head's last use was inside the closure; NLL ends the
+                    // kill_ring borrow here, so push() is safe.
+                    if let Some(d) = displaced
+                        && d.iter().any(|s| !s.is_empty())
+                    {
+                        ed.kill_ring.push(d);
+                    }
+                }
             } else {
-                let v = ed.read_register_text(CLIPBOARD_REGISTER);
-                (v, PasteSource::Clipboard)
+                let (values, warn) = register_ops::read_register_text(
+                    &ed.registers,
+                    &mut ed.clipboard,
+                    &ed.kill_ring,
+                    CLIPBOARD_REGISTER,
+                );
+                if let Some(w) = warn {
+                    ed.report(Severity::Warning, w);
+                }
+                if let Some(values) = values {
+                    let (displaced, _) = doc_ops::apply_doc_edit(
+                        &mut ed.buffers,
+                        &mut ed.pane_state,
+                        focused,
+                        buf,
+                        |b, s| paste_fn(b, s, &values),
+                    );
+                    if let Some(d) = displaced
+                        && d.iter().any(|s| !s.is_empty())
+                        && let Some(w) =
+                            register_ops::write_clipboard(&mut ed.registers, &mut ed.clipboard, &d)
+                    {
+                        ed.report(Severity::Warning, w);
+                    }
+                }
             }
         }
         Some(c) if c.is_ascii_digit() => {
-            (ed.read_digit_register(c), PasteSource::Ring)
+            if let Some(values) = register_ops::read_digit_register(&ed.kill_ring, c) {
+                let (displaced, _) = doc_ops::apply_doc_edit(
+                    &mut ed.buffers,
+                    &mut ed.pane_state,
+                    focused,
+                    buf,
+                    |b, s| paste_fn(b, s, &values),
+                );
+                if let Some(d) = displaced
+                    && d.iter().any(|s| !s.is_empty())
+                {
+                    ed.kill_ring.push(d);
+                }
+            }
         }
         Some(c) => {
-            let v = ed.read_register_text(c);
-            (v, PasteSource::Register(c))
-        }
-    };
-
-    if let Some(values) = values {
-        let (displaced, _cs) = ed.doc_edit(|b, s| paste_fn(b, s, &values));
-        if let Some(displaced) = displaced
-            && displaced.iter().any(|s| !s.is_empty())
-        {
-            match source {
-                PasteSource::Ring => ed.kill_ring.push(displaced),
-                PasteSource::Clipboard => ed.write_clipboard(&displaced),
-                PasteSource::Register(c) => ed.write_register(c, displaced),
+            let (values, warn) = register_ops::read_register_text(
+                &ed.registers,
+                &mut ed.clipboard,
+                &ed.kill_ring,
+                c,
+            );
+            if let Some(w) = warn {
+                ed.report(Severity::Warning, w);
+            }
+            if let Some(values) = values {
+                let (displaced, _) = doc_ops::apply_doc_edit(
+                    &mut ed.buffers,
+                    &mut ed.pane_state,
+                    focused,
+                    buf,
+                    |b, s| paste_fn(b, s, &values),
+                );
+                if let Some(d) = displaced
+                    && d.iter().any(|s| !s.is_empty())
+                    && let Some(w) = register_ops::write_register(
+                        &mut ed.registers,
+                        &mut ed.clipboard,
+                        c,
+                        d,
+                    )
+                {
+                    ed.report(Severity::Warning, w);
+                }
             }
         }
     }
@@ -437,12 +519,24 @@ pub(super) fn cmd_paste_ring_older(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if let Some(values) = ed.kill_ring.cycle_older().map(|s| s.to_vec()) {
-        let (displaced, _cs) = ed.doc_edit(|b, s| paste_after(b, s, &values));
-        if let Some(displaced) = displaced
-            && displaced.iter().any(|s| !s.is_empty())
+    // Compute pane/buf IDs before cycle_older takes &mut kill_ring, since
+    // focused_buffer_id() is a &self method and can't coexist with &mut kill_ring.
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    // cycle_older returns &[String] from &mut kill_ring; apply_doc_edit takes
+    // &mut buffers / &mut pane_state — disjoint fields, so no clone needed.
+    if let Some(values) = ed.kill_ring.cycle_older() {
+        let (displaced, _) = doc_ops::apply_doc_edit(
+            &mut ed.buffers,
+            &mut ed.pane_state,
+            focused,
+            buf,
+            |b, s| paste_after(b, s, values),
+        );
+        if let Some(d) = displaced
+            && d.iter().any(|s| !s.is_empty())
         {
-            ed.kill_ring.push(displaced);
+            ed.kill_ring.push(d);
         }
     }
     Ok(())
@@ -458,12 +552,20 @@ pub(super) fn cmd_paste_ring_newer(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if let Some(values) = ed.kill_ring.cycle_newer().map(|s| s.to_vec()) {
-        let (displaced, _cs) = ed.doc_edit(|b, s| paste_after(b, s, &values));
-        if let Some(displaced) = displaced
-            && displaced.iter().any(|s| !s.is_empty())
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    if let Some(values) = ed.kill_ring.cycle_newer() {
+        let (displaced, _) = doc_ops::apply_doc_edit(
+            &mut ed.buffers,
+            &mut ed.pane_state,
+            focused,
+            buf,
+            |b, s| paste_after(b, s, values),
+        );
+        if let Some(d) = displaced
+            && d.iter().any(|s| !s.is_empty())
         {
-            ed.kill_ring.push(displaced);
+            ed.kill_ring.push(d);
         }
     }
     Ok(())
@@ -474,7 +576,9 @@ pub(super) fn cmd_undo(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.doc_undo();
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_doc_undo(&mut ed.buffers, &mut ed.pane_state, focused, buf);
     Ok(())
 }
 
@@ -483,7 +587,9 @@ pub(super) fn cmd_redo(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.doc_redo();
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_doc_redo(&mut ed.buffers, &mut ed.pane_state, focused, buf);
     Ok(())
 }
 
@@ -512,7 +618,11 @@ pub(super) fn cmd_collapse_and_exit_extend(
 ) -> Result<(), CommandError> {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
     ed.mode = EditorMode::Normal;
-    ed.apply_motion(|b, s| cmd_collapse_selection(b, s, MotionMode::Move));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        cmd_collapse_selection(b, s, MotionMode::Move)
+    });
     Ok(())
 }
 
@@ -530,7 +640,11 @@ fn find_char(
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(ch) = ed.pending_char.take() {
-        ed.apply_motion(|b, s| find_fn(b, s, mode, count, ch, kind));
+        let focused = ed.focused_pane_id;
+        let buf = ed.focused_buffer_id();
+        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            find_fn(b, s, mode, count, ch, kind)
+        });
         ed.last_find = Some(FindChar { ch, kind });
     }
 }
@@ -578,7 +692,11 @@ fn repeat_find(
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
     if let Some(FindChar { ch, kind }) = ed.last_find {
-        ed.apply_motion(|b, s| find_fn(b, s, mode, count, ch, kind));
+        let focused = ed.focused_pane_id;
+        let buf = ed.focused_buffer_id();
+        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            find_fn(b, s, mode, count, ch, kind)
+        });
     }
 }
 
@@ -611,7 +729,11 @@ pub(super) fn cmd_replace(
 ) -> Result<(), CommandError> {
     use crate::ops::edit::replace_selections;
     if let Some(ch) = ed.pending_char.take() {
-        ed.doc_edit(|b, s| replace_selections(b, s, ch));
+        let focused = ed.focused_pane_id;
+        let buf = ed.focused_buffer_id();
+        doc_ops::apply_doc_edit(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            replace_selections(b, s, ch)
+        });
     }
     Ok(())
 }
@@ -637,7 +759,11 @@ pub(super) fn cmd_surround_add(
         .find(|p| p.open == ch || p.close == ch)
         .map(|p| (p.open, p.close))
         .unwrap_or((ch, ch));
-    ed.doc_edit(|b, s| wrap_each_selection(b, s, open, close));
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    doc_ops::apply_doc_edit(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        wrap_each_selection(b, s, open, close)
+    });
     Ok(())
 }
 

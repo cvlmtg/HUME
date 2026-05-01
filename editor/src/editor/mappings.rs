@@ -24,7 +24,7 @@ use engine::types::EditorMode;
 
 use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
-use super::{Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
+use super::{doc_ops, Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
 use crate::scripting::EditorSteelRefs;
 
@@ -502,6 +502,8 @@ impl Editor {
         }
 
         // ── Character input ───────────────────────────────────────────────────
+        let focused = self.focused_pane_id;
+        let buf = self.focused_buffer_id();
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
@@ -510,44 +512,78 @@ impl Editor {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
-                            self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
+                            // ap_pairs not used here — NLL ends the borrow before this call.
+                            doc_ops::apply_motion(
+                                &self.buffers, &mut self.pane_state, focused, buf,
+                                |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+                            );
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
-                            self.doc_edit_grouped(|b, s| insert_pair_close(b, s, open, close));
+                            // ap_pairs last used in the condition above; NLL ends the borrow.
+                            doc_ops::apply_doc_edit_grouped(
+                                &mut self.buffers, &mut self.pane_state, focused, buf,
+                                |b, s| insert_pair_close(b, s, open, close),
+                            );
                         } else {
                             // Next char is a word char (or symmetric prev is word char):
                             // insert only the typed character.
-                            self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
+                            doc_ops::apply_doc_edit_grouped(
+                                &mut self.buffers, &mut self.pane_state, focused, buf,
+                                |b, s| insert_char(b, s, ch),
+                            );
                         }
                     } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        self.apply_motion(|b, s| cmd_move_right(b, s, 1, MotionMode::Move));
+                        // ap_pairs last used in the condition above; NLL ends the borrow.
+                        doc_ops::apply_motion(
+                            &self.buffers, &mut self.pane_state, focused, buf,
+                            |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+                        );
                     } else {
-                        self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
+                        doc_ops::apply_doc_edit_grouped(
+                            &mut self.buffers, &mut self.pane_state, focused, buf,
+                            |b, s| insert_char(b, s, ch),
+                        );
                     }
                 } else {
-                    self.doc_edit_grouped(|b, s| insert_char(b, s, ch));
+                    doc_ops::apply_doc_edit_grouped(
+                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        |b, s| insert_char(b, s, ch),
+                    );
                 }
             }
 
             // ── Newline ───────────────────────────────────────────────────────
             KeyCode::Enter => {
-                self.doc_edit_grouped(|b, s| insert_char(b, s, '\n'));
+                doc_ops::apply_doc_edit_grouped(
+                    &mut self.buffers, &mut self.pane_state, focused, buf,
+                    |b, s| insert_char(b, s, '\n'),
+                );
             }
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
                 if ap_enabled && self.is_between_pair(ap_pairs) {
-                    self.doc_edit_grouped(delete_pair);
+                    // ap_pairs last used in the condition above; NLL ends the borrow.
+                    doc_ops::apply_doc_edit_grouped(
+                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        delete_pair,
+                    );
                 } else {
-                    self.doc_edit_grouped(delete_char_backward);
+                    doc_ops::apply_doc_edit_grouped(
+                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        delete_char_backward,
+                    );
                 }
             }
             KeyCode::Delete => {
-                self.doc_edit_grouped(delete_char_forward);
+                doc_ops::apply_doc_edit_grouped(
+                    &mut self.buffers, &mut self.pane_state, focused, buf,
+                    delete_char_forward,
+                );
             }
 
             _ => {}
@@ -605,18 +641,29 @@ impl Editor {
                 MotionMode::Move
             };
 
+            let focused = self.focused_pane_id;
+            let buf = self.focused_buffer_id();
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
                     // Motion functions take (buf, sels, count, mode). count defaults to 1
                     // if the user typed no prefix.
-                    self.apply_motion(|b, s| fun(b, s, count, motion_mode));
+                    doc_ops::apply_motion(
+                        &self.buffers, &mut self.pane_state, focused, buf,
+                        |b, s| fun(b, s, count, motion_mode),
+                    );
                 }
                 MappableCommand::Selection { fun, .. } => {
                     // Selection / text-object functions don't take count.
-                    self.apply_motion(|b, s| fun(b, s, motion_mode));
+                    doc_ops::apply_motion(
+                        &self.buffers, &mut self.pane_state, focused, buf,
+                        |b, s| fun(b, s, motion_mode),
+                    );
                 }
                 MappableCommand::Edit { fun, .. } => {
-                    self.doc_edit(fun);
+                    doc_ops::apply_doc_edit(
+                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        fun,
+                    );
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     if let Err(e) = fun(self, count, motion_mode) {
