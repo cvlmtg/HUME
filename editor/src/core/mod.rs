@@ -1,6 +1,7 @@
 pub(crate) mod changeset;
 pub(crate) mod error;
 pub(crate) mod grapheme;
+pub(crate) mod lints;
 pub(crate) mod history;
 pub(crate) mod jump_list;
 pub(crate) mod minibuf_history;

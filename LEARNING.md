@@ -23,3 +23,4 @@ useful later. Each topic lives in its own file under `docs/learning/`.
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
 | The Plugin Ledger: Attribution and Clean Unload | [docs/learning/plugin-ledger.md](docs/learning/plugin-ledger.md) |
 | Kill Ring and Smart-p: Two Sources of Paste | [docs/learning/kill-ring-and-smart-p.md](docs/learning/kill-ring-and-smart-p.md) |
+| Disjoint Borrows and Free Functions | [docs/learning/disjoint-borrow-free-functions.md](docs/learning/disjoint-borrow-free-functions.md) |
