@@ -11,6 +11,9 @@
 use slotmap::SecondaryMap;
 
 use engine::pipeline::{BufferId, EngineView, PaneId, SharedBuffer};
+use engine::theme::loader::load_theme;
+
+use crate::editor::message_log::{MessageLog, Severity};
 
 use crate::core::jump_list::{JumpEntry, JumpList};
 use crate::editor::buffer::Buffer;
@@ -199,5 +202,39 @@ fn forget_buffer_in_all_panes(
     }
     for jumps in pane_jumps.values_mut() {
         jumps.prune_buffer(id);
+    }
+}
+
+// ── load_theme_by_name ────────────────────────────────────────────────────────
+
+/// Load a theme by name and apply it to the engine view.
+///
+/// Searches `<config_dir>/themes/<name>.toml` first, then
+/// `<runtime_dir>/themes/<name>.toml`. On success the engine view's theme is
+/// replaced and re-baked against the live scope registry. On failure a warning
+/// is pushed to `message_log` and written to `status_msg`, leaving the current
+/// theme unchanged. Returns `true` on success.
+///
+/// `engine_view`, `message_log`, and `status_msg` are disjoint `Editor` fields;
+/// passing them separately lets the caller hold `&editor.settings.theme` for
+/// the `name` argument without cloning.
+pub(crate) fn load_theme_by_name(
+    engine_view: &mut EngineView,
+    message_log: &mut MessageLog,
+    status_msg: &mut Option<String>,
+    name: &str,
+) -> bool {
+    match load_theme(name, &super::theme_search_paths()) {
+        Ok(mut theme) => {
+            theme.bake(&engine_view.registry);
+            engine_view.theme = theme;
+            true
+        }
+        Err(e) => {
+            let text = format!("{e}");
+            message_log.push(Severity::Warning, text.clone());
+            *status_msg = Some(text);
+            false
+        }
     }
 }

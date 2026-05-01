@@ -39,7 +39,7 @@ use engine::pipeline::BufferId;
 use engine::types::EditorMode;
 
 use super::{ScratchView, Severity};
-use super::{doc_ops, register_ops, search_ops};
+use super::{doc_ops, ops, register_ops, search_ops};
 
 use super::{Editor, FindChar, MiniBuffer, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
@@ -1407,11 +1407,13 @@ pub(super) fn typed_set(
     if result.is_ok() && key == "history-capacity" {
         ed.history.set_capacity(ed.settings.history_capacity);
     }
-    if result.is_ok() && key == "theme" && scope == "global" {
-        let name = ed.settings.theme.clone();
-        if !name.is_empty() {
-            ed.load_theme_by_name(&name);
-        }
+    if result.is_ok() && key == "theme" && scope == "global" && !ed.settings.theme.is_empty() {
+        ops::load_theme_by_name(
+            &mut ed.engine_view,
+            &mut ed.message_log,
+            &mut ed.status_msg,
+            &ed.settings.theme,
+        );
     }
     result.map_err(CommandError)
 }
@@ -2061,15 +2063,21 @@ pub(super) fn typed_theme(
     _force: bool,
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
-        let current = if ed.settings.theme.is_empty() {
-            DEFAULT_THEME_LABEL.to_owned()
+        let current: &str = if ed.settings.theme.is_empty() {
+            DEFAULT_THEME_LABEL
         } else {
-            ed.settings.theme.clone()
+            &ed.settings.theme
         };
+        // NLL: `current` borrow of ed.settings.theme ends inside format!(), before report().
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    if ed.load_theme_by_name(name) {
+    if ops::load_theme_by_name(
+        &mut ed.engine_view,
+        &mut ed.message_log,
+        &mut ed.status_msg,
+        name,
+    ) {
         ed.settings.theme = name.to_owned();
     }
     Ok(())

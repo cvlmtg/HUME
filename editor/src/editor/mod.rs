@@ -1014,32 +1014,26 @@ impl Editor {
         self.scripting = Some(host);
         // Load theme set by (set-option! 'theme "…") in init.scm.
         if !self.settings.theme.is_empty() {
-            let name = self.settings.theme.clone();
-            self.load_theme_by_name(&name);
+            ops::load_theme_by_name(
+                &mut self.engine_view,
+                &mut self.message_log,
+                &mut self.status_msg,
+                &self.settings.theme,
+            );
         }
     }
 
     // ── Theme loading ─────────────────────────────────────────────────────────
 
-    /// Load a theme by name and apply it to the engine view.
-    ///
-    /// Searches `<config_dir>/themes/<name>.toml` first, then
-    /// `<runtime_dir>/themes/<name>.toml`.  On success the engine view's theme
-    /// is replaced and re-baked against the live scope registry.  On failure a
-    /// warning is logged and the current theme is left unchanged.
-    /// Returns `true` if the theme was loaded and applied successfully.
+    /// Thin delegator for tests — logic lives in `ops::load_theme_by_name`.
+    #[cfg(test)]
     pub(crate) fn load_theme_by_name(&mut self, name: &str) -> bool {
-        match engine::theme::loader::load_theme(name, &theme_search_paths()) {
-            Ok(mut theme) => {
-                theme.bake(&self.engine_view.registry);
-                self.engine_view.theme = theme;
-                true
-            }
-            Err(e) => {
-                self.report(Severity::Warning, format!("{e}"));
-                false
-            }
-        }
+        ops::load_theme_by_name(
+            &mut self.engine_view,
+            &mut self.message_log,
+            &mut self.status_msg,
+            name,
+        )
     }
 
     // ── Engine accessors ──────────────────────────────────────────────────────
@@ -1808,7 +1802,7 @@ fn mode_name(m: EditorMode) -> &'static str {
 /// Ordered list of directories to search for theme TOML files.
 ///
 /// Config themes (user-defined) are listed before runtime themes (bundled) so
-/// that user overrides shadow built-in ones. Both [`Editor::load_theme_by_name`]
+/// that user overrides shadow built-in ones. Both `ops::load_theme_by_name`
 /// and [`ThemeCompleter`] use this list as the single source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
