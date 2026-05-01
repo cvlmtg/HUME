@@ -108,7 +108,7 @@ pub(crate) fn apply_doc_redo(
 /// the default state is transient and overwritten before this fn returns.
 /// The closure `f` is assumed infallible; a panic mid-motion leaves
 /// `selections` as `Default` (cursor at 0).
-pub(crate) fn apply_motion(
+pub(crate) fn apply_doc_motion(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,

@@ -54,7 +54,7 @@ pub(super) fn cmd_insert_before(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     ed.begin_insert_session();
@@ -68,7 +68,7 @@ pub(super) fn cmd_insert_after(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -82,7 +82,7 @@ pub(super) fn cmd_insert_at_line_start(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -96,10 +96,10 @@ pub(super) fn cmd_insert_at_line_end(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_goto_line_end(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -115,7 +115,7 @@ pub(super) fn cmd_insert_at_selection_start(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     ed.begin_insert_session();
@@ -134,7 +134,7 @@ pub(super) fn cmd_insert_at_selection_end(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, sels| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.len_chars() - 1;
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
@@ -156,10 +156,10 @@ pub(super) fn cmd_open_line_below(
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_goto_line_end(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
@@ -177,13 +177,13 @@ pub(super) fn cmd_open_line_above(
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
     doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_move_left(b, s, 1, MotionMode::Move)
     });
     Ok(())
@@ -599,7 +599,7 @@ pub(super) fn cmd_collapse_and_exit_extend(
     ed.mode = EditorMode::Normal;
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         cmd_collapse_selection(b, s, MotionMode::Move)
     });
     Ok(())
@@ -621,7 +621,7 @@ fn find_char(
     if let Some(ch) = ed.pending_char.take() {
         let focused = ed.focused_pane_id;
         let buf = ed.focused_buffer_id();
-        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
         ed.last_find = Some(FindChar { ch, kind });
@@ -673,7 +673,7 @@ fn repeat_find(
     if let Some(FindChar { ch, kind }) = ed.last_find {
         let focused = ed.focused_pane_id;
         let buf = ed.focused_buffer_id();
-        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
     }

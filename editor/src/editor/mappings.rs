@@ -514,7 +514,7 @@ impl Editor {
                             // e.g. typing `"` when cursor already sits on `"`.
                             // NLL ends the `ap_pairs` borrow at its last use (the `find` above),
                             // so `&mut self.pane_state` here does not conflict with it.
-                            doc_ops::apply_motion(
+                            doc_ops::apply_doc_motion(
                                 &self.buffers, &mut self.pane_state, focused, buf,
                                 |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                             );
@@ -538,7 +538,7 @@ impl Editor {
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
                         // NLL: `ap_pairs` last used in the condition above; borrow ends here.
-                        doc_ops::apply_motion(
+                        doc_ops::apply_doc_motion(
                             &self.buffers, &mut self.pane_state, focused, buf,
                             |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                         );
@@ -648,14 +648,14 @@ impl Editor {
                 MappableCommand::Motion { fun, .. } => {
                     // Motion functions take (buf, sels, count, mode). count defaults to 1
                     // if the user typed no prefix.
-                    doc_ops::apply_motion(
+                    doc_ops::apply_doc_motion(
                         &self.buffers, &mut self.pane_state, focused, buf,
                         |b, s| fun(b, s, count, motion_mode),
                     );
                 }
                 MappableCommand::Selection { fun, .. } => {
                     // Selection / text-object functions don't take count.
-                    doc_ops::apply_motion(
+                    doc_ops::apply_doc_motion(
                         &self.buffers, &mut self.pane_state, focused, buf,
                         |b, s| fun(b, s, motion_mode),
                     );

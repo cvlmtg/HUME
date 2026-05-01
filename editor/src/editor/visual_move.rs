@@ -177,10 +177,10 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         let focused = ed.focused_pane_id;
         let buf = ed.focused_buffer_id();
         match down {
-            true => doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            true => doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
                 cmd_move_down(b, s, count, mode)
             }),
-            false => doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            false => doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
                 cmd_move_up(b, s, count, mode)
             }),
         }
@@ -337,7 +337,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     if !wrap_mode.is_wrapping() {
         let focused = ed.focused_pane_id;
         let buf_id = ed.focused_buffer_id();
-        doc_ops::apply_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |buf, sels| {
+        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |buf, sels| {
             cmd_select_word_nearest_on_line(buf, sels, mode)
         });
         return Ok(());
