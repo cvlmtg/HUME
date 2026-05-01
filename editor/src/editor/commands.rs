@@ -259,22 +259,15 @@ impl Editor {
     /// reads work even when the clipboard server is unavailable.
     pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
         if let Some(w) = register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values) {
-            self.warn_clipboard_unavailable(&w);
+            self.report(super::Severity::Warning, w);
         }
     }
 
     /// Write `values` to the system clipboard only (no kill-ring push).
     fn write_clipboard(&mut self, values: &[String]) {
         if let Some(w) = register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values) {
-            self.warn_clipboard_unavailable(&w);
+            self.report(super::Severity::Warning, w);
         }
-    }
-
-    fn warn_clipboard_unavailable(&mut self, err: &str) {
-        self.report(
-            super::Severity::Warning,
-            format!("system clipboard unavailable ({err}), using in-memory 'c'"),
-        );
     }
 }
 

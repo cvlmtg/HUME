@@ -106,6 +106,8 @@ pub(crate) fn apply_doc_redo(
 ///
 /// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`;
 /// the default state is transient and overwritten before this fn returns.
+/// The closure `f` is assumed infallible; a panic mid-motion leaves
+/// `selections` as `Default` (cursor at 0).
 pub(crate) fn apply_motion(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -156,6 +158,15 @@ pub(crate) fn commit_edit_group(
 
 /// Propagate `cs` to every pane except `focused_pane_id` that views `buf_id`,
 /// keeping their selections rope-valid after an edit the focused pane performed.
+///
+/// `rope_pre` must be the buffer text **before** the edit — `translate_in_place`
+/// uses it to identify which line each head was on pre-edit, which governs
+/// whether `Selection.horiz` is reset after the translation.
+///
+/// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
+/// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`
+/// in `pane_state` must be kept rope-valid between edits, because other
+/// mid-event code (e.g. `update_pane_cursor`) reads it.
 pub(crate) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
