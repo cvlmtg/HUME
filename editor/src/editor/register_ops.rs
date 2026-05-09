@@ -8,6 +8,8 @@
 //! Each function that may emit a clipboard warning returns `Option<String>`
 //! (the warning message). Callers report it via `ed.report(Severity::Warning, …)`.
 
+use std::borrow::Cow;
+
 use crate::editor::clipboard::SystemClipboard;
 use crate::ops::register::{KillRing, RegisterSet, CLIPBOARD_REGISTER};
 
@@ -19,38 +21,38 @@ use crate::ops::register::{KillRing, RegisterSet, CLIPBOARD_REGISTER};
 /// - `'c'` → OS clipboard (in-memory fallback on failure).
 /// - `'0'`–`'9'` → kill-ring slot N (no fallback).
 /// - All others → in-memory `RegisterSet`.
-pub(crate) fn read_register_text(
-    registers: &RegisterSet,
+pub(crate) fn read_register_text<'a>(
+    registers: &'a RegisterSet,
     clipboard: &mut SystemClipboard,
-    kill_ring: &KillRing,
+    kill_ring: &'a KillRing,
     name: char,
-) -> (Option<Vec<String>>, Option<String>) {
+) -> (Option<Cow<'a, [String]>>, Option<String>) {
     if name == CLIPBOARD_REGISTER {
         match clipboard.read() {
-            Ok(text) => (Some(vec![text]), None),
+            Ok(text) => (Some(Cow::Owned(vec![text])), None),
             Err(e) => {
                 let warning = clipboard_warn(&e);
                 let fallback = registers
                     .read(CLIPBOARD_REGISTER)
                     .and_then(|r| r.as_text())
-                    .map(|v| v.to_vec());
+                    .map(Cow::Borrowed);
                 (fallback, Some(warning))
             }
         }
     } else if name.is_ascii_digit() {
-        (read_digit_register(kill_ring, name), None)
+        (read_digit_register(kill_ring, name).map(Cow::Borrowed), None)
     } else {
-        let v = registers.read(name).and_then(|r| r.as_text()).map(|v| v.to_vec());
+        let v = registers.read(name).and_then(|r| r.as_text()).map(Cow::Borrowed);
         (v, None)
     }
 }
 
 /// Borrow kill-ring slot corresponding to a digit register name `'0'`–`'9'`.
-pub(crate) fn read_digit_register(kill_ring: &KillRing, name: char) -> Option<Vec<String>> {
+pub(crate) fn read_digit_register(kill_ring: &KillRing, name: char) -> Option<&[String]> {
     debug_assert!(name.is_ascii_digit());
     let slot = (name as u8 - b'0') as usize;
     // Kill ring is authoritative for digit registers — no in-memory fallback.
-    kill_ring.slot(slot).map(|s| s.to_vec())
+    kill_ring.slot(slot)
 }
 
 /// Write `values` into named register `name`, routing `'c'` through the OS clipboard.

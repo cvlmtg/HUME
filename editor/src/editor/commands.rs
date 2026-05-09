@@ -396,9 +396,6 @@ fn do_paste(
                     &ed.kill_ring,
                     CLIPBOARD_REGISTER,
                 );
-                if let Some(w) = warn {
-                    ed.report(Severity::Warning, w);
-                }
                 if let Some(values) = values {
                     let (displaced, _) = doc_ops::apply_doc_edit(
                         &mut ed.buffers,
@@ -415,6 +412,9 @@ fn do_paste(
                         ed.report(Severity::Warning, w);
                     }
                 }
+                if let Some(w) = warn {
+                    ed.report(Severity::Warning, w);
+                }
             }
         }
         Some(c) if c.is_ascii_digit() => {
@@ -424,7 +424,7 @@ fn do_paste(
                     &mut ed.pane_state,
                     focused,
                     buf,
-                    |b, s| paste_fn(b, s, &values),
+                    |b, s| paste_fn(b, s, values),
                 );
                 if let Some(d) = displaced
                     && d.iter().any(|s| !s.is_empty())
@@ -440,9 +440,6 @@ fn do_paste(
                 &ed.kill_ring,
                 c,
             );
-            if let Some(w) = warn {
-                ed.report(Severity::Warning, w);
-            }
             if let Some(values) = values {
                 let (displaced, _) = doc_ops::apply_doc_edit(
                     &mut ed.buffers,
@@ -462,6 +459,9 @@ fn do_paste(
                 {
                     ed.report(Severity::Warning, w);
                 }
+            }
+            if let Some(w) = warn {
+                ed.report(Severity::Warning, w);
             }
         }
     }
