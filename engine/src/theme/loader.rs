@@ -549,6 +549,20 @@ blue = "#0000ff"
         );
     }
 
+    #[test]
+    fn empty_string_color_is_rejected() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "empty_color",
+            r#""constant" = { fg = "white", bg = "" }"#,
+        );
+        let err = load_theme("empty_color", &paths(dir.path()))
+            .err()
+            .expect("expected BadColor for empty-string bg");
+        assert!(matches!(err, ThemeError::BadColor { .. }), "got: {err}");
+    }
+
     // ── Bad modifier ─────────────────────────────────────────────────────────
 
     #[test]

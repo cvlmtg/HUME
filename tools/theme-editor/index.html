@@ -447,8 +447,11 @@ function ScopeRow({ id, value, palette, onChange }) {
   const [bgHex, setBgHex] = useState("");
 
   const emit = (newFg, newBg) => {
-    if (hasBg) onChange({ fg: newFg, bg: newBg });
-    else onChange(newFg);
+    if (!hasBg) { onChange(newFg); return; }
+    if (newFg === "" && newBg === "") onChange({});
+    else if (newBg === "")            onChange(newFg);
+    else if (newFg === "")            onChange({ bg: newBg });
+    else                              onChange({ fg: newFg, bg: newBg });
   };
 
   const sel = { ...INPUT, flex: 1, minWidth: 0 };

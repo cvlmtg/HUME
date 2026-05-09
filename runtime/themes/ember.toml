@@ -20,11 +20,11 @@
 "ui.statusline.mode.command" = { fg = "fg", bg = "mode_command_bg", modifiers = [ "bold" ] }
 "ui.statusline.mode.select" = { fg = "fg", bg = "mode_select_bg", modifiers = [ "bold" ] }
 "comment" = { fg = "dim", modifiers = [ "italic" ] }
-"constant" = { fg = "ember", bg = "" }
-"constant.numeric" = { fg = "ember", bg = "" }
-"constant.character" = { fg = "ember", bg = "" }
+"constant" = "ember"
+"constant.numeric" = "ember"
+"constant.character" = "ember"
 "constant.builtin" = { fg = "amber_bright" }
-"string" = { fg = "ember", bg = "" }
+"string" = "ember"
 "string.regexp" = { fg = "ember" }
 "string.special" = { fg = "warm_magenta" }
 "escape" = { fg = "warm_red" }
@@ -55,10 +55,10 @@
 "markup.list" = { fg = "amber" }
 "markup.link.url" = { fg = "warm_cyan", underline = "line" }
 "diagnostic" = { underline = "curl" }
-"diagnostic.error" = { fg = "warm_red", bg = "" }
-"diagnostic.warning" = { fg = "warm_magenta", bg = "" }
-"diagnostic.info" = { fg = "warm_cyan", bg = "" }
-"diagnostic.hint" = { fg = "warm_green", bg = "" }
+"diagnostic.error" = "warm_red"
+"diagnostic.warning" = "warm_magenta"
+"diagnostic.info" = "warm_cyan"
+"diagnostic.hint" = "warm_green"
 "diff.minus" = "warm_red"
 "diff.plus" = "warm_green"
 "diff.delta" = "warm_magenta"
