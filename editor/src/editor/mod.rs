@@ -287,6 +287,9 @@ pub(crate) struct Editor {
     /// Allocated once and reused every j/k press to avoid per-keypress
     /// heap allocation.
     pub(super) motion_format_scratch: engine::format::FormatScratch,
+    /// Reusable sticky-column buffer for visual j/k movement.
+    /// One `u16` entry per active selection; cleared and refilled each press.
+    pub(super) visual_move_target_cols: Vec<u16>,
 
     // ── Dot-repeat fields ─────────────────────────────────────────────────────
     /// The last repeatable editing action, available for replay via `.`.
@@ -513,6 +516,7 @@ impl Editor {
             bracket_hl_data,
             search_hl_data,
             motion_format_scratch: engine::format::FormatScratch::new(),
+            visual_move_target_cols: Vec::new(),
             macro_recording: None,
             macro_pending: None,
             replay_queue: VecDeque::new(),
@@ -1635,6 +1639,7 @@ impl Editor {
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
             motion_format_scratch: engine::format::FormatScratch::new(),
+            visual_move_target_cols: Vec::new(),
             macro_recording: None,
             macro_pending: None,
             replay_queue: VecDeque::new(),

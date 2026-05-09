@@ -187,71 +187,45 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         return;
     }
 
-    let rope = ed.doc().text().rope().clone();
-    let sels = ed.current_selections().clone();
+    let focused = ed.focused_pane_id;
+    let buf_id = ed.focused_buffer_id();
+    let scratch = &mut ed.motion_format_scratch;
+    let target_cols = &mut ed.visual_move_target_cols;
+    target_cols.clear();
 
-    // Pass 1: resolve each selection's sticky display column from sel.horiz,
-    // computing it fresh on the first j/k press (when horiz is None).
-    let target_cols: Vec<u16> = sels
-        .iter_sorted()
-        .map(|sel| {
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
+        let rope = text.rope();
+
+        // Pass 1: resolve each selection's sticky display column from sel.horiz,
+        // computing it fresh on the first j/k press (when horiz is None).
+        target_cols.extend(sels.iter_sorted().map(|sel| {
             if let Some(col) = sel.horiz {
                 col as u16
             } else {
                 let line = rope.char_to_line(sel.head);
-                let (_, col) = format_row_col(
-                    &rope,
-                    line,
-                    sel.head,
-                    &wrap_mode,
-                    tab_width,
-                    &whitespace,
-                    &mut ed.motion_format_scratch,
-                );
+                let (_, col) = format_row_col(rope, line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
                 col as u16
             }
+        }));
+
+        // Pass 2: move each selection by `count` display rows, preserving the
+        // sticky column in sel.horiz so consecutive j/k presses reuse it.
+        let cols: &[u16] = target_cols;
+        let mut col_iter = cols.iter();
+        sels.map_and_merge(|sel| {
+            let &target_col = col_iter.next().unwrap();
+            let mut head = sel.head;
+            for _ in 0..count {
+                head = if down {
+                    visual_move_down_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+                } else {
+                    visual_move_up_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
+                };
+            }
+            let anchor = if mode == MotionMode::Extend { sel.anchor } else { head };
+            Selection::with_horiz(anchor, head, target_col as u32)
         })
-        .collect();
-
-    // Pass 2: move each selection by `count` display rows, preserving the
-    // sticky column in sel.horiz so consecutive j/k presses reuse it.
-    let mut col_iter = target_cols.iter();
-    let scratch = &mut ed.motion_format_scratch;
-    let new_sels = sels.map_and_merge(|sel| {
-        let &target_col = col_iter.next().unwrap();
-        let mut head = sel.head;
-        for _ in 0..count {
-            head = if down {
-                visual_move_down_one(
-                    &rope,
-                    head,
-                    &wrap_mode,
-                    tab_width,
-                    &whitespace,
-                    target_col,
-                    scratch,
-                )
-            } else {
-                visual_move_up_one(
-                    &rope,
-                    head,
-                    &wrap_mode,
-                    tab_width,
-                    &whitespace,
-                    target_col,
-                    scratch,
-                )
-            };
-        }
-        let anchor = if mode == MotionMode::Extend {
-            sel.anchor
-        } else {
-            head
-        };
-        Selection::with_horiz(anchor, head, target_col as u32)
     });
-
-    ed.set_current_selections(new_sels);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,32 +317,34 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         return Ok(());
     }
 
-    let buf = ed.doc().text().clone(); // O(log n) — rope structural sharing
-    let sels = ed.current_selections().clone();
-
+    let focused = ed.focused_pane_id;
+    let buf_id = ed.focused_buffer_id();
     let scratch = &mut ed.motion_format_scratch;
-    let new_sels = sels.map_and_merge(|sel| {
-        let buf_line = buf.char_to_line(sel.head);
-        let (sub_row, _) =
-            format_row_col(buf.rope(), buf_line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
 
-        let (line_start, line_end_excl) =
-            sub_row_char_bounds(scratch, sub_row, buf_line, buf.rope()).unwrap_or_else(|| {
-                // Degenerate: fall back to full buffer line.
-                let ls = buf.line_to_char(buf_line);
-                let le = if buf_line + 1 < buf.len_lines() {
-                    buf.line_to_char(buf_line + 1)
-                } else {
-                    buf.len_chars()
-                };
-                (ls, le)
-            });
+    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
+        let rope = text.rope();
+        let new_sels = sels.map_and_merge(|sel| {
+            let buf_line = text.char_to_line(sel.head);
+            let (sub_row, _) =
+                format_row_col(rope, buf_line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
 
-        let found = nearest_word_on_line(&buf, sel.head, line_start, line_end_excl);
-        apply_nearest_word_result(sel, found, mode)
+            let (line_start, line_end_excl) =
+                sub_row_char_bounds(scratch, sub_row, buf_line, rope).unwrap_or_else(|| {
+                    let ls = text.line_to_char(buf_line);
+                    let le = if buf_line + 1 < text.len_lines() {
+                        text.line_to_char(buf_line + 1)
+                    } else {
+                        text.len_chars()
+                    };
+                    (ls, le)
+                });
+
+            let found = nearest_word_on_line(text, sel.head, line_start, line_end_excl);
+            apply_nearest_word_result(sel, found, mode)
+        });
+        new_sels.debug_assert_valid(text);
+        new_sels
     });
 
-    new_sels.debug_assert_valid(&buf);
-    ed.set_current_selections(new_sels);
     Ok(())
 }
