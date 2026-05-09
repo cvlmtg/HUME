@@ -28,6 +28,10 @@
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "bg3" }
 
+# ── Completion popup ──────────────────────────────────────────────────────────
+"ui.menu"          = { fg = "fg2", bg = "bg2" }
+"ui.menu.selected" = { fg = "fg0", bg = "bg3" }
+
 # ── Statusline ────────────────────────────────────────────────────────────────
 "ui.statusline"              = { fg = "bg0",  bg = "fg4" }
 "ui.statusline.mode.normal"  = { fg = "bg0",  bg = "fg4" }

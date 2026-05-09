@@ -10,18 +10,12 @@ use std::sync::{Arc, RwLock};
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
 
 use engine::providers::OverlayProvider;
 use engine::render::fill_rect_bg;
 use engine::theme::Theme;
-
-// ── Popup palette ─────────────────────────────────────────────────────────────
-
-// TODO: replace with `theme.ui.menu.bg` / `theme.ui.menu.border` once the
-// engine theme system exposes ui.menu / ui.menu.selected / ui.menu.border scopes.
-const POPUP_BG: Color = Color::Rgb(40, 40, 50);
-const BORDER_FG: Color = Color::Rgb(90, 90, 110);
+use engine::types::Scope;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -53,7 +47,7 @@ impl OverlayProvider for CompletionOverlay {
         self.data.read().expect("RwLock not poisoned").is_some()
     }
 
-    fn render(&self, pane_area: Rect, _theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, pane_area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
         let guard = self.data.read().expect("RwLock not poisoned");
         let Some(view) = guard.as_ref() else { return };
 
@@ -92,16 +86,13 @@ impl OverlayProvider for CompletionOverlay {
             .saturating_sub(1)
             .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
 
-        let bg_style = Style::default().bg(POPUP_BG);
-        let border_style = Style::default().fg(BORDER_FG).bg(POPUP_BG);
-        let selected_style = Style::default()
-            .bg(POPUP_BG)
-            .add_modifier(Modifier::REVERSED);
+        let menu_style: Style = theme.resolve_by_name(Scope("ui.menu")).into();
+        let selected_style: Style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
 
         // 1. Fill the entire outer rectangle with the popup background.
         //    This gives a solid, opaque backdrop — no buffer content bleeds through.
         //    For border=false it also acts as the visible 1-cell margin.
-        fill_rect_bg(buf, Rect::new(popup_x, popup_y, outer_w, outer_h), bg_style);
+        fill_rect_bg(buf, Rect::new(popup_x, popup_y, outer_w, outer_h), menu_style);
 
         // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
         if view.border {
@@ -112,17 +103,17 @@ impl OverlayProvider for CompletionOverlay {
             let horiz: String = "─".repeat(fill_w);
 
             // Top and bottom edges.
-            buf.set_string(popup_x, popup_y, "┌", border_style);
-            buf.set_string(popup_x + 1, popup_y, &horiz, border_style);
-            buf.set_string(right, popup_y, "┐", border_style);
-            buf.set_string(popup_x, bottom, "└", border_style);
-            buf.set_string(popup_x + 1, bottom, &horiz, border_style);
-            buf.set_string(right, bottom, "┘", border_style);
+            buf.set_string(popup_x, popup_y, "┌", menu_style);
+            buf.set_string(popup_x + 1, popup_y, &horiz, menu_style);
+            buf.set_string(right, popup_y, "┐", menu_style);
+            buf.set_string(popup_x, bottom, "└", menu_style);
+            buf.set_string(popup_x + 1, bottom, &horiz, menu_style);
+            buf.set_string(right, bottom, "┘", menu_style);
 
             // Left and right sides.
             for row in 1..outer_h - 1 {
-                buf.set_string(popup_x, popup_y + row, "│", border_style);
-                buf.set_string(right, popup_y + row, "│", border_style);
+                buf.set_string(popup_x, popup_y + row, "│", menu_style);
+                buf.set_string(right, popup_y + row, "│", menu_style);
             }
         }
 
@@ -133,12 +124,12 @@ impl OverlayProvider for CompletionOverlay {
             let row_idx = scroll_offset + i;
 
             if row_idx == selected {
-                // Highlight the full inner width so the reversed bar is uniform.
+                // Highlight the full inner width so the selection bar is uniform.
                 let inner_rect = Rect::new(text_x, y, outer_w.saturating_sub(2), 1);
                 fill_rect_bg(buf, inner_rect, selected_style);
                 buf.set_string(text_x, y, row_text, selected_style);
             } else {
-                buf.set_string(text_x, y, row_text, bg_style);
+                buf.set_string(text_x, y, row_text, menu_style);
             }
         }
     }

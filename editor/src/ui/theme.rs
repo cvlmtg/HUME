@@ -96,6 +96,8 @@ impl EditorColors {
 /// - `"ui.whitespace"`          — whitespace indicator characters
 /// - `"ui.statusline"`          — base statusline style
 /// - `"ui.statusline.mode.*"`   — per-mode label colors
+/// - `"ui.menu"`                — completion popup backdrop (fg = text/border color, bg = popup bg)
+/// - `"ui.menu.selected"`       — selected row highlight (fg = text, bg = highlight bar)
 pub(crate) fn build_default_theme() -> engine::theme::Theme {
     fn rgb(r: u8, g: u8, b: u8) -> ratatui::style::Color {
         ratatui::style::Color::Rgb(r, g, b)
@@ -208,6 +210,24 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
         "ui.whitespace",
         ResolvedStyle {
             fg: Some(rgb(70, 70, 80)),
+            ..Default::default()
+        },
+    );
+
+    // ── Completion popup ─────────────────────────────────────────────────────
+    s(
+        "ui.menu",
+        ResolvedStyle {
+            fg: Some(rgb(180, 180, 200)),
+            bg: Some(rgb(40, 40, 50)),
+            ..Default::default()
+        },
+    );
+    s(
+        "ui.menu.selected",
+        ResolvedStyle {
+            fg: Some(rgb(255, 255, 255)),
+            bg: Some(rgb(80, 80, 140)),
             ..Default::default()
         },
     );
