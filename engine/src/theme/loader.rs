@@ -19,7 +19,7 @@ use crate::types::{Modifiers, ResolvedStyle, UnderlineStyle};
 const MAX_DEPTH: usize = 8;
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Public entry points
 // ---------------------------------------------------------------------------
 
 /// Load a theme by name from the given ordered search paths.
@@ -35,11 +35,27 @@ pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<Theme, ThemeEr
     Ok(Theme::from_owned(scopes, default))
 }
 
+/// Parse a theme from a TOML string.
+///
+/// Supports palette indirection and all scope value forms, but does **not**
+/// support `inherits` — the document must be a self-contained leaf. Passing a
+/// document with `inherits` returns [`ThemeError::NotFound`] for the named
+/// parent.
+///
+/// Intended for embedded themes (e.g. `include_str!` in the binary).
+pub fn parse_theme(toml_str: &str) -> Result<Theme, ThemeError> {
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    // Empty search_paths: any `inherits` key will fail with NotFound, which is
+    // the correct behaviour for a self-contained embedded document.
+    let (scopes, default) = parse_recursive(toml_str, &[], &mut visited, 0)?;
+    Ok(Theme::from_owned(scopes, default))
+}
+
 // ---------------------------------------------------------------------------
 // Recursive loader
 // ---------------------------------------------------------------------------
 
-/// Intermediate representation: palette + resolved scope styles.
+/// Intermediate representation: resolved scope styles + default style.
 type ThemeData = (HashMap<String, ResolvedStyle>, ResolvedStyle);
 
 fn load_recursive(
@@ -63,6 +79,17 @@ fn load_recursive(
         });
     }
 
+    parse_recursive(&source, search_paths, visited, depth)
+}
+
+/// Parse one TOML document into `ThemeData`, recursing into `inherits` parents
+/// via `load_recursive` when `search_paths` is non-empty.
+fn parse_recursive(
+    source: &str,
+    search_paths: &[PathBuf],
+    visited: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<ThemeData, ThemeError> {
     let doc: toml::Value = source.parse().map_err(ThemeError::Parse)?;
     let table = doc
         .as_table()
@@ -598,6 +625,41 @@ blue = "#0000ff"
         let dir = TempDir::new().unwrap();
         let err = load_theme("../etc/passwd", &paths(dir.path())).err().expect("expected an Err result");
         assert!(matches!(err, ThemeError::NotFound { .. }));
+    }
+
+    // ── parse_theme ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_theme_handles_palette_indirection() {
+        let toml = r##"
+"ui.cursor" = { fg = "black", bg = "white" }
+"ui.virtual" = { fg = "dark_gray" }
+
+[palette]
+black     = "#000000"
+white     = "#ffffff"
+dark_gray = "#808080"
+"##;
+        let theme = super::parse_theme(toml).unwrap();
+
+        let cursor = theme.resolve_by_name(crate::types::Scope("ui.cursor"));
+        // Independent oracle: expected colors derived directly from palette hex values.
+        assert_eq!(cursor.fg, Some(Color::Rgb(0x00, 0x00, 0x00)));
+        assert_eq!(cursor.bg, Some(Color::Rgb(0xff, 0xff, 0xff)));
+
+        let virt = theme.resolve_by_name(crate::types::Scope("ui.virtual"));
+        assert_eq!(virt.fg, Some(Color::Rgb(0x80, 0x80, 0x80)));
+    }
+
+    #[test]
+    fn parse_theme_rejects_inherits() {
+        let toml = r#"inherits = "base""#;
+        // With empty search_paths, `load_recursive("base", &[], …)` must fail NotFound.
+        let err = super::parse_theme(toml).err().expect("expected Err for inherits in embedded theme");
+        assert!(
+            matches!(err, ThemeError::NotFound { .. }),
+            "expected NotFound, got: {err}"
+        );
     }
 
     // ── Independent oracle: expected values built from inputs, not from loader ─

@@ -97,21 +97,9 @@ The editor's `Mode { Normal, Insert, Command, Search, Select }` + `extend: bool`
 
 Replace the old `EditorColors` flat struct with a function that builds an engine `Theme`. Keep the file name, replace the contents.
 
-`pub(crate) fn build_default_theme() -> engine::theme::Theme` maps old `EditorColors` defaults → scope strings:
-- `"ui.cursor"` → white-on-black
-- `"ui.cursor.insert"` → same (bar cursor contexts)
-- `"ui.selection"` → rgb(68,68,120) bg
-- `"ui.cursorline"` → rgb(35,35,45) bg
-- `"ui.virtual"` → DarkGray fg (tilde rows)
-- `"ui.linenr"` → DarkGray fg
-- `"ui.linenr.selected"` → rgb(180,180,180) fg + cursor_line bg
-- `"ui.cursor.match"` → bracket match (gold on dark, bold)
-- `"ui.selection.search"` → search match (orange on dark) — Helix convention, consistent with `ui.selection` family
-- `"ui.whitespace"` → rgb(70,70,80) fg
-- `"ui.statusline"` → reversed (base statusline style)
-- `"ui.statusline.mode.normal"` / `.insert` / `.extend` / `.search` / `.command` / `.select` → per-mode label colors
-
-These scope names must also appear in `build_default_theme()`'s `styles` map so the `Theme` resolves them, and must be interned via `engine_view.registry` at provider construction time.
+`pub(crate) fn build_default_theme() -> engine::theme::Theme` parses the embedded `runtime/themes/dark.toml`
+via `engine::theme::loader::parse_theme`. Scope names and palette values are authoritative in that file.
+Scope names used by providers must also be interned via `engine_view.registry` at provider construction time.
 
 **Files**: replace `editor/src/ui/theme.rs` contents
 
@@ -182,7 +170,7 @@ This eliminates a per-frame O(N log N) selection conversion on idle frames.
 ## Step 6: Rewrite `Editor::open()`
 
 After creating `Document`:
-1. `ui::theme::build_default_theme()` → `Theme`
+1. `ui::theme::build_default_theme()` → parses embedded `dark.toml` → `Theme`
 2. `EngineView::new(theme)` + intern `"ui.cursor.match"` and `"ui.selection.search"` scopes via `engine_view.registry`
 3. Insert `SharedBuffer::new()` → `buffer_id`
 4. Create `Pane` with `buffer_id`, `ViewportState::new(80, 24)`, `WrapMode::Indent { width: 76 }`, `tab_width: 4`, engine `WhitespaceConfig::default()`

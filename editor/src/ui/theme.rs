@@ -1,22 +1,10 @@
-use std::collections::HashMap;
-
 use ratatui::style::Style;
 
-use engine::types::{Modifiers, ResolvedStyle};
-
-/// Semantic color slots for the editor UI.
+/// Resolved statusline color slots, read from the active engine [`Theme`].
 ///
-/// This is a flat struct with hardcoded defaults — not a theme system.
-/// Field names follow Helix scope conventions (`ui.cursor` → `cursor_head`,
-/// `ui.selection` → `selection`, `ui.cursorline` → `cursor_line`) so they
-/// map cleanly when hierarchical theme support is added later.
-///
-/// # Dark-terminal assumption
-///
-/// All defaults target dark terminal backgrounds (the overwhelming majority of
-/// terminal users). When config/theme loading is implemented, this struct
-/// becomes the runtime-mutable output of the theme resolver; the hardcoded
-/// values become the built-in "dark" fallback theme.
+/// Covers only the statusline row; all other UI surfaces (cursor, selection,
+/// gutter, completion popup) are styled directly by the engine via scope
+/// resolution at render time.
 pub(crate) struct EditorColors {
     // ── Statusline ────────────────────────────────────────────────────────────
     // Content-area colors (cursor, selection, highlights, gutter) are now
@@ -80,217 +68,17 @@ impl EditorColors {
 
 // ── Engine theme builder ──────────────────────────────────────────────────────
 
-/// Construct the default engine [`Theme`] from the same hardcoded color values
-/// as `EditorColors::default()`, translated to Helix-style scope names.
+// Default theme content — single source of truth is the TOML file.
+// Scope names and palette values live in `runtime/themes/dark.toml`.
+const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/dark.toml");
+
+/// Parse and return the default engine [`Theme`] from the embedded TOML.
 ///
-/// Scope name conventions (Helix-compatible):
-/// - `"ui.cursor"`              — block cursor (Normal/Extend)
-/// - `"ui.cursor.insert"`       — bar cursor (Insert mode)
-/// - `"ui.selection"`           — non-cursor selected chars
-/// - `"ui.cursorline"`          — cursor-line background tint
-/// - `"ui.virtual"`             — tilde rows and virtual text
-/// - `"ui.linenr"`              — gutter line numbers
-/// - `"ui.linenr.selected"`     — gutter on the cursor line
-/// - `"ui.cursor.match"`        — bracket match highlight
-/// - `"ui.selection.search"`    — search match highlight (Helix convention)
-/// - `"ui.whitespace"`          — whitespace indicator characters
-/// - `"ui.statusline"`          — base statusline style
-/// - `"ui.statusline.mode.*"`   — per-mode label colors
-/// - `"ui.menu"`                — completion popup backdrop (fg = text/border color, bg = popup bg)
-/// - `"ui.menu.selected"`       — selected row highlight (fg = text, bg = highlight bar)
+/// The content is `runtime/themes/dark.toml`, embedded at compile time via
+/// `include_str!`. Any edit to that file takes effect on the next build.
 pub(crate) fn build_default_theme() -> engine::theme::Theme {
-    fn rgb(r: u8, g: u8, b: u8) -> ratatui::style::Color {
-        ratatui::style::Color::Rgb(r, g, b)
-    }
-    fn dark_gray() -> ratatui::style::Color {
-        ratatui::style::Color::DarkGray
-    }
-
-    // "Reversed" in ratatui means swapping fg/bg — used for the statusline.
-    // In engine ResolvedStyle there's no Modifiers::REVERSED; we simulate it
-    // by setting explicit fg/bg that invert the terminal defaults. The terminal
-    // default is typically white-on-black, so reversed ≈ black-on-white.
-    // For colored mode labels (e.g. Cyan fg), we keep the reversed background
-    // and just set the fg color.
-    let statusline_bg = ratatui::style::Color::White;
-    let statusline_fg = ratatui::style::Color::Black;
-
-    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
-
-    let mut s = |scope: &'static str, style: ResolvedStyle| {
-        styles.insert(scope, style);
-    };
-
-    // ── Cursor ──────────────────────────────────────────────────────────────
-    // Primary cursor: bright white block — stands out as the main caret.
-    s(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(rgb(0, 0, 0)),
-            bg: Some(rgb(255, 255, 255)),
-            ..Default::default()
-        },
-    );
-    // Secondary cursors (multi-cursor): dimmer gray block — present but not dominant.
-    s(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(rgb(0, 0, 0)),
-            bg: Some(rgb(140, 140, 160)),
-            ..Default::default()
-        },
-    );
-    // In bar-cursor modes the terminal cursor is the sole visual indicator —
-    // no cell background override so the character underneath stays readable.
-    s("ui.cursor.insert", ResolvedStyle::default());
-
-    // ── Selection / cursor-line ──────────────────────────────────────────────
-    s(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(rgb(68, 68, 120)),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.cursorline",
-        ResolvedStyle {
-            bg: Some(rgb(58, 58, 58)),
-            ..Default::default()
-        },
-    );
-
-    // ── Virtual text / tilde rows ────────────────────────────────────────────
-    s(
-        "ui.virtual",
-        ResolvedStyle {
-            fg: Some(dark_gray()),
-            ..Default::default()
-        },
-    );
-
-    // ── Gutter ───────────────────────────────────────────────────────────────
-    s(
-        "ui.linenr",
-        ResolvedStyle {
-            fg: Some(dark_gray()),
-            ..Default::default()
-        },
-    );
-    // No bg: the cursorline row_bg fill shows through, unifying gutter and content.
-    s(
-        "ui.linenr.selected",
-        ResolvedStyle {
-            fg: Some(rgb(200, 200, 210)),
-            ..Default::default()
-        },
-    );
-
-    // ── Highlights ───────────────────────────────────────────────────────────
-    s(
-        "ui.cursor.match",
-        ResolvedStyle {
-            fg: Some(rgb(220, 180, 50)),
-            bg: Some(rgb(60, 55, 20)),
-            modifiers: Modifiers::BOLD,
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.selection.search",
-        ResolvedStyle {
-            fg: Some(rgb(255, 180, 80)),
-            bg: Some(rgb(80, 40, 0)),
-            ..Default::default()
-        },
-    );
-
-    // ── Whitespace ───────────────────────────────────────────────────────────
-    s(
-        "ui.whitespace",
-        ResolvedStyle {
-            fg: Some(rgb(70, 70, 80)),
-            ..Default::default()
-        },
-    );
-
-    // ── Completion popup ─────────────────────────────────────────────────────
-    s(
-        "ui.menu",
-        ResolvedStyle {
-            fg: Some(rgb(180, 180, 200)),
-            bg: Some(rgb(40, 40, 50)),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.menu.selected",
-        ResolvedStyle {
-            fg: Some(rgb(255, 255, 255)),
-            bg: Some(rgb(80, 80, 140)),
-            ..Default::default()
-        },
-    );
-
-    // ── Statusline ───────────────────────────────────────────────────────────
-    s(
-        "ui.statusline",
-        ResolvedStyle {
-            fg: Some(statusline_fg),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.normal",
-        ResolvedStyle {
-            fg: Some(statusline_fg),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.insert",
-        ResolvedStyle {
-            fg: Some(ratatui::style::Color::Cyan),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.extend",
-        ResolvedStyle {
-            fg: Some(ratatui::style::Color::Yellow),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.search",
-        ResolvedStyle {
-            fg: Some(ratatui::style::Color::Magenta),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.command",
-        ResolvedStyle {
-            fg: Some(ratatui::style::Color::Green),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-    s(
-        "ui.statusline.mode.select",
-        ResolvedStyle {
-            fg: Some(ratatui::style::Color::Blue),
-            bg: Some(statusline_bg),
-            ..Default::default()
-        },
-    );
-
-    engine::theme::Theme::new(styles, ResolvedStyle::default())
+    engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
+        .expect("embedded dark.toml must parse — file is compile-time embedded")
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +89,8 @@ pub(crate) fn build_default_theme() -> engine::theme::Theme {
 mod tests {
     use std::collections::HashMap;
 
-    use engine::types::ResolvedStyle;
+    use engine::theme::ScopeRegistry;
+    use engine::types::{ResolvedStyle, Scope};
     use ratatui::style::{Color, Style};
 
     use super::*;
@@ -321,6 +110,36 @@ mod tests {
             ResolvedStyle { fg: Some(insert_fg), bg: Some(base_bg), ..Default::default() },
         );
         engine::theme::Theme::new(styles, ResolvedStyle::default())
+    }
+
+    #[test]
+    fn embedded_default_resolves_known_scopes() {
+        let mut theme = build_default_theme();
+        let registry = ScopeRegistry::new();
+        theme.bake(&registry);
+
+        // Independent oracle: expected values derived directly from dark.toml palette.
+        // black = #000000, white = #ffffff, mid_gray = #8c8ca0, selection = #444478
+        let cursor_primary = theme.resolve_by_name(Scope("ui.cursor.primary"));
+        assert_eq!(cursor_primary.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "cursor.primary fg");
+        assert_eq!(cursor_primary.bg, Some(Color::Rgb(0xff, 0xff, 0xff)), "cursor.primary bg");
+
+        let cursor = theme.resolve_by_name(Scope("ui.cursor"));
+        assert_eq!(cursor.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "cursor fg");
+        assert_eq!(cursor.bg, Some(Color::Rgb(0x8c, 0x8c, 0xa0)), "cursor bg");
+
+        let selection = theme.resolve_by_name(Scope("ui.selection"));
+        assert_eq!(selection.bg, Some(Color::Rgb(0x44, 0x44, 0x78)), "selection bg");
+
+        // menu: fg = #b4b4c8, bg = #282832
+        let menu = theme.resolve_by_name(Scope("ui.menu"));
+        assert_eq!(menu.fg, Some(Color::Rgb(0xb4, 0xb4, 0xc8)), "menu fg");
+        assert_eq!(menu.bg, Some(Color::Rgb(0x28, 0x28, 0x32)), "menu bg");
+
+        // statusline: fg = black (#000000), bg = white (#ffffff)
+        let statusline = theme.resolve_by_name(Scope("ui.statusline"));
+        assert_eq!(statusline.fg, Some(Color::Rgb(0x00, 0x00, 0x00)), "statusline fg");
+        assert_eq!(statusline.bg, Some(Color::Rgb(0xff, 0xff, 0xff)), "statusline bg");
     }
 
     #[test]

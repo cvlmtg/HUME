@@ -147,7 +147,7 @@
 - [x] **Helix theme editor**: import the standalone HTML theme editor, integrate it into the repo, and fix known bugs.
 - [x] **Theming**: hierarchical scopes (Helix-compatible), Helix TOML theme format (`inherits` + `palette`), bundled themes (`dark`, `light`, `gruvbox`), `:theme` command with tab completion, `:theme-debug`.
 - [x] **`ui.menu` / `ui.menu.selected` theme scopes**: expose completion-popup background + selected-row styling via the engine theme system; replace hardcoded `POPUP_BG` + `Modifier::REVERSED` in `editor/src/ui/completion_overlay.rs` (TODO at line 21). Small polish follow-up for the tab-completion popup shipped in M7.
-- [ ] **Default theme**: replace the hardcoded colors with a proper named theme using the new scope system.
+- [x] **Default theme**: `runtime/themes/dark.toml` embedded via `include_str!` and parsed through the standard loader at startup; `build_default_theme()` shrinks from a 190-line hardcoded scope map to a single `parse_theme()` call. Single source of truth for default colors.
 
 ### M9 — Syntax awareness (planned)
 - [ ] **Wrap indicator**: configurable character (e.g. "↪") prepended to continuation rows in soft-wrap mode. Wired through `WrapState` / `format_buffer_line()` in `engine/src/format.rs`.
