@@ -1,263 +1,192 @@
 # The Command/Keymap/Dispatch Architecture
 
-HUME's key handling is split across four files, each owning one responsibility.
-Understanding the split — and what each layer does *not* know — is the key to
-extending the editor safely.
+HUME's key handling is split across four layers, each owning one
+responsibility. Understanding the split — and what each layer does *not* know —
+is the key to extending the editor safely.
 
-## The four files
+## The four layers
 
-| File | Role | Knows about keys? | Knows about `&mut Editor`? |
-|---|---|---|---|
-| `registry.rs` | Name → function pointer lookup | No | No |
-| `commands.rs` | Editor-level command implementations | No | Yes (via `&mut Editor` param) |
-| `keymap.rs` | Key sequence → command name | Yes | No |
-| `mappings.rs` | Resolve name, call function | No | Yes (`&mut self`) |
+| Layer | Role | Knows keys? | Knows editor state? |
+|-------|------|-------------|---------------------|
+| **Registry** | Name → command lookup | No | No |
+| **Commands** | What each command does | No | Yes |
+| **Keymap** | Key sequence → command name | Yes | No |
+| **Dispatch** | Resolve name, call command | No | Yes |
 
-## Layer 1: Command Registry (`registry.rs`)
+The keymap layer knows about keys but not about what any command does. The
+command layer knows what each command does but not which key triggered it. The
+registry bridges them by name. The dispatch layer glues everything together.
 
-The registry is the single source of truth for what commands exist. Every
-user-facing operation is a named `MappableCommand` — a function pointer wrapped
-with metadata. Four variants exist:
+## Layer 1: The Registry
 
-```rust
-enum MappableCommand {
-    Motion      { name, fun: fn(&Buffer, SelectionSet, usize, MotionMode) -> SelectionSet },
-    Selection   { name, fun: fn(&Buffer, SelectionSet, MotionMode) -> SelectionSet },
-    Edit        { name, fun: fn(Buffer, SelectionSet) -> (Buffer, SelectionSet, ChangeSet), repeatable },
-    EditorCmd   { name, fun: fn(&mut Editor, usize, MotionMode), repeatable, extendable },
-    SteelBacked { name, doc, steel_proc: String, extendable },
-}
-```
+Every user-facing operation is a named command — a name string paired with a
+function and some metadata. The registry is the single source of truth for what
+commands exist.
 
-The first three are pure functions — they take buffer/selections and return new
-ones. `EditorCmd` takes `&mut Editor` for composite operations that need mode
-changes, registers, undo groups, or parameterized motions.
+Commands come in a few varieties:
 
-All variants except `Edit` accept a `MotionMode` parameter. The dispatcher
-passes `MotionMode::Move` or `MotionMode::Extend` depending on whether extend
-mode is active. Commands that don't care about extend (e.g. `undo`, `quit`)
-accept `_mode: MotionMode` and ignore it.
+- **Motion** commands move the cursor by returning a new position. They are
+  pure: they take the current buffer and cursor state and return new cursor
+  state, with no side effects.
+- **Selection** commands similarly return a new selection state without
+  modifying the buffer.
+- **Edit** commands return a new buffer *and* new cursor state, plus a
+  changeset (the description of what changed, used for undo).
+- **Editor-level** commands have access to the full editor state: mode
+  changes, registers, undo groups, named selections. Used for operations that
+  don't fit the pure model.
+- **Script-backed** commands are defined in Steel (HUME's scripting language)
+  and stored by the procedure name that handles them.
+
+The first three variants are pure functions — they cannot touch anything
+outside their inputs. This makes them trivially testable and composable.
 
 ### Extend mode is a runtime parameter, not separate commands
 
-There are no `"extend-left"` or `"extend-select-line"` commands. Each base
-command (e.g. `"move-left"`, `"select-line"`) receives `MotionMode::Extend` at
-dispatch time when the user is in extend mode. The command branches internally:
+There is no `"extend-left"` or `"extend-select-word"` command. Each base
+command (e.g. `"move-left"`, `"select-word"`) receives a `Move`/`Extend`
+parameter at dispatch time when the user is in extend mode. The command
+branches internally:
 
-```rust
-match mode {
-    MotionMode::Move   => Selection::collapsed(new_head),  // re-anchor
-    MotionMode::Extend => Selection::new(sel.anchor, new_head),  // keep anchor
-}
-```
+- `Move` mode: the anchor collapses to the new cursor position (a fresh
+  one-character selection).
+- `Extend` mode: the anchor stays fixed, only the head moves.
 
-This means adding a new motion requires **one function and one registration** —
-extend support comes for free from the `MotionMode` parameter.
+This means adding a new motion requires **one function and one registration**
+— the extend variant comes for free from the parameter.
 
-### The `extendable` flag
+### The extendable flag
 
-Motion and Selection commands are always extendable. Edit commands are never
-extendable. EditorCmd and SteelBacked each have an explicit `extendable: bool`
-flag set at registration time. This is used by the Ctrl+key guard (see below)
-to decide whether a `Ctrl+letter` keypress should trigger extend behaviour.
+Some commands should *always* extend when invoked via a Ctrl+key shortcut —
+they declare themselves extendable at registration time. Commands that should
+not extend (like undo or quit) carry the flag as false.
 
-For Steel-defined commands, use `(define-command-extend! name doc proc)` instead
-of `(define-command! …)` to set `extendable = true`. Use this for composite
-commands whose last step is a motion or selection — it preserves the `Ctrl+key`
-one-shot extend behaviour for any bare letter you rebind to the command.
+For Steel-defined commands, use `(define-command-extend! …)` to opt in. Use
+this for composite commands whose last step is a motion or selection.
 
-### Typed commands
+### Typed commands (`:` commands)
 
-The registry also holds typed commands — invoked from the `:` command line, not
-from keybindings. They share the same namespace to prevent name collisions and
-provide a single source for `:help`.
+The registry also holds commands invoked from the `:` command line. They share
+the same name namespace as key-bound commands, which prevents collisions and
+provides a single source for `:help`.
 
-```rust
-struct TypedCommand {
-    name, doc, aliases, fun: fn(&mut Editor, Option<&str>, bool),
-}
-```
+## Layer 2: Commands
 
-## Layer 2: Editor Commands (`commands.rs`)
+The command implementations are plain functions: they take the buffer, the
+current selections, and a count, and return new state. No knowledge of keys,
+modes, or how they were invoked.
 
-This file holds the `EditorCmd` implementations as free functions:
-`cmd_change`, `cmd_find_forward`, `cmd_open_line_below`, etc. Each is a
-`fn(&mut Editor, usize, MotionMode)` registered by name in the registry. This
-parallels how `ops/motion.rs` holds pure motion functions.
+## Layer 3: The Keymap
 
-## Layer 3: Keymap (`keymap.rs`)
+The keymap is a trie — a tree structure where each node represents one key in a
+sequence — that maps key sequences to command names. The stored value at each
+leaf is just a name string, not a function pointer.
 
-The keymap is a trie that maps key sequences to command names. Each binding
-resolves to a `KeymapCommand`:
+This separation is deliberate: the Steel scripting layer rewrites keymap entries
+to support user-defined keymaps. A user remap is just `key → command-name`.
+The trie can be rewritten without touching any execution logic.
 
-```rust
-struct KeymapCommand {
-    name: &'static str,
-}
-```
+Three types of trie nodes:
 
-The keymap stores *names*, not function pointers. This is what the Steel
-scripting layer will rewrite to support user keymaps — and it can do so without
-touching any execution logic. A user remap is just `key → command-name`.
-
-Three types of trie nodes exist:
-
-- **Leaf**: a complete binding → dispatch the command name.
+- **Leaf**: a complete binding → dispatch the named command.
 - **Interior**: more keys needed (e.g. `m` → `i` → `w` for inner-word).
-- **WaitChar**: the next keypress is consumed as a character argument (f/t/F/T/r).
-
-The `cmd!` and `wait_char!` macros construct bindings:
-
-```rust
-t.bind_leaf(key!('h'), cmd!("move-left"));
-t.bind(key!('f'), wait_char!("find-forward"));
-```
+- **WaitChar**: the next keypress is consumed as a character argument
+  (used by find, replace, etc.).
 
 ### Three keymaps
 
-The `Keymap` struct holds three separate tries:
+HUME maintains three separate tries:
 
 | Trie | Purpose |
 |------|---------|
-| `normal` | Main keymap for Normal mode |
-| `extend` | Sparse overrides for Extend mode (checked first) |
-| `insert` | Single-key bindings for Insert mode |
+| Normal | Main keymap for Normal mode |
+| Extend | Sparse overrides for Extend mode (checked first) |
+| Insert | Single-key bindings for Insert mode |
 
-The **extend trie** is small — by default it only contains `o → flip-selections`
-(mirrors Helix/Kakoune: `o` in extend mode flips anchor/head instead of opening
-a new line). Any key not in the extend trie falls through to the normal trie
-with extend mode active, which gives it `MotionMode::Extend` automatically.
+The **extend trie** is intentionally sparse — by default it only overrides `o`
+(which flips anchor and head, mirroring Helix/Kakoune's visual `o`). Any key
+not found in the extend trie falls through to the normal trie with extend mode
+active, which applies `Extend` semantics automatically.
 
-This lets Steel customize per-key extend-mode overrides: "when in extend mode
-and the user presses this key, run this different command instead."
+This lets Steel customise per-key extend-mode overrides: "when in extend mode
+and the user presses this key, run this specific command instead of the usual
+one."
 
-## Layer 4: Dispatch (`mappings.rs`)
+## Layer 4: Dispatch
 
-`mappings.rs` is the glue. `execute_keymap_command` takes a command name, an
-`extend: bool` flag, and a count. It converts extend to `MotionMode` and calls
-the right function pointer:
+The dispatcher is the glue. It receives a command name and an extend flag,
+converts those to the appropriate mode parameter, looks up the command in the
+registry, and calls it.
+
+The flow on any keypress:
 
 ```
 keypress
-  → keymap.rs  trie walk  →  KeymapCommand { name: "move-right" }
-  → mappings.rs            →  MotionMode = if extend { Extend } else { Move }
-  → registry.rs            →  registry.get("move-right") → MappableCommand::Motion { fun }
-  → mappings.rs            →  fun(buf, sels, count, MotionMode::Extend)
+  → keymap trie walk     → a command name (e.g. "move-right")
+  → dispatcher           → converts extend flag to Move/Extend mode
+  → registry lookup      → the function for "move-right"
+  → call                 → function(buffer, selections, count, mode)
 ```
 
-### How extend mode works
-
-There are three ways a command gets `MotionMode::Extend`:
+### Three ways to get Extend mode
 
 **1. Sticky extend mode.** The user presses `e` to enter Extend mode. All
-subsequent commands run with `MotionMode::Extend` until mode is exited. The
-extend trie is checked first for per-key overrides (like `o → flip-selections`).
+subsequent commands run with Extend semantics until the mode is exited. The
+extend trie is checked first for per-key overrides.
 
 **2. Ctrl+key one-shot extend (kitty keyboard protocol).** When kitty protocol
-is enabled, pressing `Ctrl+l` strips the Control modifier, looks up `l` in the
-normal trie → `"move-right"`, and dispatches with `MotionMode::Extend`. This
-only works on kitty-capable terminals.
+is active, pressing `Ctrl+l` strips the Control modifier, looks up `l` in the
+normal trie (`"move-right"`), and dispatches with Extend mode. Works only on
+kitty-capable terminals; silently absent on legacy terminals.
 
-**3. Explicit Ctrl+key bindings (works on any terminal).** Some commands have
-explicit `Ctrl+letter` bindings in the normal trie:
+**3. Explicit force-extend bindings.** Some keybindings are declared to always
+extend — for example, `Ctrl+x` always accumulates line selections, even without
+sticky extend mode or kitty. This works on any terminal.
 
-```rust
-t.bind_leaf(key!('x'),        cmd!("select-line"));
-t.bind_leaf(key!(Ctrl + 'x'), cmd!("select-line"));
-```
-
-Both keys bind to the same command name. The dispatch detects that it's a
-`Ctrl+letter` key and the command is extendable, so it sets
-`MotionMode::Extend` automatically. No separate extend command name needed.
-
-This is useful for commands that should *always* extend when invoked via
-`Ctrl+key`, regardless of terminal capabilities.
-
-### Remapping for users (Steel)
-
-To remap a command with its extend behaviour to a different key, a user binds
-the base command name to both the bare key and the Ctrl variant:
+To remap a command with its extend behaviour to a different key:
 
 ```scheme
-(keymap-bind! 'normal "f"      "select-line")    ; MotionMode::Move
-(keymap-bind! 'normal "C-f"    "select-line")    ; MotionMode::Extend (auto)
+(bind-key! 'normal "f"   "select-line")  ; Move mode
+(bind-key! 'normal "C-f" "select-line")  ; Extend mode (automatic for Ctrl+letter)
 ```
 
-The user only needs to know the base command name. The extend behaviour comes
-from the dispatch layer — any extendable command bound to a `Ctrl+letter` key
-automatically gets `MotionMode::Extend`.
-
-### Ctrl+key guard
-
-Not all `Ctrl+letter` keys should extend. `Ctrl+c` is force-quit, `Ctrl+u` is
-undo — these must not silently become extend variants. The dispatch checks
-`is_extendable()` on the resolved command:
-
-- **Extendable** → dispatch with `MotionMode::Extend`
-- **Not extendable** → dispatch normally (non-kitty explicit binding) or
-  suppress entirely (kitty strip-CONTROL path)
-
-This is why binding a bare letter to a plain `(define-command! …)` command
-silently kills that letter's `Ctrl` variant: `SteelBacked.extendable` is
-`false` by default, so the strip-CONTROL path suppresses it. Use
-`(define-command-extend! …)` to opt in.
+The user only writes the base command name. Extend semantics come from the
+dispatch layer automatically.
 
 ### WaitChar: parameterized commands
 
-Some commands need a character argument: `f` (find), `t` (till), `r` (replace).
-The trie stores these as `WaitChar` nodes:
+Some commands need a character argument: find-forward, find-backward, replace.
+The keymap stores these as *WaitChar* nodes.
 
-```rust
-wait_char!("find-forward")
-```
-
-When the trie walk hits a `WaitChar` node, `mappings.rs` stores the pending
-command in `Editor.wait_char`. The *next* keypress is consumed as the character
-argument, stored in `Editor.pending_char`, and the command is dispatched. The
-command function (e.g. `cmd_find_forward` in `commands.rs`) reads the character
-via `ed.pending_char.take()`.
-
-Extend resolution for wait-char commands happens at **char-consumption time**
-(not when the trigger key is pressed), since extend mode could toggle between
-the two keypresses.
+When the trie walk hits a WaitChar node, the dispatcher saves the command name
+and waits. The next keypress is consumed as the character argument, and then
+the command runs with that character. Extend mode is resolved at the moment the
+character arrives — not at the moment the trigger key is pressed.
 
 ## Commands are mode-agnostic
 
-Commands in the registry have no mode affinity. `"flip-selections"` is just a
-name that resolves to a function pointer. If Steel binds it to a key in the
-insert keymap trie, `handle_insert` walks the trie, gets a `Leaf`, and calls
-`execute_keymap_command` — which calls the function. The selection flips, the
-editor stays in Insert mode.
-
-Whether that binding is *useful* is the user's responsibility. The editor
-doesn't second-guess it.
+Commands in the registry have no mode affinity. If Steel binds `"flip-selections"`
+to a key in the insert keymap, and the insert handler resolves a leaf, it calls
+the same dispatch path — the selection flips, the editor stays in Insert mode.
+Whether that binding is useful is the user's responsibility. The editor doesn't
+second-guess it.
 
 ## Insert mode limitations
 
-Normal mode accumulates multi-key sequences in `pending_keys` and handles
-`WaitChar` state. Insert mode does neither — its trie walk is single-key only.
-This means:
-
-- **Multi-key sequences** (e.g. `mi` for inner-word) won't work in Insert mode.
-- **WaitChar commands** (e.g. `find-forward`, which needs a second keypress for
-  the character argument) will silently do nothing, because Insert mode doesn't
-  set `wait_char` or consume the follow-up character.
-- **Simple Leaf commands** (e.g. `flip-selections`, `collapse-selection`) work
-  fine if bound to a single key in the insert trie.
-
-This is a design constraint, not a bug. Insert mode is optimised for typing —
-complex command sequences belong in Normal mode. If a future need arises for
-multi-key insert bindings, the `pending_keys` / `WaitChar` machinery from
-`handle_normal` would need to be replicated in `handle_insert`.
+Insert mode's keymap walk is single-key only. Multi-key sequences and WaitChar
+commands won't work there — insert mode is optimised for typing, not for
+command choreography. Single-key leaf commands bind fine.
 
 ## Independence of layers
 
-The layering means any of the four files can change independently:
+The value of the split is that any layer can change without touching the others:
 
-- **New command**: add the function in the appropriate `ops/` file or
-  `commands.rs`, register it in `registry.rs`, bind a key in `keymap.rs`.
-  `mappings.rs` is unchanged.
-- **Rebind a key**: only touch `keymap.rs`.
-- **Change dispatch** (e.g. add macro recording): only touch `mappings.rs`.
-- **User keymaps via Steel**: rewrite `keymap.rs` trie entries. The registry
-  and dispatch layer are unaffected.
+- **New command**: add the function, register it, bind a key. The dispatch
+  layer is unchanged.
+- **Rebind a key**: only touch the keymap.
+- **Change dispatch** (e.g. add macro recording): only touch the dispatcher.
+- **User keymaps via Steel**: rewrite keymap trie entries. The registry and
+  dispatch layer are unaffected.
+
+A change in one layer cannot corrupt another because they communicate only
+through name strings.

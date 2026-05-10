@@ -199,3 +199,8 @@ which source to read. Cross-app paste is one keystroke without
 `unnamedplus`-style trade-offs, deletes never reach the clipboard, and the
 ring keeps the last ten captures alive. The goal overlaps with Vim's; the
 mechanism is different.
+
+---
+
+*See also: [Edit Operations](edit-operations.md) for the register table and the
+select-then-act model underlying how paste interacts with selections.*

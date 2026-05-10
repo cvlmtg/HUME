@@ -1,114 +1,118 @@
 # The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline
 
 Every frame, HUME takes a buffer full of text and produces a screen full of
-styled terminal cells. This document explains the four-stage engine pipeline
-that does that, the key data structures, and how the design accommodates future
-features like syntax highlighting, diagnostics, and virtual lines.
+styled terminal cells. This document explains the four-stage pipeline that does
+that, how the design accommodates future features, and why the pipeline is
+structured the way it is.
 
 ## The four stages
 
 ```
-Buffer (Rope) + Pane config
+Buffer (text + config)
          │
          ▼
-  Stage 1: Layout        ← "which buffer lines are visible, and how wide is the gutter?"
-         │  → VisibleRange, gutter col_widths
+  Stage 1: Layout        ← "which lines are visible? how wide is the gutter?"
+         │  → visible line range, column widths
          ▼
-  Stage 2: Format        ← "where does each grapheme appear on screen?"
-         │  → Vec<DisplayRow> + Vec<Grapheme> (per buffer line)
+  Stage 2: Format        ← "where does each character appear on screen?"
+         │  → one display row per visual line; one entry per grapheme with its column
          ▼
-  Stage 3: Style         ← "what colour/attribute does each grapheme get?"
-         │  → Vec<ResolvedStyle> (one per Grapheme)
+  Stage 3: Style         ← "what colour and decoration does each character get?"
+         │  → one style value per grapheme
          ▼
-  Stage 4: Compose       ← "write styled glyphs to the ratatui screen buffer"
+  Stage 4: Compose       ← "write styled glyphs to the screen buffer"
          │
          ▼
-  ratatui ScreenBuf      ← diffed against previous frame → terminal escape codes
+  Screen buffer          ← diffed against previous frame → terminal escape codes
 ```
 
-The pipeline is **fused**: instead of materialising all rows for the full
-visible range up front, `render_pane` processes one buffer line at a time
-(`format → style → compose`). Peak scratch memory is O(graphemes/line) rather
-than O(total visible graphemes).
+**Why four stages instead of one loop?** Each stage has a well-defined input
+and output, and each one is the natural extension point for a distinct class of
+feature:
 
-## Key types
+- **Gutter columns** (line numbers, git signs, diagnostic icons) plug into
+  Stage 4 — they draw in the gutter columns laid out by Stage 1.
+- **Syntax highlighting, search matches, bracket highlighting** plug into
+  Stage 3 — they add or override style on individual graphemes.
+- **Virtual lines** (inline diagnostics, diff context) plug into Stage 2 —
+  they inject rows that don't correspond to buffer lines.
+- **Floating overlays** (completion popup, hover) plug into Stage 4 — they
+  draw over the composed output.
 
-### `Pane`
+Adding syntax highlighting, for example, is a Stage 3 concern only. It reads
+the format output from Stage 2 and emits style values. It doesn't need to know
+about layout or composition — those stages are untouched.
 
-Holds everything the engine needs to render one editor viewport:
+## What each stage produces
 
-- `buffer_id` — key into `EngineView::buffers` (rope lives in the editor's `Buffer`)
-- `viewport: ViewportState` — `top_line`, `top_row_offset`, `horizontal_offset`, `width`, `height`
-- `selections: Vec<Selection>` — all cursor/selection positions, pre-sorted by `head`
-- `wrap_mode: WrapMode` — `None`, `Soft { width }`, `Word { width }`, or `Indent { width }`
-- `providers: ProviderSet` — pluggable gutter columns, highlight sources, virtual lines, overlays
+**Stage 1 (Layout)** computes which buffer lines fall in the visible viewport
+and how much horizontal space the gutter occupies. The output is a visible
+range plus per-column widths.
 
-### `ProviderSet`
+**Stage 2 (Format)** turns buffer text into *display rows*. One display row
+is one visual line on screen — in soft-wrap mode, a long buffer line produces
+multiple display rows (a "line start" row plus one or more "continuation"
+rows). Each display row is a sequence of grapheme entries, each annotated with
+its visual column, visual width (most characters are 1 column wide; CJK
+double-width characters are 2), and character class. Virtual lines (inserted
+by providers, not backed by buffer text) also appear here.
 
-A collection of trait objects that inject content into the pipeline:
+**Stage 3 (Style)** walks the grapheme entries and assigns a resolved style to
+each one — foreground colour, background colour, bold/italic/underline. Style
+comes from multiple layered sources: the base theme, syntax highlighting spans,
+selection highlighting, search match highlighting. Sources are checked in
+priority order; the highest-priority source that covers a grapheme wins.
 
-| Trait | Stage | Purpose |
-|-------|-------|---------|
-| `GutterColumn` | Compose | Line numbers, git signs, diagnostics icons |
-| `HighlightSource` | Style | Syntax, bracket match, search matches |
-| `VirtualLineSource` | Format | Inline diagnostics, git diff context |
-| `InlineDecoration` | Format | Inline virtual text (e.g. type hints) |
-| `OverlayProvider` | Compose | Floating overlays (completions, hover) |
-
-Providers are registered by the editor at startup. The `SharedHighlighter`
-wraps an `Arc<RwLock<Vec<...>>>` that the editor writes once per frame, then
-the engine reads during Stage 3.
-
-### `DisplayRow` and `Grapheme`
-
-Stage 2 (Format) produces one `DisplayRow` per visual row. A `DisplayRow` has:
-
-- `kind: RowKind` — `LineStart { line_idx }`, `Continuation`, `VirtualLine`, or `Filler`
-- `graphemes: Range<usize>` — index range into the shared `Vec<Grapheme>`
-- `indent_depth` — for indent guides
-
-Each `Grapheme` has:
-- `text_range` — byte range within the line text
-- `col` — visual column (accounting for tab width and CJK double-width)
-- `width` — visual width in terminal columns
-- `indent_depth`, `char_class`, `is_virtual`
-
-### `ResolvedStyle`
-
-The output of Stage 3: one style per `Grapheme`. Combines foreground colour,
-background colour, and modifier flags (bold, italic, underline, etc.) resolved
-from the theme's scope hierarchy.
-
-### `FrameScratch`
-
-Reusable scratch storage cleared at the start of each pane render. All `Vec`s
-stabilise their capacity after a few frames — no heap allocation in steady state.
+**Stage 4 (Compose)** writes styled grapheme text into the terminal's screen
+buffer. Gutter columns are drawn to the left, the content area to the right.
+Overlays (like the completion popup) are drawn last, on top of everything else.
 
 ## The fused loop
 
+Instead of materialising all rows for the full visible range before styling, the
+pipeline fuses stages 2–4 into a single loop over buffer lines:
+
 ```
-pre: populate_sorted_sels, pre-collect virtual lines, compute col_widths
-for each buffer line in visible range:
-    drain_virtual_lines(Before)       ← virtual lines anchored above this line
+for each buffer line in the visible range:
+    drain any virtual lines anchored above this line   ← virtual content first
     for each display row of this line:
-        format_line_row(...)          ← Stage 2: graphemes + row geometry
-        style_row(...)                ← Stage 3: highlight lookups, sel spans
-        compose_row(...)              ← Stage 4: write to ratatui buffer
-    drain_virtual_lines(After)        ← virtual lines anchored below this line
-tilde filler rows until viewport is full
+        format this row (Stage 2)
+        style this row  (Stage 3)
+        compose to screen (Stage 4)
+    drain any virtual lines anchored below this line
+fill remaining rows with empty filler (tilde rows, or blank)
 ```
+
+Processing one buffer line at a time keeps peak memory proportional to the
+width of one line, not the height of the viewport. The `Vec`s that hold
+scratch data (display rows, grapheme entries, style values) are reused across
+frames — they grow to their steady-state size after a few frames and then
+cause no further allocation.
 
 ## Scope-based theming
 
-Colours are resolved through a scope hierarchy (inspired by TextMate grammars).
-A `ScopeId` is a small integer registered in `ScopeRegistry`. The `Theme`
-maps scope IDs to `Style` values via prefix matching. Providers tag graphemes
-with scope IDs; Stage 3 resolves them to `ResolvedStyle` by walking up the
-scope tree until a match is found.
+Colours are resolved through a scope hierarchy (inspired by TextMate grammars,
+identical to Helix). A scope is a dot-separated string like
+`keyword.function` or `ui.cursor.match`. The theme maps scope *prefixes* to
+style values. A grapheme tagged with `keyword.function` will match first
+against the exact `keyword.function` scope, then `keyword`, then the base
+scope — using the most specific match found.
 
-## Where the rope lives
+This means a theme that only defines `keyword` automatically styles all more
+specific scopes like `keyword.function` and `keyword.type`, and a theme author
+can progressively refine by adding more specific entries without touching the
+rest.
 
-The rope (`ropey::Rope`) never moves into the engine. `EngineView::render()`
-accepts a `get_rope` closure so the editor can pass a borrow of its `Buffer`'s
-rope without any cloning or ownership transfer. This keeps the engine crate free
-of `Editor` dependencies.
+## The engine/editor boundary
+
+The engine crate is self-contained — it knows nothing about HUME's `Editor`
+struct, file loading, or modes. It receives a buffer's text via a closure
+(`get_rope`) rather than by owning or borrowing the buffer directly. This keeps
+the engine testable in isolation and prevents a circular dependency between the
+editor layer and the rendering layer.
+
+Per-frame data that crosses the boundary (search highlights, bracket match
+positions) is written by the editor into a shared slot before rendering begins,
+then read by the engine's Stage 3 providers during styling. The editor writes
+once per frame; the engine reads once per frame. No locking is needed during
+the render itself.

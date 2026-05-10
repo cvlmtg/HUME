@@ -1,27 +1,56 @@
 # Inner vs Around: The Text Object Convention
 
+## Why inner and around exist
+
+When you want to change what's inside parentheses, you don't want to select the
+parentheses themselves — just their contents. When you want to *delete* the
+parentheses along with their contents, you need the parens included. This
+distinction comes up constantly in code editing, and Vim named it first:
+"inner" for the contents, "around" for contents plus delimiters.
+
+The convention is productive because it composes: every text object that has a
+well-defined "inside" and "outside" gets both variants for free, and you learn
+one rule that applies everywhere.
+
+## The two flavours
+
 Every text object in HUME comes in two flavours:
 
-- **`inner` (`i` prefix)**: the content *without* the delimiters. `i(` selects
-  the text inside parentheses; `iw` selects the word without surrounding space.
-- **`around` (`a` prefix)**: the content *including* the delimiters. `a(`
-  selects the parentheses and their contents; `aw` selects the word plus one
-  adjacent whitespace run.
+- **inner (`i` prefix)**: the content *without* the delimiters. `mi(` selects
+  the text inside parentheses; `miw` selects the word without surrounding
+  space.
+- **around (`a` prefix)**: the content *including* the delimiters. `ma(` selects
+  the parentheses and their contents; `maw` selects the word plus one adjacent
+  whitespace run.
 
-In code, `inner_bracket` and `around_bracket` share `find_bracket_pair` to
-locate the pair, then diverge on what range to return:
+## HUME's prefix: `mi` and `ma`
 
-```rust
-fn inner_bracket(buf, pos, open, close) -> Option<(usize, usize)> {
-    let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
-    Some((open_pos + 1, close_pos - 1))  // exclude the brackets
-}
+Vim uses `i` and `a` directly as the prefix key: `iw`, `a(`. HUME prefixes
+with `m` (mnemonic: **m**atch or **m**ore): `miw`, `ma(`. This frees `i` and
+`a` for their primary use as "enter insert before/after cursor" commands. The
+`m` prefix also signals "I'm about to name a text region" — a consistent entry
+point for text objects, surround operations, and other structural commands.
 
-fn around_bracket(buf, pos, open, close) -> Option<(usize, usize)> {
-    find_bracket_pair(buf, pos, open, close)  // include the brackets
-}
-```
+## The trailing-whitespace rule for words
 
-The around-word rule is more nuanced: prefer including trailing whitespace
-(so deleting `aw` leaves no double-space), fall back to leading whitespace if
-there is no trailing space. This matches Vim's long-established behaviour.
+For bracket text objects, inner/around is straightforward: include or exclude
+the delimiter characters. For word text objects, "around" requires a choice:
+which whitespace runs to include when neither a leading nor trailing run is
+obvious?
+
+The rule HUME (following Vim) uses: prefer to include trailing whitespace,
+fall back to leading whitespace if there is no trailing space.
+
+The reason: deleting "a word" should leave the surrounding text tidy. If you
+have `one two three` and delete `aw` with the cursor on `two`, you want
+`one three` with one space — not `one  three` (double-space) or `onetwo` (no
+space). Including the trailing space produces the clean result in the common
+case; the leading fallback handles the last word in a line.
+
+## In practice
+
+The implementations share the code that locates the extent of the text object
+(finding the bracket pair, scanning the word boundary) and differ only in what
+range they return: inner stops just inside the delimiters, around includes them.
+Both use the same underlying position logic — the `i`/`a` distinction is a
+one-line change at the end.

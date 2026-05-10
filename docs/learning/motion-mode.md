@@ -1,5 +1,11 @@
 # MotionMode: Separating Position from Anchor Semantics
 
+In most text editors, "move the cursor" and "extend the selection" are handled
+by separate key bindings — arrow keys move, Shift+arrow extends. In HUME, the
+two behaviours are the same command with a different mode parameter. This is
+why `h` can both move the cursor (normal use) and grow a selection (in extend
+mode) without needing a separate `"extend-left"` command.
+
 ## A concrete walkthrough
 
 Buffer: `"hello world\n"`, cursor on `'h'` (position 0).

@@ -60,86 +60,45 @@ eliminates `e`/`E`: in Helix/Vim, `e` reaches the end of the current word
 (complementing `w` which lands on the start of the next). In HUME, `w`
 already selects through the end, making `e` redundant.
 
-## Line crossing: the double-step in `select_next_word`
+## Line crossing
 
-`Eol` is its own `CharClass` (see [CharClass](charclass.md)), so `next_word_start`
-always stops at a `\n`. A single call from the end of a line lands on the
-newline itself, not the first word of the next line. `select_next_word` adds
-a second step when this happens:
+The word boundary model treats end-of-line as its own character class (see
+[CharClass](charclass.md)). This means a forward word search always stops *at*
+the newline character rather than skipping over it. To make `w` cross line
+boundaries as users expect, the implementation takes a second forward step when
+it lands on a non-final newline — treating the newline as whitespace for that
+step only.
 
-```rust
-let mut word_start = next_word_start(buf, pos, is_boundary);
+The effect: `w` lands on the first word of the next line, not on the newline
+itself.
 
-// If we landed on a non-trailing '\n', cross the line.
-if word_start < len.saturating_sub(1) {
-    if classify_char(buf.char_at(word_start).expect("word_start < len")) == CharClass::Eol {
-        word_start = next_word_start(buf, word_start, is_boundary);
-    }
-}
-```
+## Mid-word behaviour of `b`
 
-The second call treats the `\n` as whitespace and advances to the first word
-of the next line — making `w` cross line boundaries as users expect.
+Looking backward from the middle of a word, a raw "find previous word start"
+call would return the start of the *current* word — not the previous one. `b`
+wants to land on the word *before* the cursor, whether the cursor is between
+words or inside one.
 
-## Mid-word detection: the double-step in `select_prev_word`
+The fix is a detection step: after finding the current word's boundaries, check
+whether the cursor falls inside them. If it does, take one more backward step
+to land on the previous word. The visible guarantee: `b` always selects a
+*different* word, never the one you're already on.
 
-`prev_word_start` finds the start of the word *at or containing* a position.
-When the cursor is mid-word, it returns the current word's start — not the
-previous word. `select_prev_word` detects this and takes an extra backward step:
+## Combining characters and word end positions
 
-```rust
-let word_start = prev_word_start(buf, pos, is_boundary);
-let word_end   = find_word_end_from(buf, word_start, is_boundary);
+A word's end position is stored as the position of the **last character** of
+the final grapheme cluster, not the start of it. For most characters this is
+the same thing. For a combining sequence like `café` where `é` is encoded as
+a base `e` followed by a combining accent mark (two separate Unicode code
+points), stopping at the base `e` would leave the accent mark outside the
+selection — an orphaned combining mark that no longer has a base to attach to.
 
-// pos is inside the current word — one more step back to reach the previous word.
-if pos >= word_start && pos <= word_end {
-    if word_start == 0 { return None; }  // already at the first word
-    let prev_start = prev_word_start(buf, word_start, is_boundary);
-    let prev_end   = find_word_end_from(buf, prev_start, is_boundary);
-    return Some((prev_start, prev_end));
-}
-```
+Selecting through the accent mark ensures the whole visible character is
+covered, and any subsequent deletion removes the whole grapheme.
 
-This means `b` always selects a *different* word — the one before the cursor —
-whether the cursor is between words or inside one.
+## Extend-mode word selection
 
-## `find_word_end_from` and multi-codepoint graphemes
-
-`find_word_end_from` returns the position of the **last codepoint** of the
-final grapheme cluster in the word. For single-codepoint graphemes (the common
-case) this is the grapheme's only position. For a combining sequence like
-`café` where `é` = `U+0065 + U+0301`:
-
-```
-c  a  f  e  ◌́
-0  1  2  3  4
-              ↑  find_word_end_from returns 4, not 3
-```
-
-Returning 3 (the base `e`) would leave `U+0301` outside the selection — an
-orphaned combining mark. Returning 4 ensures `Selection::new(word_start, 4)`
-covers the complete grapheme.
-
-This interacts with `Selection::end_inclusive(buf)` in edit operations. Edit
-code calls `end_inclusive` (which computes `next_grapheme_boundary(buf, end) - 1`)
-instead of `end()` when building deletion ranges. For a selection built with
-`find_word_end_from` (which already stored the last codepoint as `head`), this
-is a no-op. For other selections (e.g. a text object that stopped at a
-grapheme-start), `end_inclusive` extends to the full grapheme. Both paths
-handle combining marks correctly.
-
-## Two sets of word commands
-
-Word motions appear in two flavours with different semantics:
-
-| Command | Framework | Semantics |
-|---------|-----------|-----------|
-| `cmd_select_next_word` | `apply_word_select` | Fresh selection of the whole word |
-| `cmd_extend_select_next_word` | `apply_word_select_extend_forward` | Union of current selection and next word |
-
-Both sets are hand-written functions — neither can be generated by the
-`motion_cmd!` macro, which only wraps `apply_motion` (position-to-position
-functions). The select variants call `apply_word_select`; the extend variants
-call `apply_word_select_extend_forward` or `apply_word_select_extend_backward`,
-which union the current selection with the newly selected word rather than
-replacing it.
+When word motions run in extend mode (sticky extend, or Ctrl+key), each press
+grows the selection to encompass the next (or previous) word rather than
+replacing the selection entirely. `w` in extend mode adds the next word to
+whatever is already selected; `b` adds the previous word.

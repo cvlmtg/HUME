@@ -43,9 +43,9 @@ to every selection in the set simultaneously. The *primary* is just the
 2. **Viewport scrolling**: the editor scrolls to keep the primary visible.
    Other cursors may be off-screen — that is fine and expected.
 
-3. **Single-selection commands**: `cmd_keep_primary_selection` (keep primary
-   only) and `cmd_remove_primary_selection` (remove primary) operate on
-   exactly one selection. The primary determines which one.
+3. **Single-selection commands**: "keep primary" collapses the set to just the
+   primary cursor; "remove primary" removes it and promotes the next one.
+   Both commands operate on exactly one selection, identified by the primary.
 
 4. **Registers**: when you yank with N cursors, the
    register stores a **list of N strings**, one per selection in document
@@ -71,6 +71,10 @@ to every selection in the set simultaneously. The *primary* is just the
    **Why not `a`–`z`?** Traditional named registers borrow letters for text
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
    this: numbers for user storage, letters for special registers.
+
+   The `0`–`9` slots double as a *kill ring* — a bounded history of recent
+   captures that prevents an accidental delete from erasing a previous yank.
+   See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
    **Macro model (M5):** macros are stored in registers (Vim model, not
    Helix's single-slot model). `QQ` records into register `q` (the default
@@ -101,19 +105,16 @@ to every selection in the set simultaneously. The *primary* is just the
    yank with `"0p`; HUME avoids the problem by never clobbering the register
    on replace).
 
-   The return type of `paste_after`/`paste_before` is `(Buffer, SelectionSet,
-   ChangeSet, Vec<String>)`. The fourth element contains the displaced text
-   (empty strings for cursor pastes). The editor layer writes it back to the
-   source register, completing the swap.
+   The paste operation returns the displaced text alongside the new buffer so
+   the editor layer can swap it back into the source register. For cursor
+   pastes the displaced text is empty, so the swap is a no-op.
 
-**Why cycle the primary?** In a keyboard-only multi-cursor world,
-`cmd_cycle_primary_forward` and `cmd_cycle_primary_backward` are how you
-"focus" a different cursor — to make the viewport scroll to it, read its
-position in the status bar, or target it with `cmd_remove_primary_selection`.
-There is no mouse click to promote a cursor; cycling is the keyboard
-equivalent.
+**Why cycle the primary?** In a keyboard-only multi-cursor world, cycling
+forward and backward through primaries is how you "focus" a different cursor
+— to make the viewport scroll to it, read its position in the status bar, or
+remove just that cursor. There is no mouse click to promote a cursor; cycling
+is the keyboard equivalent.
 
-Internally, `SelectionSet.primary` is an index into the sorted
-`Vec<Selection>`. The index is updated whenever the set changes: merges that
-absorb the primary, removals before or at it, and splits all adjust the index
-so it keeps pointing at the intended selection.
+The primary is just a pointer into the sorted set of selections. It is updated
+automatically whenever the set changes: merges, removals, and splits all adjust
+the pointer so it keeps tracking the intended selection.

@@ -74,11 +74,11 @@ grapheme boundary** as a char offset.
 
 | Unit | Granularity | Role in HUME |
 |------|-------------|--------------|
-| Byte offset | Raw memory | Internal to `ropey` — never exposed |
-| Char offset | Unicode scalar value (`char`) | Storage, selections, `Buffer` API |
-| Grapheme cluster | User-perceived character | Cursor movement, motions (`grapheme.rs`) |
+| Byte offset | Raw memory | Internal to the text storage library — never exposed |
+| Char offset | Unicode scalar value (`char`) | Storage, selections, buffer API |
+| Grapheme cluster | User-perceived character | Cursor movement and motions |
 
-The boundary between layers is strict: `grapheme.rs` **consumes** char offsets
-and **produces** char offsets that happen to land on grapheme boundaries.
-Everything above it works purely in char offsets and never needs to know about
-bytes or grapheme internals.
+The boundary between layers is strict: the grapheme layer **consumes** char
+offsets and **produces** char offsets that happen to land on grapheme
+boundaries. Everything above it works purely in char offsets and never needs
+to know about bytes or grapheme internals.

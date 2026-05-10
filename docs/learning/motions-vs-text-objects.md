@@ -33,23 +33,16 @@ ignorant of multi-cursor*. It receives one position and returns one result.
 The framework function handles iterating over all selections and merging any
 that converge to the same range.
 
-```rust
-// Motion inner function: position → position
-fn move_right(buf: &Buffer, head: usize) -> usize { ... }
+A motion inner function answers a coordinate question — "where does the cursor
+go?" — and returns a position. A text object inner function returns a range, or
+nothing if no match exists at the current position. On "no match", the existing
+selection is preserved — pressing inner-bracket when not inside any brackets is
+a no-op.
 
-// Text object inner function: position → Option<(start, end)>
-fn inner_word_impl(buf: &Buffer, pos: usize) -> Option<(usize, usize)> { ... }
-```
+## Auto-merge after every motion or text object
 
-Returning `Option` from a text object inner function means "no match at this
-position". On `None`, the existing selection is preserved — `mi(` when not
-inside parens is a no-op.
-
-## `map_and_merge`
-
-Both `apply_motion` and `apply_text_object` use `map_and_merge` on the
-`SelectionSet`. After mapping each selection through the inner function, any
-selections that have converged to the same range are automatically merged into
-one. This is essential for multicursor correctness: if two cursors are both
-inside the same bracket pair and you press `mi(`, you don't want two identical
-overlapping selections — you want one.
+After every motion or text object, selections that have converged to the same
+range are automatically merged into one. This is essential for multicursor
+correctness: if two cursors are both inside the same bracket pair and you press
+inner-bracket, you want one combined selection, not two identical overlapping
+ones.

@@ -154,20 +154,20 @@ The ledger makes three guarantees:
    The `(command-plugin name)` builtin surfaces this; the editor uses it
    internally for conflict detection.
 
-## The contract for mutating builtins
+## What plugin authors need to know
 
-Any Steel builtin that modifies shared editor state must participate in the
-ledger. The required pattern is:
+Any built-in function available to plugins that modifies shared editor state
+must participate in the ledger. The required pattern is:
 
 1. Read the current live value and the current owner.
 2. Record them in the ledger under a stable key before writing anything.
 3. Write the new value to the live state.
 
-If a builtin skips step 2 — writing directly to live state without a ledger
-record — the mutation is invisible to the attribution system. The owner-of
-query returns `Core` even though a plugin changed it. On unload, there's no
+If a built-in skips step 2 — writing directly to live state without a ledger
+record — the mutation is invisible to the attribution system. Asking who owns
+a key returns "Core" even though a plugin changed it. On unload, there's no
 entry to return, so the prior value is never restored. The plugin leaves a
 permanent mark on the editor even after it's gone.
 
-This contract applies to every piece of editor state that plugins can
-meaningfully customise: settings, keymaps, and command registrations.
+This applies to every piece of editor state that plugins can meaningfully
+customise: settings, keymaps, and command registrations.

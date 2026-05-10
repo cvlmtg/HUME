@@ -4,37 +4,42 @@
 
 Vim and Helix distinguish two kinds of "word":
 
-- `word` (lowercase): a run of alphanumeric/underscore characters, a run of
-  punctuation, or a run of whitespace. Any category change is a boundary.
-- `WORD` (uppercase): a run of any non-whitespace characters. Only a
-  whitespace boundary counts.
+- `word` (lowercase, `w`/`b`/`iw`): a run of alphanumeric characters
+  (letters, digits, underscore), a run of punctuation, or a run of whitespace.
+  Any class change is a boundary.
+- `WORD` (uppercase, `W`/`B`/`iW`): a run of any non-whitespace characters.
+  Only a whitespace boundary counts.
 
-This is captured by `CharClass` and two boundary predicates:
+HUME classifies every character into one of four classes:
 
-```rust
-pub(crate) enum CharClass { Word, Punctuation, Space, Eol }
+| Class | Members | Example chars |
+|-------|---------|---------------|
+| Word | alphanumeric + underscore | `a`–`z`, `A`–`Z`, `0`–`9`, `_` |
+| Punctuation | printable non-word non-space | `.`, `(`, `#`, `-`, `"` |
+| Space | horizontal whitespace | space, tab |
+| Eol | end-of-line | `\n` |
 
-// word: any class change is a boundary
-pub(crate) fn is_word_boundary(a: CharClass, b: CharClass) -> bool { a != b }
+For `word` boundaries, any adjacent class change is a boundary — `Word`→`Punctuation`,
+`Punctuation`→`Space`, and so on. For `WORD` boundaries, Punctuation is
+treated as Word — the only boundaries that count are `(Word or Punctuation)`
+↔ `(Space or Eol)`.
 
-// WORD: treat Punctuation as Word — only whitespace/Eol changes count
-pub(crate) fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
-    let merge = |c: CharClass| if c == CharClass::Punctuation { CharClass::Word } else { c };
-    merge(a) != merge(b)
-}
-```
-
-Text object and motion implementations take the boundary predicate as a
-parameter (`impl Fn(CharClass, CharClass) -> bool`), so `inner_word_impl`
-serves both `iw` and `iW` without duplication.
+The same word-finding logic powers both `w` and `W` (and `iw` and `iW`) — the
+boundary rule is passed in as a parameter so there is no duplicated code.
 
 ## Why Eol is its own class
 
-`\n` could be treated as `Space` — after all, it is whitespace. But if it were,
-`w` (move to next word start) would skip over newlines the same way it skips
-spaces, meaning it could jump two logical lines in one keypress.
+`\n` could be treated as `Space` — it is whitespace, after all. But if it
+were, `w` (move to next word start) would skip over newlines the same way it
+skips spaces. A cursor at the end of one line would jump directly to the first
+word of the next line — or further if successive lines are blank. HUME follows
+Helix's behaviour here: `w` stops at the newline, not past it.
 
-Helix stops `w` at newlines: moving forward from the last word on a line lands
-on the `\n`, not on the first word of the next line. Making `Eol` a distinct
-class in `CharClass` is what enforces this — the `\n` is always a class
-boundary, so word-forward stops there.
+Making `Eol` a distinct class is what enforces this — a newline is always a
+class change from whatever precedes it, so word-forward always pauses there.
+The [word motions doc](word-motions.md) describes how a second step then crosses
+the newline when the user expects to land on the next word.
+
+Treating `Eol` as distinct also gives text objects cleaner boundaries: an
+`iw` selection on the last word of a line doesn't accidentally absorb the
+newline, and a `Space` skip always halts at line ends.

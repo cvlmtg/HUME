@@ -89,47 +89,47 @@ internally.
 
 ## Transactions: changesets with cursor state
 
-A `ChangeSet` describes only the text change. A `Transaction` pairs it with the
-**post-apply** `SelectionSet` — where the cursors land *after* the changeset is
-applied. This invariant holds for every Transaction, forward or inverse.
+A changeset describes only the text change. A *Transaction* pairs it with the
+cursor positions that should be in effect **after** the changeset is applied.
+This invariant holds for every Transaction, forward or inverse — the cursor
+state stored is always where you land after running the transaction, never
+before.
 
-At edit time you build **two** Transactions from the same changeset:
+The invariant matters because it makes forward and inverse perfectly symmetric.
+To undo: apply the inverse transaction. The cursors that come with it are where
+you were before the edit. To redo: apply the forward transaction. The cursors
+that come with it are where the edit originally left you. Undo is just "apply
+the inverse" — no special cursor logic needed.
 
-```text
-// 1. Capture the inverse BEFORE apply — both read from the same old_buf.
-let inv_cs  = cs.invert(&old_buf);
-let new_buf = cs.apply(&old_buf);         // old_buf still valid after this
+At edit time you build two Transactions from the same changeset:
 
-// 2. Build both Transactions from the same cs/inv_cs.
-let forward = Transaction::new(cs,     post_edit_sels);  // for redo
-let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
-```
+- The **inverse** (for undo) pairs the inverse changeset with the *pre-edit*
+  cursor positions. Applying it returns both the text and the cursors to where
+  they were before the edit.
+- The **forward** (for redo) pairs the original changeset with the *post-edit*
+  cursor positions.
 
-The inverse Transaction's `selection` is `pre_edit_sels` — the cursors from
-*before* the edit — because that is where applying the inverse will leave the
-cursors. The "always post-apply" invariant holds: after running the inverse,
-the cursors are at `pre_edit_sels`.
-
-**Timing matters.** `invert(&old_buf)` must be called before discarding
-`old_buf`. `invert` reads deleted text from the original rope to reconstruct
-the `Insert` operations — it captures those chars at inversion time. In
-practice `Buffer::apply_edit` enforces this: it calls `cs.invert(&self.buf)`
-while `self.buf` still holds the pre-edit content, then overwrites it.
+**Timing matters.** The inverse must be computed *before* the forward edit is
+applied, because inverting a changeset reads the deleted text from the original
+buffer to reconstruct what was there. Once the buffer is overwritten with the
+new content, the original deleted text is gone.
 
 The history manager stores both Transactions. Applying the inverse restores
-both the text and the cursor positions in a single step (undo); applying the
-forward Transaction redoes the edit.
+both the text and the cursor positions in a single step.
 
 ## The undo tree
 
-The history manager stores forward/inverse `Transaction` pairs in an
-**arena** — a `Vec` that owns all the nodes of the undo tree. Instead of
-linking nodes with pointers or `Rc<RefCell<...>>`, each node stores plain
-integer indices into the `Vec`. Lookups are O(1) array accesses; there are no
-reference cycles for the borrow checker to worry about; and the allocator sees
-one contiguous allocation instead of many small heap objects. The trade-off is
-that nodes are never individually freed — the whole arena is dropped at once.
-For an undo tree that only grows, this is fine.
+HUME's undo is a **tree**, not a stack. Every edit creates a new branch point;
+undoing and then making a different edit creates a new branch, and the old
+branch is preserved. You can navigate back to any past state.
 
-The buffer layer orchestrates `Buffer`, `SelectionSet`, and `History` together,
-and enforces the invert-before-apply timing invariant in `apply_edit`.
+The tree is stored as a flat list of nodes where each node holds integer
+indices pointing at its parent and children — like a linked list but with
+plain numbers instead of pointers. Lookups are immediate array accesses; the
+tree structure doesn't cause any complexity for the memory management system.
+The trade-off is that nodes are never individually freed — the whole tree is
+dropped only when the buffer closes. For a tree that only ever grows, this
+is a fine trade.
+
+The history manager enforces that the inverse changeset is always computed
+before the edit is applied to the buffer, keeping the timing invariant intact.
