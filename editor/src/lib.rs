@@ -1,3 +1,5 @@
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("HUME_GIT_SHA"));
+
 pub(crate) mod auto_pairs;
 pub(crate) mod core;
 pub(crate) mod cursor;

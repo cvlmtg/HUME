@@ -2136,3 +2136,12 @@ pub(super) fn typed_theme_debug(
     ed.report(Severity::Info, lines.join("\n"));
     Ok(())
 }
+
+pub(super) fn typed_version(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    ed.report(Severity::Info, format!("hume {}", crate::VERSION));
+    Ok(())
+}

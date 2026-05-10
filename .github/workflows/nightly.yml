@@ -1,0 +1,95 @@
+name: nightly
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Drift canary — uncomment to rebuild weekly even when main is quiet:
+  # schedule:
+  #   - cron: '0 4 * * 0'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            layout: unix
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            layout: unix
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            layout: windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so build.rs can read the git SHA
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked -p hume --target ${{ matrix.target }}
+
+      - name: Stage archive
+        shell: bash
+        run: bash packaging/stage.sh ${{ matrix.target }} ${{ matrix.layout }}
+
+      - name: Pack tar.gz
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd dist/stage
+          tar czf "../$(ls).tar.gz" "$(ls)"
+
+      - name: Pack zip
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = Get-ChildItem dist/stage | Select-Object -First 1 -ExpandProperty Name
+          Compress-Archive -Path "dist/stage/$name" -DestinationPath "dist/$name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (${{ github.sha }})
+          prerelease: true
+          make_latest: false
+          files: dist/*
