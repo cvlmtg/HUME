@@ -2145,3 +2145,54 @@ pub(super) fn typed_version(
     ed.report(Severity::Info, format!("hume {}", crate::VERSION));
     Ok(())
 }
+
+pub(super) fn typed_tutor(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    // Resolve the install source. Fail fast on missing runtime or file.
+    let Some(runtime) = crate::os::dirs::runtime_dir() else {
+        return Err(CommandError(
+            "runtime directory not found (set HUME_RUNTIME to override)".into(),
+        ));
+    };
+    let source_path = runtime.join("tutor.txt");
+    let source = std::fs::canonicalize(&source_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            CommandError(format!(
+                "tutor.txt not found at {} (set HUME_RUNTIME to override)",
+                source_path.display()
+            ))
+        } else {
+            CommandError(format!("could not access tutor.txt: {e}"))
+        }
+    })?;
+
+    // Compute a per-process tmp path so `:w` never touches the install source.
+    // Canonicalize the parent dir (which we create) so the path matches what
+    // BufferStore stores on macOS (/private/var/... vs /var/...).
+    let tmp_dir = std::env::temp_dir().join(format!("hume-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| CommandError(format!("could not create tutor tmp dir: {e}")))?;
+    let canonical_tmp = std::fs::canonicalize(&tmp_dir)
+        .map_err(|e| CommandError(format!("could not canonicalize tutor tmp dir: {e}")))?
+        .join("tutor.txt");
+
+    // If a buffer is already open at the tmp path, switch — no re-copy so that
+    // unsaved in-memory edits are preserved.
+    if let Some(bid) = ed.buffers.find_by_path(&canonical_tmp) {
+        ed.switch_to_buffer_with_jump(bid);
+        return Ok(());
+    }
+
+    // No live buffer at tmp. Copy fresh source content (overwrites any stale
+    // file from a prior `:bd!`), then open the copy.
+    std::fs::copy(&source, &canonical_tmp)
+        .map_err(|e| CommandError(format!("could not copy tutor.txt to tmp: {e}")))?;
+    let (bid, _) = ed
+        .open_or_dedup(&canonical_tmp)
+        .map_err(|e| CommandError(format!("could not open tutor copy: {e}")))?;
+    ed.switch_to_buffer_with_jump(bid);
+    Ok(())
+}

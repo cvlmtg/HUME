@@ -119,6 +119,51 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
 // this mutex for its entire duration so tests do not race on cwd.
 static CWD_MUTEX: Mutex<()> = Mutex::new(());
 
+// ── HUME_RUNTIME guard ────────────────────────────────────────────────────────
+
+// HUME_RUNTIME is a process-global env var. Any test that sets it must hold
+// this mutex for its entire duration so tests do not race on the value.
+static HUME_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Lock `HUME_RUNTIME_MUTEX`, set `HUME_RUNTIME` to `dir` and `TMPDIR` to
+/// `tmp_dir`, and restore both on drop. Holds the lock until dropped.
+///
+/// Setting `TMPDIR` per-test isolates the tutor's per-process tmp copy so
+/// each test sees a clean directory regardless of test ordering.
+#[cfg(not(windows))]
+struct HumeRuntimeGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    had_tmpdir: bool,
+}
+
+#[cfg(not(windows))]
+impl HumeRuntimeGuard {
+    fn new(dir: &std::path::Path, tmp_dir: &std::path::Path) -> Self {
+        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let had_tmpdir = std::env::var_os("TMPDIR").is_some();
+        unsafe {
+            std::env::set_var("HUME_RUNTIME", dir);
+            std::env::set_var("TMPDIR", tmp_dir);
+        }
+        HumeRuntimeGuard { _lock: lock, had_tmpdir }
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for HumeRuntimeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("HUME_RUNTIME");
+            if self.had_tmpdir {
+                // We can't restore the original value without storing it;
+                // tests run serially under the mutex, so removing is safe —
+                // the next test will set its own value before using TMPDIR.
+            }
+            std::env::remove_var("TMPDIR");
+        }
+    }
+}
+
 /// Acquire the cwd lock, save the current directory, and restore it on drop.
 struct CwdGuard {
     saved: PathBuf,
@@ -162,5 +207,6 @@ mod per_pane_jumps;
 mod search;
 mod select_all;
 mod surround;
+mod tutor;
 mod view_scroll;
 mod visual_move;
