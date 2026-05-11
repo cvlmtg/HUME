@@ -123,19 +123,40 @@ pub(crate) fn restore() -> io::Result<()> {
     }
 }
 
-/// Install a panic hook that restores the terminal before printing the panic
-/// message.
+/// RAII guard that calls [`restore`] when dropped. Ensures the terminal is
+/// returned to a sane state on every exit path — clean return, `?`-propagated
+/// error, panic unwinding.
 ///
-/// Without this, a panic leaves the terminal in raw mode / alternate screen
-/// and the user sees nothing (or a garbled shell). Call once at the top of
-/// `main` before any other setup.
-pub(crate) fn install_panic_hook() {
-    let original = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        // Best-effort — ignore errors; we're already panicking.
-        let _ = restore();
-        original(info);
-    }));
+/// Declare the guard *before* the `Terminal` value so that on unwind the
+/// `Terminal`'s `BufWriter` flushes first (any buffered render bytes hit the
+/// alt screen while it is still active) and [`restore`] runs last.
+///
+/// After an explicit [`restore`]`()?` on the happy path, call [`disarm`] to
+/// suppress the drop-time call.
+///
+/// [`disarm`]: TerminalGuard::disarm
+pub(crate) struct TerminalGuard {
+    armed: bool,
+}
+
+impl TerminalGuard {
+    pub(crate) fn new() -> Self {
+        Self { armed: true }
+    }
+
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            if let Err(e) = restore() {
+                eprintln!("hume: terminal restore failed: {e}");
+            }
+        }
+    }
 }
 
 /// Emit an OSC 12 sequence to set the terminal cursor colour for `mode`.

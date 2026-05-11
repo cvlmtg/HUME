@@ -10,6 +10,27 @@ pub(crate) mod path;
 pub(crate) mod process;
 pub(crate) mod terminal;
 
+/// Install a process-wide signal handler that restores the terminal before
+/// exiting.
+///
+/// Catches SIGINT/SIGTERM/SIGHUP on Unix and Ctrl+C/Ctrl+Break on Windows.
+/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
+/// cleared), so this primarily covers `kill <pid>`, `kill -HUP`, and
+/// terminal-window close sent by the OS.
+///
+/// The handler runs on a dedicated worker thread managed by `ctrlc`, so it is
+/// safe to call `restore()` (which allocates and writes to stdout).
+pub(crate) fn install_signal_handlers() -> Result<(), ctrlc::Error> {
+    ctrlc::set_handler(|| {
+        if let Err(e) = crate::os::terminal::restore() {
+            eprintln!("hume: terminal restore failed (signal): {e}");
+        }
+        // Exit with the conventional "killed by signal" code. ctrlc does not
+        // tell us which signal fired, so 130 is a reasonable default.
+        std::process::exit(130);
+    })
+}
+
 /// Probe the terminal for kitty keyboard protocol support.
 ///
 /// Dispatches to the platform-specific implementation in `unix` or `windows`.
