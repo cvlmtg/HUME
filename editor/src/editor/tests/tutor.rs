@@ -21,10 +21,8 @@ fn write_stub_tutor(dir: &std::path::Path) -> std::path::PathBuf {
 #[test]
 #[cfg(not(windows))]
 fn tutor_opens_buffer_with_lesson_content() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    write_stub_tutor(runtime.path());
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let guard = HumeRuntimeGuard::new();
+    write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
@@ -38,7 +36,7 @@ fn tutor_opens_buffer_with_lesson_content() {
     // Buffer path must be inside the test TMPDIR, not the runtime source dir.
     let buf_path = ed.doc().path().expect("tutor buffer must have a path set");
     assert!(
-        buf_path.starts_with(std::fs::canonicalize(tmp.path()).unwrap()),
+        buf_path.starts_with(std::fs::canonicalize(guard.tmp.path()).unwrap()),
         "tutor buffer path must be inside TMPDIR, got: {buf_path:?}"
     );
 }
@@ -48,10 +46,8 @@ fn tutor_opens_buffer_with_lesson_content() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_is_idempotent() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    write_stub_tutor(runtime.path());
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let guard = HumeRuntimeGuard::new();
+    write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     let count_before = ed.buffers.iter().count();
@@ -84,10 +80,8 @@ fn tutor_is_idempotent() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_after_bd_opens_fresh() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    write_stub_tutor(runtime.path());
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let guard = HumeRuntimeGuard::new();
+    write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
@@ -114,10 +108,8 @@ fn tutor_after_bd_opens_fresh() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_after_save_as_opens_fresh() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    write_stub_tutor(runtime.path());
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let guard = HumeRuntimeGuard::new();
+    write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
@@ -125,7 +117,7 @@ fn tutor_after_save_as_opens_fresh() {
     let count_after_first = ed.buffers.iter().count();
 
     // Simulate save-as: change the tutor buffer's path to a different location.
-    let elsewhere = tmp.path().join("elsewhere.txt");
+    let elsewhere = guard.tmp.path().join("elsewhere.txt");
     std::fs::write(&elsewhere, STUB).unwrap();
     let elsewhere_canonical = std::fs::canonicalize(&elsewhere).unwrap();
     ed.doc_mut().set_path(Some(elsewhere_canonical));
@@ -154,10 +146,8 @@ fn tutor_after_save_as_opens_fresh() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_buffer_is_editable() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    write_stub_tutor(runtime.path());
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let guard = HumeRuntimeGuard::new();
+    write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
@@ -186,10 +176,8 @@ fn tutor_buffer_is_editable() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_missing_file_returns_error() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
     // Do NOT write tutor.txt — the runtime directory is empty.
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
+    let _guard = HumeRuntimeGuard::new();
 
     let mut ed = editor_from("-[h]>ello\n");
     let count_before = ed.buffers.iter().count();
@@ -217,11 +205,9 @@ fn tutor_missing_file_returns_error() {
 #[test]
 #[cfg(not(windows))]
 fn tutor_save_does_not_overwrite_source() {
-    let runtime = tempfile::tempdir().unwrap();
-    let tmp = tempfile::tempdir().unwrap();
-    let source_path = runtime.path().join("tutor.txt");
+    let guard = HumeRuntimeGuard::new();
+    let source_path = guard.runtime.path().join("tutor.txt");
     std::fs::write(&source_path, STUB).unwrap();
-    let _guard = HumeRuntimeGuard::new(runtime.path(), tmp.path());
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();

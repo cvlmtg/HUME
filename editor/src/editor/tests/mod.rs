@@ -125,40 +125,42 @@ static CWD_MUTEX: Mutex<()> = Mutex::new(());
 // this mutex for its entire duration so tests do not race on the value.
 static HUME_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
 
-/// Lock `HUME_RUNTIME_MUTEX`, set `HUME_RUNTIME` to `dir` and `TMPDIR` to
-/// `tmp_dir`, and restore both on drop. Holds the lock until dropped.
+/// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
+/// set `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
 ///
-/// Setting `TMPDIR` per-test isolates the tutor's per-process tmp copy so
-/// each test sees a clean directory regardless of test ordering.
+/// The mutex is acquired BEFORE the tempdirs are created so that a concurrent
+/// guarded test's TMPDIR does not cause our tempdirs to be nested inside it —
+/// which would make them disappear when that test's guard drops and deletes its
+/// tree.
 #[cfg(not(windows))]
 struct HumeRuntimeGuard {
+    runtime: tempfile::TempDir,
+    tmp: tempfile::TempDir,
+    // Last field — released after runtime/tmp dirs are deleted.
     _lock: std::sync::MutexGuard<'static, ()>,
-    had_tmpdir: bool,
 }
 
 #[cfg(not(windows))]
 impl HumeRuntimeGuard {
-    fn new(dir: &std::path::Path, tmp_dir: &std::path::Path) -> Self {
+    fn new() -> Self {
         let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let had_tmpdir = std::env::var_os("TMPDIR").is_some();
+        let runtime = tempfile::tempdir().expect("tempdir");
+        let tmp = tempfile::tempdir().expect("tempdir");
         unsafe {
-            std::env::set_var("HUME_RUNTIME", dir);
-            std::env::set_var("TMPDIR", tmp_dir);
+            std::env::set_var("HUME_RUNTIME", runtime.path());
+            std::env::set_var("TMPDIR", tmp.path());
         }
-        HumeRuntimeGuard { _lock: lock, had_tmpdir }
+        HumeRuntimeGuard { runtime, tmp, _lock: lock }
     }
 }
 
 #[cfg(not(windows))]
 impl Drop for HumeRuntimeGuard {
     fn drop(&mut self) {
+        // Clear env vars before the TempDir fields delete their directories and
+        // before _lock releases the mutex, so the next waiter sees a clean env.
         unsafe {
             std::env::remove_var("HUME_RUNTIME");
-            if self.had_tmpdir {
-                // We can't restore the original value without storing it;
-                // tests run serially under the mutex, so removing is safe —
-                // the next test will set its own value before using TMPDIR.
-            }
             std::env::remove_var("TMPDIR");
         }
     }
