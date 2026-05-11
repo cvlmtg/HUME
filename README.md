@@ -32,3 +32,7 @@ Or copy to `/usr/local/` for a system install: `cp -R hume-*/* /usr/local/`
 **Windows** — extract the `.zip`, then run `hume.exe` from inside the folder, or add the folder to your `PATH`.
 
 Run `hume --version` to confirm the build (e.g. `hume 0.1.0-f460770`). The same string is available inside the editor via `:version`.
+
+## Getting started
+
+Once inside the editor, type `:tutor` and press Enter to open the interactive tutorial. It covers motion, editing, search, multi-cursor, and file commands through hands-on exercises you can practice directly in the buffer.
