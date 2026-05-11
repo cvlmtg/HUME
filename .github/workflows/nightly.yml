@@ -37,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # full history so build.rs can read the git SHA
 
@@ -81,15 +81,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly
-          name: Nightly (${{ github.sha }})
-          prerelease: true
-          make_latest: false
-          files: dist/*
+      - name: Publish nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f nightly
+          git push origin refs/tags/nightly --force
+          gh release delete nightly --yes 2>/dev/null || true
+          gh release create nightly dist/* \
+            --title "Nightly (${{ github.sha }})" \
+            --prerelease \
+            --latest=false
