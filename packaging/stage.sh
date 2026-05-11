@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Stage an archive-ready directory tree under dist/stage/<name>/.
 # Usage: stage.sh <target-triple> <layout>
-#   layout = "unix"    -> bin/hume + share/hume/{themes,plugins}
-#   layout = "windows" -> hume.exe + runtime/{themes,plugins}
+#   layout = "unix"    -> bin/hume + share/hume/<runtime contents>
+#   layout = "windows" -> hume.exe + runtime/<runtime contents>
 set -euo pipefail
 
 target="$1"
@@ -27,13 +27,11 @@ if [[ "$layout" == "unix" ]]; then
     mkdir -p "$stage/bin" "$stage/share/hume"
     cp "$bin_src" "$stage/bin/hume"
     chmod 755 "$stage/bin/hume"
-    cp -R "$root/runtime/themes"  "$stage/share/hume/"
-    cp -R "$root/runtime/plugins" "$stage/share/hume/"
+    cp -R "$root/runtime/." "$stage/share/hume/"
 else
     mkdir -p "$stage/runtime"
     cp "$bin_src" "$stage/$exe"
-    cp -R "$root/runtime/themes"  "$stage/runtime/"
-    cp -R "$root/runtime/plugins" "$stage/runtime/"
+    cp -R "$root/runtime/." "$stage/runtime/"
 fi
 
 cp "$root/README.md" "$root/LICENSE" "$stage/"

@@ -98,8 +98,8 @@ pub(crate) fn restore() -> io::Result<()> {
     // the held buffer on alt-screen exit. Sending it explicitly is harmless if
     // no envelope was open.
     try_op(execute!(stdout(), EndSynchronizedUpdate));
-    // Pop kitty keyboard protocol. Harmless on legacy terminals — no flags
-    // were pushed, so the sequence is silently ignored.
+    // Pop kitty keyboard protocol. Harmless on legacy terminals — the pop
+    // is a no-op if the stack is empty.
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
     // Disable all mouse tracking modes. The `l` (low) sequences are harmless
     // no-ops if the corresponding mode was never enabled.
@@ -109,6 +109,13 @@ pub(crate) fn restore() -> io::Result<()> {
     // usable even if LeaveAlternateScreen fails.
     try_op(disable_raw_mode());
     try_op(execute!(stdout(), LeaveAlternateScreen));
+    // Second pop after leaving the alternate screen. Some terminals scope
+    // the keyboard-mode stack per screen buffer: the pop above runs while
+    // we're still on the alt screen, but our push in `init()` ran on the
+    // main screen before `EnterAlternateScreen`. If the stack is per-buffer,
+    // only this pop actually clears the push. On terminals with a global
+    // stack the second pop hits an empty stack and is a no-op.
+    try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
 
     match first_err {
         Some(e) => Err(e),
