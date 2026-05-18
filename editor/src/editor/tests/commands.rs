@@ -409,6 +409,20 @@ fn o_opens_line_below_and_enters_insert() {
     assert_eq!(state(&ed), "hello\n-[\n]>");
 }
 
+/// `o` on a blank line must open a new blank line *below* it, not overshoot
+/// into the line after.
+/// Regression: `goto_line_end + move_right` advanced past the `\n` on empty
+/// lines, inserting the new `\n` one line too low.
+#[test]
+fn o_on_empty_line_places_cursor_on_new_blank_line() {
+    let mut ed = editor_from("AAA\nBBB\n-[\n]>CCC\n");
+    ed.handle_key(key('o'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "AAA\nBBB\n\n\nCCC\n");
+    assert_eq!(state(&ed), "AAA\nBBB\n\n-[\n]>CCC\n");
+}
+
 /// `O` must insert a blank line *above* the current line, position the cursor
 /// on it, and enter Insert mode.
 #[test]

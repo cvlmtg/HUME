@@ -19,6 +19,19 @@ pub(super) fn goto_line_end(buf: &Text, head: usize) -> usize {
     line_content_end(buf, buf.char_to_line(head))
 }
 
+/// Jump to the `\n` that terminates the current line.
+///
+/// Unlike `goto_line_end` (which stops at the last non-newline grapheme and
+/// therefore lands on the `\n` itself only on empty lines), this always
+/// returns the `\n` position. The buffer invariant guarantees every line —
+/// including the last — ends with `\n`, so `line_end_exclusive - 1` is always
+/// valid. Used by `cmd_open_line_below` to make the insertion point uniform
+/// across empty and non-empty lines.
+pub(super) fn goto_line_newline(buf: &Text, head: usize) -> usize {
+    let line = buf.char_to_line(head);
+    line_end_exclusive(buf, line) - 1
+}
+
 /// Jump to the first non-blank character on the current line.
 ///
 /// "Blank" means ASCII space or tab. If no non-blank character exists on the

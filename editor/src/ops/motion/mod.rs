@@ -53,7 +53,10 @@ pub(crate) fn apply_motion(
 mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
-use line::{goto_first_nonblank, goto_line_end, goto_line_start, move_down_inner, move_up_inner};
+use line::{
+    goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start, move_down_inner,
+    move_up_inner,
+};
 mod word;
 pub(crate) use word::{
     cmd_select_next_WORD, cmd_select_next_word, cmd_select_prev_WORD, cmd_select_prev_word,
@@ -143,6 +146,8 @@ motion_cmd!(/// Move or extend cursors to the start of their current line.
     cmd_goto_line_start, goto_line_start);
 motion_cmd!(/// Move or extend cursors to the last non-newline character on their current line.
     cmd_goto_line_end, goto_line_end);
+motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
+    cmd_goto_line_newline, goto_line_newline);
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
 

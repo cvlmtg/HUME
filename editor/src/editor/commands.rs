@@ -25,8 +25,8 @@ use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, insert_char, paste_after, paste_before};
 use crate::ops::surround::wrap_each_selection;
 use crate::ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
-    find_char_backward, find_char_forward,
+    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
+    cmd_move_left, cmd_move_right, find_char_backward, find_char_forward,
 };
 use crate::ops::register::{CLIPBOARD_REGISTER, SEARCH_REGISTER, yank_selections};
 use crate::ops::search::{
@@ -157,10 +157,7 @@ pub(super) fn cmd_open_line_below(
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
     doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
-        cmd_goto_line_end(b, s, 1, MotionMode::Move)
-    });
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
-        cmd_move_right(b, s, 1, MotionMode::Move)
+        cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
     doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
