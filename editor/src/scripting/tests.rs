@@ -952,11 +952,12 @@ fn unbind_key_invalid_mode_errors() {
     assert!(err.contains("mode"), "got: {err}");
 }
 
-// ── Steel file-module isolation (de-risk for plan A namespace isolation) ───
+// ── Steel file-module isolation + prelude macro visibility ────────────────
 //
-// Verify that steel-core's module system (require) isolates private helpers
-// across file modules loaded via separate compile_and_run_raw_program calls
-// on the same Engine.  This is the foundation of per-plugin namespace isolation.
+// Two properties of steel-core's module system required by the plugins branch:
+//  1. Private helpers are isolated across modules (foundation of plan A).
+//  2. A define-syntax macro defined globally (as the prelude does) is visible
+//     inside a subsequently required module body.
 //
 // Not on Windows: path separators in Scheme string literals are not escaped.
 
@@ -1050,6 +1051,265 @@ fn file_module_relative_require_resolves_from_module_dir() {
         matches!(vals.last(), Some(SteelVal::StringV(s)) if s.as_str() == "from-lib"),
         "plugin-result should return \"from-lib\" via relative sub-require; got {:?}",
         vals.last()
+    );
+}
+
+/// De-risk test for the prelude concept: a `define-syntax` macro defined in
+/// a global eval (as the prelude does) must be visible inside a subsequently
+/// `(require)`d module.
+///
+/// If this test fails the prelude cannot serve plugin modules — only `init.scm`.
+/// That would require documenting the limitation and NOT silently changing the
+/// loader (HARD STOP per plan).
+#[test]
+#[cfg(not(windows))]
+fn global_define_syntax_is_visible_inside_required_module() {
+    use steel::rvals::SteelVal;
+    use steel::steel_vm::engine::Engine;
+
+    let dir = tempfile::tempdir().unwrap();
+
+    let mut engine = Engine::new();
+
+    // Define a macro globally, simulating what the prelude does.
+    // id-macro! is the identity macro: (id-macro! x) => x.
+    engine
+        .compile_and_run_raw_program(
+            "(define-syntax id-macro! (syntax-rules () ((_ x) x)))".to_owned(),
+        )
+        .expect("global macro definition must succeed");
+
+    // Write a module whose top-level uses the globally-defined macro.
+    // result is module-private; get-result wraps it so it can be called globally.
+    std::fs::write(
+        dir.path().join("mod.scm"),
+        "(define result (id-macro! \"macro-expanded\"))\
+         \n(define (get-result) result)\
+         \n(provide get-result)\n",
+    )
+    .unwrap();
+    let abs = dir.path().join("mod.scm").canonicalize().unwrap();
+
+    engine
+        .compile_and_run_raw_program(format!("(require \"{}\")", abs.display()))
+        .expect("require failed — id-macro! not visible inside the module");
+
+    let vals = engine
+        .compile_and_run_raw_program("(get-result)".to_owned())
+        .expect("get-result must be callable after require");
+
+    assert!(
+        matches!(vals.last(), Some(SteelVal::StringV(s)) if s.as_str() == "macro-expanded"),
+        "id-macro! must have expanded inside the module; got {:?}",
+        vals.last()
+    );
+}
+
+// ── Prelude macro behavior ────────────────────────────────────────────────────
+//
+// The prelude defines bind-keys!, bind-keys-extend!, and unbind-keys! as
+// syntax-rules batch wrappers over the underlying single-pair builtins.
+// These tests load the three macros via eval_source (as init_scripting does via
+// eval_init before init.scm), then exercise each macro.
+//
+// Independent oracle: the expected bindings come from the literal key/cmd pairs
+// passed to the macro — not from re-reading the keymap.
+// Zero-effect check: swap a cmd name in a pair; the assertion catches it because
+// it compares against the literal name from the input, not "whatever the keymap says".
+
+/// Macro source matching runtime/scheme/prelude.scm (inlined so tests do not
+/// depend on the runtime dir being on disk relative to the test runner CWD).
+const PRELUDE_MACROS: &str = r#"
+(define-syntax bind-keys!
+  (syntax-rules ()
+    ((_ mode (key cmd) ...) (begin (bind-key! mode key cmd) ...))))
+(define-syntax bind-keys-extend!
+  (syntax-rules ()
+    ((_ mode (key cmd) ...) (begin (bind-key-extend! mode key cmd) ...))))
+(define-syntax unbind-keys!
+  (syntax-rules ()
+    ((_ mode key ...) (begin (unbind-key! mode key) ...))))
+"#;
+
+#[test]
+fn prelude_bind_keys_batch_binds_multiple() {
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(PRELUDE_MACROS, &mut s, &mut km).unwrap();
+    h.eval_source(
+        r#"(bind-keys! "normal"
+             ("z z" "move-left")
+             ("z l" "move-right"))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+
+    let z = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
+    let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+
+    let (name, fe) = km
+        .lookup_command(BindMode::Normal, &[z, z])
+        .expect("\"z z\" must be bound after bind-keys!");
+    assert_eq!(name, "move-left");
+    assert!(!fe, "bind-keys! must not force extend");
+
+    let (name2, _) = km
+        .lookup_command(BindMode::Normal, &[z, l])
+        .expect("\"z l\" must be bound after bind-keys!");
+    assert_eq!(name2, "move-right");
+}
+
+#[test]
+fn prelude_bind_keys_extend_creates_force_extend_leaves() {
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(PRELUDE_MACROS, &mut s, &mut km).unwrap();
+    h.eval_source(
+        r#"(bind-keys-extend! "normal"
+             ("Q" "select-line")
+             ("W" "select-to-end"))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+
+    let q = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
+    let w = &[KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE)];
+
+    let (name, fe) = km
+        .lookup_command(BindMode::Normal, q)
+        .expect("\"Q\" must be bound after bind-keys-extend!");
+    assert_eq!(name, "select-line");
+    assert!(fe, "bind-keys-extend! must produce force_extend = true");
+
+    let (name2, fe2) = km
+        .lookup_command(BindMode::Normal, w)
+        .expect("\"W\" must be bound after bind-keys-extend!");
+    assert_eq!(name2, "select-to-end");
+    assert!(fe2, "bind-keys-extend! must produce force_extend = true");
+}
+
+#[test]
+fn prelude_unbind_keys_batch_removes_bindings() {
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(PRELUDE_MACROS, &mut s, &mut km).unwrap();
+
+    // 'h' and 'l' are default normal-mode bindings.
+    let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
+    let l_key = &[KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE)];
+    assert!(
+        km.lookup_command(BindMode::Normal, h_key).is_some(),
+        "'h' must be bound by default"
+    );
+    assert!(
+        km.lookup_command(BindMode::Normal, l_key).is_some(),
+        "'l' must be bound by default"
+    );
+
+    h.eval_source(
+        r#"(unbind-keys! "normal" "h" "l")"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+
+    assert!(
+        km.lookup_command(BindMode::Normal, h_key).is_none(),
+        "'h' must be unbound after unbind-keys!"
+    );
+    assert!(
+        km.lookup_command(BindMode::Normal, l_key).is_none(),
+        "'l' must be unbound after unbind-keys!"
+    );
+}
+
+/// Verify the prelude eval_init → init.scm eval_init sequence: prelude macros
+/// defined by the first eval_init are available in the second.
+#[test]
+fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
+    use std::io::Write as _;
+
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let builtin_names: std::collections::HashSet<String> = Default::default();
+
+    // Stage a prelude file and an init.scm that uses its macros.
+    let dir = tempfile::tempdir().unwrap();
+    let prelude_path = dir.path().join("prelude.scm");
+    let init_path = dir.path().join("init.scm");
+
+    std::fs::write(&prelude_path, PRELUDE_MACROS).unwrap();
+    let mut f = std::fs::File::create(&init_path).unwrap();
+    writeln!(f, r#"(bind-keys! "normal" ("Q Q" "move-left") ("Q W" "move-right"))"#).unwrap();
+
+    // Load prelude first, then init.scm — mirroring init_scripting's sequence.
+    let prelude_cmds = h
+        .eval_init(&prelude_path, &mut s, &mut km, builtin_names.clone())
+        .expect("prelude eval_init must succeed");
+    assert!(
+        prelude_cmds.is_empty(),
+        "prelude must define no commands; got {:?}",
+        prelude_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+    );
+
+    h.eval_init(&init_path, &mut s, &mut km, builtin_names)
+        .expect("init.scm using bind-keys! must succeed after prelude is loaded");
+
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
+    let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);
+
+    let (name1, _) = km
+        .lookup_command(BindMode::Normal, &[q, q])
+        .expect("\"Q Q\" must be bound via bind-keys! from init.scm");
+    assert_eq!(name1, "move-left");
+
+    let (name2, _) = km
+        .lookup_command(BindMode::Normal, &[q, w])
+        .expect("\"Q W\" must be bound via bind-keys! from init.scm");
+    assert_eq!(name2, "move-right");
+}
+
+/// When init.scm uses bind-keys! but the prelude was never loaded, the eval
+/// fails with a clear error (macro undefined) — not a panic.
+#[test]
+fn bind_keys_without_prelude_fails_gracefully() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    // bind-keys! is NOT defined — init.scm uses it directly.
+    let err = h
+        .eval_source(
+            r#"(bind-keys! "normal" ("z" "move-left"))"#,
+            &mut s,
+            &mut km,
+        )
+        .unwrap_err();
+
+    // Steel reports an unbound identifier or similar error; the editor survives.
+    assert!(
+        !err.is_empty(),
+        "using bind-keys! without prelude must return an error"
     );
 }
 

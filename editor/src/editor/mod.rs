@@ -1000,6 +1000,27 @@ impl Editor {
         }
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
+        // Load runtime/scheme/prelude.scm before init.scm so its macros
+        // (bind-keys! etc.) are available to init.scm and plugin modules.
+        // Missing prelude is a silent no-op (optional sugar); a prelude that
+        // exists but fails to parse/eval is an error reported separately.
+        if let Some(prelude_path) = host.runtime_dir.as_ref().map(|rt| rt.join("scheme/prelude.scm")) {
+            match host.eval_init(
+                &prelude_path,
+                &mut self.settings,
+                &mut self.keymap,
+                builtin_names.clone(),
+            ) {
+                Ok(cmds) => debug_assert!(
+                    cmds.is_empty(),
+                    "runtime/scheme/prelude.scm must not define commands"
+                ),
+                Err(msg) => self.report(
+                    Severity::Error,
+                    format!("runtime/scheme/prelude.scm: {msg}"),
+                ),
+            }
+        }
         match host.eval_init(
             &init_path,
             &mut self.settings,

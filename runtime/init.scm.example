@@ -47,6 +47,22 @@
 ;; (bind-wait-char! mode key-sequence command-name)
 ;;   Like bind-key! but the next key pressed is passed as (pending-char) to the
 ;;   command.  Used for surround-style "verb + char" bindings.
+;;
+;; The prelude (runtime/scheme/prelude.scm) adds ergonomic batch variants:
+;;
+;; (bind-keys! mode (key cmd) ...)
+;;   Bind multiple keys at once — expands to individual bind-key! calls.
+;;
+;; (bind-keys-extend! mode (key cmd) ...)
+;;   Like bind-keys! but each leaf is a force-extend binding.
+;;
+;; (unbind-keys! mode key ...)
+;;   Remove multiple bindings at once.
+;;
+;; Example — bind several normal-mode keys in one call:
+;; (bind-keys! "normal"
+;;   ("U"          "undo")
+;;   ("ctrl-enter" "open-below"))
 
 ;; Re-map 'U' in normal mode to undo for muscle-memory from other editors.
 ;; (bind-key! "normal" "U" "undo")
