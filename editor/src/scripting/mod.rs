@@ -579,9 +579,12 @@ impl ScriptingHost {
 
     /// Core eval machinery used by [`eval_init`].
     ///
-    /// Borrows state into a [`SteelCtx`] via Steel's `with_mut_reference` API,
-    /// runs a watchdog thread (cooperative budget via `hume/yield!`), then
-    /// evaluates `source` and drains log messages.
+    /// Evaluates `source` (init.scm) then, for each plugin queued by
+    /// `(load-plugin …)`, submits `(require "<abs-path>")` on the same engine.
+    /// Each plugin is its own Steel module, so private helpers with the same
+    /// name in different plugins are mangled to distinct globals and never
+    /// collide.  Commands are drained between plugins so that a later plugin
+    /// can bind keys to commands defined by an earlier one.
     fn eval_source_raw(
         &mut self,
         source: String,
@@ -591,8 +594,10 @@ impl ScriptingHost {
     ) -> Result<Vec<SteelCmdDef>, String> {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
-        // Build SteelCtx borrowing persistent fields directly from self.
-        let (eval_result, pending_steel_cmds) = {
+        // Phase 1: eval init.scm.  Collect queued plugin names from
+        // `loaded_plugins` — populated by `(push-loaded-plugin! …)` inside
+        // the Scheme `load-plugin` wrapper.
+        let (eval_result, init_cmds, loaded_plugins) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -617,20 +622,102 @@ impl ScriptingHost {
                 },
                 settings,
                 keymap,
-                builtin_names,
+                builtin_names.clone(),
             );
 
             let result = run_steel(engine, &mut steel_ctx, source, budget_ms);
-            (result, steel_ctx.pending_steel_cmds)
+            (
+                result,
+                steel_ctx.pending_steel_cmds,
+                steel_ctx.loaded_plugins,
+            )
         };
 
-        let steel_cmds = if eval_result.is_ok() {
-            self.process_pending_cmds(pending_steel_cmds)
-        } else {
-            Vec::new()
-        };
+        eval_result?;
 
-        eval_result.map(|()| steel_cmds)
+        let mut all_cmds = self.process_pending_cmds(init_cmds);
+
+        // Phase 2: load each plugin as a separate Steel module.
+        // `(require "<abs>")` is submitted as a fresh top-level program on the
+        // same engine.  Steel's module system mangles the plugin's private
+        // bindings (e.g. `##mm<id>~helper`), so same-named helpers in
+        // different plugins live in disjoint globals.  Command lambdas close
+        // over their mangled helpers and dispatch correctly via the name-based
+        // `CommandRegistry`.
+        for plugin_name in loaded_plugins {
+            let plugin_id = attribution::PluginId::parse(&plugin_name)
+                .map_err(|e| format!("plugin '{plugin_name}': {e}"))?;
+
+            let abs_path = match builtins::plugins::resolve_path_for_name(
+                &plugin_name,
+                self.runtime_dir.as_deref(),
+                self.data_dir.as_deref(),
+            ) {
+                Ok(Some(p)) => p,
+                // Plugin was on disk during init.scm but has since vanished — skip.
+                Ok(None) => continue,
+                Err(e) => return Err(format!("plugin '{plugin_name}': {e}")),
+            };
+
+            let abs_str = abs_path.to_string_lossy();
+            // Paths from resolve_path_for_name come from our own dirs and
+            // plugin IDs (validated by PluginId::parse), so double-quotes
+            // are not expected.  Error loudly rather than silently corrupt
+            // the require string.
+            if abs_str.contains('"') {
+                return Err(format!(
+                    "plugin path contains '\"' — cannot embed in require: {}",
+                    abs_path.display()
+                ));
+            }
+            let require_program = format!("(require \"{abs_str}\")");
+
+            // Attribution: push before the require eval, pop after.
+            // Rust drives push/pop instead of Scheme's dynamic-wind so that
+            // we control the stack across the module boundary.
+            self.plugin_stack.push(plugin_id);
+
+            let (plugin_result, plugin_cmds) = {
+                let Self {
+                    engine,
+                    plugin_stack,
+                    cmd_owners,
+                    hooks,
+                    pending_messages,
+                    data_dir,
+                    runtime_dir,
+                    interrupt_flag,
+                    ..
+                } = &mut *self;
+
+                let mut steel_ctx = SteelCtx::new_init(
+                    HostBundle {
+                        plugin_stack,
+                        cmd_owners,
+                        hooks,
+                        pending_messages,
+                        data_dir: data_dir.as_deref(),
+                        runtime_dir: runtime_dir.as_deref(),
+                        interrupt_flag: Arc::clone(interrupt_flag),
+                    },
+                    settings,
+                    keymap,
+                    builtin_names.clone(),
+                );
+
+                let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
+                (result, steel_ctx.pending_steel_cmds)
+            };
+
+            self.plugin_stack.pop();
+
+            match plugin_result {
+                Ok(()) => all_cmds.extend(self.process_pending_cmds(plugin_cmds)),
+                Err(e) => return Err(format!("loading plugin '{plugin_name}': {e}")),
+            }
+        }
+
+        Ok(all_cmds)
     }
 
     /// Process `PendingSteelCmd`s collected during an eval:

@@ -52,18 +52,15 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 /// Scheme bootstrap evaluated once during engine init.
 ///
 /// Defines `load-plugin` in terms of the Rust builtins registered below.
-/// Uses `dynamic-wind` so `pop-current-plugin!` runs even if `(load path)`
-/// raises an error, keeping the attribution stack consistent.
+/// Rust drains `loaded-plugins` after `eval_init` and loads each entry via
+/// `(require "<abs-path>")`, giving every plugin its own Steel module
+/// namespace so same-named private helpers cannot collide.
 const BOOTSTRAP: &str = r#"
 (define (load-plugin name)
   (push-declared-plugin! name)
   (let ((path (resolve-plugin-path name)))
     (when path
-      (push-loaded-plugin! name)
-      (dynamic-wind
-        (lambda () (push-current-plugin! name))
-        (lambda () (load path))
-        (lambda () (pop-current-plugin!))))))
+      (push-loaded-plugin! name))))
 "#;
 
 // ── Registration ──────────────────────────────────────────────────────────────

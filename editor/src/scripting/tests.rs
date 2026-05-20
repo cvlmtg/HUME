@@ -952,3 +952,104 @@ fn unbind_key_invalid_mode_errors() {
     assert!(err.contains("mode"), "got: {err}");
 }
 
+// ── Steel file-module isolation (de-risk for plan A namespace isolation) ───
+//
+// Verify that steel-core's module system (require) isolates private helpers
+// across file modules loaded via separate compile_and_run_raw_program calls
+// on the same Engine.  This is the foundation of per-plugin namespace isolation.
+//
+// Not on Windows: path separators in Scheme string literals are not escaped.
+
+#[test]
+#[cfg(not(windows))]
+fn file_module_private_helpers_are_isolated() {
+    use steel::rvals::SteelVal;
+    use steel::steel_vm::engine::Engine;
+
+    let dir = tempfile::tempdir().unwrap();
+
+    // Two modules with the same private helper name, different return values.
+    std::fs::write(
+        dir.path().join("a.scm"),
+        "(define (helper) \"A\")\n(define (a-result) (helper))\n(provide a-result)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("b.scm"),
+        "(define (helper) \"B\")\n(define (b-result) (helper))\n(provide b-result)\n",
+    )
+    .unwrap();
+
+    let a_abs = dir.path().join("a.scm").canonicalize().unwrap();
+    let b_abs = dir.path().join("b.scm").canonicalize().unwrap();
+
+    let mut engine = Engine::new();
+    engine
+        .compile_and_run_raw_program(format!("(require \"{}\")", a_abs.display()))
+        .expect("require a.scm failed");
+    // Loading B last: if helpers collide, a-result would return "B".
+    engine
+        .compile_and_run_raw_program(format!("(require \"{}\")", b_abs.display()))
+        .expect("require b.scm failed");
+
+    let a_vals = engine
+        .compile_and_run_raw_program("(a-result)".to_owned())
+        .expect("a-result failed");
+    let b_vals = engine
+        .compile_and_run_raw_program("(b-result)".to_owned())
+        .expect("b-result failed");
+
+    assert!(
+        matches!(a_vals.last(), Some(SteelVal::StringV(s)) if s.as_str() == "A"),
+        "a-result should use A's private helper (\"A\"); got {:?}",
+        a_vals.last()
+    );
+    assert!(
+        matches!(b_vals.last(), Some(SteelVal::StringV(s)) if s.as_str() == "B"),
+        "b-result should use B's private helper (\"B\"); got {:?}",
+        b_vals.last()
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn file_module_relative_require_resolves_from_module_dir() {
+    use steel::rvals::SteelVal;
+    use steel::steel_vm::engine::Engine;
+
+    let dir = tempfile::tempdir().unwrap();
+
+    std::fs::write(
+        dir.path().join("lib.scm"),
+        "(define (lib-helper) \"from-lib\")\n(provide lib-helper)\n",
+    )
+    .unwrap();
+    // plugin.scm uses a relative require — should resolve against its own dir,
+    // not the process working directory.
+    std::fs::write(
+        dir.path().join("plugin.scm"),
+        "(require \"lib.scm\")\n(define (plugin-result) (lib-helper))\n(provide plugin-result)\n",
+    )
+    .unwrap();
+
+    let plugin_abs = dir.path().join("plugin.scm").canonicalize().unwrap();
+
+    // Process CWD is the workspace root — NOT the plugin dir.  The require
+    // must still succeed because Steel resolves relative paths from the
+    // requiring module's own path, not from CWD.
+    let mut engine = Engine::new();
+    engine
+        .compile_and_run_raw_program(format!("(require \"{}\")", plugin_abs.display()))
+        .expect("require plugin.scm failed");
+
+    let vals = engine
+        .compile_and_run_raw_program("(plugin-result)".to_owned())
+        .expect("plugin-result failed");
+
+    assert!(
+        matches!(vals.last(), Some(SteelVal::StringV(s)) if s.as_str() == "from-lib"),
+        "plugin-result should return \"from-lib\" via relative sub-require; got {:?}",
+        vals.last()
+    );
+}
+
