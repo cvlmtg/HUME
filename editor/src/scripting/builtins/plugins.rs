@@ -8,7 +8,7 @@
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::scripting::{SteelCtx, ledger::PluginId};
+use crate::scripting::{SteelCtx, attribution::PluginId};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 //
 // Parsing tests (valid/invalid plugin names, segments) live in
-// `scripting::ledger::tests` alongside `PluginId::parse`.  The tests here
+// `scripting::attribution::tests` alongside `PluginId::parse`.  The tests here
 // cover only the builtins' Steel-facing behaviour.
 
 #[cfg(test)]

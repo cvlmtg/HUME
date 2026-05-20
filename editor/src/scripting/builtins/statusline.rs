@@ -65,9 +65,7 @@ fn parse_element_list(val: &SteelVal, section: &str) -> Result<Vec<StatusElement
 /// empty section.  The new config takes effect immediately — the next rendered
 /// frame picks it up automatically.
 ///
-/// Only valid during `init.scm` or plugin load.  When called from a plugin body,
-/// the prior config is serialized and recorded in the ledger so it can be
-/// restored via `apply_setting` when the plugin unloads.
+/// Valid during `init.scm` or any plugin load.
 pub(crate) fn configure_statusline(
     ctx: &mut SteelCtx,
     left: SteelVal,

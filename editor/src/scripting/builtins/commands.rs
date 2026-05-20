@@ -28,14 +28,14 @@
 //! name in the engine namespace).  This keeps the call site symmetric with
 //! built-ins (which are Rust `MappableCommand` variants and have no Scheme
 //! binding), and ensures every invocation goes through the registry path
-//! that owns ledger attribution, watchdog protection, and dispatch parity
+//! that owns command attribution, watchdog protection, and dispatch parity
 //! with `:cmd` and `bind-key!`.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use super::require_cmd_ctx;
-use crate::scripting::ledger::Owner;
+use crate::scripting::attribution::Owner;
 use crate::scripting::{PendingSteelCmd, SteelCtx};
 
 type SteelResult = Result<SteelVal, SteelErr>;

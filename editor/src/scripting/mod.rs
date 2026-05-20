@@ -8,7 +8,7 @@
 //! strictly worse than a direct function call.
 //!
 //! ## Modules
-//! - `ledger.rs`: plugin attribution stack (`PluginId`, `Owner`, `PluginStack`).
+//! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
 //! - `hooks.rs`: `HookRegistry` + typed `HookId` enum.
 //! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
 //!   `(configure-statusline! …)`, `(hume/yield!)` step-budget interruption.
@@ -16,7 +16,7 @@
 pub(crate) mod builtins;
 pub(crate) mod hooks;
 pub(crate) mod keys;
-pub(crate) mod ledger;
+pub(crate) mod attribution;
 
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -38,7 +38,7 @@ use crate::editor::pane_state::PaneBufferState;
 use crate::settings::EditorSettings;
 
 use hooks::HookRegistry;
-use ledger::PluginStack;
+use attribution::PluginStack;
 
 // ── HUME_CTX global name ──────────────────────────────────────────────────────
 
@@ -144,7 +144,7 @@ pub(crate) struct PendingSteelCmd {
     /// The Steel lambda, captured at `define-command!` call time.
     pub(crate) proc: steel::rvals::SteelVal,
     /// Attribution owner at call time — stored in `cmd_owners` for `(command-plugin …)`.
-    pub(crate) current_owner: ledger::Owner,
+    pub(crate) current_owner: attribution::Owner,
     /// Whether this command participates in sticky-Ctrl extend.
     /// Set by `(define-command-extend! …)`.
     pub(crate) extendable: bool,
@@ -169,7 +169,7 @@ pub(crate) struct SteelCmdDef {
 /// Context struct borrowed into the Steel engine for the duration of each eval
 /// or command call via Steel's `with_mut_reference` API.
 ///
-/// All persistent scripting state (plugin ledger, hooks, etc.) is held directly
+/// All persistent scripting state (hooks, attribution, etc.) is held directly
 /// on [`ScriptingHost`] and borrowed here by reference — no `mem::take`/put-back
 /// needed.  Transient per-eval state (accumulators, mode flags, multi-buffer
 /// borrows) is owned.
@@ -634,9 +634,9 @@ impl ScriptingHost {
     }
 
     /// Process `PendingSteelCmd`s collected during an eval:
-    /// register each lambda in the engine's global namespace and record a
-    /// ledger entry.  Returns the `SteelCmdDef`s for the caller to register
-    /// in the `CommandRegistry`.
+    /// register each lambda in the engine's global namespace and record the
+    /// owner in `cmd_owners`.  Returns the `SteelCmdDef`s for the caller to
+    /// register in the `CommandRegistry`.
     fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {
         let mut defs = Vec::new();
         for cmd in pending {

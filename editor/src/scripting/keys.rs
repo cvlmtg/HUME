@@ -1,9 +1,9 @@
 //! Parse human-readable key-sequence strings into `Vec<KeyEvent>`.
 //!
 //! Used both by the `bind-key!` / `bind-wait-char!` builtins at eval time and
-//! by [`crate::scripting`]'s ledger restoration path when replaying a plugin's
-//! prior bindings.  Keeping it as a standalone module avoids the layer
-//! violation of having `scripting/mod.rs` reach into `scripting/builtins/`.
+//! by the `bind-key!` builtins at eval time.  Keeping it as a standalone
+//! module avoids the layer violation of having `scripting/mod.rs` reach into
+//! `scripting/builtins/`.
 //!
 //! ## Format
 //!

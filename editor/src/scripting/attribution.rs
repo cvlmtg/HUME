@@ -1,8 +1,8 @@
 //! Plugin attribution types: `PluginId`, `Owner`, and `PluginStack`.
 //!
-//! Every Steel mutation is attributed to an [`Owner`] derived from the
-//! current [`PluginStack`] frame. Plugins push/pop on `(load-plugin …)` entry
-//! and exit; `current_owner()` returns who is mutating config right now.
+//! `PluginStack` tracks which plugin is currently executing; `current_owner()`
+//! returns the [`Owner`] to record at command-registration time. The result is
+//! stored in `cmd_owners` and exposed to Steel via `(command-plugin …)`.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -144,13 +144,12 @@ impl Hash for PluginId {
 
 // ── Owner ─────────────────────────────────────────────────────────────────────
 
-/// The entity that owns a HUME binding at any given moment.
+/// The entity credited with a command registration.
 ///
-/// Derived from the [`PluginStack`] at mutation time:
-/// - Stack empty → [`Owner::User`] (top-level `init.scm` mutation)
+/// - Stack empty → [`Owner::User`] (top-level `init.scm`)
 /// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin …)` body)
-/// - [`Owner::Core`] appears only as a `prior_owner` in ledger entries —
-///   core defaults are never mutated through the scripting layer.
+/// - [`Owner::Core`] is the fallback returned by `(command-plugin …)` for
+///   built-in Rust commands that were never registered through Steel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Owner {
     Core,
