@@ -1629,32 +1629,6 @@ pub(super) fn typed_list_buffers(
     Ok(())
 }
 
-/// `:reload-plugin <name>` — tear down the named plugin's ledger entries and
-/// re-evaluate its `plugin.scm`.  If the plugin file no longer exists on disk,
-/// teardown still runs but re-eval is silently skipped (same "not on disk →
-/// skip" rule as `load-plugin`).
-pub(super) fn typed_reload_plugin(
-    ed: &mut Editor,
-    arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
-    let name = arg.ok_or_else(|| CommandError("Usage: :reload-plugin <name>".into()))?;
-    if let Some(host) = ed.scripting.as_mut() {
-        let builtin_names: std::collections::HashSet<String> =
-            ed.registry.names().map(String::from).collect();
-        let (cmds_to_remove, new_cmds) = host
-            .reload_plugin(name, &mut ed.settings, &mut ed.keymap, builtin_names)
-            .map_err(CommandError)?;
-        for cmd_name in cmds_to_remove {
-            ed.registry.unregister(&cmd_name);
-        }
-        ed.register_steel_cmds(new_cmds);
-        ed.report(Severity::Info, format!("Reloaded plugin '{name}'"));
-    }
-    ed.flush_script_messages();
-    Ok(())
-}
-
 /// `:reload-config` — drop the scripting engine and re-evaluate `init.scm`
 /// from scratch, restoring a clean slate.
 ///

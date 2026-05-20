@@ -329,15 +329,6 @@ impl CommandRegistry {
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
-    /// Remove a mappable command by name.  No-op if absent or if the name
-    /// resolves to a typed command.  Used when a plugin is unloaded to remove
-    /// the commands it defined via `(define-command! …)`.
-    pub(crate) fn unregister(&mut self, name: &str) {
-        if matches!(self.commands.get(name), Some(Command::Mappable(_))) {
-            self.commands.remove(name);
-        }
-    }
-
     /// Remove every `SteelBacked` mappable command in one pass.
     ///
     /// Used by `:reload-config` to clear stale entries before re-evaluating
@@ -1251,12 +1242,6 @@ impl CommandRegistry {
             typed_messages
         );
         typed_cmd!(
-            "reload-plugin",
-            "Reload a plugin by name: :reload-plugin <name>.",
-            &[],
-            typed_reload_plugin
-        );
-        typed_cmd!(
             "reload-config",
             "Reload init.scm from scratch.",
             &[],
@@ -1370,7 +1355,7 @@ mod tests {
     use super::*;
 
     /// Exhaustiveness guard: if a command is added without a registry entry, this test catches it.
-    const EXPECTED_COMMAND_COUNT: usize = 137;
+    const EXPECTED_COMMAND_COUNT: usize = 136;
 
     #[test]
     fn registry_has_expected_count() {

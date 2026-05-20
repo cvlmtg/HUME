@@ -14,24 +14,13 @@
 //!   '("MacroRecording" "SearchMatches" "Separator" "Mode"))  ; right section
 //! ```
 //!
-//! ## Ledger participation
-//!
-//! When called from a plugin body, the prior statusline config is captured via
-//! `serialize_setting` before the new config is written, and a ledger entry is
-//! recorded so the config can be restored on plugin unload.  Top-level
-//! `init.scm` mutations (attribution = `User`) write no ledger entry — reload
-//! rebuilds from scratch.
-
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
-use crate::scripting::{SteelCtx, ledger::Owner};
-use crate::settings::serialize_setting;
+use crate::scripting::SteelCtx;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 
 type SteelResult = Result<SteelVal, SteelErr>;
-
-const SETTING_KEY: &str = "statusline";
 
 // ── Parsing helpers ───────────────────────────────────────────────────────────
 
@@ -98,24 +87,7 @@ pub(crate) fn configure_statusline(
         right,
     };
 
-    // Capture prior state for the ledger before overwriting — same pattern as set_option.
-    let prior_value = serialize_setting(ctx.settings, SETTING_KEY).unwrap_or_default();
-    let prior_owner = ctx.ledger_stack.owner_of(SETTING_KEY);
-    let current_owner = ctx.plugin_stack.current_owner();
-
     ctx.settings.statusline = new_cfg;
-
-    // Only record a ledger entry for plugin-attributed mutations; User-level
-    // mutations (top-level init.scm) are rebuilt from scratch on :reload-config.
-    if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(
-            plugin_id,
-            SETTING_KEY.to_string(),
-            prior_owner,
-            prior_value,
-            false,
-        );
-    }
     Ok(SteelVal::Void)
 }
 

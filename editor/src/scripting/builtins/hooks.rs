@@ -31,7 +31,6 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
             HookId::all_names().collect::<Vec<_>>().join(", ")
         ),
     };
-    let owner = ctx.plugin_stack.current_owner();
-    ctx.hooks.register(hook_id, owner, proc);
+    ctx.hooks.register(hook_id, proc);
     Ok(SteelVal::Void)
 }

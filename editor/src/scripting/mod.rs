@@ -8,7 +8,7 @@
 //! strictly worse than a direct function call.
 //!
 //! ## Modules
-//! - `ledger.rs`: plugin ownership ledger + attribution stack for teardown.
+//! - `ledger.rs`: plugin attribution stack (`PluginId`, `Owner`, `PluginStack`).
 //! - `hooks.rs`: `HookRegistry` + typed `HookId` enum.
 //! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
 //!   `(configure-statusline! …)`, `(hume/yield!)` step-budget interruption.
@@ -28,19 +28,17 @@ use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
-use std::borrow::Cow;
-
 use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
 use crate::core::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
-use crate::editor::keymap::{BindMode, Keymap};
+use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;
-use crate::settings::{BufferOverrides, EditorSettings, SettingScope, apply_setting};
+use crate::settings::EditorSettings;
 
 use hooks::HookRegistry;
-use ledger::{LedgerStack, PluginId, PluginStack};
+use ledger::PluginStack;
 
 // ── HUME_CTX global name ──────────────────────────────────────────────────────
 
@@ -145,7 +143,7 @@ pub(crate) struct PendingSteelCmd {
     pub(crate) doc: String,
     /// The Steel lambda, captured at `define-command!` call time.
     pub(crate) proc: steel::rvals::SteelVal,
-    /// Attribution owner at call time (for ledger recording).
+    /// Attribution owner at call time — stored in `cmd_owners` for `(command-plugin …)`.
     pub(crate) current_owner: ledger::Owner,
     /// Whether this command participates in sticky-Ctrl extend.
     /// Set by `(define-command-extend! …)`.
@@ -186,8 +184,6 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) keymap: &'a mut Keymap,
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: &'a mut PluginStack,
-    /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
-    pub(crate) ledger_stack: &'a mut LedgerStack,
     /// Command-owner index; read by `(command-plugin …)`, written by
     /// [`ScriptingHost::process_pending_cmds`].
     pub(crate) cmd_owners: &'a mut std::collections::HashMap<String, String>,
@@ -254,7 +250,6 @@ impl<'a> SteelCtx<'a> {
             settings,
             keymap,
             plugin_stack: host.plugin_stack,
-            ledger_stack: host.ledger_stack,
             cmd_owners: host.cmd_owners,
             hooks: host.hooks,
             pending_messages: host.pending_messages,
@@ -297,7 +292,6 @@ impl<'a> SteelCtx<'a> {
             settings: refs.settings,
             keymap: refs.keymap,
             plugin_stack: host.plugin_stack,
-            ledger_stack: host.ledger_stack,
             cmd_owners: host.cmd_owners,
             hooks: host.hooks,
             pending_messages: host.pending_messages,
@@ -334,7 +328,6 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) settings: EditorSettings,
     pub(crate) keymap: Keymap,
     pub(crate) plugin_stack: PluginStack,
-    pub(crate) ledger_stack: LedgerStack,
     pub(crate) cmd_owners: std::collections::HashMap<String, String>,
     pub(crate) hooks: HookRegistry,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
@@ -350,7 +343,6 @@ impl SteelCtxTestHarness {
             settings: EditorSettings::default(),
             keymap: Keymap::default(),
             plugin_stack: PluginStack::default(),
-            ledger_stack: LedgerStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             hooks: HookRegistry::default(),
             pending_messages: Vec::new(),
@@ -367,7 +359,6 @@ impl SteelCtxTestHarness {
             settings,
             keymap,
             plugin_stack,
-            ledger_stack,
             cmd_owners,
             hooks,
             pending_messages,
@@ -378,7 +369,6 @@ impl SteelCtxTestHarness {
         SteelCtx::new_command(
             HostBundle {
                 plugin_stack,
-                ledger_stack,
                 cmd_owners,
                 hooks,
                 pending_messages,
@@ -428,7 +418,6 @@ pub(crate) struct EditorSteelRefs<'a> {
 /// Private to this module.
 struct HostBundle<'a> {
     plugin_stack: &'a mut PluginStack,
-    ledger_stack: &'a mut LedgerStack,
     cmd_owners: &'a mut std::collections::HashMap<String, String>,
     hooks: &'a mut HookRegistry,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
@@ -475,56 +464,6 @@ fn run_steel<'a>(
     result
 }
 
-// ── EvalSnapshot ─────────────────────────────────────────────────────────────
-
-/// Captured state for all-or-nothing rollback of a Steel eval on error.
-///
-/// Constructed before an eval via [`EvalSnapshot::capture`]; on success the
-/// snapshot is simply dropped (or ignored). On error, call
-/// [`EvalSnapshot::restore`] to revert all reverted fields to their pre-eval
-/// values.
-///
-/// Covers: settings, keymap, plugin_stack, ledger_stack, cmd_owners, hooks.
-/// `pending_messages` is intentionally NOT reverted — messages from the
-/// failed eval are preserved so the user can see what went wrong.
-struct EvalSnapshot {
-    settings: EditorSettings,
-    keymap: Keymap,
-    plugin_stack: PluginStack,
-    ledger_stack: LedgerStack,
-    cmd_owners: std::collections::HashMap<String, String>,
-    hooks: HookRegistry,
-    /// Version of `hooks` at capture time — used to skip the write-back in
-    /// `restore` when no hooks were registered during the failed eval.
-    hooks_version_at_capture: u32,
-}
-
-impl EvalSnapshot {
-    fn capture(settings: &EditorSettings, keymap: &Keymap, host: &ScriptingHost) -> Self {
-        Self {
-            settings: settings.clone(),
-            keymap: keymap.clone(),
-            plugin_stack: host.plugin_stack.clone(),
-            ledger_stack: host.ledger_stack.clone(),
-            cmd_owners: host.cmd_owners.clone(),
-            hooks: host.hooks.clone(),
-            hooks_version_at_capture: host.hooks.version,
-        }
-    }
-
-    fn restore(self, settings: &mut EditorSettings, keymap: &mut Keymap, host: &mut ScriptingHost) {
-        *settings = self.settings;
-        *keymap = self.keymap;
-        host.plugin_stack = self.plugin_stack;
-        host.ledger_stack = self.ledger_stack;
-        host.cmd_owners = self.cmd_owners;
-        // Skip write-back when no hooks were registered during the failed eval.
-        if host.hooks.version != self.hooks_version_at_capture {
-            host.hooks = self.hooks;
-        }
-    }
-}
-
 // ── ScriptingHost ─────────────────────────────────────────────────────────────
 
 /// The embedded Steel scripting host.
@@ -540,14 +479,11 @@ pub(crate) struct ScriptingHost {
     /// Attribution stack: `stack.last()` is the plugin currently executing.
     /// Empty → top-level `init.scm` → `Owner::User`.
     pub(crate) plugin_stack: PluginStack,
-    /// Ordered ledger of all plugin mutations, used for unload/reload teardown.
-    pub(crate) ledger_stack: LedgerStack,
     /// Command-to-owner index: maps each Steel-registered command name to a
     /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
     /// Populated by `process_pending_cmds`; queried by `(command-plugin name)`.
     pub(crate) cmd_owners: std::collections::HashMap<String, String>,
-    /// Persistent hook registry: handlers registered by `(register-hook! …)`
-    /// across all evals.  Purged per-plugin on teardown.
+    /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor after each `eval_init` / `call_steel_cmd` call.
@@ -600,7 +536,6 @@ impl ScriptingHost {
         Self {
             engine,
             plugin_stack: PluginStack::default(),
-            ledger_stack: LedgerStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             hooks: HookRegistry::default(),
             pending_messages: Vec::new(),
@@ -642,120 +577,11 @@ impl ScriptingHost {
         self.eval_source_raw(source, builtin_names, settings, keymap)
     }
 
-    // ── Plugin teardown / reload ───────────────────────────────────────────────
-
-    /// Unload `plugin_name` by replaying its ledger entries in reverse:
-    /// settings are restored via [`apply_setting`] and keybinds are restored
-    /// (or removed) via [`Keymap::bind_user`] / [`Keymap::unbind_user`].
+    /// Core eval machinery used by [`eval_init`].
     ///
-    /// Ledger entries with key `"cmd:<name>"` represent commands the plugin
-    /// defined.  These are not restored here (there is no prior command to
-    /// restore to); instead their names are returned so the caller can
-    /// unregister them from the `CommandRegistry`.
-    ///
-    /// Returns `Ok(names)` where `names` is the list of command names to
-    /// remove, or `Ok([])` if the plugin had no ledger — no-op for unknown
-    /// plugins.
-    pub(crate) fn teardown_plugin(
-        &mut self,
-        plugin_name: &str,
-        settings: &mut EditorSettings,
-        keymap: &mut Keymap,
-    ) -> Result<Vec<String>, String> {
-        let plugin_id =
-            PluginId::parse(plugin_name).map_err(|e| format!("teardown-plugin: {e}"))?;
-        self.hooks.purge_plugin(&plugin_id);
-        let to_restore = self.ledger_stack.unload(&plugin_id);
-
-        let mut cmds_to_remove = Vec::new();
-        for entry in to_restore {
-            if let Some(cmd_name) = entry.key.strip_prefix("cmd:") {
-                // Command defined by this plugin — caller removes it from registry;
-                // also evict from the cmd_owners index.
-                self.cmd_owners.remove(cmd_name);
-                cmds_to_remove.push(cmd_name.to_string());
-            } else {
-                restore_ledger_entry(entry, settings, keymap)?;
-            }
-        }
-        Ok(cmds_to_remove)
-    }
-
-    /// Reload `plugin_name`: tear it down then re-evaluate its file.
-    ///
-    /// Returns `(cmds_to_remove, new_cmds)`:
-    /// - `cmds_to_remove`: command names the old plugin version defined
-    ///   (caller calls `registry.unregister` for each).
-    /// - `new_cmds`: Steel commands the new plugin version defines
-    ///   (caller calls `registry.register` for each).
-    ///
-    /// If the plugin file is not found on disk (e.g. uninstalled), teardown
-    /// still runs and an empty `new_cmds` list is returned — consistent with
-    /// the `load-plugin` "not on disk → silently skipped" rule.
-    pub(crate) fn reload_plugin(
-        &mut self,
-        plugin_name: &str,
-        settings: &mut EditorSettings,
-        keymap: &mut Keymap,
-        builtin_names: std::collections::HashSet<String>,
-    ) -> Result<(Vec<String>, Vec<SteelCmdDef>), String> {
-        let cmds_to_remove = self.teardown_plugin(plugin_name, settings, keymap)?;
-
-        let plugin_id = PluginId::parse(plugin_name).map_err(|e| format!("reload-plugin: {e}"))?;
-        let path = builtins::plugins::resolve_path_for_name(
-            plugin_name,
-            self.runtime_dir.as_deref(),
-            self.data_dir.as_deref(),
-        )
-        .map_err(|e| format!("reload-plugin: {e}"))?;
-
-        let new_cmds = match path {
-            Some(p) => {
-                self.eval_plugin_with_attribution(&plugin_id, &p, settings, keymap, builtin_names)?
-            }
-            None => Vec::new(),
-        };
-        Ok((cmds_to_remove, new_cmds))
-    }
-
-    /// Evaluate a plugin file with `plugin_id` on the attribution stack.
-    ///
-    /// Unlike [`eval_init`], this always evaluates (no early return on missing
-    /// file), and wraps the eval in a plugin push/pop so mutations are correctly
-    /// attributed to `plugin_id`.
-    ///
-    /// Used by [`reload_plugin`] to re-run a plugin after teardown.
-    fn eval_plugin_with_attribution(
-        &mut self,
-        plugin_id: &PluginId,
-        path: &std::path::Path,
-        settings: &mut EditorSettings,
-        keymap: &mut Keymap,
-        builtin_names: std::collections::HashSet<String>,
-    ) -> Result<Vec<SteelCmdDef>, String> {
-        let source = crate::os::fs::read_to_string(path)
-            .map_err(|e| format!("reading {}: {e}", path.display()))?;
-
-        // Push the plugin attribution before the eval so that all mutations
-        // are attributed to `plugin_id`.
-        self.plugin_stack.push(plugin_id.clone());
-        let result = self.eval_source_raw(source, builtin_names, settings, keymap);
-
-        // Unconditionally pop the attribution we pushed above, even if eval
-        // errored.  `eval_source_raw` snapshots the stack AFTER the push, so
-        // on both success and error the stack still has `plugin_id` on top when
-        // it returns — this pop is real work, not a no-op.
-        self.plugin_stack.pop();
-
-        result
-    }
-
-    /// Core eval machinery shared by [`eval_init`] and [`eval_plugin_with_attribution`].
-    ///
-    /// Snapshots all mutable state for all-or-nothing rollback on error, borrows
-    /// state into a [`SteelCtx`] via Steel's `with_mut_reference` API, runs a
-    /// watchdog thread (cooperative budget via `hume/yield!`), then evaluates
-    /// `source` and drains log messages.
+    /// Borrows state into a [`SteelCtx`] via Steel's `with_mut_reference` API,
+    /// runs a watchdog thread (cooperative budget via `hume/yield!`), then
+    /// evaluates `source` and drains log messages.
     fn eval_source_raw(
         &mut self,
         source: String,
@@ -764,17 +590,12 @@ impl ScriptingHost {
         keymap: &mut Keymap,
     ) -> Result<Vec<SteelCmdDef>, String> {
         let budget_ms = settings.steel_init_budget_ms as u64;
-        // Snapshot for all-or-nothing rollback on error.
-        let snapshot = EvalSnapshot::capture(settings, keymap, self);
 
         // Build SteelCtx borrowing persistent fields directly from self.
-        // The explicit block ensures steel_ctx is dropped (releasing all borrows)
-        // before snapshot.restore() needs &mut self again.
         let (eval_result, pending_steel_cmds) = {
             let Self {
                 engine,
                 plugin_stack,
-                ledger_stack,
                 cmd_owners,
                 hooks,
                 pending_messages,
@@ -787,7 +608,6 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_init(
                 HostBundle {
                     plugin_stack,
-                    ledger_stack,
                     cmd_owners,
                     hooks,
                     pending_messages,
@@ -807,9 +627,6 @@ impl ScriptingHost {
         let steel_cmds = if eval_result.is_ok() {
             self.process_pending_cmds(pending_steel_cmds)
         } else {
-            // Rollback: discard partial mutations and restore pre-eval snapshot.
-            // Hooks written by register-hook! are reverted via snapshot.hooks.
-            snapshot.restore(settings, keymap, self);
             Vec::new()
         };
 
@@ -826,18 +643,6 @@ impl ScriptingHost {
             let steel_proc = cmd_proc_name(&cmd.name);
             // Register (or overwrite) the lambda under its internal name.
             self.engine.register_value(&steel_proc, cmd.proc);
-            // Record a ledger entry so teardown knows to remove this command.
-            let ledger_key = format!("cmd:{}", cmd.name);
-            let prior_owner = self.ledger_stack.owner_of(&ledger_key);
-            if let ledger::Owner::Plugin(ref plugin_id) = cmd.current_owner {
-                self.ledger_stack.record(
-                    plugin_id,
-                    ledger_key,
-                    prior_owner,
-                    String::new(), // commands always start fresh (ownership rules prevent shadowing)
-                    false,
-                );
-            }
             // Record the owner string for `(command-plugin …)` introspection.
             self.cmd_owners
                 .insert(cmd.name.clone(), cmd.current_owner.to_string());
@@ -882,7 +687,6 @@ impl ScriptingHost {
             let Self {
                 engine,
                 plugin_stack,
-                ledger_stack,
                 cmd_owners,
                 hooks,
                 pending_messages,
@@ -895,7 +699,6 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_command(
                 HostBundle {
                     plugin_stack,
-                    ledger_stack,
                     cmd_owners,
                     hooks,
                     pending_messages,
@@ -932,12 +735,8 @@ impl ScriptingHost {
         refs: EditorSteelRefs<'a>,
     ) -> Result<Vec<String>, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> = self
-            .hooks
-            .handlers_for(hook_id)
-            .iter()
-            .map(|(_, proc)| proc.clone())
-            .collect();
+        let handler_procs: Vec<SteelVal> =
+            self.hooks.handlers_for(hook_id).iter().cloned().collect();
         if handler_procs.is_empty() {
             return Ok(vec![]);
         }
@@ -965,7 +764,6 @@ impl ScriptingHost {
             let Self {
                 engine,
                 plugin_stack,
-                ledger_stack,
                 cmd_owners,
                 hooks,
                 pending_messages,
@@ -978,7 +776,6 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_command(
                 HostBundle {
                     plugin_stack,
-                    ledger_stack,
                     cmd_owners,
                     hooks,
                     pending_messages,
@@ -1007,57 +804,6 @@ impl ScriptingHost {
         result?;
         Ok(cmd_queue)
     }
-}
-
-// ── Ledger restoration helper ─────────────────────────────────────────────────
-
-/// Apply one ledger entry's restoration to `settings` or `keymap`.
-///
-/// Setting keys are plain strings like `"tab-width"`.
-/// Keymap keys are mode-prefixed: `"normal f"`, `"insert <ctrl-d>"`, etc.
-///
-/// For keybinds: if `prior_value` is empty the binding is removed
-/// (it was unbound before the plugin set it); otherwise it is restored.
-fn restore_ledger_entry(
-    entry: crate::scripting::ledger::LedgerEntry,
-    settings: &mut EditorSettings,
-    keymap: &mut Keymap,
-) -> Result<(), String> {
-    if let Some(mode_and_seq) = BindMode::from_ledger_prefix(&entry.key) {
-        let (mode, key_str) = mode_and_seq;
-        let keys = keys::parse_key_sequence(key_str)?;
-        if entry.prior_value.is_empty() {
-            keymap.unbind_user(mode, &keys);
-        } else {
-            keymap.bind_user_with_extend(
-                mode,
-                &keys,
-                Cow::Owned(entry.prior_value),
-                entry.prior_force_extend,
-            );
-        }
-    } else if entry.key.contains(' ') {
-        // A key with a space is unambiguously a keymap entry, but the mode
-        // prefix didn't match any known BindMode — treat as corruption.
-        return Err(format!(
-            "ledger key '{}' has unknown mode prefix (expected 'normal ', 'extend ', or 'insert ')",
-            entry.key
-        ));
-    } else {
-        // Setting key — restore via apply_setting.
-        if !entry.prior_value.is_empty() {
-            let mut dummy = BufferOverrides::default();
-            apply_setting(
-                SettingScope::Global,
-                &entry.key,
-                &entry.prior_value,
-                settings,
-                &mut dummy,
-            )
-            .map_err(|e| format!("restoring setting '{}': {e}", entry.key))?;
-        }
-    }
-    Ok(())
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

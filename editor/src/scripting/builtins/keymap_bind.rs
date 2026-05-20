@@ -1,9 +1,5 @@
 //! `(bind-key! mode key-sequence command-name)`, `(bind-key-extend! …)`,
 //! `(unbind-key! mode key-sequence)`, and `(bind-wait-char! …)` builtins.
-//!
-//! The key-string parser lives in [`crate::scripting::keys`]; this module
-//! forwards the `key-sequence` argument to it and handles ledger recording
-//! for plugin-attributed mutations.
 
 use std::borrow::Cow;
 
@@ -12,7 +8,7 @@ use steel::rvals::SteelVal;
 
 use crate::editor::keymap::BindMode;
 use crate::scripting::keys::parse_key_sequence;
-use crate::scripting::{SteelCtx, ledger::Owner};
+use crate::scripting::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -49,11 +45,6 @@ fn bind_inner(
     let mode = mode_from_str(&mode_str, fn_name)?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
-    let (prior_value, prior_force_extend) =
-        ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
-    let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
-    let current_owner = ctx.plugin_stack.current_owner();
     match kind {
         BindKind::Normal => {
             ctx.keymap
@@ -62,15 +53,6 @@ fn bind_inner(
         BindKind::WaitChar => ctx
             .keymap
             .bind_wait_char_user(mode, &keys, Cow::Owned(cmd_name)),
-    }
-    if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(
-            plugin_id,
-            ledger_key,
-            prior_owner,
-            prior_value,
-            prior_force_extend,
-        );
     }
     Ok(SteelVal::Void)
 }
@@ -84,7 +66,6 @@ fn bind_inner(
 /// - `command-name` — the canonical command name (must be registered in
 ///   the [`CommandRegistry`] at dispatch time; not validated here).
 ///
-/// Records a ledger entry when called from a plugin body.
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(
     ctx: &mut SteelCtx,
@@ -112,7 +93,6 @@ pub(crate) fn bind_key(
 /// Use this to mirror built-in bindings like `Ctrl+x` (`select-line`) for
 /// user-defined keys that should always accumulate a selection.
 ///
-/// Records a ledger entry when called from a plugin body.
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key_extend(
     ctx: &mut SteelCtx,
@@ -134,11 +114,7 @@ pub(crate) fn bind_key_extend(
 /// `(unbind-key! mode key-sequence)`
 ///
 /// Removes the binding for `key-sequence` in `mode`. Silent no-op if the
-/// sequence is already unbound.
-///
-/// When called from a plugin body, records a ledger entry so the original
-/// binding is restored on plugin unload.
-/// Only valid during `init.scm` or plugin load.
+/// sequence is already unbound. Only valid during `init.scm` or plugin load.
 pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) -> SteelResult {
     if !ctx.is_init {
         steel::stop!(Generic =>
@@ -147,21 +123,7 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) 
     let mode = mode_from_str(&mode_str, "unbind-key!")?;
     let keys = parse_key_sequence(&key_str)
         .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-    let ledger_key = format!("{}{key_str}", mode.ledger_prefix());
-    let (prior_value, prior_force_extend) =
-        ctx.keymap.lookup_command(mode, &keys).unwrap_or_default();
-    let prior_owner = ctx.ledger_stack.owner_of(&ledger_key);
-    let current_owner = ctx.plugin_stack.current_owner();
     ctx.keymap.unbind_user(mode, &keys);
-    if let Owner::Plugin(ref plugin_id) = current_owner {
-        ctx.ledger_stack.record(
-            plugin_id,
-            ledger_key,
-            prior_owner,
-            prior_value,
-            prior_force_extend,
-        );
-    }
     Ok(SteelVal::Void)
 }
 
@@ -174,7 +136,6 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) 
 /// Example: `(bind-wait-char! "normal" "m d" "helix-delete-surround")` makes
 /// `m d <char>` dispatch `helix-delete-surround` with `(pending-char)` = char.
 ///
-/// Records a ledger entry when called from a plugin body.
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_wait_char(
     ctx: &mut SteelCtx,
