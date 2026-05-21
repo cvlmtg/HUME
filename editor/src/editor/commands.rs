@@ -780,7 +780,7 @@ pub(super) fn cmd_repeat(
     // extend=false because the replayed command was already resolved to its
     // final form (the resolved name is what gets stored in RepeatableAction).
     // Clone the name while `action` is locally owned (moved out via `.take()`).
-    ed.execute_keymap_command(action.command.clone(), effective_count, false, None);
+    ed.execute_keymap_command(action.command.clone(), effective_count, false, vec![]);
 
     // Feed recorded insert keystrokes through the normal insert handler.
     // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.

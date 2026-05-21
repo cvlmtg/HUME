@@ -27,7 +27,7 @@ use crate::ops::pair::find_bracket_pair;
 use crate::ops::register::{KillRing, RegisterSet};
 use crate::os::terminal::Term;
 use crate::scripting::builtins::ids::SteelBufferId;
-use crate::scripting::{EditorSteelRefs, SteelCmdDef, hooks::HookId};
+use crate::scripting::{EditorSteelRefs, HookResult, SteelCmdDef, hooks::HookId};
 use crate::settings::EditorSettings;
 use steel::rvals::IntoSteelVal as _;
 
@@ -952,9 +952,9 @@ impl Editor {
         };
         self.flush_script_messages();
         match result {
-            Ok(queue) => {
-                for cmd in queue {
-                    self.execute_keymap_command(cmd.into(), 1, false, None);
+            Ok(HookResult { cmd_queue }) => {
+                for (cmd_name, cmd_args) in cmd_queue {
+                    self.execute_keymap_command(cmd_name.into(), 1, false, cmd_args);
                 }
             }
             Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
@@ -1435,6 +1435,8 @@ impl Editor {
                         doc: def.doc.into(),
                         steel_proc: def.steel_proc,
                         extendable: def.extendable,
+                        arity: def.arity,
+                        is_variadic: def.is_variadic,
                     });
             }
         }

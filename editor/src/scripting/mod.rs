@@ -62,6 +62,11 @@ fn hook_proc_name(i: usize) -> String {
     format!("*hume.hp{i}*")
 }
 
+/// Internal Steel global name for the i-th positional arg bound during a command call.
+pub(crate) fn cmd_arg_global_name(i: usize) -> String {
+    format!("*hume.ca{i}*")
+}
+
 /// Build the composite hook invocation program for `handler_count` handlers
 /// and `arg_count` arguments.  The result is deterministic and cacheable.
 fn build_hook_program(arg_count: usize, handler_count: usize) -> String {
@@ -164,6 +169,24 @@ pub(crate) struct SteelCmdDef {
     /// [`crate::scripting::ScriptingHost::call_steel_cmd`] at dispatch time.
     pub(crate) steel_proc: String,
     pub(crate) extendable: bool,
+    /// Number of required positional parameters the lambda accepts.
+    /// Introspected once at `define-command!` time from the closure's arity.
+    pub(crate) arity: u16,
+    /// `true` if the lambda accepts a rest parameter (variadic).
+    pub(crate) is_variadic: bool,
+}
+
+/// Result returned by [`ScriptingHost::call_steel_cmd`].
+#[derive(Debug)]
+pub(crate) struct SteelCmdResult {
+    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
+    pub(crate) wait_char_request: Option<String>,
+}
+
+/// Result returned by [`ScriptingHost::fire_hook`].
+#[derive(Debug)]
+pub(crate) struct HookResult {
+    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
 }
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -208,14 +231,12 @@ pub(crate) struct SteelCtx<'a> {
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
     // ── Command-mode fields (meaningful only when is_init = false) ────────────
-    /// Commands queued by `(call! …)`.
-    pub(crate) cmd_queue: Vec<String>,
+    /// Commands queued by `(call! …)`, with their positional args.
+    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
     /// WaitChar command requested by `(request-wait-char! …)`.
     pub(crate) wait_char_request: Option<String>,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
-    /// Command-line argument from `:cmd arg` invocation.
-    pub(crate) cmd_arg: Option<String>,
     // ── Mode discriminant ────────────────────────────────────────────────────
     /// `true` during `eval_source_raw` (init.scm / plugin load);
     /// `false` during `call_steel_cmd` (command dispatch).
@@ -263,7 +284,6 @@ impl<'a> SteelCtx<'a> {
             cmd_queue: Vec::new(),
             wait_char_request: None,
             pending_char: None,
-            cmd_arg: None,
             is_init: true,
             focused_pane_id: PaneId::default(),
             focused_buffer_id: BufferId::default(),
@@ -285,7 +305,6 @@ impl<'a> SteelCtx<'a> {
         host: HostBundle<'a>,
         refs: EditorSteelRefs<'a>,
         pending_char: Option<char>,
-        cmd_arg: Option<String>,
     ) -> Self {
         let fid = refs.focused_buffer_id;
         Self {
@@ -305,7 +324,6 @@ impl<'a> SteelCtx<'a> {
             cmd_queue: Vec::new(),
             wait_char_request: None,
             pending_char,
-            cmd_arg,
             is_init: false,
             focused_pane_id: refs.focused_pane_id,
             focused_buffer_id: fid,
@@ -386,7 +404,6 @@ impl SteelCtxTestHarness {
                 pane_state: None,
                 pane_jumps: None,
             },
-            None,
             None,
         )
     }
@@ -728,6 +745,13 @@ impl ScriptingHost {
         let mut defs = Vec::new();
         for cmd in pending {
             let steel_proc = cmd_proc_name(&cmd.name);
+            // Introspect arity before register_value takes ownership of cmd.proc.
+            let (arity, is_variadic) = match &cmd.proc {
+                SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
+                // FuncV/MutFunc are opaque native fns; treat as variadic so the
+                // dispatcher never rejects them on arity grounds.
+                _ => (0, true),
+            };
             // Register (or overwrite) the lambda under its internal name.
             self.engine.register_value(&steel_proc, cmd.proc);
             // Record the owner string for `(command-plugin …)` introspection.
@@ -738,6 +762,8 @@ impl ScriptingHost {
                 doc: cmd.doc,
                 steel_proc,
                 extendable: cmd.extendable,
+                arity,
+                is_variadic,
             });
         }
         defs
@@ -764,11 +790,22 @@ impl ScriptingHost {
         &'a mut self,
         steel_proc: &str,
         pending_char: Option<char>,
-        cmd_arg: Option<String>,
+        args: Vec<SteelVal>,
         refs: EditorSteelRefs<'a>,
-    ) -> Result<(Vec<String>, Option<String>), String> {
+    ) -> Result<SteelCmdResult, String> {
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
-        let invocation = format!("({steel_proc})");
+
+        // Pre-bind positional args as *hume.ca{i}* globals, then build the
+        // invocation string referencing them — mirrors the hook arg pattern.
+        let invocation = if args.is_empty() {
+            format!("({steel_proc})")
+        } else {
+            for (i, arg) in args.iter().enumerate() {
+                self.engine.register_value(&cmd_arg_global_name(i), arg.clone());
+            }
+            let arg_refs: Vec<String> = (0..args.len()).map(cmd_arg_global_name).collect();
+            format!("({steel_proc} {})", arg_refs.join(" "))
+        };
 
         let (result, cmd_queue, wait_char_request) = {
             let Self {
@@ -795,15 +832,20 @@ impl ScriptingHost {
                 },
                 refs,
                 pending_char,
-                cmd_arg,
             );
 
             let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
             (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request)
         };
 
+        // Null out arg globals — releases any Arc references and prevents stale
+        // values leaking into later calls.
+        for i in 0..args.len() {
+            self.engine.update_value(&cmd_arg_global_name(i), SteelVal::Void);
+        }
+
         result?;
-        Ok((cmd_queue, wait_char_request))
+        Ok(SteelCmdResult { cmd_queue, wait_char_request })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.
@@ -820,12 +862,12 @@ impl ScriptingHost {
         hook_id: hooks::HookId,
         args: &[SteelVal],
         refs: EditorSteelRefs<'a>,
-    ) -> Result<Vec<String>, String> {
+    ) -> Result<HookResult, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> =
             self.hooks.handlers_for(hook_id).iter().cloned().collect();
         if handler_procs.is_empty() {
-            return Ok(vec![]);
+            return Ok(HookResult { cmd_queue: vec![] });
         }
 
         // Pre-bind each arg global.
@@ -872,7 +914,6 @@ impl ScriptingHost {
                 },
                 refs,
                 None,
-                None,
             );
 
             let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
@@ -889,7 +930,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(cmd_queue)
+        Ok(HookResult { cmd_queue })
     }
 }
 

@@ -7,6 +7,12 @@
 ;;;
 ;;; Macros defined here are visible in init.scm (evaluated globally) and inside
 ;;; plugin modules loaded via (require).
+;;;
+;;; NOTE: (call! name args…) is NOT defined here.  It is a core dispatch
+;;; primitive defined in the BOOTSTRAP constant (builtins/mod.rs) so it is
+;;; unconditionally available — even in test engines that never load the
+;;; prelude.  The prelude is optional (silent no-op if the runtime dir is
+;;; missing); call! must not be.
 
 ;; (bind-keys! mode (key cmd) ...)
 ;;

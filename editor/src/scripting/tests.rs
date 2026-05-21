@@ -514,7 +514,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 
     let start = std::time::Instant::now();
     let err = h
-        .call_steel_cmd(&steel_proc, None, None, test_refs(&mut s, &mut km))
+        .call_steel_cmd(&steel_proc, None, vec![], test_refs(&mut s, &mut km))
         .unwrap_err();
 
     assert!(
@@ -554,7 +554,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     s.steel_command_budget_ms = 50;
 
     let err = h
-        .call_steel_cmd(&steel_proc, None, None, test_refs(&mut s, &mut km))
+        .call_steel_cmd(&steel_proc, None, vec![], test_refs(&mut s, &mut km))
         .unwrap_err();
 
     assert!(
@@ -584,7 +584,7 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-try-set", None, None, test_refs(&mut s, &mut km))
+        .call_steel_cmd("%hume-cmd-try-set", None, vec![], test_refs(&mut s, &mut km))
         .unwrap_err();
 
     assert!(
@@ -595,48 +595,44 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     assert_eq!(s.tab_width, 4, "tab-width must be untouched");
 }
 
-// ── call! alias ───────────────────────────────────────────────────────────
+// ── call! ─────────────────────────────────────────────────────────────────
 
-/// Both `call!` and `call-command!` route to the same builtin.  Verify
-/// that commands defined with each spelling both queue their sub-commands.
+/// The variadic `call!` macro desugars to `%call!` and correctly binds
+/// positional args as `*hume.ca{i}*` globals, passing them into the invoked
+/// lambda.  This is the independent oracle for the arg-binding splice in
+/// `call_steel_cmd`: the expected `cmd_queue` is derived from the input args,
+/// not from re-reading the implementation.
+///
+/// Verification validity: changing "hello" in the assert to "world" makes the test fail.
 #[test]
-fn call_bang_and_call_command_both_dispatch() {
+fn call_bang_passes_args_to_command() {
+    use steel::rvals::SteelVal;
     let mut h = host();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
+    // Define a command that takes one arg x and calls (call! x).
+    // The lambda receives x as *hume.ca0*, then queues x as a command name.
     h.eval_source(
-        r#"
-(define-command! "use-call-bang"    "" (lambda () (call! "move-right")))
-(define-command! "use-call-command" "" (lambda () (call-command! "move-left")))
-"#,
+        r#"(define-command! "echo-arg" "" (lambda (x) (call! x)))"#,
         &mut s,
         &mut km,
     )
     .unwrap();
 
-    let (q1, _) = h
+    let result = h
         .call_steel_cmd(
-            "%hume-cmd-use-call-bang",
+            "%hume-cmd-echo-arg",
             None,
-            None,
+            vec![SteelVal::StringV("hello".into())],
             test_refs(&mut s, &mut km),
         )
         .unwrap();
-    assert_eq!(q1, vec!["move-right"], "call! should queue the command");
 
-    let (q2, _) = h
-        .call_steel_cmd(
-            "%hume-cmd-use-call-command",
-            None,
-            None,
-            test_refs(&mut s, &mut km),
-        )
-        .unwrap();
     assert_eq!(
-        q2,
-        vec!["move-left"],
-        "call-command! alias should queue the command"
+        result.cmd_queue,
+        vec![("hello".to_string(), vec![])],
+        "call! should queue the arg value as a command name"
     );
 }
 
@@ -664,8 +660,9 @@ fn register_hook_fires_on_buffer_open() {
             &[val],
             test_refs_with_bid(&mut s, &mut km, bid),
         )
-        .unwrap();
-    assert_eq!(queue, vec!["move-right"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
 }
 
 #[test]
@@ -687,8 +684,9 @@ fn register_hook_fires_on_buffer_close() {
             &[val],
             test_refs_with_bid(&mut s, &mut km, bid),
         )
-        .unwrap();
-    assert_eq!(queue, vec!["move-left"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(queue, vec![("move-left".to_string(), vec![])]);
 }
 
 #[test]
@@ -710,8 +708,9 @@ fn register_hook_fires_on_buffer_save() {
             &[val],
             test_refs_with_bid(&mut s, &mut km, bid),
         )
-        .unwrap();
-    assert_eq!(queue, vec!["move-right"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
 }
 
 #[test]
@@ -736,8 +735,9 @@ fn register_hook_fires_on_mode_change() {
             &[old_val, new_val],
             test_refs(&mut s, &mut km),
         )
-        .unwrap();
-    assert_eq!(queue, vec!["move-right"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
 }
 
 #[test]
@@ -747,7 +747,8 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut km = Keymap::default();
     let queue = h
         .fire_hook(HookId::OnBufferOpen, &[], test_refs(&mut s, &mut km))
-        .unwrap();
+        .unwrap()
+        .cmd_queue;
     assert!(queue.is_empty());
 }
 
@@ -773,8 +774,15 @@ fn register_hook_multiple_handlers_all_fire() {
             &[val],
             test_refs_with_bid(&mut s, &mut km, bid),
         )
-        .unwrap();
-    assert_eq!(queue, vec!["move-right", "move-left"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(
+        queue,
+        vec![
+            ("move-right".to_string(), vec![]),
+            ("move-left".to_string(), vec![])
+        ]
+    );
 }
 
 #[test]
@@ -791,7 +799,7 @@ fn register_hook_errors_in_command_mode() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-cmd", None, None, test_refs(&mut s, &mut km))
+        .call_steel_cmd("%hume-cmd-bad-cmd", None, vec![], test_refs(&mut s, &mut km))
         .unwrap_err();
     assert!(err.contains("can only be called during init"), "got: {err}");
 }
@@ -835,8 +843,9 @@ fn fire_hook_globals_cleared_between_fires() {
             &[old_val.clone(), new_val],
             test_refs(&mut s, &mut km),
         )
-        .unwrap();
-    assert_eq!(q1, vec!["insert"]);
+        .unwrap()
+        .cmd_queue;
+    assert_eq!(q1, vec![("insert".to_string(), vec![])]);
 
     // Second fire with different args — stale *hume.ha1* would give wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
@@ -846,10 +855,11 @@ fn fire_hook_globals_cleared_between_fires() {
             &[old_val, new_val2],
             test_refs(&mut s, &mut km),
         )
-        .unwrap();
+        .unwrap()
+        .cmd_queue;
     assert_eq!(
         q2,
-        vec!["normal"],
+        vec![("normal".to_string(), vec![])],
         "second fire must not see stale globals from first"
     );
 }

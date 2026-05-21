@@ -166,6 +166,10 @@ pub(crate) enum MappableCommand {
         /// If `true`, this command participates in sticky-Ctrl one-shot extend
         /// (strip-Ctrl fallback).  Set via `(define-command-extend! …)`.
         extendable: bool,
+        /// Number of required positional parameters.
+        arity: u16,
+        /// `true` if the lambda accepts a rest parameter.
+        is_variadic: bool,
     },
 }
 
@@ -1598,12 +1602,16 @@ mod tests {
             doc: "".into(),
             steel_proc: "%hume-cmd-x".to_string(),
             extendable: true,
+            arity: 0,
+            is_variadic: false,
         };
         let cmd_f = MappableCommand::SteelBacked {
             name: "y".into(),
             doc: "".into(),
             steel_proc: "%hume-cmd-y".to_string(),
             extendable: false,
+            arity: 0,
+            is_variadic: false,
         };
         assert!(cmd_t.is_extendable());
         assert!(!cmd_f.is_extendable());
@@ -1705,12 +1713,16 @@ mod tests {
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-my-steel-cmd".to_string(),
             extendable: false,
+            arity: 0,
+            is_variadic: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-another-steel-cmd".to_string(),
             extendable: false,
+            arity: 0,
+            is_variadic: false,
         });
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
@@ -1747,12 +1759,16 @@ mod tests {
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-plugin-cmd-a".to_string(),
             extendable: false,
+            arity: 0,
+            is_variadic: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-b".to_string()),
             doc: Cow::Borrowed("doc"),
             steel_proc: "%hume-cmd-plugin-cmd-b".to_string(),
             extendable: false,
+            arity: 0,
+            is_variadic: false,
         });
         assert!(!reg.steel_backed_names().is_empty());
 

@@ -156,7 +156,7 @@ impl Editor {
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
                 let extend = (self.mode == EditorMode::Extend) || wc.ctrl_extend;
-                self.execute_keymap_command(wc.cmd_name.clone(), count, extend, None);
+                self.execute_keymap_command(wc.cmd_name.clone(), count, extend, vec![]);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -338,7 +338,7 @@ impl Editor {
                     self.pending_keys.clear();
                     let count = self.count.take().unwrap_or(1);
                     self.explicit_count = false;
-                    self.execute_keymap_command(cmd.name.clone(), count, false, None);
+                    self.execute_keymap_command(cmd.name.clone(), count, false, vec![]);
                     return;
                 }
                 WalkResult::Interior { .. } => {
@@ -456,7 +456,7 @@ impl Editor {
                 let raw_count = self.count.take();
                 self.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
-                self.execute_keymap_command(cmd.name.clone(), count, extend, None);
+                self.execute_keymap_command(cmd.name.clone(), count, extend, vec![]);
                 self.explicit_count = false;
             }
             WalkResult::WaitChar(mut wc) => {
@@ -485,7 +485,7 @@ impl Editor {
         let trie_result = self.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
-                self.execute_keymap_command(cmd.name.clone(), 1, false, None);
+                self.execute_keymap_command(cmd.name.clone(), 1, false, vec![]);
                 return;
             }
             WalkResult::NoMatch => {}
@@ -603,7 +603,7 @@ impl Editor {
         name: Cow<'static, str>,
         count: usize,
         extend: bool,
-        cmd_arg: Option<String>,
+        steel_args: Vec<steel::rvals::SteelVal>,
     ) {
         let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
@@ -678,7 +678,7 @@ impl Editor {
                         match host.call_steel_cmd(
                             steel_proc,
                             char_arg,
-                            cmd_arg,
+                            steel_args,
                             EditorSteelRefs {
                                 settings: &mut self.settings,
                                 keymap: &mut self.keymap,
@@ -690,7 +690,7 @@ impl Editor {
                                 pane_jumps: Some(&mut self.pane_jumps),
                             },
                         ) {
-                            Ok(r) => r,
+                            Ok(r) => (r.cmd_queue, r.wait_char_request),
                             Err(e) => {
                                 self.report(Severity::Error, e);
                                 return;
@@ -700,8 +700,8 @@ impl Editor {
                         return;
                     };
                     self.flush_script_messages();
-                    for cmd_name in queue {
-                        self.execute_keymap_command(cmd_name.into(), count, extend, None);
+                    for (cmd_name, cmd_args) in queue {
+                        self.execute_keymap_command(cmd_name.into(), count, extend, cmd_args);
                     }
                     if let Some(wc) = wait_char_cmd {
                         self.wait_char = Some(WaitCharPending {
@@ -1324,13 +1324,35 @@ impl Editor {
             if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.0);
             }
-        } else if self.registry.get_mappable(cmd).is_some() {
+        } else if let Some(mappable) = self.registry.get_mappable(cmd).cloned() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers.
-            // `cmd` is already the canonical name — no need to clone the command.
-            // Pass the arg string so Steel commands can read it via `(cmd-arg)`.
-            self.execute_keymap_command(cmd.to_owned().into(), 1, false, expanded);
+            let steel_args = if let MappableCommand::SteelBacked {
+                arity,
+                is_variadic,
+                ..
+            } = &mappable
+            {
+                use steel::rvals::SteelVal;
+                if *arity == 0 {
+                    vec![]
+                } else if *arity == 1 || *is_variadic {
+                    match expanded {
+                        Some(ref s) => vec![SteelVal::StringV(s.clone().into())],
+                        None => vec![SteelVal::BoolV(false)],
+                    }
+                } else {
+                    self.report(
+                        Severity::Error,
+                        format!(":{cmd} requires {arity} args; the minibuffer can only supply 1"),
+                    );
+                    return;
+                }
+            } else {
+                vec![]
+            };
+            self.execute_keymap_command(cmd.to_owned().into(), 1, false, steel_args);
         } else {
             self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }

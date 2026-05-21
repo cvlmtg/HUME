@@ -61,6 +61,14 @@ const BOOTSTRAP: &str = r#"
   (let ((path (resolve-plugin-path name)))
     (when path
       (push-loaded-plugin! name))))
+
+; Variadic call! macro — desugars to the fixed-arity-2 %call! primitive.
+; Defined here (not only in prelude.scm) so it is available in every engine
+; context, including test harnesses that do not load the full prelude.
+(define-syntax call!
+  (syntax-rules ()
+    ((_ name args ...)
+     (%call! name (list args ...)))))
 "#;
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -128,12 +136,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
         "define-command-extend!",
         commands::define_command_extend,
     );
-    engine.register_fn_with_ctx(HUME_CTX, "call!", commands::call_command);
-    // Back-compat alias — prefer call! in new code.
-    engine.register_fn_with_ctx(HUME_CTX, "call-command!", commands::call_command);
+    // %call! is the Rust primitive; the variadic (call! name args…) macro in
+    // BOOTSTRAP desugars to (%call! name (list args…)).
+    engine.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);
     engine.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
     engine.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
-    engine.register_fn_with_ctx(HUME_CTX, "cmd-arg", commands::cmd_arg);
     engine.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
 
     // Shell — narrow git wrappers only (no generic run-process)

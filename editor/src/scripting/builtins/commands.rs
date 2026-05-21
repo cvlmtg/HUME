@@ -1,13 +1,12 @@
-//! `(define-command! name doc proc)`, `(call! name)`, and
+//! `(define-command! name doc proc)`, `(call! name args…)`, and
 //! `(request-wait-char! cmd)` builtins.
 //!
-//! Steel commands are defined as zero-argument lambdas and composed via
-//! `call!`, which queues named commands for dispatch after the Steel proc
-//! returns.  The actual execution happens in
+//! Steel commands are defined as lambdas and composed via `call!`, a BOOTSTRAP
+//! macro that desugars `(call! name a b…)` to `(%call! name (list a b…))`.
+//! The `%call!` Rust primitive queues `(name, args)` for dispatch after the
+//! Steel proc returns.  The actual execution happens in
 //! [`crate::scripting::ScriptingHost::call_steel_cmd`], which drains the
 //! queue through the normal `execute_keymap_command` path.
-//!
-//! `call-command!` is a back-compat alias for `call!`; prefer `call!` in new code.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
 //! queue is drained, the editor enters WaitChar mode for the named command.
@@ -16,11 +15,11 @@
 //! ## Invocation contract
 //!
 //! All commands — Rust built-ins and `define-command!`-registered Steel
-//! lambdas alike — are invoked uniformly by string name:
+//! lambdas alike — are invoked uniformly by string name with optional args:
 //!
 //! ```scheme
-//! (call! "collapse-selection")   ; built-in
-//! (call! "my-plugin-cmd")        ; defined by another (or the same) plugin
+//! (call! "collapse-selection")        ; built-in, no args
+//! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
 //! ```
 //!
 //! Steel lambdas registered via `define-command!` are intentionally **not**
@@ -120,18 +119,31 @@ fn define_command_inner(
     Ok(SteelVal::Void)
 }
 
-/// `(call! name)` — also available as `(call-command! name)` (back-compat alias)
+/// `%call!` — fixed-arity-2 Rust primitive underlying the `(call! name args…)` macro.
 ///
-/// Queues `name` for execution after the current Steel command proc returns.
-/// Commands are dispatched in order through the normal keymap path, which
-/// means they have full access to editor state, jump-list tracking, etc.
+/// The BOOTSTRAP macro `(call! name args…)` desugars to `(%call! name (list args…))`,
+/// so this function always receives `(name, args-list)`.  Queues `(name, args_vec)`
+/// for execution after the current Steel command proc returns.
 ///
 /// Only valid inside a `SteelBacked` command invocation; raises a Steel error
 /// if called from top-level `init.scm`.
-pub(crate) fn call_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    require_cmd_ctx!(ctx, "call!");
-    ctx.cmd_queue.push(name);
+pub(crate) fn call_command_primitive(
+    ctx: &mut SteelCtx,
+    name: String,
+    args: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "%call!");
+    let args_vec = steel_list_to_vec(args)?;
+    ctx.cmd_queue.push((name, args_vec));
     Ok(SteelVal::Void)
+}
+
+fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::SteelErr> {
+    match val {
+        SteelVal::ListV(list) => Ok(list.into_iter().collect()),
+        other => steel::stop!(TypeMismatch =>
+            "%call!: second arg must be a list, got {:?}", other),
+    }
 }
 
 /// `(request-wait-char! cmd-name)`
@@ -149,19 +161,6 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
     require_cmd_ctx!(ctx, "request-wait-char!");
     ctx.wait_char_request = Some(cmd);
     Ok(SteelVal::Void)
-}
-
-/// `(cmd-arg)` — return the command-line argument string as a string,
-/// or `#f` if no argument was supplied.
-///
-/// Meaningful only when the command was invoked via `:cmd arg` in the
-/// mini-buffer.  Returns `#f` when invoked via a key binding or from
-/// top-level `init.scm`.
-pub(crate) fn cmd_arg(ctx: &mut SteelCtx) -> SteelResult {
-    match ctx.cmd_arg.as_deref() {
-        Some(s) => Ok(SteelVal::StringV(s.to_owned().into())),
-        None => Ok(SteelVal::BoolV(false)),
-    }
 }
 
 /// `(command-plugin name)` — return the owner of command `name` as a string.
@@ -202,13 +201,21 @@ mod tests {
     use super::*;
     use crate::scripting::SteelCtxTestHarness;
 
+    fn make_list(vals: Vec<SteelVal>) -> SteelVal {
+        SteelVal::ListV(vals.into_iter().collect())
+    }
+
     #[test]
-    fn call_command_outside_invocation_errors() {
-        // is_init = true simulates "not inside a Steel command invocation"
+    fn call_bang_outside_invocation_errors() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         ctx.is_init = true;
-        let err = call_command(&mut ctx, "move-right".to_string()).unwrap_err();
+        let err = call_command_primitive(
+            &mut ctx,
+            "move-right".to_string(),
+            make_list(vec![]),
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("not available during init"),
             "got: {err}"
@@ -216,20 +223,33 @@ mod tests {
     }
 
     #[test]
-    fn call_command_queues_name() {
+    fn call_bang_with_no_args_queues_empty_vec() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        call_command(&mut ctx, "move-right".to_string()).unwrap();
-        assert_eq!(ctx.cmd_queue, vec!["move-right"]);
+        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
+        assert_eq!(
+            ctx.cmd_queue,
+            vec![("move-right".to_string(), vec![])]
+        );
+    }
+
+    #[test]
+    fn call_bang_with_args_queues_name_and_args() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let arg = SteelVal::StringV("hello".into());
+        call_command_primitive(&mut ctx, "echo".to_string(), make_list(vec![arg.clone()])).unwrap();
+        assert_eq!(ctx.cmd_queue, vec![("echo".to_string(), vec![arg])]);
     }
 
     #[test]
     fn call_bang_queues_multiple_names() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        call_command(&mut ctx, "move-right".to_string()).unwrap();
-        call_command(&mut ctx, "move-left".to_string()).unwrap();
-        assert_eq!(ctx.cmd_queue, vec!["move-right", "move-left"]);
+        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
+        call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
+        let names: Vec<&str> = ctx.cmd_queue.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["move-right", "move-left"]);
     }
 
     #[test]
@@ -250,23 +270,6 @@ mod tests {
         let mut ctx = h.ctx();
         request_wait_char(&mut ctx, "replace".to_string()).unwrap();
         assert_eq!(ctx.wait_char_request, Some("replace".to_string()));
-    }
-
-    #[test]
-    fn cmd_arg_returns_false_when_none() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let result = cmd_arg(&mut ctx).unwrap();
-        assert_eq!(result, SteelVal::BoolV(false));
-    }
-
-    #[test]
-    fn cmd_arg_returns_string_when_set() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        ctx.cmd_arg = Some("user/repo".to_string());
-        let result = cmd_arg(&mut ctx).unwrap();
-        assert_eq!(result, SteelVal::StringV("user/repo".into()));
     }
 
     #[test]

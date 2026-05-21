@@ -347,7 +347,7 @@ fn select_word_nearest_scopes_to_visual_subrow() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         1,
         false,
-        None,
+        vec![],
     );
 
     let sel = ed.current_selections().primary();
@@ -370,7 +370,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
             std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
             1,
             false,
-            None,
+            vec![],
         )
     };
 

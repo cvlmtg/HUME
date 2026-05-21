@@ -136,12 +136,13 @@ Register a Steel lambda as a named mappable command. The command can then be bou
 
 If a command with the same name is already registered, the new registration is rejected with a warning (no shadowing).
 
-### `(call! command-name)`
+### `(call! command-name args…)`
 
-Queue a named command for execution. `call-command!` is a back-compat alias; prefer `call!`.
+Queue a named command for execution with optional positional args.
 
 ```scheme
 (call! "move-right")
+(call! "replace-char" my-char)
 (call! (string-append "surround-" suffix))
 ```
 

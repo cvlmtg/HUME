@@ -308,7 +308,7 @@ mod tests {
     use crate::editor::buffer_store::BufferStore;
     use crate::editor::keymap::Keymap;
     use crate::editor::pane_state::PaneBufferState;
-    use crate::scripting::{EditorSteelRefs, ScriptingHost};
+    use crate::scripting::{EditorSteelRefs, ScriptingHost, SteelCmdResult};
     use crate::settings::EditorSettings;
 
     // ── Test fixture helpers ──────────────────────────────────────────────────
@@ -406,19 +406,19 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-buf",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "current-buffer must return a buffer-id"
         );
     }
@@ -436,19 +436,19 @@ mod tests {
             &mut s, &mut km,
         ).unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-pane",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "current-pane must return a pane-id"
         );
     }
@@ -483,19 +483,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-bufs",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "(buffers) must return a list of one buffer-id"
         );
     }
@@ -519,19 +519,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-panes",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "(panes) must return a list of one pane-id"
         );
     }
@@ -569,19 +569,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-path-scratch",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "buffer-path of scratch should be #f"
         );
     }
@@ -606,19 +606,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-path",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "buffer-path should return a string for named buffer"
         );
     }
@@ -643,19 +643,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-name-scratch",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "buffer-name of scratch should be *scratch*"
         );
     }
@@ -680,19 +680,19 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-name",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "buffer-name should return the filename"
         );
     }
@@ -717,17 +717,17 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-check-dirty",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
             )
             .unwrap();
-        assert_eq!(queue, vec!["move-right"], "new buffer should not be dirty");
+        assert_eq!(cmd_queue, vec![("move-right".to_string(), vec![])], "new buffer should not be dirty");
     }
 
     // ── invalid buffer id ─────────────────────────────────────────────────────
@@ -756,7 +756,7 @@ mod tests {
             .call_steel_cmd(
                 "%hume-cmd-check-invalid",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s, &mut km, pane_id, buf_id, &mut bufs, &mut ev, &mut ps, None,
                 ),
@@ -797,11 +797,11 @@ mod tests {
         )
         .unwrap();
 
-        let (cmd_queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-do-open",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s,
                     &mut km,
@@ -856,11 +856,11 @@ mod tests {
         )
         .unwrap();
 
-        let (queue, _) = h
+        let SteelCmdResult { cmd_queue, .. } = h
             .call_steel_cmd(
                 "%hume-cmd-open-twice",
                 None,
-                None,
+                vec![],
                 mb_refs(
                     &mut s,
                     &mut km,
@@ -874,8 +874,8 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            queue,
-            vec!["move-right"],
+            cmd_queue,
+            vec![("move-right".to_string(), vec![])],
             "dedup: same path must return same BufferId"
         );
         assert_eq!(bufs.len(), 2, "no extra buffer should be created on dedup");
@@ -923,7 +923,7 @@ mod tests {
         h.call_steel_cmd(
             "%hume-cmd-do-close",
             None,
-            None,
+            vec![],
             mb_refs(
                 &mut s,
                 &mut km,
@@ -957,7 +957,7 @@ mod tests {
         h.call_steel_cmd(
             "%hume-cmd-do-close-last",
             None,
-            None,
+            vec![],
             mb_refs(
                 &mut s,
                 &mut km,
@@ -1028,7 +1028,7 @@ mod tests {
         h.call_steel_cmd(
             "%hume-cmd-do-switch",
             None,
-            None,
+            vec![],
             mb_refs(
                 &mut s,
                 &mut km,
