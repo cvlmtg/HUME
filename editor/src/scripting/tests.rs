@@ -636,6 +636,75 @@ fn call_bang_passes_args_to_command() {
     );
 }
 
+#[test]
+fn call_bang_forwards_multiple_args_to_lambda() {
+    // Tests the multi-arg *hume.ca{i}* splice for i > 0.
+    // Oracle: each queued command name equals the corresponding input arg.
+    // Verification: change "z" to "w" in the assert → test fails.
+    use steel::rvals::SteelVal;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(
+        r#"(define-command! "route-three" "" (lambda (a b c) (call! a) (call! b) (call! c)))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+
+    let result = h
+        .call_steel_cmd(
+            "%hume-cmd-route-three",
+            None,
+            vec![
+                SteelVal::StringV("x".into()),
+                SteelVal::StringV("y".into()),
+                SteelVal::StringV("z".into()),
+            ],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap();
+
+    assert_eq!(
+        result.cmd_queue,
+        vec![
+            ("x".to_string(), vec![]),
+            ("y".to_string(), vec![]),
+            ("z".to_string(), vec![]),
+        ],
+        "each arg must reach the corresponding lambda parameter"
+    );
+}
+
+#[test]
+fn call_bang_arity_mismatch_surfaces_steel_error() {
+    // Passing fewer args than the lambda declares is a Steel VM arity error.
+    // Verifies call_steel_cmd propagates it rather than silently misbehaving.
+    use steel::rvals::SteelVal;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_source(
+        r#"(define-command! "needs-two" "" (lambda (a b) (call! "move-right")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+
+    let err = h
+        .call_steel_cmd(
+            "%hume-cmd-needs-two",
+            None,
+            vec![SteelVal::StringV("only-one".into())],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap_err();
+
+    assert!(!err.is_empty(), "expected a Steel arity error, got empty string");
+}
+
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
 use crate::scripting::builtins::ids::SteelBufferId;

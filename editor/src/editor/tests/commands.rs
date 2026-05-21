@@ -1231,3 +1231,115 @@ fn load_theme_by_name_fails_gracefully() {
     // Failure warning ends up in the message log, not as an error result.
     assert!(ed.message_log.has_unseen(), "expected a warning message");
 }
+
+// ── Minibuffer arity-rule for Steel commands ──────────────────────────────
+
+/// Wire up a Steel command and return the editor + scripting host ready for use.
+///
+/// `eval_source` processes the lambda into the scripting engine, but discards the
+/// `SteelCmdDef` (returning `()`).  We must call `register_steel_cmds` separately
+/// to make the command reachable via `:name` in the minibuffer.
+fn setup_arity_test(
+    src: &str,
+    name: &str,
+    arity: u16,
+    is_variadic: bool,
+) -> Editor {
+    use crate::scripting::{ScriptingHost, SteelCmdDef};
+    use crate::editor::keymap::Keymap;
+    use crate::settings::EditorSettings;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_source(src, &mut s, &mut km).unwrap();
+    ed.register_steel_cmds(vec![SteelCmdDef {
+        name: name.to_string(),
+        doc: String::new(),
+        steel_proc: format!("%hume-cmd-{name}"),
+        extendable: false,
+        arity,
+        is_variadic,
+    }]);
+    ed.scripting = Some(host);
+    ed
+}
+
+/// arity-1 + string arg: the rule converts the typed string to `StringV` and the
+/// lambda receives it, queuing it as a command name, which runs `move-right`.
+/// Oracle: state changes → cursor moved → arg was forwarded.
+/// Verification: changing "move-right" in the assert to something else → fails.
+#[test]
+fn minibuffer_arity_rule_forwards_string_arg_to_arity_1() {
+    let mut ed = setup_arity_test(
+        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+        "echo-cmd",
+        1,
+        false,
+    );
+
+    let before = state(&ed);
+    // `:echo-cmd move-right<Enter>` — arity-1 rule passes "move-right" as StringV.
+    ed.handle_key(key(':'));
+    for ch in "echo-cmd move-right".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_ne!(state(&ed), before, "arity-1 rule must forward arg as StringV; cursor must have moved");
+}
+
+/// arity-1 + no arg: the rule passes `BoolV(false)`.  The lambda checks
+/// `(string? x)`, gets `#f`, and does nothing — cursor stays put.
+#[test]
+fn minibuffer_arity_rule_passes_false_when_no_arg() {
+    let mut ed = setup_arity_test(
+        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+        "echo-cmd",
+        1,
+        false,
+    );
+
+    let before = state(&ed);
+    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes #f.
+    ed.handle_key(key(':'));
+    for ch in "echo-cmd".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(state(&ed), before, "arity-1 with no arg must pass #f (not crash or move)");
+}
+
+/// arity-2 + one arg (the most the minibuffer can supply): the rule reports an
+/// error and never invokes the command.  Cursor stays; error is logged.
+/// The command needs no real lambda — the early return fires before call_steel_cmd.
+#[test]
+fn minibuffer_arity_rule_errors_on_arity_2() {
+    use crate::scripting::SteelCmdDef;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.register_steel_cmds(vec![SteelCmdDef {
+        name: "needs-two".to_string(),
+        doc: String::new(),
+        steel_proc: "%hume-cmd-needs-two".to_string(),
+        extendable: false,
+        arity: 2,
+        is_variadic: false,
+    }]);
+
+    let before = state(&ed);
+    // `:needs-two<Enter>` — arity-2 command, minibuffer can only supply 1 arg.
+    ed.handle_key(key(':'));
+    for ch in "needs-two".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(state(&ed), before, "arity rule must not dispatch the command");
+    assert!(
+        ed.message_log.entries().any(|e| e.text.contains("requires 2 args")),
+        "arity rule must log a user-facing error"
+    );
+}
