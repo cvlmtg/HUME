@@ -280,6 +280,10 @@ pub(crate) struct Editor {
     /// Ctrl+h from Backspace, Ctrl+j from Enter, etc. — unlocking Ctrl+motion
     /// one-shot extend shortcuts. Set by the caller after [`Editor::open`].
     pub(crate) kitty_enabled: bool,
+    /// Set by the inline-output dispatch arm after `leave_inline_output` to
+    /// trigger a full ratatui repaint, clearing its diff cache after the
+    /// alt-screen toggle invalidated the terminal's previous contents.
+    pub(crate) force_full_redraw: bool,
 
     // ── Visual-line movement ──────────────────────────────────────────────────
     /// Reusable scratch buffer for format operations in visual-line movement.
@@ -496,6 +500,7 @@ impl Editor {
             keymap: Keymap::default(),
             last_find: None,
             kitty_enabled: false,
+            force_full_redraw: false,
             last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,
@@ -542,6 +547,12 @@ impl Editor {
         let mut ctx = RenderContext::new();
         let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {
+            // An inline-output command toggled the alt-screen, invalidating ratatui's
+            // diff cache; force a full repaint so the editor chrome is restored cleanly.
+            if std::mem::take(&mut self.force_full_redraw) {
+                let _ = term.clear();
+            }
+
             // ── 1. Prepare frame (single sync point) ─────────────────────────
             let size = term.size()?;
             self.prepare_frame(size.width, size.height, &mut ctx);
@@ -1437,6 +1448,7 @@ impl Editor {
                         extendable: def.extendable,
                         arity: def.arity,
                         is_variadic: def.is_variadic,
+                        inline_output: def.inline_output,
                     });
             }
         }
@@ -1642,6 +1654,7 @@ impl Editor {
             keymap: keymap::Keymap::default(),
             last_find: None,
             kitty_enabled: false,
+            force_full_redraw: false,
             last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,

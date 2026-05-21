@@ -153,6 +153,9 @@ pub(crate) struct PendingSteelCmd {
     /// Whether this command participates in sticky-Ctrl extend.
     /// Set by `(define-command-extend! …)`.
     pub(crate) extendable: bool,
+    /// Whether dispatch brackets the call with an alt-screen exit for live
+    /// subprocess output. Set by `(define-command-inline-output! …)`.
+    pub(crate) inline_output: bool,
 }
 
 /// A Steel command that has been fully registered in the engine and is ready
@@ -174,6 +177,9 @@ pub(crate) struct SteelCmdDef {
     pub(crate) arity: u16,
     /// `true` if the lambda accepts a rest parameter (variadic).
     pub(crate) is_variadic: bool,
+    /// `true` if dispatch should bracket this command with an alt-screen exit
+    /// so subprocess output streams live to the terminal.
+    pub(crate) inline_output: bool,
 }
 
 /// Result returned by [`ScriptingHost::call_steel_cmd`].
@@ -764,6 +770,7 @@ impl ScriptingHost {
                 extendable: cmd.extendable,
                 arity,
                 is_variadic,
+                inline_output: cmd.inline_output,
             });
         }
         defs

@@ -136,6 +136,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
         "define-command-extend!",
         commands::define_command_extend,
     );
+    engine.register_fn_with_ctx(
+        HUME_CTX,
+        "define-command-inline-output!",
+        commands::define_command_inline_output,
+    );
     // %call! is the Rust primitive; the variadic (call! name args…) macro in
     // BOOTSTRAP desugars to (%call! name (list args…)).
     engine.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);

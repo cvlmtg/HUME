@@ -671,11 +671,29 @@ impl Editor {
                         self.report(Severity::Error, e.0);
                     }
                 }
-                MappableCommand::SteelBacked { ref steel_proc, .. } => {
+                MappableCommand::SteelBacked { ref steel_proc, ref name, inline_output, .. } => {
+                    if self.scripting.is_none() {
+                        return;
+                    }
                     let focused_pane_id = self.focused_pane_id;
                     let focused_buffer_id = self.focused_buffer_id();
-                    let (queue, wait_char_cmd) = if let Some(host) = self.scripting.as_mut() {
-                        match host.call_steel_cmd(
+
+                    if inline_output {
+                        let kitty = self.kitty_enabled;
+                        let mouse = self.settings.mouse_enabled;
+                        if let Err(e) = crate::os::terminal::enter_inline_output(kitty, mouse) {
+                            self.report(Severity::Error, format!("inline-output enter failed: {e}"));
+                            return;
+                        }
+                        print!("\r\n\x1b[1m--- running {name} ---\x1b[0m\r\n\r\n");
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                    }
+
+                    let result = self
+                        .scripting
+                        .as_mut()
+                        .expect("checked above")
+                        .call_steel_cmd(
                             steel_proc,
                             char_arg,
                             steel_args,
@@ -689,15 +707,26 @@ impl Editor {
                                 pane_state: Some(&mut self.pane_state),
                                 pane_jumps: Some(&mut self.pane_jumps),
                             },
-                        ) {
-                            Ok(r) => (r.cmd_queue, r.wait_char_request),
-                            Err(e) => {
-                                self.report(Severity::Error, e);
-                                return;
-                            }
+                        );
+
+                    // Re-enter the alt-screen unconditionally — on both success and error.
+                    if inline_output {
+                        print!("\r\n\x1b[2m--- press any key to return to editor ---\x1b[0m\r\n");
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                        crate::os::terminal::wait_for_keypress();
+                        let kitty = self.kitty_enabled;
+                        let mouse = self.settings.mouse_enabled;
+                        let mouse_select = self.settings.mouse_select;
+                        let _ = crate::os::terminal::leave_inline_output(kitty, mouse, mouse_select);
+                        self.force_full_redraw = true;
+                    }
+
+                    let (queue, wait_char_cmd) = match result {
+                        Ok(r) => (r.cmd_queue, r.wait_char_request),
+                        Err(e) => {
+                            self.report(Severity::Error, e);
+                            return;
                         }
-                    } else {
-                        return;
                     };
                     self.flush_script_messages();
                     for (cmd_name, cmd_args) in queue {

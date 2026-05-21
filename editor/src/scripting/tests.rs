@@ -433,6 +433,45 @@ fn define_command_extend_sets_extendable_flag() {
     );
 }
 
+// ── define-command-inline-output! ─────────────────────────────────────────
+
+/// `define-command-inline-output!` sets `inline_output: true` on the returned
+/// SteelCmdDef; plain `define-command!` sets it to `false`.
+#[test]
+fn define_command_inline_output_sets_flag() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let defs = h
+        .eval_source_raw(
+            r#"(define-command-inline-output! "inline-cmd" "doc" (lambda () (+ 1 0)))
+           (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#
+                .to_owned(),
+            Default::default(),
+            &mut s,
+            &mut km,
+        )
+        .expect("eval should succeed");
+
+    let inline = defs
+        .iter()
+        .find(|d| d.name == "inline-cmd")
+        .expect("inline-cmd not found");
+    let plain = defs
+        .iter()
+        .find(|d| d.name == "plain-cmd")
+        .expect("plain-cmd not found");
+    assert!(
+        inline.inline_output,
+        "define-command-inline-output! should set inline_output = true"
+    );
+    assert!(
+        !plain.inline_output,
+        "define-command! should set inline_output = false"
+    );
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
 
 /// Cancelling a watchdog with a long budget wakes the thread immediately.

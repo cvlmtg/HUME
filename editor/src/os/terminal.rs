@@ -2,7 +2,10 @@ use std::io::{self, BufWriter, Stdout, Write, stdout};
 
 use crossterm::{
     cursor::SetCursorStyle,
-    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
+    event::{
+        Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags, read,
+    },
     execute,
     terminal::{
         BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen,
@@ -213,4 +216,72 @@ pub(crate) fn begin_synchronized_update() -> io::Result<()> {
 /// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
 pub(crate) fn end_synchronized_update() -> io::Result<()> {
     execute!(stdout(), EndSynchronizedUpdate)
+}
+
+/// Leave the alt-screen and raw mode so subprocess output streams to the user's
+/// terminal live. Call before spawning blocking processes (git clone, formatters)
+/// that would otherwise be invisible inside the TUI.
+///
+/// Must be paired with [`leave_inline_output`] to restore the editor. Passes
+/// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
+pub(crate) fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> io::Result<()> {
+    // Close any open synchronized-output envelope (harmless if none is open).
+    let _ = execute!(stdout(), EndSynchronizedUpdate);
+    if kitty_enabled {
+        execute!(stdout(), PopKeyboardEnhancementFlags)?;
+    }
+    if mouse_enabled {
+        stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l")?;
+        stdout().flush()?;
+    }
+    disable_raw_mode()?;
+    execute!(stdout(), LeaveAlternateScreen)?;
+    Ok(())
+}
+
+/// Re-enter raw mode and the alt-screen after [`enter_inline_output`].
+///
+/// Call after all subprocess output has been written and the user has had a
+/// chance to read it (typically after a "press any key" prompt). Restores
+/// kitty and mouse to the state that was active before `enter_inline_output`.
+pub(crate) fn leave_inline_output(
+    kitty_enabled: bool,
+    mouse_enabled: bool,
+    mouse_select: bool,
+) -> io::Result<()> {
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen)?;
+    if kitty_enabled {
+        execute!(
+            stdout(),
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
+            )
+        )?;
+    }
+    if mouse_enabled {
+        stdout().write_all(b"\x1b[?1000h\x1b[?1006h")?;
+        if mouse_select {
+            stdout().write_all(b"\x1b[?1002h")?;
+        }
+        stdout().flush()?;
+    }
+    Ok(())
+}
+
+/// Block until the user presses a key, ignoring resize, mouse, and key-release
+/// events. Used by the inline-output flow to hold subprocess output on screen
+/// until the user is ready to return to the editor.
+pub(crate) fn wait_for_keypress() {
+    let _ = enable_raw_mode();
+    loop {
+        match read() {
+            Ok(Event::Key(k)) if k.kind != KeyEventKind::Release => break,
+            Ok(_) => continue,
+            Err(_) => break,
+        }
+    }
+    let _ = disable_raw_mode();
 }

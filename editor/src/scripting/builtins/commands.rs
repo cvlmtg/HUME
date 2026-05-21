@@ -57,7 +57,7 @@ pub(crate) fn define_command(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command!", name, doc, proc, false)
+    define_command_inner(ctx, "define-command!", name, doc, proc, false, false)
 }
 
 /// `(define-command-extend! name doc proc)`
@@ -78,7 +78,24 @@ pub(crate) fn define_command_extend(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command-extend!", name, doc, proc, true)
+    define_command_inner(ctx, "define-command-extend!", name, doc, proc, true, false)
+}
+
+/// `(define-command-inline-output! name doc proc)`
+///
+/// Like `(define-command! …)` but brackets dispatch with an alt-screen exit so
+/// the command's subprocess output streams live to the terminal rather than
+/// dumping to the message bar. Use for shell-outs (plum install, formatters,
+/// linters). The editor re-enters the alt-screen after a keypress.
+///
+/// Same error conditions as `(define-command! …)`.
+pub(crate) fn define_command_inline_output(
+    ctx: &mut SteelCtx,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+) -> SteelResult {
+    define_command_inner(ctx, "define-command-inline-output!", name, doc, proc, false, true)
 }
 
 fn define_command_inner(
@@ -88,6 +105,7 @@ fn define_command_inner(
     doc: String,
     proc: SteelVal,
     extendable: bool,
+    inline_output: bool,
 ) -> SteelResult {
     if !ctx.is_init {
         steel::stop!(Generic =>
@@ -115,6 +133,7 @@ fn define_command_inner(
         proc,
         current_owner,
         extendable,
+        inline_output,
     });
     Ok(SteelVal::Void)
 }

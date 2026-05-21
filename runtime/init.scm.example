@@ -77,6 +77,13 @@
 ;;   Same as define-command!, but marks the command as extendable so that
 ;;   Ctrl+<key> still works after you rebind the bare letter.  Use this for
 ;;   commands that end in a motion or selection step.
+;; (define-command-inline-output! name doc-string (lambda () body...))
+;;   Same as define-command!, but exits the alt-screen before the command runs
+;;   so that subprocess output (install scripts, formatters, linters) streams
+;;   live to the terminal.  After the command returns a "press any key" prompt
+;;   is shown; the editor re-enters the alt-screen on the next keypress and
+;;   redraws from scratch.  Use this for any command that shells out with
+;;   output you want the user to read (e.g. plum install, cargo fmt).
 ;;
 ;; The command becomes available as ":name" in the command bar.
 ;; Use (call! "other-command") or (call! "cmd" arg1 arg2…) to invoke any

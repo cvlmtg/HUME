@@ -170,6 +170,9 @@ pub(crate) enum MappableCommand {
         arity: u16,
         /// `true` if the lambda accepts a rest parameter.
         is_variadic: bool,
+        /// `true` if dispatch should bracket the call with an alt-screen exit
+        /// so subprocess output streams live to the terminal.
+        inline_output: bool,
     },
 }
 
@@ -1604,6 +1607,7 @@ mod tests {
             extendable: true,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         };
         let cmd_f = MappableCommand::SteelBacked {
             name: "y".into(),
@@ -1612,6 +1616,7 @@ mod tests {
             extendable: false,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         };
         assert!(cmd_t.is_extendable());
         assert!(!cmd_f.is_extendable());
@@ -1715,6 +1720,7 @@ mod tests {
             extendable: false,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
@@ -1723,6 +1729,7 @@ mod tests {
             extendable: false,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         });
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
@@ -1761,6 +1768,7 @@ mod tests {
             extendable: false,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-b".to_string()),
@@ -1769,6 +1777,7 @@ mod tests {
             extendable: false,
             arity: 0,
             is_variadic: false,
+            inline_output: false,
         });
         assert!(!reg.steel_backed_names().is_empty());
 
