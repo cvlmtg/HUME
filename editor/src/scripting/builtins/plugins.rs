@@ -1,14 +1,14 @@
-//! Plugin lifecycle builtins: `push-declared-plugin!`, `push-loaded-plugin!`,
-//! `push-current-plugin!`, `pop-current-plugin!`, `resolve-plugin-path`,
-//! `declared-plugins`, `loaded-plugins`.
+//! Plugin lifecycle builtins: `%declare-plugin!`, `push-declared-plugin!`,
+//! `push-loaded-plugin!`, `push-current-plugin!`, `pop-current-plugin!`,
+//! `resolve-plugin-path`, `declared-plugins`, `loaded-plugins`.
 //!
-//! These are called from the Scheme-side `load-plugin` wrapper defined in the
-//! bootstrap; see `mod.rs` for the Scheme source.
+//! `%declare-plugin!` is the Rust backing for the Scheme-side `load-plugin`
+//! wrapper defined in the bootstrap; see `mod.rs` for the Scheme source.
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::scripting::{SteelCtx, attribution::PluginId};
+use crate::scripting::{SteelCtx, attribution::PluginId, hooks::HookId};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,82 @@ fn steel_parse_err(e: String) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, e)
 }
 
+/// Extract a `Vec<String>` from a Steel list value.  Each element must be a
+/// string; returns a typed error on any mismatch.
+fn steel_list_to_strings(val: SteelVal, param: &'static str) -> Result<Vec<String>, SteelErr> {
+    match val {
+        SteelVal::ListV(list) => list
+            .iter()
+            .map(|v| match v {
+                SteelVal::StringV(s) => Ok(s.to_string()),
+                _ => steel::stop!(TypeMismatch => "{}: expected list of strings, got {:?}", param, v),
+            })
+            .collect(),
+        _ => steel::stop!(TypeMismatch => "{}: expected a list, got {:?}", param, val),
+    }
+}
+
 // ── Builtins ──────────────────────────────────────────────────────────────────
+
+/// `(%declare-plugin! name on-command on-event on-language lazy)` — the single
+/// Rust primitive backing the Scheme-side `load-plugin`.
+///
+/// - Validates `name`; aborts init on malformed names.
+/// - Records into `declared_plugins` for PLUM compat.
+/// - Parses trigger lists; converts event names to `HookId` variants.
+/// - Registers the plugin in `LazyRegistry`.
+/// - Eager plugins (no triggers, `lazy = #f`) are queued in
+///   `eager_plugin_loads` for Phase-2 drain via `activate_plugin`.
+pub(crate) fn declare_plugin(
+    ctx: &mut SteelCtx,
+    name: String,
+    on_command: SteelVal,
+    on_event: SteelVal,
+    on_language: SteelVal,
+    lazy: bool,
+) -> SteelResult {
+    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // PLUM compat: declared_plugins always records every declared plugin.
+    if !ctx
+        .declared_plugins
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&name))
+    {
+        ctx.declared_plugins.push(name.clone());
+    }
+
+    let on_cmd = steel_list_to_strings(on_command, "on-command")?;
+    let on_evt_strs = steel_list_to_strings(on_event, "on-event")?;
+    let on_lang = steel_list_to_strings(on_language, "on-language")?;
+
+    let on_evt: Vec<HookId> = on_evt_strs
+        .iter()
+        .map(|s| {
+            HookId::from_symbol(s).ok_or_else(|| {
+                let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
+                steel_parse_err(format!(
+                    "on-event: unknown hook '{}'; valid: {}",
+                    s, valid
+                ))
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let is_lazy = lazy || !on_cmd.is_empty() || !on_evt.is_empty() || !on_lang.is_empty();
+
+    let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+
+    ctx.lazy_registry
+        .declare(plugin_id.clone(), path, on_cmd, on_evt, on_lang);
+
+    if !is_lazy && ctx.lazy_registry.plugins.contains_key(&plugin_id) {
+        ctx.eager_plugin_loads.push(plugin_id);
+    }
+
+    Ok(SteelVal::Void)
+}
 
 /// `(push-declared-plugin! name)` — validate `name` and append to the
 /// declared-plugins list (case-insensitive dedup).
@@ -38,15 +113,24 @@ pub(crate) fn push_declared_plugin(ctx: &mut SteelCtx, name: String) -> SteelRes
     Ok(SteelVal::Void)
 }
 
-/// `(push-loaded-plugin! name)` — append to the loaded-plugins list
-/// (case-insensitive dedup, no validation — caller already validated).
+/// `(push-loaded-plugin! name)` — lower-level eager plugin registration.
+///
+/// Inserts into `LazyRegistry` + `eager_plugin_loads` so Phase 2 of
+/// `eval_source_raw` can drain via `ScriptingHost::activate_plugin`.
+/// Prefer `(load-plugin name)` (which calls `%declare-plugin!`) over this.
 pub(crate) fn push_loaded_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    if !ctx
-        .loaded_plugins
-        .iter()
-        .any(|l| l.eq_ignore_ascii_case(&name))
-    {
-        ctx.loaded_plugins.push(name);
+    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // Only register in the lazy registry once per plugin per init session.
+    if !ctx.lazy_registry.plugins.contains_key(&plugin_id) {
+        let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
+            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
+        ctx.lazy_registry
+            .declare(plugin_id.clone(), path, vec![], vec![], vec![]);
+        // Only queue for activation if the path resolved and declare inserted it.
+        if ctx.lazy_registry.plugins.contains_key(&plugin_id) {
+            ctx.eager_plugin_loads.push(plugin_id);
+        }
     }
     Ok(SteelVal::Void)
 }
@@ -119,12 +203,18 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
     }
 }
 
-/// `(loaded-plugins)` — return a Steel list of all loaded plugin names.
+/// `(loaded-plugins)` — return a Steel list of plugin names in `Loaded` state.
+///
+/// Derived from `LazyRegistry` so lazy plugins correctly read as not-yet-loaded
+/// until their body has been evaluated.
 pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
+    use crate::scripting::lazy::PluginState;
     let vals: Vec<SteelVal> = ctx
-        .loaded_plugins
+        .lazy_registry
+        .plugins
         .iter()
-        .map(|s| SteelVal::StringV(s.as_str().into()))
+        .filter(|(_, state)| matches!(state, PluginState::Loaded))
+        .map(|(id, _)| SteelVal::StringV(id.to_string().into()))
         .collect();
     vals.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))

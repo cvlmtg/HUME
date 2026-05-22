@@ -117,9 +117,33 @@
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;;
-;; (load-plugin "core:name")      — load a bundled core plugin
-;; (load-plugin "user/repo")      — load a third-party plugin from
-;;                                   <data>/plugins/user/repo/plugin.scm
+;; (load-plugin name [keyword-args...])
+;;
+;;   name    — "core:name"   (bundled core plugin)
+;;           — "user/repo"   (third-party plugin from
+;;                            <data>/plugins/user/repo/plugin.scm)
+;;
+;; Without keyword args the plugin loads eagerly at startup (today's behavior).
+;;
+;; Keyword args for lazy / trigger-based loading (Phase 0 scaffolding —
+;; trigger consumption is wired in later phases):
+;;
+;;   #:lazy #t
+;;     Record the plugin in the registry without evaluating its body.
+;;     Its commands and hooks will be unavailable until a trigger fires.
+;;
+;;   #:on-command '("cmd-name" ...)
+;;     Declare that the plugin should activate when one of these command names
+;;     is dispatched.  Implies #:lazy #t.
+;;
+;;   #:on-event '("hook-name" ...)
+;;     Activate when one of the named lifecycle hooks fires.  Implies #:lazy #t.
+;;     Valid hook names: on-buffer-open on-buffer-close on-buffer-save
+;;                       on-edit on-mode-change
+;;
+;;   #:on-language '("lang-name" ...)
+;;     Activate when the buffer language is set to one of the given names.
+;;     Implies #:lazy #t.
 ;;
 ;; core:plum   — plugin manager (:plum-install, :plum-update, :plum-cleanup)
 ;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
@@ -133,3 +157,6 @@
 ;; Declare third-party plugins to be installed by :plum-install:
 ;; (load-plugin "alice/my-theme")
 ;; (load-plugin "bob/rust-extras")
+
+;; Example: lazy-load a plugin only when "my-cmd" is first invoked.
+;; (load-plugin "alice/lazy-thing" #:on-command '("my-cmd"))

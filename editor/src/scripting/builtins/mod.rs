@@ -56,11 +56,13 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 /// `(require "<abs-path>")`, giving every plugin its own Steel module
 /// namespace so same-named private helpers cannot collide.
 const BOOTSTRAP: &str = r#"
-(define (load-plugin name)
-  (push-declared-plugin! name)
-  (let ((path (resolve-plugin-path name)))
-    (when path
-      (push-loaded-plugin! name))))
+; load-plugin — keyword args forwarded to the %declare-plugin! Rust primitive.
+; No keywords ⇒ eager (today's behavior, byte-for-byte).
+(define (load-plugin name #:on-command  [on-command  '()]
+                          #:on-event    [on-event    '()]
+                          #:on-language [on-language '()]
+                          #:lazy        [lazy        #f])
+  (%declare-plugin! name on-command on-event on-language lazy))
 
 ; Variadic call! macro — desugars to the fixed-arity-2 %call! primitive.
 ; Defined here (not only in prelude.scm) so it is available in every engine
@@ -104,6 +106,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
 
     // Plugin lifecycle (called from the Scheme-side load-plugin)
+    engine.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
     engine.register_fn_with_ctx(
         HUME_CTX,
         "push-declared-plugin!",

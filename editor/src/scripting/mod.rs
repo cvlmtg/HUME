@@ -17,6 +17,7 @@ pub(crate) mod builtins;
 pub(crate) mod hooks;
 pub(crate) mod keys;
 pub(crate) mod attribution;
+pub(crate) mod lazy;
 
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -39,6 +40,7 @@ use crate::settings::EditorSettings;
 
 use hooks::HookRegistry;
 use attribution::PluginStack;
+use lazy::{LazyRegistry, PluginState};
 
 // ── HUME_CTX global name ──────────────────────────────────────────────────────
 
@@ -218,6 +220,10 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) cmd_owners: &'a mut std::collections::HashMap<String, String>,
     /// Hook registry; `(register-hook! …)` writes directly.
     pub(crate) hooks: &'a mut HookRegistry,
+    /// Lazy plugin registry; `%declare-plugin!` writes directly.
+    // Step 5 adds %declare-plugin! which reads this field.
+    #[allow(dead_code)]
+    pub(crate) lazy_registry: &'a mut LazyRegistry,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
@@ -227,8 +233,10 @@ pub(crate) struct SteelCtx<'a> {
     // ── Transient per-eval state (owned) ──────────────────────────────────────
     /// Every plugin name passed to `(load-plugin …)`, including absent ones.
     pub(crate) declared_plugins: Vec<String>,
-    /// Plugins that were both declared and successfully located on disk.
-    pub(crate) loaded_plugins: Vec<String>,
+    /// Eager plugins queued for activation at the end of `eval_source_raw`.
+    /// Populated by `%declare-plugin!` when no lazy triggers are declared;
+    /// drained in Phase 2 via `ScriptingHost::activate_plugin`.
+    pub(crate) eager_plugin_loads: Vec<attribution::PluginId>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
@@ -279,11 +287,12 @@ impl<'a> SteelCtx<'a> {
             plugin_stack: host.plugin_stack,
             cmd_owners: host.cmd_owners,
             hooks: host.hooks,
+            lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
-            loaded_plugins: Vec::new(),
+            eager_plugin_loads: Vec::new(),
             builtin_cmd_names,
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
@@ -319,11 +328,12 @@ impl<'a> SteelCtx<'a> {
             plugin_stack: host.plugin_stack,
             cmd_owners: host.cmd_owners,
             hooks: host.hooks,
+            lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
-            loaded_plugins: Vec::new(),
+            eager_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
@@ -354,6 +364,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) plugin_stack: PluginStack,
     pub(crate) cmd_owners: std::collections::HashMap<String, String>,
     pub(crate) hooks: HookRegistry,
+    pub(crate) lazy_registry: LazyRegistry,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
     pub(crate) data_dir: Option<PathBuf>,
     pub(crate) runtime_dir: Option<PathBuf>,
@@ -369,6 +380,7 @@ impl SteelCtxTestHarness {
             plugin_stack: PluginStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             hooks: HookRegistry::default(),
+            lazy_registry: LazyRegistry::default(),
             pending_messages: Vec::new(),
             data_dir: None,
             runtime_dir: None,
@@ -385,6 +397,7 @@ impl SteelCtxTestHarness {
             plugin_stack,
             cmd_owners,
             hooks,
+            lazy_registry,
             pending_messages,
             data_dir,
             runtime_dir,
@@ -395,6 +408,7 @@ impl SteelCtxTestHarness {
                 plugin_stack,
                 cmd_owners,
                 hooks,
+                lazy_registry,
                 pending_messages,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
@@ -443,6 +457,7 @@ struct HostBundle<'a> {
     plugin_stack: &'a mut PluginStack,
     cmd_owners: &'a mut std::collections::HashMap<String, String>,
     hooks: &'a mut HookRegistry,
+    lazy_registry: &'a mut LazyRegistry,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
@@ -508,6 +523,9 @@ pub(crate) struct ScriptingHost {
     pub(crate) cmd_owners: std::collections::HashMap<String, String>,
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
+    /// Lazy plugin registry: populated by `%declare-plugin!` during init;
+    /// trigger maps consumed by later phases (Phases 1–3b).
+    pub(crate) lazy_registry: LazyRegistry,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor after each `eval_init` / `call_steel_cmd` call.
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
@@ -561,6 +579,7 @@ impl ScriptingHost {
             plugin_stack: PluginStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             hooks: HookRegistry::default(),
+            lazy_registry: LazyRegistry::default(),
             pending_messages: Vec::new(),
             data_dir,
             runtime_dir,
@@ -617,15 +636,16 @@ impl ScriptingHost {
     ) -> Result<Vec<SteelCmdDef>, String> {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
-        // Phase 1: eval init.scm.  Collect queued plugin names from
-        // `loaded_plugins` — populated by `(push-loaded-plugin! …)` inside
+        // Phase 1: eval init.scm.  Collect eagerly-declared plugin IDs from
+        // `eager_plugin_loads` — populated by `(push-loaded-plugin! …)` inside
         // the Scheme `load-plugin` wrapper.
-        let (eval_result, init_cmds, loaded_plugins) = {
+        let (eval_result, init_cmds, eager_plugin_loads) = {
             let Self {
                 engine,
                 plugin_stack,
                 cmd_owners,
                 hooks,
+                lazy_registry,
                 pending_messages,
                 data_dir,
                 runtime_dir,
@@ -638,6 +658,7 @@ impl ScriptingHost {
                     plugin_stack,
                     cmd_owners,
                     hooks,
+                    lazy_registry,
                     pending_messages,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
@@ -652,7 +673,7 @@ impl ScriptingHost {
             (
                 result,
                 steel_ctx.pending_steel_cmds,
-                steel_ctx.loaded_plugins,
+                steel_ctx.eager_plugin_loads,
             )
         };
 
@@ -660,84 +681,15 @@ impl ScriptingHost {
 
         let mut all_cmds = self.process_pending_cmds(init_cmds);
 
-        // Phase 2: load each plugin as a separate Steel module.
-        // `(require "<abs>")` is submitted as a fresh top-level program on the
-        // same engine.  Steel's module system mangles the plugin's private
-        // bindings (e.g. `##mm<id>~helper`), so same-named helpers in
-        // different plugins live in disjoint globals.  Command lambdas close
-        // over their mangled helpers and dispatch correctly via the name-based
-        // `CommandRegistry`.
-        for plugin_name in loaded_plugins {
-            let plugin_id = attribution::PluginId::parse(&plugin_name)
-                .map_err(|e| format!("plugin '{plugin_name}': {e}"))?;
-
-            let abs_path = match builtins::plugins::resolve_path_for_name(
-                &plugin_name,
-                self.runtime_dir.as_deref(),
-                self.data_dir.as_deref(),
-            ) {
-                Ok(Some(p)) => p,
-                // Plugin was on disk during init.scm but has since vanished — skip.
-                Ok(None) => continue,
-                Err(e) => return Err(format!("plugin '{plugin_name}': {e}")),
-            };
-
-            let abs_str = abs_path.to_string_lossy();
-            // Paths from resolve_path_for_name come from our own dirs and
-            // plugin IDs (validated by PluginId::parse), so double-quotes
-            // are not expected.  Error loudly rather than silently corrupt
-            // the require string.
-            if abs_str.contains('"') {
-                return Err(format!(
-                    "plugin path contains '\"' — cannot embed in require: {}",
-                    abs_path.display()
-                ));
-            }
-            let require_program = format!("(require \"{abs_str}\")");
-
-            // Attribution: push before the require eval, pop after.
-            // Rust drives push/pop instead of Scheme's dynamic-wind so that
-            // we control the stack across the module boundary.
-            self.plugin_stack.push(plugin_id);
-
-            let (plugin_result, plugin_cmds) = {
-                let Self {
-                    engine,
-                    plugin_stack,
-                    cmd_owners,
-                    hooks,
-                    pending_messages,
-                    data_dir,
-                    runtime_dir,
-                    interrupt_flag,
-                    ..
-                } = &mut *self;
-
-                let mut steel_ctx = SteelCtx::new_init(
-                    HostBundle {
-                        plugin_stack,
-                        cmd_owners,
-                        hooks,
-                        pending_messages,
-                        data_dir: data_dir.as_deref(),
-                        runtime_dir: runtime_dir.as_deref(),
-                        interrupt_flag: Arc::clone(interrupt_flag),
-                    },
-                    settings,
-                    keymap,
-                    builtin_names.clone(),
-                );
-
-                let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
-                (result, steel_ctx.pending_steel_cmds)
-            };
-
-            self.plugin_stack.pop();
-
-            match plugin_result {
-                Ok(()) => all_cmds.extend(self.process_pending_cmds(plugin_cmds)),
-                Err(e) => return Err(format!("loading plugin '{plugin_name}': {e}")),
-            }
+        // Phase 2: activate each eager plugin via the shared activate_plugin path.
+        // Steel's module system mangles the plugin's private bindings
+        // (e.g. `##mm<id>~helper`), so same-named helpers in different plugins
+        // live in disjoint globals.  Command lambdas close over their mangled
+        // helpers and dispatch correctly via the name-based `CommandRegistry`.
+        for id in eager_plugin_loads {
+            all_cmds.extend(
+                self.activate_plugin(&id, settings, keymap, &builtin_names, budget_ms)?,
+            );
         }
 
         Ok(all_cmds)
@@ -774,6 +726,109 @@ impl ScriptingHost {
             });
         }
         defs
+    }
+
+    /// Evaluate a plugin body by requiring its file into the Steel engine.
+    ///
+    /// The plugin must be in [`PluginState::Declared`] in `self.lazy_registry`;
+    /// other states short-circuit:
+    /// - `Loaded` / `Failed` — no-op (idempotent; `Failed` never retries).
+    /// - `Loading` — no-op (re-entrancy guard: trigger cycle A→B→A skips).
+    /// - Not present — no-op (plugin was absent on disk at declaration time).
+    ///
+    /// On success the state transitions to `Loaded` and the returned
+    /// [`SteelCmdDef`]s are ready for insertion into the `CommandRegistry`.
+    /// On error the state transitions to `Failed` and an `Err` is returned;
+    /// eager callers (init path) propagate it to abort `eval_source_raw`, while
+    /// lazy callers (Phase 1+, dispatch path) catch it and push a soft error
+    /// message instead.
+    pub(crate) fn activate_plugin(
+        &mut self,
+        id: &attribution::PluginId,
+        settings: &mut EditorSettings,
+        keymap: &mut Keymap,
+        builtin_names: &std::collections::HashSet<String>,
+        budget_ms: u64,
+    ) -> Result<Vec<SteelCmdDef>, String> {
+        // Extract path from Declared state; short-circuit all other states.
+        let path = match self.lazy_registry.plugins.get(id) {
+            Some(PluginState::Declared { path }) => path.clone(),
+            Some(PluginState::Loaded | PluginState::Failed | PluginState::Loading) | None => {
+                return Ok(vec![]);
+            }
+        };
+
+        let abs_str = path.to_string_lossy();
+        if abs_str.contains('"') {
+            self.lazy_registry
+                .plugins
+                .insert(id.clone(), PluginState::Failed);
+            return Err(format!(
+                "plugin path contains '\"' — cannot embed in require: {}",
+                path.display()
+            ));
+        }
+        let require_program = format!("(require \"{abs_str}\")");
+
+        // Mark Loading before the eval so re-entrant activation of the same
+        // plugin (via a trigger cycle) sees Loading and returns Ok(vec![]).
+        self.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+
+        // Attribution: push before the require eval, pop after.
+        self.plugin_stack.push(id.clone());
+
+        let (plugin_result, plugin_cmds) = {
+            let Self {
+                engine,
+                plugin_stack,
+                cmd_owners,
+                hooks,
+                lazy_registry,
+                pending_messages,
+                data_dir,
+                runtime_dir,
+                interrupt_flag,
+                ..
+            } = &mut *self;
+
+            let mut steel_ctx = SteelCtx::new_init(
+                HostBundle {
+                    plugin_stack,
+                    cmd_owners,
+                    hooks,
+                    lazy_registry,
+                    pending_messages,
+                    data_dir: data_dir.as_deref(),
+                    runtime_dir: runtime_dir.as_deref(),
+                    interrupt_flag: Arc::clone(interrupt_flag),
+                },
+                settings,
+                keymap,
+                builtin_names.clone(),
+            );
+
+            let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
+            (result, steel_ctx.pending_steel_cmds)
+        };
+
+        self.plugin_stack.pop();
+
+        match plugin_result {
+            Ok(()) => {
+                self.lazy_registry
+                    .plugins
+                    .insert(id.clone(), PluginState::Loaded);
+                Ok(self.process_pending_cmds(plugin_cmds))
+            }
+            Err(e) => {
+                self.lazy_registry
+                    .plugins
+                    .insert(id.clone(), PluginState::Failed);
+                Err(format!("loading plugin '{id}': {e}"))
+            }
+        }
     }
 
     /// Invoke a Steel proc by its internal engine name and return the list of
@@ -820,6 +875,7 @@ impl ScriptingHost {
                 plugin_stack,
                 cmd_owners,
                 hooks,
+                lazy_registry,
                 pending_messages,
                 data_dir,
                 runtime_dir,
@@ -832,6 +888,7 @@ impl ScriptingHost {
                     plugin_stack,
                     cmd_owners,
                     hooks,
+                    lazy_registry,
                     pending_messages,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
@@ -902,6 +959,7 @@ impl ScriptingHost {
                 plugin_stack,
                 cmd_owners,
                 hooks,
+                lazy_registry,
                 pending_messages,
                 data_dir,
                 runtime_dir,
@@ -914,6 +972,7 @@ impl ScriptingHost {
                     plugin_stack,
                     cmd_owners,
                     hooks,
+                    lazy_registry,
                     pending_messages,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),

@@ -1431,3 +1431,206 @@ fn bind_keys_without_prelude_fails_gracefully() {
     );
 }
 
+// ── Phase 0 lazy plugin loading ───────────────────────────────────────────
+//
+// Not on Windows: Scheme require strings embed OS paths; backslashes are not
+// escaped in Steel string literals.
+
+/// Helper: create a temp user plugin at `plugins/user/tp/plugin.scm` and
+/// return `(TempDir, init.scm path)`.  Caller must keep TempDir alive.
+#[cfg(not(windows))]
+fn plugin_fixture(init_body: &str, plugin_body: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, init_body).unwrap();
+    (dir, init_path)
+}
+
+/// `(load-plugin "user/tp")` with no keywords → plugin activates eagerly,
+/// reaches `Loaded`, and its command appears in the returned defs.
+#[test]
+#[cfg(not(windows))]
+fn eager_load_no_keywords_reaches_loaded_state() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp")"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let cmds = h
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eager load must succeed");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Loaded)),
+        "plugin must reach Loaded state; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be in returned defs; got {:?}",
+        cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+    );
+}
+
+/// `(load-plugin "user/tp" #:lazy #t)` → plugin stays `Declared`, body is
+/// NOT evaluated, and its commands are absent from the init result.
+#[test]
+#[cfg(not(windows))]
+fn lazy_load_stays_declared_body_not_evaluated() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:lazy #t)"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let cmds = h
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("lazy load must not error during init");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Declared { .. })),
+        "plugin must stay Declared; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        !cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT appear in init defs for a lazy plugin"
+    );
+}
+
+/// `#:on-command '("my-cmd")` → plugin is treated as lazy (trigger present),
+/// `command_triggers["my-cmd"]` maps to the plugin, body not evaluated.
+#[test]
+#[cfg(not(windows))]
+fn on_command_trigger_populates_registry_body_not_evaluated() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let cmds = h
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("on-command declaration must not error during init");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Declared { .. })),
+        "plugin with on-command trigger must stay Declared; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert_eq!(
+        h.lazy_registry.command_triggers.get("my-cmd"),
+        Some(&id),
+        "command_triggers must map my-cmd to the plugin"
+    );
+    assert!(
+        !cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT appear in init defs for an on-command plugin"
+    );
+}
+
+/// `activate_plugin` on a `Declared` lazy plugin → state transitions to
+/// `Loaded`, returns the plugin's `SteelCmdDef`s.  Second call → idempotent
+/// `Ok(vec![])`.
+#[test]
+#[cfg(not(windows))]
+fn activate_plugin_idempotent_on_declared_lazy_plugin() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:lazy #t)"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    h.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("init must succeed");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+
+    // First activation: Declared → Loaded, returns the plugin's command.
+    let cmds = h
+        .activate_plugin(&id, &mut s, &mut km, &Default::default(), 5_000)
+        .expect("activate_plugin must succeed");
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Loaded)),
+        "plugin must be Loaded after activate_plugin; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be returned by activate_plugin"
+    );
+
+    // Second activation: already Loaded → idempotent Ok(vec![]).
+    let cmds2 = h
+        .activate_plugin(&id, &mut s, &mut km, &Default::default(), 5_000)
+        .expect("second activate_plugin must succeed");
+    assert!(
+        cmds2.is_empty(),
+        "second activate_plugin must return empty vec (idempotent)"
+    );
+}
+
+/// An eager plugin whose body raises an error causes `eval_init` to return
+/// `Err` (fail-fast), and leaves the plugin in `Failed` state.
+#[test]
+#[cfg(not(windows))]
+fn eager_plugin_body_error_aborts_init() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp")"#,
+        r#"(error "intentional plugin failure")"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let result = h.eval_init(&init_path, &mut s, &mut km, Default::default());
+    assert!(result.is_err(), "init must fail when eager plugin body errors");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Failed)),
+        "plugin must be Failed after body error; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+}
+
