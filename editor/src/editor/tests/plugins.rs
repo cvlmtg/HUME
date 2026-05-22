@@ -17,7 +17,13 @@ fn setup_lazy_editor(
     init_body: &str,
     plugin_body: &str,
 ) -> (Editor, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
+    // Hold HUME_RUNTIME_MUTEX while creating the temp dir so that a concurrent
+    // HumeRuntimeGuard test cannot redirect TMPDIR and nest our dir inside its
+    // managed cleanup tree (which it deletes when the guard drops).
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
@@ -47,10 +53,6 @@ fn setup_lazy_editor(
 #[test]
 #[cfg(not(windows))]
 fn lazy_stub_present_after_init() {
-    let (_ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
-    );
     let (ed, _dir) = setup_lazy_editor(
         r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
@@ -259,7 +261,10 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 #[cfg(not(windows))]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     use crate::editor::Severity;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
     // Eager plugin — loaded inline (no triggers), defines "foo".
     let eager_dir = dir.path().join("plugins").join("user").join("eager");
     std::fs::create_dir_all(&eager_dir).unwrap();
