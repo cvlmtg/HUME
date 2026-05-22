@@ -318,3 +318,370 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         ed.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
     );
 }
+
+// ── Phase 2 lazy plugin loading — event triggers ──────────────────────────────
+
+/// `#:on-event` plugin activates on first matching hook fire; its handler
+/// runs in the same fire that triggered activation.
+///
+/// Flip: without A3 (`activate_lazy_event_plugins` at the top of
+/// `fire_hook_silent`), the plugin stays `Declared` and the cursor never moves.
+#[test]
+#[cfg(not(windows))]
+fn event_trigger_activates_on_first_fire() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Declared { .. })
+        ),
+        "plugin must be Declared before first fire"
+    );
+    assert!(
+        !ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        "event_triggers must be populated before first fire"
+    );
+
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+    ed.fire_hook_buffer_save(bid);
+
+    assert_ne!(state(&ed), before, "hook handler must run and move the cursor on first fire");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Loaded)
+        ),
+        "plugin must be Loaded after first fire"
+    );
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        "event_triggers must be cleared after plugin loads"
+    );
+}
+
+/// Second fire: handler still runs (plugin already `Loaded`); no re-activation.
+///
+/// Flip: if `event_triggers` were not cleared after load, `activate_plugin`'s
+/// `Loaded` guard would still fire harmlessly — but the test documents that
+/// the fast path is taken (no spurious activation attempt).
+#[test]
+#[cfg(not(windows))]
+fn event_trigger_idempotent_on_second_fire() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let bid = ed.focused_buffer_id();
+
+    ed.fire_hook_buffer_save(bid);  // first fire — activates
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        "event_triggers must be empty after first fire"
+    );
+
+    let after_first = state(&ed);
+    ed.fire_hook_buffer_save(bid);  // second fire — handler runs, no re-activation
+
+    assert_ne!(state(&ed), after_first, "handler must run again on second fire");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Loaded)
+        ),
+        "plugin must remain Loaded after second fire (not re-enter Declared)"
+    );
+}
+
+/// 1:many: two plugins both declare `#:on-event '("on-buffer-save")`; a single
+/// fire activates both.
+///
+/// Flip: if only the first plugin in the trigger Vec were activated, the second
+/// would stay `Declared` with its handler never registering.
+#[test]
+#[cfg(not(windows))]
+fn event_trigger_one_to_many_activates_all() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    let dir_a = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::write(
+        dir_a.join("plugin.scm"),
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+    ).unwrap();
+    let dir_b = dir.path().join("plugins").join("user").join("tp2");
+    std::fs::create_dir_all(&dir_b).unwrap();
+    std::fs::write(
+        dir_b.join("plugin.scm"),
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+    ).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"user/tp\"  #:on-event '(\"on-buffer-save\"))\n\
+         (load-plugin \"user/tp2\" #:on-event '(\"on-buffer-save\"))",
+    ).unwrap();
+
+    let mut ed = editor_from("-[a]>b c d\n");
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    let id_a = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id_b = PluginId::User { user: "user".to_string(), repo: "tp2".to_string() };
+    let bid = ed.focused_buffer_id();
+    ed.fire_hook_buffer_save(bid);
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
+            Some(PluginState::Loaded)
+        ),
+        "plugin A must be Loaded after fire"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Loaded)
+        ),
+        "plugin B must be Loaded after fire"
+    );
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        "event_triggers must be fully cleared after both plugins load"
+    );
+}
+
+/// Body error: plugin raises at load time → `Failed`, error reported, trigger
+/// cleared — no retry on a second fire.
+///
+/// Flip: without `event_triggers` drop in `activate_plugin`'s failure branch,
+/// the same plugin would attempt activation on every fire.
+#[test]
+#[cfg(not(windows))]
+fn event_plugin_failure_marks_failed_no_retry() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+    use crate::editor::Severity;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(error "intentional plugin failure")"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let bid = ed.focused_buffer_id();
+
+    ed.fire_hook_buffer_save(bid);  // first fire — activates → body fails
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Failed)
+        ),
+        "plugin must be Failed after body error"
+    );
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        "event_triggers must be cleared even after failure"
+    );
+    assert!(
+        ed.message_log.entries().any(|e| e.severity == Severity::Error),
+        "Severity::Error must be logged after body failure"
+    );
+
+    let msg_count = ed.message_log.entries().count();
+    ed.fire_hook_buffer_save(bid);  // second fire — no retry
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Failed)
+        ),
+        "plugin must remain Failed after second fire (no retry)"
+    );
+    assert_eq!(
+        ed.message_log.entries().count(),
+        msg_count,
+        "no new error must be logged on second fire (no retry)"
+    );
+}
+
+// ── Phase 2 — require-plugin (editor-level) ───────────────────────────────────
+
+/// `(require-plugin "name")` in `init.scm` force-activates a bare `#:lazy #t`
+/// plugin at init time.
+///
+/// Flip: without `require-plugin` pushing to `pending_plugin_loads`, the plugin
+/// would remain `Declared` after init.
+#[test]
+#[cfg(not(windows))]
+fn require_plugin_loads_bare_lazy() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (dir, init_path) = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(
+            plugin_dir.join("plugin.scm"),
+            r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+        ).unwrap();
+        let init_path = dir.path().join("init.scm");
+        std::fs::write(
+            &init_path,
+            "(load-plugin \"user/tp\" #:lazy #t)\n(require-plugin \"user/tp\")",
+        ).unwrap();
+        (dir, init_path)
+    };
+
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    assert!(
+        matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+        "bare-lazy plugin must be Loaded after (require-plugin) in init.scm; got: {:?}",
+        host.lazy_registry.plugins.get(&id)
+    );
+}
+
+/// `(require-plugin "unknown")` — no prior `load-plugin` — raises a Steel error.
+///
+/// Flip: if the unknown-name check were removed, a typo'd name would silently
+/// queue a no-op activation.
+#[test]
+#[cfg(not(windows))]
+fn require_plugin_unknown_errors() {
+    let (dir, init_path) = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let init_path = dir.path().join("init.scm");
+        std::fs::write(&init_path, r#"(require-plugin "user/tp")"#).unwrap();
+        (dir, init_path)
+    };
+
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let Err(msg) = host.eval_init(&init_path, &mut s, &mut km, Default::default()) else {
+        panic!("require-plugin on undeclared plugin must return Err");
+    };
+    assert!(msg.contains("load-plugin first"), "error must mention load-plugin; got: {msg}");
+}
+
+/// `require-plugin` in a lazy plugin body (B) loads a dependency (A)
+/// transitively at B's activation time — A is NOT promoted to eager at init.
+///
+/// Flip: if `activate_plugin` did not drain `pending_plugin_loads` from the
+/// body's ctx (B3), A would remain `Declared` after B activates.
+/// If A were incorrectly activated at init, it would be `Loaded` before dispatch.
+#[test]
+#[cfg(not(windows))]
+fn require_plugin_transitive_is_lazy() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    // Plugin A — bare-lazy dep.
+    let dir_a = dir.path().join("plugins").join("user").join("tpa");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::write(
+        dir_a.join("plugin.scm"),
+        r#"(define-command! "a-cmd" "doc" (lambda () (+ 1 0)))"#,
+    ).unwrap();
+    // Plugin B — on-command trigger; body requires A.
+    let dir_b = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&dir_b).unwrap();
+    std::fs::write(
+        dir_b.join("plugin.scm"),
+        "(require-plugin \"user/tpa\")\n\
+         (define-command! \"b-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
+    ).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"user/tpa\" #:lazy #t)\n\
+         (load-plugin \"user/tp\"  #:on-command '(\"b-cmd\"))",
+    ).unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+    let triggers = host.lazy_registry.command_triggers.clone();
+    ed.register_lazy_command_stubs(&triggers);
+    ed.scripting = Some(host);
+
+    let id_a = PluginId::User { user: "user".to_string(), repo: "tpa".to_string() };
+    let id_b = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+
+    // After init: both Declared — A was not eagerly promoted.
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
+            Some(PluginState::Declared { .. })
+        ),
+        "dep A must be Declared after init (not promoted to eager)"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Declared { .. })
+        ),
+        "plugin B must be Declared after init"
+    );
+
+    // Dispatch B's command → B activates → B body requires A → A activates.
+    let before = state(&ed);
+    type_cmd(&mut ed, ":b-cmd");
+
+    assert_ne!(state(&ed), before, "b-cmd must have moved the cursor after activation");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Loaded)
+        ),
+        "plugin B must be Loaded after dispatch"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
+            Some(PluginState::Loaded)
+        ),
+        "dep A must be Loaded transitively after B activates"
+    );
+}

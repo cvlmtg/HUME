@@ -593,6 +593,28 @@ impl Editor {
 
     // ── Command execution ─────────────────────────────────────────────────────
 
+    /// Shared core: activate `plugin`, register returned commands (or report the
+    /// error), leaving messages unflushed.  Called by both the command-stub path
+    /// and the event-trigger path so neither duplicates the activate→register→
+    /// report triple.
+    fn activate_and_register(&mut self, plugin: &crate::scripting::attribution::PluginId) {
+        let budget = self.settings.steel_init_budget_ms as u64;
+        let result = {
+            let Some(host) = self.scripting.as_mut() else { return };
+            host.activate_plugin(
+                plugin,
+                &mut self.settings,
+                &mut self.keymap,
+                &self.builtin_cmd_names,
+                budget,
+            )
+        };
+        match result {
+            Ok(cmds) => self.register_steel_cmds(cmds),
+            Err(e) => self.report(Severity::Error, e),
+        }
+    }
+
     /// Activate the plugin owning a lazy stub, register its commands, and
     /// check whether `name` is now a real (non-Lazy) command.
     ///
@@ -609,21 +631,7 @@ impl Editor {
         if self.scripting.is_none() {
             return false;
         }
-        let budget = self.settings.steel_init_budget_ms as u64;
-        let result = {
-            let host = self.scripting.as_mut().expect("checked above");
-            host.activate_plugin(
-                plugin,
-                &mut self.settings,
-                &mut self.keymap,
-                &self.builtin_cmd_names,
-                budget,
-            )
-        };
-        match result {
-            Ok(cmds) => self.register_steel_cmds(cmds),
-            Err(e) => self.report(Severity::Error, e),
-        }
+        self.activate_and_register(plugin);
         self.flush_script_messages();
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
@@ -637,6 +645,31 @@ impl Editor {
         } else {
             true
         }
+    }
+
+    /// Activate every still-`Declared` lazy plugin registered for `hook_id`.
+    ///
+    /// Called at the top of `fire_hook_silent` before the early-exit so that a
+    /// plugin's `register-hook!` handlers are installed before the hook fires.
+    /// No registry stub or loop-guard needed: `activate_plugin`'s `PluginState`
+    /// machine and the `event_triggers` drop on load/fail make repeated fires
+    /// idempotent without additional tracking here.
+    pub(super) fn activate_lazy_event_plugins(
+        &mut self,
+        hook_id: crate::scripting::hooks::HookId,
+    ) {
+        let pending: Vec<crate::scripting::attribution::PluginId> =
+            match self.scripting.as_ref() {
+                Some(host) => match host.lazy_registry.event_triggers.get(&hook_id) {
+                    Some(plugins) if !plugins.is_empty() => plugins.clone(),
+                    _ => return,
+                },
+                None => return,
+            };
+        for plugin in &pending {
+            self.activate_and_register(plugin);
+        }
+        self.flush_script_messages();
     }
 
     /// Execute a named command with the given count and extend flag.

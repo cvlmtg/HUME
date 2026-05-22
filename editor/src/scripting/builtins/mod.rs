@@ -119,9 +119,10 @@ pub(crate) fn register_all(engine: &mut Engine) {
         plugins::resolve_plugin_path,
     );
 
-    // Plugin introspection
+    // Plugin introspection and explicit activation
     engine.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
     engine.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
+    engine.register_fn_with_ctx(HUME_CTX, "require-plugin", plugins::require_plugin);
 
     // Hook registration — init-only
     engine.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);

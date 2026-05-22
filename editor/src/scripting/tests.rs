@@ -1849,3 +1849,28 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     );
 }
 
+
+/// `(require-plugin …)` raises a Steel error when called from a command body
+/// (`is_init = false`), mirroring the `register-hook!` guard.
+///
+/// Flip: removing the `if !ctx.is_init` guard in `require_plugin` would let
+/// this return `Ok`, silently queuing a request that is never drained.
+#[test]
+fn require_plugin_runtime_guard_fires() {
+    use crate::scripting::SteelCtxTestHarness;
+    use crate::scripting::builtins::plugins::require_plugin;
+
+    // SteelCtxTestHarness builds an is_init=false (command) context.
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = require_plugin(&mut ctx, "user/tp".to_string());
+    assert!(
+        result.is_err(),
+        "require-plugin must error when called outside init/plugin load (is_init=false)"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("init/plugin load"),
+        "error must mention init/plugin load context; got: {msg}"
+    );
+}

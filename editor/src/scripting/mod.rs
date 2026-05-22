@@ -231,10 +231,11 @@ pub(crate) struct SteelCtx<'a> {
     // ── Transient per-eval state (owned) ──────────────────────────────────────
     /// Every plugin name passed to `(load-plugin …)`, including absent ones.
     pub(crate) declared_plugins: Vec<String>,
-    /// Eager plugins queued for activation at the end of `eval_source_raw`.
-    /// Populated by `%declare-plugin!` when no lazy triggers are declared;
-    /// drained in Phase 2 via `ScriptingHost::activate_plugin`.
-    pub(crate) eager_plugin_loads: Vec<attribution::PluginId>,
+    /// Plugins queued for activation at the end of this eval (init.scm or plugin
+    /// body).  Populated by `%declare-plugin!` for eager plugins and by
+    /// `(require-plugin …)` for explicit loads; drained by `eval_source_raw`
+    /// (init.scm) and by `activate_plugin` (plugin body, Phase 2+).
+    pub(crate) pending_plugin_loads: Vec<attribution::PluginId>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
@@ -290,7 +291,7 @@ impl<'a> SteelCtx<'a> {
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
-            eager_plugin_loads: Vec::new(),
+            pending_plugin_loads: Vec::new(),
             builtin_cmd_names,
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
@@ -331,7 +332,7 @@ impl<'a> SteelCtx<'a> {
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
-            eager_plugin_loads: Vec::new(),
+            pending_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
@@ -634,10 +635,11 @@ impl ScriptingHost {
     ) -> Result<Vec<SteelCmdDef>, String> {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
-        // Phase 1: eval init.scm.  Collect eagerly-declared plugin IDs from
-        // `eager_plugin_loads` — populated by `%declare-plugin!` inside
-        // the Scheme `load-plugin` wrapper.
-        let (eval_result, init_cmds, eager_plugin_loads) = {
+        // Phase 1: eval init.scm.  Collect plugin IDs queued for activation from
+        // `pending_plugin_loads` — populated by `%declare-plugin!` (eager plugins)
+        // and `(require-plugin …)` (Phase 2+) inside the Scheme `load-plugin`
+        // wrapper / init.scm body.
+        let (eval_result, init_cmds, pending_plugin_loads) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -671,7 +673,7 @@ impl ScriptingHost {
             (
                 result,
                 steel_ctx.pending_steel_cmds,
-                steel_ctx.eager_plugin_loads,
+                steel_ctx.pending_plugin_loads,
             )
         };
 
@@ -679,12 +681,12 @@ impl ScriptingHost {
 
         let mut all_cmds = self.process_pending_cmds(init_cmds);
 
-        // Phase 2: activate each eager plugin via the shared activate_plugin path.
+        // Phase 2: activate each queued plugin via the shared activate_plugin path.
         // Steel's module system mangles the plugin's private bindings
         // (e.g. `##mm<id>~helper`), so same-named helpers in different plugins
         // live in disjoint globals.  Command lambdas close over their mangled
         // helpers and dispatch correctly via the name-based `CommandRegistry`.
-        for id in eager_plugin_loads {
+        for id in pending_plugin_loads {
             all_cmds.extend(
                 self.activate_plugin(&id, settings, keymap, &builtin_names, budget_ms)?,
             );
@@ -777,7 +779,7 @@ impl ScriptingHost {
         // Attribution: push before the require eval, pop after.
         self.plugin_stack.push(id.clone());
 
-        let (plugin_result, plugin_cmds) = {
+        let (plugin_result, plugin_cmds, requires) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -808,7 +810,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
-            (result, steel_ctx.pending_steel_cmds)
+            (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads)
         };
 
         self.plugin_stack.pop();
@@ -818,7 +820,7 @@ impl ScriptingHost {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
-                // Drop all command triggers owned by this plugin — the real
+                // Drop all command and event triggers owned by this plugin — the real
                 // SteelBacked commands are registered by the caller after this
                 // returns, and the stub (Lazy) entry is overwritten by
                 // register_steel_cmds.  Any trigger names the body did NOT
@@ -826,17 +828,33 @@ impl ScriptingHost {
                 self.lazy_registry
                     .command_triggers
                     .retain(|_, p| p != id);
-                Ok(self.process_pending_cmds(plugin_cmds))
+                self.lazy_registry.event_triggers.retain(|_, plugins| {
+                    plugins.retain(|p| p != id);
+                    !plugins.is_empty()
+                });
+                let mut defs = self.process_pending_cmds(plugin_cmds);
+                // Drain transitive `(require-plugin …)` calls made by the body.
+                // The Loading/Loaded guards in activate_plugin prevent cycles.
+                for req in requires {
+                    defs.extend(
+                        self.activate_plugin(&req, settings, keymap, builtin_names, budget_ms)?,
+                    );
+                }
+                Ok(defs)
             }
             Err(e) => {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Failed);
-                // Also drop command triggers on failure so the stub is not
-                // left in a state that would re-trigger a non-retrying plugin.
+                // Also drop command and event triggers on failure so a spent
+                // trigger never re-fires for a non-retrying plugin.
                 self.lazy_registry
                     .command_triggers
                     .retain(|_, p| p != id);
+                self.lazy_registry.event_triggers.retain(|_, plugins| {
+                    plugins.retain(|p| p != id);
+                    !plugins.is_empty()
+                });
                 Err(format!("loading plugin '{id}': {e}"))
             }
         }

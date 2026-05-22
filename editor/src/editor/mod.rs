@@ -941,6 +941,9 @@ impl Editor {
     /// hook bodies are dispatched after all handlers return.  Errors from
     /// handlers are reported as `Severity::Error`.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
+        // Activate any lazy event-triggered plugins before checking for handlers,
+        // so their register-hook! calls run before the early-exit guard below.
+        self.activate_lazy_event_plugins(hook_id);
         if self
             .scripting
             .as_ref()

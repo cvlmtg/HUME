@@ -44,7 +44,7 @@ fn steel_list_to_strings(val: SteelVal, param: &'static str) -> Result<Vec<Strin
 /// - Parses trigger lists; converts event names to `HookId` variants.
 /// - Registers the plugin in `LazyRegistry`.
 /// - Eager plugins (no triggers, `lazy = #f`) are queued in
-///   `eager_plugin_loads` for Phase-2 drain via `activate_plugin`.
+///   `pending_plugin_loads` for Phase-2 drain via `activate_plugin`.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
@@ -120,7 +120,7 @@ pub(crate) fn declare_plugin(
         .declare(plugin_id.clone(), path, on_cmd, on_evt, on_lang);
 
     if !is_lazy && ctx.lazy_registry.plugins.contains_key(&plugin_id) {
-        ctx.eager_plugin_loads.push(plugin_id);
+        ctx.pending_plugin_loads.push(plugin_id);
     }
 
     Ok(SteelVal::Void)
@@ -192,6 +192,31 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
         Some(p) => Ok(SteelVal::StringV(p.to_string_lossy().into_owned().into())),
         None => Ok(SteelVal::BoolV(false)),
     }
+}
+
+/// `(require-plugin "name")` — force-activate a declared plugin.
+///
+/// Load-time only: valid from `init.scm` and plugin bodies (`is_init = true`).
+/// Calling it from a runtime command body raises a Steel error, like
+/// `register-hook!`. The named plugin must already be declared via `load-plugin`.
+///
+/// If the plugin is already `Loaded` or `Failed`, this is a no-op (handled by
+/// `activate_plugin`'s idempotency guard; no retry on `Failed`).
+pub(crate) fn require_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    if !ctx.is_init {
+        steel::stop!(Generic => "require-plugin: can only be called during init/plugin load");
+    }
+    let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+    if !ctx.lazy_registry.plugins.contains_key(&id) {
+        steel::stop!(Generic =>
+            "require-plugin: unknown plugin '{}'; declare it with load-plugin first",
+            name
+        );
+    }
+    if !ctx.pending_plugin_loads.contains(&id) {
+        ctx.pending_plugin_loads.push(id);
+    }
+    Ok(SteelVal::Void)
 }
 
 /// `(loaded-plugins)` — return a Steel list of plugin names in `Loaded` state.

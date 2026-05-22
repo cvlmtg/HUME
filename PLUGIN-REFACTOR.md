@@ -1111,7 +1111,7 @@ requests WaitChar as usual).
 - **Phase 2 — Event triggers + explicit require.** `#:on-event` over the existing
   five `HookId` variants; `event_triggers` consulted in `fire_hook`. Add
   `(require-plugin "name")` builtin for programmatic / `#:lazy`-no-trigger
-  activation. No external deps.
+  activation. No external deps. — **COMPLETE (2026-05-22)**
 
 - **Phase 3a — Import language identity from the `treesitter` branch.** Straight
   file copy (commit history irrelevant), grammars left behind. This is the
