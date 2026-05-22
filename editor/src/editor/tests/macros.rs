@@ -210,9 +210,9 @@ fn macro_no_nested_recording_during_replay() {
 
 /// A macro whose last key is `Q` must not arm `macro_pending` after replay.
 ///
-/// Previously, the suppression checked `replay_queue.is_empty()`, which becomes
-/// `true` at the exact moment the last key is processed — causing a trailing `Q`
-/// to slip through and arm `macro_pending`. The fix uses `is_replaying` instead.
+/// The suppression must key off `is_replaying`, not `replay_queue.is_empty()`:
+/// the queue is empty at the exact moment the last key is processed, which would
+/// let a trailing `Q` slip through and arm `macro_pending`.
 #[test]
 fn macro_trailing_q_does_not_arm_pending() {
     let mut ed = editor_from("-[a]>\nb\nc\n");

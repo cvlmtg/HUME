@@ -130,8 +130,8 @@ macro_rules! define_settings {
         /// Global editor settings — the authoritative defaults for all
         /// configurable editor behaviour.
         ///
-        /// The [`Default`] impl exactly reproduces the values that were
-        /// previously hardcoded as constants across the codebase.
+        /// The [`Default`] impl is the single source of truth for these
+        /// default values.
         #[derive(Clone)]
         pub(crate) struct EditorSettings {
             $( pub $gname: $gtype, )*

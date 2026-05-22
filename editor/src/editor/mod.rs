@@ -154,8 +154,7 @@ pub(crate) struct Editor {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
-    /// state (previously a separate `extend: bool` field). Mode is the single
-    /// source of truth — `extend: bool` has been removed.
+    /// state. Mode is the single source of truth for whether extend is active.
     pub(crate) mode: Mode,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     ///

@@ -455,8 +455,8 @@ pub fn format_buffer_line(
 
 /// Mutable state for the word-wrap / soft-wrap pass inside `format_buffer_line`.
 ///
-/// Grouping these five fields avoids passing them as separate `&mut` parameters
-/// through `maybe_wrap`, which previously required 12 parameters total.
+/// Grouping these five fields avoids threading them as separate `&mut`
+/// parameters through `maybe_wrap`.
 struct WrapState {
     current_col: u16,
     wrap_row: u16,
