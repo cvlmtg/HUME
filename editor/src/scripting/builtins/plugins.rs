@@ -81,18 +81,31 @@ pub(crate) fn declare_plugin(
         })
         .collect::<Result<_, _>>()?;
 
-    // Validate the entire on-command list before writing any state so that a
-    // collision leaves no partial entries in command_triggers or cmd_owners.
-    for cmd in &on_cmd {
-        if ctx.builtin_cmd_names.contains(cmd) {
-            steel::stop!(Generic => "load-plugin: command '{}' conflicts with a built-in", cmd);
-        }
-        if ctx.lazy_registry.command_triggers.contains_key(cmd) {
-            steel::stop!(Generic => "load-plugin: command '{}' already claimed by another lazy plugin", cmd);
+    // Filter out any colliding trigger names before writing any state. Each
+    // collision logs a non-fatal Error (visible in :messages) and the name is
+    // dropped, so cmd_owners and command_triggers stay clean. A plugin whose
+    // entire on-command list collides stays dead-lazy (had_command_triggers
+    // keeps is_lazy true so it is never flipped to eager-load).
+    let had_command_triggers = !on_cmd.is_empty();
+    let mut valid = Vec::with_capacity(on_cmd.len());
+    for cmd in on_cmd {
+        if ctx.builtin_cmd_names.contains(&cmd) {
+            ctx.log(
+                crate::editor::Severity::Error,
+                format!("load-plugin: command '{cmd}' conflicts with a built-in; trigger ignored"),
+            );
+        } else if ctx.lazy_registry.command_triggers.contains_key(&cmd) {
+            ctx.log(
+                crate::editor::Severity::Error,
+                format!("load-plugin: command '{cmd}' already claimed by another lazy plugin; trigger ignored"),
+            );
+        } else {
+            valid.push(cmd);
         }
     }
+    let on_cmd = valid;
 
-    let is_lazy = lazy || !on_cmd.is_empty() || !on_evt.is_empty() || !on_lang.is_empty();
+    let is_lazy = lazy || had_command_triggers || !on_evt.is_empty() || !on_lang.is_empty();
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;

@@ -1639,13 +1639,13 @@ fn eager_plugin_body_error_aborts_init() {
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
-/// `#:on-command '("move-right")` — name clashes with a built-in → `eval_init`
-/// must return `Err` (fail-fast).
+/// `#:on-command '("move-right")` — name clashes with a built-in → colliding
+/// trigger is dropped, a `Severity::Error` is logged, init continues.
 ///
-/// Flip: a non-builtin name must succeed.
+/// Flip: a non-builtin name produces no Error and the trigger is registered.
 #[test]
 #[cfg(not(windows))]
-fn manifest_collision_with_builtin_aborts_init() {
+fn manifest_collision_with_builtin_logs_error_continues() {
     let (dir, init_path) = plugin_fixture(
         r#"(load-plugin "user/tp" #:on-command '("move-right"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -1654,16 +1654,40 @@ fn manifest_collision_with_builtin_aborts_init() {
     h.data_dir = Some(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    // Known built-in passed as builtin_names.
     let builtin_names: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
-    let result = h.eval_init(&init_path, &mut s, &mut km, builtin_names);
+    h.eval_init(&init_path, &mut s, &mut km, builtin_names)
+        .expect("builtin collision must NOT abort init");
+
+    // Error logged for the dropped trigger.
     assert!(
-        result.is_err(),
-        "declaring on-command with a built-in name must error; got Ok"
+        h.pending_messages.iter().any(|(sev, msg)| {
+            matches!(sev, crate::editor::Severity::Error)
+                && msg.contains("move-right")
+                && msg.contains("built-in")
+        }),
+        "expected an Error about 'move-right' conflicting with a built-in; got: {:?}",
+        h.pending_messages
+    );
+    // Trigger not written (no cmd_owners pollution, no command_triggers entry).
+    assert!(
+        !h.lazy_registry.command_triggers.contains_key("move-right"),
+        "colliding trigger must not appear in command_triggers"
+    );
+    // Plugin stays dead-lazy — Declared, body not evaluated.
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(
+            h.lazy_registry.plugins.get(&id),
+            Some(lazy::PluginState::Declared { .. })
+        ),
+        "plugin must stay Declared (dead-lazy) after all-colliding on-command list"
     );
 
-    // Flip: a non-builtin name must succeed.
+    // Flip: non-colliding trigger produces no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
         r#"(load-plugin "user/tp" #:on-command '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -1674,16 +1698,28 @@ fn manifest_collision_with_builtin_aborts_init() {
     let mut km2 = Keymap::default();
     let builtin_names2: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
-    let result2 = h2.eval_init(&init_path2, &mut s2, &mut km2, builtin_names2);
-    assert!(result2.is_ok(), "non-builtin name must not error; got Err");
+    h2.eval_init(&init_path2, &mut s2, &mut km2, builtin_names2)
+        .expect("non-colliding trigger must not error");
+    assert!(
+        !h2.pending_messages
+            .iter()
+            .any(|(sev, _)| matches!(sev, crate::editor::Severity::Error)),
+        "non-colliding trigger must not log any Error"
+    );
+    assert!(
+        h2.lazy_registry.command_triggers.contains_key("not-a-builtin"),
+        "non-colliding trigger must appear in command_triggers"
+    );
 }
 
-/// Two plugins both declare `#:on-command '("bar")` → second declaration aborts
-/// with a collision error.
+/// Two plugins both declare `#:on-command '("bar")` → second declaration's
+/// trigger is dropped, a `Severity::Error` is logged, first-writer-wins, init
+/// continues.
+///
+/// Flip: both plugins are Declared; only the first plugin owns the trigger.
 #[test]
 #[cfg(not(windows))]
-fn manifest_collision_lazy_vs_lazy_aborts_init() {
-    // Two distinct user plugin directories in the same data dir.
+fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     let dir = tempfile::tempdir().unwrap();
     let pa = dir.path().join("plugins").join("user").join("pa");
     let pb = dir.path().join("plugins").join("user").join("pb");
@@ -1701,10 +1737,47 @@ fn manifest_collision_lazy_vs_lazy_aborts_init() {
     h.data_dir = Some(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let result = h.eval_init(&init_path, &mut s, &mut km, Default::default());
+    h.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("lazy-vs-lazy collision must NOT abort init");
+
+    // Error logged for pb's duplicate trigger.
     assert!(
-        result.is_err(),
-        "duplicate on-command name across two plugins must error; got Ok"
+        h.pending_messages.iter().any(|(sev, msg)| {
+            matches!(sev, crate::editor::Severity::Error)
+                && msg.contains("bar")
+                && msg.contains("already claimed")
+        }),
+        "expected an Error about 'bar' already claimed; got: {:?}",
+        h.pending_messages
+    );
+    // First-writer (pa) owns the trigger.
+    let pa_id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "pa".to_string(),
+    };
+    assert_eq!(
+        h.lazy_registry.command_triggers.get("bar"),
+        Some(&pa_id),
+        "command_triggers['bar'] must point to pa (first-writer-wins)"
+    );
+    // Both plugins are Declared — pb stays declared even though its trigger was dropped.
+    let pb_id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "pb".to_string(),
+    };
+    assert!(
+        matches!(
+            h.lazy_registry.plugins.get(&pa_id),
+            Some(lazy::PluginState::Declared { .. })
+        ),
+        "pa must be Declared"
+    );
+    assert!(
+        matches!(
+            h.lazy_registry.plugins.get(&pb_id),
+            Some(lazy::PluginState::Declared { .. })
+        ),
+        "pb must be Declared even with its trigger dropped"
     );
 }
 

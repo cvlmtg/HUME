@@ -924,9 +924,9 @@ target command name is a key in `command_triggers`.
 - **Command — registry stub.** For each `#:on-command` name, register
   `MappableCommand::Lazy { plugin }` (new variant) in `CommandRegistry` under that
   name. **Collision check at registration:** if the name is already known (a
-  built-in, an already-loaded plugin's command, or another lazy stub), fail-fast
-  during `init.scm` — same rule as `define-command!`'s built-in guard
-  (commands.rs:103); never silently shadow (§3.10). The existing name lookup finds
+  built-in, an already-loaded plugin's command, or another lazy stub), the
+  colliding trigger is **dropped** — a `Severity::Error` is logged to `:messages`
+  and init continues (never silently shadows; see §3.10). The existing name lookup finds
   the stub; dispatch matches `Lazy` → `activate_plugin` → re-dispatch. The body's
   `define-command!` overwrites the stub with the real `SteelBacked`. **Loop guard:**
   if the entry is still `Lazy` after activation (author never defined it), report
@@ -1163,14 +1163,16 @@ requests WaitChar as usual).
 
 **Resolved (2026-05-20):**
 
-- **Command-name collisions** → **fail-fast at manifest time.** Registering an
-  `#:on-command` stub for a name that is **already known** errors during `init.scm`,
-  whether the prior owner is another lazy plugin, an eager plugin already loaded, or
-  a built-in Rust command. A lazy stub may only claim a name not yet registered at
-  the point its `load-plugin` runs. Mirrors `define-command!`'s existing
-  built-in-conflict guard (commands.rs:103) and HUME's fail-loud philosophy — never
-  silently shadow. Language triggers are 1:many (`Vec<PluginId>`) so they never
-  conflict — only the 1:1 command map can.
+- **Command-name collisions** → **non-fatal Error, trigger dropped, init
+  continues.** All three collision cases are uniform: (a) trigger == Rust built-in —
+  filtered in `declare_plugin` via `ctx.log`; (c) trigger == another lazy plugin's
+  trigger — filtered in `declare_plugin`, first-writer-wins; (b) trigger == an
+  eager plugin's already-registered command — caught in `register_lazy_command_stubs`
+  after the eager drain. In every case the colliding trigger is dropped (no shadow),
+  a `Severity::Error` is logged to `:messages`, and init.scm continues. A plugin
+  whose entire `#:on-command` list collides stays **dead-lazy** (declared, never
+  fires). Language triggers are 1:many (`Vec<PluginId>`) so they never conflict —
+  only the 1:1 command map can.
 - **`Failed` recovery** → **stays `Failed` until `:reload-config`.** No
   per-trigger / per-keystroke retry; one error message on first failure.
 - **Bare `#:lazy #t`** → **loads only via explicit `(require-plugin "name")`;**

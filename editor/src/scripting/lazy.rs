@@ -91,7 +91,7 @@ impl LazyRegistry {
         self.plugins.insert(id.clone(), PluginState::Declared { path });
 
         for cmd in on_command {
-            // Collision already checked by declare_plugin before this call.
+            // Collisions already filtered by declare_plugin; on_command is clean.
             self.command_triggers.insert(cmd, id.clone());
         }
         for hook in on_event {
