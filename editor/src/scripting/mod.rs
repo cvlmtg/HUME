@@ -221,8 +221,6 @@ pub(crate) struct SteelCtx<'a> {
     /// Hook registry; `(register-hook! …)` writes directly.
     pub(crate) hooks: &'a mut HookRegistry,
     /// Lazy plugin registry; `%declare-plugin!` writes directly.
-    // Step 5 adds %declare-plugin! which reads this field.
-    #[allow(dead_code)]
     pub(crate) lazy_registry: &'a mut LazyRegistry,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
@@ -637,7 +635,7 @@ impl ScriptingHost {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
         // Phase 1: eval init.scm.  Collect eagerly-declared plugin IDs from
-        // `eager_plugin_loads` — populated by `(push-loaded-plugin! …)` inside
+        // `eager_plugin_loads` — populated by `%declare-plugin!` inside
         // the Scheme `load-plugin` wrapper.
         let (eval_result, init_cmds, eager_plugin_loads) = {
             let Self {

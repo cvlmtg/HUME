@@ -1,6 +1,6 @@
-//! Plugin lifecycle builtins: `%declare-plugin!`, `push-declared-plugin!`,
-//! `push-loaded-plugin!`, `push-current-plugin!`, `pop-current-plugin!`,
-//! `resolve-plugin-path`, `declared-plugins`, `loaded-plugins`.
+//! Plugin lifecycle builtins: `%declare-plugin!`, `push-current-plugin!`,
+//! `pop-current-plugin!`, `resolve-plugin-path`, `declared-plugins`,
+//! `loaded-plugins`.
 //!
 //! `%declare-plugin!` is the Rust backing for the Scheme-side `load-plugin`
 //! wrapper defined in the bootstrap; see `mod.rs` for the Scheme source.
@@ -93,45 +93,6 @@ pub(crate) fn declare_plugin(
         ctx.eager_plugin_loads.push(plugin_id);
     }
 
-    Ok(SteelVal::Void)
-}
-
-/// `(push-declared-plugin! name)` — validate `name` and append to the
-/// declared-plugins list (case-insensitive dedup).
-///
-/// Raises a Steel error for malformed names, aborting `init.scm`.
-pub(crate) fn push_declared_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    // Validate before recording so declared-plugins never contains junk.
-    PluginId::parse(&name).map_err(steel_parse_err)?;
-    if !ctx
-        .declared_plugins
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(&name))
-    {
-        ctx.declared_plugins.push(name);
-    }
-    Ok(SteelVal::Void)
-}
-
-/// `(push-loaded-plugin! name)` — lower-level eager plugin registration.
-///
-/// Inserts into `LazyRegistry` + `eager_plugin_loads` so Phase 2 of
-/// `eval_source_raw` can drain via `ScriptingHost::activate_plugin`.
-/// Prefer `(load-plugin name)` (which calls `%declare-plugin!`) over this.
-pub(crate) fn push_loaded_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
-
-    // Only register in the lazy registry once per plugin per init session.
-    if !ctx.lazy_registry.plugins.contains_key(&plugin_id) {
-        let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
-            .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
-        ctx.lazy_registry
-            .declare(plugin_id.clone(), path, vec![], vec![], vec![]);
-        // Only queue for activation if the path resolved and declare inserted it.
-        if ctx.lazy_registry.plugins.contains_key(&plugin_id) {
-            ctx.eager_plugin_loads.push(plugin_id);
-        }
-    }
     Ok(SteelVal::Void)
 }
 

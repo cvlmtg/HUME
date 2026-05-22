@@ -109,12 +109,6 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
     engine.register_fn_with_ctx(
         HUME_CTX,
-        "push-declared-plugin!",
-        plugins::push_declared_plugin,
-    );
-    engine.register_fn_with_ctx(HUME_CTX, "push-loaded-plugin!", plugins::push_loaded_plugin);
-    engine.register_fn_with_ctx(
-        HUME_CTX,
         "push-current-plugin!",
         plugins::push_current_plugin,
     );
