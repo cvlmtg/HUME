@@ -254,7 +254,7 @@ pub(crate) struct SteelCtx<'a> {
     /// Plugins queued for activation at the end of this eval (init.scm or plugin
     /// body).  Populated by `%declare-plugin!` for eager plugins and by
     /// `(require-plugin …)` for explicit loads; drained by `eval_source_raw`
-    /// (init.scm) and by `activate_plugin` (plugin body, Phase 2+).
+    /// (init.scm) and by `activate_plugin` (plugin body).
     pub(crate) pending_plugin_loads: Vec<attribution::PluginId>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
@@ -555,7 +555,7 @@ pub(crate) struct ScriptingHost {
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
-    /// trigger maps consumed by later phases (Phases 1–3b).
+    /// trigger maps consulted by command dispatch, event firing, and language-set.
     pub(crate) lazy_registry: LazyRegistry,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor after each `eval_init` / `call_steel_cmd` call.
@@ -671,10 +671,10 @@ impl ScriptingHost {
     ) -> Result<Vec<SteelCmdDef>, String> {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
-        // Phase 1: eval init.scm.  Collect plugin IDs queued for activation from
+        // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
         // `pending_plugin_loads` — populated by `%declare-plugin!` (eager plugins)
-        // and `(require-plugin …)` (Phase 2+) inside the Scheme `load-plugin`
-        // wrapper / init.scm body.
+        // and `(require-plugin …)` inside the Scheme `load-plugin` wrapper /
+        // init.scm body.
         let (eval_result, init_cmds, pending_plugin_loads) = {
             let Self {
                 engine,
@@ -719,7 +719,7 @@ impl ScriptingHost {
 
         let mut all_cmds = self.process_pending_cmds(init_cmds);
 
-        // Phase 2: activate each queued plugin via the shared activate_plugin path.
+        // Step 2: activate each queued plugin via the shared activate_plugin path.
         // Steel's module system mangles the plugin's private bindings
         // (e.g. `##mm<id>~helper`), so same-named helpers in different plugins
         // live in disjoint globals.  Command lambdas close over their mangled
@@ -778,7 +778,7 @@ impl ScriptingHost {
     /// [`SteelCmdDef`]s are ready for insertion into the `CommandRegistry`.
     /// On error the state transitions to `Failed` and an `Err` is returned;
     /// eager callers (init path) propagate it to abort `eval_source_raw`, while
-    /// lazy callers (Phase 1+, dispatch path) catch it and push a soft error
+    /// lazy callers (dispatch path) catch it and push a soft error
     /// message instead.
     pub(crate) fn activate_plugin(
         &mut self,

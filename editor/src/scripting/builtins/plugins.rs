@@ -3,7 +3,7 @@
 //! `loaded-plugins`.
 //!
 //! `%declare-plugin!` is the Rust backing for the Scheme-side `load-plugin`
-//! wrapper defined in the bootstrap; see `mod.rs` for the Scheme source.
+//! wrapper defined in the bootstrap; see `builtins/mod.rs` for the Scheme source.
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};

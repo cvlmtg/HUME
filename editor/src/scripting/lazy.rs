@@ -2,14 +2,8 @@
 //!
 //! [`LazyRegistry`] is held on [`super::ScriptingHost`] and borrowed into
 //! [`super::SteelCtx`] during every eval.  It tracks each plugin's lifecycle
-//! state and the three trigger maps that later phases consume.
-//!
-//! Phase 0 populates the maps; later phases wire the consumption:
-//! - **Phase 1** — command triggers (`MappableCommand::Lazy` stubs, dispatch
-//!   interception).
-//! - **Phase 2** — event triggers (pre-fire activation in `fire_hook`).
-//! - **Phase 3b** — language triggers (pre-set activation in
-//!   `set_buffer_language`).
+//! state and the three trigger maps consulted by dispatch, event firing, and
+//! language-set to activate lazy plugins on demand.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -47,14 +41,12 @@ pub(crate) enum PluginState {
 #[derive(Debug, Default)]
 pub(crate) struct LazyRegistry {
     /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
-    /// declaration time appear here; absent-path plugins are silently skipped
-    /// (parity with pre-Phase-0 behavior).
+    /// declaration time appear here; absent-path plugins are silently skipped.
     pub(crate) plugins: HashMap<PluginId, PluginState>,
     /// 1:1 map: command name → owning plugin.
     ///
-    /// In Phase 0 a duplicate command name silently keeps the first claimant
-    /// (first `load-plugin` wins).  Phase 1 replaces this with a fail-fast
-    /// collision check at manifest time.
+    /// Duplicate command name → first claimant wins; the collision is logged
+    /// as a non-fatal error visible in `:messages`.
     pub(crate) command_triggers: HashMap<String, PluginId>,
     /// 1:many map: hook event → plugins that load on that event.
     pub(crate) event_triggers: HashMap<HookId, Vec<PluginId>>,
@@ -72,8 +64,8 @@ impl LazyRegistry {
     /// - `eager` plugins are inserted as `Declared` so the caller can drain
     ///   them immediately via `ScriptingHost::activate_plugin`; their state
     ///   transitions to `Loaded`/`Failed` during that drain.
-    /// - Lazy plugins are also inserted as `Declared`; later phases wire their
-    ///   trigger consumption.
+    /// - Lazy plugins are also inserted as `Declared`; they activate on
+    ///   demand when their trigger fires.
     pub(crate) fn declare(
         &mut self,
         id: PluginId,
