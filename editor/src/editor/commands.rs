@@ -1645,7 +1645,7 @@ pub(super) fn typed_reload_config(
     _force: bool,
 ) -> Result<(), CommandError> {
     ed.scripting = None;
-    ed.registry.unregister_all_steel_backed();
+    ed.registry.unregister_dynamic_commands();
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
     Ok(())

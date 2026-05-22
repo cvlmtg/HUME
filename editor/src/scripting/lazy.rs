@@ -91,8 +91,8 @@ impl LazyRegistry {
         self.plugins.insert(id.clone(), PluginState::Declared { path });
 
         for cmd in on_command {
-            // Phase 1 will add a collision check here; for Phase 0 first-wins.
-            self.command_triggers.entry(cmd).or_insert(id.clone());
+            // Collision already checked by declare_plugin before this call.
+            self.command_triggers.insert(cmd, id.clone());
         }
         for hook in on_event {
             self.event_triggers.entry(hook).or_default().push(id.clone());
@@ -204,14 +204,16 @@ mod tests {
     // ── Trigger recording ─────────────────────────────────────────────────
 
     #[test]
-    fn command_triggers_first_wins() {
+    fn command_triggers_insert_overwrites() {
+        // declare() unconditionally inserts; collision prevention lives in
+        // declare_plugin (one layer up) before this function is called.
         let mut reg = LazyRegistry::default();
         let a = id_user("a", "x");
         let b = id_user("b", "y");
         reg.declare(a.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
         reg.declare(b.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
-        // First declarant keeps the slot.
-        assert_eq!(reg.command_triggers["foo"], a);
+        // Second declare overwrites — collisions are caught before this is called.
+        assert_eq!(reg.command_triggers["foo"], b);
     }
 
     #[test]

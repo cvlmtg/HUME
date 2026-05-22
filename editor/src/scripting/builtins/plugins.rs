@@ -81,10 +81,27 @@ pub(crate) fn declare_plugin(
         })
         .collect::<Result<_, _>>()?;
 
+    // Validate the entire on-command list before writing any state so that a
+    // collision leaves no partial entries in command_triggers or cmd_owners.
+    for cmd in &on_cmd {
+        if ctx.builtin_cmd_names.contains(cmd) {
+            steel::stop!(Generic => "load-plugin: command '{}' conflicts with a built-in", cmd);
+        }
+        if ctx.lazy_registry.command_triggers.contains_key(cmd) {
+            steel::stop!(Generic => "load-plugin: command '{}' already claimed by another lazy plugin", cmd);
+        }
+    }
+
     let is_lazy = lazy || !on_cmd.is_empty() || !on_evt.is_empty() || !on_lang.is_empty();
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+
+    // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
+    // the plugin body is evaluated (before activation).
+    for cmd in &on_cmd {
+        ctx.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
+    }
 
     ctx.lazy_registry
         .declare(plugin_id.clone(), path, on_cmd, on_evt, on_lang);

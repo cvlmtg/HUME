@@ -191,6 +191,7 @@ mod auto_pairs;
 mod buffer;
 mod buffer_store;
 mod cd;
+mod plugins;
 mod command_mode;
 mod commands;
 mod completion;

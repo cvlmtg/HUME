@@ -1634,3 +1634,145 @@ fn eager_plugin_body_error_aborts_init() {
     );
 }
 
+// ── Phase 1 lazy plugin loading — command triggers ────────────────────────
+//
+// Not on Windows: Scheme require strings embed OS paths; backslashes are not
+// escaped in Steel string literals.
+
+/// `#:on-command '("move-right")` — name clashes with a built-in → `eval_init`
+/// must return `Err` (fail-fast).
+///
+/// Flip: a non-builtin name must succeed.
+#[test]
+#[cfg(not(windows))]
+fn manifest_collision_with_builtin_aborts_init() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-command '("move-right"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    // Known built-in passed as builtin_names.
+    let builtin_names: std::collections::HashSet<String> =
+        ["move-right".to_string()].into_iter().collect();
+    let result = h.eval_init(&init_path, &mut s, &mut km, builtin_names);
+    assert!(
+        result.is_err(),
+        "declaring on-command with a built-in name must error; got Ok"
+    );
+
+    // Flip: a non-builtin name must succeed.
+    let (dir2, init_path2) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-command '("not-a-builtin"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+    let mut h2 = host();
+    h2.data_dir = Some(dir2.path().to_path_buf());
+    let mut s2 = EditorSettings::default();
+    let mut km2 = Keymap::default();
+    let builtin_names2: std::collections::HashSet<String> =
+        ["move-right".to_string()].into_iter().collect();
+    let result2 = h2.eval_init(&init_path2, &mut s2, &mut km2, builtin_names2);
+    assert!(result2.is_ok(), "non-builtin name must not error; got Err");
+}
+
+/// Two plugins both declare `#:on-command '("bar")` → second declaration aborts
+/// with a collision error.
+#[test]
+#[cfg(not(windows))]
+fn manifest_collision_lazy_vs_lazy_aborts_init() {
+    // Two distinct user plugin directories in the same data dir.
+    let dir = tempfile::tempdir().unwrap();
+    let pa = dir.path().join("plugins").join("user").join("pa");
+    let pb = dir.path().join("plugins").join("user").join("pb");
+    std::fs::create_dir_all(&pa).unwrap();
+    std::fs::create_dir_all(&pb).unwrap();
+    std::fs::write(pa.join("plugin.scm"), r#"(define-command! "tp-a" "doc" (lambda () (+ 1 0)))"#).unwrap();
+    std::fs::write(pb.join("plugin.scm"), r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"
+(load-plugin "user/pa" #:on-command '("bar"))
+(load-plugin "user/pb" #:on-command '("bar"))
+"#).unwrap();
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let result = h.eval_init(&init_path, &mut s, &mut km, Default::default());
+    assert!(
+        result.is_err(),
+        "duplicate on-command name across two plugins must error; got Ok"
+    );
+}
+
+/// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id — not to
+/// `"hume"` — even before the plugin body is evaluated.
+///
+/// Flip: assert it is NOT `"hume"` after the lazy declare.
+#[test]
+#[cfg(not(windows))]
+fn cmd_owners_pre_seeded_before_activation() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("init must succeed");
+
+    // Plugin has NOT been activated yet — body was not evaluated.
+    let owner = h.cmd_owners.get("bar").map(|s| s.as_str());
+    assert!(
+        owner != Some("hume"),
+        "cmd_owners must be pre-seeded with the plugin id, not 'hume'; got: {:?}",
+        owner
+    );
+    assert_eq!(
+        owner,
+        Some("user/tp"),
+        "cmd_owners must map 'bar' to 'user/tp' before activation"
+    );
+}
+
+/// `activate_plugin` drops the plugin's `command_triggers` entry after the
+/// plugin body is evaluated successfully.
+#[test]
+#[cfg(not(windows))]
+fn activate_plugin_drops_command_trigger_on_loaded() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("init must succeed");
+
+    // Trigger is present before activation.
+    assert!(
+        h.lazy_registry.command_triggers.contains_key("my-cmd"),
+        "trigger must be present before activation"
+    );
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    h.activate_plugin(&id, &mut s, &mut km, &Default::default(), 5_000)
+        .expect("activate_plugin must succeed");
+
+    // Trigger is removed after activation.
+    assert!(
+        !h.lazy_registry.command_triggers.contains_key("my-cmd"),
+        "trigger must be removed after activation"
+    );
+}
+

@@ -818,12 +818,25 @@ impl ScriptingHost {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
+                // Drop all command triggers owned by this plugin — the real
+                // SteelBacked commands are registered by the caller after this
+                // returns, and the stub (Lazy) entry is overwritten by
+                // register_steel_cmds.  Any trigger names the body did NOT
+                // define are cleaned up by activate_lazy_plugin's loop guard.
+                self.lazy_registry
+                    .command_triggers
+                    .retain(|_, p| p != id);
                 Ok(self.process_pending_cmds(plugin_cmds))
             }
             Err(e) => {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Failed);
+                // Also drop command triggers on failure so the stub is not
+                // left in a state that would re-trigger a non-retrying plugin.
+                self.lazy_registry
+                    .command_triggers
+                    .retain(|_, p| p != id);
                 Err(format!("loading plugin '{id}': {e}"))
             }
         }

@@ -174,6 +174,15 @@ pub(crate) enum MappableCommand {
         /// so subprocess output streams live to the terminal.
         inline_output: bool,
     },
+    /// A placeholder for a lazy plugin command that has not yet been loaded.
+    ///
+    /// Registered by `register_lazy_command_stubs` after `init_scripting`.
+    /// When dispatched, the owning plugin's body is evaluated, the stub is
+    /// replaced by the real `SteelBacked` command, and dispatch re-runs.
+    Lazy {
+        name: Cow<'static, str>,
+        plugin: crate::scripting::attribution::PluginId,
+    },
 }
 
 impl MappableCommand {
@@ -184,7 +193,8 @@ impl MappableCommand {
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
             | Self::EditorCmd { name, .. }
-            | Self::SteelBacked { name, .. } => name.as_ref(),
+            | Self::SteelBacked { name, .. }
+            | Self::Lazy { name, .. } => name.as_ref(),
         }
     }
 
@@ -197,6 +207,7 @@ impl MappableCommand {
             | Self::Edit { doc, .. }
             | Self::EditorCmd { doc, .. }
             | Self::SteelBacked { doc, .. } => doc.as_ref(),
+            Self::Lazy { .. } => "",
         }
     }
 
@@ -206,7 +217,10 @@ impl MappableCommand {
     /// buffer. Edit and EditorCmd commands opt in explicitly at registration.
     pub(crate) fn is_repeatable(&self) -> bool {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::SteelBacked { .. } => false,
+            Self::Motion { .. }
+            | Self::Selection { .. }
+            | Self::SteelBacked { .. }
+            | Self::Lazy { .. } => false,
             Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
         }
     }
@@ -219,7 +233,10 @@ impl MappableCommand {
     pub(crate) fn is_jump(&self) -> bool {
         match self {
             Self::Motion { jump, .. } | Self::EditorCmd { jump, .. } => *jump,
-            Self::Selection { .. } | Self::Edit { .. } | Self::SteelBacked { .. } => false,
+            Self::Selection { .. }
+            | Self::Edit { .. }
+            | Self::SteelBacked { .. }
+            | Self::Lazy { .. } => false,
         }
     }
 
@@ -242,7 +259,7 @@ impl MappableCommand {
     pub(crate) fn is_extendable(&self) -> bool {
         match self {
             Self::Motion { .. } | Self::Selection { .. } => true,
-            Self::Edit { .. } => false,
+            Self::Edit { .. } | Self::Lazy { .. } => false,
             Self::SteelBacked { extendable, .. } => *extendable,
             Self::EditorCmd { extendable, .. } => *extendable,
         }
@@ -331,20 +348,40 @@ impl CommandRegistry {
             | MappableCommand::Selection { name, .. }
             | MappableCommand::Edit { name, .. }
             | MappableCommand::EditorCmd { name, .. }
-            | MappableCommand::SteelBacked { name, .. } => name.clone(),
+            | MappableCommand::SteelBacked { name, .. }
+            | MappableCommand::Lazy { name, .. } => name.clone(),
         };
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
-    /// Remove every `SteelBacked` mappable command in one pass.
+    /// Remove a single command by name (both mappable and typed).
+    pub(crate) fn unregister(&mut self, name: &str) {
+        self.commands.remove(name);
+    }
+
+    /// Returns `true` if `name` is registered as either a mappable or typed command.
+    ///
+    /// Unlike [`Self::get_mappable`], this also matches typed commands — use it
+    /// when checking whether a name is already claimed by anything in the registry.
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.commands.contains_key(name)
+    }
+
+    /// Remove every `SteelBacked` and `Lazy` mappable command in one pass.
     ///
     /// Used by `:reload-config` to clear stale entries before re-evaluating
     /// `init.scm` with a fresh engine — otherwise those names would appear in
     /// `builtin_cmd_names` and cause every `(define-command!)` to raise a
-    /// phantom "conflicts with a built-in command" error.
-    pub(crate) fn unregister_all_steel_backed(&mut self) {
+    /// phantom "conflicts with a built-in command" error. `Lazy` stubs must
+    /// also be cleared so re-declared trigger names do not collide.
+    pub(crate) fn unregister_dynamic_commands(&mut self) {
         self.commands.retain(|_, cmd| {
-            !matches!(cmd, Command::Mappable(MappableCommand::SteelBacked { .. }))
+            !matches!(
+                cmd,
+                Command::Mappable(
+                    MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }
+                )
+            )
         });
     }
 
@@ -1341,7 +1378,7 @@ impl CommandRegistry {
 #[cfg(test)]
 impl CommandRegistry {
     /// Collect the canonical names of every `SteelBacked` command.
-    /// Only used in tests — production code uses `unregister_all_steel_backed`.
+    /// Only used in tests — production code uses `unregister_dynamic_commands`.
     pub(crate) fn steel_backed_names(&self) -> Vec<String> {
         self.commands
             .values()
@@ -1759,7 +1796,8 @@ mod tests {
     }
 
     #[test]
-    fn unregister_all_steel_backed_clears_them() {
+    fn unregister_dynamic_commands_clears_steel_backed_and_lazy() {
+        use crate::scripting::attribution::PluginId;
         let mut reg = CommandRegistry::with_defaults();
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-a".to_string()),
@@ -1770,22 +1808,21 @@ mod tests {
             is_variadic: false,
             inline_output: false,
         });
-        reg.register(MappableCommand::SteelBacked {
-            name: Cow::Owned("plugin-cmd-b".to_string()),
-            doc: Cow::Borrowed("doc"),
-            steel_proc: "%hume-cmd-plugin-cmd-b".to_string(),
-            extendable: false,
-            arity: 0,
-            is_variadic: false,
-            inline_output: false,
+        reg.register(MappableCommand::Lazy {
+            name: Cow::Owned("lazy-cmd".to_string()),
+            plugin: PluginId::User {
+                user: "u".to_string(),
+                repo: "r".to_string(),
+            },
         });
         assert!(!reg.steel_backed_names().is_empty());
+        assert!(reg.get_mappable("lazy-cmd").is_some());
 
-        reg.unregister_all_steel_backed();
+        reg.unregister_dynamic_commands();
 
         assert!(reg.steel_backed_names().is_empty());
         assert!(reg.get_mappable("plugin-cmd-a").is_none());
-        assert!(reg.get_mappable("plugin-cmd-b").is_none());
+        assert!(reg.get_mappable("lazy-cmd").is_none());
         // Built-in commands are untouched.
         assert!(reg.get_mappable("move-left").is_some());
     }

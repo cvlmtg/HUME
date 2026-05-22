@@ -354,6 +354,11 @@ pub(crate) struct Editor {
     /// `open()` returns, before the event loop starts). `Some` for the rest
     /// of the editor's lifetime.
     pub(super) scripting: Option<crate::scripting::ScriptingHost>,
+    /// Snapshot of Rust-builtin command names taken at the end of
+    /// `init_scripting`.  Stable across reloads (built-ins never change at
+    /// runtime).  Stored as a field so dispatch-time activation can borrow it
+    /// disjointly from `&mut self.scripting` / `settings` / `keymap`.
+    pub(super) builtin_cmd_names: std::collections::HashSet<String>,
 
     // ── Working directory ─────────────────────────────────────────────────────
     /// Current working directory.
@@ -529,6 +534,7 @@ impl Editor {
             is_replaying: false,
             mouse_drag_anchor: None,
             scripting: None,
+            builtin_cmd_names: std::collections::HashSet::new(),
             cwd: std::env::current_dir().unwrap_or_default(),
         })
     }
@@ -1009,8 +1015,12 @@ impl Editor {
                     .into(),
             ),
         }
+        // Capture built-in names before any plugin code runs; stable for the
+        // editor's lifetime.  Stored on Editor so dispatch-time activation can
+        // borrow it disjointly from &mut self.scripting / settings / keymap.
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
+        self.builtin_cmd_names = builtin_names.clone();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that
@@ -1041,6 +1051,13 @@ impl Editor {
             Ok(cmds) => self.register_steel_cmds(cmds),
             Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
         }
+        // Register lazy-command stubs for every #:on-command trigger declared
+        // during init.scm.  Must run after register_steel_cmds (eager plugins
+        // may have defined commands that would collide) and before scripting=Some
+        // so the borrow of &host is independent.
+        let triggers: std::collections::HashMap<String, _> =
+            host.lazy_registry.command_triggers.clone();
+        self.register_lazy_command_stubs(&triggers);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.history.set_capacity(self.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
@@ -1429,19 +1446,16 @@ impl Editor {
 
     /// Register each `SteelCmdDef` in the command registry, reporting
     /// conflicts as errors.  Used after both init and plugin-reload evals.
+    ///
+    /// A `Lazy` stub for the same name is silently overwritten — this is the
+    /// expected path when a lazy plugin's body is evaluated and its
+    /// `define-command!` replaces the stub it was triggered by.
     pub(super) fn register_steel_cmds(&mut self, defs: impl IntoIterator<Item = SteelCmdDef>) {
+        use registry::MappableCommand;
         for def in defs {
-            if self.registry.get_mappable(&def.name).is_some() {
-                self.report(
-                    Severity::Error,
-                    format!(
-                        "define-command!: '{}' conflicts with existing command",
-                        def.name
-                    ),
-                );
-            } else {
-                self.registry
-                    .register(registry::MappableCommand::SteelBacked {
+            match self.registry.get_mappable(&def.name) {
+                Some(MappableCommand::Lazy { .. }) | None => {
+                    self.registry.register(MappableCommand::SteelBacked {
                         name: def.name.into(),
                         doc: def.doc.into(),
                         steel_proc: def.steel_proc,
@@ -1450,6 +1464,40 @@ impl Editor {
                         is_variadic: def.is_variadic,
                         inline_output: def.inline_output,
                     });
+                }
+                Some(_) => {
+                    self.report(
+                        Severity::Error,
+                        format!(
+                            "define-command!: '{}' conflicts with existing command",
+                            def.name
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Register a `Lazy` stub for each command trigger from the init manifest.
+    ///
+    /// Called after `register_steel_cmds` (eager plugins run first) so a
+    /// command defined eagerly is detected as a conflict before a lazy stub
+    /// for the same name would shadow it.
+    pub(super) fn register_lazy_command_stubs(
+        &mut self,
+        triggers: &std::collections::HashMap<String, crate::scripting::attribution::PluginId>,
+    ) {
+        for (name, plugin) in triggers {
+            if self.registry.contains(name) {
+                self.report(
+                    Severity::Error,
+                    format!("lazy command '{name}' conflicts with an existing command"),
+                );
+            } else {
+                self.registry.register(registry::MappableCommand::Lazy {
+                    name: name.clone().into(),
+                    plugin: plugin.clone(),
+                });
             }
         }
     }
@@ -1683,6 +1731,7 @@ impl Editor {
             is_replaying: false,
             mouse_drag_anchor: None,
             scripting: None,
+            builtin_cmd_names: std::collections::HashSet::new(),
             cwd: std::env::temp_dir(),
         }
     }

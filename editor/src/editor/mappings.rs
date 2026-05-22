@@ -593,6 +593,52 @@ impl Editor {
 
     // ── Command execution ─────────────────────────────────────────────────────
 
+    /// Activate the plugin owning a lazy stub, register its commands, and
+    /// check whether `name` is now a real (non-Lazy) command.
+    ///
+    /// Returns `true` when `name` resolved to a real command after activation
+    /// and dispatch may proceed.  Returns `false` when activation failed or
+    /// the plugin body never defined `name`; in that case the stub is removed
+    /// (preventing an infinite retry loop) and the caller should report an
+    /// "unknown command" warning.
+    fn activate_lazy_plugin(
+        &mut self,
+        plugin: &crate::scripting::attribution::PluginId,
+        name: &str,
+    ) -> bool {
+        if self.scripting.is_none() {
+            return false;
+        }
+        let budget = self.settings.steel_init_budget_ms as u64;
+        let result = {
+            let host = self.scripting.as_mut().expect("checked above");
+            host.activate_plugin(
+                plugin,
+                &mut self.settings,
+                &mut self.keymap,
+                &self.builtin_cmd_names,
+                budget,
+            )
+        };
+        match result {
+            Ok(cmds) => self.register_steel_cmds(cmds),
+            Err(e) => self.report(Severity::Error, e),
+        }
+        self.flush_script_messages();
+        // Loop guard: if name is still Lazy (body never defined it) or gone,
+        // remove the stub and signal failure so the caller does not re-enter.
+        let unresolved = matches!(
+            self.registry.get_mappable(name),
+            Some(MappableCommand::Lazy { .. }) | None
+        );
+        if unresolved {
+            self.registry.unregister(name);
+            false
+        } else {
+            true
+        }
+    }
+
     /// Execute a named command with the given count and extend flag.
     ///
     /// `extend` is converted to `MotionMode::Extend` / `MotionMode::Move` and
@@ -670,6 +716,15 @@ impl Editor {
                     if let Err(e) = fun(self, count, motion_mode) {
                         self.report(Severity::Error, e.0);
                     }
+                }
+                MappableCommand::Lazy { ref plugin, .. } => {
+                    let plugin = plugin.clone();
+                    if self.activate_lazy_plugin(&plugin, name.as_ref()) {
+                        self.execute_keymap_command(name, count, extend, steel_args);
+                    } else {
+                        self.report(Severity::Warning, format!("unknown command: {name}"));
+                    }
+                    return;
                 }
                 MappableCommand::SteelBacked { ref steel_proc, ref name, inline_output, .. } => {
                     if self.scripting.is_none() {
@@ -1353,10 +1408,27 @@ impl Editor {
             if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.0);
             }
-        } else if let Some(mappable) = self.registry.get_mappable(cmd).cloned() {
+        } else if let Some(mut mappable) = self.registry.get_mappable(cmd).cloned() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers.
+            //
+            // Lazy stubs are activated before arity marshalling so `:bar arg`
+            // does not silently drop `arg` on the first call.
+            if let MappableCommand::Lazy { plugin, .. } = &mappable {
+                let plugin = plugin.clone();
+                if !self.activate_lazy_plugin(&plugin, cmd) {
+                    self.report(Severity::Warning, format!("Unknown command: {cmd}"));
+                    return;
+                }
+                match self.registry.get_mappable(cmd).cloned() {
+                    Some(m) => mappable = m,
+                    None => {
+                        self.report(Severity::Warning, format!("Unknown command: {cmd}"));
+                        return;
+                    }
+                }
+            }
             let steel_args = if let MappableCommand::SteelBacked {
                 arity,
                 is_variadic,
