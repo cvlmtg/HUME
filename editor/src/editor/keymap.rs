@@ -236,6 +236,16 @@ impl KeyTrie {
         // Unreachable: the loop above always returns before the iterator exhausts.
         WalkResult::NoMatch
     }
+
+    pub(super) fn collect_command_names(&self, out: &mut Vec<String>) {
+        for node in self.map.values() {
+            match node {
+                KeyTrieNode::Leaf(cmd) => out.push(cmd.name.to_string()),
+                KeyTrieNode::WaitChar(wc) => out.push(wc.cmd_name.to_string()),
+                KeyTrieNode::Node(sub) => sub.collect_command_names(out),
+            }
+        }
+    }
 }
 
 // ── BindMode ─────────────────────────────────────────────────────────────────
@@ -372,6 +382,14 @@ impl Keymap {
             WalkResult::Leaf(cmd) => Some((cmd.name.into_owned(), cmd.force_extend)),
             _ => None,
         }
+    }
+
+    pub(super) fn all_command_names(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        self.normal.collect_command_names(&mut out);
+        self.extend.collect_command_names(&mut out);
+        self.insert.collect_command_names(&mut out);
+        out
     }
 }
 
@@ -1269,5 +1287,63 @@ mod tests {
                 k
             );
         }
+    }
+
+    // ── collect_command_names ─────────────────────────────────────────────────
+
+    #[test]
+    fn collect_command_names_includes_leaves_and_waitchars() {
+        let mut trie = KeyTrie::new("test");
+        trie.bind_sequence(
+            &[key!('x')],
+            KeymapCommand {
+                name: Cow::Borrowed("delete-char-forward"),
+                force_extend: false,
+            },
+        );
+        trie.bind_sequence(
+            &[key!('g'), key!('g')],
+            KeymapCommand {
+                name: Cow::Borrowed("goto-first-line"),
+                force_extend: false,
+            },
+        );
+        trie.bind_wait_char_sequence(
+            &[key!('f')],
+            WaitCharPending {
+                cmd_name: Cow::Borrowed("find-char"),
+                ctrl_extend: false,
+            },
+        );
+
+        let mut names: Vec<String> = Vec::new();
+        trie.collect_command_names(&mut names);
+        names.sort();
+
+        // Independent oracle: exact expected set.
+        assert!(names.contains(&"delete-char-forward".to_string()), "leaf must appear");
+        assert!(names.contains(&"goto-first-line".to_string()), "nested leaf must appear");
+        assert!(names.contains(&"find-char".to_string()), "wait-char must appear");
+    }
+
+    #[test]
+    fn all_command_names_covers_all_three_modes() {
+        let mut km = Keymap::default();
+        // Bind sentinel names in each mode to verify the sweep is complete.
+        km.bind_user_with_extend(
+            BindMode::Normal,
+            &[key!('Q')],
+            Cow::Borrowed("normal-sentinel"),
+            false,
+        );
+        km.bind_user_with_extend(
+            BindMode::Insert,
+            &[key!('Q')],
+            Cow::Borrowed("insert-sentinel"),
+            false,
+        );
+        let names = km.all_command_names();
+        assert!(names.contains(&"normal-sentinel".to_string()), "normal mode must be swept");
+        assert!(names.contains(&"insert-sentinel".to_string()), "insert mode must be swept");
     }
 }

@@ -125,16 +125,16 @@
 ;;
 ;; Without keyword args the plugin loads eagerly at startup (today's behavior).
 ;;
-;; Keyword args for lazy / trigger-based loading (Phase 0 scaffolding —
-;; trigger consumption is wired in later phases):
+;; Keyword args for lazy / trigger-based loading:
 ;;
 ;;   #:lazy #t
-;;     Record the plugin in the registry without evaluating its body.
-;;     Its commands and hooks will be unavailable until a trigger fires.
+;;     Record the plugin without evaluating its body.  The body runs only when
+;;     explicitly requested via (require-plugin "user/repo").  Use this for
+;;     optional plugins whose load time you want full control over.
 ;;
 ;;   #:on-command '("cmd-name" ...)
-;;     Declare that the plugin should activate when one of these command names
-;;     is dispatched.  Implies #:lazy #t.
+;;     Activate when one of these command names is first dispatched (via the
+;;     command line or a key binding).  Implies #:lazy #t.
 ;;
 ;;   #:on-event '("hook-name" ...)
 ;;     Activate when one of the named lifecycle hooks fires.  Implies #:lazy #t.
@@ -144,6 +144,17 @@
 ;;   #:on-language '("lang-name" ...)
 ;;     Activate when the buffer language is set to one of the given names.
 ;;     Implies #:lazy #t.
+;;
+;; (require-plugin "user/repo")
+;;   Force-activate a previously declared lazy plugin immediately.  Useful in
+;;   init.scm to load a bare #:lazy #t plugin on demand, or as a dependency
+;;   inside another plugin's body.
+;;
+;; :plugin-status (alias :plugins)
+;;   Open a scratch view listing every declared plugin with its current state
+;;   (waiting / loading / loaded / failed) and, for waiting plugins, the
+;;   triggers still pending.  Use this to inspect lazy-load behaviour at
+;;   runtime.
 ;;
 ;; core:plum   — plugin manager (:plum-install, :plum-update, :plum-cleanup)
 ;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
@@ -158,5 +169,8 @@
 ;; (load-plugin "alice/my-theme")
 ;; (load-plugin "bob/rust-extras")
 
-;; Example: lazy-load a plugin only when "my-cmd" is first invoked.
+;; Example: lazy-load a plugin when "my-cmd" is first dispatched.
+;; The bind-key! below ensures pressing <space>m in Normal mode runs my-cmd,
+;; which activates the plugin on first press.
 ;; (load-plugin "alice/lazy-thing" #:on-command '("my-cmd"))
+;; (bind-key! "normal" "<space>m" "my-cmd")

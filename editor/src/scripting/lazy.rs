@@ -104,6 +104,116 @@ impl LazyRegistry {
                 .push(id.clone());
         }
     }
+
+    /// Build a human-readable status table for `:plugin-status`.
+    ///
+    /// Rows are sorted by plugin id for stable output.  For plugins still in
+    /// the `Declared` state (not yet loaded), the pending trigger lists are
+    /// read from the live maps — exactly the triggers the plugin is still
+    /// waiting on.  Once a plugin loads or fails, `activate_plugin` drops its
+    /// entries from the maps, so `Loaded`/`Failed` rows show no triggers.
+    ///
+    /// Returns `""` if no plugins are declared; the caller reports "No plugins
+    /// declared" rather than opening an empty scratch view.
+    pub(crate) fn format_status(&self) -> String {
+        if self.plugins.is_empty() {
+            return String::new();
+        }
+
+        let mut rows: Vec<(String, &'static str, String)> = self
+            .plugins
+            .iter()
+            .map(|(id, state)| {
+                let id_s = id.to_string();
+                let state_label = match state {
+                    PluginState::Declared { .. } => "waiting",
+                    PluginState::Loading => "loading",
+                    PluginState::Loaded => "loaded",
+                    PluginState::Failed => "failed",
+                };
+                let triggers = if matches!(state, PluginState::Declared { .. }) {
+                    self.pending_triggers(id)
+                } else {
+                    String::new()
+                };
+                (id_s, state_label, triggers)
+            })
+            .collect();
+
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let id_width = rows
+            .iter()
+            .map(|(id, _, _)| id.len())
+            .max()
+            .unwrap_or(6)
+            .max(6);
+
+        let mut out = format!(
+            "{:<w$}  {:<8}  {}\n",
+            "plugin",
+            "state",
+            "triggers",
+            w = id_width
+        );
+        for (id, state, triggers) in &rows {
+            out.push_str(&format!(
+                "{:<w$}  {:<8}  {}\n",
+                id,
+                state,
+                triggers,
+                w = id_width
+            ));
+        }
+        out
+    }
+
+    /// Invert the three live trigger maps to collect the pending triggers for `id`.
+    ///
+    /// Only meaningful for `Declared` plugins — on load/fail `activate_plugin`
+    /// drops the plugin's entries, so a non-`Declared` id yields nothing.
+    fn pending_triggers(&self, id: &PluginId) -> String {
+        let mut parts = Vec::new();
+
+        let mut cmds: Vec<&str> = self
+            .command_triggers
+            .iter()
+            .filter(|(_, p)| *p == id)
+            .map(|(c, _)| c.as_str())
+            .collect();
+        cmds.sort_unstable();
+        if !cmds.is_empty() {
+            parts.push(format!("cmd:{}", cmds.join(",")));
+        }
+
+        let mut evts: Vec<&str> = self
+            .event_triggers
+            .iter()
+            .filter(|(_, ps)| ps.contains(id))
+            .map(|(h, _)| h.symbol())
+            .collect();
+        evts.sort_unstable();
+        if !evts.is_empty() {
+            parts.push(format!("event:{}", evts.join(",")));
+        }
+
+        let mut langs: Vec<&str> = self
+            .language_triggers
+            .iter()
+            .filter(|(_, ps)| ps.contains(id))
+            .map(|(l, _)| l.as_str())
+            .collect();
+        langs.sort_unstable();
+        if !langs.is_empty() {
+            parts.push(format!("lang:{}", langs.join(",")));
+        }
+
+        if parts.is_empty() {
+            "\u{2014}".to_string() // — (em dash): bare #:lazy #t, waits on require-plugin
+        } else {
+            parts.join("  ")
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -306,5 +416,101 @@ mod tests {
             .collect();
 
         assert_eq!(loaded, vec!["loaded/one"]);
+    }
+
+    // ── format_status ─────────────────────────────────────────────────────
+
+    #[test]
+    fn format_status_empty_returns_empty_string() {
+        let reg = LazyRegistry::default();
+        assert_eq!(reg.format_status(), "", "empty registry must return empty");
+    }
+
+    #[test]
+    fn format_status_waiting_with_triggers() {
+        let mut reg = LazyRegistry::default();
+        reg.declare(
+            id_user("alice", "lazy"),
+            Some(fake_path()),
+            vec!["my-cmd".to_string()],
+            vec![HookId::OnBufferSave],
+            vec!["rust".to_string()],
+        );
+        let out = reg.format_status();
+        assert!(out.contains("alice/lazy"), "plugin id must appear");
+        assert!(out.contains("waiting"), "state must be 'waiting'");
+        assert!(out.contains("cmd:my-cmd"), "command trigger must appear");
+        assert!(out.contains("event:on-buffer-save"), "event trigger must appear");
+        assert!(out.contains("lang:rust"), "language trigger must appear");
+    }
+
+    #[test]
+    fn format_status_bare_lazy_shows_em_dash() {
+        let mut reg = LazyRegistry::default();
+        reg.declare(
+            id_user("bob", "bare"),
+            Some(fake_path()),
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = reg.format_status();
+        assert!(out.contains("bob/bare"));
+        assert!(out.contains("waiting"));
+        assert!(out.contains('\u{2014}'), "bare lazy must show em dash");
+        assert!(!out.contains("cmd:"), "no cmd prefix for bare lazy");
+    }
+
+    #[test]
+    fn format_status_loaded_shows_no_triggers() {
+        let mut reg = LazyRegistry::default();
+        let id = id_user("carol", "eager");
+        reg.declare(
+            id.clone(),
+            Some(fake_path()),
+            vec!["eager-cmd".to_string()],
+            vec![],
+            vec![],
+        );
+        // Simulate activate_plugin: drop the plugin's trigger-map entries and
+        // set Loaded, mirroring what mod.rs:activate_plugin does.
+        reg.command_triggers.retain(|_, p| p != &id);
+        *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
+
+        let out = reg.format_status();
+        assert!(out.contains("carol/eager"), "plugin id must appear");
+        assert!(out.contains("loaded"), "state must be 'loaded'");
+        assert!(!out.contains("eager-cmd"), "loaded plugin must not show its old trigger");
+    }
+
+    #[test]
+    fn format_status_failed_shows_no_triggers() {
+        let mut reg = LazyRegistry::default();
+        let id = id_core("broken");
+        reg.declare(
+            id.clone(),
+            Some(fake_path()),
+            vec!["broken-cmd".to_string()],
+            vec![],
+            vec![],
+        );
+        reg.command_triggers.retain(|_, p| p != &id);
+        *reg.plugins.get_mut(&id).unwrap() = PluginState::Failed;
+
+        let out = reg.format_status();
+        assert!(out.contains("core:broken"));
+        assert!(out.contains("failed"));
+        assert!(!out.contains("broken-cmd"), "failed plugin must not show trigger");
+    }
+
+    #[test]
+    fn format_status_sorts_by_id() {
+        let mut reg = LazyRegistry::default();
+        reg.declare(id_user("z", "last"), Some(fake_path()), vec![], vec![], vec![]);
+        reg.declare(id_user("a", "first"), Some(fake_path()), vec![], vec![], vec![]);
+        let out = reg.format_status();
+        let z_pos = out.find("z/last").expect("z/last must appear");
+        let a_pos = out.find("a/first").expect("a/first must appear");
+        assert!(a_pos < z_pos, "rows must be sorted alphabetically by id");
     }
 }

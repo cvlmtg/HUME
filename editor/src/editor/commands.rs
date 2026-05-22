@@ -1655,6 +1655,27 @@ pub(super) fn typed_list_buffers(
     Ok(())
 }
 
+/// `:plugin-status` / `:plugins` — show all declared plugins, their load
+/// state, and (for still-waiting plugins) which triggers they are waiting on.
+pub(super) fn typed_plugin_status(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    let out = if let Some(host) = ed.scripting.as_ref() {
+        host.lazy_registry.format_status()
+    } else {
+        ed.report(Severity::Info, "Scripting disabled".to_string());
+        return Ok(());
+    };
+    if out.is_empty() {
+        ed.report(Severity::Info, "No plugins declared".to_string());
+        return Ok(());
+    }
+    ed.scratch_view = Some(ScratchView::from_text(&out, "[plugin-status]"));
+    Ok(())
+}
+
 /// `:reload-config` — drop the scripting engine and re-evaluate `init.scm`
 /// from scratch, restoring a clean slate.
 ///

@@ -44,6 +44,15 @@ impl HookId {
     pub(crate) fn all_names() -> impl Iterator<Item = &'static str> {
         HOOKS.iter().map(|(_, name)| *name)
     }
+
+    /// The Steel symbol name for this hook, e.g. `"on-buffer-save"`.
+    pub(crate) fn symbol(self) -> &'static str {
+        HOOKS
+            .iter()
+            .find(|(id, _)| *id == self)
+            .map(|(_, name)| *name)
+            .expect("all HookId variants covered in HOOKS")
+    }
 }
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────

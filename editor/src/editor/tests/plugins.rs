@@ -876,3 +876,132 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
         "language_triggers[\"rust\"] must remain intact after an unrelated set"
     );
 }
+
+// ── Phase 4 Polish — load-time activation reporting ──────────────────────────
+
+/// Command trigger: first dispatch of a lazy command logs a Trace entry naming
+/// the triggering command.
+///
+/// Flip: before dispatch, no such Trace exists — confirming the entry is
+/// produced by the activation path, not during init.
+#[test]
+#[cfg(not(windows))]
+fn command_trigger_logs_trace_on_activation() {
+    use crate::editor::Severity;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    assert!(
+        !ed.message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text.contains("command trigger")),
+        "no activation Trace before dispatch; messages: {:?}",
+        ed.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+
+    type_cmd(&mut ed, ":bar");
+
+    assert!(
+        ed.message_log.entries().any(|e| {
+            e.severity == Severity::Trace
+                && e.text.contains("bar")
+                && e.text.contains("command trigger")
+        }),
+        "expected Trace entry naming command trigger 'bar' after dispatch; messages: {:?}",
+        ed.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+// ── Phase 4 Polish — post-init keymap lint ────────────────────────────────────
+
+/// Helper: write `init_scm` to a temporary config dir, set `XDG_CONFIG_HOME`
+/// and `HUME_RUNTIME`, call `init_scripting` on a fresh Editor, restore env
+/// vars before returning.  Caller must keep the returned `Vec<TempDir>` alive.
+#[cfg(not(windows))]
+fn setup_editor_with_init_scripting(init_scm: &str) -> (Editor, Vec<tempfile::TempDir>) {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), init_scm).unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    (ed, vec![config_tmp, runtime_tmp, data_tmp])
+}
+
+/// Keymap lint warns when a bind-key! targets a name not in the command registry.
+///
+/// Flip: binding to a known command ("move-down") must produce no warning, so
+/// the warning here is definitely about the unknown name, not an always-fire.
+#[test]
+#[cfg(not(windows))]
+fn keymap_lint_warns_on_unknown_command() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        r#"(bind-key! "normal" "Q" "bogus-unknown-cmd")"#,
+    );
+
+    assert!(
+        ed.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("bogus-unknown-cmd")
+        }),
+        "expected Warning about unknown command 'bogus-unknown-cmd'; messages: {:?}",
+        ed.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Keymap lint is silent when every bound key targets a registered command.
+///
+/// Flip: the test above binds an *unknown* name and asserts a Warning is
+/// produced — this test confirms the warning path does not fire for valid names.
+#[test]
+#[cfg(not(windows))]
+fn keymap_lint_silent_for_known_command() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        r#"(bind-key! "normal" "Q" "move-down")"#,
+    );
+
+    assert!(
+        !ed.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("move-down")
+        }),
+        "must not warn about known command 'move-down'; messages: {:?}",
+        ed.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}

@@ -27,6 +27,7 @@ use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_reg
 use super::{doc_ops, search_ops, Editor, MacroPending, Mode, RegisterPrefix, SearchDirection};
 use crate::core::error::CommandError;
 use crate::scripting::EditorSteelRefs;
+use crate::scripting::lazy::PluginState;
 
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.
@@ -631,8 +632,28 @@ impl Editor {
         if self.scripting.is_none() {
             return false;
         }
+        let was_declared = self
+            .scripting
+            .as_ref()
+            .map_or(false, |h| {
+                matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
+            });
         self.activate_and_register(plugin);
         self.flush_script_messages();
+        if was_declared {
+            let is_loaded = self
+                .scripting
+                .as_ref()
+                .map_or(false, |h| {
+                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
+                });
+            if is_loaded {
+                self.report(
+                    Severity::Trace,
+                    format!("plugin '{plugin}' loaded (command trigger '{name}')"),
+                );
+            }
+        }
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
         let unresolved = matches!(
@@ -667,7 +688,27 @@ impl Editor {
                 None => return,
             };
         for plugin in &pending {
+            let was_declared = self
+                .scripting
+                .as_ref()
+                .map_or(false, |h| {
+                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
+                });
             self.activate_and_register(plugin);
+            if was_declared {
+                let is_loaded = self
+                    .scripting
+                    .as_ref()
+                    .map_or(false, |h| {
+                        matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
+                    });
+                if is_loaded {
+                    self.report(
+                        Severity::Trace,
+                        format!("plugin '{plugin}' loaded (event trigger '{}')", hook_id.symbol()),
+                    );
+                }
+            }
         }
         self.flush_script_messages();
     }
@@ -688,7 +729,27 @@ impl Editor {
                 None => return,
             };
         for plugin in &pending {
+            let was_declared = self
+                .scripting
+                .as_ref()
+                .map_or(false, |h| {
+                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
+                });
             self.activate_and_register(plugin);
+            if was_declared {
+                let is_loaded = self
+                    .scripting
+                    .as_ref()
+                    .map_or(false, |h| {
+                        matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
+                    });
+                if is_loaded {
+                    self.report(
+                        Severity::Trace,
+                        format!("plugin '{plugin}' loaded (language trigger '{lang}')"),
+                    );
+                }
+            }
         }
         self.flush_script_messages();
     }

@@ -1104,6 +1104,23 @@ impl Editor {
             self.report(sev, text);
         }
         self.scripting = Some(host);
+        // Post-init lint: warn on keymap leaves that target an unknown command.
+        // Runs after register_lazy_command_stubs so Lazy stubs count as valid.
+        // Built-in keymaps only reference registered built-ins, so any warnings
+        // here come from user bind-key! calls to typos / undeclared commands.
+        {
+            let mut names = self.keymap.all_command_names();
+            names.sort_unstable();
+            names.dedup();
+            for name in &names {
+                if !self.registry.contains(name) {
+                    self.report(
+                        Severity::Warning,
+                        format!("key bound to unknown command '{name}' — typo, or missing from #:on-command?"),
+                    );
+                }
+            }
+        }
         // Load theme set by (set-option! 'theme "…") in init.scm.
         if !self.settings.theme.is_empty() {
             ops::load_theme_by_name(
