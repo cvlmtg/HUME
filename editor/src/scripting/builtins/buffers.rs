@@ -260,6 +260,64 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
     Ok(SteelVal::Void)
 }
 
+// ── Language builtins ─────────────────────────────────────────────────────────
+
+/// Reverse-scan `pending` for the last `set-buffer-language!` call for `id`;
+/// fall back to `fallback` (the buffer's stored language).
+fn effective_language(
+    pending: &[(engine::pipeline::BufferId, Option<String>)],
+    id: engine::pipeline::BufferId,
+    fallback: Option<String>,
+) -> Option<String> {
+    pending.iter().rev()
+        .find(|(bid, _)| *bid == id)
+        .map(|(_, lang)| lang.clone())
+        .unwrap_or(fallback)
+}
+
+/// `(buffer-language bid)` → string or `#f`.
+pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
+    require_cmd_ctx!(ctx, "buffer-language");
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(ErrorKind::TypeMismatch, "buffer-language: expected buffer-id".into())
+    })?;
+    let fallback = require_ref(ctx.buffers.as_deref(), "buffer-language")?
+        .try_get(id)
+        .and_then(|b| b.language.clone());
+    let lang = effective_language(&ctx.pending_language_sets, id, fallback);
+    match lang {
+        Some(name) => name.into_steelval().map_err(|e| {
+            SteelErr::new(ErrorKind::Generic, e.to_string())
+        }),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
+/// `(set-buffer-language! bid lang-or-#f)` — deferred; applied before cmd_queue.
+pub(crate) fn set_buffer_language_steel(
+    ctx: &mut SteelCtx,
+    bid: SteelVal,
+    lang: SteelVal,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-buffer-language!");
+    let id = extract_buffer_id(&bid).ok_or_else(|| {
+        SteelErr::new(ErrorKind::TypeMismatch, "set-buffer-language!: expected buffer-id".into())
+    })?;
+    let new_lang = match &lang {
+        SteelVal::StringV(s) => Some(s.to_string()),
+        SteelVal::BoolV(false) => None,
+        _ => steel::stop!(TypeMismatch => "set-buffer-language!: expected string or #f, got {:?}", lang),
+    };
+    let fallback = require_ref(ctx.buffers.as_deref(), "set-buffer-language!")?
+        .try_get(id)
+        .and_then(|b| b.language.clone());
+    if effective_language(&ctx.pending_language_sets, id, fallback) == new_lang {
+        return Ok(SteelVal::Void);
+    }
+    ctx.pending_language_sets.push((id, new_lang));
+    Ok(SteelVal::Void)
+}
+
 // ── Pane stubs (reserved for M9+) ────────────────────────────────────────────
 
 fn pane_stub(builtin_name: &str) -> SteelResult {

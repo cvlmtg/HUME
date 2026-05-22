@@ -72,6 +72,9 @@ pub(crate) struct Buffer {
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::settings::EditorSettings`].
     pub(crate) overrides: BufferOverrides,
+    /// Detected or explicitly set language identity (e.g. `"rust"`, `"json"`).
+    /// `None` for unrecognised filetypes and scratch buffers.
+    pub(crate) language: Option<String>,
 }
 
 impl Buffer {
@@ -95,6 +98,7 @@ impl Buffer {
             search_pattern: None,
             search_matches: SearchMatches::default(),
             overrides: BufferOverrides::default(),
+            language: None,
         }
     }
 
@@ -143,6 +147,24 @@ impl Buffer {
     /// Canonical backing-file path, or `None` for scratch buffers.
     pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    /// First line of buffer content, capped at 64 bytes, stripped of trailing newlines.
+    /// Returns `None` when the first line is empty. Used for shebang detection.
+    /// Iterates codepoints, not grapheme clusters — safe because shebang lines are ASCII-only.
+    pub(crate) fn first_line(&self) -> Option<String> {
+        const CAP: usize = 64;
+        let mut out = String::with_capacity(CAP);
+        for ch in self.text.rope().chars() {
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+            if out.len() + ch.len_utf8() > CAP {
+                break;
+            }
+            out.push(ch);
+        }
+        if out.is_empty() { None } else { Some(out) }
     }
 
     /// The initial selections stored at the history root.

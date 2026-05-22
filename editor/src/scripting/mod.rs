@@ -184,17 +184,35 @@ pub(crate) struct SteelCmdDef {
     pub(crate) inline_output: bool,
 }
 
+/// Language identity registration queued during `eval_init` and flushed by
+/// `Editor::flush_pending_language_regs` after each `eval_init` boundary.
+pub(crate) enum PendingLanguageReg {
+    Identity {
+        name: String,
+        extensions: Vec<String>,
+        globs: Vec<String>,
+        shebangs: Vec<String>,
+    },
+}
+
+/// `set-buffer-language!` calls deferred during a command or hook eval.
+/// Each entry is `(buffer_id, language_name_or_none)`.
+/// Drained by consumers (mappings.rs, fire_hook_silent) BEFORE cmd_queue.
+pub(crate) type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
+
 /// Result returned by [`ScriptingHost::call_steel_cmd`].
 #[derive(Debug)]
 pub(crate) struct SteelCmdResult {
     pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
     pub(crate) wait_char_request: Option<String>,
+    pub(crate) pending_language_sets: PendingLanguageSets,
 }
 
 /// Result returned by [`ScriptingHost::fire_hook`].
 #[derive(Debug)]
 pub(crate) struct HookResult {
     pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
+    pub(crate) pending_language_sets: PendingLanguageSets,
 }
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -224,6 +242,8 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) lazy_registry: &'a mut LazyRegistry,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
+    /// Language identity registrations queued by `(define-language! …)` during init.
+    pub(crate) pending_language_regs: &'a mut Vec<PendingLanguageReg>,
     /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
     pub(crate) data_dir: Option<&'a std::path::Path>,
     /// Where core plugins, themes, and docs live.
@@ -248,6 +268,9 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
     /// WaitChar command requested by `(request-wait-char! …)`.
     pub(crate) wait_char_request: Option<String>,
+    /// `set-buffer-language!` calls deferred during this eval; drained by the
+    /// consumer (mappings.rs / fire_hook_silent) before cmd_queue dispatch.
+    pub(crate) pending_language_sets: PendingLanguageSets,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
@@ -288,6 +311,7 @@ impl<'a> SteelCtx<'a> {
             hooks: host.hooks,
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
+            pending_language_regs: host.pending_language_regs,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
@@ -297,6 +321,7 @@ impl<'a> SteelCtx<'a> {
             interrupt_flag: host.interrupt_flag,
             cmd_queue: Vec::new(),
             wait_char_request: None,
+            pending_language_sets: Vec::new(),
             pending_char: None,
             is_init: true,
             focused_pane_id: PaneId::default(),
@@ -329,6 +354,7 @@ impl<'a> SteelCtx<'a> {
             hooks: host.hooks,
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
+            pending_language_regs: host.pending_language_regs,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: Vec::new(),
@@ -338,6 +364,7 @@ impl<'a> SteelCtx<'a> {
             interrupt_flag: host.interrupt_flag,
             cmd_queue: Vec::new(),
             wait_char_request: None,
+            pending_language_sets: Vec::new(),
             pending_char,
             is_init: false,
             focused_pane_id: refs.focused_pane_id,
@@ -365,6 +392,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) hooks: HookRegistry,
     pub(crate) lazy_registry: LazyRegistry,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
+    pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
     pub(crate) data_dir: Option<PathBuf>,
     pub(crate) runtime_dir: Option<PathBuf>,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
@@ -381,6 +409,7 @@ impl SteelCtxTestHarness {
             hooks: HookRegistry::default(),
             lazy_registry: LazyRegistry::default(),
             pending_messages: Vec::new(),
+            pending_language_regs: Vec::new(),
             data_dir: None,
             runtime_dir: None,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -398,6 +427,7 @@ impl SteelCtxTestHarness {
             hooks,
             lazy_registry,
             pending_messages,
+            pending_language_regs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -409,6 +439,7 @@ impl SteelCtxTestHarness {
                 hooks,
                 lazy_registry,
                 pending_messages,
+                pending_language_regs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -458,6 +489,7 @@ struct HostBundle<'a> {
     hooks: &'a mut HookRegistry,
     lazy_registry: &'a mut LazyRegistry,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
+    pending_language_regs: &'a mut Vec<PendingLanguageReg>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
@@ -528,6 +560,9 @@ pub(crate) struct ScriptingHost {
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor after each `eval_init` / `call_steel_cmd` call.
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
+    /// Language identity registrations queued by `(define-language! …)`.
+    /// Drained by `Editor::flush_pending_language_regs` after each `eval_init` boundary.
+    pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     pub(crate) data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if absent.
@@ -580,6 +615,7 @@ impl ScriptingHost {
             hooks: HookRegistry::default(),
             lazy_registry: LazyRegistry::default(),
             pending_messages: Vec::new(),
+            pending_language_regs: Vec::new(),
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -647,6 +683,7 @@ impl ScriptingHost {
                 hooks,
                 lazy_registry,
                 pending_messages,
+                pending_language_regs,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -660,6 +697,7 @@ impl ScriptingHost {
                     hooks,
                     lazy_registry,
                     pending_messages,
+                    pending_language_regs,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -787,6 +825,7 @@ impl ScriptingHost {
                 hooks,
                 lazy_registry,
                 pending_messages,
+                pending_language_regs,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -800,6 +839,7 @@ impl ScriptingHost {
                     hooks,
                     lazy_registry,
                     pending_messages,
+                    pending_language_regs,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -898,7 +938,7 @@ impl ScriptingHost {
             format!("({steel_proc} {})", arg_refs.join(" "))
         };
 
-        let (result, cmd_queue, wait_char_request) = {
+        let (result, cmd_queue, wait_char_request, pending_language_sets) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -906,6 +946,7 @@ impl ScriptingHost {
                 hooks,
                 lazy_registry,
                 pending_messages,
+                pending_language_regs,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -919,6 +960,7 @@ impl ScriptingHost {
                     hooks,
                     lazy_registry,
                     pending_messages,
+                    pending_language_regs,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -928,7 +970,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request)
+            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets)
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
@@ -938,7 +980,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(SteelCmdResult { cmd_queue, wait_char_request })
+        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.
@@ -960,7 +1002,7 @@ impl ScriptingHost {
         let handler_procs: Vec<SteelVal> =
             self.hooks.handlers_for(hook_id).iter().cloned().collect();
         if handler_procs.is_empty() {
-            return Ok(HookResult { cmd_queue: vec![] });
+            return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![] });
         }
 
         // Pre-bind each arg global.
@@ -982,7 +1024,7 @@ impl ScriptingHost {
 
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
 
-        let (result, cmd_queue) = {
+        let (result, cmd_queue, pending_language_sets) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -990,6 +1032,7 @@ impl ScriptingHost {
                 hooks,
                 lazy_registry,
                 pending_messages,
+                pending_language_regs,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -1003,6 +1046,7 @@ impl ScriptingHost {
                     hooks,
                     lazy_registry,
                     pending_messages,
+                    pending_language_regs,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -1012,7 +1056,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
-            (result, steel_ctx.cmd_queue)
+            (result, steel_ctx.cmd_queue, steel_ctx.pending_language_sets)
         };
 
         // Null out arg and proc globals before returning — releases Arc references
@@ -1025,7 +1069,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(HookResult { cmd_queue })
+        Ok(HookResult { cmd_queue, pending_language_sets })
     }
 }
 

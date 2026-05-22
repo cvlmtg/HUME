@@ -1361,6 +1361,32 @@ pub(super) fn typed_set(
         return Err(CommandError("Expected key=value".into()));
     };
     let bid = ed.focused_buffer_id();
+
+    // Language is a per-buffer property, not a generic setting.
+    if key == "language" {
+        return match scope {
+            "global" => Err(CommandError(
+                "'language' is per-buffer — use ':set buffer language=<name>'".into(),
+            )),
+            "buffer" => {
+                let new_lang = if value.is_empty() { None } else { Some(value.to_owned()) };
+                if let Some(ref name) = new_lang {
+                    if ed.languages.by_name(name).is_none() {
+                        ed.report(
+                            Severity::Warning,
+                            format!("language '{name}' is not registered"),
+                        );
+                    }
+                }
+                ed.set_buffer_language(bid, new_lang);
+                Ok(())
+            }
+            _ => Err(CommandError(format!(
+                "unknown scope '{scope}': expected 'global' or 'buffer'"
+            ))),
+        };
+    }
+
     let result = match scope {
         "global" => crate::settings::apply_setting(
             crate::settings::SettingScope::Global,

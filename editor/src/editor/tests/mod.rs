@@ -199,6 +199,7 @@ mod dot_repeat;
 mod file_io;
 mod find;
 mod hooks;
+mod language;
 mod jump_list;
 mod kitty;
 mod list_buffers;

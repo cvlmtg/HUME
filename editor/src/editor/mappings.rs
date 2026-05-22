@@ -809,14 +809,17 @@ impl Editor {
                         self.force_full_redraw = true;
                     }
 
-                    let (queue, wait_char_cmd) = match result {
-                        Ok(r) => (r.cmd_queue, r.wait_char_request),
+                    let (queue, wait_char_cmd, lang_sets) = match result {
+                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets),
                         Err(e) => {
                             self.report(Severity::Error, e);
                             return;
                         }
                     };
                     self.flush_script_messages();
+                    for (bid, lang) in lang_sets {
+                        self.set_buffer_language(bid, lang);
+                    }
                     for (cmd_name, cmd_args) in queue {
                         self.execute_keymap_command(cmd_name.into(), count, extend, cmd_args);
                     }

@@ -21,6 +21,7 @@ pub(crate) enum HookId {
     OnBufferSave,
     OnEdit,
     OnModeChange,
+    OnLanguageSet,
 }
 
 /// Single source of truth: `(HookId variant, Steel symbol name)` pairs.
@@ -30,6 +31,7 @@ const HOOKS: &[(HookId, &str)] = &[
     (HookId::OnBufferSave, "on-buffer-save"),
     (HookId::OnEdit, "on-edit"),
     (HookId::OnModeChange, "on-mode-change"),
+    (HookId::OnLanguageSet, "on-language-set"),
 ];
 
 impl HookId {

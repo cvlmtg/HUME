@@ -50,6 +50,7 @@ pub(crate) mod register_ops;
 mod registry;
 pub(crate) mod search_ops;
 pub(super) mod scroll;
+pub(crate) mod syntax;
 mod visual_move;
 
 use crate::core::search_state::SearchCursor;
@@ -359,6 +360,10 @@ pub(crate) struct Editor {
     /// runtime).  Stored as a field so dispatch-time activation can borrow it
     /// disjointly from `&mut self.scripting` / `settings` / `keymap`.
     pub(super) builtin_cmd_names: std::collections::HashSet<String>,
+    /// Registry of configured language identities.
+    /// Reset at the start of each `init_scripting` call so `:reload-config`
+    /// gets a fresh set of registrations from `languages.scm`.
+    pub(super) languages: syntax::LanguageRegistry,
 
     // ── Working directory ─────────────────────────────────────────────────────
     /// Current working directory.
@@ -535,6 +540,7 @@ impl Editor {
             mouse_drag_anchor: None,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
+            languages: syntax::LanguageRegistry::new(),
             cwd: std::env::current_dir().unwrap_or_default(),
         })
     }
@@ -972,7 +978,10 @@ impl Editor {
         };
         self.flush_script_messages();
         match result {
-            Ok(HookResult { cmd_queue }) => {
+            Ok(HookResult { cmd_queue, pending_language_sets }) => {
+                for (bid, lang) in pending_language_sets {
+                    self.set_buffer_language(bid, lang);
+                }
                 for (cmd_name, cmd_args) in cmd_queue {
                     self.execute_keymap_command(cmd_name.into(), 1, false, cmd_args);
                 }
@@ -1024,6 +1033,9 @@ impl Editor {
         let builtin_names: std::collections::HashSet<String> =
             self.registry.names().map(String::from).collect();
         self.builtin_cmd_names = builtin_names.clone();
+        // Reset the language registry so `:reload-config` gets a fresh set
+        // of registrations from languages.scm rather than accumulating duplicates.
+        self.languages = syntax::LanguageRegistry::new();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that
@@ -1045,6 +1057,27 @@ impl Editor {
                 ),
             }
         }
+        // Load languages.scm between prelude and init.scm so (define-language! …)
+        // calls are available when init.scm and plugins run.
+        let langs_path = host.runtime_dir.as_ref().map(|rt| rt.join("scheme/languages.scm"));
+        if let Some(langs_path) = langs_path {
+            match host.eval_init(
+                &langs_path,
+                &mut self.settings,
+                &mut self.keymap,
+                builtin_names.clone(),
+            ) {
+                Ok(cmds) => debug_assert!(
+                    cmds.is_empty(),
+                    "runtime/scheme/languages.scm must not define commands"
+                ),
+                Err(msg) => self.report(
+                    Severity::Error,
+                    format!("runtime/scheme/languages.scm: {msg}"),
+                ),
+            }
+            self.flush_pending_language_regs(&mut host);
+        }
         match host.eval_init(
             &init_path,
             &mut self.settings,
@@ -1061,6 +1094,9 @@ impl Editor {
         let triggers: std::collections::HashMap<String, _> =
             host.lazy_registry.command_triggers.clone();
         self.register_lazy_command_stubs(&triggers);
+        // Second flush: picks up any (define-language! …) calls from init.scm /
+        // plugins that ran during init.scm.
+        self.flush_pending_language_regs(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.history.set_capacity(self.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
@@ -1076,6 +1112,12 @@ impl Editor {
                 &mut self.status_msg,
                 &self.settings.theme,
             );
+        }
+        // Re-detect language for buffers opened before init_scripting ran
+        // (the initial buffer is opened in lib.rs before init_scripting is called).
+        let open_bids: Vec<_> = self.buffers.iter().map(|(id, _)| id).collect();
+        for bid in open_bids {
+            self.detect_and_set_language(bid);
         }
     }
 
@@ -1570,6 +1612,7 @@ impl Editor {
             self.focused_pane_id,
             doc,
         );
+        self.detect_and_set_language(bid);
         let val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
         bid
@@ -1735,6 +1778,7 @@ impl Editor {
             mouse_drag_anchor: None,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
+            languages: syntax::LanguageRegistry::new(),
             cwd: std::env::temp_dir(),
         }
     }

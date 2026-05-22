@@ -15,6 +15,7 @@ pub(crate) mod plugins;
 pub(crate) mod settings;
 pub(crate) mod shell;
 pub(crate) mod statusline;
+pub(crate) mod syntax;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -172,6 +173,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "close-buffer!", buffers::close_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
+
+    // Language identity builtins
+    engine.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
+    engine.register_fn_with_ctx(HUME_CTX, "buffer-language", buffers::buffer_language);
+    engine.register_fn_with_ctx(HUME_CTX, "set-buffer-language!", buffers::set_buffer_language_steel);
 
     // Pane stubs — reserved names for M9+ :split feature.
     // These never use SteelCtx so they register as plain register_fn.

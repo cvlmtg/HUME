@@ -54,3 +54,23 @@
   (syntax-rules ()
     ((_ mode key ...)
      (begin (unbind-key! mode key) ...))))
+
+;; (define-language! name [exts [globs [shebangs]]])
+;;
+;; Register a language identity.  Trailing args default to empty lists so
+;; callers only need to supply what they use.  Delegates to %define-language!
+;; (a Rust builtin, init-only).
+;;
+;; Example:
+;;   (define-language! "markdown" '("md" "mkd"))
+;;   (define-language! "makefile" '() '("Makefile" "GNUmakefile"))
+(define-syntax define-language!
+  (syntax-rules ()
+    ((_ name)
+     (%define-language! name '() '() '()))
+    ((_ name exts)
+     (%define-language! name exts '() '()))
+    ((_ name exts globs)
+     (%define-language! name exts globs '()))
+    ((_ name exts globs shebangs)
+     (%define-language! name exts globs shebangs))))
