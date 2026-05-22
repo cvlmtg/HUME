@@ -126,7 +126,7 @@ impl LazyRegistry {
             .map(|(id, state)| {
                 let id_s = id.to_string();
                 let state_label = match state {
-                    PluginState::Declared { .. } => "waiting",
+                    PluginState::Declared { .. } => "declared",
                     PluginState::Loading => "loading",
                     PluginState::Loaded => "loaded",
                     PluginState::Failed => "failed",
@@ -438,7 +438,7 @@ mod tests {
         );
         let out = reg.format_status();
         assert!(out.contains("alice/lazy"), "plugin id must appear");
-        assert!(out.contains("waiting"), "state must be 'waiting'");
+        assert!(out.contains("declared"), "state must be 'declared'");
         assert!(out.contains("cmd:my-cmd"), "command trigger must appear");
         assert!(out.contains("event:on-buffer-save"), "event trigger must appear");
         assert!(out.contains("lang:rust"), "language trigger must appear");
@@ -456,7 +456,7 @@ mod tests {
         );
         let out = reg.format_status();
         assert!(out.contains("bob/bare"));
-        assert!(out.contains("waiting"));
+        assert!(out.contains("declared"));
         assert!(out.contains('\u{2014}'), "bare lazy must show em dash");
         assert!(!out.contains("cmd:"), "no cmd prefix for bare lazy");
     }

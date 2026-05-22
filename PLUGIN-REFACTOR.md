@@ -873,8 +873,7 @@ Two recent changes make this *simpler*, not harder:
 ```
 
 - Presence of any `#:on-*` ⇒ lazy.
-- `#:lazy #t` with no trigger ⇒ lazy until an explicit `(require-plugin "name")`
-  (or an idle event, Phase 4).
+- `#:lazy #t` with no trigger ⇒ lazy until an explicit `(require-plugin "name")`.
 - Keys are bound with the existing `bind-key!` (and `bind-key-extend!` /
   `bind-wait-char!`). A key bound to a name listed in `#:on-command` resolves to
   that command's lazy stub, so the key becomes a load trigger automatically — no
@@ -1154,10 +1153,11 @@ requests WaitChar as usual).
   filetype) are useful immediately.
 
 - **Phase 4 — Polish.** `:plugin-status` typed command (Declared/Loaded/Failed +
-  trigger list), load-time reporting, idle/very-lazy event, `init.scm.example` docs.
+  trigger list), load-time reporting, `init.scm.example` docs.
   Optional post-init lint: warn if a keymap leaf targets a name that is neither a
   registered command nor a lazy stub (catches typos / a key bound to a command the
   user forgot to list in `#:on-command`).
+  Idle/very-lazy auto-load event: dropped (user decision, 2026-05-23).
 
 ### 3.10 Resolved decisions and deferred questions
 
@@ -1176,10 +1176,10 @@ requests WaitChar as usual).
 - **`Failed` recovery** → **stays `Failed` until `:reload-config`.** No
   per-trigger / per-keystroke retry; one error message on first failure.
 - **Bare `#:lazy #t`** → **loads only via explicit `(require-plugin "name")`;**
-  idle/very-lazy auto-load deferred to Phase 4. *In practice this case is rare:*
-  pairing `#:lazy #t` with `#:on-command` / `#:on-event` (or a key bound via
-  `bind-key!` to an `#:on-command` name) makes that the trigger, so the plugin
-  loads on first key press / invocation and `#:lazy #t` is redundant.
+  idle/very-lazy auto-load dropped (user decision, 2026-05-23). *In practice this
+  case is rare:* pairing `#:lazy #t` with `#:on-command` / `#:on-event` (or a key
+  bound via `bind-key!` to an `#:on-command` name) makes that the trigger, so the
+  plugin loads on first key press / invocation and `#:lazy #t` is redundant.
 - **Pre-load `(command-plugin)`** → **yes, pre-seed `cmd_owners` from the manifest**
   so a lazy command reports its owner before the body loads. Manifest is SSOT.
 

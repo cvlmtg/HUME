@@ -616,6 +616,37 @@ impl Editor {
         }
     }
 
+    /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
+    /// `Declared → Loaded`, and leave messages unflushed.  `trigger` is the
+    /// human-readable trigger description for the log line.
+    fn activate_and_trace(
+        &mut self,
+        plugin: &crate::scripting::attribution::PluginId,
+        trigger: &str,
+    ) {
+        let was_declared = self
+            .scripting
+            .as_ref()
+            .map_or(false, |h| {
+                matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
+            });
+        self.activate_and_register(plugin);
+        if was_declared {
+            let is_loaded = self
+                .scripting
+                .as_ref()
+                .map_or(false, |h| {
+                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
+                });
+            if is_loaded {
+                self.report(
+                    Severity::Trace,
+                    format!("plugin '{plugin}' loaded ({trigger})"),
+                );
+            }
+        }
+    }
+
     /// Activate the plugin owning a lazy stub, register its commands, and
     /// check whether `name` is now a real (non-Lazy) command.
     ///
@@ -632,28 +663,8 @@ impl Editor {
         if self.scripting.is_none() {
             return false;
         }
-        let was_declared = self
-            .scripting
-            .as_ref()
-            .map_or(false, |h| {
-                matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
-            });
-        self.activate_and_register(plugin);
+        self.activate_and_trace(plugin, &format!("command trigger '{name}'"));
         self.flush_script_messages();
-        if was_declared {
-            let is_loaded = self
-                .scripting
-                .as_ref()
-                .map_or(false, |h| {
-                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
-                });
-            if is_loaded {
-                self.report(
-                    Severity::Trace,
-                    format!("plugin '{plugin}' loaded (command trigger '{name}')"),
-                );
-            }
-        }
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
         let unresolved = matches!(
@@ -688,27 +699,7 @@ impl Editor {
                 None => return,
             };
         for plugin in &pending {
-            let was_declared = self
-                .scripting
-                .as_ref()
-                .map_or(false, |h| {
-                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
-                });
-            self.activate_and_register(plugin);
-            if was_declared {
-                let is_loaded = self
-                    .scripting
-                    .as_ref()
-                    .map_or(false, |h| {
-                        matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
-                    });
-                if is_loaded {
-                    self.report(
-                        Severity::Trace,
-                        format!("plugin '{plugin}' loaded (event trigger '{}')", hook_id.symbol()),
-                    );
-                }
-            }
+            self.activate_and_trace(plugin, &format!("event trigger '{}'", hook_id.symbol()));
         }
         self.flush_script_messages();
     }
@@ -729,27 +720,7 @@ impl Editor {
                 None => return,
             };
         for plugin in &pending {
-            let was_declared = self
-                .scripting
-                .as_ref()
-                .map_or(false, |h| {
-                    matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
-                });
-            self.activate_and_register(plugin);
-            if was_declared {
-                let is_loaded = self
-                    .scripting
-                    .as_ref()
-                    .map_or(false, |h| {
-                        matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
-                    });
-                if is_loaded {
-                    self.report(
-                        Severity::Trace,
-                        format!("plugin '{plugin}' loaded (language trigger '{lang}')"),
-                    );
-                }
-            }
+            self.activate_and_trace(plugin, &format!("language trigger '{lang}'"));
         }
         self.flush_script_messages();
     }
