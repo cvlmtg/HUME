@@ -331,6 +331,13 @@ impl Editor {
             Some(name) => name.into_steelval().expect("str into_steelval"),
             None => false.into_steelval().expect("bool into_steelval"),
         };
+        // Activate language-triggered plugins before firing OnLanguageSet so their
+        // handlers are registered in time to run on this transition.  `new_lang` is
+        // a local param (not borrowed from self), so `name: &str` coexists with the
+        // `&mut self` call without a clone.
+        if let Some(name) = new_lang.as_deref() {
+            self.activate_lazy_language_plugins(name);
+        }
         self.buffers.get_mut(bid).language = new_lang;
         let bid_val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
@@ -362,13 +369,11 @@ impl Editor {
             self.languages.register_identity_no_rebuild(&name, &exts, &globs_ref, &shebangs_ref);
             any = true;
         }
-        if any {
-            if let Err(e) = self.languages.rebuild_glob_set() {
-                self.message_log.push(
-                    super::Severity::Warning,
-                    format!("define-language!: glob set build failed: {e}"),
-                );
-            }
+        if any && let Err(e) = self.languages.rebuild_glob_set() {
+            self.message_log.push(
+                super::Severity::Warning,
+                format!("define-language!: glob set build failed: {e}"),
+            );
         }
     }
 

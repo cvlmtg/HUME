@@ -1850,6 +1850,86 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 }
 
 
+/// `#:on-language '("rust")` → plugin is treated as lazy (trigger present),
+/// `language_triggers["rust"]` contains the plugin, body not evaluated.
+///
+/// Flip: if on-language were not threaded through `%declare-plugin!`, the
+/// plugin would stay Declared but with an empty language_triggers map.
+#[test]
+#[cfg(not(windows))]
+fn on_language_trigger_populates_registry_body_not_evaluated() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let cmds = h
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("on-language declaration must not error during init");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Declared { .. })),
+        "plugin with on-language trigger must stay Declared; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        h.lazy_registry
+            .language_triggers
+            .get("rust")
+            .is_some_and(|v| v.contains(&id)),
+        "language_triggers must map \"rust\" to the plugin"
+    );
+    assert!(
+        !cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT appear in init defs for an on-language plugin"
+    );
+}
+
+/// `activate_plugin` on a language-triggered plugin drops the trigger on success.
+///
+/// Flip: without the `language_triggers.retain` in the Ok branch, the trigger
+/// would survive activation and falsely appear pending on subsequent language sets.
+#[test]
+#[cfg(not(windows))]
+fn activate_plugin_drops_language_trigger_on_loaded() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("init must succeed");
+
+    assert!(
+        h.lazy_registry.language_triggers.contains_key("rust"),
+        "trigger must be present before activation"
+    );
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    h.activate_plugin(&id, &mut s, &mut km, &Default::default(), 5_000)
+        .expect("activate_plugin must succeed");
+
+    assert!(
+        !h.lazy_registry.language_triggers.contains_key("rust"),
+        "trigger must be removed after activation"
+    );
+}
+
 /// `(require-plugin …)` raises a Steel error when called from a command body
 /// (`is_init = false`), mirroring the `register-hook!` guard.
 ///

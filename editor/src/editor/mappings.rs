@@ -672,6 +672,27 @@ impl Editor {
         self.flush_script_messages();
     }
 
+    /// Activate every still-`Declared` lazy plugin registered for language `lang`.
+    ///
+    /// Called from `set_buffer_language` before `OnLanguageSet` fires so a plugin's
+    /// `register-hook!` handlers (incl. `on-language-set`) are installed in time to
+    /// run on this very transition.  No stub/loop-guard needed: the `PluginState`
+    /// machine + `language_triggers` drop on load/fail make repeated sets idempotent.
+    pub(super) fn activate_lazy_language_plugins(&mut self, lang: &str) {
+        let pending: Vec<crate::scripting::attribution::PluginId> =
+            match self.scripting.as_ref() {
+                Some(host) => match host.lazy_registry.language_triggers.get(lang) {
+                    Some(plugins) if !plugins.is_empty() => plugins.clone(),
+                    _ => return,
+                },
+                None => return,
+            };
+        for plugin in &pending {
+            self.activate_and_register(plugin);
+        }
+        self.flush_script_messages();
+    }
+
     /// Execute a named command with the given count and extend flag.
     ///
     /// `extend` is converted to `MotionMode::Extend` / `MotionMode::Move` and

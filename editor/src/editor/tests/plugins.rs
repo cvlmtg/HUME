@@ -685,3 +685,194 @@ fn require_plugin_transitive_is_lazy() {
         "dep A must be Loaded transitively after B activates"
     );
 }
+
+// ── Phase 3b lazy plugin loading — language/filetype triggers ─────────────────
+
+/// `#:on-language` plugin activates on first matching language set; its
+/// `on-language-set` handler runs in the same call that triggered activation.
+///
+/// Flip: without `activate_lazy_language_plugins` in `set_buffer_language`,
+/// the plugin stays `Declared` and the cursor never moves.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_activates_on_set() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Declared { .. })
+        ),
+        "plugin must be Declared before first language set"
+    );
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers must be populated before first set"
+    );
+
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("rust".into()));
+
+    assert_ne!(state(&ed), before, "on-language-set handler must run and move cursor on first set");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Loaded)
+        ),
+        "plugin must be Loaded after first language set"
+    );
+    assert!(
+        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers must be cleared after plugin loads"
+    );
+}
+
+/// Second set to the same language: handler still runs; no re-activation.
+///
+/// Flip: if `language_triggers` were not cleared on load, a second matching set
+/// would attempt activation again — `activate_plugin`'s `Loaded` guard prevents
+/// a crash, but the test documents the intended fast path.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_idempotent_on_round_trip() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let bid = ed.focused_buffer_id();
+
+    ed.set_buffer_language(bid, Some("rust".into()));  // first set — activates
+    assert!(
+        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers must be empty after first set"
+    );
+
+    let after_first = state(&ed);
+    ed.set_buffer_language(bid, Some("toml".into()));  // round-trip out
+    ed.set_buffer_language(bid, Some("rust".into()));  // round-trip back — handler runs, no re-activation
+
+    assert_ne!(state(&ed), after_first, "handler must run again on second rust set");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Loaded)
+        ),
+        "plugin must remain Loaded after round-trip (not re-enter Declared or fail)"
+    );
+    assert!(
+        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers must remain cleared after round-trip"
+    );
+}
+
+/// 1:many: two plugins both declare `#:on-language '("rust")`; a single language
+/// set activates both.
+///
+/// Flip: if only the first plugin in the trigger Vec were activated, the second
+/// would stay `Declared` with its handler never registering.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_one_to_many_activates_all() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    let dir_a = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::write(
+        dir_a.join("plugin.scm"),
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    ).unwrap();
+    let dir_b = dir.path().join("plugins").join("user").join("tp2");
+    std::fs::create_dir_all(&dir_b).unwrap();
+    std::fs::write(
+        dir_b.join("plugin.scm"),
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    ).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"user/tp\"  #:on-language '(\"rust\"))\n\
+         (load-plugin \"user/tp2\" #:on-language '(\"rust\"))",
+    ).unwrap();
+
+    let mut ed = editor_from("-[a]>b c d\n");
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    let id_a = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let id_b = PluginId::User { user: "user".to_string(), repo: "tp2".to_string() };
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language(bid, Some("rust".into()));
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
+            Some(PluginState::Loaded)
+        ),
+        "plugin A must be Loaded after language set"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Loaded)
+        ),
+        "plugin B must be Loaded after language set"
+    );
+    assert!(
+        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers must be fully cleared after both plugins load"
+    );
+}
+
+/// Language set for an unregistered language → plugin stays `Declared`.
+///
+/// Flip: if `activate_lazy_language_plugins` looked up the wrong map or iterated
+/// unconditionally, the plugin would load on any language set.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_does_not_fire_on_unrelated_language() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+    );
+    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let bid = ed.focused_buffer_id();
+
+    ed.set_buffer_language(bid, Some("toml".into()));  // unrelated language
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
+            Some(PluginState::Declared { .. })
+        ),
+        "plugin must stay Declared when an unrelated language is set"
+    );
+    assert!(
+        ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        "language_triggers[\"rust\"] must remain intact after an unrelated set"
+    );
+}

@@ -154,10 +154,8 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        if self.armed {
-            if let Err(e) = restore() {
-                eprintln!("hume: terminal restore failed: {e}");
-            }
+        if self.armed && let Err(e) = restore() {
+            eprintln!("hume: terminal restore failed: {e}");
         }
     }
 }

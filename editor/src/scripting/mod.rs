@@ -872,6 +872,10 @@ impl ScriptingHost {
                     plugins.retain(|p| p != id);
                     !plugins.is_empty()
                 });
+                self.lazy_registry.language_triggers.retain(|_, plugins| {
+                    plugins.retain(|p| p != id);
+                    !plugins.is_empty()
+                });
                 let mut defs = self.process_pending_cmds(plugin_cmds);
                 // Drain transitive `(require-plugin …)` calls made by the body.
                 // The Loading/Loaded guards in activate_plugin prevent cycles.
@@ -886,12 +890,16 @@ impl ScriptingHost {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Failed);
-                // Also drop command and event triggers on failure so a spent
-                // trigger never re-fires for a non-retrying plugin.
+                // Also drop command, event, and language triggers on failure so a
+                // spent trigger never re-fires for a non-retrying plugin.
                 self.lazy_registry
                     .command_triggers
                     .retain(|_, p| p != id);
                 self.lazy_registry.event_triggers.retain(|_, plugins| {
+                    plugins.retain(|p| p != id);
+                    !plugins.is_empty()
+                });
+                self.lazy_registry.language_triggers.retain(|_, plugins| {
                     plugins.retain(|p| p != id);
                     !plugins.is_empty()
                 });
@@ -999,8 +1007,7 @@ impl ScriptingHost {
         refs: EditorSteelRefs<'a>,
     ) -> Result<HookResult, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> =
-            self.hooks.handlers_for(hook_id).iter().cloned().collect();
+        let handler_procs: Vec<SteelVal> = self.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
             return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![] });
         }

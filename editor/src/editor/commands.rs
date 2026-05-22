@@ -1370,13 +1370,13 @@ pub(super) fn typed_set(
             )),
             "buffer" => {
                 let new_lang = if value.is_empty() { None } else { Some(value.to_owned()) };
-                if let Some(ref name) = new_lang {
-                    if ed.languages.by_name(name).is_none() {
-                        ed.report(
-                            Severity::Warning,
-                            format!("language '{name}' is not registered"),
-                        );
-                    }
+                if let Some(ref name) = new_lang
+                    && ed.languages.by_name(name).is_none()
+                {
+                    ed.report(
+                        Severity::Warning,
+                        format!("language '{name}' is not registered"),
+                    );
                 }
                 ed.set_buffer_language(bid, new_lang);
                 Ok(())
