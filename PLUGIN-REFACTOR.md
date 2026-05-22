@@ -932,7 +932,11 @@ target command name is a key in `command_triggers`.
   if the entry is still `Lazy` after activation (author never defined it), report
   error + remove stub + treat as unknown — never re-enter. Chokepoints:
   `execute_command` (mappings.rs:1299), `execute_keymap_command`
-  (mappings.rs:601), `call_steel_cmd` (scripting/mod.rs:676). **`:reload-config`
+  (mappings.rs:601), `call_steel_cmd` (scripting/mod.rs:676). *Post-prereq-1:
+  `call_steel_cmd` is **not** a direct chokepoint — it only ever receives a
+  concrete Steel proc name, never a registry command name. `(call! "name")`
+  queues to `cmd_queue` and drains through `execute_keymap_command`
+  (mappings.rs:787); the two implemented arms cover it transitively.* **`:reload-config`
   note:** `unregister_all_steel_backed` (registry.rs:338) clears only `SteelBacked`;
   reload must also drop `Lazy` stubs + trigger maps so a fresh init rebuilds them
   (a previously lazily-`Loaded` plugin reverts to `Declared`).

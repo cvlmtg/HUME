@@ -219,3 +219,97 @@ fn lazy_cmd_arg_passed_on_first_call() {
         "stub must be replaced by SteelBacked after first dispatch with arg"
     );
 }
+
+/// A key bound to a lazy command name activates the plugin on first press,
+/// exercising the `execute_keymap_command` Lazy arm — the path the
+/// implementation claims keys use "for free".
+///
+/// Flip: if the Lazy arm did nothing, the cursor would not move and the stub
+/// would remain Lazy.
+#[test]
+#[cfg(not(windows))]
+fn key_press_activates_lazy_plugin_via_keymap() {
+    use crate::editor::keymap::BindMode;
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
+    );
+    // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
+    // the key lands in the editor's actual keymap.
+    ed.keymap.bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
+    let before = state(&ed);
+
+    ed.handle_key(key('z'));
+
+    assert_ne!(state(&ed), before, "pressing 'z' must activate 'bar' and move the cursor");
+    assert!(
+        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        "stub must be replaced by SteelBacked after key-triggered activation; got: {:?}",
+        ed.registry.get_mappable("bar").map(|c| c.name())
+    );
+}
+
+/// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
+/// plugin declares `#:on-command '("foo")`.  The lazy stub is rejected (no
+/// shadow) and an Error is logged; the eager SteelBacked command survives.
+///
+/// Flip: if the stub overwrote the eager command, `get_mappable("foo")` would
+/// be `Lazy` instead of `SteelBacked`.
+#[test]
+#[cfg(not(windows))]
+fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
+    use crate::editor::Severity;
+    let dir = tempfile::tempdir().unwrap();
+    // Eager plugin — loaded inline (no triggers), defines "foo".
+    let eager_dir = dir.path().join("plugins").join("user").join("eager");
+    std::fs::create_dir_all(&eager_dir).unwrap();
+    std::fs::write(
+        eager_dir.join("plugin.scm"),
+        r#"(define-command! "foo" "doc" (lambda () (+ 1 0)))"#,
+    ).unwrap();
+    // Lazy plugin — declares "foo" as a command trigger; body never runs in
+    // this test (stub is rejected before activation).
+    let lazy_dir = dir.path().join("plugins").join("user").join("lz");
+    std::fs::create_dir_all(&lazy_dir).unwrap();
+    std::fs::write(lazy_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"user/eager\")\n(load-plugin \"user/lz\" #:on-command '(\"foo\"))",
+    ).unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    // Mirror real init_scripting order so the eager command reaches the
+    // registry before register_lazy_command_stubs checks for collisions.
+    let cmds = host
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed — collision is caught at stub registration, not here");
+    ed.register_steel_cmds(cmds);
+    let triggers: std::collections::HashMap<_, _> =
+        host.lazy_registry.command_triggers.clone();
+    ed.register_lazy_command_stubs(&triggers);
+    ed.scripting = Some(host);
+
+    // Eager command survives as SteelBacked — lazy stub never shadowed it.
+    assert!(
+        matches!(ed.registry.get_mappable("foo"), Some(MappableCommand::SteelBacked { .. })),
+        "eager 'foo' must survive as SteelBacked; got: {:?}",
+        ed.registry.get_mappable("foo").map(|c| c.name())
+    );
+    // An Error was logged for the rejected lazy stub.
+    assert!(
+        ed.message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("foo")
+                && e.text.contains("conflicts")),
+        "expected an Error about the lazy/eager 'foo' collision; messages: {:?}",
+        ed.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
+    );
+}
