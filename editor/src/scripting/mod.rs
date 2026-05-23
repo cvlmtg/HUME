@@ -18,6 +18,24 @@ pub(crate) mod hooks;
 pub(crate) mod keys;
 pub(crate) mod attribution;
 pub(crate) mod lazy;
+mod codegen;
+mod context;
+mod types;
+mod watchdog;
+#[cfg(test)]
+mod test_harness;
+
+// ── Re-exports ────────────────────────────────────────────────────────────────
+
+pub(crate) use codegen::{HUME_CTX, cmd_arg_global_name};
+pub(crate) use context::SteelCtx;
+pub(crate) use types::{
+    EditorSteelRefs, HookResult, PendingLanguageReg, PendingSteelCmd, SteelCmdDef, SteelCmdResult,
+};
+#[cfg(test)]
+pub(crate) use test_harness::SteelCtxTestHarness;
+
+// ── Internal imports ──────────────────────────────────────────────────────────
 
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -25,465 +43,27 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
-use engine::pipeline::{BufferId, EngineView, PaneId};
-use slotmap::SecondaryMap;
-
-use crate::core::jump_list::JumpList;
-use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::Keymap;
-use crate::editor::pane_state::PaneBufferState;
 use crate::settings::EditorSettings;
 
 use hooks::HookRegistry;
 use attribution::PluginStack;
 use lazy::{LazyRegistry, PluginState};
 
-// ── HUME_CTX global name ──────────────────────────────────────────────────────
+use codegen::{build_hook_program, cmd_proc_name, hook_arg_name, hook_proc_name};
+use watchdog::EvalWatchdog;
 
-/// Name of the Steel global that holds the `&mut SteelCtx` reference during
-/// each eval or command call.  Builtins registered with
-/// `register_fn_with_ctx(HUME_CTX, …)` receive this value as their first arg.
-pub(crate) const HUME_CTX: &str = "*hume.ctx*";
-
-/// Internal Steel global name for the lambda of a Steel-backed command.
-fn cmd_proc_name(name: &str) -> String {
-    format!("%hume-cmd-{name}")
-}
-
-/// Internal Steel global name for the i-th argument bound during a hook fire.
-fn hook_arg_name(i: usize) -> String {
-    format!("*hume.ha{i}*")
-}
-
-/// Internal Steel global name for the i-th handler proc bound during a hook fire.
-fn hook_proc_name(i: usize) -> String {
-    format!("*hume.hp{i}*")
-}
-
-/// Internal Steel global name for the i-th positional arg bound during a command call.
-pub(crate) fn cmd_arg_global_name(i: usize) -> String {
-    format!("*hume.ca{i}*")
-}
-
-/// Build the composite hook invocation program for `handler_count` handlers
-/// and `arg_count` arguments.  The result is deterministic and cacheable.
-fn build_hook_program(arg_count: usize, handler_count: usize) -> String {
-    // 14 = len("*hume.ha99* ") worst-case per arg; 18 = len("(*hume.hp99*)\n") per handler.
-    let mut arg_exprs = String::with_capacity(arg_count * 14);
-    for i in 0..arg_count {
-        if i > 0 {
-            arg_exprs.push(' ');
-        }
-        arg_exprs.push_str(&hook_arg_name(i));
-    }
-    let mut program = String::with_capacity(handler_count * (18 + arg_exprs.len()));
-    for i in 0..handler_count {
-        if i > 0 {
-            program.push('\n');
-        }
-        program.push('(');
-        program.push_str(&hook_proc_name(i));
-        if arg_count > 0 {
-            program.push(' ');
-            program.push_str(&arg_exprs);
-        }
-        program.push(')');
-    }
-    program
-}
-
-// ── EvalWatchdog ──────────────────────────────────────────────────────────────
-
-/// Arms a wall-clock budget for a single Steel eval.
-///
-/// When the budget expires the interrupt flag is set to `true`, signalling
-/// `(hume/yield!)` calls inside the script to abort.  Interruption is
-/// cooperative only — Steel 0.8.2 has no op-callback for involuntary stop.
-///
-/// Use `park_timeout` so [`EvalWatchdog::cancel`] wakes the thread
-/// immediately on the happy path rather than sleeping out the full budget.
-pub(crate) struct EvalWatchdog {
-    cancel: Arc<AtomicBool>,
-    thread: std::thread::JoinHandle<()>,
-}
-
-impl EvalWatchdog {
-    /// Spawn the watchdog.  Will flip `flag` to `true` after `budget` unless
-    /// cancelled first.
-    fn arm(flag: Arc<AtomicBool>, budget: std::time::Duration) -> Self {
-        let cancel = Arc::new(AtomicBool::new(false));
-        let thread = {
-            let flag = Arc::clone(&flag);
-            let cancel = Arc::clone(&cancel);
-            std::thread::spawn(move || {
-                // park_timeout wakes either when unpark() is called (cancel path)
-                // or when the budget elapses — whichever comes first.
-                std::thread::park_timeout(budget);
-                if !cancel.load(Ordering::Relaxed) {
-                    flag.store(true, Ordering::Relaxed);
-                }
-            })
-        };
-        Self { cancel, thread }
-    }
-
-    /// Defuse: signal cancellation, wake the thread, and join.
-    /// Always called after eval returns — on both success and error paths.
-    fn cancel(self) {
-        self.cancel.store(true, Ordering::Relaxed);
-        self.thread.thread().unpark();
-        // Propagate panics from the watchdog thread; otherwise ignore join errors.
-        let _ = self.thread.join();
-    }
-}
-
-// ── SteelCtx ──────────────────────────────────────────────────────────────────
-
-/// A `(define-command! …)` call captured during `eval_init`, to be processed
-/// after the eval completes.
-pub(crate) struct PendingSteelCmd {
-    pub(crate) name: String,
-    pub(crate) doc: String,
-    /// The Steel lambda, captured at `define-command!` call time.
-    pub(crate) proc: steel::rvals::SteelVal,
-    /// Attribution owner at call time — stored in `cmd_owners` for `(command-plugin …)`.
-    pub(crate) current_owner: attribution::Owner,
-    /// Whether this command participates in sticky-Ctrl extend.
-    /// Set by `(define-command-extend! …)`.
-    pub(crate) extendable: bool,
-    /// Whether dispatch brackets the call with an alt-screen exit for live
-    /// subprocess output. Set by `(define-command-inline-output! …)`.
-    pub(crate) inline_output: bool,
-}
-
-/// A Steel command that has been fully registered in the engine and is ready
-/// to be inserted into the `CommandRegistry`.
-///
-/// Returned by [`ScriptingHost::eval_init`] and
-/// [`ScriptingHost::eval_plugin_with_attribution`]; the editor layer registers
-/// the commands after a successful eval.
-pub(crate) struct SteelCmdDef {
-    pub(crate) name: String,
-    pub(crate) doc: String,
-    /// Name under which the lambda is bound in Steel's global namespace
-    /// (e.g. `"%hume-cmd-my-command"`).  Used by
-    /// [`crate::scripting::ScriptingHost::call_steel_cmd`] at dispatch time.
-    pub(crate) steel_proc: String,
-    pub(crate) extendable: bool,
-    /// Number of required positional parameters the lambda accepts.
-    /// Introspected once at `define-command!` time from the closure's arity.
-    pub(crate) arity: u16,
-    /// `true` if the lambda accepts a rest parameter (variadic).
-    pub(crate) is_variadic: bool,
-    /// `true` if dispatch should bracket this command with an alt-screen exit
-    /// so subprocess output streams live to the terminal.
-    pub(crate) inline_output: bool,
-}
-
-/// Language identity registration queued during `eval_init` and flushed by
-/// `Editor::flush_pending_language_regs` after each `eval_init` boundary.
-pub(crate) enum PendingLanguageReg {
-    Identity {
-        name: String,
-        extensions: Vec<String>,
-        globs: Vec<String>,
-        shebangs: Vec<String>,
-    },
-}
-
-/// `set-buffer-language!` calls deferred during a command or hook eval.
-/// Each entry is `(buffer_id, language_name_or_none)`.
-/// Drained by consumers (mappings.rs, fire_hook_silent) BEFORE cmd_queue.
-pub(crate) type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
-
-/// Result returned by [`ScriptingHost::call_steel_cmd`].
-#[derive(Debug)]
-pub(crate) struct SteelCmdResult {
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
-    pub(crate) wait_char_request: Option<String>,
-    pub(crate) pending_language_sets: PendingLanguageSets,
-}
-
-/// Result returned by [`ScriptingHost::fire_hook`].
-#[derive(Debug)]
-pub(crate) struct HookResult {
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
-    pub(crate) pending_language_sets: PendingLanguageSets,
-}
-
-/// Context struct borrowed into the Steel engine for the duration of each eval
-/// or command call via Steel's `with_mut_reference` API.
-///
-/// All persistent scripting state (hooks, attribution, etc.) is held directly
-/// on [`ScriptingHost`] and borrowed here by reference — no `mem::take`/put-back
-/// needed.  Transient per-eval state (accumulators, mode flags, multi-buffer
-/// borrows) is owned.
-///
-/// Builtins registered with `register_fn_with_ctx(HUME_CTX, …)` receive
-/// `&mut SteelCtx` as their first argument, injected automatically by Steel.
-pub(crate) struct SteelCtx<'a> {
-    // ── Persistent state borrowed from ScriptingHost ──────────────────────────
-    /// Editor settings — mutated by `(set-option! …)` during init.
-    pub(crate) settings: &'a mut EditorSettings,
-    /// Keymap — mutated by `(bind-key! …)` during init.
-    pub(crate) keymap: &'a mut Keymap,
-    /// Plugin attribution stack; identifies whose mutation is being recorded.
-    pub(crate) plugin_stack: &'a mut PluginStack,
-    /// Command-owner index; read by `(command-plugin …)`, written by
-    /// [`ScriptingHost::process_pending_cmds`].
-    pub(crate) cmd_owners: &'a mut std::collections::HashMap<String, String>,
-    /// Hook registry; `(register-hook! …)` writes directly.
-    pub(crate) hooks: &'a mut HookRegistry,
-    /// Lazy plugin registry; `%declare-plugin!` writes directly.
-    pub(crate) lazy_registry: &'a mut LazyRegistry,
-    /// Log messages accumulated by `(log! …)`.
-    pub(crate) pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
-    /// Language identity registrations queued by `(define-language! …)` during init.
-    pub(crate) pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    /// Where PLUM installs third-party plugins (`$XDG_DATA_HOME/hume/`).
-    pub(crate) data_dir: Option<&'a std::path::Path>,
-    /// Where core plugins, themes, and docs live.
-    pub(crate) runtime_dir: Option<&'a std::path::Path>,
-    // ── Transient per-eval state (owned) ──────────────────────────────────────
-    /// Every plugin name passed to `(load-plugin …)`, including absent ones.
-    pub(crate) declared_plugins: Vec<String>,
-    /// Plugins queued for activation at the end of this eval (init.scm or plugin
-    /// body).  Populated by `%declare-plugin!` for eager plugins and by
-    /// `(require-plugin …)` for explicit loads; drained by `eval_source_raw`
-    /// (init.scm) and by `activate_plugin` (plugin body).
-    pub(crate) pending_plugin_loads: Vec<attribution::PluginId>,
-    /// Built-in command names known at eval start.  `define-command!` checks
-    /// against this to prevent shadowing core commands.
-    pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
-    /// `(define-command! …)` calls accumulated during this eval.
-    pub(crate) pending_steel_cmds: Vec<PendingSteelCmd>,
-    /// Interrupt flag shared with the `EvalWatchdog`.
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
-    // ── Command-mode fields (meaningful only when is_init = false) ────────────
-    /// Commands queued by `(call! …)`, with their positional args.
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
-    /// WaitChar command requested by `(request-wait-char! …)`.
-    pub(crate) wait_char_request: Option<String>,
-    /// `set-buffer-language!` calls deferred during this eval; drained by the
-    /// consumer (mappings.rs / fire_hook_silent) before cmd_queue dispatch.
-    pub(crate) pending_language_sets: PendingLanguageSets,
-    /// Pending char from a WaitChar keymap node.
-    pub(crate) pending_char: Option<char>,
-    // ── Mode discriminant ────────────────────────────────────────────────────
-    /// `true` during `eval_source_raw` (init.scm / plugin load);
-    /// `false` during `call_steel_cmd` (command dispatch).
-    /// Builtins that mutate config (`set-option!`, `bind-key!`, etc.) check
-    /// this and raise a Steel error when called from command bodies.
-    pub(crate) is_init: bool,
-    // ── Multi-buffer focus snapshot ──────────────────────────────────────────
-    pub(crate) focused_pane_id: PaneId,
-    pub(crate) focused_buffer_id: BufferId,
-    /// Tracks the live focused buffer across mutations within one command call.
-    /// Starts equal to `focused_buffer_id`; updated by `switch-to-buffer!` and
-    /// `close-buffer!` so subsequent builtins see the new current buffer.
-    pub(crate) live_focused_buffer_id: BufferId,
-    pub(crate) buffers: Option<&'a mut BufferStore>,
-    pub(crate) engine_view: Option<&'a mut EngineView>,
-    pub(crate) pane_state:
-        Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
-    pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
-}
-
-impl CustomReference for SteelCtx<'_> {}
-steel::custom_reference!(SteelCtx<'a>);
-
-impl<'a> SteelCtx<'a> {
-    fn new_init(
-        host: HostBundle<'a>,
-        settings: &'a mut EditorSettings,
-        keymap: &'a mut Keymap,
-        builtin_cmd_names: std::collections::HashSet<String>,
-    ) -> Self {
-        Self {
-            settings,
-            keymap,
-            plugin_stack: host.plugin_stack,
-            cmd_owners: host.cmd_owners,
-            hooks: host.hooks,
-            lazy_registry: host.lazy_registry,
-            pending_messages: host.pending_messages,
-            pending_language_regs: host.pending_language_regs,
-            data_dir: host.data_dir,
-            runtime_dir: host.runtime_dir,
-            declared_plugins: Vec::new(),
-            pending_plugin_loads: Vec::new(),
-            builtin_cmd_names,
-            pending_steel_cmds: Vec::new(),
-            interrupt_flag: host.interrupt_flag,
-            cmd_queue: Vec::new(),
-            wait_char_request: None,
-            pending_language_sets: Vec::new(),
-            pending_char: None,
-            is_init: true,
-            focused_pane_id: PaneId::default(),
-            focused_buffer_id: BufferId::default(),
-            live_focused_buffer_id: BufferId::default(),
-            buffers: None,
-            engine_view: None,
-            pane_state: None,
-            pane_jumps: None,
-        }
-    }
-
-    /// Push a log message — prefer this over direct `pending_messages.push` so
-    /// any future severity filter is applied uniformly.
-    pub(crate) fn log(&mut self, severity: crate::editor::Severity, msg: String) {
-        self.pending_messages.push((severity, msg));
-    }
-
-    fn new_command(
-        host: HostBundle<'a>,
-        refs: EditorSteelRefs<'a>,
-        pending_char: Option<char>,
-    ) -> Self {
-        let fid = refs.focused_buffer_id;
-        Self {
-            settings: refs.settings,
-            keymap: refs.keymap,
-            plugin_stack: host.plugin_stack,
-            cmd_owners: host.cmd_owners,
-            hooks: host.hooks,
-            lazy_registry: host.lazy_registry,
-            pending_messages: host.pending_messages,
-            pending_language_regs: host.pending_language_regs,
-            data_dir: host.data_dir,
-            runtime_dir: host.runtime_dir,
-            declared_plugins: Vec::new(),
-            pending_plugin_loads: Vec::new(),
-            builtin_cmd_names: std::collections::HashSet::new(),
-            pending_steel_cmds: Vec::new(),
-            interrupt_flag: host.interrupt_flag,
-            cmd_queue: Vec::new(),
-            wait_char_request: None,
-            pending_language_sets: Vec::new(),
-            pending_char,
-            is_init: false,
-            focused_pane_id: refs.focused_pane_id,
-            focused_buffer_id: fid,
-            live_focused_buffer_id: fid,
-            buffers: refs.buffers,
-            engine_view: refs.engine_view,
-            pane_state: refs.pane_state,
-            pane_jumps: refs.pane_jumps,
-        }
-    }
-}
-
-/// Backing storage for [`SteelCtx`] in unit tests.
-///
-/// Because `SteelCtx<'a>` borrows all persistent state by reference, tests
-/// need owned storage to borrow from.  Create one of these, then call
-/// [`SteelCtxTestHarness::ctx`] to get a `SteelCtx<'_>` that borrows from it.
-#[cfg(test)]
-pub(crate) struct SteelCtxTestHarness {
-    pub(crate) settings: EditorSettings,
-    pub(crate) keymap: Keymap,
-    pub(crate) plugin_stack: PluginStack,
-    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
-    pub(crate) hooks: HookRegistry,
-    pub(crate) lazy_registry: LazyRegistry,
-    pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
-    pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
-    pub(crate) data_dir: Option<PathBuf>,
-    pub(crate) runtime_dir: Option<PathBuf>,
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
-}
-
-#[cfg(test)]
-impl SteelCtxTestHarness {
-    pub(crate) fn new() -> Self {
-        Self {
-            settings: EditorSettings::default(),
-            keymap: Keymap::default(),
-            plugin_stack: PluginStack::default(),
-            cmd_owners: std::collections::HashMap::new(),
-            hooks: HookRegistry::default(),
-            lazy_registry: LazyRegistry::default(),
-            pending_messages: Vec::new(),
-            pending_language_regs: Vec::new(),
-            data_dir: None,
-            runtime_dir: None,
-            interrupt_flag: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    /// Build a `SteelCtx` in command mode (`is_init = false`) borrowing from
-    /// this harness.  Inspect harness fields after the call to read side-effects.
-    pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
-        let Self {
-            settings,
-            keymap,
-            plugin_stack,
-            cmd_owners,
-            hooks,
-            lazy_registry,
-            pending_messages,
-            pending_language_regs,
-            data_dir,
-            runtime_dir,
-            interrupt_flag,
-        } = self;
-        SteelCtx::new_command(
-            HostBundle {
-                plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                pending_messages,
-                pending_language_regs,
-                data_dir: data_dir.as_deref(),
-                runtime_dir: runtime_dir.as_deref(),
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
-            EditorSteelRefs {
-                settings,
-                keymap,
-                focused_pane_id: PaneId::default(),
-                focused_buffer_id: BufferId::default(),
-                buffers: None,
-                engine_view: None,
-                pane_state: None,
-                pane_jumps: None,
-            },
-            None,
-        )
-    }
-}
-
-// ── EditorSteelRefs / HostBundle ─────────────────────────────────────────────
-
-/// Editor-side references bundled for a single Steel eval in command mode.
-///
-/// Passed to [`ScriptingHost::call_steel_cmd`] and [`ScriptingHost::fire_hook`]
-/// to replace the previous 8-parameter sprawl.  All fields have the same
-/// lifetime `'a` so a single `'a` annotation on those methods suffices.
-pub(crate) struct EditorSteelRefs<'a> {
-    pub(crate) settings: &'a mut EditorSettings,
-    pub(crate) keymap: &'a mut Keymap,
-    pub(crate) focused_pane_id: PaneId,
-    pub(crate) focused_buffer_id: BufferId,
-    pub(crate) buffers: Option<&'a mut BufferStore>,
-    pub(crate) engine_view: Option<&'a mut EngineView>,
-    pub(crate) pane_state:
-        Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
-    pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
-}
+// ── HostBundle ────────────────────────────────────────────────────────────────
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
 ///
 /// Built from a `let Self { engine, plugin_stack, … } = &mut *self` destructure
 /// and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
 /// Private to this module.
-struct HostBundle<'a> {
+pub(crate) struct HostBundle<'a> {
     plugin_stack: &'a mut PluginStack,
     cmd_owners: &'a mut std::collections::HashMap<String, String>,
     hooks: &'a mut HookRegistry,
