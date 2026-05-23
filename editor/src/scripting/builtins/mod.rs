@@ -6,6 +6,7 @@
 
 pub(crate) mod buffers;
 pub(crate) mod commands;
+pub(crate) mod panes;
 pub(crate) mod fs;
 pub(crate) mod hooks;
 pub(crate) mod ids;
@@ -181,11 +182,11 @@ pub(crate) fn register_all(engine: &mut Engine) {
 
     // Pane stubs — reserved names for M9+ :split feature.
     // These never use SteelCtx so they register as plain register_fn.
-    engine.register_fn("open-pane!", buffers::open_pane);
-    engine.register_fn("close-pane!", buffers::close_pane);
-    engine.register_fn("focus-pane!", buffers::focus_pane);
-    engine.register_fn("pane-buffer", buffers::pane_buffer);
-    engine.register_fn("pane-set-buffer!", buffers::pane_set_buffer);
+    engine.register_fn("open-pane!", panes::open_pane);
+    engine.register_fn("close-pane!", panes::close_pane);
+    engine.register_fn("focus-pane!", panes::focus_pane);
+    engine.register_fn("pane-buffer", panes::pane_buffer);
+    engine.register_fn("pane-set-buffer!", panes::pane_set_buffer);
 
     // Context-free builtins: sandboxed filesystem ops that read from SCRIPT_DIRS TLS.
     engine.register_value("data-dir", SteelVal::FuncV(fs::data_dir));
