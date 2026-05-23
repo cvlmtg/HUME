@@ -43,6 +43,16 @@ fn steel_list_to_strings(val: SteelVal, param: &'static str) -> Result<Vec<Strin
 /// Always lazy: the plugin body is never evaluated here.  `activate_plugin`
 /// runs it when a trigger fires or `(load-plugin name)` is called explicitly.
 ///
+/// A bare `(declare-plugin name)` with no triggers is *not* redundant with
+/// `(load-plugin name)`: both record the name for PLUM, but `declare-plugin`
+/// defers body evaluation.  The key case is an on-demand dependency whose only
+/// `(load-plugin "dep")` call sits inside another plugin's body — that in-body
+/// call records "dep" only when the parent activates, which is too late for a
+/// fresh machine where the absent dep causes a hard error before the parent can
+/// ever run.  A top-level bare `(declare-plugin "dep")` records it up front so
+/// PLUM installs it; after that the parent's in-body `(load-plugin "dep")`
+/// succeeds.
+///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
 /// - Parses trigger lists; converts event names to `HookId` variants.

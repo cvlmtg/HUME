@@ -138,18 +138,36 @@ fn load_plugin_missing_plugin_declared_not_loaded() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    // The plugin doesn't exist on disk — should be declared but not loaded.
+    // Eval #1: declare an absent plugin.
     h.eval_source("(load-plugin \"user/nonexistent-repo\")", &mut s, &mut km)
         .unwrap();
 
-    // Inspect state via builtins.
-    // declared-plugins filters out core:* — user/nonexistent should appear.
-    let declared_result = h.eval_source("(declared-plugins)", &mut s, &mut km);
-    // Even if we can't inspect the list directly here, the eval should not error.
+    // Persistence check: the host field should contain the declared name even
+    // before eval #2 (direct, independent oracle).
     assert!(
-        declared_result.is_ok(),
-        "declared-plugins raised: {:?}",
-        declared_result
+        h.declared_plugins
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case("user/nonexistent-repo")),
+        "declared_plugins field does not contain the declared name: {:?}",
+        h.declared_plugins,
+    );
+
+    // Eval #2 (separate eval, mimicking PLUM command-time read): verify the
+    // (declared-plugins) builtin sees persisted data across the eval boundary.
+    h.eval_source(
+        r#"(if (member "user/nonexistent-repo" (declared-plugins))
+               (log! 'info "PERSISTED")
+               (log! 'info "MISSING"))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    assert!(
+        h.pending_messages
+            .iter()
+            .any(|(_, msg)| msg == "PERSISTED"),
+        "(declared-plugins) did not see persisted name across eval boundary; messages: {:?}",
+        h.pending_messages,
     );
 }
 

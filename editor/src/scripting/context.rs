@@ -46,6 +46,10 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) hooks: &'a mut HookRegistry,
     /// Lazy plugin registry; `%declare-plugin!` writes directly.
     pub(crate) lazy_registry: &'a mut LazyRegistry,
+    /// All plugin names ever passed to `(load-plugin …)` or `(declare-plugin …)`,
+    /// including absent ones.  Borrows the persistent host list so that
+    /// `(declared-plugins)` returns the full init-time declaration set at command time.
+    pub(crate) declared_plugins: &'a mut Vec<String>,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
     /// Language identity registrations queued by `(define-language! …)` during init.
@@ -55,9 +59,6 @@ pub(crate) struct SteelCtx<'a> {
     /// Where core plugins, themes, and docs live.
     pub(crate) runtime_dir: Option<&'a std::path::Path>,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
-    /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
-    /// including absent ones.  Read by `(declared-plugins)` for PLUM.
-    pub(crate) declared_plugins: Vec<String>,
     /// Plugins queued for activation at the end of this eval (init.scm or plugin
     /// body).  Populated by `%load-plugin!` (eager) or by force-activating a
     /// declared plugin; drained by `eval_source_raw` (init.scm) and by
@@ -121,7 +122,7 @@ impl<'a> SteelCtx<'a> {
             pending_language_regs: host.pending_language_regs,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
-            declared_plugins: Vec::new(),
+            declared_plugins: host.declared_plugins,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names,
             pending_steel_cmds: Vec::new(),
@@ -164,7 +165,7 @@ impl<'a> SteelCtx<'a> {
             pending_language_regs: host.pending_language_regs,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
-            declared_plugins: Vec::new(),
+            declared_plugins: host.declared_plugins,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
             pending_steel_cmds: Vec::new(),
