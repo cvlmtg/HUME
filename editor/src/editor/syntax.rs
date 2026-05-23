@@ -70,7 +70,7 @@ impl LanguageRegistry {
     /// Register a language identity: name, extensions, glob patterns, shebangs.
     ///
     /// Returns `Err(RegisterError::GlobBuild)` if the combined glob set would exceed
-    /// globset's NFA size limit. In that case no state is mutated.
+    /// globset's NFA size limit.
     ///
     /// For batch registration use `register_identity_no_rebuild` + `rebuild_glob_set`.
     #[cfg(test)]
@@ -81,40 +81,8 @@ impl LanguageRegistry {
         globs: &[&str],
         shebangs: &[&str],
     ) -> Result<Arc<LanguageConfig>, RegisterError> {
-        let config = Arc::new(LanguageConfig {
-            name: name.to_owned(),
-            extensions: extensions.iter().map(|s| s.to_lowercase()).collect(),
-            globs: globs.iter().map(|s| s.to_string()).collect(),
-            shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
-        });
-
-        let mut candidate_order: Vec<String> =
-            self.lang_order.iter().filter(|n| n.as_str() != name).cloned().collect();
-        candidate_order.push(name.to_owned());
-
-        let (compiled, glob_names) =
-            Self::build_globs(&self.by_name, &candidate_order, Some((name, &config)))
-                .map_err(RegisterError::GlobBuild)?;
-
-        if let Some(old) = self.by_name.remove(name) {
-            for ext in &old.extensions {
-                self.by_ext.remove(ext.as_str());
-            }
-            for shebang in &old.shebangs {
-                self.shebang_to_name.remove(shebang.as_str());
-            }
-        }
-        self.lang_order = candidate_order;
-        self.by_name.insert(name.to_owned(), Arc::clone(&config));
-        for ext in &config.extensions {
-            self.by_ext.insert(ext.clone(), Arc::clone(&config));
-        }
-        for shebang in &config.shebangs {
-            self.shebang_to_name.insert(shebang.clone(), name.to_owned());
-        }
-        self.compiled_globs = compiled;
-        self.glob_lang_names = glob_names;
-
+        let config = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
+        self.rebuild_glob_set()?;
         Ok(config)
     }
 
@@ -161,7 +129,7 @@ impl LanguageRegistry {
     /// compiled set is preserved.
     pub(crate) fn rebuild_glob_set(&mut self) -> Result<(), RegisterError> {
         let (compiled, names) =
-            Self::build_globs(&self.by_name, &self.lang_order, None)
+            Self::build_globs(&self.by_name, &self.lang_order)
                 .map_err(RegisterError::GlobBuild)?;
         self.compiled_globs = compiled;
         self.glob_lang_names = names;
@@ -208,7 +176,7 @@ impl LanguageRegistry {
         }
         let new_order: Vec<String> =
             self.lang_order.iter().filter(|n| n.as_str() != name).cloned().collect();
-        let (compiled, names) = Self::build_globs(&self.by_name, &new_order, None)
+        let (compiled, names) = Self::build_globs(&self.by_name, &new_order)
             .unwrap_or_else(|_| (GlobSet::empty(), Vec::new()));
         self.lang_order = new_order;
         self.compiled_globs = compiled;
@@ -216,28 +184,14 @@ impl LanguageRegistry {
         Some(config)
     }
 
-    /// Build a GlobSet over `lang_order` using `by_name` for configs.
-    ///
-    /// `override_entry` substitutes the config for one language name without
-    /// requiring it to be inserted into `by_name` yet — used by `register_identity`
-    /// for a speculative pre-commit validation.
     fn build_globs(
         by_name: &HashMap<String, Arc<LanguageConfig>>,
         lang_order: &[String],
-        override_entry: Option<(&str, &LanguageConfig)>,
     ) -> Result<(GlobSet, Vec<String>), globset::Error> {
         let mut builder = GlobSetBuilder::new();
         let mut names = Vec::new();
         for lang_name in lang_order {
-            let config: Option<&LanguageConfig> =
-                if let Some((ov_name, ov_config)) = override_entry
-                    && ov_name == lang_name.as_str()
-                {
-                    Some(ov_config)
-                } else {
-                    by_name.get(lang_name).map(Arc::as_ref)
-                };
-            if let Some(config) = config {
+            if let Some(config) = by_name.get(lang_name) {
                 for pattern in &config.globs {
                     if let Ok(glob) = globset::Glob::new(pattern) {
                         builder.add(glob);

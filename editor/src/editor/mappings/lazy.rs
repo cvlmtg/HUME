@@ -109,10 +109,7 @@ impl Editor {
                 },
                 None => return,
             };
-        for plugin in &pending {
-            self.activate_and_trace(plugin, &format!("event trigger '{}'", hook_id.symbol()));
-        }
-        self.flush_script_messages();
+        self.activate_pending_plugins(pending, &format!("event trigger '{}'", hook_id.symbol()));
     }
 
     /// Activate every still-`Declared` lazy plugin registered for language `lang`.
@@ -130,8 +127,16 @@ impl Editor {
                 },
                 None => return,
             };
+        self.activate_pending_plugins(pending, &format!("language trigger '{lang}'"));
+    }
+
+    fn activate_pending_plugins(
+        &mut self,
+        pending: Vec<crate::scripting::attribution::PluginId>,
+        trigger: &str,
+    ) {
         for plugin in &pending {
-            self.activate_and_trace(plugin, &format!("language trigger '{lang}'"));
+            self.activate_and_trace(plugin, trigger);
         }
         self.flush_script_messages();
     }

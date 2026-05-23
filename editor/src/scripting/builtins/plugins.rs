@@ -10,6 +10,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::scripting::{SteelCtx, attribution::PluginId, hooks::HookId, lazy::PluginState};
 
+use super::list_to_strings;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -17,21 +19,6 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// Convert a `PluginId::parse` error string into a Steel `Generic` error.
 fn steel_parse_err(e: String) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, e)
-}
-
-/// Extract a `Vec<String>` from a Steel list value.  Each element must be a
-/// string; returns a typed error on any mismatch.
-fn steel_list_to_strings(val: SteelVal, param: &'static str) -> Result<Vec<String>, SteelErr> {
-    match val {
-        SteelVal::ListV(list) => list
-            .iter()
-            .map(|v| match v {
-                SteelVal::StringV(s) => Ok(s.to_string()),
-                _ => steel::stop!(TypeMismatch => "{}: expected list of strings, got {:?}", param, v),
-            })
-            .collect(),
-        _ => steel::stop!(TypeMismatch => "{}: expected a list, got {:?}", param, val),
-    }
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
@@ -75,9 +62,9 @@ pub(crate) fn declare_plugin(
         ctx.declared_plugins.push(name.clone());
     }
 
-    let on_cmd = steel_list_to_strings(on_command, "on-command")?;
-    let on_evt_strs = steel_list_to_strings(on_event, "on-event")?;
-    let on_lang = steel_list_to_strings(on_language, "on-language")?;
+    let on_cmd = list_to_strings(on_command, "on-command")?;
+    let on_evt_strs = list_to_strings(on_event, "on-event")?;
+    let on_lang = list_to_strings(on_language, "on-language")?;
 
     let on_evt: Vec<HookId> = on_evt_strs
         .iter()

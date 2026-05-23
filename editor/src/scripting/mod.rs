@@ -471,22 +471,12 @@ impl ScriptingHost {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
-                // Drop all command and event triggers owned by this plugin — the real
-                // SteelBacked commands are registered by the caller after this
-                // returns, and the stub (Lazy) entry is overwritten by
-                // register_steel_cmds.  Any trigger names the body did NOT
-                // define are cleaned up by activate_lazy_plugin's loop guard.
-                self.lazy_registry
-                    .command_triggers
-                    .retain(|_, p| p != id);
-                self.lazy_registry.event_triggers.retain(|_, plugins| {
-                    plugins.retain(|p| p != id);
-                    !plugins.is_empty()
-                });
-                self.lazy_registry.language_triggers.retain(|_, plugins| {
-                    plugins.retain(|p| p != id);
-                    !plugins.is_empty()
-                });
+                // Drop all trigger-map entries for this plugin — the real SteelBacked
+                // commands are registered by the caller after this returns, and the
+                // stub (Lazy) entry is overwritten by register_steel_cmds.  Any
+                // trigger names the body did NOT define are cleaned up by
+                // activate_lazy_plugin's loop guard.
+                self.lazy_registry.drop_triggers_for(id);
                 let mut defs = self.process_pending_cmds(plugin_cmds);
                 // Drain transitive `(load-plugin …)` calls made by the body
                 // (queued in pending_plugin_loads). The Loading/Loaded guards
@@ -502,19 +492,9 @@ impl ScriptingHost {
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Failed);
-                // Also drop command, event, and language triggers on failure so a
-                // spent trigger never re-fires for a non-retrying plugin.
-                self.lazy_registry
-                    .command_triggers
-                    .retain(|_, p| p != id);
-                self.lazy_registry.event_triggers.retain(|_, plugins| {
-                    plugins.retain(|p| p != id);
-                    !plugins.is_empty()
-                });
-                self.lazy_registry.language_triggers.retain(|_, plugins| {
-                    plugins.retain(|p| p != id);
-                    !plugins.is_empty()
-                });
+                // Drop trigger-map entries on failure so a spent trigger never
+                // re-fires for a non-retrying plugin.
+                self.lazy_registry.drop_triggers_for(id);
                 Err(format!("loading plugin '{id}': {e}"))
             }
         }

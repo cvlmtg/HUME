@@ -94,6 +94,24 @@ impl LazyRegistry {
         }
     }
 
+    /// Drop all trigger-map entries owned by `id` (called on load or fail).
+    ///
+    /// After `activate_plugin` completes (success or error), the plugin's
+    /// lazy stubs are superseded by real commands or cleaned up entirely.
+    /// Dangling trigger entries would re-fire activation, so they must be
+    /// removed unconditionally on both code paths.
+    pub(super) fn drop_triggers_for(&mut self, id: &PluginId) {
+        self.command_triggers.retain(|_, p| p != id);
+        self.event_triggers.retain(|_, plugins| {
+            plugins.retain(|p| p != id);
+            !plugins.is_empty()
+        });
+        self.language_triggers.retain(|_, plugins| {
+            plugins.retain(|p| p != id);
+            !plugins.is_empty()
+        });
+    }
+
     /// Build a human-readable status table for `:plugin-status`.
     ///
     /// Rows are sorted by plugin id for stable output.  For plugins still in
@@ -135,7 +153,7 @@ impl LazyRegistry {
             .iter()
             .map(|(id, _, _)| id.len())
             .max()
-            .unwrap_or(6)
+            .expect("rows non-empty")
             .max(6);
 
         let mut out = format!(

@@ -21,6 +21,34 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 /// backend parameter.
 pub(crate) type Term = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 
+// ── Shared escape-sequence helpers ───────────────────────────────────────────
+
+fn push_kitty_flags(out: &mut Stdout) -> io::Result<()> {
+    execute!(
+        out,
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
+        )
+    )
+}
+
+fn enable_mouse(out: &mut Stdout, select: bool) -> io::Result<()> {
+    out.write_all(b"\x1b[?1000h\x1b[?1006h")?;
+    if select {
+        out.write_all(b"\x1b[?1002h")?;
+    }
+    out.flush()
+}
+
+fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
+    out.write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l")?;
+    out.flush()
+}
+
+// ── Public terminal lifecycle API ─────────────────────────────────────────────
+
 /// Switch the terminal into raw mode + alternate screen and create a ratatui
 /// `Terminal`. Also probes for kitty keyboard protocol support and enables it
 /// if available.
@@ -52,14 +80,7 @@ pub(crate) fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term,
         // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
         // support REPORT_ALTERNATE_KEYS — Ctrl+shifted-char one-shot extend
         // may not work on that version.
-        execute!(
-            out,
-            PushKeyboardEnhancementFlags(
-                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
-            )
-        )?;
+        push_kitty_flags(&mut out)?;
     }
 
     if mouse_enabled {
@@ -70,11 +91,7 @@ pub(crate) fn init(mouse_enabled: bool, mouse_select: bool) -> io::Result<(Term,
         // also reports drag motion) unless `mouse_select` is true. Without
         // 1002, drag events never reach the application, so the terminal
         // handles drag-select natively.
-        out.write_all(b"\x1b[?1000h\x1b[?1006h")?;
-        if mouse_select {
-            out.write_all(b"\x1b[?1002h")?;
-        }
-        out.flush()?;
+        enable_mouse(&mut out, mouse_select)?;
     }
 
     execute!(out, EnterAlternateScreen)?;
@@ -106,8 +123,7 @@ pub(crate) fn restore() -> io::Result<()> {
     try_op(execute!(stdout(), PopKeyboardEnhancementFlags));
     // Disable all mouse tracking modes. The `l` (low) sequences are harmless
     // no-ops if the corresponding mode was never enabled.
-    try_op(stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l"));
-    try_op(stdout().flush());
+    try_op(disable_mouse(&mut stdout()));
     // Disable raw mode before leaving the alternate screen so the shell stays
     // usable even if LeaveAlternateScreen fails.
     try_op(disable_raw_mode());
@@ -229,8 +245,7 @@ pub(crate) fn enter_inline_output(kitty_enabled: bool, mouse_enabled: bool) -> i
         execute!(stdout(), PopKeyboardEnhancementFlags)?;
     }
     if mouse_enabled {
-        stdout().write_all(b"\x1b[?1002l\x1b[?1000l\x1b[?1006l")?;
-        stdout().flush()?;
+        disable_mouse(&mut stdout())?;
     }
     disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -250,21 +265,10 @@ pub(crate) fn leave_inline_output(
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     if kitty_enabled {
-        execute!(
-            stdout(),
-            PushKeyboardEnhancementFlags(
-                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
-            )
-        )?;
+        push_kitty_flags(&mut stdout())?;
     }
     if mouse_enabled {
-        stdout().write_all(b"\x1b[?1000h\x1b[?1006h")?;
-        if mouse_select {
-            stdout().write_all(b"\x1b[?1002h")?;
-        }
-        stdout().flush()?;
+        enable_mouse(&mut stdout(), mouse_select)?;
     }
     Ok(())
 }

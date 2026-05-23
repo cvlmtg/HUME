@@ -38,6 +38,29 @@ macro_rules! require_cmd_ctx {
 }
 pub(crate) use require_cmd_ctx;
 
+/// Extract a `Vec<String>` from a Steel list value.
+///
+/// Returns a typed error if the value is not a `ListV` or if any element is not
+/// a string.  `param` names the argument for the error message.
+pub(crate) fn list_to_strings(val: SteelVal, param: &str) -> Result<Vec<String>, SteelErr> {
+    match val {
+        SteelVal::ListV(list) => list
+            .iter()
+            .map(|v| match v {
+                SteelVal::StringV(s) => Ok(s.to_string()),
+                _ => Err(SteelErr::new(
+                    steel::rerrs::ErrorKind::TypeMismatch,
+                    format!("{param}: list must contain only strings"),
+                )),
+            })
+            .collect(),
+        _ => Err(SteelErr::new(
+            steel::rerrs::ErrorKind::TypeMismatch,
+            format!("{param}: expected a list"),
+        )),
+    }
+}
+
 /// Extract the single string argument from `args`, returning a Steel error on
 /// arity or type mismatch.  Used by fs builtins that still take `&[SteelVal]`.
 pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String, SteelErr> {

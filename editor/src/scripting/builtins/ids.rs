@@ -76,7 +76,7 @@ pub(crate) fn is_pane_id(val: SteelVal) -> bool {
 // SteelBufferId values wrapping the same BufferId are NOT `equal?` unless they
 // share the same Arc.  These builtins compare the inner IDs by value instead.
 
-fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
+pub(crate) fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
         v.read()
             .as_any_ref()

@@ -7,10 +7,8 @@
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use engine::pipeline::BufferId;
-
 use super::{
-    ids::{SteelBufferId, SteelPaneId},
+    ids::{SteelBufferId, SteelPaneId, downcast_buffer_id},
     require_cmd_ctx,
 };
 use crate::scripting::SteelCtx;
@@ -28,19 +26,6 @@ fn require_ref<T>(opt: Option<T>, builtin: &str) -> Result<T, SteelErr> {
             format!("{builtin}: editor refs unavailable"),
         )
     })
-}
-
-/// Extract the inner `BufferId` from a `SteelVal::Custom(SteelBufferId)`.
-fn extract_buffer_id(val: &SteelVal) -> Option<BufferId> {
-    if let SteelVal::Custom(v) = val {
-        use steel::gc::ShareableMut as _;
-        v.read()
-            .as_any_ref()
-            .downcast_ref::<SteelBufferId>()
-            .map(|b| b.0)
-    } else {
-        None
-    }
 }
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
@@ -97,7 +82,7 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 /// `(buffer-path bid)` → absolute path string, or `#f` for unsaved buffers.
 pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-path");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::TypeMismatch,
             "buffer-path: expected buffer-id".into(),
@@ -123,7 +108,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// `(buffer-name bid)` → display name (filename or `"*scratch*"`).
 pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-name");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::TypeMismatch,
             "buffer-name: expected buffer-id".into(),
@@ -144,7 +129,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// `(buffer-dirty? bid)` → `#t` if the buffer has unsaved edits.
 pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-dirty?");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::TypeMismatch,
             "buffer-dirty?: expected buffer-id".into(),
@@ -200,7 +185,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// an invalid or unknown `bid`.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "close-buffer!");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::TypeMismatch,
             "close-buffer!: expected buffer-id".into(),
@@ -229,7 +214,7 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
 /// unknown `bid`.
 pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "switch-to-buffer!");
-    let target = extract_buffer_id(&bid).ok_or_else(|| {
+    let target = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(
             ErrorKind::TypeMismatch,
             "switch-to-buffer!: expected buffer-id".into(),
@@ -278,7 +263,7 @@ fn effective_language(
 /// `(buffer-language bid)` → string or `#f`.
 pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     require_cmd_ctx!(ctx, "buffer-language");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(ErrorKind::TypeMismatch, "buffer-language: expected buffer-id".into())
     })?;
     let fallback = require_ref(ctx.buffers.as_deref(), "buffer-language")?
@@ -300,7 +285,7 @@ pub(crate) fn set_buffer_language_steel(
     lang: SteelVal,
 ) -> SteelResult {
     require_cmd_ctx!(ctx, "set-buffer-language!");
-    let id = extract_buffer_id(&bid).ok_or_else(|| {
+    let id = downcast_buffer_id(&bid).ok_or_else(|| {
         SteelErr::new(ErrorKind::TypeMismatch, "set-buffer-language!: expected buffer-id".into())
     })?;
     let new_lang = match &lang {
