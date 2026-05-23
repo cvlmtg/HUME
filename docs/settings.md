@@ -77,6 +77,7 @@ The statusline is configured via `(configure-statusline! left center right)` in 
 | `"MiniBuf"` | Contents of the mini-buffer (search prompt, command prompt) |
 | `"MacroRecording"` | Recording indicator when a macro is being captured |
 | `"KittyProtocol"` | Shows `[kitty]` when the kitty keyboard protocol is active |
+| `"Language"` | Detected language identifier (e.g. `rust`, `json`); empty for scratch/unknown buffers |
 
 ---
 

@@ -77,6 +77,9 @@ pub(crate) enum StatusElement {
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
     MacroRecording,
+    /// The focused buffer's language identifier (e.g. `"rust"`, `"json"`), or
+    /// empty when no language is detected (scratch buffers, unknown filetypes).
+    Language,
 }
 
 impl fmt::Display for StatusElement {
@@ -94,6 +97,7 @@ impl fmt::Display for StatusElement {
             StatusElement::SearchMatches => "SearchMatches",
             StatusElement::MiniBuf => "MiniBuf",
             StatusElement::MacroRecording => "MacroRecording",
+            StatusElement::Language => "Language",
         })
     }
 }
@@ -115,9 +119,10 @@ impl FromStr for StatusElement {
             "SearchMatches" => Ok(StatusElement::SearchMatches),
             "MiniBuf" => Ok(StatusElement::MiniBuf),
             "MacroRecording" => Ok(StatusElement::MacroRecording),
+            "Language" => Ok(StatusElement::Language),
             _ => Err(format!(
                 "unknown element '{s}'; valid names: Cwd DirtyIndicator FileName KittyProtocol \
-                 LineEnding MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"
+                 Language LineEnding MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"
             )),
         }
     }
@@ -159,6 +164,7 @@ impl Default for StatusLineConfig {
                 StatusElement::MacroRecording,
                 StatusElement::SearchMatches,
                 StatusElement::KittyProtocol,
+                StatusElement::Language,
                 StatusElement::Separator,
                 StatusElement::Mode,
             ],
@@ -421,6 +427,10 @@ fn render_element(
                 (Cow::Borrowed(""), colors.statusline)
             }
         }
+        StatusElement::Language => {
+            let label = editor.doc().language.as_deref().unwrap_or("");
+            (Cow::Owned(label.to_string()), colors.statusline)
+        }
     }
 }
 
@@ -617,6 +627,29 @@ mod tests {
             !text.is_empty(),
             "Cwd rendered empty; expected a path string"
         );
+    }
+
+    // ── Language element ──────────────────────────────────────────────────────
+
+    #[test]
+    fn language_element_empty_when_none() {
+        let ed = test_editor();
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::Language, &ed, &colors);
+        assert!(
+            text.is_empty(),
+            "expected empty string for undetected language, got {:?}",
+            text
+        );
+    }
+
+    #[test]
+    fn language_element_renders_identifier() {
+        let mut ed = test_editor();
+        ed.doc_mut().language = Some("rust".to_string());
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::Language, &ed, &colors);
+        assert_eq!(text.as_ref(), "rust");
     }
 
     // ── center_x arithmetic ───────────────────────────────────────────────────

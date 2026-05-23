@@ -109,6 +109,7 @@ mod tests {
             ("SearchMatches", StatusElement::SearchMatches),
             ("MiniBuf", StatusElement::MiniBuf),
             ("MacroRecording", StatusElement::MacroRecording),
+            ("Language", StatusElement::Language),
         ] {
             let got = name.parse::<StatusElement>().unwrap();
             assert_eq!(got, expected, "element '{name}' mismatch");
