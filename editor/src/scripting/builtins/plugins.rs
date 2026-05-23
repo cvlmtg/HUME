@@ -1,6 +1,5 @@
 //! Plugin lifecycle builtins: `%declare-plugin!`, `%load-plugin!`,
-//! `push-current-plugin!`, `pop-current-plugin!`, `resolve-plugin-path`,
-//! `declared-plugins`, `loaded-plugins`.
+//! `resolve-plugin-path`, `declared-plugins`, `loaded-plugins`.
 //!
 //! `%declare-plugin!` backs the Scheme `declare-plugin` wrapper (lazy).
 //! `%load-plugin!` backs the Scheme `load-plugin` wrapper (eager).
@@ -129,25 +128,6 @@ pub(crate) fn declare_plugin(
     Ok(SteelVal::Void)
 }
 
-/// `(push-current-plugin! name)` — push `name` onto the `CURRENT_PLUGIN`
-/// attribution stack.  Called from `dynamic-wind`'s before-thunk inside
-/// the Scheme-side `load-plugin`.
-pub(crate) fn push_current_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
-    ctx.plugin_stack.push(plugin_id);
-    Ok(SteelVal::Void)
-}
-
-/// `(pop-current-plugin!)` — pop the top entry from the `CURRENT_PLUGIN`
-/// stack.  Called from `dynamic-wind`'s after-thunk.  Raises a Steel error
-/// on empty stack (the before/after pairing should always be balanced).
-pub(crate) fn pop_current_plugin(ctx: &mut SteelCtx) -> SteelResult {
-    if ctx.plugin_stack.is_empty() {
-        steel::stop!(Generic => "pop-current-plugin!: attribution stack is already empty");
-    }
-    ctx.plugin_stack.pop();
-    Ok(SteelVal::Void)
-}
 
 /// Pure path resolution: given a plugin name and the runtime / data directories,
 /// return the resolved `PathBuf` if the plugin file exists on disk, or `None`.

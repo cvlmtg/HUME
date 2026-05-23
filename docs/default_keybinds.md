@@ -303,7 +303,6 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 | `:bnext` | `:bn` | Switch to the next open buffer |
 | `:bprev` | `:bp` | Switch to the previous open buffer |
 | `:buffer-delete` | `:bd` | Close the focused buffer (guards unsaved changes) |
-| `:reload-plugin <name>` | | Reload a plugin by name |
 | `:reload-config` | | Reload `init.scm` from scratch |
 | `:split` | `:sp` | Split current pane horizontally *(not yet implemented)* |
 | `:vsplit` | `:vsp` | Split current pane vertically *(not yet implemented)* |

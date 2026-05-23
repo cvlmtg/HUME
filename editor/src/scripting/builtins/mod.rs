@@ -111,14 +111,8 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
 
-    // Plugin lifecycle (called from the Scheme-side load-plugin / declare-plugin wrappers)
+    // Plugin lifecycle
     engine.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
-    engine.register_fn_with_ctx(
-        HUME_CTX,
-        "push-current-plugin!",
-        plugins::push_current_plugin,
-    );
-    engine.register_fn_with_ctx(HUME_CTX, "pop-current-plugin!", plugins::pop_current_plugin);
     engine.register_fn_with_ctx(
         HUME_CTX,
         "resolve-plugin-path",

@@ -370,38 +370,6 @@ fn interrupt_flag_reset_after_eval() {
 
 // ── command-plugin ────────────────────────────────────────────────────────
 
-/// `(command-plugin name)` returns the owning plugin id for a Steel command.
-#[test]
-fn command_plugin_returns_plugin_owner_during_eval() {
-    let mut h = host();
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-
-    // Register a command attributed to a plugin.
-    h.eval_source(
-        r#"(push-current-plugin! "user/myplugin")
-           (define-command! "my-cmd" "test cmd" (lambda () (+ 1 0)))
-           (pop-current-plugin!)"#,
-        &mut s,
-        &mut km,
-    )
-    .unwrap();
-
-    // Verify the owner is queryable during a subsequent eval.
-    // We can't call (command-plugin) from Rust directly at exec-time in
-    // these unit tests, but we CAN call it during eval_source.
-    let result = h.eval_source(r#"(command-plugin "my-cmd")"#, &mut s, &mut km);
-    assert!(
-        result.is_ok(),
-        "command-plugin should not error: {:?}",
-        result
-    );
-    // The owner is recorded in cmd_owners; verify via the map directly.
-    assert_eq!(
-        h.cmd_owners.get("my-cmd").map(|s| s.as_str()),
-        Some("user/myplugin")
-    );
-}
 
 /// Unknown (built-in) commands return "hume".
 #[test]

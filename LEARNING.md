@@ -51,6 +51,6 @@ text and paste.
 
 | Topic | File |
 |-------|------|
-| The Plugin Ledger: Attribution and Clean Unload | [docs/learning/plugin-ledger.md](docs/learning/plugin-ledger.md) |
-| Runaway-Script Protection: Watchdog and Eval Rollback | [docs/learning/runaway-script-protection.md](docs/learning/runaway-script-protection.md) |
+| Plugin Attribution: Who Owns What | [docs/learning/plugin-attribution.md](docs/learning/plugin-attribution.md) |
+| Runaway-Script Protection: The Watchdog Timer | [docs/learning/runaway-script-protection.md](docs/learning/runaway-script-protection.md) |
 | Kill Ring and Smart-p: Two Sources of Paste | [docs/learning/kill-ring-and-smart-p.md](docs/learning/kill-ring-and-smart-p.md) |

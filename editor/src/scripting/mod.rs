@@ -7,6 +7,27 @@
 //! operations on the hot-key path; an IPC round-trip per keystroke would be
 //! strictly worse than a direct function call.
 //!
+//! ## Plugin loading pipeline
+//! - `(load-plugin name)` — **eager**. Resolves path, queues, body evaluated via
+//!   `(require "<abs>")` during init. Self-declares: works on a never-declared
+//!   plugin (no prior `declare-plugin` needed).
+//! - `(declare-plugin name #:on-command #:on-event #:on-language)` — **lazy**.
+//!   Records a `Declared` state + trigger maps in `LazyRegistry`; body is NOT run.
+//! - Triggers (command / event / language) are one-shot: the first one to fire
+//!   calls `activate_plugin` (body via `(require)`), flips state to `Loaded`, and
+//!   drops that plugin's entries from all trigger maps so it never refires.
+//! - A **bare** `(declare-plugin name)` (no triggers) stays `Declared` forever
+//!   until something explicitly `(load-plugin name)`s it (e.g. a dependent plugin).
+//! - Activation states: `Declared → Loading → Loaded | Failed`. `Loading` guards
+//!   re-entrant trigger cycles (A→B→A); `Failed` does not retry until `:reload-config`.
+//! - PLUM (`core:plum`) reads `(declared-plugins)` (non-`core:` only) to install
+//!   third-party plugins. Both `load-plugin` and `declare-plugin` record the name
+//!   in `declared_plugins` (persistent on `ScriptingHost`). The point of a top-level
+//!   bare declare is the fresh-machine chicken-and-egg: a dep `(load-plugin)`'d only
+//!   inside another plugin's body hard-errors when absent, so it is never recorded
+//!   for PLUM to install. Declaring it at init top-level records it up front; PLUM
+//!   installs it, then the in-body load succeeds.
+//!
 //! ## Modules
 //! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
 //! - `hooks.rs`: `HookRegistry` + typed `HookId` enum.
@@ -467,8 +488,9 @@ impl ScriptingHost {
                     !plugins.is_empty()
                 });
                 let mut defs = self.process_pending_cmds(plugin_cmds);
-                // Drain transitive `(require-plugin …)` calls made by the body.
-                // The Loading/Loaded guards in activate_plugin prevent cycles.
+                // Drain transitive `(load-plugin …)` calls made by the body
+                // (queued in pending_plugin_loads). The Loading/Loaded guards
+                // in activate_plugin prevent cycles.
                 for req in requires {
                     defs.extend(
                         self.activate_plugin(&req, settings, keymap, builtin_names, budget_ms)?,

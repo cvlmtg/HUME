@@ -32,7 +32,7 @@ pub(crate) struct PendingSteelCmd {
 /// to be inserted into the `CommandRegistry`.
 ///
 /// Returned by [`super::ScriptingHost::eval_init`] and
-/// [`super::ScriptingHost::eval_plugin_with_attribution`]; the editor layer registers
+/// [`super::ScriptingHost::activate_plugin`]; the editor layer registers
 /// the commands after a successful eval.
 pub(crate) struct SteelCmdDef {
     pub(crate) name: String,
