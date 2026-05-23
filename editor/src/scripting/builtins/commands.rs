@@ -188,7 +188,7 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
 /// command was registered by a plugin, `"user"` if registered from top-level
 /// `init.scm`, or `"hume"` for built-in Rust commands (not Steel-registered).
 ///
-/// Valid during both eval (e.g. conflict detection in `load-plugin`) and
+/// Valid during both eval (e.g. conflict detection in `declare-plugin`) and
 /// command execution.  Returns `"hume"` for any name not in the owner cache
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {

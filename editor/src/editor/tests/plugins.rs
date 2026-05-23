@@ -54,7 +54,7 @@ fn setup_lazy_editor(
 #[cfg(not(windows))]
 fn lazy_stub_present_after_init() {
     let (ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     assert!(
@@ -73,7 +73,7 @@ fn lazy_stub_present_after_init() {
 #[cfg(not(windows))]
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
     );
     let before = state(&ed);
@@ -99,7 +99,7 @@ fn first_dispatch_activates_plugin_and_runs() {
 #[cfg(not(windows))]
 fn loop_guard_removes_stub_when_body_never_defines_command() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         // Plugin body exists but never defines "bar".
         r#"(define-command! "other-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -131,7 +131,7 @@ fn body_error_removes_stub_and_marks_failed() {
     use crate::scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
@@ -164,7 +164,7 @@ fn body_error_removes_stub_and_marks_failed() {
 #[cfg(not(windows))]
 fn unregister_dynamic_commands_clears_lazy_stubs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -201,7 +201,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
     // verify that after activation the command is SteelBacked (i.e. arg was
     // accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda (x) (+ 1 0)))"#,
     );
 
@@ -233,7 +233,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
 fn key_press_activates_lazy_plugin_via_keymap() {
     use crate::editor::keymap::BindMode;
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
@@ -281,7 +281,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/eager\")\n(load-plugin \"user/lz\" #:on-command '(\"foo\"))",
+        "(load-plugin \"user/eager\")\n(declare-plugin \"user/lz\" #:on-command '(\"foo\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
@@ -333,7 +333,7 @@ fn event_trigger_activates_on_first_fire() {
     use crate::scripting::lazy::PluginState;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -380,7 +380,7 @@ fn event_trigger_idempotent_on_second_fire() {
     use crate::scripting::lazy::PluginState;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -435,8 +435,8 @@ fn event_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/tp\"  #:on-event '(\"on-buffer-save\"))\n\
-         (load-plugin \"user/tp2\" #:on-event '(\"on-buffer-save\"))",
+        "(declare-plugin \"user/tp\"  #:on-event '(\"on-buffer-save\"))\n\
+         (declare-plugin \"user/tp2\" #:on-event '(\"on-buffer-save\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
@@ -486,7 +486,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -527,16 +527,16 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
 }
 
-// ── Phase 2 — require-plugin (editor-level) ───────────────────────────────────
+// ── Phase 2 — load-plugin force-activation (editor-level) ────────────────────
 
-/// `(require-plugin "name")` in `init.scm` force-activates a bare `#:lazy #t`
-/// plugin at init time.
+/// `(declare-plugin "name")` then `(load-plugin "name")` in `init.scm`
+/// force-activates the bare-lazy plugin at init time.
 ///
-/// Flip: without `require-plugin` pushing to `pending_plugin_loads`, the plugin
+/// Flip: without `load-plugin` pushing to `pending_plugin_loads`, the plugin
 /// would remain `Declared` after init.
 #[test]
 #[cfg(not(windows))]
-fn require_plugin_loads_bare_lazy() {
+fn load_plugin_loads_bare_declared() {
     use crate::scripting::attribution::PluginId;
     use crate::scripting::lazy::PluginState;
 
@@ -552,7 +552,7 @@ fn require_plugin_loads_bare_lazy() {
         let init_path = dir.path().join("init.scm");
         std::fs::write(
             &init_path,
-            "(load-plugin \"user/tp\" #:lazy #t)\n(require-plugin \"user/tp\")",
+            "(declare-plugin \"user/tp\")\n(load-plugin \"user/tp\")",
         ).unwrap();
         (dir, init_path)
     };
@@ -567,23 +567,28 @@ fn require_plugin_loads_bare_lazy() {
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
     assert!(
         matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
-        "bare-lazy plugin must be Loaded after (require-plugin) in init.scm; got: {:?}",
+        "bare-declared plugin must be Loaded after (load-plugin) in init.scm; got: {:?}",
         host.lazy_registry.plugins.get(&id)
     );
 }
 
-/// `(require-plugin "unknown")` — no prior `load-plugin` — raises a Steel error.
+/// Top-level `(load-plugin "user/tp")` with the plugin absent on disk → silent
+/// skip (PLUM-friendly bootstrap), no error, and the plugin is recorded in
+/// `declared-plugins` but absent from `loaded-plugins`.
 ///
-/// Flip: if the unknown-name check were removed, a typo'd name would silently
-/// queue a no-op activation.
+/// Flip: if this errored, users could not declare third-party plugins before
+/// running `:plum-install` on a fresh setup.
 #[test]
 #[cfg(not(windows))]
-fn require_plugin_unknown_errors() {
+fn load_plugin_absent_top_level_silently_skips() {
+    use crate::scripting::lazy::PluginState;
+
     let (dir, init_path) = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
+        // No plugin directory created — plugin is absent on disk.
         let init_path = dir.path().join("init.scm");
-        std::fs::write(&init_path, r#"(require-plugin "user/tp")"#).unwrap();
+        std::fs::write(&init_path, r#"(load-plugin "user/tp")"#).unwrap();
         (dir, init_path)
     };
 
@@ -591,13 +596,19 @@ fn require_plugin_unknown_errors() {
     host.data_dir = Some(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let Err(msg) = host.eval_init(&init_path, &mut s, &mut km, Default::default()) else {
-        panic!("require-plugin on undeclared plugin must return Err");
-    };
-    assert!(msg.contains("load-plugin first"), "error must mention load-plugin; got: {msg}");
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("absent top-level load-plugin must not error");
+
+    // Plugin was not inserted into lazy_registry (absent on disk).
+    let any_loaded = host
+        .lazy_registry
+        .plugins
+        .values()
+        .any(|s| matches!(s, PluginState::Loaded));
+    assert!(!any_loaded, "no plugin must be Loaded when absent on disk");
 }
 
-/// `require-plugin` in a lazy plugin body (B) loads a dependency (A)
+/// `(load-plugin "user/tpa")` in a lazy plugin body (B) loads dependency A
 /// transitively at B's activation time — A is NOT promoted to eager at init.
 ///
 /// Flip: if `activate_plugin` did not drain `pending_plugin_loads` from the
@@ -605,7 +616,7 @@ fn require_plugin_unknown_errors() {
 /// If A were incorrectly activated at init, it would be `Loaded` before dispatch.
 #[test]
 #[cfg(not(windows))]
-fn require_plugin_transitive_is_lazy() {
+fn load_plugin_transitive_in_body_is_lazy() {
     use crate::scripting::attribution::PluginId;
     use crate::scripting::lazy::PluginState;
 
@@ -625,14 +636,14 @@ fn require_plugin_transitive_is_lazy() {
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
-        "(require-plugin \"user/tpa\")\n\
+        "(load-plugin \"user/tpa\")\n\
          (define-command! \"b-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
     ).unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/tpa\" #:lazy #t)\n\
-         (load-plugin \"user/tp\"  #:on-command '(\"b-cmd\"))",
+        "(declare-plugin \"user/tpa\")\n\
+         (declare-plugin \"user/tp\"  #:on-command '(\"b-cmd\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
@@ -700,7 +711,7 @@ fn language_trigger_activates_on_set() {
     use crate::scripting::lazy::PluginState;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -747,7 +758,7 @@ fn language_trigger_idempotent_on_round_trip() {
     use crate::scripting::lazy::PluginState;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -807,8 +818,8 @@ fn language_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/tp\"  #:on-language '(\"rust\"))\n\
-         (load-plugin \"user/tp2\" #:on-language '(\"rust\"))",
+        "(declare-plugin \"user/tp\"  #:on-language '(\"rust\"))\n\
+         (declare-plugin \"user/tp2\" #:on-language '(\"rust\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
@@ -856,7 +867,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     use crate::scripting::lazy::PluginState;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -890,7 +901,7 @@ fn command_trigger_logs_trace_on_activation() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

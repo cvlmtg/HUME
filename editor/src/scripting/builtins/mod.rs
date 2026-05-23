@@ -1,8 +1,9 @@
 //! Steel builtins for HUME's scripting layer.
 //!
 //! [`register_all`] registers every builtin on the engine and then evaluates
-//! the Scheme bootstrap that defines `load-plugin`.  This must be called once
-//! during [`ScriptingHost::new`] before any `eval_init` call.
+//! the Scheme bootstrap that defines `load-plugin` and `declare-plugin`.
+//! This must be called once during [`ScriptingHost::new`] before any
+//! `eval_init` call.
 
 pub(crate) mod buffers;
 pub(crate) mod commands;
@@ -53,18 +54,21 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 
 /// Scheme bootstrap evaluated once during engine init.
 ///
-/// Defines `load-plugin` in terms of the Rust builtins registered below.
-/// Rust drains `loaded-plugins` after `eval_init` and loads each entry via
-/// `(require "<abs-path>")`, giving every plugin its own Steel module
-/// namespace so same-named private helpers cannot collide.
+/// Defines `load-plugin` (eager) and `declare-plugin` (lazy) in terms of the
+/// Rust builtins registered below.  Rust drains `pending_plugin_loads` after
+/// `eval_init` and activates each entry via `(require "<abs-path>")`, giving
+/// every plugin its own Steel module namespace so same-named private helpers
+/// cannot collide.
 const BOOTSTRAP: &str = r#"
-; load-plugin — keyword args forwarded to the %declare-plugin! Rust primitive.
-; No keywords ⇒ eager (today's behavior, byte-for-byte).
-(define (load-plugin name #:on-command  [on-command  '()]
-                          #:on-event    [on-event    '()]
-                          #:on-language [on-language '()]
-                          #:lazy        [lazy        #f])
-  (%declare-plugin! name on-command on-event on-language lazy))
+; declare-plugin — lazy registration; triggers forwarded to %declare-plugin!.
+; No triggers ⇒ bare-lazy: body runs only on an explicit (load-plugin name).
+(define (declare-plugin name #:on-command  [on-command  '()]
+                             #:on-event    [on-event    '()]
+                             #:on-language [on-language '()])
+  (%declare-plugin! name on-command on-event on-language))
+
+; load-plugin — eager; loads now (declares first if unknown). No triggers.
+(define (load-plugin name) (%load-plugin! name))
 
 ; Variadic call! macro — desugars to the fixed-arity-2 %call! primitive.
 ; Defined here (not only in prelude.scm) so it is available in every engine
@@ -107,7 +111,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
 
-    // Plugin lifecycle (called from the Scheme-side load-plugin)
+    // Plugin lifecycle (called from the Scheme-side load-plugin / declare-plugin wrappers)
     engine.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);
     engine.register_fn_with_ctx(
         HUME_CTX,
@@ -124,7 +128,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // Plugin introspection and explicit activation
     engine.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
     engine.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
-    engine.register_fn_with_ctx(HUME_CTX, "require-plugin", plugins::require_plugin);
+    engine.register_fn_with_ctx(HUME_CTX, "%load-plugin!", plugins::load_plugin);
 
     // Hook registration — init-only
     engine.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);

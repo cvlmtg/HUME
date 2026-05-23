@@ -1,14 +1,15 @@
-//! Plugin lifecycle builtins: `%declare-plugin!`, `push-current-plugin!`,
-//! `pop-current-plugin!`, `resolve-plugin-path`, `declared-plugins`,
-//! `loaded-plugins`.
+//! Plugin lifecycle builtins: `%declare-plugin!`, `%load-plugin!`,
+//! `push-current-plugin!`, `pop-current-plugin!`, `resolve-plugin-path`,
+//! `declared-plugins`, `loaded-plugins`.
 //!
-//! `%declare-plugin!` is the Rust backing for the Scheme-side `load-plugin`
-//! wrapper defined in the bootstrap; see `builtins/mod.rs` for the Scheme source.
+//! `%declare-plugin!` backs the Scheme `declare-plugin` wrapper (lazy).
+//! `%load-plugin!` backs the Scheme `load-plugin` wrapper (eager).
+//! Both wrappers are defined in the bootstrap; see `builtins/mod.rs`.
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::scripting::{SteelCtx, attribution::PluginId, hooks::HookId};
+use crate::scripting::{SteelCtx, attribution::PluginId, hooks::HookId, lazy::PluginState};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,22 +37,23 @@ fn steel_list_to_strings(val: SteelVal, param: &'static str) -> Result<Vec<Strin
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(%declare-plugin! name on-command on-event on-language lazy)` — the single
-/// Rust primitive backing the Scheme-side `load-plugin`.
+/// `(%declare-plugin! name on-command on-event on-language)` — Rust primitive
+/// backing the Scheme-side `declare-plugin` wrapper.
+///
+/// Always lazy: the plugin body is never evaluated here.  `activate_plugin`
+/// runs it when a trigger fires or `(load-plugin name)` is called explicitly.
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
 /// - Parses trigger lists; converts event names to `HookId` variants.
+/// - Filters colliding trigger names (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
-/// - Eager plugins (no triggers, `lazy = #f`) are queued in
-///   `pending_plugin_loads` for Phase-2 drain via `activate_plugin`.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
     on_command: SteelVal,
     on_event: SteelVal,
     on_language: SteelVal,
-    lazy: bool,
 ) -> SteelResult {
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
 
@@ -81,31 +83,26 @@ pub(crate) fn declare_plugin(
         })
         .collect::<Result<_, _>>()?;
 
-    // Filter out any colliding trigger names before writing any state. Each
-    // collision logs a non-fatal Error (visible in :messages) and the name is
-    // dropped, so cmd_owners and command_triggers stay clean. A plugin whose
-    // entire on-command list collides stays dead-lazy (had_command_triggers
-    // keeps is_lazy true so it is never flipped to eager-load).
-    let had_command_triggers = !on_cmd.is_empty();
+    // Filter colliding trigger names before writing any state.  Each collision
+    // logs a non-fatal Error (visible in :messages) and the name is dropped, so
+    // cmd_owners and command_triggers stay consistent.
     let mut valid = Vec::with_capacity(on_cmd.len());
     for cmd in on_cmd {
         if ctx.builtin_cmd_names.contains(&cmd) {
             ctx.log(
                 crate::editor::Severity::Error,
-                format!("load-plugin: command '{cmd}' conflicts with a built-in; trigger ignored"),
+                format!("declare-plugin: command '{cmd}' conflicts with a built-in; trigger ignored"),
             );
         } else if ctx.lazy_registry.command_triggers.contains_key(&cmd) {
             ctx.log(
                 crate::editor::Severity::Error,
-                format!("load-plugin: command '{cmd}' already claimed by another lazy plugin; trigger ignored"),
+                format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; trigger ignored"),
             );
         } else {
             valid.push(cmd);
         }
     }
     let on_cmd = valid;
-
-    let is_lazy = lazy || had_command_triggers || !on_evt.is_empty() || !on_lang.is_empty();
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
@@ -117,11 +114,7 @@ pub(crate) fn declare_plugin(
     }
 
     ctx.lazy_registry
-        .declare(plugin_id.clone(), path, on_cmd, on_evt, on_lang);
-
-    if !is_lazy && ctx.lazy_registry.plugins.contains_key(&plugin_id) {
-        ctx.pending_plugin_loads.push(plugin_id);
-    }
+        .declare(plugin_id, path, on_cmd, on_evt, on_lang);
 
     Ok(SteelVal::Void)
 }
@@ -194,25 +187,55 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
     }
 }
 
-/// `(require-plugin "name")` — force-activate a declared plugin.
+/// `(%load-plugin! "name")` — Rust primitive backing the Scheme-side
+/// `load-plugin` wrapper (eager).
 ///
 /// Load-time only: valid from `init.scm` and plugin bodies (`is_init = true`).
-/// Calling it from a runtime command body raises a Steel error, like
-/// `register-hook!`. The named plugin must already be declared via `load-plugin`.
 ///
-/// If the plugin is already `Loaded` or `Failed`, this is a no-op (handled by
-/// `activate_plugin`'s idempotency guard; no retry on `Failed`).
-pub(crate) fn require_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
+/// If the plugin is not yet declared, resolves its path and registers it now:
+/// - Top-level (`plugin_stack` empty): absent on disk → silent skip + record
+///   in `declared_plugins` for PLUM to install on the next `:plum-install`.
+/// - Inside a plugin body (`plugin_stack` non-empty): absent on disk → hard
+///   error, because a missing dependency cannot be silently ignored.
+///
+/// If already declared (lazy or otherwise), queues it for activation.
+/// If already `Loaded` or `Failed`, the `activate_plugin` idempotency guard
+/// handles it as a no-op.
+pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     if !ctx.is_init {
-        steel::stop!(Generic => "require-plugin: can only be called during init/plugin load");
+        steel::stop!(Generic => "load-plugin: can only be called during init/plugin load");
     }
     let id = PluginId::parse(&name).map_err(steel_parse_err)?;
-    if !ctx.lazy_registry.plugins.contains_key(&id) {
-        steel::stop!(Generic =>
-            "require-plugin: unknown plugin '{}'; declare it with load-plugin first",
-            name
-        );
+
+    // PLUM compat: record name regardless of disk presence.
+    if !ctx
+        .declared_plugins
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&name))
+    {
+        ctx.declared_plugins.push(name.clone());
     }
+
+    if !ctx.lazy_registry.plugins.contains_key(&id) {
+        let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
+            .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
+        match path {
+            Some(p) => {
+                ctx.lazy_registry
+                    .plugins
+                    .insert(id.clone(), PluginState::Declared { path: p });
+            }
+            None => {
+                if ctx.plugin_stack.is_empty() {
+                    // Top-level: absent is PLUM-friendly; already recorded for install.
+                    return Ok(SteelVal::Void);
+                }
+                steel::stop!(Generic =>
+                    "load-plugin: dependency '{}' not found on disk", name);
+            }
+        }
+    }
+
     if !ctx.pending_plugin_loads.contains(&id) {
         ctx.pending_plugin_loads.push(id);
     }
@@ -224,7 +247,6 @@ pub(crate) fn require_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
 /// Derived from `LazyRegistry` so lazy plugins correctly read as not-yet-loaded
 /// until their body has been evaluated.
 pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
-    use crate::scripting::lazy::PluginState;
     let vals: Vec<SteelVal> = ctx
         .lazy_registry
         .plugins

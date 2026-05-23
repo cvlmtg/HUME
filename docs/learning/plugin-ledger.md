@@ -31,10 +31,10 @@ current execution context:
 
 - When `init.scm` runs at startup and no plugin body is executing, the
   stack is empty — attributions go to the **user** owner.
-- When `(load-plugin …)` loads a plugin, the plugin's identity is pushed
-  onto the stack. Any mutations inside that body are attributed to that
-  plugin. Nested `(load-plugin …)` calls push further, so the innermost
-  plugin gets credit.
+- When a plugin activates (via `(load-plugin …)` or a trigger fire), the
+  plugin's identity is pushed onto the stack. Any mutations inside that body
+  are attributed to that plugin. Nested `(load-plugin …)` calls inside a
+  plugin body push further, so the innermost plugin gets credit.
 - When the plugin body finishes, the identity is popped.
 
 This means attribution is automatic — plugins don't declare ownership

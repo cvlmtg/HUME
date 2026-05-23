@@ -55,17 +55,14 @@ pub(crate) struct LazyRegistry {
 }
 
 impl LazyRegistry {
-    /// Record a plugin from a `%declare-plugin!` call.
+    /// Record a plugin from a `%declare-plugin!` call (always lazy).
     ///
     /// - Duplicate `id` (case-insensitive) → no-op (first declaration wins).
     /// - `path = None` → plugin absent on disk; skipped silently; triggers NOT
     ///   recorded (an absent plugin can never activate, so dangling trigger
     ///   entries would be dead weight until `:reload-config`).
-    /// - `eager` plugins are inserted as `Declared` so the caller can drain
-    ///   them immediately via `ScriptingHost::activate_plugin`; their state
-    ///   transitions to `Loaded`/`Failed` during that drain.
-    /// - Lazy plugins are also inserted as `Declared`; they activate on
-    ///   demand when their trigger fires.
+    /// - All plugins are inserted as `Declared`; they activate when a trigger
+    ///   fires or when `(load-plugin name)` is called explicitly.
     pub(crate) fn declare(
         &mut self,
         id: PluginId,
@@ -75,7 +72,7 @@ impl LazyRegistry {
         on_language: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
-            return; // already declared — duplicate load-plugin call, ignore
+            return; // already declared — duplicate declare-plugin call, ignore
         }
         let Some(path) = path else {
             return; // absent on disk — silently skip, no triggers
@@ -201,7 +198,7 @@ impl LazyRegistry {
         }
 
         if parts.is_empty() {
-            "\u{2014}".to_string() // — (em dash): bare #:lazy #t, waits on require-plugin
+            "\u{2014}".to_string() // — (em dash): bare declare-plugin, waits on explicit load-plugin
         } else {
             parts.join("  ")
         }

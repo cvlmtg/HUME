@@ -147,7 +147,7 @@ impl Hash for PluginId {
 /// The entity credited with a command registration.
 ///
 /// - Stack empty → [`Owner::User`] (top-level `init.scm`)
-/// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin …)` body)
+/// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin …)` / plugin body)
 /// - [`Owner::Core`] is the fallback returned by `(command-plugin …)` for
 ///   built-in Rust commands that were never registered through Steel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,12 +171,12 @@ pub(crate) struct PluginStack {
 }
 
 impl PluginStack {
-    /// Push `id` onto the stack when entering a `(load-plugin …)` body.
+    /// Push `id` onto the stack when entering a plugin body (via `activate_plugin`).
     pub(crate) fn push(&mut self, id: PluginId) {
         self.stack.push(id);
     }
 
-    /// Pop the top attribution when leaving a `(load-plugin …)` body.
+    /// Pop the top attribution when leaving a plugin body.
     ///
     /// Gracefully no-ops on an empty stack — avoids panics on error-path
     /// cleanup where the stack may already be empty.

@@ -117,38 +117,37 @@
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;;
-;; (load-plugin name [keyword-args...])
+;; The verb encodes when the plugin loads:
 ;;
-;;   name    — "core:name"   (bundled core plugin)
-;;           — "user/repo"   (third-party plugin from
-;;                            <data>/plugins/user/repo/plugin.scm)
+;;   (load-plugin name)    — eager: load now, at startup.
+;;   (declare-plugin name [keyword-args...])  — lazy: load on trigger or
+;;                           on an explicit later (load-plugin name).
 ;;
-;; Without keyword args the plugin loads eagerly at startup (today's behavior).
+;;   name — "core:name"   (bundled core plugin)
+;;        — "user/repo"   (third-party plugin from
+;;                         <data>/plugins/user/repo/plugin.scm)
 ;;
-;; Keyword args for lazy / trigger-based loading:
-;;
-;;   #:lazy #t
-;;     Record the plugin without evaluating its body.  The body runs only when
-;;     explicitly requested via (require-plugin "user/repo").  Use this for
-;;     optional plugins whose load time you want full control over.
+;; declare-plugin keyword args (all imply lazy loading):
 ;;
 ;;   #:on-command '("cmd-name" ...)
 ;;     Activate when one of these command names is first dispatched (via the
-;;     command line or a key binding).  Implies #:lazy #t.
+;;     command line or a key binding).
 ;;
 ;;   #:on-event '("hook-name" ...)
-;;     Activate when one of the named lifecycle hooks fires.  Implies #:lazy #t.
+;;     Activate when one of the named lifecycle hooks fires.
 ;;     Valid hook names: on-buffer-open on-buffer-close on-buffer-save
 ;;                       on-edit on-mode-change
 ;;
 ;;   #:on-language '("lang-name" ...)
 ;;     Activate when the buffer language is set to one of the given names.
-;;     Implies #:lazy #t.
 ;;
-;; (require-plugin "user/repo")
-;;   Force-activate a previously declared lazy plugin immediately.  Useful in
-;;   init.scm to load a bare #:lazy #t plugin on demand, or as a dependency
-;;   inside another plugin's body.
+;;   (declare-plugin "user/repo") with no keywords — bare-lazy: records the
+;;     plugin without loading it.  Body runs only when (load-plugin "user/repo")
+;;     is called later, or never (PLUM installs it; reload-config loads it next
+;;     startup).
+;;
+;; Inside a plugin body, (load-plugin "user/dep") pulls in a dependency
+;; immediately.  If the dependency is absent on disk, init aborts with an error.
 ;;
 ;; :plugin-status (alias :plugins)
 ;;   Open a scratch view listing every declared plugin with its current state
@@ -165,12 +164,14 @@
 ;; (load-plugin "core:plum")
 ;; (load-plugin "core:helix-surround")
 
-;; Declare third-party plugins to be installed by :plum-install:
+;; Declare third-party plugins to be installed by :plum-install.
+;; These are absent on a fresh setup; PLUM installs them, then :reload-config
+;; loads them.  No error on first run — the absent case is silently skipped.
 ;; (load-plugin "alice/my-theme")
 ;; (load-plugin "bob/rust-extras")
 
 ;; Example: lazy-load a plugin when "my-cmd" is first dispatched.
 ;; The bind-key! below ensures pressing <space>m in Normal mode runs my-cmd,
 ;; which activates the plugin on first press.
-;; (load-plugin "alice/lazy-thing" #:on-command '("my-cmd"))
+;; (declare-plugin "alice/lazy-thing" #:on-command '("my-cmd"))
 ;; (bind-key! "normal" "<space>m" "my-cmd")

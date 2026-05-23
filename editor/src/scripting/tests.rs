@@ -1484,13 +1484,13 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     );
 }
 
-/// `(load-plugin "user/tp" #:lazy #t)` → plugin stays `Declared`, body is
+/// `(declare-plugin "user/tp")` bare → plugin stays `Declared`, body is
 /// NOT evaluated, and its commands are absent from the init result.
 #[test]
 #[cfg(not(windows))]
 fn lazy_load_stays_declared_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:lazy #t)"#,
+        r#"(declare-plugin "user/tp")"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1518,13 +1518,13 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     );
 }
 
-/// `#:on-command '("my-cmd")` → plugin is treated as lazy (trigger present),
+/// `(declare-plugin "user/tp" #:on-command '("my-cmd"))` → plugin stays lazy,
 /// `command_triggers["my-cmd"]` maps to the plugin, body not evaluated.
 #[test]
 #[cfg(not(windows))]
 fn on_command_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1564,7 +1564,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 #[cfg(not(windows))]
 fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:lazy #t)"#,
+        r#"(declare-plugin "user/tp")"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1647,7 +1647,7 @@ fn eager_plugin_body_error_aborts_init() {
 #[cfg(not(windows))]
 fn manifest_collision_with_builtin_logs_error_continues() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-command '("move-right"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("move-right"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1689,7 +1689,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
     // Flip: non-colliding trigger produces no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-command '("not-a-builtin"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h2 = host();
@@ -1729,8 +1729,8 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     std::fs::write(pb.join("plugin.scm"), r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#).unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"
-(load-plugin "user/pa" #:on-command '("bar"))
-(load-plugin "user/pb" #:on-command '("bar"))
+(declare-plugin "user/pa" #:on-command '("bar"))
+(declare-plugin "user/pb" #:on-command '("bar"))
 "#).unwrap();
 
     let mut h = host();
@@ -1789,7 +1789,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
 #[cfg(not(windows))]
 fn cmd_owners_pre_seeded_before_activation() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1819,7 +1819,7 @@ fn cmd_owners_pre_seeded_before_activation() {
 #[cfg(not(windows))]
 fn activate_plugin_drops_command_trigger_on_loaded() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1850,7 +1850,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 }
 
 
-/// `#:on-language '("rust")` → plugin is treated as lazy (trigger present),
+/// `(declare-plugin "user/tp" #:on-language '("rust"))` → plugin stays lazy,
 /// `language_triggers["rust"]` contains the plugin, body not evaluated.
 ///
 /// Flip: if on-language were not threaded through `%declare-plugin!`, the
@@ -1859,7 +1859,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 #[cfg(not(windows))]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1902,7 +1902,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 #[cfg(not(windows))]
 fn activate_plugin_drops_language_trigger_on_loaded() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1930,23 +1930,96 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
     );
 }
 
-/// `(require-plugin …)` raises a Steel error when called from a command body
+/// `(load-plugin "x")` after `(declare-plugin "x" #:on-command …)` force-activates
+/// the plugin: state transitions to `Loaded` and the command trigger is cleared.
+///
+/// Flip: without the pending_plugin_loads path in `load_plugin`, the plugin would
+/// stay `Declared` and the trigger would remain.
+#[test]
+#[cfg(not(windows))]
+fn load_plugin_force_activates_declared_plugin() {
+    let (dir, init_path) = plugin_fixture(
+        "(declare-plugin \"user/tp\" #:on-command '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+
+    let cmds = h
+        .eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("force-activate must succeed");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.lazy_registry.plugins.get(&id), Some(lazy::PluginState::Loaded)),
+        "plugin must be Loaded after explicit load-plugin; got {:?}",
+        h.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        !h.lazy_registry.command_triggers.contains_key("my-cmd"),
+        "command trigger must be cleared after activation"
+    );
+    assert!(
+        cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be in returned defs after force-activate"
+    );
+}
+
+/// `(load-plugin "absent-dep")` inside a plugin body (non-top-level) → hard error.
+///
+/// Flip: with top-level silent-skip applied everywhere, this would return `Ok`
+/// and the dependency would silently not load, breaking the dependent plugin.
+#[test]
+#[cfg(not(windows))]
+fn load_plugin_in_body_absent_dep_errors() {
+    // Plugin B calls (load-plugin "user/dep") in its body but dep doesn't exist.
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_b_dir = dir.path().join("plugins").join("user").join("pb");
+    std::fs::create_dir_all(&plugin_b_dir).unwrap();
+    std::fs::write(
+        plugin_b_dir.join("plugin.scm"),
+        r#"(load-plugin "user/dep-absent")"#,
+    )
+    .unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(load-plugin "user/pb")"#).unwrap();
+
+    let mut h = host();
+    h.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let Err(msg) = h.eval_init(&init_path, &mut s, &mut km, Default::default()) else {
+        panic!("load-plugin for absent dep inside plugin body must error");
+    };
+    assert!(
+        msg.contains("not found on disk") || msg.contains("dep-absent"),
+        "error must mention the absent dependency; got: {msg}"
+    );
+}
+
+/// `(load-plugin …)` raises a Steel error when called from a command body
 /// (`is_init = false`), mirroring the `register-hook!` guard.
 ///
-/// Flip: removing the `if !ctx.is_init` guard in `require_plugin` would let
+/// Flip: removing the `if !ctx.is_init` guard in `load_plugin` would let
 /// this return `Ok`, silently queuing a request that is never drained.
 #[test]
-fn require_plugin_runtime_guard_fires() {
+fn load_plugin_runtime_guard_fires() {
     use crate::scripting::SteelCtxTestHarness;
-    use crate::scripting::builtins::plugins::require_plugin;
+    use crate::scripting::builtins::plugins::load_plugin;
 
     // SteelCtxTestHarness builds an is_init=false (command) context.
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = require_plugin(&mut ctx, "user/tp".to_string());
+    let result = load_plugin(&mut ctx, "user/tp".to_string());
     assert!(
         result.is_err(),
-        "require-plugin must error when called outside init/plugin load (is_init=false)"
+        "load-plugin must error when called outside init/plugin load (is_init=false)"
     );
     let msg = result.unwrap_err().to_string();
     assert!(

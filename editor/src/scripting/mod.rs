@@ -237,11 +237,12 @@ impl ScriptingHost {
     /// Core eval machinery used by [`eval_init`].
     ///
     /// Evaluates `source` (init.scm) then, for each plugin queued by
-    /// `(load-plugin …)`, submits `(require "<abs-path>")` on the same engine.
-    /// Each plugin is its own Steel module, so private helpers with the same
-    /// name in different plugins are mangled to distinct globals and never
-    /// collide.  Commands are drained between plugins so that a later plugin
-    /// can bind keys to commands defined by an earlier one.
+    /// `(load-plugin …)` or `(declare-plugin …)` + explicit `(load-plugin …)`,
+    /// submits `(require "<abs-path>")` on the same engine.  Each plugin is its
+    /// own Steel module, so private helpers with the same name in different
+    /// plugins are mangled to distinct globals and never collide.  Commands are
+    /// drained between plugins so that a later plugin can bind keys to commands
+    /// defined by an earlier one.
     fn eval_source_raw(
         &mut self,
         source: String,
@@ -252,9 +253,8 @@ impl ScriptingHost {
         let budget_ms = settings.steel_init_budget_ms as u64;
 
         // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
-        // `pending_plugin_loads` — populated by `%declare-plugin!` (eager plugins)
-        // and `(require-plugin …)` inside the Scheme `load-plugin` wrapper /
-        // init.scm body.
+        // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
+        // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
         let (eval_result, init_cmds, pending_plugin_loads) = {
             let Self {
                 engine,

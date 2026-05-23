@@ -10,7 +10,7 @@
 ;;; All filesystem and git operations are sandboxed by the Rust builtins to
 ;;; <data>/plugins/ — PLUM cannot reach outside that directory.
 ;;;
-;;; Usage in init.scm (add before other third-party load-plugin calls):
+;;; Usage in init.scm (add before other third-party plugin declarations):
 ;;;   (load-plugin "core:plum")
 
 ;; ── Path helpers ──────────────────────────────────────────────────────────────

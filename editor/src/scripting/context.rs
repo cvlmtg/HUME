@@ -55,12 +55,13 @@ pub(crate) struct SteelCtx<'a> {
     /// Where core plugins, themes, and docs live.
     pub(crate) runtime_dir: Option<&'a std::path::Path>,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
-    /// Every plugin name passed to `(load-plugin …)`, including absent ones.
+    /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
+    /// including absent ones.  Read by `(declared-plugins)` for PLUM.
     pub(crate) declared_plugins: Vec<String>,
     /// Plugins queued for activation at the end of this eval (init.scm or plugin
-    /// body).  Populated by `%declare-plugin!` for eager plugins and by
-    /// `(require-plugin …)` for explicit loads; drained by `eval_source_raw`
-    /// (init.scm) and by `activate_plugin` (plugin body).
+    /// body).  Populated by `%load-plugin!` (eager) or by force-activating a
+    /// declared plugin; drained by `eval_source_raw` (init.scm) and by
+    /// `activate_plugin` (plugin body).
     pub(crate) pending_plugin_loads: Vec<super::attribution::PluginId>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
