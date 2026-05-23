@@ -99,7 +99,7 @@ impl LanguageRegistry {
     ) -> Arc<LanguageConfig> {
         let config = Arc::new(LanguageConfig {
             name: name.to_owned(),
-            extensions: extensions.iter().map(|s| s.to_lowercase()).collect(),
+            extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.iter().map(|s| s.to_string()).collect(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
         });
@@ -136,7 +136,7 @@ impl LanguageRegistry {
         Ok(())
     }
 
-    /// Look up a language by lowercase file extension (e.g. `"rs"`).
+    /// Look up a language by file extension (e.g. `"rs"`, `"C"`).
     pub(crate) fn by_extension(&self, ext: &str) -> Option<&Arc<LanguageConfig>> {
         self.by_ext.get(ext)
     }
@@ -228,8 +228,7 @@ pub(crate) fn detect_language(
         }
 
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            let ext_lower = ext.to_lowercase();
-            if let Some(lang) = registry.by_extension(&ext_lower) {
+            if let Some(lang) = registry.by_extension(ext) {
                 return Some(lang.name.clone());
             }
         }
@@ -285,14 +284,16 @@ impl Editor {
             Some(name) => name.into_steelval().expect("str into_steelval"),
             None => false.into_steelval().expect("bool into_steelval"),
         };
-        // Activate language-triggered plugins before firing OnLanguageSet so their
-        // handlers are registered in time to run on this transition.  `new_lang` is
-        // a local param (not borrowed from self), so `name: &str` coexists with the
-        // `&mut self` call without a clone.
-        if let Some(name) = new_lang.as_deref() {
+        // Clone before moving into the buffer so `activate_lazy_language_plugins`
+        // can borrow the name after the write — a plugin reading buffer-language
+        // during its own activation then sees the new value.
+        let activate_name = new_lang.clone();
+        self.buffers.get_mut(bid).language = new_lang;
+        // Activate language-triggered plugins after the write so handlers are
+        // registered in time for the OnLanguageSet fire below.
+        if let Some(name) = activate_name.as_deref() {
             self.activate_lazy_language_plugins(name);
         }
-        self.buffers.get_mut(bid).language = new_lang;
         let bid_val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
     }
@@ -318,9 +319,20 @@ impl Editor {
         for reg in regs {
             let PendingLanguageReg::Identity { name, extensions, globs, shebangs } = reg;
             let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
-            let globs_ref: Vec<&str> = globs.iter().map(String::as_str).collect();
             let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
-            self.languages.register_identity_no_rebuild(&name, &exts, &globs_ref, &shebangs_ref);
+            // Validate each glob before registering; warn on invalid patterns so
+            // a typo in a user's define-language! call surfaces immediately.
+            let mut valid_globs: Vec<&str> = Vec::with_capacity(globs.len());
+            for g in &globs {
+                match globset::Glob::new(g) {
+                    Ok(_) => valid_globs.push(g.as_str()),
+                    Err(e) => self.message_log.push(
+                        super::Severity::Warning,
+                        format!("define-language! '{}': invalid glob '{}': {}", name, g, e),
+                    ),
+                }
+            }
+            self.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
             any = true;
         }
         if any && let Err(e) = self.languages.rebuild_glob_set() {
@@ -484,5 +496,27 @@ mod tests {
         let reg = LanguageRegistry::new();
         assert!(detect_language(Some(Path::new("foo.xyz")), None, &reg).is_none());
         assert!(detect_language(None, None, &reg).is_none());
+    }
+
+    /// Extensions are matched case-sensitively, so `"c"` and `"C"` map to
+    /// distinct languages — `foo.c` detects as `c`, `foo.C` detects as `cpp`.
+    ///
+    /// Flip: if extensions were folded to lowercase both would map to the
+    /// later-registered language (cpp wins, .c misdetects as cpp).
+    #[test]
+    fn extension_matching_is_case_sensitive() {
+        let mut reg = LanguageRegistry::new();
+        reg.register_identity("c", &["c"], &[], &[]).unwrap();
+        reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
+        assert_eq!(
+            detect_language(Some(Path::new("foo.c")), None, &reg).as_deref(),
+            Some("c"),
+        );
+        assert_eq!(
+            detect_language(Some(Path::new("foo.C")), None, &reg).as_deref(),
+            Some("cpp"),
+        );
+        // Sanity: unrelated extension is still None.
+        assert!(detect_language(Some(Path::new("foo.rs")), None, &reg).is_none());
     }
 }

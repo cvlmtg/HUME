@@ -992,6 +992,118 @@ fn keymap_lint_warns_on_unknown_command() {
     );
 }
 
+/// A plugin that successfully defines its own commands but whose body loads a
+/// transitive dep that fails during activation: the parent must end up `Failed`
+/// (not `Loaded`), and the parent's own commands must NOT be registered.
+///
+/// Before the fix, the parent was marked `Loaded` and its commands were built
+/// before the requires loop ran; a `?`-abort then discarded them, leaving a
+/// permanent Loaded-with-no-commands inconsistency.
+///
+/// Flip: without the fix, `bar` would be absent (lost) while the parent is
+/// `Loaded` — subsequent dispatches could never retry it.
+#[test]
+#[cfg(not(windows))]
+fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
+    use crate::scripting::attribution::PluginId;
+    use crate::scripting::lazy::PluginState;
+    use crate::editor::Severity;
+
+    // Create parent (user/tp) that defines "bar" and then loads user/dep.
+    // user/dep exists on disk but its body raises an error at eval time.
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let tp_dir = dir.path().join("plugins").join("user").join("tp");
+        let dep_dir = dir.path().join("plugins").join("user").join("dep");
+        std::fs::create_dir_all(&tp_dir).unwrap();
+        std::fs::create_dir_all(&dep_dir).unwrap();
+        std::fs::write(
+            tp_dir.join("plugin.scm"),
+            // Parent defines "bar" and then loads the failing dep.
+            r#"
+              (define-command! "bar" "doc" (lambda () (+ 1 0)))
+              (load-plugin "user/dep")
+            "#,
+        ).unwrap();
+        std::fs::write(
+            dep_dir.join("plugin.scm"),
+            r#"(error "intentional dep failure")"#,
+        ).unwrap();
+        let init = dir.path().join("init.scm");
+        std::fs::write(&init, r#"(declare-plugin "user/tp" #:on-command '("bar"))"#).unwrap();
+        dir
+    };
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(dir.path().to_path_buf());
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let init_path = dir.path().join("init.scm");
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+    let triggers: std::collections::HashMap<_, _> = host.lazy_registry.command_triggers.clone();
+    ed.register_lazy_command_stubs(&triggers);
+    ed.scripting = Some(host);
+
+    // Dispatch "bar" to trigger lazy activation.
+    type_cmd(&mut ed, ":bar");
+
+    let tp_id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    // Parent must be Failed, not Loaded.
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&tp_id),
+            Some(PluginState::Failed)
+        ),
+        "parent plugin must be Failed when transitive dep fails"
+    );
+    // Parent's own "bar" command must NOT be registered.
+    assert!(
+        ed.registry.get_mappable("bar").is_none(),
+        "parent command must not be registered after transitive dep failure"
+    );
+    // Error must have been logged.
+    assert!(
+        ed.message_log.entries().any(|e| e.severity == Severity::Error),
+        "error must be logged for transitive dep failure"
+    );
+}
+
+/// `define-command!` with a built-in name is rejected first-wins.
+///
+/// Defining "move-right" in init.scm must leave the built-in intact and log
+/// Severity::Error.  Without this check the Steel definition would silently
+/// replace the built-in.
+///
+/// Flip: if the collision check were removed, move-right would become
+/// SteelBacked and the Error assertion would fail.
+#[test]
+#[cfg(not(windows))]
+fn define_command_collision_with_builtin_keeps_builtin() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        r#"(define-command! "move-right" "redefine" (lambda () (+ 1 0)))"#,
+    );
+
+    // The built-in "move-right" must survive — not replaced by SteelBacked.
+    assert!(
+        !matches!(ed.registry.get_mappable("move-right"), Some(MappableCommand::SteelBacked { .. })),
+        "built-in move-right must not be replaced by Steel; got: {:?}",
+        ed.registry.get_mappable("move-right").map(|c| c.name())
+    );
+    // A Severity::Error must have been logged about the conflict.
+    assert!(
+        ed.message_log.entries().any(|e| {
+            e.severity == Severity::Error && e.text.contains("move-right")
+        }),
+        "collision must produce an Error; messages: {:?}",
+        ed.message_log.entries().map(|e| format!("{:?}: {}", e.severity, e.text)).collect::<Vec<_>>()
+    );
+}
+
 /// Keymap lint is silent when every bound key targets a registered command.
 ///
 /// Flip: the test above binds an *unknown* name and asserts a Warning is

@@ -1,4 +1,4 @@
-//! Language-identity Steel builtin: `%define-language!`.
+//! Language-identity Steel builtin: `%define-language!` / `(define-language!)`.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;

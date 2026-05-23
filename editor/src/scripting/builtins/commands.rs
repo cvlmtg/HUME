@@ -43,9 +43,10 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(define-command! name doc proc)`
 ///
-/// Registers `proc` (a zero-argument Steel lambda) as a mappable command with
-/// the given `name` and `doc` string.  The command can then be bound to a key
-/// via `(bind-key! …)`.
+/// Registers `proc` (a Steel lambda) as a mappable command with the given
+/// `name` and `doc` string.  `proc` may accept positional arguments passed via
+/// `(call! name arg …)`.  The command can then be bound to a key via
+/// `(bind-key! …)`.
 ///
 /// Raises a Steel error if:
 /// - `name` conflicts with a core built-in command.

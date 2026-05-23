@@ -468,24 +468,35 @@ impl ScriptingHost {
 
         match plugin_result {
             Ok(()) => {
+                // Build parent defs while the parent is still `Loading` — the
+                // cycle guard at the top of activate_plugin short-circuits any
+                // re-entrant call for the same id.
+                let mut defs = self.process_pending_cmds(plugin_cmds);
+                // Drain transitive `(load-plugin …)` calls made by the body.
+                // Activate them before finalising the parent so that a transitive
+                // failure leaves the parent in `Failed` (not the inconsistent
+                // `Loaded`+no-commands state the old `?`-abort produced).
+                for req in requires {
+                    match self.activate_plugin(&req, settings, keymap, builtin_names, budget_ms) {
+                        Ok(d) => defs.extend(d),
+                        Err(e) => {
+                            self.lazy_registry
+                                .plugins
+                                .insert(id.clone(), PluginState::Failed);
+                            self.lazy_registry.drop_triggers_for(id);
+                            return Err(format!("loading plugin '{id}': transitive dep failed: {e}"));
+                        }
+                    }
+                }
                 self.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
-                // Drop all trigger-map entries for this plugin — the real SteelBacked
-                // commands are registered by the caller after this returns, and the
-                // stub (Lazy) entry is overwritten by register_steel_cmds.  Any
-                // trigger names the body did NOT define are cleaned up by
-                // activate_lazy_plugin's loop guard.
+                // Drop all trigger-map entries — the real SteelBacked commands
+                // are registered by the caller after this returns, and any Lazy
+                // stub is overwritten by register_steel_cmds.  Trigger names the
+                // body did NOT define are cleaned up by activate_lazy_plugin's
+                // loop guard.
                 self.lazy_registry.drop_triggers_for(id);
-                let mut defs = self.process_pending_cmds(plugin_cmds);
-                // Drain transitive `(load-plugin …)` calls made by the body
-                // (queued in pending_plugin_loads). The Loading/Loaded guards
-                // in activate_plugin prevent cycles.
-                for req in requires {
-                    defs.extend(
-                        self.activate_plugin(&req, settings, keymap, builtin_names, budget_ms)?,
-                    );
-                }
                 Ok(defs)
             }
             Err(e) => {

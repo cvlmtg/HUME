@@ -4,16 +4,20 @@
 ;;; it in init.scm — `define-language!` fully replaces the prior registration
 ;;; for a given name (see init.scm.example for override examples).
 ;;;
-;;; Identity only: extensions, globs, and shebangs.  No tree-sitter grammars
-;;; are shipped here — to enable highlighting, call (register-grammar! …) with
-;;; paths to a compiled grammar library and highlights query (typically provided
-;;; by a plugin).
+;;; Identity only: extensions, globs, and shebangs.  Tree-sitter grammar wiring
+;;; is not yet a built-in builtin; highlighting grammars are supplied by a plugin
+;;; (typically core:plum) via its own registration API.
 ;;;
 ;;; Grammar source metadata lives in grammar-sources.scm (loaded by a grammar-
 ;;; manager plugin, typically core:plum — not by hume at startup).
 ;;;
 ;;; Source: helix-editor/helix languages.toml @ 8c41b1160792
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
+;;;
+;;; Known limitation: several extensions are shared across languages (e.g. `inc`
+;;; for pascal/php/sourcepawn, `pl` for perl/prolog, `m` for matlab, `v` for
+;;; v/verilog, `bas` for basic/freebasic).  These are resolved last-registered-
+;;; wins; override with `(define-language! …)` in init.scm for your preference.
 
 (define-language! "ada" '("adb" "ads"))
 (define-language! "adl" '("adl"))

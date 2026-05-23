@@ -196,7 +196,6 @@ impl RowKind {
             RowKind::Virtual { .. } | RowKind::Filler => None,
         }
     }
-
 }
 
 // ---------------------------------------------------------------------------
@@ -456,5 +455,4 @@ mod tests {
         assert!(EditorMode::Search.cursor_is_bar());
         assert!(EditorMode::Select.cursor_is_bar());
     }
-
 }

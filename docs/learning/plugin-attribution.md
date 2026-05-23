@@ -56,10 +56,12 @@ first activation.
 ## Conflict detection
 
 If two plugins try to claim the same command trigger (via `#:on-command`), the **first
-declarant wins**. The duplicate is silently dropped with a non-fatal `Severity::Error`
-logged to `:messages`; init continues. This applies only to lazy command triggers, not
-to commands registered via `define-command!` inside a body (two plugins can register
-different commands with the same name, but only the later one will be live).
+declarant wins**. The duplicate is dropped with a non-fatal `Severity::Error` logged to
+`:messages`; init continues.
+
+The same first-wins rule applies to `define-command!` inside a plugin body: if a name is
+already registered (by a built-in or an earlier plugin), the later registration is rejected
+with `Severity::Error` and the **first** definition stays live. There is no shadowing.
 
 ## Load-once model
 
