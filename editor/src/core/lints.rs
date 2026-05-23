@@ -67,7 +67,16 @@ mod tests {
     /// are intentionally excluded — they may define free functions with the
     /// same names.
     const SCAN_FILES: &[&str] = &[
-        "src/editor/commands.rs",
+        "src/editor/commands/mod.rs",
+        "src/editor/commands/mode.rs",
+        "src/editor/commands/edit.rs",
+        "src/editor/commands/find.rs",
+        "src/editor/commands/scroll.rs",
+        "src/editor/commands/search.rs",
+        "src/editor/commands/jump.rs",
+        "src/editor/commands/typed_file.rs",
+        "src/editor/commands/typed_buffer.rs",
+        "src/editor/commands/typed_misc.rs",
         "src/editor/mappings.rs",
         "src/editor/mod.rs",
         "src/editor/visual_move.rs",
