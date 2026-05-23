@@ -1177,6 +1177,26 @@ fn paste_ring_cycle_preserves_displaced_text() {
     );
 }
 
+/// Reproduce the exact user report: select a line with `x`, delete with `d`,
+/// move with `j`, then cycle the ring with `]` — the deleted line must appear
+/// as its own line *below* the cursor, not embedded inside the current line.
+#[test]
+fn paste_ring_linewise_pastes_below_not_inline() {
+    // Buffer: "A\nB\nC\n". Delete line A (x+d), move to C (j), paste via ].
+    let mut ed = editor_from("-[A]>\nB\nC\n");
+    ed.handle_key(key('x')); // select line "A\n"
+    ed.handle_key(key('d')); // yank "A\n" to ring head, buffer → "B\nC\n"
+    ed.handle_key(key('j')); // cursor → 'C'
+    ed.handle_key(key(']')); // cycle ring to head (="A\n"), paste linewise below C
+
+    // "A\n" must land as its own line below C — not inside C's text.
+    assert_eq!(
+        state(&ed),
+        "B\nC\n-[A]>\n",
+        "] on a linewise ring entry must paste as a new line, not inline"
+    );
+}
+
 // ── Register prefix persistence across non-register commands ────────────────
 
 /// `"5` arms the prefix; `l` (a motion) does not consume it; the next `y` writes

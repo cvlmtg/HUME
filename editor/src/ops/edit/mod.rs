@@ -2,6 +2,7 @@ use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
 use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use crate::core::selection::{Selection, SelectionSet};
 use crate::core::text::Text;
+use crate::helpers::line_end_exclusive;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -212,28 +213,41 @@ fn delete_sel_region(
     new_sels.push(sel);
 }
 
+/// Whether cursor-paste inserts after or before the cursor's line/character.
+///
+/// For **charwise** content (not ending in `\n`) this determines column position.
+/// For **linewise** content (ending in `\n`) this determines on which side of
+/// the cursor's line the new line(s) appear. Multi-char selections are replaced
+/// at whole-line granularity for linewise content regardless of anchor.
+#[derive(Clone, Copy)]
+enum PasteAnchor {
+    After,
+    Before,
+}
+
 /// Private implementation shared by [`paste_after`] and [`paste_before`].
 ///
-/// The two public functions differ only in where a cursor selection inserts its
-/// text — `paste_after` uses `(sel.end() + 1).min(last_char)`, `paste_before`
-/// uses `sel.start()`. Passing that calculation as a closure (`cursor_insert_pos`)
-/// captures the difference in one parameter and eliminates the duplication.
+/// `anchor` governs the 2 × 2 insert-position matrix for cursor selections:
 ///
-/// # Why `Fn` (not `FnMut`) for `cursor_insert_pos`?
+/// | anchor  | charwise content           | linewise content (ends `\n`)   |
+/// |---------|----------------------------|--------------------------------|
+/// | `After` | one past the cursor char   | start of the next line         |
+/// | `Before`| at the cursor char         | start of the cursor's line     |
 ///
-/// The position closure is a pure calculation — it reads `buf` and `sel` but
-/// never mutates anything. `Fn` names that contract precisely. `FnMut` would
-/// also accept `Fn` closures (they are a strict subset), but using the weakest
-/// sufficient bound makes the intent clearer to readers.
-fn paste_impl<P>(
+/// Multi-char selections:
+/// - **Linewise content**: delete the whole lines spanned by the selection, then
+///   insert the pasted line(s). Displaced text is the deleted whole-line span
+///   (itself `\n`-terminated) so replace-and-swap round-trips at line granularity.
+///   Partial selections (e.g. one word) replace their entire line — this is the
+///   definition of a linewise operation.
+/// - **Charwise content**: unchanged replace-and-swap at selection granularity
+///   (cap at `last_content_char` to protect the structural trailing `\n`).
+fn paste_impl(
     buf: Text,
     sels: SelectionSet,
     values: &[String],
-    cursor_insert_pos: P,
-) -> (Text, SelectionSet, ChangeSet, Vec<String>)
-where
-    P: Fn(&Text, &Selection) -> usize,
-{
+    anchor: PasteAnchor,
+) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
     if values.is_empty() {
         // Nothing to paste — return an identity ChangeSet (all Retain).
         let mut b = ChangeSetBuilder::new(buf.len_chars());
@@ -254,27 +268,56 @@ where
 
     apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, replaced| {
         // N-to-N if counts match; every selection gets the full joined string otherwise.
-        let text: &str = if n_sels == n_vals {
-            &values[i]
-        } else {
-            &joined
-        };
+        let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
 
         if sel.is_collapsed() {
             replaced.push(String::new()); // cursors displace nothing
-            let insert_at = cursor_insert_pos(buf, sel);
-            b.retain(insert_at - b.old_pos());
-            if text.is_empty() {
-                // Nothing to insert — cursor stays where it is.
-                new_sels.push(Selection::collapsed(sel.head));
-            } else {
+            if text.ends_with('\n') {
+                // Linewise: insert at the line boundary, not at the cursor column.
+                // `insert` advances new_pos() by the char count of the inserted text,
+                // so `new_pos() - text.chars().count()` is the first inserted char.
+                let line = buf.char_to_line(sel.head);
+                let insert_at = match anchor {
+                    PasteAnchor::After => line_end_exclusive(buf, line),
+                    PasteAnchor::Before => buf.line_to_char(line),
+                };
+                // saturating_sub guards against same-line multi-cursor underflow;
+                // the monotonic-old_pos invariant holds for distinct lines.
+                b.retain(insert_at.saturating_sub(b.old_pos()));
                 b.insert(text);
-                // new_pos() is one past the inserted text; -1 lands on the last
-                // inserted character (the cursor sits on it — inclusive model).
-                new_sels.push(Selection::collapsed(b.new_pos() - 1));
+                new_sels.push(Selection::collapsed(b.new_pos() - text.chars().count()));
+            } else {
+                let insert_at = match anchor {
+                    PasteAnchor::After => (sel.end_inclusive(buf) + 1).min(buf.len_chars() - 1),
+                    PasteAnchor::Before => sel.start(),
+                };
+                b.retain(insert_at - b.old_pos());
+                if text.is_empty() {
+                    // Nothing to insert — cursor stays where it is.
+                    new_sels.push(Selection::collapsed(sel.head));
+                } else {
+                    b.insert(text);
+                    // new_pos() is one past the inserted text; -1 lands on the last
+                    // inserted character (the cursor sits on it — inclusive model).
+                    new_sels.push(Selection::collapsed(b.new_pos() - 1));
+                }
             }
+        } else if text.ends_with('\n') {
+            // Linewise paste over a multi-char selection: replace the whole lines
+            // spanned by the selection with the pasted line(s).
+            let first_line = buf.char_to_line(sel.start());
+            let last_line = buf.char_to_line(sel.end_inclusive(buf));
+            let del_from = buf.line_to_char(first_line);
+            let del_to = line_end_exclusive(buf, last_line);
+            replaced.push(buf.slice(del_from..del_to).to_string());
+            // .max(old_pos) guards against same-line multi-cursor underflow.
+            let from = del_from.max(b.old_pos());
+            b.retain(from - b.old_pos());
+            b.delete(del_to.saturating_sub(from));
+            b.insert(text);
+            new_sels.push(Selection::collapsed(b.new_pos() - text.chars().count()));
         } else {
-            // Multi-char selection: replace the selected region.
+            // Charwise paste over a multi-char selection: replace-and-swap.
             // Cap end at the last content char so the structural trailing '\n'
             // is never deleted.
             let start = sel.start();
@@ -425,13 +468,17 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
 
 /// Paste `values` after/onto each selection (normal-mode `p`).
 ///
-/// **Cursor selections (`is_collapsed()`):** insert `text` just after the cursor
-/// character. The cursor lands on the last inserted character.
+/// **Cursor selections (`is_collapsed()`):**
+/// - Charwise content (not ending `\n`): inserts just after the cursor character;
+///   cursor lands on the last inserted character.
+/// - Linewise content (ending `\n`): inserts as new line(s) *below* the cursor's
+///   line; cursor lands on the first character of the first pasted line.
 ///
-/// **Multi-char selections (`!is_collapsed()`):** replace the selected region with
-/// `text`. The displaced text is returned in the third tuple element so the
-/// caller can write it back to the register — a swap. This eliminates the need
-/// for a separate `R` keybind or Vim-style `"0` yank register.
+/// **Multi-char selections (`!is_collapsed()`):**
+/// - Charwise content: replaces the selected region. Displaced text is returned so
+///   the caller can write it back — a swap. Eliminates the need for `"0` yank.
+/// - Linewise content: replaces the *whole lines* spanned by the selection.
+///   Displaced text is the full line span (`\n`-terminated → linewise round-trip).
 ///
 /// **Multi-cursor semantics:**
 /// - If `values.len() == sels.len()`: each selection gets its own slot (N-to-N).
@@ -449,22 +496,19 @@ pub(crate) fn paste_after(
     sels: SelectionSet,
     values: &[String],
 ) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
-    // `last_char` = index of the structural \n. Must be read before `buf` is
-    // consumed by `paste_impl`, so we capture it here and move it into the closure.
-    let last_char = buf.len_chars() - 1;
-    paste_impl(buf, sels, values, move |buf, sel| {
-        (sel.end_inclusive(buf) + 1).min(last_char)
-    })
+    paste_impl(buf, sels, values, PasteAnchor::After)
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`).
 ///
-/// **Cursor selections (`is_collapsed()`):** insert `text` just before the cursor
-/// character. The cursor lands on the last inserted character.
+/// **Cursor selections (`is_collapsed()`):**
+/// - Charwise content: inserts just before the cursor character; cursor lands on
+///   the last inserted character.
+/// - Linewise content: inserts as new line(s) *above* the cursor's line; cursor
+///   lands on the first character of the first pasted line.
 ///
-/// **Multi-char selections (`!is_collapsed()`):** same replace-and-swap semantics
-/// as [`paste_after`] — the after/before distinction only applies to cursors.
-/// When replacing, the selection is deleted and `text` is inserted in its place.
+/// **Multi-char selections (`!is_collapsed()`):** same semantics as [`paste_after`]
+/// — the after/before distinction only applies to cursor selections.
 ///
 /// **Multi-cursor semantics:** identical to [`paste_after`].
 ///
@@ -476,7 +520,7 @@ pub(crate) fn paste_before(
     sels: SelectionSet,
     values: &[String],
 ) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
-    paste_impl(buf, sels, values, |_buf, sel| sel.start())
+    paste_impl(buf, sels, values, PasteAnchor::Before)
 }
 
 /// Replace every grapheme in every selection with `ch` (normal-mode `r`).

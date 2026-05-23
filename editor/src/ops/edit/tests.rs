@@ -726,6 +726,74 @@ fn paste_before_multiline_text() {
     );
 }
 
+// ── linewise paste (content ending in '\n') ───────────────────────────────
+
+#[test]
+fn paste_after_linewise_cursor_inserts_below() {
+    // Cursor on 'e' (line 0 of "hello\nworld\n"). Paste "X\n" → new line
+    // below line 0. Buffer becomes "hello\nX\nworld\n"; cursor on 'X' at 6.
+    assert_state!(
+        "h-[e]>llo\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "hello\n-[X]>\nworld\n"
+    );
+}
+
+#[test]
+fn paste_before_linewise_cursor_inserts_above() {
+    // Cursor on 'e' (line 0). Paste "X\n" before → new line above line 0.
+    // Buffer becomes "X\nhello\nworld\n"; cursor on 'X' at 0.
+    assert_state!(
+        "h-[e]>llo\nworld\n",
+        |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
+        "-[X]>\nhello\nworld\n"
+    );
+}
+
+#[test]
+fn paste_after_linewise_cursor_on_last_line_preserves_invariant() {
+    // Cursor on 'l' (line 1, the last content line). Paste "X\n" after →
+    // appended as new last line. Buffer becomes "hello\nworld\nX\n"; cursor at 12.
+    assert_state!(
+        "hello\nwor-[l]>d\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "hello\nworld\n-[X]>\n"
+    );
+}
+
+#[test]
+fn paste_after_linewise_multiline_content() {
+    // Paste "a\nb\n" (two lines) after cursor on line 0 → two new lines below.
+    // Buffer becomes "hello\na\nb\nworld\n"; cursor on 'a' at 6.
+    assert_state!(
+        "h-[e]>llo\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["a\nb\n".to_string()]),
+        "hello\n-[a]>\nb\nworld\n"
+    );
+}
+
+#[test]
+fn paste_after_linewise_over_line_selection_swaps() {
+    // Full-line selection (anchor='h', head='\n') + linewise paste "X\n".
+    // Replaces whole line "hello\n" with "X\n"; displaced = ["hello\n"].
+    let (buf, sels) = crate::testing::parse_state("-[hello\n]>world\n");
+    let (new_buf, _, _, replaced) = paste_after(buf, sels, &["X\n".to_string()]);
+    assert_eq!(new_buf.to_string(), "X\nworld\n");
+    assert_eq!(replaced, vec!["hello\n"]);
+}
+
+#[test]
+fn paste_after_linewise_over_partial_selection_replaces_whole_line() {
+    // Partial selection "ell" (within line 0) + linewise paste "X\n".
+    // Linewise replaces the whole line 0 — this is the definition of a
+    // linewise operation: it operates at line granularity regardless of
+    // how much of the line is selected.
+    let (buf, sels) = crate::testing::parse_state("h-[ell]>o\nworld\n");
+    let (new_buf, _, _, replaced) = paste_after(buf, sels, &["X\n".to_string()]);
+    assert_eq!(new_buf.to_string(), "X\nworld\n");
+    assert_eq!(replaced, vec!["hello\n"]);
+}
+
 // ── repeat_edit count=0 ───────────────────────────────────────────────────
 
 #[test]
