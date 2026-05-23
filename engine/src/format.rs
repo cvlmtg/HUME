@@ -2,11 +2,8 @@ use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::layout::VisibleRange;
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
-use crate::providers::{
-    InlineDecoration, InlineInsert, VirtualLine, VirtualLineAnchor, VirtualLineSource,
-};
+use crate::providers::{InlineInsert, VirtualLine};
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -25,11 +22,9 @@ pub struct FormatScratch {
     pub graphemes: Vec<Grapheme>,
     /// Virtual lines collected from all providers for the visible range.
     pub virtual_lines: Vec<VirtualLine>,
-    /// Pre-materialised line text. In the fused path this holds one line at a
-    /// time; in the batch path it accumulates all visible lines end-to-end.
+    /// Pre-materialised text for the current buffer line. Written by
+    /// `format_buffer_line`; read by `pipeline::render_buffer_line` as `line_str`.
     pub line_texts: String,
-    /// Start offset of each line within `line_texts` (batch path only).
-    pub line_text_offsets: Vec<usize>,
 }
 
 impl FormatScratch {
@@ -39,7 +34,6 @@ impl FormatScratch {
             graphemes: Vec::with_capacity(512),
             virtual_lines: Vec::new(),
             line_texts: String::with_capacity(512),
-            line_text_offsets: Vec::new(),
         }
     }
 
@@ -49,7 +43,6 @@ impl FormatScratch {
         self.graphemes.clear();
         self.virtual_lines.clear();
         self.line_texts.clear();
-        self.line_text_offsets.clear();
     }
 }
 
@@ -57,128 +50,6 @@ impl Default for FormatScratch {
     fn default() -> Self {
         Self::new()
     }
-}
-
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
-
-/// Format all visible buffer lines into `DisplayRow`s and `Grapheme`s.
-///
-/// `inline_inserts` is a caller-supplied scratch buffer reused across lines.
-/// `scratch` accumulates all output; call `scratch.clear()` before each frame.
-/// No heap allocations occur after the first frame warms up the `Vec`s.
-#[allow(clippy::too_many_arguments)]
-pub fn format_lines(
-    rope: &Rope,
-    visible: &VisibleRange,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    wrap_mode: &WrapMode,
-    inline_providers: &[Box<dyn InlineDecoration>],
-    virtual_providers: &[Box<dyn VirtualLineSource>],
-    inline_inserts: &mut Vec<InlineInsert>,
-    scratch: &mut FormatScratch,
-) {
-    // Pre-collect virtual lines from all providers so we can splice them in
-    // order during the line loop without re-querying each iteration.
-    scratch.virtual_lines.clear();
-    for provider in virtual_providers {
-        provider.virtual_lines(
-            visible.line_range.clone(),
-            visible.content_width,
-            &mut scratch.virtual_lines,
-        );
-    }
-    // Sort by anchor for O(n) merging during the line loop.
-    scratch.virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
-
-    let mut vl_cursor = 0usize;
-
-    for line_idx in visible.line_range.clone() {
-        // ── Inject Before-anchored virtual lines ──────────────────────────
-        while vl_cursor < scratch.virtual_lines.len() {
-            if scratch.virtual_lines[vl_cursor].anchor == VirtualLineAnchor::Before(line_idx) {
-                let vl = &scratch.virtual_lines[vl_cursor];
-                emit_virtual_row(
-                    vl,
-                    line_idx,
-                    &mut scratch.display_rows,
-                    &mut scratch.graphemes,
-                );
-                vl_cursor += 1;
-            } else {
-                break;
-            }
-        }
-
-        // ── Format the buffer line (or emit a Filler row past EOF) ────────
-        // Record where this line's text starts in `line_texts` — even for filler
-        // rows the offset is pushed so `line_text_offsets[i]` always corresponds
-        // to `visible.line_range.start + i` and filler entries have zero length.
-        scratch.line_text_offsets.push(scratch.line_texts.len());
-
-        if line_idx >= rope.len_lines() {
-            scratch.display_rows.push(DisplayRow {
-                kind: RowKind::Filler,
-                graphemes: scratch.graphemes.len()..scratch.graphemes.len(),
-            });
-        } else {
-            // Collect inline inserts for this line.
-            inline_inserts.clear();
-            for provider in inline_providers {
-                provider.decorations_for_line(line_idx, inline_inserts);
-            }
-            inline_inserts.sort_by_key(|i| i.byte_offset);
-
-            format_buffer_line(
-                rope,
-                line_idx,
-                tab_width,
-                whitespace,
-                wrap_mode,
-                inline_inserts,
-                scratch,
-            );
-        }
-
-        // ── Inject After-anchored virtual lines ───────────────────────────
-        while vl_cursor < scratch.virtual_lines.len() {
-            if scratch.virtual_lines[vl_cursor].anchor == VirtualLineAnchor::After(line_idx) {
-                let vl = &scratch.virtual_lines[vl_cursor];
-                emit_virtual_row(
-                    vl,
-                    line_idx,
-                    &mut scratch.display_rows,
-                    &mut scratch.graphemes,
-                );
-                vl_cursor += 1;
-            } else {
-                break;
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Virtual row emission
-// ---------------------------------------------------------------------------
-
-fn emit_virtual_row(
-    vl: &VirtualLine,
-    anchor_line: usize,
-    display_rows: &mut Vec<DisplayRow>,
-    graphemes: &mut Vec<Grapheme>,
-) {
-    let g_start = graphemes.len();
-    graphemes.extend_from_slice(&vl.graphemes);
-    display_rows.push(DisplayRow {
-        kind: RowKind::Virtual {
-            provider_id: vl.provider_id,
-            anchor_line,
-        },
-        graphemes: g_start..graphemes.len(),
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -667,28 +538,12 @@ mod tests {
 
     fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>) {
         let rope = Rope::from_str(text);
-        let visible = crate::layout::VisibleRange {
-            line_range: 0..rope.len_lines(),
-            top_skip_rows: 0,
-            content_height: 50,
-            content_width: 80,
-            gutter_width: 0,
-            last_line_idx: rope.len_lines().saturating_sub(1),
-        };
         let ws = WhitespaceConfig::default();
-        let mut inserts = Vec::new();
+        let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(
-            &rope,
-            &visible,
-            4,
-            &ws,
-            &wrap_mode,
-            &[],
-            &[],
-            &mut inserts,
-            &mut scratch,
-        );
+        for line_idx in 0..rope.len_lines() {
+            format_buffer_line(&rope, line_idx, 4, &ws, &wrap_mode, &inserts, &mut scratch);
+        }
         (scratch.display_rows, scratch.graphemes)
     }
 
@@ -766,29 +621,8 @@ mod tests {
 
     #[test]
     fn tab_expansion_advances_to_tabstop() {
-        let rope = Rope::from_str("\t");
-        let visible = crate::layout::VisibleRange {
-            line_range: 0..1,
-            top_skip_rows: 0,
-            content_height: 10,
-            content_width: 80,
-            gutter_width: 0,
-            last_line_idx: 0,
-        };
-        let mut inserts = Vec::new();
-        let mut scratch = FormatScratch::new();
-        format_lines(
-            &rope,
-            &visible,
-            4,
-            &WhitespaceConfig::default(),
-            &WrapMode::None,
-            &[],
-            &[],
-            &mut inserts,
-            &mut scratch,
-        );
-        assert_eq!(scratch.graphemes[0].width, 4); // tab at col 0 → 4 wide
+        let (_, graphemes) = do_format("\t", WrapMode::None);
+        assert_eq!(graphemes[0].width, 4); // tab at col 0 → 4 wide
     }
 
     #[test]
@@ -800,39 +634,18 @@ mod tests {
 
     #[test]
     fn past_eof_produces_filler() {
-        // "a" has 1 line (index 0). Line indices 1+ are past EOF → Filler.
+        // Filler rows past EOF are emitted by pipeline::render_buffer_line (else branch),
+        // not by format_buffer_line. Verify the real line formats correctly and that
+        // manually-pushed Filler rows have the expected kind.
         let rope = Rope::from_str("a");
-        let visible = crate::layout::VisibleRange {
-            line_range: 0..4,
-            top_skip_rows: 0,
-            content_height: 10,
-            content_width: 80,
-            gutter_width: 0,
-            last_line_idx: 0,
-        };
-        let mut inserts = Vec::new();
+        let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(
-            &rope,
-            &visible,
-            4,
-            &WhitespaceConfig::default(),
-            &WrapMode::None,
-            &[],
-            &[],
-            &mut inserts,
-            &mut scratch,
-        );
-        // Row 0: real line; rows 1..3: Filler
-        assert_eq!(
-            scratch.display_rows[0].kind,
-            RowKind::LineStart { line_idx: 0 }
-        );
-        assert!(
-            scratch.display_rows[1..]
-                .iter()
-                .all(|r| r.kind == RowKind::Filler)
-        );
+        format_buffer_line(&rope, 0, 4, &WhitespaceConfig::default(), &WrapMode::None, &inserts, &mut scratch);
+        assert_eq!(scratch.display_rows[0].kind, RowKind::LineStart { line_idx: 0 });
+        // Simulate the pipeline's past-EOF Filler emission.
+        let g = scratch.graphemes.len();
+        scratch.display_rows.push(DisplayRow { kind: RowKind::Filler, graphemes: g..g });
+        assert!(scratch.display_rows[1..].iter().all(|r| r.kind == RowKind::Filler));
     }
 
     #[test]
@@ -847,27 +660,11 @@ mod tests {
 
     fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Grapheme>) {
         let rope = Rope::from_str(text);
-        let visible = crate::layout::VisibleRange {
-            line_range: 0..rope.len_lines(),
-            top_skip_rows: 0,
-            content_height: 50,
-            content_width: 80,
-            gutter_width: 0,
-            last_line_idx: rope.len_lines().saturating_sub(1),
-        };
-        let mut inserts = Vec::new();
+        let inserts = Vec::new();
         let mut scratch = FormatScratch::new();
-        format_lines(
-            &rope,
-            &visible,
-            4,
-            &ws,
-            &WrapMode::None,
-            &[],
-            &[],
-            &mut inserts,
-            &mut scratch,
-        );
+        for line_idx in 0..rope.len_lines() {
+            format_buffer_line(&rope, line_idx, 4, &ws, &WrapMode::None, &inserts, &mut scratch);
+        }
         (scratch.display_rows, scratch.graphemes)
     }
 
@@ -966,30 +763,9 @@ mod tests {
             tab_char: "→",
             ..WhitespaceConfig::default()
         };
-        let rope = Rope::from_str("\t");
-        let visible = crate::layout::VisibleRange {
-            line_range: 0..1,
-            top_skip_rows: 0,
-            content_height: 10,
-            content_width: 80,
-            gutter_width: 0,
-            last_line_idx: 0,
-        };
-        let mut inserts = Vec::new();
-        let mut scratch = FormatScratch::new();
-        format_lines(
-            &rope,
-            &visible,
-            4,
-            &ws,
-            &WrapMode::None,
-            &[],
-            &[],
-            &mut inserts,
-            &mut scratch,
-        );
-        assert!(matches!(&scratch.graphemes[0].content, CellContent::Indicator(s) if *s == "→"));
-        assert_eq!(scratch.graphemes[0].width, 4);
+        let (_, graphemes) = do_format_ws("\t", ws);
+        assert!(matches!(&graphemes[0].content, CellContent::Indicator(s) if *s == "→"));
+        assert_eq!(graphemes[0].width, 4);
     }
 
     // ── Wrap modes ────────────────────────────────────────────────────────

@@ -627,7 +627,7 @@ impl Editor {
         let was_declared = self
             .scripting
             .as_ref()
-            .map_or(false, |h| {
+            .is_some_and(|h| {
                 matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Declared { .. }))
             });
         self.activate_and_register(plugin);
@@ -635,7 +635,7 @@ impl Editor {
             let is_loaded = self
                 .scripting
                 .as_ref()
-                .map_or(false, |h| {
+                .is_some_and(|h| {
                     matches!(h.lazy_registry.plugins.get(plugin), Some(PluginState::Loaded))
                 });
             if is_loaded {

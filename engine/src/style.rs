@@ -352,66 +352,6 @@ pub(crate) fn style_row(
     }
 }
 
-/// Stage 3 — resolve per-grapheme styles for all display rows.
-///
-/// Convenience wrapper over [`rebuild_tier_bufs`] + [`style_row`] that
-/// processes the full set of visible rows in one call. Used by the
-/// non-fused pipeline path and tests.
-#[allow(clippy::too_many_arguments)]
-pub fn resolve_styles(
-    rows: &[DisplayRow],
-    graphemes: &[Grapheme],
-    selections: &[Selection],
-    primary_idx: usize,
-    mode: EditorMode,
-    highlight_providers: &[Box<dyn HighlightSource>],
-    theme: &Theme,
-    rope: &ropey::Rope,
-    tree: Option<&tree_sitter::Tree>,
-    scratch: &mut StyleScratch,
-) {
-    scratch.populate_sorted_sels(selections, primary_idx);
-
-    let mut current_line: Option<usize> = None;
-    scratch
-        .styles
-        .resize(graphemes.len(), ResolvedStyle::default());
-
-    for row in rows {
-        let line_idx = match row.kind.line_idx() {
-            Some(l) => l,
-            None => {
-                // Virtual row: styles are already default-initialised.
-                continue;
-            }
-        };
-
-        // Rebuild highlight tiers once per buffer line (multiple rows can share a line
-        // when wrapping is enabled).
-        if current_line != Some(line_idx) {
-            current_line = Some(line_idx);
-            rebuild_tier_bufs(line_idx, highlight_providers, rope, tree, scratch);
-        }
-
-        // Char range for this line: selections are char-offset based.
-        let line_start_char = rope.line_to_char(line_idx);
-        let line_end_char = rope.line_to_char(line_idx + 1);
-        let is_head_line = scratch
-            .sorted_sels
-            .iter()
-            .any(|s| s.head >= line_start_char && s.head < line_end_char);
-        style_row(
-            row,
-            graphemes,
-            line_start_char,
-            line_end_char,
-            is_head_line,
-            mode,
-            theme,
-            scratch,
-        );
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Selection helpers
@@ -562,6 +502,40 @@ mod tests {
     };
     use std::collections::HashMap;
 
+    /// Test driver mirroring the live pipeline's Style-stage orchestration
+    /// (`pipeline.rs::render_buffer_line`): primary-based `is_head_line`,
+    /// `rebuild_tier_bufs` once per buffer line, `style_row` per display row.
+    /// No highlight providers or tree — these tests cover cursor/selection styling only.
+    fn apply_styles(
+        rows: &[DisplayRow],
+        graphemes: &[Grapheme],
+        selections: &[Selection],
+        mode: EditorMode,
+        theme: &Theme,
+        rope: &ropey::Rope,
+        scratch: &mut StyleScratch,
+    ) {
+        scratch.populate_sorted_sels(selections, 0);
+        scratch.styles.resize(graphemes.len(), ResolvedStyle::default());
+        let mut current_line: Option<usize> = None;
+        for row in rows {
+            let Some(line_idx) = row.kind.line_idx() else {
+                continue; // virtual row: styles stay default
+            };
+            if current_line != Some(line_idx) {
+                current_line = Some(line_idx);
+                rebuild_tier_bufs(line_idx, &[], rope, None, scratch);
+            }
+            let line_start_char = rope.line_to_char(line_idx);
+            let line_end_char = rope.line_to_char(line_idx + 1);
+            let is_head_line = scratch
+                .primary_idx_in_sorted
+                .and_then(|i| scratch.sorted_sels.get(i))
+                .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
+            style_row(row, graphemes, line_start_char, line_end_char, is_head_line, mode, theme, scratch);
+        }
+    }
+
     fn make_graphemes(count: usize) -> Vec<Grapheme> {
         (0..count)
             .map(|i| Grapheme {
@@ -592,16 +566,13 @@ mod tests {
         let graphemes = make_graphemes(3);
         let rows = vec![make_row(0..3)];
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &[],
-            0,
             EditorMode::Normal,
-            &[],
             &default_theme(),
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -633,16 +604,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -697,16 +665,13 @@ mod tests {
         // Line selection: anchor=0, head=5 (the '\n').
         let selections = vec![Selection { anchor: 0, head: 5 }];
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -783,16 +748,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -870,16 +832,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -922,16 +881,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Insert,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -943,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_head_all_lines_get_cursorline() {
+    fn cursorline_applies_only_to_primary_head_line() {
         // Two selection heads on lines 0 and 2; line 1 should not get cursorline.
         // "a\nb\nc": a=char0, \n=char1, b=char2, \n=char3, c=char4
         let rope = ropey::Rope::from_str("a\nb\nc");
@@ -1003,16 +959,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1022,11 +975,9 @@ mod tests {
             "line 0 head line"
         );
         assert_eq!(scratch.styles[1].bg, None, "line 1 no head line");
-        assert_eq!(
-            scratch.styles[2].bg,
-            Some(ratatui::style::Color::Blue),
-            "line 2 head line"
-        );
+        // line 2 has a non-primary selection head: primary-based is_head_line = false,
+        // so the live pipeline does NOT apply cursorline there.
+        assert_eq!(scratch.styles[2].bg, None, "line 2 non-primary head: no cursorline");
     }
 
     #[test]
@@ -1076,16 +1027,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1125,16 +1073,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1180,16 +1125,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1241,16 +1183,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1343,16 +1282,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 
@@ -1447,16 +1383,13 @@ mod tests {
         let theme = Theme::new(styles_map, ResolvedStyle::default());
 
         let mut scratch = StyleScratch::new();
-        resolve_styles(
+        apply_styles(
             &rows,
             &graphemes,
             &selections,
-            0,
             EditorMode::Normal,
-            &[],
             &theme,
             &rope,
-            None,
             &mut scratch,
         );
 

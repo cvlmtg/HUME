@@ -197,13 +197,6 @@ impl RowKind {
         }
     }
 
-    pub fn is_wrapped_continuation(self) -> bool {
-        matches!(self, RowKind::Wrap { .. })
-    }
-
-    pub fn is_virtual(self) -> bool {
-        matches!(self, RowKind::Virtual { .. })
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -464,23 +457,4 @@ mod tests {
         assert!(EditorMode::Select.cursor_is_bar());
     }
 
-    #[test]
-    fn row_kind_predicates() {
-        assert!(
-            RowKind::Wrap {
-                line_idx: 0,
-                wrap_row: 1
-            }
-            .is_wrapped_continuation()
-        );
-        assert!(!RowKind::LineStart { line_idx: 0 }.is_wrapped_continuation());
-        assert!(
-            RowKind::Virtual {
-                provider_id: 0,
-                anchor_line: 0
-            }
-            .is_virtual()
-        );
-        assert!(!RowKind::Filler.is_virtual());
-    }
 }

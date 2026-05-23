@@ -35,10 +35,6 @@ impl SharedBuffer {
     pub fn new() -> Self {
         Self { tree: None }
     }
-
-    pub fn with_tree(tree: tree_sitter::Tree) -> Self {
-        Self { tree: Some(tree) }
-    }
 }
 
 impl Default for SharedBuffer {
