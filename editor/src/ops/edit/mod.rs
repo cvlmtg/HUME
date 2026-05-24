@@ -452,14 +452,14 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
 ///
 /// **Cursor selections (`is_collapsed()`):**
 /// - Charwise content (not ending `\n`): inserts just after the cursor character;
-///   cursor lands on the last inserted character.
+///   the pasted text is selected.
 /// - Linewise content (ending `\n`): inserts as new line(s) *below* the cursor's
-///   line; cursor lands on the first character of the first pasted line.
+///   line; the pasted line(s) are selected.
 ///
 /// **Non-collapsed selections:**
-/// - Charwise content: deletes the selected region, inserts inline.
+/// - Charwise content: deletes the selected region, inserts inline; pasted text is selected.
 /// - Linewise content: three-way split — before-text, pasted lines, after-text
-///   (empty sides collapsed so no spurious blank lines are created).
+///   (empty sides collapsed so no spurious blank lines are created); pasted lines are selected.
 ///
 /// The replaced selection is discarded and not written to any register.
 ///
@@ -478,9 +478,8 @@ pub(crate) fn paste_after(
 /// Paste `values` before/onto each selection (normal-mode `P`).
 ///
 /// **Cursor selections (`is_collapsed()`):**
-/// - Charwise content: inserts just before the cursor character; cursor lands on
-///   the last inserted character.
-/// - Linewise content: inserts as new line(s) *above* the cursor's line.
+/// - Charwise content: inserts just before the cursor character; pasted text is selected.
+/// - Linewise content: inserts as new line(s) *above* the cursor's line; pasted lines are selected.
 ///
 /// **Non-collapsed selections:** identical semantics to [`paste_after`] — the
 /// before/after distinction only applies to cursor selections.

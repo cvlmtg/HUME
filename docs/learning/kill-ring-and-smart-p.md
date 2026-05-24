@@ -67,9 +67,11 @@ clipboard, or the ring head?
 HUME records the name of the most recent command. When bare paste fires, it
 reads that name and routes accordingly:
 
-- **Previous command was a delete, change, paste, or paste-cycle** → paste
-  reads the kill-ring head (most recently killed or pasted text). Swap idioms
-  work; consecutive paste presses stay in the ring.
+- **Previous command was a delete or change** → paste reads the kill-ring head
+  (most recently killed text). Swap idioms work.
+- **Previous command was a paste or paste-cycle** → consecutive paste presses
+  append from `last_paste` (the same values verbatim), independent of what the
+  ring or clipboard hold at that moment.
 - **Anything else** → paste reads the system clipboard. Cross-application
   paste remains one keystroke.
 
@@ -77,7 +79,7 @@ The intuition behind the allow-list (this short set keeps paste in the ring;
 everything else switches to clipboard):
 
 - The user can apply one rule without memorising special cases: *"did I just
-  delete, change, or paste? Then the next paste reads the ring. Otherwise the
+  delete or change? Then the next paste reads the ring. Otherwise the
   clipboard."*
 - Motions, searches, and undo all clear the path. These operations typically
   signal a context switch — the user has moved on from "edit this spot" to

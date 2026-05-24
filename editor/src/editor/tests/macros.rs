@@ -719,3 +719,29 @@ fn macro_q1_replay_after_undo() {
 
     assert_ne!(state(&ed), before, "replay should have changed the state");
 }
+
+/// Regression: a macro containing two consecutive `p` commands must not panic
+/// or corrupt undo. Before the fix, `commit_paste_session` was gated on
+/// `!is_replaying`, so the second `p` hit `begin_edit_group` on an already-open
+/// `paste_group` → `debug_assert` panic.
+#[test]
+fn macro_with_two_pastes_does_not_panic() {
+    let mut ed = editor_from("-[AB]>CD\n");
+    // Push "AB" onto the ring by deleting it.
+    ed.handle_key(key('d')); // kill "AB"; ring head = "AB"; buffer = "-[C]>D\n"
+
+    // Seed a macro [p, p] — two consecutive pastes — into register 'q'.
+    ed.registers.write_macro('q', vec![key('p'), key('p')]);
+
+    // Replay: qq + drain. Must not panic.
+    ed.handle_key(key('q'));
+    ed.handle_key(key('q'));
+    ed.drain_replay_queue();
+
+    // Both pastes must have fired — "AB" appears at least twice.
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.matches("AB").count() >= 2,
+        "both pastes in the macro must fire; got: {buf:?}"
+    );
+}

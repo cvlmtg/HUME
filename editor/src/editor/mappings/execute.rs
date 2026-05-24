@@ -30,7 +30,7 @@ impl Editor {
             // Commit any open paste session before non-cycle dispatch so all
             // `[`/`]` cycles fold into a single undo step. Must happen before
             // the actual dispatch so that `undo` sees a committed revision.
-            if !self.is_replaying && !RING_CYCLE_CMDS.contains(&name.as_ref()) {
+            if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
                 self.commit_paste_session();
             }
 

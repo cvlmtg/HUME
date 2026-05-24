@@ -147,7 +147,7 @@ fn do_paste(ed: &mut Editor, before: bool) {
 
     // Fresh paste: resolve source via register prefix / Smart-p / clipboard.
     // Returns None to signal a no-op (black-hole, empty register, empty ring+clipboard).
-    let Some((values, cycle_origin)) = resolve_paste_values(ed) else {
+    let Some((values, cycle_origin)) = resolve_paste_values(ed, last_cmd) else {
         return;
     };
 
@@ -174,11 +174,7 @@ fn do_paste(ed: &mut Editor, before: bool) {
 /// Returns `(values, cycle_origin)` where `cycle_origin` is `Some(slot)` for
 /// ring-seeded pastes and `None` for clipboard / named-register pastes.
 /// Returns `None` to signal a no-op (black-hole, empty register, or empty ring+clipboard).
-fn resolve_paste_values(ed: &mut Editor) -> Option<(Vec<String>, Option<usize>)> {
-    // Clone last_command to avoid holding a borrow across mutable calls.
-    let last_command = ed.last_command.clone();
-    let last_cmd = last_command.as_deref();
-
+fn resolve_paste_values(ed: &mut Editor, last_cmd: Option<&str>) -> Option<(Vec<String>, Option<usize>)> {
     match ed.take_register_prefix() {
         None => {
             let prefer_ring = last_cmd.is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
