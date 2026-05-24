@@ -191,9 +191,10 @@ pub(crate) struct Editor {
     /// Consumed by `take_register_prefix()`; cleared on Esc or invalid input.
     pub(super) register_prefix: Option<RegisterPrefix>,
     /// Name of the most recently dispatched command. Updated by every command
-    /// in `execute_keymap_command` (gated by `!is_replaying` so macro replay
-    /// does not overwrite it). Holds the sentinel `"macro-replay"` for the
-    /// entire duration of macro replay — see `drain_replay_queue`.
+    /// in `execute_keymap_command`, including commands run inside a macro replay.
+    /// Holds the sentinel `"macro-replay"` immediately after a replay finishes
+    /// so that a bare `p` typed after a macro reads the clipboard — see
+    /// `drain_replay_queue`.
     ///
     /// The Smart-p heuristic reads this to decide whether bare `p` should read
     /// the kill ring head or the system clipboard.
@@ -510,11 +511,10 @@ impl Editor {
     ///
     /// Saves and restores `last_repeatable_action` so replay does not corrupt dot-repeat.
     pub(crate) fn drain_replay_queue(&mut self) {
+        if self.replay_queue.is_empty() {
+            return;
+        }
         let saved_action = self.last_repeatable_action.take();
-        // Freeze the Smart-p heuristic for the duration: individual commands
-        // inside the macro must not update last_command (is_replaying gates that),
-        // and after replay p should read the clipboard, not the ring.
-        self.last_command = Some(Cow::Borrowed("macro-replay"));
         self.is_replaying = true;
         while let Some(key) = self.replay_queue.pop_front() {
             self.handle_key(key);
@@ -523,6 +523,10 @@ impl Editor {
             }
         }
         self.is_replaying = false;
+        // After replay, reset Smart-p to clipboard mode so a bare `p` typed
+        // immediately after a macro reads the clipboard rather than whatever
+        // delete/change happened to be the last command inside the macro.
+        self.last_command = Some(Cow::Borrowed("macro-replay"));
         self.last_repeatable_action = saved_action;
     }
 

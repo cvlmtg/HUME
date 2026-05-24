@@ -201,10 +201,12 @@ impl Editor {
             }
 
             // Update last_command AFTER dispatch so do_paste reads the *previous*
-            // command, not the paste command itself.
-            if !self.is_replaying {
-                self.last_command = Some(name);
-            }
+            // command, not the paste command itself. Updated during macro replay
+            // too — Smart-p must work inside macros (e.g. `xdp` in a macro
+            // should paste the deleted line, not the clipboard). The post-replay
+            // reset to "macro-replay" in drain_replay_queue handles the
+            // after-macro case.
+            self.last_command = Some(name);
         }
     }
 
