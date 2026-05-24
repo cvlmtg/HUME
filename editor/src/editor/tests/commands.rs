@@ -1001,6 +1001,30 @@ fn xdp_pastes_ring_head_not_clipboard() {
     );
 }
 
+/// Regression: the event loop drains the (empty) macro replay queue after EVERY key.
+/// A bare `p` after `x d` must still read the ring head — the idle drain must not
+/// clobber `last_command` (the pre-432c24f bug pasted the clipboard instead).
+#[test]
+fn smart_p_survives_idle_replay_drain() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[A]>\nB\n");
+    ed.clipboard.force_unavailable();
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+
+    // Reproduce the event loop: handle_key then drain_replay_queue per key.
+    for k in [key('x'), key('d'), key('p')] {
+        ed.handle_key(k);
+        ed.drain_replay_queue(); // no macro recorded — this is an idle drain
+    }
+
+    assert_eq!(
+        state(&ed),
+        "B\n-[A\n]>",
+        "idle replay-queue drain must not reset last_command; p reads the ring head"
+    );
+}
+
 /// Kill ring depth: after >10 pushes (via `d`), `len() == 10` and the oldest entry
 /// is evicted.  The 11th push displaces the 1st.
 #[test]
