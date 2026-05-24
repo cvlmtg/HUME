@@ -18,29 +18,35 @@ use super::{register_ops, Severity};
 use super::{Editor, RegisterPrefix};
 
 // ── Kill-ring command name sets ───────────────────────────────────────────────
-// Two aspects of the same lifecycle, kept adjacent so they're maintained
-// together:
+// Three sets, kept adjacent so they're maintained together:
 //
-//  SMART_P_LAST_CMDS — the allow-list for the Smart-p heuristic: bare `p`/`P`
-//    reads the kill-ring head when the most recent command is in this set.
+//  SMART_P_LAST_CMDS — allow-list for Smart-p: bare `p`/`P` reads the ring
+//    head when `last_command` is in this set; otherwise reads the clipboard.
 //
-//  RING_CYCLE_CMDS — commands that must NOT reset the `[`/`]` cycle cursor.
-//    Any other dispatched command calls `kill_ring.reset_cycle()`.
+//  RING_CYCLE_CMDS — commands that must NOT commit the paste session before
+//    dispatch; every other command commits first so cycles fold into one undo
+//    step.
+//
+//  PASTE_FAMILY_CMDS — all four paste/cycle commands; used for append detection:
+//    a fresh `p`/`P` collapses the previous paste output rather than replacing
+//    it when `last_command` is in this set.
 
 /// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
 /// head when `last_command` is one of these; otherwise reads the clipboard.
-pub(super) const SMART_P_LAST_CMDS: &[&str] = &[
-    "change",
-    "delete",
-    "paste-after",
-    "paste-before",
-    "paste-ring-older",
-    "paste-ring-newer",
-];
+///
+/// Only `change` and `delete` belong here. Paste-family commands are handled
+/// via the append path in `do_paste` (which re-uses `last_paste` verbatim);
+/// they never reach this check.
+pub(super) const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
 
-/// Commands that must not reset the kill-ring cycle cursor; every other
-/// dispatch resets it so the next `[` starts from slot 1.
+/// Commands that must not commit the open paste session before dispatch.
+/// `[` and `]` re-paste from the same snapshot and should fold into one undo step.
 pub(super) const RING_CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-newer"];
+
+/// All paste-family commands (paste + cycle). A fresh `p`/`P` appends (rather
+/// than replaces) when `last_command` is one of these.
+pub(super) const PASTE_FAMILY_CMDS: &[&str] =
+    &["paste-after", "paste-before", "paste-ring-older", "paste-ring-newer"];
 
 impl Editor {
     /// Consume the pending `"<reg>` prefix and return the explicit register name,

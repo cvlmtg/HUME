@@ -1,5 +1,4 @@
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use crate::core::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
 use crate::ops::register::{CLIPBOARD_REGISTER, yank_selections};
@@ -7,7 +6,7 @@ use crate::ops::surround::wrap_each_selection;
 
 use super::super::{doc_ops, register_ops, Severity};
 use super::super::Editor;
-use super::{SMART_P_LAST_CMDS};
+use super::{PASTE_FAMILY_CMDS, SMART_P_LAST_CMDS};
 use crate::core::error::CommandError;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
@@ -19,14 +18,28 @@ impl Editor {
             self.report(Severity::Warning, w);
         }
     }
+
+    /// Commit the open paste session on the focused pane/buffer (if any).
+    ///
+    /// Records exactly one history revision for the entire paste + all cycles.
+    /// Called by `execute.rs` before any non-`[`/`]` dispatch so the session
+    /// is committed before undo, motions, or the next `p`/`P`.
+    pub(in super::super) fn commit_paste_session(&mut self) {
+        let focused = self.focused_pane_id;
+        let buf = self.focused_buffer_id();
+        if self.pane_state[focused][buf].paste_group.is_none() {
+            return;
+        }
+        let post_sels = self.pane_state[focused][buf].selections.clone();
+        let pbs = &mut self.pane_state[focused][buf];
+        self.buffers.get_mut(buf).commit_edit_group(&mut pbs.paste_group, post_sels);
+    }
 }
 
 /// Yank selections into the active register, then delete them.
 ///
 /// **Bare default** (no `"<reg>` prefix): pushes to the kill ring only.
-/// Clipboard is not written — use `"cy` / `"cp` for explicit clipboard ops.
-///
-/// **Explicit register**: routes through `write_register` as before.
+/// **Explicit register**: routes through `write_register`.
 pub fn cmd_delete(
     ed: &mut Editor,
     _count: usize,
@@ -56,7 +69,6 @@ pub fn cmd_change(
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
     doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, delete_selection);
-    // After begin_insert_session so clipboard warnings are logged inside the session.
     match ed.take_register_prefix() {
         None => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
@@ -67,11 +79,7 @@ pub fn cmd_change(
 /// Yank selections without deleting.
 ///
 /// **Bare default**: writes to the system clipboard AND pushes to the kill ring.
-/// This is the only operation that reaches both destinations without an explicit
-/// prefix — the intent of bare `y` is always "I want this in the clipboard".
-///
-/// **Explicit register**: routes through `write_register` (e.g. `"cy` → clipboard
-/// only, `"5y` → in-memory register 5).
+/// **Explicit register**: routes through `write_register`.
 pub fn cmd_yank(
     ed: &mut Editor,
     _count: usize,
@@ -88,192 +96,189 @@ pub fn cmd_yank(
     Ok(())
 }
 
-/// Shared body for paste commands: resolve what to read (Smart-p or explicit
-/// register), run `paste_fn`, then write displaced text back if any selection
-/// was non-cursor (replace-and-swap).
+/// Core paste implementation: open/extend a paste session and apply.
 ///
-/// **Bare default** (no `"<reg>` prefix): Smart-p — ring head or clipboard.
-/// **`"<digit>`**: kill-ring slot N.
-/// **`"c`**: system clipboard.
-/// **`"b`**: black hole (paste always no-ops).
-fn do_paste(
-    ed: &mut Editor,
-    paste_fn: impl Fn(
-        Text,
-        SelectionSet,
-        &[String],
-    ) -> (
-        Text,
-        SelectionSet,
-        crate::core::changeset::ChangeSet,
-        Vec<String>,
-    ),
-) {
+/// `before`: true for `P` (paste before), false for `p` (paste after).
+fn do_paste(ed: &mut Editor, before: bool) {
+    // Clone last_command so the borrow on ed ends before the mutable call below.
+    let last_command = ed.last_command.clone();
+    let last_cmd = last_command.as_deref();
+
+    let is_append = last_cmd.is_some_and(|c| PASTE_FAMILY_CMDS.contains(&c));
+
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
 
+    // Append path: re-paste the verbatim values from the previous paste.
+    // No ring/clipboard re-lookup — ring emptiness is irrelevant.
+    if is_append {
+        if let Some(values) = ed.last_paste.clone() {
+            // Collapse the just-pasted selection so the new paste stacks
+            // adjacent to it rather than replacing it.
+            let text = ed.buffers.get(buf).text();
+            let sels = std::mem::take(&mut ed.pane_state[focused][buf].selections);
+            ed.pane_state[focused][buf].selections = sels.map(|s| {
+                if before {
+                    Selection::collapsed(s.start())
+                } else {
+                    Selection::collapsed(s.end_inclusive(text))
+                }
+            });
+
+            // Open a new paste session (snapshot pre-paste state).
+            let pre_sels = ed.pane_state[focused][buf].selections.clone();
+            ed.buffers.get(buf).begin_edit_group(&mut ed.pane_state[focused][buf].paste_group, pre_sels);
+
+            let paste_fn = if before { paste_before } else { paste_after };
+            doc_ops::apply_doc_edit_regrouped(
+                &mut ed.buffers,
+                &mut ed.pane_state,
+                focused,
+                buf,
+                |b, s| paste_fn(b, s, &values),
+            );
+            // Preserve the cycle position — the seeded origin from the first
+            // paste in this run remains correct for `[`/`]`.
+            return;
+        }
+        // Fall through: is_append but nothing ever pasted (e.g. lone `[`/`]`
+        // no-op before any paste) — treat as a fresh paste.
+    }
+
+    // Fresh paste: resolve source via register prefix / Smart-p / clipboard.
+    // Returns None to signal a no-op (black-hole, empty register, empty ring+clipboard).
+    let Some((values, cycle_origin)) = resolve_paste_values(ed) else {
+        return;
+    };
+
+    ed.last_paste = Some(values.clone());
+
+    // Open a new paste session (snapshot pre-paste state).
+    let pre_sels = ed.pane_state[focused][buf].selections.clone();
+    ed.buffers.get(buf).begin_edit_group(&mut ed.pane_state[focused][buf].paste_group, pre_sels);
+
+    let paste_fn = if before { paste_before } else { paste_after };
+    doc_ops::apply_doc_edit_regrouped(
+        &mut ed.buffers,
+        &mut ed.pane_state,
+        focused,
+        buf,
+        |b, s| paste_fn(b, s, &values),
+    );
+
+    ed.kill_ring.seed_cycle(cycle_origin);
+}
+
+/// Resolve values for a **fresh** paste and the ring-slot origin for seeding.
+///
+/// Returns `(values, cycle_origin)` where `cycle_origin` is `Some(slot)` for
+/// ring-seeded pastes and `None` for clipboard / named-register pastes.
+/// Returns `None` to signal a no-op (black-hole, empty register, or empty ring+clipboard).
+fn resolve_paste_values(ed: &mut Editor) -> Option<(Vec<String>, Option<usize>)> {
+    // Clone last_command to avoid holding a borrow across mutable calls.
+    let last_command = ed.last_command.clone();
+    let last_cmd = last_command.as_deref();
+
     match ed.take_register_prefix() {
         None => {
-            let prefer_ring = ed
-                .last_command
-                .as_deref()
-                .is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
+            let prefer_ring = last_cmd.is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
             if prefer_ring {
-                // Borrow kill_ring immutably; apply_doc_edit takes &mut buffers /
-                // &mut pane_state — disjoint fields, so no clone needed.
-                if let Some(head) = ed.kill_ring.head() {
-                    let (displaced, _) = doc_ops::apply_doc_edit(
-                        &mut ed.buffers,
-                        &mut ed.pane_state,
-                        focused,
-                        buf,
-                        |b, s| paste_fn(b, s, head),
-                    );
-                    // head's last use was inside the closure; NLL ends the
-                    // kill_ring borrow here, so push() is safe.
-                    if let Some(d) = displaced
-                        && d.iter().any(|s| !s.is_empty())
-                    {
-                        ed.kill_ring.push(d);
-                    }
-                }
+                let values = ed.kill_ring.head()?.to_vec();
+                Some((values, Some(0)))
             } else {
-                let (values, warn) = register_ops::read_register_text(
+                // Read clipboard; convert Cow to owned before calling report().
+                let (cow, warn) = register_ops::read_register_text(
                     &ed.registers,
                     &mut ed.clipboard,
                     &ed.kill_ring,
                     CLIPBOARD_REGISTER,
                 );
-                if let Some(values) = values {
-                    let (displaced, _) = doc_ops::apply_doc_edit(
-                        &mut ed.buffers,
-                        &mut ed.pane_state,
-                        focused,
-                        buf,
-                        |b, s| paste_fn(b, s, &values),
-                    );
-                    if let Some(d) = displaced
-                        && d.iter().any(|s| !s.is_empty())
-                        && let Some(w) =
-                            register_ops::write_clipboard(&mut ed.registers, &mut ed.clipboard, &d)
-                    {
-                        ed.report(Severity::Warning, w);
-                    }
-                }
+                let values = cow.map(|c| c.to_vec()); // end borrow of ed.registers
                 if let Some(w) = warn {
                     ed.report(Severity::Warning, w);
                 }
+                // When both clipboard and in-memory 'c' are empty, fall back to
+                // ring head so the user can still paste a recent delete/yank.
+                if values.is_none() {
+                    let head = ed.kill_ring.head()?.to_vec();
+                    return Some((head, Some(0)));
+                }
+                Some((values?, None))
             }
         }
+        Some('b') => None, // black hole
         Some(c) if c.is_ascii_digit() => {
-            if let Some(values) = register_ops::read_digit_register(&ed.kill_ring, c) {
-                let (displaced, _) = doc_ops::apply_doc_edit(
-                    &mut ed.buffers,
-                    &mut ed.pane_state,
-                    focused,
-                    buf,
-                    |b, s| paste_fn(b, s, values),
-                );
-                if let Some(d) = displaced
-                    && d.iter().any(|s| !s.is_empty())
-                {
-                    ed.kill_ring.push(d);
-                }
-            }
+            let slot = (c as u8 - b'0') as usize;
+            let values = ed.kill_ring.slot(slot)?.to_vec();
+            Some((values, Some(slot)))
         }
         Some(c) => {
-            let (values, warn) = register_ops::read_register_text(
+            let (cow, warn) = register_ops::read_register_text(
                 &ed.registers,
                 &mut ed.clipboard,
                 &ed.kill_ring,
                 c,
             );
-            if let Some(values) = values {
-                let (displaced, _) = doc_ops::apply_doc_edit(
-                    &mut ed.buffers,
-                    &mut ed.pane_state,
-                    focused,
-                    buf,
-                    |b, s| paste_fn(b, s, &values),
-                );
-                if let Some(d) = displaced
-                    && d.iter().any(|s| !s.is_empty())
-                    && let Some(w) = register_ops::write_register(
-                        &mut ed.registers,
-                        &mut ed.clipboard,
-                        c,
-                        d,
-                    )
-                {
-                    ed.report(Severity::Warning, w);
-                }
-            }
+            let values = cow.map(|c| c.to_vec()); // end borrow of ed.registers
             if let Some(w) = warn {
                 ed.report(Severity::Warning, w);
             }
+            Some((values?, None))
         }
     }
 }
 
-/// Paste after the selection; swap displaced text back into the register when
-/// the selection was non-cursor (replace-and-swap semantics).
+/// Paste after the selection.
 pub fn cmd_paste_after(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(ed, paste_after);
+    do_paste(ed, false);
     Ok(())
 }
 
-/// Paste before the selection; same replace-and-swap semantics as `cmd_paste_after`.
+/// Paste before the selection.
 pub fn cmd_paste_before(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(ed, paste_before);
+    do_paste(ed, true);
     Ok(())
 }
 
-/// Cycle the kill ring one step older and paste-after.
+/// Cycle the kill ring one step older and re-paste from the session snapshot.
 ///
-/// Each press walks one entry further back in the ring (clamped at the oldest).
-/// The cycle cursor is reset by any non-`[`/`]` command dispatch, or when
-/// displaced text from a selection paste is pushed onto the ring head.
+/// Noop when no paste session is open or when already at the oldest entry.
 pub fn cmd_paste_ring_older(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    // Compute pane/buf IDs before cycle_older takes &mut kill_ring, since
-    // focused_buffer_id() is a &self method and can't coexist with &mut kill_ring.
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    // cycle_older returns &[String] from &mut kill_ring; apply_doc_edit takes
-    // &mut buffers / &mut pane_state — disjoint fields, so no clone needed.
+    if ed.pane_state[focused][buf].paste_group.is_none() {
+        return Ok(());
+    }
+    // cycle_older advances the cursor and returns the values; None = already at end.
     if let Some(values) = ed.kill_ring.cycle_older() {
-        let (displaced, _) = doc_ops::apply_doc_edit(
+        let values = values.to_vec();
+        ed.last_paste = Some(values.clone());
+        doc_ops::apply_doc_edit_regrouped(
             &mut ed.buffers,
             &mut ed.pane_state,
             focused,
             buf,
-            |b, s| paste_after(b, s, values),
+            |b, s| paste_after(b, s, &values),
         );
-        if let Some(d) = displaced
-            && d.iter().any(|s| !s.is_empty())
-        {
-            ed.kill_ring.push(d);
-        }
     }
     Ok(())
 }
 
-/// Cycle the kill ring one step newer and paste-after.
+/// Cycle the kill ring one step newer and re-paste from the session snapshot.
 ///
-/// Retreats the cycle cursor one step toward the head. If the cursor is already
-/// at the head (slot 0), stays there. Displaced text from a selection paste is
-/// pushed onto the ring head (resetting the cycle cursor).
+/// Noop when no paste session is open or when already at the head.
 pub fn cmd_paste_ring_newer(
     ed: &mut Editor,
     _count: usize,
@@ -281,19 +286,20 @@ pub fn cmd_paste_ring_newer(
 ) -> Result<(), CommandError> {
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
+    if ed.pane_state[focused][buf].paste_group.is_none() {
+        return Ok(());
+    }
+    // cycle_newer retreats the cursor toward the head; None = already at head.
     if let Some(values) = ed.kill_ring.cycle_newer() {
-        let (displaced, _) = doc_ops::apply_doc_edit(
+        let values = values.to_vec();
+        ed.last_paste = Some(values.clone());
+        doc_ops::apply_doc_edit_regrouped(
             &mut ed.buffers,
             &mut ed.pane_state,
             focused,
             buf,
-            |b, s| paste_after(b, s, values),
+            |b, s| paste_after(b, s, &values),
         );
-        if let Some(d) = displaced
-            && d.iter().any(|s| !s.is_empty())
-        {
-            ed.kill_ring.push(d);
-        }
     }
     Ok(())
 }
@@ -323,8 +329,6 @@ pub fn cmd_redo(
 // ── Replace / surround ────────────────────────────────────────────────────────
 
 /// Replace every character in each selection with the next typed character.
-///
-/// Reads the replacement character from `ed.pending_char`.
 pub fn cmd_replace(
     ed: &mut Editor,
     _count: usize,
@@ -341,10 +345,6 @@ pub fn cmd_replace(
 }
 
 /// Wrap every selection with a pair determined by the next typed character.
-///
-/// Reads the delimiter from `ed.pending_char`. Looks up the configured pair
-/// (so `mw[` and `mw]` both wrap with `[` `]`); falls back to symmetric
-/// (open == close == ch) for characters not in any configured pair (e.g. `mw*`).
 pub fn cmd_surround_add(
     ed: &mut Editor,
     _count: usize,

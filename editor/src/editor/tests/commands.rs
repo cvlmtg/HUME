@@ -77,37 +77,6 @@ fn y_populates_register_without_changing_buffer() {
     );
 }
 
-// ── `p` swaps displaced selection text back into the register ──────────────
-
-/// When `p` pastes over a non-cursor (multi-char) selection, the displaced
-/// text must be written back to the clipboard (exchange semantics).
-/// `p` with no prior `c`/`d` reads the system clipboard via Smart-p; the
-/// displaced text is written back to the clipboard so it can be pasted again.
-#[test]
-fn p_over_selection_swaps_displaced_text_into_register() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
-
-    let mut ed = editor_from("-[hell]>o\n");
-    // Seed clipboard (in-memory mirror for headless tests) with the text to paste.
-    ed.registers
-        .write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
-
-    ed.handle_key(key('p'));
-
-    assert_eq!(
-        ed.doc().text().to_string(),
-        "XYo\n",
-        "pasted text in buffer"
-    );
-    // Displaced "hell" goes back to clipboard (Smart-p read from clipboard,
-    // so displaced text returns to the same source).
-    assert_eq!(
-        reg(&ed, CLIPBOARD_REGISTER),
-        &["hell"],
-        "displaced text back in clipboard"
-    );
-}
-
 // ── `r<char>` pending-key replace sequence ─────────────────────────────────
 
 /// `r` sets a wait-char constructor; the following character replaces every
@@ -1000,12 +969,35 @@ fn smart_p_consecutive_paste_stays_in_ring() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.handle_key(key('d')); // delete 'X' → ring = ["X"]
     ed.handle_key(key('p')); // first paste → from ring, last_command = "paste-after"
-    // last_command = "paste-after" ∈ SMART_P_LAST_CMDS → next p also reads ring.
+    // last_command = "paste-after" ∈ PASTE_FAMILY_CMDS → is_append = true → appends from last_paste.
     ed.handle_key(key('p')); // second paste → still from ring
     // Buffer should contain "X" twice (pasted) and NOT "CLIP".
     assert!(
         !ed.doc().text().to_string().contains("CLIP"),
         "second consecutive p still reads ring"
+    );
+}
+
+/// `x d p` pastes the kill-ring head, not the clipboard (PASTERING.md rule 17).
+///
+/// `last_command = "delete"` is in `SMART_P_LAST_CMDS`, so bare `p` reads the
+/// ring even when the clipboard holds different content.
+#[test]
+fn xdp_pastes_ring_head_not_clipboard() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[A]>\nB\n");
+    ed.clipboard.force_unavailable();
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+
+    ed.handle_key(key('x')); // select "A\n"
+    ed.handle_key(key('d')); // delete → ring = ["A\n"], last_command = "delete"
+    ed.handle_key(key('p')); // prefer_ring = true → ring head
+
+    assert_eq!(
+        state(&ed),
+        "B\n-[A\n]>",
+        "xdp must paste the deleted line (ring head), not the clipboard sentinel"
     );
 }
 
@@ -1113,89 +1105,211 @@ fn paste_ring_older_empty_ring_is_noop() {
     assert_eq!(state(&ed), before, "] on empty ring is a no-op");
 }
 
-/// `[ ]` cycle after `d`: the ring cursor walks older then back newer.
+/// `[ ]` cycle within a paste session: the ring cursor walks older then back newer.
 #[test]
 fn paste_ring_cycle_older_then_newer() {
-    // Push 3 entries: A (oldest), B, C (newest/head).
+    // Push 3 entries: A\n (oldest), B\n, C\n (newest/head at slot 0).
     let mut ed = editor_from("-[A]>\nB\nC\n");
-    // Delete A → ring = [A] (head)
-    ed.handle_key(key('x'));
-    ed.handle_key(key('d'));
-    // Delete B → ring = [B, A] (B is now head)
-    ed.handle_key(key('x'));
-    ed.handle_key(key('d'));
-    // Delete C → ring = [C, B, A] (C is now head)
-    ed.handle_key(key('x'));
-    ed.handle_key(key('d'));
+    ed.handle_key(key('x')); ed.handle_key(key('d')); // ring = [A\n]
+    ed.handle_key(key('x')); ed.handle_key(key('d')); // ring = [B\n, A\n]
+    ed.handle_key(key('x')); ed.handle_key(key('d')); // ring = [C\n, B\n, A\n]
 
-    // `[` cycles older (from None → slot 1 = B).
+    // Open paste session: `p` reads ring head (C\n) since last_command ∈ SMART_P_LAST_CMDS.
+    ed.handle_key(key('p')); // seeds cycle at Some(0) = C\n
+
+    // `[` cycles older: Some(0) → Some(1) = B\n, re-pastes from session snapshot.
     ed.handle_key(key('['));
     let after_first_older = ed.doc().text().to_string();
-    assert!(
-        after_first_older.contains('B'),
-        "first [ pastes slot 1 (B)"
-    );
-    // `[` again → slot 2 = A.
+    assert!(after_first_older.contains('B'), "first [ pastes slot 1 (B)");
+    // `[` again → Some(1) → Some(2) = A\n.
     ed.handle_key(key('['));
     let after_second_older = ed.doc().text().to_string();
-    assert!(
-        after_second_older.contains('A'),
-        "second [ pastes slot 2 (A)"
-    );
-    // `]` retreats → slot 1 = B.
+    assert!(after_second_older.contains('A'), "second [ pastes slot 2 (A)");
+    // `]` retreats → Some(2) → Some(1) = B\n.
     ed.handle_key(key(']'));
     let after_newer = ed.doc().text().to_string();
     assert!(after_newer.contains('B'), "] after two [ pastes slot 1 (B)");
 }
 
-/// `[` over a non-cursor selection: displaced text must be pushed onto the kill
-/// ring head rather than silently dropped.
-#[test]
-fn paste_ring_cycle_preserves_displaced_text() {
-    // Build a ring with 2 entries so `[` reaches slot 1.
-    let mut ed = editor_from("-[X]>Y\nZ\n");
-    // Delete X → ring = [X]
-    ed.handle_key(key('d'));
-    // Delete Y → ring = [Y, X] (Y is head at slot 0, X at slot 1)
-    ed.handle_key(key('d'));
 
-    // Manually arm a 2-char selection so paste-after triggers replace-and-swap.
-    // Use `x` (select-char) and extend with `l` to have sel=[Z].
-    // Actually: after two deletes the buffer is "\nZ\n", cursor on '\n'.
-    // Move to next line to reach 'Z', then `x` selects 'Z'.
-    ed.handle_key(key('j')); // move to 'Z' line
-    ed.handle_key(key('x')); // select 'Z' (non-cursor selection)
-
-    // `[` → cycle older → reads slot 1 (X), pastes over 'Z'. Displaced = "Z".
-    ed.handle_key(key('['));
-
-    // Displaced 'Z' must now be on the ring head.
-    assert_eq!(
-        ed.kill_ring.head(),
-        Some(["Z".to_string()].as_slice()),
-        "displaced text 'Z' must be pushed to ring head after [ over selection"
-    );
-}
-
-/// Reproduce the exact user report: select a line with `x`, delete with `d`,
-/// move with `j`, then cycle the ring with `]` — the deleted line must appear
-/// as its own line *below* the cursor, not embedded inside the current line.
+/// Select a line with `x`, delete with `d`, move with `j`, then paste via
+/// explicit ring slot — the deleted line must appear as its own line *below*
+/// the cursor, not embedded inside the current line.
 #[test]
 fn paste_ring_linewise_pastes_below_not_inline() {
-    // Buffer: "A\nB\nC\n". Delete line A (x+d), move to C (j), paste via ].
+    // Buffer: "A\nB\nC\n". Delete line A (x+d), move to C (j), paste via "0p.
     let mut ed = editor_from("-[A]>\nB\nC\n");
     ed.handle_key(key('x')); // select line "A\n"
-    ed.handle_key(key('d')); // yank "A\n" to ring head, buffer → "B\nC\n"
+    ed.handle_key(key('d')); // yank "A\n" to ring head (slot 0), buffer → "B\nC\n"
     ed.handle_key(key('j')); // cursor → 'C'
-    ed.handle_key(key(']')); // cycle ring to head (="A\n"), paste linewise below C
+    // "0p reads ring slot 0 (="A\n") directly — avoids smart-p clipboard routing
+    // after the intervening motion cleared last_command.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('0'));
+    ed.handle_key(key('p')); // paste ring slot 0 (A\n) linewise below C
 
     // "A\n" must land as its own line below C — not inside C's text.
     assert_eq!(
         state(&ed),
-        "B\nC\n-[A]>\n",
-        "] on a linewise ring entry must paste as a new line, not inline"
+        "B\nC\n-[A\n]>",
+        "\"0p on a linewise ring entry must paste as a new line, not inline"
     );
 }
+
+/// `[`/`]` cycle within a paste session REPLACES the previous paste — never
+/// accumulates a second copy.
+#[test]
+fn paste_ring_warm_cycle_replaces_not_accumulates() {
+    // Two ring entries: A\n (older, slot 1), B\n (head, slot 0).
+    let mut ed = editor_from("-[A]>\nB\nC\n");
+    ed.handle_key(key('x')); ed.handle_key(key('d')); // ring = [A\n]; buffer = "B\nC\n"
+    ed.handle_key(key('x')); ed.handle_key(key('d')); // ring = [B\n, A\n]; buffer = "C\n"
+
+    // p: smart-p reads ring head B\n (last_command = "delete"), opens session.
+    ed.handle_key(key('p'));
+    assert_eq!(
+        ed.doc().text().to_string().matches("B\n").count(),
+        1,
+        "p pastes B once"
+    );
+
+    // [: cycle older (slot 0 → slot 1 = A\n) — must REPLACE B, not add another.
+    ed.handle_key(key('['));
+    let after_older = ed.doc().text().to_string();
+    assert_eq!(after_older.matches("A\n").count(), 1, "[ replaces paste with A");
+
+    // ]: cycle newer (slot 1 → slot 0 = B\n) — must REPLACE A.
+    ed.handle_key(key(']'));
+    let after_newer = ed.doc().text().to_string();
+    assert_eq!(after_newer.matches("B\n").count(), 1, "] replaces back with B");
+    assert_eq!(after_newer.matches("A\n").count(), 0, "] removes A");
+}
+
+/// Single-char cycle: `[` within a session pastes the older entry, `]` replaces
+/// it back with the head — collapsed selection is not an obstacle.
+#[test]
+fn paste_ring_warm_cycle_replaces_single_char_paste() {
+    let mut ed = editor_from("-[X]>Y\n");
+    ed.handle_key(key('d')); // kill "X"; ring = [X], buffer = "-[Y]>\n"
+    ed.handle_key(key('d')); // kill "Y"; ring = [Y, X], buffer = "-[\n]>"
+
+    // p: reads ring head Y (last_command = "delete"), opens session, seeds cycle at 0.
+    ed.handle_key(key('p'));
+    assert!(ed.doc().text().to_string().contains('Y'), "p pastes Y (ring head)");
+
+    // [: cycle older (slot 0 → slot 1 = X), replaces Y.
+    ed.handle_key(key('['));
+    assert!(ed.doc().text().to_string().contains('X'), "[ pastes X (slot 1)");
+
+    // ]: cycle newer (slot 1 → slot 0 = Y), replacing X.
+    ed.handle_key(key(']'));
+    let buf = ed.doc().text().to_string();
+    assert!(buf.contains('Y'), "] pastes Y (slot 0)");
+    assert!(!buf.contains('X'), "] replaces X — no 'X' remains");
+}
+
+/// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard
+/// paste (PASTERING.md rule 19).
+///
+/// After `[` swaps the paste to the ring head, `last_command = "paste-ring-older"`
+/// is in `PASTE_FAMILY_CMDS`, so the next `p` must append (not replace).
+#[test]
+fn paste_after_cycle_appends_cycled_entry() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.clipboard.force_unavailable();
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.kill_ring.push(vec!["RING".to_string()]); // ring head = "RING"
+
+    // p: last_command=None → clipboard "CLIP"; seed_cycle(None).
+    ed.handle_key(key('p'));
+    // [: cycle_older None→0="RING"; replaces paste; last_paste=["RING"].
+    ed.handle_key(key('['));
+    // p: is_append (last_command="paste-ring-older" ∈ PASTE_FAMILY) → append last_paste.
+    ed.handle_key(key('p'));
+
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("RING").count(),
+        2,
+        "p after [ must duplicate the cycled entry (rule 19)"
+    );
+    assert!(
+        !buf.contains("CLIP"),
+        "clipboard content must not appear — p after [ appends ring entry, not clipboard"
+    );
+}
+
+/// Consecutive `p` presses append copies rather than replacing the selected paste.
+#[test]
+fn consecutive_paste_appends_copies() {
+    let mut ed = editor_from("-[ab]>\n");
+    ed.handle_key(key('y')); // yank "ab" to clipboard + ring
+    ed.handle_key(key('d')); // delete, buffer = "\n"; ring head = "ab"
+    ed.handle_key(key('p')); // paste "ab" (from ring, prev=delete); "ab" selected
+    ed.handle_key(key('p')); // prev=paste-after → APPEND another copy
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("ab").count(),
+        2,
+        "two consecutive p presses must stack two copies of 'ab'"
+    );
+}
+
+/// Consecutive `p` presses append when the previous paste came from the CLIPBOARD
+/// and the kill ring is empty — the second `p` must not be a no-op.
+#[test]
+fn consecutive_clipboard_paste_appends() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.clipboard.force_unavailable(); // headless: reads fall back to in-memory mirror
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
+    // ring is empty — this is the regression case
+
+    ed.handle_key(key('p')); // last_command=None → clipboard → pastes "XY"; last_paste=["XY"]
+    ed.handle_key(key('p')); // last_command="paste-after" ∈ PASTE_FAMILY → repeat last_paste
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("XY").count(),
+        2,
+        "two consecutive p presses must stack two copies even with an empty kill ring"
+    );
+}
+
+/// Consecutive `p` after a clipboard paste must repeat the clipboard value, not
+/// whatever happens to be at the ring head.
+#[test]
+fn consecutive_paste_repeats_last_not_ring_head() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.clipboard.force_unavailable();
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
+    ed.kill_ring.push(vec!["ZZ".to_string()]); // ring has different content
+
+    ed.handle_key(key('p')); // clipboard → "XY"; last_paste=["XY"]
+    ed.handle_key(key('p')); // append → repeats "XY", not ring head "ZZ"
+    let buf = ed.doc().text().to_string();
+    assert_eq!(buf.matches("XY").count(), 2, "clipboard value repeated");
+    assert!(!buf.contains("ZZ"), "ring head must not appear — append repeats last paste verbatim");
+}
+
+/// After paste-after, the pasted text is selected (covers the full inserted span).
+#[test]
+fn paste_leaves_output_selected() {
+    // Delete "ab" → ring head = "ab". Then paste: selection must cover "ab".
+    let mut ed = editor_from("-[ab]>cd\n");
+    ed.handle_key(key('d')); // kill "ab"; buffer = "-[c]>d\n"
+    ed.handle_key(key('p')); // smart-p reads ring head "ab" (charwise); paste after 'c'
+    assert_eq!(
+        state(&ed),
+        "c-[ab]>d\n",
+        "paste must leave the pasted text selected"
+    );
+}
+
 
 // ── Register prefix persistence across non-register commands ────────────────
 

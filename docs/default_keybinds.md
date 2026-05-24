@@ -152,8 +152,8 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 | `y` | Yank selections: write to system clipboard **and** push onto kill ring |
 | `p` | Smart-p paste after selection (see below) |
 | `P` | Smart-p paste before selection (see below) |
-| `[` | Cycle kill ring one step older and paste after |
-| `]` | Cycle kill ring one step newer and paste after |
+| `[` | Within a paste session: cycle one step older and re-paste |
+| `]` | Within a paste session: cycle one step newer and re-paste |
 | `r <char>` | Replace every character in each selection with `<char>` |
 | `u` | Undo |
 | `U` / `Ctrl+r` | Redo |
@@ -163,10 +163,10 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 
 `p` and `P` decide what to paste based on the last command:
 
-- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (most recently deleted or yanked text). This preserves the `dp` char-swap and `xdp` line-swap muscle memory.
+- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (most recently killed or pasted text). This preserves the `dp` char-swap and `xdp` line-swap muscle memory.
 - **Otherwise** — reads the system clipboard. This is the path for cross-app paste: copy in a browser, then bare `p` in HUME.
 
-`[` and `]` always read the kill ring and cycle one step older / newer on each press. They reset when any other command fires.
+`[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle re-pastes from the session's snapshot so the previous paste is fully replaced — no extra lines accumulate. The whole session records as one undo step. `[`/`]` without an open session are noops. Consecutive `p` presses append copies (each is a new session and a separate undo step).
 
 To force a specific source, use the register prefix `"`:
 

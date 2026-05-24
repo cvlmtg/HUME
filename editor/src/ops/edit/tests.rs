@@ -388,35 +388,31 @@ fn delete_selection_multi_char_ends_at_grapheme_base() {
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
-// Helper: call paste_after and discard changeset + replaced vec for assert_state!.
-fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet) {
-    let (b, s, _, _) = paste_after(buf, sels, values);
-    (b, s)
+fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {
+    paste_after(buf, sels, values)
 }
 
-// Helper: call paste_before and discard changeset + replaced vec for assert_state!.
-fn pb(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet) {
-    let (b, s, _, _) = paste_before(buf, sels, values);
-    (b, s)
+fn pb(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {
+    paste_before(buf, sels, values)
 }
 
 #[test]
 fn paste_after_single_cursor() {
-    // Cursor on 'h' — insert "XY" after 'h'; cursor lands on 'Y'.
+    // Cursor on 'h' — insert "XY" after 'h'; selection covers "XY".
     assert_state!(
         "-[h]>ello\n",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "hX-[Y]>ello\n"
+        "h-[XY]>ello\n"
     );
 }
 
 #[test]
 fn paste_after_mid_word() {
-    // Cursor on 'e' (pos 1) — insert "XY" after 'e'.
+    // Cursor on 'e' (pos 1) — insert "XY" after 'e'; selection covers "XY".
     assert_state!(
         "h-[e]>llo\n",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "heX-[Y]>llo\n"
+        "he-[XY]>llo\n"
     );
 }
 
@@ -427,7 +423,7 @@ fn paste_after_cursor_on_structural_newline() {
     assert_state!(
         "hello-[\n]>",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "helloX-[Y]>\n"
+        "hello-[XY]>\n"
     );
 }
 
@@ -437,7 +433,7 @@ fn paste_after_two_cursors_n_to_n() {
     assert_state!(
         "-[h]>ell-[o]>\n",
         |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
-        "hA-[B]>elloC-[D]>\n"
+        "h-[AB]>ello-[CD]>\n"
     );
 }
 
@@ -447,7 +443,7 @@ fn paste_after_count_mismatch_uses_joined() {
     assert_state!(
         "-[h]>ell-[o]>\n",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "hX-[Y]>elloX-[Y]>\n"
+        "h-[XY]>ello-[XY]>\n"
     );
 }
 
@@ -457,22 +453,18 @@ fn paste_after_unicode() {
     assert_state!(
         "-[h]>i\n",
         |(buf, sels)| pa(buf, sels, &["e\u{0301}".to_string()]),
-        "he-[\u{0301}]>i\n"
+        "h-[e\u{0301}]>i\n"
     );
 }
 
 #[test]
 fn paste_after_replaces_forward_selection() {
-    // Multi-char selection "hel" is replaced by "XY". Cursor on 'Y'.
-    // Replaced text "hel" is returned.
+    // Multi-char selection "hel" is replaced by "XY". Selection covers "XY".
     assert_state!(
         "-[hel]>lo\n",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "X-[Y]>lo\n"
+        "-[XY]>lo\n"
     );
-    let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
-    let (_, _, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
-    assert_eq!(replaced, vec!["hel"]);
 }
 
 #[test]
@@ -481,65 +473,37 @@ fn paste_after_replaces_backward_selection() {
     assert_state!(
         "<[hel]-lo\n",
         |(buf, sels)| pa(buf, sels, &["XY".to_string()]),
-        "X-[Y]>lo\n"
+        "-[XY]>lo\n"
     );
-    let (buf, sels) = crate::testing::parse_state("<[hel]-lo\n");
-    let (_, _, _, replaced) = paste_after(buf, sels, &["XY".to_string()]);
-    assert_eq!(replaced, vec!["hel"]);
-}
-
-#[test]
-fn paste_after_replace_swap_roundtrip() {
-    // Yank "foo", paste onto selection "bar" → buffer has "foo", replaced = ["bar"].
-    let (buf, sels) = crate::testing::parse_state("-[bar]>\n");
-    let (new_buf, _, _, replaced) = paste_after(buf, sels, &["foo".to_string()]);
-    assert_eq!(new_buf.to_string(), "foo\n");
-    assert_eq!(replaced, vec!["bar"]);
 }
 
 #[test]
 fn paste_after_replace_multi_cursor_n_to_n() {
     // Two non-cursor selections; two values — each replaced independently.
     // "-[he]>l-[lo]>\n": "he" replaced by "AB", "lo" replaced by "CD".
-    // Text: h(0)e(1)l(2)l(3)o(4)\n(5)
-    // After: AB + l + CD + \n = "ABlCD\n"
     assert_state!(
         "-[he]>l-[lo]>\n",
         |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
-        "A-[B]>lC-[D]>\n"
+        "-[AB]>l-[CD]>\n"
     );
-    let (buf, sels) = crate::testing::parse_state("-[he]>l-[lo]>\n");
-    let (_, _, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
-    assert_eq!(replaced, vec!["he", "lo"]);
 }
 
 #[test]
 fn paste_after_mixed_cursor_and_selection() {
     // One cursor (inserts) + one multi-char selection (replaces).
     // "-[h]>el-[lo]>\n": cursor at 'h' inserts "AB" after it; "lo" is replaced by "CD".
-    // Text: h + AB + el + CD + \n = "hABelCD\n"
-    // Cursors land on 'B' (pos 2) and 'D' (pos 6).
     assert_state!(
         "-[h]>el-[lo]>\n",
         |(buf, sels)| pa(buf, sels, &["AB".to_string(), "CD".to_string()]),
-        "hA-[B]>elC-[D]>\n"
+        "h-[AB]>el-[CD]>\n"
     );
-    let (buf, sels) = crate::testing::parse_state("-[h]>el-[lo]>\n");
-    let (_, _, _, replaced) = paste_after(buf, sels, &["AB".to_string(), "CD".to_string()]);
-    // Cursor replaced nothing; selection replaced "lo".
-    assert_eq!(replaced, vec!["", "lo"]);
 }
 
 #[test]
 fn paste_after_empty_string_cursor_is_noop() {
-    // B4 regression: b.new_pos() - 1 underflows when text is "".
-    // For a cursor selection with empty text, buffer and cursor must be unchanged.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| {
-            let (b, s, _, _) = paste_after(buf, sels, &["".to_string()]);
-            (b, s)
-        },
+        |(buf, sels)| pa(buf, sels, &["".to_string()]),
         "-[h]>ello\n"
     );
 }
@@ -547,13 +511,10 @@ fn paste_after_empty_string_cursor_is_noop() {
 #[test]
 fn paste_after_empty_string_over_selection_deletes_and_lands_at_start() {
     // Empty text with a multi-char selection: the selection is deleted,
-    // cursor lands at the start of the deleted region (not new_pos() - 1).
+    // cursor lands at the start of the deleted region.
     assert_state!(
         "-[hel]>lo\n",
-        |(buf, sels)| {
-            let (b, s, _, _) = paste_after(buf, sels, &["".to_string()]);
-            (b, s)
-        },
+        |(buf, sels)| pa(buf, sels, &["".to_string()]),
         "-[l]>o\n"
     );
 }
@@ -562,32 +523,32 @@ fn paste_after_empty_string_over_selection_deletes_and_lands_at_start() {
 
 #[test]
 fn paste_before_single_cursor() {
-    // Cursor on 'h' — insert "XY" before 'h'; cursor lands on 'Y'.
+    // Cursor on 'h' — insert "XY" before 'h'; selection covers "XY".
     assert_state!(
         "-[h]>ello\n",
         |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
-        "X-[Y]>hello\n"
+        "-[XY]>hello\n"
     );
 }
 
 #[test]
 fn paste_before_mid_word() {
-    // Cursor on 'e' (pos 1) — insert "XY" before 'e'.
+    // Cursor on 'e' (pos 1) — insert "XY" before 'e'; selection covers "XY".
     assert_state!(
         "h-[e]>llo\n",
         |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
-        "hX-[Y]>ello\n"
+        "h-[XY]>ello\n"
     );
 }
 
 #[test]
 fn paste_before_two_cursors_n_to_n() {
     // Two cursors; two values — each cursor gets its own slot.
-    // Text after: AB + hell + CD + o + \n
+    // Text after: AB + hell + CD + o + \n; each selection covers its value.
     assert_state!(
         "-[h]>ell-[o]>\n",
         |(buf, sels)| pb(buf, sels, &["AB".to_string(), "CD".to_string()]),
-        "A-[B]>hellC-[D]>o\n"
+        "-[AB]>hell-[CD]>o\n"
     );
 }
 
@@ -597,7 +558,7 @@ fn paste_before_count_mismatch_uses_joined() {
     assert_state!(
         "-[h]>ell-[o]>\n",
         |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
-        "X-[Y]>hellX-[Y]>o\n"
+        "-[XY]>hell-[XY]>o\n"
     );
 }
 
@@ -607,11 +568,8 @@ fn paste_before_replaces_selection() {
     assert_state!(
         "-[hel]>lo\n",
         |(buf, sels)| pb(buf, sels, &["XY".to_string()]),
-        "X-[Y]>lo\n"
+        "-[XY]>lo\n"
     );
-    let (buf, sels) = crate::testing::parse_state("-[hel]>lo\n");
-    let (_, _, _, replaced) = paste_before(buf, sels, &["XY".to_string()]);
-    assert_eq!(replaced, vec!["hel"]);
 }
 
 // ── paste empty-values (no-op path) ──────────────────────────────────────
@@ -620,20 +578,18 @@ fn paste_before_replaces_selection() {
 fn paste_after_empty_values_is_noop() {
     let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
     let buf_str = buf.to_string();
-    let (new_buf, new_sels, _, replaced) = paste_after(buf, sels.clone(), &[]);
+    let (new_buf, new_sels, _cs) = paste_after(buf, sels.clone(), &[]);
     assert_eq!(new_buf.to_string(), buf_str);
     assert_eq!(new_sels, sels);
-    assert!(replaced.is_empty());
 }
 
 #[test]
 fn paste_before_empty_values_is_noop() {
     let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
     let buf_str = buf.to_string();
-    let (new_buf, new_sels, _, replaced) = paste_before(buf, sels.clone(), &[]);
+    let (new_buf, new_sels, _cs) = paste_before(buf, sels.clone(), &[]);
     assert_eq!(new_buf.to_string(), buf_str);
     assert_eq!(new_sels, sels);
-    assert!(replaced.is_empty());
 }
 
 // ── repeat_edit (count prefix for edits) ──────────────────────────────────
@@ -701,28 +657,22 @@ fn insert_char_combining_codepoint() {
 #[test]
 fn paste_after_multiline_text() {
     // Paste "foo\nbar" after 'h'. Text: "h" + "foo\nbar" + "ello\n".
-    // Cursor lands on the last pasted char 'r'(7).
+    // Selection covers the entire pasted span "foo\nbar".
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| {
-            let (b, s, cs, _) = paste_after(buf, sels, &["foo\nbar".to_string()]);
-            (b, s, cs)
-        },
-        "hfoo\nba-[r]>ello\n"
+        |(buf, sels)| pa(buf, sels, &["foo\nbar".to_string()]),
+        "h-[foo\nbar]>ello\n"
     );
 }
 
 #[test]
 fn paste_before_multiline_text() {
     // Paste "foo\nbar" before 'h'. Text: "foo\nbar" + "hello\n".
-    // Cursor lands on the last pasted char 'r'(6).
+    // Selection covers the entire pasted span "foo\nbar".
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| {
-            let (b, s, cs, _) = paste_before(buf, sels, &["foo\nbar".to_string()]);
-            (b, s, cs)
-        },
-        "foo\nba-[r]>hello\n"
+        |(buf, sels)| pb(buf, sels, &["foo\nbar".to_string()]),
+        "-[foo\nbar]>hello\n"
     );
 }
 
@@ -731,67 +681,103 @@ fn paste_before_multiline_text() {
 #[test]
 fn paste_after_linewise_cursor_inserts_below() {
     // Cursor on 'e' (line 0 of "hello\nworld\n"). Paste "X\n" → new line
-    // below line 0. Buffer becomes "hello\nX\nworld\n"; cursor on 'X' at 6.
+    // below line 0. Buffer becomes "hello\nX\nworld\n"; selection covers "X\n".
     assert_state!(
         "h-[e]>llo\nworld\n",
         |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
-        "hello\n-[X]>\nworld\n"
+        "hello\n-[X\n]>world\n"
     );
 }
 
 #[test]
 fn paste_before_linewise_cursor_inserts_above() {
     // Cursor on 'e' (line 0). Paste "X\n" before → new line above line 0.
-    // Buffer becomes "X\nhello\nworld\n"; cursor on 'X' at 0.
+    // Buffer becomes "X\nhello\nworld\n"; selection covers "X\n".
     assert_state!(
         "h-[e]>llo\nworld\n",
         |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
-        "-[X]>\nhello\nworld\n"
+        "-[X\n]>hello\nworld\n"
     );
 }
 
 #[test]
 fn paste_after_linewise_cursor_on_last_line_preserves_invariant() {
     // Cursor on 'l' (line 1, the last content line). Paste "X\n" after →
-    // appended as new last line. Buffer becomes "hello\nworld\nX\n"; cursor at 12.
+    // appended as new last line. Buffer becomes "hello\nworld\nX\n"; selection
+    // covers "X\n" (including the structural trailing newline).
     assert_state!(
         "hello\nwor-[l]>d\n",
         |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
-        "hello\nworld\n-[X]>\n"
+        "hello\nworld\n-[X\n]>"
     );
 }
 
 #[test]
 fn paste_after_linewise_multiline_content() {
     // Paste "a\nb\n" (two lines) after cursor on line 0 → two new lines below.
-    // Buffer becomes "hello\na\nb\nworld\n"; cursor on 'a' at 6.
+    // Buffer becomes "hello\na\nb\nworld\n"; selection covers "a\nb\n".
     assert_state!(
         "h-[e]>llo\nworld\n",
         |(buf, sels)| pa(buf, sels, &["a\nb\n".to_string()]),
-        "hello\n-[a]>\nb\nworld\n"
+        "hello\n-[a\nb\n]>world\n"
     );
 }
 
 #[test]
-fn paste_after_linewise_over_line_selection_swaps() {
-    // Full-line selection (anchor='h', head='\n') + linewise paste "X\n".
-    // Replaces whole line "hello\n" with "X\n"; displaced = ["hello\n"].
-    let (buf, sels) = crate::testing::parse_state("-[hello\n]>world\n");
-    let (new_buf, _, _, replaced) = paste_after(buf, sels, &["X\n".to_string()]);
-    assert_eq!(new_buf.to_string(), "X\nworld\n");
-    assert_eq!(replaced, vec!["hello\n"]);
+fn paste_after_linewise_over_full_line_selection() {
+    // Full-line selection (head on '\n') — before and after both empty →
+    // three-way collapses to just the pasted line.
+    assert_state!(
+        "-[hello\n]>world\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>world\n"
+    );
 }
 
 #[test]
-fn paste_after_linewise_over_partial_selection_replaces_whole_line() {
-    // Partial selection "ell" (within line 0) + linewise paste "X\n".
-    // Linewise replaces the whole line 0 — this is the definition of a
-    // linewise operation: it operates at line granularity regardless of
-    // how much of the line is selected.
-    let (buf, sels) = crate::testing::parse_state("h-[ell]>o\nworld\n");
-    let (new_buf, _, _, replaced) = paste_after(buf, sels, &["X\n".to_string()]);
-    assert_eq!(new_buf.to_string(), "X\nworld\n");
-    assert_eq!(replaced, vec!["hello\n"]);
+fn paste_after_linewise_over_content_selection_only() {
+    // Selection covers all content but NOT the '\n' — both before and after empty →
+    // three-way collapses to just the pasted line.
+    assert_state!(
+        "-[hello]>\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>world\n"
+    );
+}
+
+// ── linewise three-way split over partial selection ───────────────────────
+
+#[test]
+fn paste_after_linewise_three_way_split_both_sides() {
+    // Partial selection "ell" within "hello" — before="h", after="o".
+    // Three-way split produces h / X / o on separate lines.
+    assert_state!(
+        "h-[ell]>o\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "h\n-[X\n]>o\nworld\n"
+    );
+}
+
+#[test]
+fn paste_after_linewise_three_way_split_empty_before() {
+    // Selection starts at column 0 — before is empty, after="o".
+    // Two-part: X / o
+    assert_state!(
+        "-[ell]>o\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>o\nworld\n"
+    );
+}
+
+#[test]
+fn paste_after_linewise_three_way_split_empty_after() {
+    // Selection ends just before the '\n' — before="h", after empty.
+    // Two-part: h / X
+    assert_state!(
+        "h-[ello]>\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "h\n-[X\n]>world\n"
+    );
 }
 
 // ── repeat_edit count=0 ───────────────────────────────────────────────────
@@ -811,22 +797,15 @@ fn repeat_edit_count_zero_is_noop() {
 #[test]
 fn yank_then_paste_after_round_trip() {
     use crate::ops::register::yank_selections;
-    // Yank "ello" from selection, then paste it after the cursor.
-    // Initial: cursor on 'h', selection covers "ello".
-    // After yank: yanked = ["ello"]
-    // After paste_after: "h" + "ello" + "\n" — cursor on last pasted 'o'.
     let (buf, sels) = crate::testing::parse_state("-[h]>ello\n");
     let yanked = yank_selections(&buf, &sels);
     assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
 
-    // Now paste the yanked text after the cursor (which is on 'h').
-    // paste_after inserts "h" after 'h': "hh|ello\n"
     assert_state!(
         "-[h]>ello\n",
         |(buf, sels)| {
             let values = yank_selections(&buf, &sels);
-            let (b, s, cs, _) = paste_after(buf, sels, &values);
-            (b, s, cs)
+            pa(buf, sels, &values)
         },
         "h-[h]>ello\n"
     );
@@ -835,9 +814,6 @@ fn yank_then_paste_after_round_trip() {
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
     use crate::ops::register::yank_selections;
-    // Two cursors: one on 'h', one on 'o'. Yank both, paste after each.
-    // Expected yanked: ["h", "o"]
-    // After paste: "hh" at pos 0-1, "oo" at pos 4-5 (with shift).
     let (buf, sels) = crate::testing::parse_state("-[h]>ell-[o]>\n");
     let yanked = yank_selections(&buf, &sels);
     assert_eq!(yanked, vec!["h", "o"]);
@@ -846,8 +822,7 @@ fn yank_multi_cursor_then_paste_after_n_to_n() {
         "-[h]>ell-[o]>\n",
         |(buf, sels)| {
             let values = yank_selections(&buf, &sels);
-            let (b, s, cs, _) = paste_after(buf, sels, &values);
-            (b, s, cs)
+            pa(buf, sels, &values)
         },
         "h-[h]>ello-[o]>\n"
     );

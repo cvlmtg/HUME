@@ -162,14 +162,16 @@ impl RegisterSet {
 /// with the named registers `"0`–`"9`, giving every ring entry two access
 /// paths: `"<digit>p` by name and `[`/`]` by cycling.
 ///
-/// The cycle cursor (`cycle`) tracks the current `[`/`]` paste position and is
-/// reset whenever any command other than `paste-ring-older` / `paste-ring-newer`
-/// is dispatched.
+/// `cycle` is seeded by the paste command based on origin and persists until
+/// the next paste re-seeds it; a lingering value between sessions is harmless
+/// because every fresh paste re-seeds before reading the cursor.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct KillRing {
     /// Entries newest-first; max `KILL_RING_DEPTH` entries.
     entries: VecDeque<Vec<String>>,
-    /// Active `[`/`]` cycle position; `None` means idle (head will be used next).
+    /// Active `[`/`]` cycle position.
+    /// `None` = clipboard / named-register origin (conceptually "before slot 0").
+    /// `Some(n)` = currently showing slot `n`.
     cycle: Option<usize>,
 }
 
@@ -183,13 +185,21 @@ impl KillRing {
     }
 
     /// Push a new entry to the head of the ring, evicting the oldest if full.
-    /// Resets the cycle cursor so the next `[`/`]` starts from the new head.
     pub(crate) fn push(&mut self, values: Vec<String>) {
         self.entries.push_front(values);
         if self.entries.len() > KILL_RING_DEPTH {
             self.entries.pop_back();
         }
-        self.cycle = None;
+    }
+
+    /// Seed the cycle cursor based on paste origin.
+    ///
+    /// Call once per fresh paste:
+    /// - ring-head paste → `Some(0)`
+    /// - clipboard / named-register paste → `None`
+    /// - `"<digit>p` → `Some(digit as usize - '0')`
+    pub(crate) fn seed_cycle(&mut self, pos: Option<usize>) {
+        self.cycle = pos;
     }
 
     /// Borrow the head entry (most recently pushed), if any.
@@ -206,40 +216,33 @@ impl KillRing {
 
     /// Advance the cycle cursor one step older and return that entry.
     ///
-    /// `None → Some(1)`, `Some(n) → Some(n+1)`, clamped at `entries.len() - 1`.
-    /// Returns `None` when the ring is empty.
+    /// `None → 0`, `Some(n) → n+1`. Noop (returns `None`, leaves `cycle` unchanged)
+    /// when the next slot would be out of bounds or the ring is empty (rule 27:
+    /// every subsequent `[` past the oldest entry is a noop).
     pub(crate) fn cycle_older(&mut self) -> Option<&[String]> {
-        if self.entries.is_empty() {
+        let next = match self.cycle {
+            None => 0,
+            Some(n) => n + 1,
+        };
+        if next >= self.entries.len() {
             return None;
         }
-        let next = match self.cycle {
-            None => 1,
-            Some(n) => (n + 1).min(self.entries.len() - 1),
-        };
         self.cycle = Some(next);
         self.entries.get(next).map(Vec::as_slice)
     }
 
     /// Retreat the cycle cursor one step newer and return that entry.
     ///
-    /// `None → Some(0)` (head), `Some(n) → Some(n.saturating_sub(1))`.
-    /// Returns `None` when the ring is empty.
+    /// Noop (returns `None`, leaves `cycle` unchanged) when `cycle` is `None` or
+    /// `Some(0)` — there is nowhere newer to go (rule 28: every subsequent `]`
+    /// at the head entry is a noop). Otherwise `Some(n) → Some(n-1)`.
     pub(crate) fn cycle_newer(&mut self) -> Option<&[String]> {
-        if self.entries.is_empty() {
-            return None;
-        }
-        let next = match self.cycle {
-            None | Some(0) => 0,
+        let prev = match self.cycle {
+            None | Some(0) => return None,
             Some(n) => n - 1,
         };
-        self.cycle = Some(next);
-        self.entries.get(next).map(Vec::as_slice)
-    }
-
-    /// Reset the cycle cursor to idle. Called whenever a non-`[`/`]` command
-    /// is dispatched so the next `[` starts from slot 1 (one step past the head).
-    pub(crate) fn reset_cycle(&mut self) {
-        self.cycle = None;
+        self.cycle = Some(prev);
+        self.entries.get(prev).map(Vec::as_slice)
     }
 
     /// Number of entries currently in the ring. Used in tests.
@@ -456,6 +459,8 @@ mod tests {
         vec![s.to_string()]
     }
 
+    // -- push / head / slot -------------------------------------------------------
+
     #[test]
     fn kill_ring_push_head_eviction() {
         let mut ring = KillRing::new();
@@ -463,9 +468,7 @@ mod tests {
             ring.push(vs(&i.to_string()));
         }
         assert_eq!(ring.len(), KILL_RING_DEPTH);
-        // Head is the last pushed value.
         assert_eq!(ring.head(), Some(vs("14").as_slice()));
-        // Oldest retained is slot 9 (the 6th push from the end: 14,13,12,11,10,9).
         assert_eq!(ring.slot(KILL_RING_DEPTH - 1), Some(vs("5").as_slice()));
     }
 
@@ -480,73 +483,129 @@ mod tests {
         let mut ring = KillRing::new();
         ring.push(vs("a"));
         ring.push(vs("b"));
-        ring.push(vs("c")); // head
-        assert_eq!(ring.slot(0), Some(vs("c").as_slice())); // head
+        ring.push(vs("c")); // head = slot 0
+        assert_eq!(ring.slot(0), Some(vs("c").as_slice()));
         assert_eq!(ring.slot(1), Some(vs("b").as_slice()));
         assert_eq!(ring.slot(2), Some(vs("a").as_slice()));
         assert!(ring.slot(3).is_none());
     }
 
-    #[test]
-    fn kill_ring_cycle_older_clamps() {
-        let mut ring = KillRing::new();
-        ring.push(vs("a"));
-        ring.push(vs("b")); // head (slot 0)
-        // cycle_older once: slot 1 ("a")
-        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
-        assert_eq!(ring.cycle, Some(1));
-        // cycle_older again: still slot 1 (clamped at len - 1)
-        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
-        assert_eq!(ring.cycle, Some(1));
-    }
+    // -- seed_cycle ---------------------------------------------------------------
 
     #[test]
-    fn kill_ring_cycle_newer_from_none() {
+    fn seed_cycle_sets_position() {
         let mut ring = KillRing::new();
         ring.push(vs("a"));
         ring.push(vs("b"));
-        // cycle_newer with no prior cycle: returns head (slot 0)
-        assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
+        ring.seed_cycle(Some(0));
+        assert_eq!(ring.cycle, Some(0));
+        ring.seed_cycle(None);
+        assert_eq!(ring.cycle, None);
+    }
+
+    // -- cycle_older ([) ----------------------------------------------------------
+
+    #[test]
+    fn cycle_older_from_none_reads_slot0() {
+        // Clipboard origin (None) → first [ goes to slot 0 (ring head).
+        let mut ring = KillRing::new();
+        ring.push(vs("a")); // slot 0 = head
+        ring.seed_cycle(None);
+        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
         assert_eq!(ring.cycle, Some(0));
     }
 
     #[test]
-    fn kill_ring_cycle_older_then_newer() {
+    fn cycle_older_from_head_reads_slot1() {
+        // Ring-head origin (Some(0)) → first [ goes to slot 1 (one older).
         let mut ring = KillRing::new();
-        ring.push(vs("a"));
-        ring.push(vs("b"));
-        ring.push(vs("c")); // head
-        ring.cycle_older(); // slot 1 ("b")
-        ring.cycle_older(); // slot 2 ("a")
-        let result = ring.cycle_newer(); // back to slot 1 ("b")
-        assert_eq!(result, Some(vs("b").as_slice()));
+        ring.push(vs("a")); // slot 1
+        ring.push(vs("b")); // slot 0 = head
+        ring.seed_cycle(Some(0));
+        assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
         assert_eq!(ring.cycle, Some(1));
     }
 
     #[test]
-    fn kill_ring_push_resets_cycle() {
+    fn cycle_older_noop_at_last_entry() {
+        // Rule 27: [ is a noop when already at the oldest entry.
         let mut ring = KillRing::new();
-        ring.push(vs("a"));
-        ring.push(vs("b"));
-        ring.cycle_older();
-        assert_eq!(ring.cycle, Some(1));
-        ring.push(vs("c")); // push resets cycle
-        assert_eq!(ring.cycle, None);
+        ring.push(vs("a")); // slot 1
+        ring.push(vs("b")); // slot 0 = head
+        ring.seed_cycle(Some(1)); // at last
+        assert!(ring.cycle_older().is_none());
+        assert_eq!(ring.cycle, Some(1)); // unchanged
     }
 
     #[test]
-    fn kill_ring_reset_cycle() {
-        let mut ring = KillRing::new();
-        ring.push(vs("a"));
-        ring.push(vs("b"));
-        ring.cycle_older();
-        ring.reset_cycle();
-        assert_eq!(ring.cycle, None);
-    }
-
-    #[test]
-    fn kill_ring_empty_cycle_older_returns_none() {
+    fn cycle_older_noop_on_empty_ring() {
         let mut ring = KillRing::new();
         assert!(ring.cycle_older().is_none());
+        assert_eq!(ring.cycle, None); // unchanged
+    }
+
+    // -- cycle_newer (]) ----------------------------------------------------------
+
+    #[test]
+    fn cycle_newer_noop_from_none() {
+        // Rule 28: ] is a noop when there is no active cycle.
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.seed_cycle(None);
+        assert!(ring.cycle_newer().is_none());
+        assert_eq!(ring.cycle, None); // unchanged
+    }
+
+    #[test]
+    fn cycle_newer_noop_at_head() {
+        // Rule 28: ] is a noop when already at the head (slot 0).
+        let mut ring = KillRing::new();
+        ring.push(vs("a"));
+        ring.push(vs("b"));
+        ring.seed_cycle(Some(0));
+        assert!(ring.cycle_newer().is_none());
+        assert_eq!(ring.cycle, Some(0)); // unchanged
+    }
+
+    #[test]
+    fn cycle_newer_retreats_toward_head() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a")); // slot 2
+        ring.push(vs("b")); // slot 1
+        ring.push(vs("c")); // slot 0 = head
+        ring.seed_cycle(Some(2));
+        assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
+        assert_eq!(ring.cycle, Some(1));
+    }
+
+    // -- round-trips --------------------------------------------------------------
+
+    #[test]
+    fn cycle_round_trip_clipboard_origin() {
+        // Simulates rule 6: clipboard paste → [ → [ → noop.
+        let mut ring = KillRing::new();
+        ring.push(vs("charwise")); // slot 1
+        ring.push(vs("linewise\n")); // slot 0 = head
+        ring.seed_cycle(None); // clipboard origin
+
+        assert_eq!(ring.cycle_older(), Some(vs("linewise\n").as_slice())); // slot 0
+        assert_eq!(ring.cycle_older(), Some(vs("charwise").as_slice())); // slot 1
+        assert!(ring.cycle_older().is_none()); // noop (at oldest)
+        assert_eq!(ring.cycle, Some(1)); // unchanged after noop
+    }
+
+    #[test]
+    fn cycle_round_trip_older_then_newer() {
+        let mut ring = KillRing::new();
+        ring.push(vs("a")); // slot 2
+        ring.push(vs("b")); // slot 1
+        ring.push(vs("c")); // slot 0 = head
+        ring.seed_cycle(None);
+
+        ring.cycle_older(); // None→0: "c"
+        ring.cycle_older(); // 0→1:   "b"
+        assert_eq!(ring.cycle_newer(), Some(vs("c").as_slice())); // 1→0: "c"
+        assert_eq!(ring.cycle, Some(0));
+        assert!(ring.cycle_newer().is_none()); // noop at head
     }
 }

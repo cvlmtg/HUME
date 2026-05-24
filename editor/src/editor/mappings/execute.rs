@@ -27,11 +27,11 @@ impl Editor {
             return;
         };
         {
-            // Reset the kill-ring cycle cursor whenever we leave the `[`/`]` pair.
-            // Must happen before dispatch so the cycle index is clean for the incoming
-            // paste-ring-older/newer commands themselves.
+            // Commit any open paste session before non-cycle dispatch so all
+            // `[`/`]` cycles fold into a single undo step. Must happen before
+            // the actual dispatch so that `undo` sees a committed revision.
             if !self.is_replaying && !RING_CYCLE_CMDS.contains(&name.as_ref()) {
-                self.kill_ring.reset_cycle();
+                self.commit_paste_session();
             }
 
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.

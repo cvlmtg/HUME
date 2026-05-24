@@ -95,19 +95,16 @@ to every selection in the set simultaneously. The *primary* is just the
    - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the
      register contents *after* or *before* the cursor char. Same as Vim's `p`/`P`.
    - **Explicit selection** (more than 1 char, created intentionally): *replace*
-     the selected text with the register contents, and return the displaced text
-     to the caller so it can be written back to the register (a swap).
+     the selected text with the register contents. Displaced text is not written
+     back to the register — the kill ring already holds the selection's history,
+     so the user can reach it by name (`"0p`, `"1p`, …) or by cycling with `[`/`]`.
 
    The key insight is `sel.is_cursor()` — the selection state already encodes
    whether the user made an intentional selection. No separate `R` command
    needed. No `"0` register hack needed (in Vim, yanking always writes `"0`
    in addition to `"`, so after a delete you can still paste the pre-delete
-   yank with `"0p`; HUME avoids the problem by never clobbering the register
+   yank with `"0p`; HUME avoids the problem by never clobbering the ring entry
    on replace).
-
-   The paste operation returns the displaced text alongside the new buffer so
-   the editor layer can swap it back into the source register. For cursor
-   pastes the displaced text is empty, so the swap is a no-op.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world, cycling
 forward and backward through primaries is how you "focus" a different cursor

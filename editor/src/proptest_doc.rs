@@ -15,7 +15,8 @@ mod tests {
 
     use crate::core::selection::{Selection, SelectionSet};
     use crate::core::text::Text;
-    use crate::editor::buffer::{Buffer, IntoApplyResult};
+    use crate::core::changeset::ChangeSet;
+    use crate::editor::buffer::Buffer;
     use crate::ops::MotionMode;
     use crate::ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
@@ -46,8 +47,11 @@ mod tests {
         fn text(&self) -> &Text {
             self.buf.text()
         }
-        fn apply_edit<R: IntoApplyResult>(&mut self, cmd: impl FnOnce(Text, SelectionSet) -> R) {
-            let (new_sels, _, _) = self.buf.apply_edit(self.sels.clone(), cmd);
+        fn apply_edit(
+            &mut self,
+            cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        ) {
+            let (new_sels, _cs) = self.buf.apply_edit(self.sels.clone(), cmd);
             self.sels = new_sels;
         }
         fn undo(&mut self) {

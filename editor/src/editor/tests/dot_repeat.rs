@@ -187,9 +187,9 @@ fn dot_repeats_paste_after() {
     ed.handle_key(key('d')); // delete "ab" → cursor on "cd"
 
     // Paste after.
-    ed.handle_key(key('p')); // pastes "ab" after 'c' → "cabd"
-    // Move to end character and repeat.
-    ed.handle_key(key('w')); // select "cd" or next word
+    ed.handle_key(key('p')); // pastes "ab" after 'c' → "cabd", "ab" selected
+    // Move one char right (off the pasted selection) then repeat.
+    ed.handle_key(key('l')); // move right → collapsed cursor after the pasted text
     ed.handle_key(key('.')); // paste again
     // Just verify no panic and paste happened twice (content contains "ab" twice).
     let buf = ed.doc().text().to_string();

@@ -18,10 +18,6 @@ use crate::helpers::line_end_exclusive;
 // standard higher-order-function pattern: the frame is the "algorithm", the
 // closure is the "policy".
 //
-// `apply_edit_with_capture` is the core: it runs the 5-step frame and also
-// collects per-selection output (e.g. yanked text for paste). `apply_edit` is
-// a thin wrapper for the common case where captured output is not needed.
-//
 // The ChangeSet is returned so the undo system can call `cs.invert(&old_buf)`
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
 // buffer and handles the invert timing constraint.
@@ -84,18 +80,16 @@ pub(crate) fn repeat_edit(
     (current_buf, current_sels, cs)
 }
 
-/// Core loop for editing operations that also capture per-selection output.
+/// Core loop for all editing operations.
 ///
 /// The closure `f` receives:
-///   - `b`         — the changeset builder (original-buffer coordinate space)
-///   - `buf`       — shared borrow of the original buffer for read-only queries
-///   - `i`         — 0-based iteration index in sorted order (N-to-N paste uses this)
-///   - `sel`       — the current selection
-///   - `new_sels`  — accumulator for result selections; `f` must push exactly one entry
-///   - `captured`  — accumulator for per-selection output (e.g. displaced text)
+///   - `b`        — the changeset builder (original-buffer coordinate space)
+///   - `buf`      — shared borrow of the original buffer for read-only queries
+///   - `i`        — 0-based iteration index in sorted order (N-to-N paste uses this)
+///   - `sel`      — the current selection
+///   - `new_sels` — accumulator for result selections; `f` must push exactly one entry
 ///
-/// Returns the new buffer, merged selection set, changeset, and captured strings.
-/// Use [`apply_edit`] when captured output is not needed.
+/// Returns the new buffer, merged selection set, and changeset.
 ///
 /// # Why `FnMut` and not `Fn`?
 ///
@@ -105,46 +99,6 @@ pub(crate) fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-pub(crate) fn apply_edit_with_capture<F>(
-    buf: Text,
-    sels: SelectionSet,
-    mut f: F,
-) -> (Text, SelectionSet, ChangeSet, Vec<String>)
-where
-    F: FnMut(
-        &mut ChangeSetBuilder,
-        &Text,
-        usize,
-        &Selection,
-        &mut Vec<Selection>,
-        &mut Vec<String>,
-    ),
-{
-    let mut b = ChangeSetBuilder::new(buf.len_chars());
-    let mut new_sels = Vec::with_capacity(sels.len());
-    let mut captured = Vec::with_capacity(sels.len());
-    let primary_idx = sels.primary_index();
-
-    for (i, sel) in sels.iter_sorted().enumerate() {
-        f(&mut b, &buf, i, sel, &mut new_sels, &mut captured);
-    }
-
-    b.retain_rest();
-    // Split finish() from apply() so the ChangeSet can be returned to the
-    // caller for undo/redo bookkeeping. invert() must be called against the
-    // pre-edit buffer — the caller (Document) holds that buffer and handles
-    // the timing constraint.
-    let cs = b.finish();
-    let new_buf = cs
-        .apply(&buf)
-        .expect("edit operation produced an invalid changeset — this is a bug");
-    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
-    new_sel_set.debug_assert_valid(&new_buf);
-    (new_buf, new_sel_set, cs, captured)
-}
-
-/// Convenience wrapper around [`apply_edit_with_capture`] for edits that
-/// don't need to capture per-selection output.
 pub(crate) fn apply_edit<F>(
     buf: Text,
     sels: SelectionSet,
@@ -153,11 +107,25 @@ pub(crate) fn apply_edit<F>(
 where
     F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>),
 {
-    let (new_buf, new_sels, cs, _) =
-        apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, _captured| {
-            f(b, buf, i, sel, new_sels);
-        });
-    (new_buf, new_sels, cs)
+    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut new_sels = Vec::with_capacity(sels.len());
+    let primary_idx = sels.primary_index();
+
+    for (i, sel) in sels.iter_sorted().enumerate() {
+        f(&mut b, &buf, i, sel, &mut new_sels);
+    }
+
+    b.retain_rest();
+    // finish() before apply() so the ChangeSet is available for undo/redo
+    // bookkeeping. invert() must be called against the pre-edit buffer — the
+    // caller (Buffer) holds that buffer and handles the timing constraint.
+    let cs = b.finish();
+    let new_buf = cs
+        .apply(&buf)
+        .expect("edit operation produced an invalid changeset — this is a bug");
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    new_sel_set.debug_assert_valid(&new_buf);
+    (new_buf, new_sel_set, cs)
 }
 
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
@@ -213,46 +181,36 @@ fn delete_sel_region(
     new_sels.push(sel);
 }
 
-/// Whether cursor-paste inserts after or before the cursor's line/character.
-///
-/// For **charwise** content (not ending in `\n`) this determines column position.
-/// For **linewise** content (ending in `\n`) this determines on which side of
-/// the cursor's line the new line(s) appear. Multi-char selections are replaced
-/// at whole-line granularity for linewise content regardless of anchor.
-#[derive(Clone, Copy)]
-enum PasteAnchor {
-    After,
-    Before,
-}
-
 /// Private implementation shared by [`paste_after`] and [`paste_before`].
 ///
-/// `anchor` governs the 2 × 2 insert-position matrix for cursor selections:
+/// `before` governs insert position for cursor (non-collapsed) selections:
 ///
-/// | anchor  | charwise content           | linewise content (ends `\n`)   |
-/// |---------|----------------------------|--------------------------------|
-/// | `After` | one past the cursor char   | start of the next line         |
-/// | `Before`| at the cursor char         | start of the cursor's line     |
+/// | `before` | charwise content           | linewise content (ends `\n`)   |
+/// |----------|----------------------------|--------------------------------|
+/// | `false`  | one past the cursor char   | start of the next line         |
+/// | `true`   | at the cursor char         | start of the cursor's line     |
 ///
-/// Multi-char selections:
-/// - **Linewise content**: delete the whole lines spanned by the selection, then
-///   insert the pasted line(s). Displaced text is the deleted whole-line span
-///   (itself `\n`-terminated) so replace-and-swap round-trips at line granularity.
-///   Partial selections (e.g. one word) replace their entire line — this is the
-///   definition of a linewise operation.
-/// - **Charwise content**: unchanged replace-and-swap at selection granularity
-///   (cap at `last_content_char` to protect the structural trailing `\n`).
+/// Non-collapsed selections:
+/// - **Charwise content**: delete the selected region, insert inline.
+/// - **Linewise content**: **three-way split, collapsing empty sides**. The
+///   selection's first line is split at `sel.start()` into `before_text` (left)
+///   and the last line is split at `sel.end_inclusive + 1` into `after_text`
+///   (right). The whole line span is replaced by the non-empty pieces in order:
+///   `before_text` (if any), the pasted line(s), `after_text` (if any) — so no
+///   spurious blank lines are created when the selection touches a line boundary.
+///
+/// The replaced selection is discarded; it is never pushed to the kill ring or
+/// clipboard (rule: "when pasting over a selection the replaced text is not copied").
 fn paste_impl(
     buf: Text,
     sels: SelectionSet,
     values: &[String],
-    anchor: PasteAnchor,
-) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
+    before: bool,
+) -> (Text, SelectionSet, ChangeSet) {
     if values.is_empty() {
-        // Nothing to paste — return an identity ChangeSet (all Retain).
         let mut b = ChangeSetBuilder::new(buf.len_chars());
         b.retain_rest();
-        return (buf, sels, b.finish(), Vec::new());
+        return (buf, sels, b.finish());
     }
 
     let n_sels = sels.len();
@@ -266,76 +224,100 @@ fn paste_impl(
         String::new()
     };
 
-    apply_edit_with_capture(buf, sels, |b, buf, i, sel, new_sels, replaced| {
-        // N-to-N if counts match; every selection gets the full joined string otherwise.
+    apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
 
         if sel.is_collapsed() {
-            replaced.push(String::new()); // cursors displace nothing
             if text.ends_with('\n') {
-                // Linewise: insert at the line boundary, not at the cursor column.
-                // `insert` advances new_pos() by the char count of the inserted text,
-                // so `new_pos() - text.chars().count()` is the first inserted char.
+                // Linewise cursor paste: insert as whole new line(s).
+                // insert advances new_pos() by the char count of the inserted text,
+                // so new_pos() - text.chars().count() is the first inserted char.
                 let line = buf.char_to_line(sel.head);
-                let insert_at = match anchor {
-                    PasteAnchor::After => line_end_exclusive(buf, line),
-                    PasteAnchor::Before => buf.line_to_char(line),
+                let insert_at = if before {
+                    buf.line_to_char(line)
+                } else {
+                    line_end_exclusive(buf, line)
                 };
-                // saturating_sub guards against same-line multi-cursor underflow;
-                // the monotonic-old_pos invariant holds for distinct lines.
+                // saturating_sub guards against same-line multi-cursor underflow.
                 b.retain(insert_at.saturating_sub(b.old_pos()));
                 b.insert(text);
-                new_sels.push(Selection::collapsed(b.new_pos() - text.chars().count()));
+                let count = text.chars().count();
+                new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
             } else {
-                let insert_at = match anchor {
-                    PasteAnchor::After => (sel.end_inclusive(buf) + 1).min(buf.len_chars() - 1),
-                    PasteAnchor::Before => sel.start(),
+                // Charwise cursor paste.
+                let insert_at = if before {
+                    sel.start()
+                } else {
+                    (sel.end_inclusive(buf) + 1).min(buf.len_chars() - 1)
                 };
                 b.retain(insert_at - b.old_pos());
                 if text.is_empty() {
-                    // Nothing to insert — cursor stays where it is.
                     new_sels.push(Selection::collapsed(sel.head));
                 } else {
                     b.insert(text);
-                    // new_pos() is one past the inserted text; -1 lands on the last
-                    // inserted character (the cursor sits on it — inclusive model).
-                    new_sels.push(Selection::collapsed(b.new_pos() - 1));
+                    let count = text.chars().count();
+                    new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
                 }
             }
         } else if text.ends_with('\n') {
-            // Linewise paste over a multi-char selection: replace the whole lines
-            // spanned by the selection with the pasted line(s).
+            // Linewise over a non-collapsed selection: three-way split.
             let first_line = buf.char_to_line(sel.start());
             let last_line = buf.char_to_line(sel.end_inclusive(buf));
-            let del_from = buf.line_to_char(first_line);
-            let del_to = line_end_exclusive(buf, last_line);
-            replaced.push(buf.slice(del_from..del_to).to_string());
-            // .max(old_pos) guards against same-line multi-cursor underflow.
-            let from = del_from.max(b.old_pos());
+            let line_start = buf.line_to_char(first_line);
+            // Position of the \n that terminates last_line.
+            let newline_pos = line_end_exclusive(buf, last_line) - 1;
+            let before_text: String = buf.slice(line_start..sel.start()).to_string();
+            let after_start = sel.end_inclusive(buf) + 1; // safe: end_inclusive uses next_grapheme_boundary
+            let after_text: String = if after_start <= newline_pos {
+                buf.slice(after_start..newline_pos).to_string()
+            } else {
+                String::new()
+            };
+
+            // Build replacement: [before\n] + value + [after\n], collapsing empty sides.
+            let mut insert = String::new();
+            if !before_text.is_empty() {
+                insert.push_str(&before_text);
+                insert.push('\n');
+            }
+            insert.push_str(text); // already ends with '\n'
+            if !after_text.is_empty() {
+                insert.push_str(&after_text);
+                insert.push('\n');
+            }
+
+            let del_from = line_start;
+            let del_to = line_end_exclusive(buf, last_line); // includes the \n
+            let from = del_from.max(b.old_pos()); // guard same-line multi-cursor
             b.retain(from - b.old_pos());
             b.delete(del_to.saturating_sub(from));
-            b.insert(text);
-            new_sels.push(Selection::collapsed(b.new_pos() - text.chars().count()));
+            b.insert(&insert);
+
+            // Select the pasted value within the inserted content.
+            let total_chars = insert.chars().count();
+            let before_prefix = if before_text.is_empty() {
+                0
+            } else {
+                before_text.chars().count() + 1 // +1 for the '\n' after before_text
+            };
+            let text_chars = text.chars().count();
+            let sel_start = b.new_pos() - total_chars + before_prefix;
+            new_sels.push(Selection::new(sel_start, sel_start + text_chars - 1));
         } else {
-            // Charwise paste over a multi-char selection: replace-and-swap.
-            // Cap end at the last content char so the structural trailing '\n'
-            // is never deleted.
+            // Charwise over a non-collapsed selection: delete and inline-insert.
+            // Cap end at the last content char to protect the structural trailing '\n'.
             let start = sel.start();
             let end_incl = sel.end_inclusive(buf).min(buf.last_content_char());
             let end_excl = end_incl + 1;
-            replaced.push(buf.slice(start..end_excl).to_string());
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
             b.insert(text);
-            // When text is empty the delete leaves new_pos() at the start of
-            // the deleted region; -1 would underflow. Use saturating_sub so
-            // the cursor lands at start (the first char after the deletion).
-            let pos = if text.is_empty() {
-                b.new_pos()
+            if text.is_empty() {
+                new_sels.push(Selection::collapsed(b.new_pos()));
             } else {
-                b.new_pos() - 1
-            };
-            new_sels.push(Selection::collapsed(pos));
+                let count = text.chars().count();
+                new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
+            }
         }
     })
 }
@@ -474,29 +456,23 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
 /// - Linewise content (ending `\n`): inserts as new line(s) *below* the cursor's
 ///   line; cursor lands on the first character of the first pasted line.
 ///
-/// **Multi-char selections (`!is_collapsed()`):**
-/// - Charwise content: replaces the selected region. Displaced text is returned so
-///   the caller can write it back — a swap. Eliminates the need for `"0` yank.
-/// - Linewise content: replaces the *whole lines* spanned by the selection.
-///   Displaced text is the full line span (`\n`-terminated → linewise round-trip).
+/// **Non-collapsed selections:**
+/// - Charwise content: deletes the selected region, inserts inline.
+/// - Linewise content: three-way split — before-text, pasted lines, after-text
+///   (empty sides collapsed so no spurious blank lines are created).
 ///
-/// **Multi-cursor semantics:**
-/// - If `values.len() == sels.len()`: each selection gets its own slot (N-to-N).
-/// - Otherwise: all `values` are joined (no separator) and used at every
-///   selection (Helix fallback).
+/// The replaced selection is discarded and not written to any register.
 ///
-/// **Return value:** `(new_buf, new_sels, changeset, replaced)` where
-/// `replaced[i]` is the text displaced by selection `i` — empty string for
-/// cursor selections.
+/// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection gets
+/// its own slot); otherwise all values joined and applied at every selection.
 ///
-/// An empty `values` slice is a no-op (returns the original state and an empty
-/// `replaced` vec).
+/// An empty `values` slice is a no-op.
 pub(crate) fn paste_after(
     buf: Text,
     sels: SelectionSet,
     values: &[String],
-) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
-    paste_impl(buf, sels, values, PasteAnchor::After)
+) -> (Text, SelectionSet, ChangeSet) {
+    paste_impl(buf, sels, values, false)
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`).
@@ -504,23 +480,18 @@ pub(crate) fn paste_after(
 /// **Cursor selections (`is_collapsed()`):**
 /// - Charwise content: inserts just before the cursor character; cursor lands on
 ///   the last inserted character.
-/// - Linewise content: inserts as new line(s) *above* the cursor's line; cursor
-///   lands on the first character of the first pasted line.
+/// - Linewise content: inserts as new line(s) *above* the cursor's line.
 ///
-/// **Multi-char selections (`!is_collapsed()`):** same semantics as [`paste_after`]
-/// — the after/before distinction only applies to cursor selections.
-///
-/// **Multi-cursor semantics:** identical to [`paste_after`].
-///
-/// **Return value:** `(new_buf, new_sels, changeset, replaced)` — same as [`paste_after`].
+/// **Non-collapsed selections:** identical semantics to [`paste_after`] — the
+/// before/after distinction only applies to cursor selections.
 ///
 /// An empty `values` slice is a no-op.
 pub(crate) fn paste_before(
     buf: Text,
     sels: SelectionSet,
     values: &[String],
-) -> (Text, SelectionSet, ChangeSet, Vec<String>) {
-    paste_impl(buf, sels, values, PasteAnchor::Before)
+) -> (Text, SelectionSet, ChangeSet) {
+    paste_impl(buf, sels, values, true)
 }
 
 /// Replace every grapheme in every selection with `ch` (normal-mode `r`).

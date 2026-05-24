@@ -59,34 +59,17 @@ two protections at once:
 - An accidental delete cannot clobber what the user copied from another
   application a moment ago.
 
-## The swap problem
-
-There's still an open question: when the user presses `p` for a bare paste,
-which source does it read — the clipboard, or the ring head?
-
-If bare paste always reads the clipboard, modal-editor swap idioms break. A
-character swap is a delete followed immediately by a paste. A line swap is a
-select-line, delete, paste below. Both rely on the next paste reading the
-most recent delete. If bare paste only ever reads the clipboard, neither
-idiom works without a register prefix on the paste — turning a two-keystroke
-sequence into four or five. These idioms are decades old in modal editors;
-forcing a prefix on every swap would be a noticeable regression.
-
-If bare paste always reads the ring head instead, cross-application paste
-breaks the other way. Text copied *into* the editor from another app has no
-way to reach paste without an explicit prefix.
-
-The fix has to make bare paste *sometimes* read the ring without making it
-*always* read the ring.
-
 ## Smart-p: the heuristic
+
+When the user presses `p` for a bare paste, which source does it read — the
+clipboard, or the ring head?
 
 HUME records the name of the most recent command. When bare paste fires, it
 reads that name and routes accordingly:
 
 - **Previous command was a delete, change, paste, or paste-cycle** → paste
-  reads the kill-ring head. Swap idioms work; consecutive paste presses stay
-  in the ring.
+  reads the kill-ring head (most recently killed or pasted text). Swap idioms
+  work; consecutive paste presses stay in the ring.
 - **Anything else** → paste reads the system clipboard. Cross-application
   paste remains one keystroke.
 
@@ -94,7 +77,7 @@ The intuition behind the allow-list (this short set keeps paste in the ring;
 everything else switches to clipboard):
 
 - The user can apply one rule without memorising special cases: *"did I just
-  delete or change? Then the next paste reads the ring. Otherwise the
+  delete, change, or paste? Then the next paste reads the ring. Otherwise the
   clipboard."*
 - Motions, searches, and undo all clear the path. These operations typically
   signal a context switch — the user has moved on from "edit this spot" to
@@ -120,23 +103,42 @@ macro contained. This makes replay deterministic — the paste source after
 `q<reg>` is always the clipboard, independent of the macro's contents — and
 avoids surprising flip-flops inside replay loops.
 
-## Cycling
+## Paste sessions and cycling
 
 When the ring head isn't the entry you wanted, `[` and `]` step through the
-ring without typing a slot name:
+ring without typing a slot name. Cycling in HUME uses a **paste session**
+model:
 
-- `[` steps one entry older and pastes it. `]` steps one entry newer and
-  pastes it. They work immediately after a delete, change, or paste, so
-  there's no mode to enter — just press the key.
-- Stepping **clamps** at the ends of the ring rather than wrapping. If you
-  keep pressing `[` and reach the oldest entry, further presses do nothing
-  visible. Clamping makes the boundary apparent; wrapping would hide it.
-- The moment you press anything other than `[` or `]`, the cycle position
-  resets. The next bare paste starts from the head again.
+- The first `p` (or `P`) opens a **paste session**: it snapshots the
+  pre-paste buffer state, pastes the chosen entry, and leaves the session
+  open. The pasted text is selected.
+- While the session is open, `[` replaces the paste with the next-older
+  entry and `]` replaces it with the next-newer one. Each cycle re-pastes
+  from the same pristine snapshot, so the previous paste's effect is cleanly
+  discarded — no stray lines accumulate.
+- The entire session (the initial paste plus all cycles) records as **one
+  undo step**. `p` then many `[`/`]` then `u` restores the buffer to its
+  state before the first `p`.
+- The session commits when any command other than `[` or `]` fires. The
+  next `p` opens a fresh session.
 
-This is the lightweight version of Emacs's yank-pop: reach the right entry
-from history, then continue editing. The HUME version doesn't undo the
-previous paste first; if you overshoot, press `u` and try again.
+**Stepping clamps at the ends of the ring** rather than wrapping. If you keep
+pressing `[` and reach the oldest entry, further presses do nothing. Clamping
+makes the boundary apparent; wrapping would hide it.
+
+**`[` and `]` without an open session are noops.** To cycle, you must first
+paste with `p` or `P`.
+
+**Consecutive `p` presses append** rather than replacing. After a paste, the
+pasted text is selected. A second `p` collapses that selection and pastes
+again adjacent to it — two copies side by side, each a separate undo step.
+This is intentional: the session model makes cycle-replace cheap (`[`/`]`),
+so consecutive `p` can safely mean "add another copy".
+
+**`p` after `[`/`]` appends the cycled entry.** If you cycled to slot 1 and
+then press `p`, the new paste appends a second copy of slot 1 (not slot 0),
+and the cycle position is preserved so a following `[` continues from slot 1
+rather than resetting.
 
 ## Explicit register prefix is untouched
 
@@ -156,10 +158,6 @@ push-only stack — you can't write to a specific slot by name. So `"5y` and
 kill — which has no relationship to anything `"5y` wrote. If you need
 symmetric named storage that round-trips `"5y "5p`, use a letter register
 (`"ay "ap`) instead.
-
-The one displacement note: when `"<digit>p` pastes over a non-cursor selection,
-the displaced text is pushed onto the ring head (slot 0), not written back to
-the source slot (since digit slots are read-only from the ring's perspective).
 
 Smart-p is a default for the bare keys, not a constraint on the register
 system. If the heuristic ever routes to the wrong source, the register

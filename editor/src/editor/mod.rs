@@ -198,6 +198,11 @@ pub(crate) struct Editor {
     /// The Smart-p heuristic reads this to decide whether bare `p` should read
     /// the kill ring head or the system clipboard.
     pub(super) last_command: Option<Cow<'static, str>>,
+    /// Values of the most recent paste. A consecutive `p`/`P` (append) re-pastes
+    /// these verbatim, independent of kill-ring / clipboard state. Set by every
+    /// successful paste (fresh or cycle-update); read only when `last_command` is
+    /// a paste-family command.
+    pub(super) last_paste: Option<Vec<String>>,
     pub(super) should_quit: bool,
     /// Active when the user is typing a command (`:`) or, later, a search (`/`).
     /// `None` when the mini-buffer is not visible.
@@ -567,6 +572,7 @@ impl Editor {
             clipboard: clipboard::SystemClipboard::new_unavailable(),
             register_prefix: None,
             last_command: None,
+            last_paste: None,
             should_quit: false,
             minibuf: None,
             completion: None,

@@ -155,6 +155,7 @@ impl Editor {
             clipboard: clipboard::SystemClipboard::new(),
             register_prefix: None,
             last_command: None,
+            last_paste: None,
             should_quit: false,
             minibuf: None,
             completion: None,

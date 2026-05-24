@@ -61,6 +61,10 @@ pub(crate) struct PaneBufferState {
     pub search_cursor: SearchCursor,
     /// Some only while this pane is in Insert mode for this buffer.
     pub edit_group: Option<EditGroup>,
+    /// Open paste session: `Some` between the first `p`/`P` and the next
+    /// non-cycle command. Stores the pre-paste snapshot so `[`/`]` can
+    /// re-paste from the pristine state and fold all cycles into one undo step.
+    pub paste_group: Option<EditGroup>,
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────
@@ -132,6 +136,7 @@ mod tests {
         let state = PaneBufferState::default();
         assert_eq!(state.selections.primary(), Selection::collapsed(0));
         assert!(state.edit_group.is_none());
+        assert!(state.paste_group.is_none());
         assert!(state.search_cursor.match_count.is_none());
     }
 
@@ -151,6 +156,7 @@ mod tests {
         let state = fresh_from_buf(&buf);
         assert_eq!(state.selections, expected);
         assert!(state.edit_group.is_none());
+        assert!(state.paste_group.is_none());
         assert!(state.search_cursor.match_count.is_none());
     }
 }

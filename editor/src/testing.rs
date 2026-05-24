@@ -51,7 +51,7 @@ use crate::core::text::Text;
 ///   `&Text`, return `SelectionSet`. The buffer is unchanged — the macro
 ///   provides its clone via `original_buf`.
 /// - **Mutating** (edits): take `Text` by value, return
-///   `(Text, SelectionSet, ChangeSet[, Vec<String>])`. The returned buffer
+///   `(Text, SelectionSet, ChangeSet)`. The returned buffer
 ///   is the edited one — `original_buf` is ignored.
 ///
 /// This trait lets `assert_state!` accept both families without change.
@@ -76,13 +76,6 @@ impl IntoTestResult for (Text, SelectionSet) {
 
 /// Standard edit commands.
 impl IntoTestResult for (Text, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
-        (self.0, self.1)
-    }
-}
-
-/// Paste commands (return displaced text alongside the edited buffer).
-impl IntoTestResult for (Text, SelectionSet, ChangeSet, Vec<String>) {
     fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
         (self.0, self.1)
     }

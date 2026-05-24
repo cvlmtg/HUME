@@ -10,31 +10,6 @@ use crate::editor::pane_state::EditGroup;
 use crate::os::io::FileMeta;
 use crate::settings::BufferOverrides;
 
-// ── IntoApplyResult ───────────────────────────────────────────────────────────
-
-/// Converts a closure's return value into the canonical 4-tuple that
-/// `Buffer::apply_edit` needs internally.
-///
-/// Implemented for the 3-tuple `(Text, SelectionSet, ChangeSet)` (plain edits)
-/// and the 4-tuple `(Text, SelectionSet, ChangeSet, Vec<String>)` (paste, which
-/// also captures displaced text). `None` is returned for the `Vec<String>` on
-/// the common path — no allocation.
-pub(crate) trait IntoApplyResult {
-    fn into_apply_result(self) -> (Text, SelectionSet, ChangeSet, Option<Vec<String>>);
-}
-
-impl IntoApplyResult for (Text, SelectionSet, ChangeSet) {
-    fn into_apply_result(self) -> (Text, SelectionSet, ChangeSet, Option<Vec<String>>) {
-        (self.0, self.1, self.2, None)
-    }
-}
-
-impl IntoApplyResult for (Text, SelectionSet, ChangeSet, Vec<String>) {
-    fn into_apply_result(self) -> (Text, SelectionSet, ChangeSet, Option<Vec<String>>) {
-        (self.0, self.1, self.2, Some(self.3))
-    }
-}
-
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
@@ -201,29 +176,22 @@ impl Buffer {
     /// Apply an edit and record it in the undo history.
     ///
     /// Takes `sels` (the acting pane's current selections) by value and returns
-    /// the post-edit selections + an optional displaced-text Vec (non-`None`
-    /// only for paste operations) + the forward `ChangeSet` (for propagation to
+    /// the post-edit selections + the forward `ChangeSet` (for propagation to
     /// non-acting panes via `propagate_cs_to_panes`).
-    ///
-    /// The closure receives `(Text, SelectionSet)` and may return either a
-    /// 3-tuple `(Text, SelectionSet, ChangeSet)` (plain edits) or a 4-tuple
-    /// `(Text, SelectionSet, ChangeSet, Vec<String>)` (paste). Both are accepted
-    /// via [`IntoApplyResult`].
-    pub(crate) fn apply_edit<R: IntoApplyResult>(
+    pub(crate) fn apply_edit(
         &mut self,
         sels: SelectionSet,
-        cmd: impl FnOnce(Text, SelectionSet) -> R,
-    ) -> (SelectionSet, Option<Vec<String>>, ChangeSet) {
+        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    ) -> (SelectionSet, ChangeSet) {
         // Clone the buffer for the edit — O(log n) via ropey structural sharing.
-        let (new_text, new_sels, cs, displaced) =
-            cmd(self.text.clone(), sels.clone()).into_apply_result();
+        let (new_text, new_sels, cs) = cmd(self.text.clone(), sels.clone());
 
         // self.text is still pre-edit here — safe to call invert.
         let inverse_cs = cs.invert(&self.text);
         self.history
             .record(cs.clone(), inverse_cs, sels, new_sels.clone());
         self.text = new_text;
-        (new_sels, displaced, cs)
+        (new_sels, cs)
     }
 
     /// Apply an edit within the current open group, composing its CS into the
@@ -231,17 +199,17 @@ impl Buffer {
     ///
     /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
     /// first. Panics (debug) if `None`.
-    pub(crate) fn apply_edit_grouped<R: IntoApplyResult>(
+    pub(crate) fn apply_edit_grouped(
         &mut self,
         sels: SelectionSet,
         edit_group: &mut Option<EditGroup>,
-        cmd: impl FnOnce(Text, SelectionSet) -> R,
-    ) -> (SelectionSet, Option<Vec<String>>, ChangeSet) {
+        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    ) -> (SelectionSet, ChangeSet) {
         let group = edit_group
             .as_mut()
             .expect("apply_edit_grouped called without an open group");
 
-        let (new_text, new_sels, cs, displaced) = cmd(self.text.clone(), sels).into_apply_result();
+        let (new_text, new_sels, cs) = cmd(self.text.clone(), sels);
 
         group.cs = Some(match group.cs.take() {
             None => cs.clone(),
@@ -249,7 +217,41 @@ impl Buffer {
         });
 
         self.text = new_text;
-        (new_sels, displaced, cs)
+        (new_sels, cs)
+    }
+
+    /// Re-paste from the paste-session snapshot, replacing the accumulated CS.
+    ///
+    /// Always starts from `group.text_snapshot` / `group.pre_sels`, so every
+    /// cycle cleanly discards the previous paste output (including added lines).
+    /// Returns the new selections and a propagation CS mapping the current buffer
+    /// text → the new text (for `propagate_cs_to_panes`).
+    ///
+    /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
+    /// first. Panics if `None`.
+    pub(crate) fn apply_edit_regrouped(
+        &mut self,
+        edit_group: &mut Option<EditGroup>,
+        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    ) -> (SelectionSet, ChangeSet) {
+        let group = edit_group
+            .as_mut()
+            .expect("apply_edit_regrouped called without an open group");
+
+        let (new_text, new_sels, new_cs) =
+            cmd(group.text_snapshot.clone(), group.pre_sels.clone());
+
+        // Build the propagation CS: maps current buffer text → new_text.
+        // On the first paste group.cs is None, meaning current == snapshot,
+        // so propagation CS == new_cs.
+        let propagation_cs = match &group.cs {
+            None => new_cs.clone(),
+            Some(prev_cs) => prev_cs.invert(&group.text_snapshot).compose(new_cs.clone()),
+        };
+
+        group.cs = Some(new_cs);
+        self.text = new_text;
+        (new_sels, propagation_cs)
     }
 
     /// Open an edit group. Snapshots the current text and the provided `pre_sels`
@@ -379,25 +381,23 @@ mod tests {
     }
 
     impl DocHelper {
-        fn apply_edit<R: IntoApplyResult>(
+        fn apply_edit(
             &mut self,
-            cmd: impl FnOnce(Text, SelectionSet) -> R,
-        ) -> Option<Vec<String>> {
+            cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        ) {
             let sels = std::mem::take(&mut self.sels);
-            let (new_sels, displaced, _cs) = self.buf.apply_edit(sels, cmd);
+            let (new_sels, _cs) = self.buf.apply_edit(sels, cmd);
             self.sels = new_sels;
-            displaced
         }
 
-        fn apply_edit_grouped<R: IntoApplyResult>(
+        fn apply_edit_grouped(
             &mut self,
-            cmd: impl FnOnce(Text, SelectionSet) -> R,
-        ) -> Option<Vec<String>> {
+            cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        ) {
             let sels = std::mem::take(&mut self.sels);
-            let (new_sels, displaced, _cs) =
+            let (new_sels, _cs) =
                 self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
             self.sels = new_sels;
-            displaced
         }
 
         fn begin_edit_group(&mut self) {
@@ -526,7 +526,7 @@ mod tests {
     fn undo_paste_after() {
         let mut d = doc("-[h]>ello\n");
         d.apply_edit(|b, s| paste_after(b, s, &["XY".to_string()]));
-        assert_eq!(state(&d), "hX-[Y]>ello\n");
+        assert_eq!(state(&d), "h-[XY]>ello\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>ello\n");
     }
@@ -537,7 +537,7 @@ mod tests {
     fn undo_paste_before() {
         let mut d = doc("-[h]>ello\n");
         d.apply_edit(|b, s| paste_before(b, s, &["XY".to_string()]));
-        assert_eq!(state(&d), "X-[Y]>hello\n");
+        assert_eq!(state(&d), "-[XY]>hello\n");
         d.undo();
         assert_eq!(state(&d), "-[h]>ello\n");
     }
@@ -875,15 +875,6 @@ mod tests {
         d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
         d.commit_edit_group();
         assert!(d.is_dirty());
-    }
-
-    // ── apply_edit returns displaced text for paste ───────────────────────────
-
-    #[test]
-    fn apply_edit_paste_returns_replaced_text() {
-        let mut d = doc("-[hell]>o\n");
-        let replaced = d.apply_edit(|b, s| paste_after(b, s, &["XY".to_string()]));
-        assert_eq!(replaced, Some(vec!["hell".to_string()]));
     }
 
     // ── yank + paste roundtrip ────────────────────────────────────────────────
