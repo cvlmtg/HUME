@@ -1,7 +1,7 @@
 use crate::core::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
-use crate::ops::register::{CLIPBOARD_REGISTER, yank_selections};
+use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, yank_selections};
 use crate::ops::surround::wrap_each_selection;
 
 use super::super::{doc_ops, register_ops, Severity};
@@ -206,7 +206,7 @@ fn resolve_paste_values(ed: &mut Editor) -> Option<(Vec<String>, Option<usize>)>
                 Some((values?, None))
             }
         }
-        Some('b') => None, // black hole
+        Some(BLACK_HOLE_REGISTER) => None,
         Some(c) if c.is_ascii_digit() => {
             let slot = (c as u8 - b'0') as usize;
             let values = ed.kill_ring.slot(slot)?.to_vec();
@@ -248,60 +248,53 @@ pub fn cmd_paste_before(
     Ok(())
 }
 
-/// Cycle the kill ring one step older and re-paste from the session snapshot.
+/// Shared implementation for `[` and `]`: advance/retreat the kill-ring cycle
+/// cursor and re-paste from the session snapshot.
 ///
-/// Noop when no paste session is open or when already at the oldest entry.
+/// Noop when no paste session is open or when the cycle is already at a boundary.
+fn do_paste_cycle(ed: &mut Editor, older: bool) -> Result<(), CommandError> {
+    let focused = ed.focused_pane_id;
+    let buf = ed.focused_buffer_id();
+    if ed.pane_state[focused][buf].paste_group.is_none() {
+        return Ok(());
+    }
+    // Eagerly convert to owned Vec so the borrow of ed.kill_ring ends before
+    // ed.buffers and ed.pane_state are borrowed mutably below.
+    let values = if older {
+        ed.kill_ring.cycle_older()
+    } else {
+        ed.kill_ring.cycle_newer()
+    }
+    .map(|v| v.to_vec());
+    if let Some(values) = values {
+        doc_ops::apply_doc_edit_regrouped(
+            &mut ed.buffers,
+            &mut ed.pane_state,
+            focused,
+            buf,
+            |b, s| paste_after(b, s, &values),
+        );
+        ed.last_paste = Some(values);
+    }
+    Ok(())
+}
+
+/// Cycle the kill ring one step older and re-paste from the session snapshot.
 pub fn cmd_paste_ring_older(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    if ed.pane_state[focused][buf].paste_group.is_none() {
-        return Ok(());
-    }
-    // cycle_older advances the cursor and returns the values; None = already at end.
-    if let Some(values) = ed.kill_ring.cycle_older() {
-        let values = values.to_vec();
-        ed.last_paste = Some(values.clone());
-        doc_ops::apply_doc_edit_regrouped(
-            &mut ed.buffers,
-            &mut ed.pane_state,
-            focused,
-            buf,
-            |b, s| paste_after(b, s, &values),
-        );
-    }
-    Ok(())
+    do_paste_cycle(ed, true)
 }
 
 /// Cycle the kill ring one step newer and re-paste from the session snapshot.
-///
-/// Noop when no paste session is open or when already at the head.
 pub fn cmd_paste_ring_newer(
     ed: &mut Editor,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    if ed.pane_state[focused][buf].paste_group.is_none() {
-        return Ok(());
-    }
-    // cycle_newer retreats the cursor toward the head; None = already at head.
-    if let Some(values) = ed.kill_ring.cycle_newer() {
-        let values = values.to_vec();
-        ed.last_paste = Some(values.clone());
-        doc_ops::apply_doc_edit_regrouped(
-            &mut ed.buffers,
-            &mut ed.pane_state,
-            focused,
-            buf,
-            |b, s| paste_after(b, s, &values),
-        );
-    }
-    Ok(())
+    do_paste_cycle(ed, false)
 }
 
 pub fn cmd_undo(
