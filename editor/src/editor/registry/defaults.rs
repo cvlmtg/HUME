@@ -543,21 +543,21 @@ impl CommandRegistry {
         // ── Editor commands — edit composites ─────────────────────────────────
         ecmd(
             "delete",
-            "Yank selections into the default register, then delete them.",
+            "Delete selections, pushing their text onto the kill ring.",
             cmd_delete,
         )
         .repeatable()
         .reg(self);
         ecmd(
             "change",
-            "Yank, delete selections, then enter insert mode (one undo group).",
+            "Delete selections onto the kill ring, then enter insert mode (one undo group).",
             cmd_change,
         )
         .repeatable()
         .reg(self);
         ecmd(
             "yank",
-            "Yank selections into the default register without deleting.",
+            "Copy selections to the clipboard and kill ring without deleting.",
             cmd_yank,
         )
         .reg(self);

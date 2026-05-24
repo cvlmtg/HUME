@@ -197,13 +197,21 @@ system) and the KILL RING (internal to the editor).
   contents right after it. If the yanked text was a whole line (selected
   with `x`), `p` inserts a new line below.
 
+  Repeating `p` pastes the same text again, stacking copies —
+  `p p p` pastes three times in a row.
+
 3.2  THE KILL RING
 
   `c` and `d` (change and delete) push their result into the kill ring
-  separately from the clipboard. Every kill is remembered.
+  separately from the clipboard. The ring keeps the 10 most recent
+  kills; the oldest drops off when an eleventh arrives.
 
-  [   paste the older kill-ring entry
-  ]   paste the newer kill-ring entry
+  [   cycle to the older kill-ring entry and paste it
+  ]   cycle to the newer kill-ring entry and paste it
+
+  `[` and `]` only work right after a paste — while the paste is still
+  "live". Pressed otherwise they do nothing. The whole paste-and-cycle
+  sequence collapses into one undo step: a single `u` reverts all of it.
 
   >> Delete the word "OLD" below with `w d`, then delete "ALSO" with
      `w d`. Now press `p` — smart-paste gives you the last kill. Press
@@ -220,9 +228,12 @@ system) and the KILL RING (internal to the editor).
   This means you can delete something with `d` and immediately `p`
   to paste the deleted text, without switching registers manually.
 
+  If the clipboard is empty when `p` would read it, it falls back to
+  the most recent kill so there is always something to paste.
+
   ── Lesson 3 Summary ──────────────────────────────────────────────
   y         yank to clipboard + kill ring   p / P  paste after / before
-  c / d     push to kill ring only          [ / ]  cycle kill-ring
+  c / d     push to kill ring (10)          [ / ]  cycle ring (after paste)
   p reads from kill ring after c/d, from clipboard otherwise
   ──────────────────────────────────────────────────────────────────
 
@@ -612,7 +623,7 @@ argument), then Enter. Many have short aliases.
   >> Try `:version` to confirm which build you are running.
 
   ── Lesson 8 Summary ──────────────────────────────────────────────
-  :w / :w <path>   save / save-as       :e <path>   open file
+  :w / :w <path>   save / save-as      :e <path>   open file
   :q / :q! / :wq   quit                :ls         list buffers
   :bn / :bp / :b   navigate buffers    :bd / :bd!  close buffer
   Ctrl+o / Ctrl+i  jump backward / forward
@@ -627,12 +638,16 @@ This appendix sketches features not covered in the main lessons.
 
 REGISTERS
 
-  Prefixing a yank, delete, or paste with `"<letter>` stores into or
-  reads from a named register.
+  Prefixing a yank, delete, or paste with `"<char>` stores into or
+  reads from a specific register.
 
   "cy   yank into the system clipboard register  c
   "cp   paste from the system clipboard
   "ay   yank into register  a    "ap   paste from register  a
+
+  "0p .. "9p   paste a specific kill-ring slot. "0 is the newest kill,
+               "1 the next older — the same 10 entries `[` and `]`
+               cycle through.
 
 MACROS
 

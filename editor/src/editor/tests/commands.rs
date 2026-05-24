@@ -35,7 +35,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc().can_undo());
 }
 
-// ── `d` yanks into the default register ────────────────────────────────────
+// ── `d` pushes deleted text onto the kill ring ─────────────────────────────
 
 /// Deleting a selection must push the deleted text onto the kill ring.
 /// A bug in the mapping that removed the `yank_selections` call before
