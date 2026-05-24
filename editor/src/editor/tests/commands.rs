@@ -1232,6 +1232,58 @@ fn paste_ring_warm_cycle_replaces_single_char_paste() {
     assert!(!buf.contains('X'), "] replaces X — no 'X' remains");
 }
 
+/// `P` (paste-before) opens a before-session; `[`/`]` must re-paste BEFORE the
+/// cursor, not after it.
+#[test]
+fn paste_before_cycle_stays_before_charwise() {
+    let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
+    ed.kill_ring.push(vec!["X".to_string()]); // slot 1 after next push
+    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; slot 0=Y, slot 1=X
+
+    // "0P: paste-before slot 0 ("Y") before cursor 'c'.
+    ed.handle_key(key('"')); ed.handle_key(key('0')); ed.handle_key(key('P'));
+    assert_eq!(state(&ed), "-[Y]>cd\n", "P pastes before the cursor");
+
+    // [: cycle to slot 1 ("X"); must re-paste BEFORE the cursor snapshot (at 0).
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), "-[X]>cd\n", "[ after P re-pastes before the cursor (would be c-[X]>d if it used paste_after)");
+}
+
+/// `p` (paste-after) opens an after-session; cycling stays after (regression).
+#[test]
+fn paste_after_cycle_stays_after_charwise() {
+    let mut ed = editor_from("-[c]>d\n");
+    ed.kill_ring.push(vec!["X".to_string()]);
+    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]
+
+    ed.handle_key(key('"')); ed.handle_key(key('0')); ed.handle_key(key('p'));
+    assert_eq!(state(&ed), "c-[Y]>d\n", "p pastes after the cursor");
+
+    ed.handle_key(key('['));
+    assert_eq!(state(&ed), "c-[X]>d\n", "[ after p stays paste-after");
+}
+
+/// `P` on a linewise entry opens a before-session; `[` must re-paste ABOVE the
+/// cursor line, not below it.
+#[test]
+fn paste_before_cycle_stays_above_linewise() {
+    let mut ed = editor_from("-[B]>\nC\n"); // cursor on 'B', line 0
+    ed.kill_ring.push(vec!["X\n".to_string()]); // slot 1
+    ed.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; slot 0=Y\n
+
+    // "0P: linewise paste-before slot 0 ("Y\n") — inserts above line 0.
+    ed.handle_key(key('"')); ed.handle_key(key('0')); ed.handle_key(key('P'));
+    assert_eq!(ed.doc().text().to_string(), "Y\nB\nC\n", "P pastes above current line");
+
+    // [: cycle to slot 1 ("X\n"); must re-paste ABOVE line 0 (not below).
+    ed.handle_key(key('['));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "X\nB\nC\n",
+        "[ after linewise P re-pastes above (would be B\\nX\\nC\\n if it used paste_after)"
+    );
+}
+
 /// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard
 /// paste (PASTERING.md rule 19).
 ///

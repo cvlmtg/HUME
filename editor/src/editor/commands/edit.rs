@@ -108,6 +108,7 @@ fn do_paste(ed: &mut Editor, before: bool) {
 
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
+    ed.pane_state[focused][buf].paste_before = before;
 
     // Append path: re-paste the verbatim values from the previous paste.
     // No ring/clipboard re-lookup — ring emptiness is irrelevant.
@@ -263,12 +264,14 @@ fn do_paste_cycle(ed: &mut Editor, older: bool) -> Result<(), CommandError> {
     }
     .map(|v| v.to_vec());
     if let Some(values) = values {
+        let before = ed.pane_state[focused][buf].paste_before;
+        let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut ed.buffers,
             &mut ed.pane_state,
             focused,
             buf,
-            |b, s| paste_after(b, s, &values),
+            |b, s| paste_fn(b, s, &values),
         );
         ed.last_paste = Some(values);
     }

@@ -116,8 +116,10 @@ model:
   open. The pasted text is selected.
 - While the session is open, `[` replaces the paste with the next-older
   entry and `]` replaces it with the next-newer one. Each cycle re-pastes
-  from the same pristine snapshot, so the previous paste's effect is cleanly
-  discarded — no stray lines accumulate.
+  from the same pristine snapshot in the same direction as the opening `p`/`P`
+  — so `P [ [` pastes above the cursor just as `P` itself did; `p [ [`
+  pastes after. The previous paste's effect is cleanly discarded — no stray
+  lines accumulate.
 - The entire session (the initial paste plus all cycles) records as **one
   undo step**. `p` then many `[`/`]` then `u` restores the buffer to its
   state before the first `p`.

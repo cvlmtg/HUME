@@ -65,6 +65,10 @@ pub(crate) struct PaneBufferState {
     /// non-cycle command. Stores the pre-paste snapshot so `[`/`]` can
     /// re-paste from the pristine state and fold all cycles into one undo step.
     pub paste_group: Option<EditGroup>,
+    /// Direction the open paste session was opened with (`true` = `P`/paste-before).
+    /// Meaningful only while `paste_group.is_some()`; read by `[`/`]` so cycling
+    /// re-pastes in the same direction as the opening `p`/`P`.
+    pub paste_before: bool,
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────
