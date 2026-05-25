@@ -50,6 +50,7 @@ mod registry;
 pub(crate) mod search_ops;
 pub(super) mod scroll;
 pub(crate) mod syntax;
+mod syntax_glue;
 mod visual_move;
 
 pub(crate) use crate::core::search_state::{SearchDirection, SearchState};

@@ -543,7 +543,10 @@ impl Editor {
                 );
             }
 
-            // 5. Sync highlight data (search matches, bracket matches) to shared
+            // 5. Reparse any visible buffer whose text changed since the last frame.
+            self.reparse_stale_buffers();
+
+            // 6. Sync highlight data (search matches, bracket matches) to shared
             //    Arc buffers read by the highlight providers during rendering.
             self.update_highlight_providers();
 

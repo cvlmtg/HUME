@@ -391,6 +391,8 @@ impl Editor {
         }
         let bid_val = SteelBufferId(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
+        // Wire up (or tear down) tree-sitter highlighting for this buffer.
+        self.setup_buffer_syntax(bid);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {

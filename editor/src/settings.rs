@@ -258,6 +258,7 @@ define_settings! {
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,  parser: usize_nonzero;
         "popup-border" => popup_border: bool = true, parser: bool;
         "theme" => theme: String = String::new(), parser: string;
+        "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576, parser: usize_nonzero;
     }
     buffer {
         "tab-width"          => tab_width:          u8              = 4,
