@@ -780,6 +780,31 @@ fn paste_after_linewise_three_way_split_empty_after() {
     );
 }
 
+// ── linewise paste: two non-collapsed selections on the same line ─────────
+
+#[test]
+fn paste_after_linewise_two_selections_same_line_no_duplication() {
+    // Two non-collapsed selections on the same line ("he" and "lo").
+    // Linewise paste should replace the line once and yield no duplicated
+    // before_text. Bug: prior code re-inserted before_text for the second
+    // selection even though the line was already deleted by the first.
+    // Both selections land on the same pasted range ("X\n") — the second reuses
+    // the first selection's result instead of re-inserting its before_text.
+    // The two identical selections merge to one; "llo" is after_text, not a
+    // duplication of before_text from the second selection.
+    assert_state!(
+        "-[he]>l-[lo]>\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>llo\n"
+    );
+    // Two-line buffer: same invariant.
+    assert_state!(
+        "-[he]>l-[lo]>\nworld\n",
+        |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>llo\nworld\n"
+    );
+}
+
 // ── repeat_edit count=0 ───────────────────────────────────────────────────
 
 #[test]

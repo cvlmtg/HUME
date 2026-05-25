@@ -27,14 +27,22 @@ impl Editor {
     /// Called by `execute.rs` before any non-`[`/`]` dispatch so the session
     /// is committed before undo, motions, or the next `p`/`P`.
     pub(in super::super) fn commit_paste_session(&mut self) {
-        let focused = self.focused_pane_id;
-        let buf = self.focused_buffer_id();
-        if self.pane_state[focused][buf].paste_group.is_none() {
-            return;
+        // Commit every open paste group across all pane/buffer combinations.
+        // Normally only the focused slot has one open, but a macro that switches
+        // buffers mid-replay can leave a group open on a de-focused buffer.
+        let open: Vec<(PaneId, BufferId)> = self.pane_state
+            .iter()
+            .flat_map(|(pid, inner)| {
+                inner.iter()
+                    .filter(|(_, pbs)| pbs.paste_group.is_some())
+                    .map(move |(bid, _)| (pid, bid))
+            })
+            .collect();
+        for (pid, bid) in open {
+            let post_sels = self.pane_state[pid][bid].selections.clone();
+            let pbs = &mut self.pane_state[pid][bid];
+            self.buffers.get_mut(bid).commit_edit_group(&mut pbs.paste_group, post_sels);
         }
-        let post_sels = self.pane_state[focused][buf].selections.clone();
-        let pbs = &mut self.pane_state[focused][buf];
-        self.buffers.get_mut(buf).commit_edit_group(&mut pbs.paste_group, post_sels);
     }
 }
 
@@ -109,7 +117,10 @@ fn do_paste(ed: &mut Editor, before: bool) {
     let last_command = ed.last_command.clone();
     let last_cmd = last_command.as_deref();
 
-    let is_append = last_cmd.is_some_and(|c| PASTE_FAMILY_CMDS.contains(&c));
+    // An explicit register prefix (`"Xp`) overrides the append path — the user
+    // is asking for a specific register, not a repeat of the last paste.
+    let is_append = last_cmd.is_some_and(|c| PASTE_FAMILY_CMDS.contains(&c))
+        && ed.register_prefix.is_none();
 
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();

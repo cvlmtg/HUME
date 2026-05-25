@@ -1526,6 +1526,66 @@ fn register_prefix_persists_across_motion() {
     assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
 }
 
+/// An explicit `"Xp` while in the append state must paste from register X,
+/// not silently re-paste the previous value.  Before the fix, the append path
+/// returned without calling `take_register_prefix()`, so the named register was
+/// ignored AND the prefix leaked into the next command.
+#[test]
+fn register_prefix_overrides_append_path() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.registers.write_text('5', vec!["REG5".to_string()]);
+    ed.kill_ring.push(vec!["RING".to_string()]);
+
+    // Delete 'x' so the ring has "x" at head; RING is at slot 1.
+    ed.feed_key(key('d'));
+    // Paste via kill register to get into the append state with last_paste=[ring head].
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));
+    ed.feed_key(key('p'));
+
+    // Now try to paste from named register '5' — must NOT take the append path.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.feed_key(key('p'));
+
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("REG5"),
+        "explicit \"5p must paste from register 5, not re-paste last_paste; buf={buf:?}"
+    );
+}
+
+/// After an explicit `"Xp` the register prefix must be consumed (not leaked).
+/// Before the fix the prefix persisted and the NEXT command accidentally used it.
+#[test]
+fn register_prefix_consumed_by_paste() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.registers.write_text('5', vec!["REG5".to_string()]);
+    ed.kill_ring.push(vec!["RING".to_string()]);
+
+    // Get into append state via a paste.
+    ed.feed_key(key('d'));           // delete x; ring head = "x"
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));         // select kill register
+    ed.feed_key(key('p'));           // paste ring head
+
+    // Now type "5p — explicit register paste.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.feed_key(key('p'));           // should consume the '5' prefix
+
+    // The prefix must be gone — the next 'd' must NOT route to register 5.
+    ed.feed_key(key('d'));           // delete; should push to kill ring, not register 5
+    // Register 5 must still hold "REG5" — if the prefix leaked into 'd', it
+    // would be overwritten with the deleted char.
+    let reg5 = ed.registers.read('5').and_then(|r| r.as_text()).map(|v| v.to_vec());
+    assert_eq!(
+        reg5,
+        Some(vec!["REG5".to_string()]),
+        "register 5 must be unchanged after d — prefix leaked if it differs"
+    );
+}
+
 // ── Bundled theme loading (end-to-end wiring) ─────────────────────────────────
 
 /// Smoke-test all three bundled themes through the full loader → bake → resolve

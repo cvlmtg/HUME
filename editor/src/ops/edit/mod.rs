@@ -224,6 +224,11 @@ fn paste_impl(
         String::new()
     };
 
+    // Track the last linewise result so selections on the same line that are
+    // skipped (delete_count == 0) can reuse the previously-inserted range
+    // instead of pointing to b.new_pos() which may be past the buffer end.
+    let mut last_linewise: Option<(usize, Selection)> = None; // (line_index, result_sel)
+
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
 
@@ -290,19 +295,34 @@ fn paste_impl(
             let del_to = line_end_exclusive(buf, last_line); // includes the \n
             let from = del_from.max(b.old_pos()); // guard same-line multi-cursor
             b.retain(from - b.old_pos());
-            b.delete(del_to.saturating_sub(from));
-            b.insert(&insert);
+            let delete_count = del_to.saturating_sub(from);
+            b.delete(delete_count);
+            if delete_count > 0 {
+                b.insert(&insert);
 
-            // Select the pasted value within the inserted content.
-            let total_chars = insert.chars().count();
-            let before_prefix = if before_text.is_empty() {
-                0
+                // Select the pasted value within the inserted content.
+                let total_chars = insert.chars().count();
+                let before_prefix = if before_text.is_empty() {
+                    0
+                } else {
+                    before_text.chars().count() + 1 // +1 for the '\n' after before_text
+                };
+                let text_chars = text.chars().count();
+                let sel_start = b.new_pos() - total_chars + before_prefix;
+                let result_sel = Selection::new(sel_start, sel_start + text_chars - 1);
+                last_linewise = Some((first_line, result_sel));
+                new_sels.push(result_sel);
             } else {
-                before_text.chars().count() + 1 // +1 for the '\n' after before_text
-            };
-            let text_chars = text.chars().count();
-            let sel_start = b.new_pos() - total_chars + before_prefix;
-            new_sels.push(Selection::new(sel_start, sel_start + text_chars - 1));
+                // A prior selection on the same line already replaced it; skip
+                // re-inserting (avoids duplicating before_text). Reuse the range
+                // from that prior selection — b.new_pos() is unsafe here because it
+                // may equal buf_len when the last line was the final line.
+                let reuse = last_linewise
+                    .filter(|(line, _)| *line == first_line)
+                    .map(|(_, s)| s)
+                    .unwrap_or_else(|| Selection::collapsed(b.new_pos().saturating_sub(1)));
+                new_sels.push(reuse);
+            }
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
             // Cap end at the last content char to protect the structural trailing '\n'.
