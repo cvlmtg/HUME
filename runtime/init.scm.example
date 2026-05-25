@@ -5,7 +5,7 @@
 ;;; to apply changes without restarting.
 ;;;
 ;;; Steel is a Scheme dialect — Scheme syntax applies throughout.
-;;; See LEARNING.md for language basics; see ROADMAP.md for built-in commands.
+;;; Run :commands to list all available built-in commands.
 
 ;; ── Settings ──────────────────────────────────────────────────────────────────
 ;;
@@ -48,7 +48,7 @@
 ;;   Like bind-key! but the next key pressed is passed as (pending-char) to the
 ;;   command.  Used for surround-style "verb + char" bindings.
 ;;
-;; The prelude (runtime/scheme/prelude.scm) adds ergonomic batch variants:
+;; Ergonomic batch variants are also available:
 ;;
 ;; (bind-keys! mode (key cmd) ...)
 ;;   Bind multiple keys at once — expands to individual bind-key! calls.
