@@ -75,9 +75,9 @@ fn key_left() -> KeyEvent {
 /// commands that must be verified end-to-end through the keymap dispatcher.
 fn type_cmd(ed: &mut Editor, cmd: &str) {
     for ch in cmd.chars() {
-        ed.handle_key(key(ch));
+        ed.feed_key(key(ch));
     }
-    ed.handle_key(key_enter());
+    ed.feed_key(key_enter());
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {
@@ -183,6 +183,28 @@ impl CwdGuard {
 impl Drop for CwdGuard {
     fn drop(&mut self) {
         let _ = std::env::set_current_dir(&self.saved);
+    }
+}
+
+// ── Event-loop faithful helpers ───────────────────────────────────────────────
+
+impl Editor {
+    /// Feed one key exactly as the event loop does (lifecycle.rs:354-402):
+    /// dispatch it, refresh the search cache, drain any macro-replay keys it
+    /// enqueued, then refresh again. Prefer this over `handle_key` in tests
+    /// whose correctness depends on the per-key ordering — e.g. Smart-p logic
+    /// that reads `last_command`, which an idle drain must not clobber (432c24f).
+    fn feed_key(&mut self, key: KeyEvent) {
+        self.handle_key(key);
+        self.sync_search_cache();
+        self.drain_replay_queue();
+        self.sync_search_cache();
+    }
+
+    fn feed_keys(&mut self, keys: impl IntoIterator<Item = KeyEvent>) {
+        for k in keys {
+            self.feed_key(k);
+        }
     }
 }
 
