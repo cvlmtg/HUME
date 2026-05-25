@@ -359,6 +359,7 @@ mod tests {
             engine_view: Some(ev),
             pane_state: Some(ps),
             pane_jumps: pj,
+            languages: None,
         }
     }
 

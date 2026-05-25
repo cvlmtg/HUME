@@ -1,4 +1,6 @@
-//! Language-identity Steel builtin: `%define-language!` / `(define-language!)`.
+//! Language-identity and grammar Steel builtins.
+
+use std::path::PathBuf;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -8,6 +10,21 @@ use crate::scripting::{PendingLanguageReg, SteelCtx};
 use super::list_to_strings;
 
 type SteelResult = Result<SteelVal, SteelErr>;
+
+fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
+    match val {
+        SteelVal::StringV(s) => Ok(s.to_string()),
+        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
+    }
+}
+
+fn path_arg(val: SteelVal, ctx_name: &str) -> Result<PathBuf, SteelErr> {
+    match val {
+        SteelVal::StringV(s) => Ok(PathBuf::from(s.as_str())),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string path", ctx_name),
+    }
+}
 
 /// `(%define-language! name extensions globs shebangs)` — init-only.
 ///
@@ -34,5 +51,60 @@ pub(crate) fn define_language(
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
     ctx.pending_language_regs.push(PendingLanguageReg::Identity { name, extensions, globs, shebangs });
     Ok(SteelVal::Void)
+}
+
+/// `(register-grammar! name grammar-path symbol highlights-path)` — init or command.
+///
+/// - **Init mode**: queues a `PendingLanguageReg::Grammar`; applied after
+///   `eval_init` completes via `apply_pending_language_regs`.
+/// - **Command mode**: attaches immediately, rebakes the theme so the new
+///   capture-name scopes resolve to colors, and queues a buffer sweep.
+pub(crate) fn register_grammar(
+    ctx: &mut SteelCtx,
+    name: SteelVal,
+    grammar_path: SteelVal,
+    symbol: SteelVal,
+    highlights_path: SteelVal,
+) -> SteelResult {
+    let name = string_arg(name, "register-grammar! name")?;
+    let grammar_path = path_arg(grammar_path, "register-grammar! grammar-path")?;
+    let symbol = string_arg(symbol, "register-grammar! symbol")?;
+    let highlights_path = path_arg(highlights_path, "register-grammar! highlights-path")?;
+
+    if ctx.is_init {
+        ctx.pending_language_regs.push(PendingLanguageReg::Grammar {
+            name,
+            grammar_path,
+            symbol,
+            highlights_path,
+        });
+        return Ok(SteelVal::Void);
+    }
+
+    // Command mode — attach immediately and trigger a buffer sweep.
+    let languages = match ctx.languages.as_mut() {
+        Some(r) => r,
+        None => steel::stop!(Generic => "register-grammar!: language registry unavailable"),
+    };
+    let ev = match ctx.engine_view.as_mut() {
+        Some(r) => r,
+        None => steel::stop!(Generic => "register-grammar!: engine view unavailable"),
+    };
+
+    match languages.attach_grammar(&name, &grammar_path, &symbol, &highlights_path, &mut ev.registry) {
+        Ok(_) => {
+            ev.theme.bake(&ev.registry);
+            ctx.pending_grammar_sweeps.push(name);
+            Ok(SteelVal::Void)
+        }
+        Err(e) => steel::stop!(Generic => "register-grammar! '{}': {}", name, e),
+    }
+}
+
+/// `(language-has-grammar? name)` — returns `#t` if `name` has an attached grammar.
+pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
+    let name = string_arg(name, "language-has-grammar?")?;
+    let result = ctx.languages.as_ref().is_some_and(|l| l.has_grammar(&name));
+    Ok(SteelVal::BoolV(result))
 }
 

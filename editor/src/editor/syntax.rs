@@ -412,31 +412,52 @@ impl Editor {
         regs: Vec<crate::scripting::PendingLanguageReg>,
     ) {
         use crate::scripting::PendingLanguageReg;
-        let mut any = false;
+        let mut any_identity = false;
+        let mut grammar_sweeps: Vec<String> = Vec::new();
         for reg in regs {
-            let PendingLanguageReg::Identity { name, extensions, globs, shebangs } = reg;
-            let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
-            let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
-            // Validate each glob before registering; warn on invalid patterns so
-            // a typo in a user's define-language! call surfaces immediately.
-            let mut valid_globs: Vec<&str> = Vec::with_capacity(globs.len());
-            for g in &globs {
-                match globset::Glob::new(g) {
-                    Ok(_) => valid_globs.push(g.as_str()),
-                    Err(e) => self.message_log.push(
-                        super::Severity::Warning,
-                        format!("define-language! '{}': invalid glob '{}': {}", name, g, e),
-                    ),
+            match reg {
+                PendingLanguageReg::Identity { name, extensions, globs, shebangs } => {
+                    let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+                    let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
+                    let mut valid_globs: Vec<&str> = Vec::with_capacity(globs.len());
+                    for g in &globs {
+                        match globset::Glob::new(g) {
+                            Ok(_) => valid_globs.push(g.as_str()),
+                            Err(e) => self.message_log.push(
+                                super::Severity::Warning,
+                                format!("define-language! '{}': invalid glob '{}': {}", name, g, e),
+                            ),
+                        }
+                    }
+                    self.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
+                    any_identity = true;
+                }
+                PendingLanguageReg::Grammar { name, grammar_path, symbol, highlights_path } => {
+                    match self.languages.attach_grammar(
+                        &name,
+                        &grammar_path,
+                        &symbol,
+                        &highlights_path,
+                        &mut self.engine_view.registry,
+                    ) {
+                        Ok(_) => grammar_sweeps.push(name),
+                        Err(e) => self.message_log.push(
+                            super::Severity::Warning,
+                            format!("register-grammar! '{}': {}", name, e),
+                        ),
+                    }
                 }
             }
-            self.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
-            any = true;
         }
-        if any && let Err(e) = self.languages.rebuild_glob_set() {
+        if any_identity && let Err(e) = self.languages.rebuild_glob_set() {
             self.message_log.push(
                 super::Severity::Warning,
                 format!("define-language!: glob set build failed: {e}"),
             );
+        }
+        if !grammar_sweeps.is_empty() {
+            self.engine_view.theme.bake(&self.engine_view.registry);
+            self.sweep_buffers_for_grammars(grammar_sweeps);
         }
     }
 

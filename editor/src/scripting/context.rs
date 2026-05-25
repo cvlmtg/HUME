@@ -14,6 +14,8 @@ use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;
 use crate::settings::EditorSettings;
 
+use crate::editor::syntax::LanguageRegistry;
+
 use super::attribution::PluginStack;
 use super::hooks::HookRegistry;
 use super::lazy::LazyRegistry;
@@ -102,6 +104,11 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) pane_state:
         Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
     pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+    /// Language registry for `(register-grammar! …)` in command mode.
+    pub(crate) languages: Option<&'a mut LanguageRegistry>,
+    /// Language names for which a grammar was just attached; flushed into
+    /// `SteelCmdResult.grammar_sweeps` / `HookResult.grammar_sweeps`.
+    pub(crate) pending_grammar_sweeps: Vec<String>,
 }
 
 impl CustomReference for SteelCtx<'_> {}
@@ -143,6 +150,8 @@ impl<'a> SteelCtx<'a> {
             engine_view: None,
             pane_state: None,
             pane_jumps: None,
+            languages: None,
+            pending_grammar_sweeps: Vec::new(),
         }
     }
 
@@ -187,6 +196,8 @@ impl<'a> SteelCtx<'a> {
             engine_view: refs.engine_view,
             pane_state: refs.pane_state,
             pane_jumps: refs.pane_jumps,
+            languages: refs.languages,
+            pending_grammar_sweeps: Vec::new(),
         }
     }
 }

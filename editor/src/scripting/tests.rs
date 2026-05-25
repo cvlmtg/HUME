@@ -33,6 +33,7 @@ fn test_refs_with_bid<'a>(
         engine_view: None,
         pane_state: None,
         pane_jumps: None,
+        languages: None,
     }
 }
 

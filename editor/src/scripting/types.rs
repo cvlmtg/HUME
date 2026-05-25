@@ -7,6 +7,7 @@ use crate::core::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;
+use crate::editor::syntax::LanguageRegistry;
 use crate::settings::EditorSettings;
 
 use super::attribution;
@@ -61,6 +62,12 @@ pub(crate) enum PendingLanguageReg {
         globs: Vec<String>,
         shebangs: Vec<String>,
     },
+    Grammar {
+        name: String,
+        grammar_path: std::path::PathBuf,
+        symbol: String,
+        highlights_path: std::path::PathBuf,
+    },
 }
 
 /// `set-buffer-language!` calls deferred during a command or hook eval.
@@ -87,6 +94,9 @@ pub(crate) struct SteelCmdResult {
     pub(crate) cmd_queue: Vec<QueuedCommand>,
     pub(crate) wait_char_request: Option<String>,
     pub(crate) pending_language_sets: PendingLanguageSets,
+    /// Language names for which `(register-grammar! …)` just attached a grammar;
+    /// drained by the executor into `sweep_buffers_for_grammars`.
+    pub(crate) grammar_sweeps: Vec<String>,
 }
 
 /// Result returned by [`super::ScriptingHost::fire_hook`].
@@ -94,6 +104,7 @@ pub(crate) struct SteelCmdResult {
 pub(crate) struct HookResult {
     pub(crate) cmd_queue: Vec<QueuedCommand>,
     pub(crate) pending_language_sets: PendingLanguageSets,
+    pub(crate) grammar_sweeps: Vec<String>,
 }
 
 /// Editor-side references bundled for a single Steel eval in command mode.
@@ -111,4 +122,5 @@ pub(crate) struct EditorSteelRefs<'a> {
     pub(crate) pane_state:
         Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
     pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
+    pub(crate) languages: Option<&'a mut LanguageRegistry>,
 }

@@ -87,14 +87,18 @@ impl Editor {
                     engine_view: Some(&mut self.engine_view),
                     pane_state: Some(&mut self.pane_state),
                     pane_jumps: Some(&mut self.pane_jumps),
+                    languages: Some(&mut self.languages),
                 },
             )
         };
         self.flush_script_messages();
         match result {
-            Ok(HookResult { cmd_queue, pending_language_sets }) => {
+            Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps }) => {
                 for (bid, lang) in pending_language_sets {
                     self.set_buffer_language(bid, lang);
+                }
+                if !grammar_sweeps.is_empty() {
+                    self.sweep_buffers_for_grammars(grammar_sweeps);
                 }
                 self.drain_command_queue(cmd_queue, 1, false);
             }

@@ -197,8 +197,10 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "close-buffer!", buffers::close_buffer);
     engine.register_fn_with_ctx(HUME_CTX, "switch-to-buffer!", buffers::switch_to_buffer);
 
-    // Language identity builtins
+    // Language identity and grammar builtins
     engine.register_fn_with_ctx(HUME_CTX, "%define-language!", syntax::define_language);
+    engine.register_fn_with_ctx(HUME_CTX, "register-grammar!", syntax::register_grammar);
+    engine.register_fn_with_ctx(HUME_CTX, "language-has-grammar?", syntax::language_has_grammar);
     engine.register_fn_with_ctx(HUME_CTX, "buffer-language", buffers::buffer_language);
     engine.register_fn_with_ctx(HUME_CTX, "set-buffer-language!", buffers::set_buffer_language_steel);
 

@@ -131,6 +131,7 @@ impl Editor {
                                 engine_view: Some(&mut self.engine_view),
                                 pane_state: Some(&mut self.pane_state),
                                 pane_jumps: Some(&mut self.pane_jumps),
+                                languages: Some(&mut self.languages),
                             },
                         );
 
@@ -145,8 +146,8 @@ impl Editor {
                         self.force_full_redraw = true;
                     }
 
-                    let (queue, wait_char_cmd, lang_sets) = match result {
-                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets),
+                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
                         Err(e) => {
                             self.report(Severity::Error, e);
                             return;
@@ -155,6 +156,9 @@ impl Editor {
                     self.flush_script_messages();
                     for (bid, lang) in lang_sets {
                         self.set_buffer_language(bid, lang);
+                    }
+                    if !grammar_sweeps.is_empty() {
+                        self.sweep_buffers_for_grammars(grammar_sweeps);
                     }
                     self.drain_command_queue(queue, count, extend);
                     if let Some(wc) = wait_char_cmd {

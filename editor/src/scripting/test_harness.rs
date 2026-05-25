@@ -92,6 +92,7 @@ impl SteelCtxTestHarness {
                 engine_view: None,
                 pane_state: None,
                 pane_jumps: None,
+                languages: None,
             },
             None,
         )

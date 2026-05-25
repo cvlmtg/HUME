@@ -550,7 +550,7 @@ impl ScriptingHost {
             format!("({steel_proc} {})", arg_refs.join(" "))
         };
 
-        let (result, cmd_queue, wait_char_request, pending_language_sets) = {
+        let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -584,7 +584,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets)
+            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
@@ -594,7 +594,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets })
+        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.
@@ -615,7 +615,7 @@ impl ScriptingHost {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
-            return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![] });
+            return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![], grammar_sweeps: vec![] });
         }
 
         // Pre-bind each arg global.
@@ -637,7 +637,7 @@ impl ScriptingHost {
 
         let budget_ms = refs.settings.steel_command_budget_ms as u64;
 
-        let (result, cmd_queue, pending_language_sets) = {
+        let (result, cmd_queue, pending_language_sets, grammar_sweeps) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -671,7 +671,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.pending_language_sets)
+            (result, steel_ctx.cmd_queue, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg and proc globals before returning — releases Arc references
@@ -684,7 +684,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(HookResult { cmd_queue, pending_language_sets })
+        Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps })
     }
 }
 
