@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
-use steel::rvals::SteelVal;
 
 use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
@@ -18,7 +17,7 @@ use crate::settings::EditorSettings;
 use super::attribution::PluginStack;
 use super::hooks::HookRegistry;
 use super::lazy::LazyRegistry;
-use super::types::{EditorSteelRefs, PendingLanguageReg, PendingLanguageSets, PendingSteelCmd};
+use super::types::{EditorSteelRefs, PendingLanguageReg, PendingLanguageSets, PendingSteelCmd, QueuedCommand};
 use super::HostBundle;
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -73,7 +72,11 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) interrupt_flag: Arc<AtomicBool>,
     // ── Command-mode fields (meaningful only when is_init = false) ────────────
     /// Commands queued by `(call! …)`, with their positional args.
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
+    pub(crate) cmd_queue: Vec<QueuedCommand>,
+    /// Register prefix set by `(set-register-prefix! …)` and inherited by
+    /// subsequent `(call! …)` calls until changed.  Resets per invocation
+    /// (SteelCtx is rebuilt each time).
+    pub(crate) current_register_prefix: Option<char>,
     /// WaitChar command requested by `(request-wait-char! …)`.
     pub(crate) wait_char_request: Option<String>,
     /// `set-buffer-language!` calls deferred during this eval; drained by the
@@ -128,6 +131,7 @@ impl<'a> SteelCtx<'a> {
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
             cmd_queue: Vec::new(),
+            current_register_prefix: None,
             wait_char_request: None,
             pending_language_sets: Vec::new(),
             pending_char: None,
@@ -171,6 +175,7 @@ impl<'a> SteelCtx<'a> {
             pending_steel_cmds: Vec::new(),
             interrupt_flag: host.interrupt_flag,
             cmd_queue: Vec::new(),
+            current_register_prefix: None,
             wait_char_request: None,
             pending_language_sets: Vec::new(),
             pending_char,

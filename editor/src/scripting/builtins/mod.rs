@@ -133,6 +133,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "bind-key-extend!", keymap_bind::bind_key_extend);
     engine.register_fn_with_ctx(HUME_CTX, "unbind-key!", keymap_bind::unbind_key);
     engine.register_fn_with_ctx(HUME_CTX, "bind-wait-char!", keymap_bind::bind_wait_char);
+    engine.register_fn_with_ctx(HUME_CTX, "set-register-prefix!", commands::set_register_prefix);
 
     // Plugin lifecycle
     engine.register_fn_with_ctx(HUME_CTX, "%declare-plugin!", plugins::declare_plugin);

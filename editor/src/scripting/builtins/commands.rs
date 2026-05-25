@@ -34,7 +34,9 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use super::require_cmd_ctx;
+use crate::ops::register::is_valid_register_name;
 use crate::scripting::attribution::Owner;
+use crate::scripting::types::QueuedCommand;
 use crate::scripting::{PendingSteelCmd, SteelCtx};
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -154,7 +156,11 @@ pub(crate) fn call_command_primitive(
 ) -> SteelResult {
     require_cmd_ctx!(ctx, "%call!");
     let args_vec = steel_list_to_vec(args)?;
-    ctx.cmd_queue.push((name, args_vec));
+    ctx.cmd_queue.push(QueuedCommand {
+        name,
+        args: args_vec,
+        register: ctx.current_register_prefix,
+    });
     Ok(SteelVal::Void)
 }
 
@@ -214,11 +220,46 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
+/// `(set-register-prefix! name)` — arm a sticky register prefix for the
+/// remaining `(call! …)` calls in this command body.
+///
+/// Every `(call! …)` after this point captures the given register, so
+/// register-aware commands (paste, yank, delete, change) will use it.
+/// The prefix persists until you call `set-register-prefix!` again with a
+/// different name.
+///
+/// Valid register names: `0`–`9`, `k` (kill-ring head), `c` (clipboard),
+/// `b` (black hole).  Any other name raises a Steel error immediately (fail
+/// fast at command-body time, not at dispatch time).
+///
+/// **Queue-ordering note**: `(call! …)` runs *after* the proc returns;
+/// `set-register-prefix!` only *routes* the register into each queued
+/// command.  You cannot read a command's register side-effect back within
+/// the same body — use a Steel `let` binding for that.
+///
+/// Only valid inside a `SteelBacked` command or hook invocation.
+pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    require_cmd_ctx!(ctx, "set-register-prefix!");
+    let mut chars = name.chars();
+    let reg = match (chars.next(), chars.next()) {
+        (Some(c), None) => c,
+        _ => steel::stop!(Generic =>
+            "set-register-prefix!: expected a single-character register name, got {:?}", name),
+    };
+    if !is_valid_register_name(reg) {
+        steel::stop!(Generic =>
+            "set-register-prefix!: invalid register '{}'; valid: 0-9, k, c, b", reg);
+    }
+    ctx.current_register_prefix = Some(reg);
+    Ok(SteelVal::Void)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scripting::types::QueuedCommand;
     use crate::scripting::SteelCtxTestHarness;
 
     fn make_list(vals: Vec<SteelVal>) -> SteelVal {
@@ -249,7 +290,7 @@ mod tests {
         call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
         assert_eq!(
             ctx.cmd_queue,
-            vec![("move-right".to_string(), vec![])]
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }]
         );
     }
 
@@ -259,7 +300,10 @@ mod tests {
         let mut ctx = h.ctx();
         let arg = SteelVal::StringV("hello".into());
         call_command_primitive(&mut ctx, "echo".to_string(), make_list(vec![arg.clone()])).unwrap();
-        assert_eq!(ctx.cmd_queue, vec![("echo".to_string(), vec![arg])]);
+        assert_eq!(
+            ctx.cmd_queue,
+            vec![QueuedCommand { name: "echo".to_string(), args: vec![arg], register: None }]
+        );
     }
 
     #[test]
@@ -268,7 +312,7 @@ mod tests {
         let mut ctx = h.ctx();
         call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
         call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
-        let names: Vec<&str> = ctx.cmd_queue.iter().map(|(n, _)| n.as_str()).collect();
+        let names: Vec<&str> = ctx.cmd_queue.iter().map(|qc| qc.name.as_str()).collect();
         assert_eq!(names, vec!["move-right", "move-left"]);
     }
 

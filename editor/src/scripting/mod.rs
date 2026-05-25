@@ -51,7 +51,8 @@ mod test_harness;
 pub(crate) use codegen::{HUME_CTX, cmd_arg_global_name};
 pub(crate) use context::SteelCtx;
 pub(crate) use types::{
-    EditorSteelRefs, HookResult, PendingLanguageReg, PendingSteelCmd, SteelCmdDef, SteelCmdResult,
+    EditorSteelRefs, HookResult, PendingLanguageReg, PendingSteelCmd, QueuedCommand, SteelCmdDef,
+    SteelCmdResult,
 };
 #[cfg(test)]
 pub(crate) use test_harness::SteelCtxTestHarness;

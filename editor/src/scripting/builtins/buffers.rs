@@ -320,6 +320,7 @@ mod tests {
     use crate::editor::buffer_store::BufferStore;
     use crate::editor::keymap::Keymap;
     use crate::editor::pane_state::PaneBufferState;
+    use crate::scripting::types::QueuedCommand;
     use crate::scripting::{EditorSteelRefs, ScriptingHost, SteelCmdResult};
     use crate::settings::EditorSettings;
 
@@ -430,7 +431,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "current-buffer must return a buffer-id"
         );
     }
@@ -460,7 +461,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "current-pane must return a pane-id"
         );
     }
@@ -507,7 +508,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "(buffers) must return a list of one buffer-id"
         );
     }
@@ -543,7 +544,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "(panes) must return a list of one pane-id"
         );
     }
@@ -593,7 +594,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "buffer-path of scratch should be #f"
         );
     }
@@ -630,7 +631,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "buffer-path should return a string for named buffer"
         );
     }
@@ -667,7 +668,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "buffer-name of scratch should be *scratch*"
         );
     }
@@ -704,7 +705,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "buffer-name should return the filename"
         );
     }
@@ -739,7 +740,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        assert_eq!(cmd_queue, vec![("move-right".to_string(), vec![])], "new buffer should not be dirty");
+        assert_eq!(cmd_queue, vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }], "new buffer should not be dirty");
     }
 
     // ── invalid buffer id ─────────────────────────────────────────────────────
@@ -887,7 +888,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cmd_queue,
-            vec![("move-right".to_string(), vec![])],
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }],
             "dedup: same path must return same BufferId"
         );
         assert_eq!(bufs.len(), 2, "no extra buffer should be created on dedup");

@@ -3,11 +3,11 @@ use std::borrow::Cow;
 use super::super::commands::RING_CYCLE_CMDS;
 use super::super::keymap::WaitCharPending;
 use super::super::registry::MappableCommand;
-use super::super::{doc_ops, Editor, RepeatableAction, Severity};
+use super::super::{doc_ops, Editor, RegisterPrefix, RepeatableAction, Severity};
 use crate::core::jump_list::JumpEntry;
 use crate::core::selection::Selection;
 use crate::ops::MotionMode;
-use crate::scripting::EditorSteelRefs;
+use crate::scripting::{EditorSteelRefs, QueuedCommand};
 
 impl Editor {
     /// Execute a named command with the given count and extend flag.
@@ -156,9 +156,7 @@ impl Editor {
                     for (bid, lang) in lang_sets {
                         self.set_buffer_language(bid, lang);
                     }
-                    for (cmd_name, cmd_args) in queue {
-                        self.execute_keymap_command(cmd_name.into(), count, extend, cmd_args);
-                    }
+                    self.drain_command_queue(queue, count, extend);
                     if let Some(wc) = wait_char_cmd {
                         self.wait_char = Some(WaitCharPending {
                             cmd_name: wc.into(),
@@ -205,6 +203,33 @@ impl Editor {
             // reset to "macro-replay" in drain_replay_queue handles the
             // after-macro case.
             self.last_command = Some(name);
+        }
+    }
+
+    /// Dispatch every command in `queue`, re-arming the register prefix before
+    /// each entry that was captured with one.
+    ///
+    /// Entries whose `register` is `None` leave `self.register_prefix` untouched
+    /// (a user-typed `"5` prefix flows into the first non-prefixed command, matching
+    /// interactive behavior).  When at least one entry carried a register, the prefix
+    /// is cleared after the queue finishes so it does not bleed into the next
+    /// user keystroke.
+    pub(in super::super) fn drain_command_queue(
+        &mut self,
+        queue: Vec<QueuedCommand>,
+        count: usize,
+        extend: bool,
+    ) {
+        let mut armed_any = false;
+        for qc in queue {
+            if let Some(r) = qc.register {
+                self.register_prefix = Some(RegisterPrefix::Selected(r));
+                armed_any = true;
+            }
+            self.execute_keymap_command(qc.name.into(), count, extend, qc.args);
+        }
+        if armed_any {
+            self.register_prefix = None;
         }
     }
 

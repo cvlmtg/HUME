@@ -68,10 +68,23 @@ pub(crate) enum PendingLanguageReg {
 /// Drained by consumers (mappings.rs, fire_hook_silent) BEFORE cmd_queue.
 pub(crate) type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
 
+/// A command queued by `(call! …)` inside a Steel command body.
+///
+/// `register` captures the sticky prefix active when `(call! …)` was reached
+/// (set via `(set-register-prefix! …)`).  `None` means no register was
+/// active at enqueue time, so the editor's existing `register_prefix` is left
+/// untouched when this entry is dispatched.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct QueuedCommand {
+    pub(crate) name: String,
+    pub(crate) args: Vec<SteelVal>,
+    pub(crate) register: Option<char>,
+}
+
 /// Result returned by [`super::ScriptingHost::call_steel_cmd`].
 #[derive(Debug)]
 pub(crate) struct SteelCmdResult {
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
+    pub(crate) cmd_queue: Vec<QueuedCommand>,
     pub(crate) wait_char_request: Option<String>,
     pub(crate) pending_language_sets: PendingLanguageSets,
 }
@@ -79,7 +92,7 @@ pub(crate) struct SteelCmdResult {
 /// Result returned by [`super::ScriptingHost::fire_hook`].
 #[derive(Debug)]
 pub(crate) struct HookResult {
-    pub(crate) cmd_queue: Vec<(String, Vec<SteelVal>)>,
+    pub(crate) cmd_queue: Vec<QueuedCommand>,
     pub(crate) pending_language_sets: PendingLanguageSets,
 }
 

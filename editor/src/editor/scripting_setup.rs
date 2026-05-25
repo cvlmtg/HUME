@@ -96,9 +96,7 @@ impl Editor {
                 for (bid, lang) in pending_language_sets {
                     self.set_buffer_language(bid, lang);
                 }
-                for (cmd_name, cmd_args) in cmd_queue {
-                    self.execute_keymap_command(cmd_name.into(), 1, false, cmd_args);
-                }
+                self.drain_command_queue(cmd_queue, 1, false);
             }
             Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
         }

@@ -97,6 +97,25 @@
   (lambda ()
     (log! 'info "Hello from init.scm!")))
 
+;; Rebind `p` to always paste from the kill-ring head ("kp).
+;; (set-register-prefix! name) arms a sticky register prefix for all following
+;; (call! …) calls in the body — it persists until you call set-register-prefix!
+;; again with a different register.  Valid names: "0"–"9", "k", "c", "b".
+;;
+;; (define-command! "paste-ring"
+;;   "Paste from the kill-ring head (same as \\\"kp)."
+;;   (lambda ()
+;;     (set-register-prefix! "k")
+;;     (call! "paste-after")))
+;; (bind-key! "normal" "p" "paste-ring")
+;;
+;; Tip: multiple calls after one set-register-prefix! all inherit the same
+;; register, so you can do e.g.:
+;;   (set-register-prefix! "5")
+;;   (call! "yank")   ; yanks into register 5
+;;   (set-register-prefix! "k")
+;;   (call! "paste-after")  ; pastes from kill ring
+
 ;; Move down/up and immediately select the word under the new cursor position.
 ;; Uses define-command-extend! so Ctrl-J / Ctrl-K still work (one-shot extend).
 ;;

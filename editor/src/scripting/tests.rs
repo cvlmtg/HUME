@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::keymap::Keymap;
+use crate::scripting::types::QueuedCommand;
 use crate::settings::EditorSettings;
 use engine::pipeline::{BufferId, PaneId};
 
@@ -11,6 +12,11 @@ fn host() -> ScriptingHost {
 /// multi-buffer builtins (no `buffers` / `engine_view` / etc.).
 fn test_refs<'a>(s: &'a mut EditorSettings, km: &'a mut Keymap) -> EditorSteelRefs<'a> {
     test_refs_with_bid(s, km, BufferId::default())
+}
+
+/// Build a `QueuedCommand` with no args and no register — the common case in tests.
+fn q(name: &str) -> QueuedCommand {
+    QueuedCommand { name: name.to_string(), args: vec![], register: None }
 }
 
 fn test_refs_with_bid<'a>(
@@ -656,7 +662,7 @@ fn call_bang_passes_args_to_command() {
 
     assert_eq!(
         result.cmd_queue,
-        vec![("hello".to_string(), vec![])],
+        vec![q("hello")],
         "call! should queue the arg value as a command name"
     );
 }
@@ -693,11 +699,7 @@ fn call_bang_forwards_multiple_args_to_lambda() {
 
     assert_eq!(
         result.cmd_queue,
-        vec![
-            ("x".to_string(), vec![]),
-            ("y".to_string(), vec![]),
-            ("z".to_string(), vec![]),
-        ],
+        vec![q("x"), q("y"), q("z")],
         "each arg must reach the corresponding lambda parameter"
     );
 }
@@ -756,7 +758,7 @@ fn register_hook_fires_on_buffer_open() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
+    assert_eq!(queue, vec![q("move-right")]);
 }
 
 #[test]
@@ -780,7 +782,7 @@ fn register_hook_fires_on_buffer_close() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(queue, vec![("move-left".to_string(), vec![])]);
+    assert_eq!(queue, vec![q("move-left")]);
 }
 
 #[test]
@@ -804,7 +806,7 @@ fn register_hook_fires_on_buffer_save() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
+    assert_eq!(queue, vec![q("move-right")]);
 }
 
 #[test]
@@ -831,7 +833,7 @@ fn register_hook_fires_on_mode_change() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(queue, vec![("move-right".to_string(), vec![])]);
+    assert_eq!(queue, vec![q("move-right")]);
 }
 
 #[test]
@@ -870,13 +872,7 @@ fn register_hook_multiple_handlers_all_fire() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(
-        queue,
-        vec![
-            ("move-right".to_string(), vec![]),
-            ("move-left".to_string(), vec![])
-        ]
-    );
+    assert_eq!(queue, vec![q("move-right"), q("move-left")]);
 }
 
 #[test]
@@ -939,7 +935,7 @@ fn fire_hook_globals_cleared_between_fires() {
         )
         .unwrap()
         .cmd_queue;
-    assert_eq!(q1, vec![("insert".to_string(), vec![])]);
+    assert_eq!(q1, vec![q("insert")]);
 
     // Second fire with different args — stale *hume.ha1* would give wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
@@ -951,11 +947,133 @@ fn fire_hook_globals_cleared_between_fires() {
         )
         .unwrap()
         .cmd_queue;
+    assert_eq!(q2, vec![q("normal")], "second fire must not see stale globals from first");
+}
+
+// ── set-register-prefix! ─────────────────────────────────────────────────
+
+#[test]
+fn set_register_prefix_captured_in_call_queue() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "paste-ring" ""
+             (lambda () (set-register-prefix! "k") (call! "paste-after")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let result = h
+        .call_steel_cmd("%hume-cmd-paste-ring", None, vec![], test_refs(&mut s, &mut km))
+        .unwrap();
     assert_eq!(
-        q2,
-        vec![("normal".to_string(), vec![])],
-        "second fire must not see stale globals from first"
+        result.cmd_queue,
+        vec![QueuedCommand { name: "paste-after".to_string(), args: vec![], register: Some('k') }],
+        "set-register-prefix! must be captured in the queued command's register field"
     );
+}
+
+#[test]
+fn set_register_prefix_sticky_across_multiple_calls() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "multi" ""
+             (lambda ()
+               (set-register-prefix! "5")
+               (call! "yank")
+               (call! "delete")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let result = h
+        .call_steel_cmd("%hume-cmd-multi", None, vec![], test_refs(&mut s, &mut km))
+        .unwrap();
+    assert_eq!(
+        result.cmd_queue,
+        vec![
+            QueuedCommand { name: "yank".to_string(), args: vec![], register: Some('5') },
+            QueuedCommand { name: "delete".to_string(), args: vec![], register: Some('5') },
+        ],
+        "register prefix must persist to all subsequent call!s until changed"
+    );
+}
+
+#[test]
+fn set_register_prefix_change_mid_body() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "switch" ""
+             (lambda ()
+               (set-register-prefix! "5")
+               (call! "yank")
+               (set-register-prefix! "6")
+               (call! "paste-after")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let result = h
+        .call_steel_cmd("%hume-cmd-switch", None, vec![], test_refs(&mut s, &mut km))
+        .unwrap();
+    assert_eq!(
+        result.cmd_queue,
+        vec![
+            QueuedCommand { name: "yank".to_string(), args: vec![], register: Some('5') },
+            QueuedCommand { name: "paste-after".to_string(), args: vec![], register: Some('6') },
+        ],
+        "changing register mid-body must route each call! to the active register at enqueue time"
+    );
+}
+
+#[test]
+fn set_register_prefix_invalid_name_errors() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "bad-reg" "" (lambda () (set-register-prefix! "z")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd("%hume-cmd-bad-reg", None, vec![], test_refs(&mut s, &mut km))
+        .unwrap_err();
+    assert!(err.contains("invalid register"), "expected register-name error, got: {err}");
+}
+
+#[test]
+fn set_register_prefix_multichar_name_errors() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "bad-multi" "" (lambda () (set-register-prefix! "kk")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd("%hume-cmd-bad-multi", None, vec![], test_refs(&mut s, &mut km))
+        .unwrap_err();
+    assert!(err.contains("single-character"), "expected single-char error, got: {err}");
+}
+
+#[test]
+fn set_register_prefix_at_init_errors() {
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let err = h
+        .eval_source(r#"(set-register-prefix! "k")"#, &mut s, &mut km)
+        .unwrap_err();
+    assert!(err.contains("not available during init"), "got: {err}");
 }
 
 // ── bind-key-extend! ──────────────────────────────────────────────────────
