@@ -27,6 +27,33 @@
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "#464650" }
 
+# ── Syntax highlighting (tree-sitter) ─────────────────────────────────────────
+"comment"               = { fg = "syn_comment",  modifiers = ["italic"] }
+"string"                = { fg = "syn_string" }
+"string.special.key"    = { fg = "syn_string" }
+"escape"                = { fg = "syn_escape" }
+"constant.numeric"      = { fg = "syn_number" }
+"constant.builtin"      = { fg = "syn_const" }
+"keyword"               = { fg = "syn_keyword",  modifiers = ["bold"] }
+"keyword.control"       = { fg = "syn_keyword",  modifiers = ["bold"] }
+"keyword.function"      = { fg = "syn_keyword",  modifiers = ["bold"] }
+"keyword.operator"      = { fg = "syn_keyword" }
+"function"              = { fg = "syn_function" }
+"function.method"       = { fg = "syn_function" }
+"function.builtin"      = { fg = "syn_function", modifiers = ["italic"] }
+"type"                  = { fg = "syn_type" }
+"type.builtin"          = { fg = "syn_type",     modifiers = ["bold"] }
+"variable"              = { fg = "fg" }
+"variable.builtin"      = { fg = "syn_const" }
+"variable.parameter"    = { fg = "syn_param" }
+"operator"              = { fg = "fg" }
+"punctuation"           = { fg = "dark_gray" }
+"punctuation.delimiter" = { fg = "dark_gray" }
+"punctuation.bracket"   = { fg = "mid_gray" }
+"label"                 = { fg = "syn_escape" }
+"attribute"             = { fg = "syn_type" }
+"namespace"             = { fg = "syn_param" }
+
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "#b4b4c8", bg = "#282832" }
 "ui.menu.selected" = { fg = "#ffffff", bg = "#50508c" }
@@ -56,3 +83,12 @@ yellow       = "#cdcd00"
 magenta      = "#cd00cd"
 green        = "#00cd00"
 blue         = "#0000ee"
+syn_comment  = "#6a7080"
+syn_string   = "#7ab87a"
+syn_escape   = "#d09060"
+syn_number   = "#d09060"
+syn_const    = "#c07ad8"
+syn_keyword  = "#5bc0eb"
+syn_function = "#e8c83a"
+syn_type     = "#5bc4b4"
+syn_param    = "#c4b4a0"
