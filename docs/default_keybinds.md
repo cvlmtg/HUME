@@ -173,9 +173,10 @@ To force a specific source, use the register prefix `"`:
 | Sequence | Source |
 |----------|--------|
 | `"cp` | System clipboard explicitly |
-| `"0p` – `"9p` | Kill ring slot 0 (head) through 9 (oldest) |
+| `"kp` | Kill-ring head (most recent kill) |
 | `"cy` | Write clipboard only (no kill ring push) |
-| `"5y` | Write named register 5 (no kill ring push, no clipboard) |
+| `"5y` / `"5p` | Write / paste in-memory register 5 (symmetric round-trip) |
+| `"ky` | Push yank onto kill ring only (no clipboard) |
 | `"by` | Discard (black hole) |
 
 ### Selection Manipulation
@@ -219,14 +220,12 @@ Prefix any yank, delete, change, or paste command with `"<reg>` to target a spec
 
 | Prefix | Effect on the following command |
 |--------|---------------------------------|
-| `"c` | Use system clipboard (`y` writes clipboard only; `p` reads clipboard) |
-| `"0` – `"9` | **`p`/`P`**: read kill ring slot N (no fallback; no-op if ring is shorter than N+1 entries). **`y`**: write to the in-memory named register (no kill ring push, no clipboard). Write and read use orthogonal storage — see note below. |
+| `"c` | System clipboard (`y` writes clipboard only; `p` reads clipboard) |
+| `"0` – `"9` | Symmetric in-memory storage — `"5y` writes register 5, `"5p` reads it back. No kill ring interaction. Also used as macro registers by `Q`/`q`. |
+| `"k` | Kill-ring head — `"kp` pastes the most-recent kill; `"ky`/`"kd`/`"kc` push onto the ring without touching the clipboard. Older entries reachable only via `[`/`]`. |
 | `"b` | Black hole — discard (only meaningful for `y`/`d`/`c`) |
-| `"<letter>` | Use the named in-memory register |
 
 The prefix is sticky across motions and text objects, but consumed (cleared) by the first register-consuming command (`y`, `d`, `c`, `p`, `P`). Press `Esc` to cancel a pending prefix.
-
-> **Digit register note**: `"5y` and `"5p` use independent storage. `"5y` writes the in-memory named register '5'; `"5p` reads kill ring slot 5 (the 6th-most-recent kill). The in-memory write is never read back by `"5p`. This keeps the ring as the single source of truth for digit pastes while still letting you squirrel text away in a named slot via `"5y`. For symmetric named storage, prefer letter registers (`"ay`, `"ap`).
 
 ### Jump List
 

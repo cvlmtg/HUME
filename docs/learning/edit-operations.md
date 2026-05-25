@@ -59,7 +59,8 @@ to every selection in the set simultaneously. The *primary* is just the
 
    | Key | Register | Notes |
    |-----|----------|-------|
-   | `0`–`9` | Named storage | Text or macros; last write wins |
+   | `0`–`9` | Named storage | Text or macros; last write wins. `"5y`/`"5p` round-trip. |
+   | `k` | Kill ring | `"kp` pastes ring head; `"ky`/`"kd`/`"kc` push onto ring |
    | `q` | Default macro | `QQ` records, `q` replays |
    | `c` | System clipboard | Requires OS integration |
    | `b` | Black hole | Discards writes |
@@ -72,9 +73,8 @@ to every selection in the set simultaneously. The *primary* is just the
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
    this: numbers for user storage, letters for special registers.
 
-   The `0`–`9` slots double as a *kill ring* — a bounded history of recent
-   captures that prevents an accidental delete from erasing a previous yank.
-   See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
+   The kill ring (bounded history of recent captures) is accessible via `"k`
+   (head paste) and `[`/`]` cycling. See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
    **Macro model (M5):** macros are stored in registers (Vim model, not
    Helix's single-slot model). `QQ` records into register `q` (the default
@@ -97,7 +97,7 @@ to every selection in the set simultaneously. The *primary* is just the
    - **Explicit selection** (more than 1 char, created intentionally): *replace*
      the selected text with the register contents. Displaced text is not written
      back to the register — the kill ring already holds the selection's history,
-     so the user can reach it by name (`"0p`, `"1p`, …) or by cycling with `[`/`]`.
+     so the user can reach it via `"kp` (head) or by cycling with `[`/`]`.
 
    The key insight is `sel.is_cursor()` — the selection state already encodes
    whether the user made an intentional selection. No separate `R` command

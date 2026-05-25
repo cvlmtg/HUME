@@ -639,15 +639,19 @@ This appendix sketches features not covered in the main lessons.
 REGISTERS
 
   Prefixing a yank, delete, or paste with `"<char>` stores into or
-  reads from a specific register.
+  reads from a specific register. Valid register names:
 
   "cy   yank into the system clipboard register  c
   "cp   paste from the system clipboard
-  "ay   yank into register  a    "ap   paste from register  a
 
-  "0p .. "9p   paste a specific kill-ring slot. "0 is the newest kill,
-               "1 the next older — the same 10 entries `[` and `]`
-               cycle through.
+  "5y   yank into in-memory register  5    "5p   paste from register  5
+  (registers 0–9 are symmetric named storage — "Ny/"Np round-trip)
+
+  "kp   paste from the kill-ring head (most recent kill)
+  "ky   push yank onto the kill ring (ring only, no clipboard)
+  (older ring entries: cycle with `[` and `]` after a paste)
+
+  "by   discard the yank (black hole — reads nothing back)
 
 MACROS
 

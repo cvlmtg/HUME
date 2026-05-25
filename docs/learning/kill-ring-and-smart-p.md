@@ -22,17 +22,15 @@ changes. Newest at the head; once full, the oldest entry falls off. Every
 editing capture pushes a new entry; nothing in the ring is overwritten in
 place.
 
-The ten ring slots map exactly to the ten named digit registers (`"0`–`"9`).
-Every entry is reachable two ways: by its slot name (`"3p` reads the
-third-newest entry) and by relative position (cycling, covered below). There
-is no hidden history past the named slots — the two views are the same view,
-so users never have to wonder whether an older entry is still recoverable.
+Ring entries are reachable in two ways: by pasting the head with `"kp` or by
+relative position via `[`/`]` cycling (covered below). The ring keeps up to
+ten entries; nothing is overwritten in place.
 
 **What the kill ring rescues you from:**
 
 - Recovering text that was deleted a moment ago after some other operation
-  interleaved. The deleted text lives in slot `"0` until something newer
-  pushes it down; it is reachable by name or by cycling.
+  interleaved. The deleted text lives at the ring head until something newer
+  pushes it down; it is reachable via `"kp` or by cycling.
 - Reaching one of several recent deletes without having captured each into a
   named register up front. The ring provides up to ten entries of
   backward-looking insurance.
@@ -139,10 +137,10 @@ again adjacent to it — two copies side by side, each a separate undo step.
 This is intentional: the session model makes cycle-replace cheap (`[`/`]`),
 so consecutive `p` can safely mean "add another copy".
 
-**`p` after `[`/`]` appends the cycled entry.** If you cycled to slot 1 and
-then press `p`, the new paste appends a second copy of slot 1 (not slot 0),
-and the cycle position is preserved so a following `[` continues from slot 1
-rather than resetting.
+**`p` after `[`/`]` appends the cycled entry.** If you cycled to the
+second-oldest entry and then press `p`, the new paste appends a second copy
+of that entry (not the head), and the cycle position is preserved so a
+following `[` continues from there rather than resetting.
 
 ## Explicit register prefix is untouched
 
@@ -152,16 +150,9 @@ Prefixing any of them with a register name bypasses the heuristic:
 | Prefix | Behaviour |
 |--------|-----------|
 | `"c` | System clipboard: yank writes clipboard only (no ring push); paste always reads clipboard |
-| `"0`–`"9` | **Paste** reads kill ring slot N (the N-th-most-recent kill, 0 = head). **Yank** writes the in-memory named register only — it does not push the ring. |
+| `"k` | Kill-ring head: paste reads the most-recent ring entry; yank/delete/change push onto the ring without touching the clipboard. Older entries reachable via `[`/`]`. |
+| `"0`–`"9` | Symmetric in-memory storage: `"5y` and `"5p` both use the same named slot, so they round-trip. No kill-ring interaction. The same slot also stores macros recorded with `Q5`/`q5` — last write wins. |
 | `"b` | Black hole: yank discards; paste reads nothing |
-
-The digit prefixes expose a deliberate asymmetry: the kill ring is a
-push-only stack — you can't write to a specific slot by name. So `"5y` and
-`"5p` use independent storage. `"5y` writes the in-memory named register '5'
-(the same kind as `"ay`). `"5p` reads kill ring slot 5 — the 6th-most-recent
-kill — which has no relationship to anything `"5y` wrote. If you need
-symmetric named storage that round-trips `"5y "5p`, use a letter register
-(`"ay "ap`) instead.
 
 Smart-p is a default for the bare keys, not a constraint on the register
 system. If the heuristic ever routes to the wrong source, the register
@@ -179,7 +170,8 @@ yanked word, because the `dd` clobbered the unnamed register. Vim's partial
 fix is the dedicated yank-only register `"0`, which captures yanks but
 never deletes — so the workaround is `yiw`, navigate, `dd`, `"0p`. The
 papercut is real enough that "use `"0p` after a delete-then-yank" is common
-folklore.
+folklore. In HUME, `"kp` is the explicit kill-ring-head paste, and Smart-p
+handles the common case automatically.
 
 **System clipboard as a separate register.** The OS clipboard sits behind
 `"+` (and `"*` on macOS). By default `y` and `p` ignore it; cross-app paste

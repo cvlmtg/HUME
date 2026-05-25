@@ -720,32 +720,67 @@ fn esc_cancels_register_prefix() {
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
-/// `"3p` must paste from kill ring slot 3, not the system clipboard.
+/// `"3y` then `"3p` must round-trip through in-memory register '3'.
+/// Digit registers are symmetric: yank writes RegisterSet['3'], paste reads it.
 #[test]
 fn paste_from_named_register() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
-    // Push 4 entries so slot 3 holds "P" (first-deleted = oldest = slot 3).
-    let mut ed = editor_from("-[P]>QRS\n");
-    for _ in 0..4 {
-        ed.handle_key(key('d')); // delete each char in turn
-    }
-    // ring: slot 0 = "S" (newest), slot 1 = "R", slot 2 = "Q", slot 3 = "P"
+    let mut ed = editor_from("-[hello]>world\n");
 
-    // Seed clipboard with "wrong" so we can verify it is NOT used.
+    // "3y: yank "hello" into in-memory register '3'.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('3'));
+    ed.handle_key(key('y'));
+
+    assert_eq!(reg(&ed, '3'), &["hello"], "register '3' populated by yank");
+
+    // Move to a fresh position to make the paste visible.
+    ed.handle_key(key('w')); // move word → selection on 'w' of "world"
+
+    // Seed clipboard with "wrong" to verify "3p doesn't read it.
     ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
-    ed.handle_key(key('p')); // "3p → ring slot 3 = "P"
+    ed.handle_key(key('p')); // "3p → in-memory register '3' = "hello"
 
     assert!(
-        ed.doc().text().to_string().contains('P'),
-        "pasted from ring slot 3"
+        ed.doc().text().to_string().contains("hello"),
+        "pasted from in-memory register '3'"
     );
     assert!(
         !ed.doc().text().to_string().contains("wrong"),
-        "clipboard not used"
+        "clipboard not used by \"3p"
+    );
+}
+
+/// `d` pushes to the kill ring; `"3p` reads in-memory register '3' (empty),
+/// NOT ring slot 3. Digit registers are decoupled from the ring.
+#[test]
+fn digit_register_decoupled_from_kill_ring() {
+    // Push 4 deletes so ring slot 3 = "P" (oldest).
+    let mut ed = editor_from("-[P]>QRS\n");
+    for _ in 0..4 {
+        ed.handle_key(key('d'));
+    }
+    // ring: slot 0 = "S", slot 1 = "R", slot 2 = "Q", slot 3 = "P"
+    // in-memory register '3' is empty (nothing yanked into it).
+    assert!(
+        reg(&ed, '3').is_empty(),
+        "register '3' is empty — d never writes named registers"
+    );
+
+    // "3p reads in-memory register '3' which is empty → paste is a no-op.
+    let text_before = ed.doc().text().to_string();
+    ed.handle_key(key('"'));
+    ed.handle_key(key('3'));
+    ed.handle_key(key('p'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        text_before,
+        "\"3p is a no-op when register '3' is empty (not ring slot 3)"
     );
 }
 
@@ -810,6 +845,104 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
     assert!(
         ed.doc().text().to_string().contains("hello"),
         "pasted from in-memory mirror"
+    );
+}
+
+// ── Kill-ring register (`"k`) ─────────────────────────────────────────────────
+
+/// `"kp` must paste the kill-ring head, not the clipboard.
+#[test]
+fn kill_ring_register_pastes_ring_head() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[hello]>world\n");
+    ed.handle_key(key('d')); // delete "hello" → ring head = ["hello"]
+
+    // Seed clipboard with "wrong" to confirm "kp doesn't read it.
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));
+    ed.handle_key(key('p'));
+
+    assert!(
+        ed.doc().text().to_string().contains("hello"),
+        "\"kp pasted ring head"
+    );
+    assert!(
+        !ed.doc().text().to_string().contains("wrong"),
+        "clipboard not used by \"kp"
+    );
+}
+
+/// `"kp` seeds the `[`/`]` cycle so pressing `[` after cycles to the older entry.
+#[test]
+fn kill_ring_register_paste_seeds_cycle() {
+    // Build a ring with 2 entries: push "first" then "second" (head).
+    let mut ed = editor_from("-[second]>X\n");
+    ed.handle_key(key('d')); // ring head = ["second"]
+
+    // Manually push an older entry.
+    ed.kill_ring.push(vec!["first".to_string()]);
+    // ring: head = ["first"] (newest push), slot 1 = ["second"]
+
+    // "kp: paste ring head ("first"). This should open a paste session
+    // seeded at the head so [ can cycle to the older entry.
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));
+    ed.handle_key(key('p'));
+
+    assert!(
+        ed.doc().text().to_string().contains("first"),
+        "\"kp pasted ring head"
+    );
+
+    // [ should cycle to the next-older entry ("second").
+    ed.handle_key(key('['));
+    assert!(
+        ed.doc().text().to_string().contains("second"),
+        "[ after \"kp cycled to older ring entry"
+    );
+}
+
+/// `"ky` pushes the yank onto the kill ring and does NOT touch the clipboard.
+#[test]
+fn kill_ring_register_yank_pushes_ring_only() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[hello]>world\n");
+    // Ensure clipboard starts empty.
+    assert!(reg(&ed, CLIPBOARD_REGISTER).is_empty(), "clipboard starts empty");
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));
+    ed.handle_key(key('y')); // "ky → ring push, no clipboard
+
+    assert_eq!(
+        ed.kill_ring.head(),
+        Some(["hello".to_string()].as_slice()),
+        "ring head set by \"ky"
+    );
+    assert!(
+        reg(&ed, CLIPBOARD_REGISTER).is_empty(),
+        "\"ky must not write the clipboard"
+    );
+}
+
+/// `"kd` deletes and pushes to the ring, identical to bare `d`.
+#[test]
+fn kill_ring_register_delete_pushes_ring() {
+    let mut ed = editor_from("-[hello]>world\n");
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('k'));
+    ed.handle_key(key('d')); // "kd → delete + push ring
+
+    assert_eq!(ed.doc().text().to_string(), "world\n", "buffer after delete");
+    assert_eq!(
+        ed.kill_ring.head(),
+        Some(["hello".to_string()].as_slice()),
+        "ring head set by \"kd"
     );
 }
 
@@ -1074,45 +1207,36 @@ fn explicit_digit_y_writes_in_memory_only() {
     );
 }
 
-/// `"5p` reads kill ring slot 5; no in-memory fallback.
-/// Fill the ring past slot 5 so the slot has a real entry.
+/// `"5p` reads in-memory register '5', not the kill ring.
+/// Push 6 entries to the ring via bare `d`; `"5p` must be a no-op (register '5' empty).
 #[test]
-fn explicit_digit_p_reads_ring_slot() {
+fn explicit_digit_p_reads_inmemory_not_ring() {
     let mut ed = editor_from("-[a]>bcdefg\n");
-    // Push 6 entries via bare `d` so ring slot 5 (the 6th-newest, 0-based) has data.
-    // After each delete the buffer shrinks by one char; delete 'a' through 'f'.
     for _ in 0..6 {
         ed.feed_key(key('d'));
     }
-    // ring slots: 0=f, 1=e, 2=d, 3=c, 4=b, 5=a
-    // Clear pending prefix state, then do "5p.
-    ed.feed_key(key('"'));
-    ed.feed_key(key('5'));
-    ed.feed_key(key('p')); // "5p → ring slot 5 = "a"
-
-    assert!(
-        ed.doc().text().to_string().contains('a'),
-        "paste from kill ring slot 5"
-    );
-}
-
-/// `"5p` returns nothing when the ring has fewer than 6 entries (no in-memory fallback).
-#[test]
-fn explicit_digit_p_no_inmemory_fallback() {
-    let mut ed = editor_from("-[x]>\n");
-    // Seed in-memory register '5' — this must NOT be read by "5p.
-    ed.registers.write_text('5', vec!["INMEM".to_string()]);
-    // Ring is empty (no deletes/yanks), so ring slot 5 is also absent.
-
+    // ring has 6 entries; in-memory register '5' was never written
     let before = state(&ed);
     ed.feed_key(key('"'));
     ed.feed_key(key('5'));
-    ed.feed_key(key('p')); // "5p → ring slot 5 absent → no-op
+    ed.feed_key(key('p')); // "5p → in-memory register '5' is empty → no-op
 
-    assert_eq!(
-        state(&ed),
-        before,
-        "\"5p must be a no-op when the ring has no slot 5 (in-memory '5' is not a fallback)"
+    assert_eq!(state(&ed), before, "\"5p must be a no-op when in-memory register '5' is empty");
+}
+
+/// `"5y` then `"5p` round-trips via in-memory storage, regardless of kill-ring contents.
+#[test]
+fn digit_register_roundtrip_inmemory() {
+    let mut ed = editor_from("-[INMEM]>\n");
+    ed.feed_key(key('"')); ed.feed_key(key('5')); ed.feed_key(key('y'));
+    // Ring: empty (no d/c). In-memory register '5' = "INMEM".
+    // "5p must paste from in-memory, not clipboard or ring.
+    ed.feed_key(key(';')); // collapse selection
+    ed.feed_key(key('"')); ed.feed_key(key('5')); ed.feed_key(key('p'));
+
+    assert!(
+        ed.doc().text().to_string().contains("INMEM"),
+        "\"5p must paste what \"5y wrote (in-memory round-trip)"
     );
 }
 
@@ -1155,26 +1279,26 @@ fn paste_ring_cycle_older_then_newer() {
 
 
 /// Select a line with `x`, delete with `d`, move with `j`, then paste via
-/// explicit ring slot — the deleted line must appear as its own line *below*
+/// explicit ring head (`"kp`) — the deleted line must appear as its own line *below*
 /// the cursor, not embedded inside the current line.
 #[test]
 fn paste_ring_linewise_pastes_below_not_inline() {
-    // Buffer: "A\nB\nC\n". Delete line A (x+d), move to C (j), paste via "0p.
+    // Buffer: "A\nB\nC\n". Delete line A (x+d), move to C (j), paste via "kp.
     let mut ed = editor_from("-[A]>\nB\nC\n");
     ed.feed_key(key('x')); // select line "A\n"
-    ed.feed_key(key('d')); // yank "A\n" to ring head (slot 0), buffer → "B\nC\n"
+    ed.feed_key(key('d')); // push "A\n" to ring head, buffer → "B\nC\n"
     ed.feed_key(key('j')); // cursor → 'C'
-    // "0p reads ring slot 0 (="A\n") directly — avoids smart-p clipboard routing
+    // "kp reads ring head (="A\n") directly — avoids smart-p clipboard routing
     // after the intervening motion cleared last_command.
     ed.feed_key(key('"'));
-    ed.feed_key(key('0'));
-    ed.feed_key(key('p')); // paste ring slot 0 (A\n) linewise below C
+    ed.feed_key(key('k'));
+    ed.feed_key(key('p')); // paste ring head (A\n) linewise below C
 
     // "A\n" must land as its own line below C — not inside C's text.
     assert_eq!(
         state(&ed),
         "B\nC\n-[A\n]>",
-        "\"0p on a linewise ring entry must paste as a new line, not inline"
+        "\"kp on a linewise ring entry must paste as a new line, not inline"
     );
 }
 
@@ -1236,10 +1360,10 @@ fn paste_ring_warm_cycle_replaces_single_char_paste() {
 fn paste_before_cycle_stays_before_charwise() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
     ed.kill_ring.push(vec!["X".to_string()]); // slot 1 after next push
-    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; slot 0=Y, slot 1=X
+    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y, slot 1=X
 
-    // "0P: paste-before slot 0 ("Y") before cursor 'c'.
-    ed.feed_key(key('"')); ed.feed_key(key('0')); ed.feed_key(key('P'));
+    // "kP: paste-before ring head ("Y") before cursor 'c'.
+    ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('P'));
     assert_eq!(state(&ed), "-[Y]>cd\n", "P pastes before the cursor");
 
     // [: cycle to slot 1 ("X"); must re-paste BEFORE the cursor snapshot (at 0).
@@ -1254,7 +1378,7 @@ fn paste_after_cycle_stays_after_charwise() {
     ed.kill_ring.push(vec!["X".to_string()]);
     ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]
 
-    ed.feed_key(key('"')); ed.feed_key(key('0')); ed.feed_key(key('p'));
+    ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('p'));
     assert_eq!(state(&ed), "c-[Y]>d\n", "p pastes after the cursor");
 
     ed.feed_key(key('['));
@@ -1267,10 +1391,10 @@ fn paste_after_cycle_stays_after_charwise() {
 fn paste_before_cycle_stays_above_linewise() {
     let mut ed = editor_from("-[B]>\nC\n"); // cursor on 'B', line 0
     ed.kill_ring.push(vec!["X\n".to_string()]); // slot 1
-    ed.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; slot 0=Y\n
+    ed.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; head=Y\n
 
-    // "0P: linewise paste-before slot 0 ("Y\n") — inserts above line 0.
-    ed.feed_key(key('"')); ed.feed_key(key('0')); ed.feed_key(key('P'));
+    // "kP: linewise paste-before ring head ("Y\n") — inserts above line 0.
+    ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('P'));
     assert_eq!(ed.doc().text().to_string(), "Y\nB\nC\n", "P pastes above current line");
 
     // [: cycle to slot 1 ("X\n"); must re-paste ABOVE line 0 (not below).

@@ -12,13 +12,21 @@ use crate::core::text::Text;
 // are enough for real workflows, freeing letters for intuitive special names.
 //
 // User-facing register names:
-//   '0'–'9'  Named storage — text or macros (last write wins).
+//   '0'–'9'  Named storage — text or macros (last write wins). Symmetric:
+//            `"5y` and `"5p` use the same in-memory slot. Not kill-ring slots.
+//   'k'      Kill-ring head. Paste reads the most-recently-pushed entry;
+//            yank/delete/change push onto the ring (ring-only, no clipboard).
+//            Older ring entries reachable only via `[`/`]` cycling.
 //   'q'      Default macro register. `QQ` records, `qq` replays.
 //            `Q3` records into register '3', `q3` replays from it.
 //   'c'      System clipboard (requires OS integration).
 //   'b'      Black hole — writes discarded, reads return None.
 //   's'      Search register — last search pattern.
 //
+/// The kill-ring register (`k`) — paste reads the ring head; yank/delete/change push onto
+/// the ring without touching the clipboard. Older ring entries are reachable via `[`/`]`.
+pub(crate) const KILL_RING_REGISTER: char = 'k';
+
 /// The black-hole register (`b`) — writes are silently discarded, reads return `None`.
 /// Use `"by` to yank without touching the default register.
 pub(crate) const BLACK_HOLE_REGISTER: char = 'b';
@@ -47,12 +55,15 @@ pub(crate) fn is_valid_macro_register(ch: char) -> bool {
 
 /// Returns `true` if `ch` is a valid register name for the `"<reg>` prefix.
 ///
-/// Accepts the numbered storage registers (`0`–`9`), black hole (`b`), and
-/// clipboard (`c`). The default register (`"`), search register (`s`), and
-/// macro register (`q`) are intentionally excluded — `q` is written via `Q`
-/// recording, not the prefix; the others cannot be explicitly named.
+/// Accepts the numbered storage registers (`0`–`9`), kill-ring head (`k`),
+/// black hole (`b`), and clipboard (`c`). The default register (`"`), search
+/// register (`s`), and macro register (`q`) are intentionally excluded — `q`
+/// is written via `Q` recording, not the prefix; the others cannot be named.
 pub(crate) fn is_valid_register_name(ch: char) -> bool {
-    ch.is_ascii_digit() || ch == CLIPBOARD_REGISTER || ch == BLACK_HOLE_REGISTER
+    ch.is_ascii_digit()
+        || ch == KILL_RING_REGISTER
+        || ch == CLIPBOARD_REGISTER
+        || ch == BLACK_HOLE_REGISTER
 }
 
 /// The content of a register — either yanked text or a recorded macro.
@@ -158,9 +169,9 @@ impl RegisterSet {
 
 /// Bounded ring buffer of deleted / yanked text entries.
 ///
-/// Newest entry is always at index 0 (the "head"). The 10 slots map 1-to-1
-/// with the named registers `"0`–`"9`, giving every ring entry two access
-/// paths: `"<digit>p` by name and `[`/`]` by cycling.
+/// Newest entry is always at index 0 (the "head"). Entries are accessed via
+/// `"kp` (head) or by cycling with `[`/`]`. The digit registers `"0`–`"9`
+/// are independent in-memory storage, not aliases for ring slots.
 ///
 /// `cycle` is seeded by the paste command based on origin and persists until
 /// the next paste re-seeds it; a lingering value between sessions is harmless
@@ -175,8 +186,7 @@ pub(crate) struct KillRing {
     cycle: Option<usize>,
 }
 
-/// Maximum number of entries the kill ring retains, matching the 10 named
-/// digit registers `"0`–`"9`.
+/// Maximum number of entries the kill ring retains.
 pub(crate) const KILL_RING_DEPTH: usize = 10;
 
 impl KillRing {
@@ -195,9 +205,8 @@ impl KillRing {
     /// Seed the cycle cursor based on paste origin.
     ///
     /// Call once per fresh paste:
-    /// - ring-head paste → `Some(0)`
-    /// - clipboard / named-register paste → `None`
-    /// - `"<digit>p` → `Some(digit as usize - '0')`
+    /// - `"kp` / smart-p ring-head paste → `Some(0)`
+    /// - clipboard / named-register (`"0`–`"9`) paste → `None`
     pub(crate) fn seed_cycle(&mut self, pos: Option<usize>) {
         self.cycle = pos;
     }
@@ -208,8 +217,7 @@ impl KillRing {
     }
 
     /// Borrow ring slot `n` (0-based), where 0 = head.
-    ///
-    /// Used by `"<digit>p` to read the N-th most recent entry.
+    #[cfg(test)]
     pub(crate) fn slot(&self, n: usize) -> Option<&[String]> {
         self.entries.get(n).map(Vec::as_slice)
     }
@@ -607,5 +615,30 @@ mod tests {
         assert_eq!(ring.cycle_newer(), Some(vs("c").as_slice())); // 1→0: "c"
         assert_eq!(ring.cycle, Some(0));
         assert!(ring.cycle_newer().is_none()); // noop at head
+    }
+
+    // ── is_valid_register_name ────────────────────────────────────────────────
+
+    #[test]
+    fn valid_register_names_accepted() {
+        for d in '0'..='9' {
+            assert!(is_valid_register_name(d), "digit '{d}' must be valid");
+        }
+        assert!(is_valid_register_name(CLIPBOARD_REGISTER), "'c' must be valid");
+        assert!(is_valid_register_name(BLACK_HOLE_REGISTER), "'b' must be valid");
+        assert!(is_valid_register_name(KILL_RING_REGISTER), "'k' must be valid");
+    }
+
+    #[test]
+    fn letter_a_is_not_a_valid_register_name() {
+        // Regression guard: the tutor previously claimed 'a' was a valid register.
+        // It never was — is_valid_register_name must keep rejecting it.
+        assert!(!is_valid_register_name('a'), "'a' must be invalid");
+    }
+
+    #[test]
+    fn macro_and_search_registers_not_valid_for_prefix() {
+        assert!(!is_valid_register_name(MACRO_REGISTER), "'q' not prefix-accessible");
+        assert!(!is_valid_register_name(SEARCH_REGISTER), "'s' not prefix-accessible");
     }
 }

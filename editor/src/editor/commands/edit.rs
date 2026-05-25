@@ -1,7 +1,7 @@
 use crate::core::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
-use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, yank_selections};
+use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
 use crate::ops::surround::wrap_each_selection;
 
 use super::super::{doc_ops, register_ops, Severity};
@@ -50,7 +50,7 @@ pub fn cmd_delete(
     let buf = ed.focused_buffer_id();
     doc_ops::apply_doc_edit(&mut ed.buffers, &mut ed.pane_state, focused, buf, delete_selection);
     match ed.take_register_prefix() {
-        None => ed.kill_ring.push(yanked),
+        None | Some(KILL_RING_REGISTER) => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
     }
     Ok(())
@@ -70,7 +70,7 @@ pub fn cmd_change(
     ed.begin_insert_session();
     doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, delete_selection);
     match ed.take_register_prefix() {
-        None => ed.kill_ring.push(yanked),
+        None | Some(KILL_RING_REGISTER) => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
     }
     Ok(())
@@ -91,6 +91,8 @@ pub fn cmd_yank(
             ed.write_clipboard(&yanked);
             ed.kill_ring.push(yanked);
         }
+        // "ky: push to ring only (no clipboard).
+        Some(KILL_RING_REGISTER) => ed.kill_ring.push(yanked),
         Some(reg) => ed.write_register(reg, yanked),
     }
     Ok(())
@@ -187,7 +189,6 @@ fn resolve_paste_values(ed: &mut Editor, last_cmd: Option<&str>) -> Option<(Vec<
                 let (cow, warn) = register_ops::read_register_text(
                     &ed.registers,
                     &mut ed.clipboard,
-                    &ed.kill_ring,
                     CLIPBOARD_REGISTER,
                 );
                 let values = cow.map(|c| c.to_vec()); // end borrow of ed.registers
@@ -204,16 +205,17 @@ fn resolve_paste_values(ed: &mut Editor, last_cmd: Option<&str>) -> Option<(Vec<
             }
         }
         Some(BLACK_HOLE_REGISTER) => None,
-        Some(c) if c.is_ascii_digit() => {
-            let slot = (c as u8 - b'0') as usize;
-            let values = ed.kill_ring.slot(slot)?.to_vec();
-            Some((values, Some(slot)))
+        // "kp: paste kill-ring head; seed cycle so [/] continue from slot 0.
+        Some(KILL_RING_REGISTER) => {
+            let values = ed.kill_ring.head()?.to_vec();
+            Some((values, Some(0)))
         }
         Some(c) => {
+            // Digits and clipboard. Digits now read in-memory RegisterSet (symmetric
+            // with "Ny writes). Clipboard routes through the OS clipboard.
             let (cow, warn) = register_ops::read_register_text(
                 &ed.registers,
                 &mut ed.clipboard,
-                &ed.kill_ring,
                 c,
             );
             let values = cow.map(|c| c.to_vec()); // end borrow of ed.registers

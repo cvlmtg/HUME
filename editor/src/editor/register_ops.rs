@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{KillRing, RegisterSet, CLIPBOARD_REGISTER};
+use crate::ops::register::{RegisterSet, CLIPBOARD_REGISTER};
 
 /// Read text from an explicitly named register.
 ///
@@ -19,12 +19,13 @@ use crate::ops::register::{KillRing, RegisterSet, CLIPBOARD_REGISTER};
 /// clipboard was unavailable and the in-memory `'c'` mirror was used instead.
 ///
 /// - `'c'` → OS clipboard (in-memory fallback on failure).
-/// - `'0'`–`'9'` → kill-ring slot N (no fallback).
-/// - All others → in-memory `RegisterSet`.
+/// - All others (`'0'`–`'9'`, `'b'`, etc.) → in-memory `RegisterSet`.
+///
+/// The kill-ring register (`'k'`) and black-hole register (`'b'`) are handled
+/// upstream in `resolve_paste_values`; this function is not called for them.
 pub(crate) fn read_register_text<'a>(
     registers: &'a RegisterSet,
     clipboard: &mut SystemClipboard,
-    kill_ring: &'a KillRing,
     name: char,
 ) -> (Option<Cow<'a, [String]>>, Option<String>) {
     if name == CLIPBOARD_REGISTER {
@@ -39,20 +40,10 @@ pub(crate) fn read_register_text<'a>(
                 (fallback, Some(warning))
             }
         }
-    } else if name.is_ascii_digit() {
-        (read_digit_register(kill_ring, name).map(Cow::Borrowed), None)
     } else {
         let v = registers.read(name).and_then(|r| r.as_text()).map(Cow::Borrowed);
         (v, None)
     }
-}
-
-/// Borrow kill-ring slot corresponding to a digit register name `'0'`–`'9'`.
-pub(crate) fn read_digit_register(kill_ring: &KillRing, name: char) -> Option<&[String]> {
-    debug_assert!(name.is_ascii_digit());
-    let slot = (name as u8 - b'0') as usize;
-    // Kill ring is authoritative for digit registers — no in-memory fallback.
-    kill_ring.slot(slot)
 }
 
 /// Write `values` into named register `name`, routing `'c'` through the OS clipboard.
