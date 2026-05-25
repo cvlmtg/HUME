@@ -154,6 +154,14 @@ Prefixing any of them with a register name bypasses the heuristic:
 | `"0`–`"9` | Symmetric in-memory storage: `"5y` and `"5p` both use the same named slot, so they round-trip. No kill-ring interaction. The same slot also stores macros recorded with `Q5`/`q5` — last write wins. |
 | `"b` | Black hole: yank discards; paste reads nothing |
 
+The two non-clipboard register namespaces serve different purposes. The kill
+ring (`"k`, `[`/`]`) is for *interactive* use: the ring head is non-deterministic
+— every `d`/`c`/`y` shifts it — so it is reach-back for in-the-moment editing, not
+durable storage. The digit slots (`"0`–`"9`) are for *scripted, surgical, or
+programmable* use: deterministic named slots that round-trip (`"5y` then `"5p`
+returns exactly what was written, regardless of intervening edits); the same slots
+double as macro registers (`Q5`/`q5`).
+
 Smart-p is a default for the bare keys, not a constraint on the register
 system. If the heuristic ever routes to the wrong source, the register
 prefix is the explicit override.

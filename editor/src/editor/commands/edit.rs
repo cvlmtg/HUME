@@ -58,7 +58,8 @@ pub fn cmd_delete(
 
 /// Yank, delete, then enter insert mode — all in one undo group.
 ///
-/// **Bare default**: pushes to kill ring only. Same Smart-p routing as `cmd_delete`.
+/// **Bare default**: pushes to kill ring only. **Explicit register**: routes through
+/// `write_register` — same as `cmd_delete`.
 pub fn cmd_change(
     ed: &mut Editor,
     _count: usize,
@@ -211,7 +212,7 @@ fn resolve_paste_values(ed: &mut Editor, last_cmd: Option<&str>) -> Option<(Vec<
             Some((values, Some(0)))
         }
         Some(c) => {
-            // Digits and clipboard. Digits now read in-memory RegisterSet (symmetric
+            // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
             // with "Ny writes). Clipboard routes through the OS clipboard.
             let (cow, warn) = register_ops::read_register_text(
                 &ed.registers,

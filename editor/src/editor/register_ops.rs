@@ -19,7 +19,7 @@ use crate::ops::register::{RegisterSet, CLIPBOARD_REGISTER};
 /// clipboard was unavailable and the in-memory `'c'` mirror was used instead.
 ///
 /// - `'c'` → OS clipboard (in-memory fallback on failure).
-/// - All others (`'0'`–`'9'`, `'b'`, etc.) → in-memory `RegisterSet`.
+/// - All others (`'0'`–`'9'`, etc.) → in-memory `RegisterSet`.
 ///
 /// The kill-ring register (`'k'`) and black-hole register (`'b'`) are handled
 /// upstream in `resolve_paste_values`; this function is not called for them.

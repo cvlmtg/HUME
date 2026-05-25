@@ -73,6 +73,13 @@ to every selection in the set simultaneously. The *primary* is just the
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
    this: numbers for user storage, letters for special registers.
 
+   **Two namespaces, two purposes.** The digit slots `"0`–`"9` are the
+   *deterministic, durable* namespace — for scripted, macro, or surgical use where
+   you write a value and read it back verbatim later (the same slots hold macros:
+   `Q5`/`q5`). The kill ring (`"k`, `[`/`]`) is the *interactive* namespace: the
+   ring head is non-deterministic (every `d`/`c`/`y` shifts it), so it is
+   in-the-moment reach-back, not storage.
+
    The kill ring (bounded history of recent captures) is accessible via `"k`
    (head paste) and `[`/`]` cycling. See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
