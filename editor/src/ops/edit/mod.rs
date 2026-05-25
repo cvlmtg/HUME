@@ -192,12 +192,14 @@ fn delete_sel_region(
 ///
 /// Non-collapsed selections:
 /// - **Charwise content**: delete the selected region, insert inline.
-/// - **Linewise content**: **three-way split, collapsing empty sides**. The
-///   selection's first line is split at `sel.start()` into `before_text` (left)
-///   and the last line is split at `sel.end_inclusive + 1` into `after_text`
-///   (right). The whole line span is replaced by the non-empty pieces in order:
-///   `before_text` (if any), the pasted line(s), `after_text` (if any) — so no
-///   spurious blank lines are created when the selection touches a line boundary.
+/// - **Linewise content**: each selection is replaced independently. The selected
+///   fragment is deleted and replaced by the pasted line(s). Retained text before
+///   the selection on its line is pushed onto its own line by a leading `\n`; the
+///   pasted text's own trailing `\n` pushes retained text after the selection onto
+///   the next line. The line's original trailing `\n` is consumed only when the
+///   selection ends right before it (avoiding a spurious blank line). Multiple
+///   selections on the same line or with overlapping line ranges are each replaced
+///   independently — the gap between them becomes its own line.
 ///
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
@@ -223,11 +225,6 @@ fn paste_impl(
     } else {
         String::new()
     };
-
-    // Track the last linewise result so selections on the same line that are
-    // skipped (delete_count == 0) can reuse the previously-inserted range
-    // instead of pointing to b.new_pos() which may be past the buffer end.
-    let mut last_linewise: Option<(usize, Selection)> = None; // (line_index, result_sel)
 
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let text: &str = if n_sels == n_vals { &values[i] } else { &joined };
@@ -265,59 +262,35 @@ fn paste_impl(
                 }
             }
         } else if text.ends_with('\n') {
-            // Linewise over a non-collapsed selection: three-way split.
-            let first_line = buf.char_to_line(sel.start());
-            let last_line = buf.char_to_line(sel.end_inclusive(buf));
-            let line_start = buf.line_to_char(first_line);
-            // Position of the \n that terminates last_line.
-            let newline_pos = line_end_exclusive(buf, last_line) - 1;
-            let before_text: String = buf.slice(line_start..sel.start()).to_string();
-            let after_start = sel.end_inclusive(buf) + 1; // safe: end_inclusive uses next_grapheme_boundary
-            let after_text: String = if after_start <= newline_pos {
-                buf.slice(after_start..newline_pos).to_string()
-            } else {
-                String::new()
-            };
+            // Linewise over a non-collapsed selection: replace the selected fragment
+            // with the pasted line(s). Unselected text before/after on the same line
+            // is retained and pushed onto its own line by the pasted '\n'.
+            let start = sel.start();
+            let end_incl = sel.end_inclusive(buf);
 
-            let del_from = line_start;
-            let del_to = line_end_exclusive(buf, last_line); // includes the \n
-            // `from` may exceed `del_from` when a prior selection consumed the
-            // beginning of this line range (overlapping line ranges from adjacent
-            // multi-line selections). In that case before_text is stale.
-            let from = del_from.max(b.old_pos());
-            b.retain(from - b.old_pos());
-            let delete_count = del_to.saturating_sub(from);
-            b.delete(delete_count);
-            if delete_count > 0 {
-                // Only include before_text when this selection owns the line start.
-                // If from > del_from, a prior selection already consumed that prefix.
-                let include_before = from == del_from && !before_text.is_empty();
-                let mut insert = String::new();
-                if include_before {
-                    insert.push_str(&before_text);
-                    insert.push('\n');
-                }
-                insert.push_str(text); // already ends with '\n'
-                if !after_text.is_empty() {
-                    insert.push_str(&after_text);
-                    insert.push('\n');
-                }
-                b.insert(&insert);
-                let total_chars = insert.chars().count();
-                let before_prefix = if include_before { before_text.chars().count() + 1 } else { 0 };
-                let text_chars = text.chars().count();
-                let sel_start = b.new_pos() - total_chars + before_prefix;
-                let result_sel = Selection::new(sel_start, sel_start + text_chars - 1);
-                last_linewise = Some((first_line, result_sel));
-                new_sels.push(result_sel);
-            } else {
-                // A prior selection already consumed this entire line range; reuse its result.
-                let reuse = last_linewise
-                    .filter(|(line, _)| *line == first_line)
-                    .map(|(_, s)| s)
-                    .unwrap_or_else(|| Selection::collapsed(b.new_pos().saturating_sub(1)));
-                new_sels.push(reuse);
+            // Prefix a '\n' only when retained text precedes the paste on this line
+            // and does not already end in '\n' (i.e. we're not at a line start). When
+            // the previous edit ended right at `start` (start == b.old_pos()), the
+            // prior paste already supplied the separating '\n'.
+            let start_line = buf.char_to_line(start);
+            let at_line_start = start == buf.line_to_char(start_line);
+            let needs_prefix = start > b.old_pos() && !at_line_start;
+
+            // Consume the line's trailing '\n' when the selection ends right before it,
+            // so the pasted line's own '\n' doesn't create a blank line. `newline_pos`
+            // is the '\n' that terminates the selection's last line.
+            let last_line = buf.char_to_line(end_incl);
+            let newline_pos = line_end_exclusive(buf, last_line) - 1;
+            let del_end = if end_incl + 1 == newline_pos { newline_pos + 1 } else { end_incl + 1 };
+
+            b.retain(start - b.old_pos());
+            b.delete(del_end - start);
+            if needs_prefix {
+                b.insert("\n");
             }
+            b.insert(text);
+            let count = text.chars().count();
+            new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
             // Cap end at the last content char to protect the structural trailing '\n'.
@@ -473,8 +446,10 @@ pub(crate) fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, Selectio
 ///
 /// **Non-collapsed selections:**
 /// - Charwise content: deletes the selected region, inserts inline; pasted text is selected.
-/// - Linewise content: three-way split — before-text, pasted lines, after-text
-///   (empty sides collapsed so no spurious blank lines are created); pasted lines are selected.
+/// - Linewise content: each selection replaced independently. The selected fragment
+///   is deleted; retained text on the same line before/after is pushed onto its own
+///   line. Multiple selections on the same line each get their own replacement, with
+///   the unselected gaps between them becoming their own lines.
 ///
 /// The replaced selection is discarded and not written to any register.
 ///

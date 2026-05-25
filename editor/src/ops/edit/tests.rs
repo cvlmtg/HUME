@@ -783,25 +783,22 @@ fn paste_after_linewise_three_way_split_empty_after() {
 // ── linewise paste: two non-collapsed selections on the same line ─────────
 
 #[test]
-fn paste_after_linewise_two_selections_same_line_no_duplication() {
+fn paste_after_linewise_two_selections_same_line_each_replaced() {
     // Two non-collapsed selections on the same line ("he" and "lo").
-    // Linewise paste should replace the line once and yield no duplicated
-    // before_text. Bug: prior code re-inserted before_text for the second
-    // selection even though the line was already deleted by the first.
-    // Both selections land on the same pasted range ("X\n") — the second reuses
-    // the first selection's result instead of re-inserting its before_text.
-    // The two identical selections merge to one; "llo" is after_text, not a
-    // duplication of before_text from the second selection.
+    // Each selected fragment is replaced independently by the pasted line;
+    // the unselected gap ("l") is retained and pushed onto its own line by the
+    // pasted '\n'. Both pasted ranges are selected; they are distinct, so no
+    // merge occurs.
     assert_state!(
         "-[he]>l-[lo]>\n",
         |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
-        "-[X\n]>llo\n"
+        "-[X\n]>l\n-[X\n]>"
     );
-    // Two-line buffer: same invariant.
+    // Two-line buffer: same invariant; "world" line untouched.
     assert_state!(
         "-[he]>l-[lo]>\nworld\n",
         |(buf, sels)| pa(buf, sels, &["X\n".to_string()]),
-        "-[X\n]>llo\nworld\n"
+        "-[X\n]>l\n-[X\n]>world\n"
     );
 }
 
@@ -851,23 +848,27 @@ fn paste_before_linewise_three_way_split_both_sides() {
 }
 
 #[test]
-fn paste_before_linewise_two_selections_same_line_no_duplication() {
-    // Two non-collapsed selections on the same line — second reuses first's result.
+fn paste_before_linewise_two_selections_same_line_each_replaced() {
+    // Two non-collapsed selections on the same line — each replaced independently;
+    // the before/after distinction only applies to cursor selections, so the result
+    // is identical to paste_after for non-collapsed selections.
     assert_state!(
         "-[he]>l-[lo]>\n",
         |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
-        "-[X\n]>llo\n"
+        "-[X\n]>l\n-[X\n]>"
     );
 }
 
 // ── linewise paste: overlapping line ranges (multi-line selections) ───────
 
 #[test]
-fn paste_after_linewise_overlapping_line_ranges_no_duplication() {
+fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // Selection 1: "c\nx" — spans lines 0-1 (positions 2-4 in "abc\nxyz\nfoo\n").
     // Selection 2: "z\nf" — spans lines 1-2 (positions 6-8).
-    // Line 1's prefix ("xy") was consumed by selection 1; selection 2 must not
-    // re-insert it as before_text. Without the fix, "xy" appears twice.
+    // Each selection is replaced independently: sel1 replaces "c\nx", retaining
+    // "ab" (emitted on its own line via the prefix '\n'). Gap "y" (between sel1
+    // end and sel2 start) is retained on its own line. Sel2 replaces "z\nf",
+    // retaining "oo". Both pasted "X\n" ranges are selected.
     use crate::core::selection::{Selection, SelectionSet};
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (buf, _) = crate::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
@@ -880,9 +881,9 @@ fn paste_after_linewise_overlapping_line_ranges_no_duplication() {
     );
     let (new_buf, _new_sels, _cs) = pa(buf, sels, &["X\n".to_string()]);
     let result = new_buf.to_string();
-    assert_eq!(result, "ab\nX\nyz\nX\noo\n", "no before_text duplication");
-    // "xy" must not appear — it was part of selection 1's consumed range.
-    assert!(!result.contains("xy"), "stale before_text must not be re-inserted");
+    assert_eq!(result, "ab\nX\ny\nX\noo\n", "each selection replaced; gaps on own lines");
+    // "xy" must not appear — "x" was part of sel1, "z" was part of sel2, only "y" survives.
+    assert!(!result.contains("xy"), "sel1 content must not leak into gap");
 }
 
 // ── repeat_edit count=0 ───────────────────────────────────────────────────
