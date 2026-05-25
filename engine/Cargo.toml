@@ -18,3 +18,4 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 [dev-dependencies]
 tempfile = "3"
+ropey.workspace = true

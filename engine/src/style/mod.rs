@@ -374,7 +374,7 @@ mod tests {
             };
             if current_line != Some(line_idx) {
                 current_line = Some(line_idx);
-                rebuild_tier_bufs(line_idx, &[], rope, None, scratch);
+                rebuild_tier_bufs(line_idx, None, &[], rope, None, scratch);
             }
             let line_start_char = rope.line_to_char(line_idx);
             let line_end_char = rope.line_to_char(line_idx + 1);

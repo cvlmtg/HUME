@@ -1,3 +1,4 @@
+use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use crate::providers::{HighlightSource, HighlightTier, SourceContext};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
@@ -132,8 +133,13 @@ impl TierBufs {
 ///
 /// Must be called once per buffer line before calling [`super::style_row`] for
 /// that line's display rows. Clears and re-fills `tier_bufs` and `raw_highlights`.
+///
+/// `syntax` is the buffer-level tree-sitter highlighter (if a language is
+/// configured). It runs first into the `Syntax` tier bucket before any
+/// per-pane provider-based sources.
 pub(crate) fn rebuild_tier_bufs(
     line_idx: usize,
+    syntax: Option<&TreeSitterHighlighter>,
     providers: &[Box<dyn HighlightSource>],
     rope: &ropey::Rope,
     tree: Option<&tree_sitter::Tree>,
@@ -146,6 +152,13 @@ pub(crate) fn rebuild_tier_bufs(
         tree,
         line_start_byte: rope.line_to_byte(line_idx),
     };
+    if let Some(hl) = syntax {
+        hl.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
+        for &interval in scratch.highlights.iter() {
+            scratch.tier_bufs.push(HighlightTier::Syntax, interval);
+        }
+        scratch.highlights.clear();
+    }
     for provider in providers {
         provider.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
         for &interval in scratch.highlights.iter() {

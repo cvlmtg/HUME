@@ -332,6 +332,7 @@ impl EngineView {
                 pane,
                 rope,
                 tree: buffer.tree.as_ref(),
+                syntax: buffer.syntax.as_ref(),
                 theme: &self.theme,
                 rect,
                 settings: get_pane_settings(pane_id),
@@ -386,6 +387,8 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub rope: &'a ropey::Rope,
     /// Tree-sitter parse tree from `SharedBuffer`, if available.
     pub tree: Option<&'a tree_sitter::Tree>,
+    /// Tree-sitter syntax highlighter from `SharedBuffer`, if language is configured.
+    pub syntax: Option<&'a Arc<TreeSitterHighlighter>>,
     pub theme: &'a Theme,
     pub rect: ratatui::layout::Rect,
     pub settings: PaneRenderSettings,
@@ -630,6 +633,7 @@ fn render_buffer_line(
         // Stage 3 (per line): build highlight intervals for this buffer line.
         style::rebuild_tier_bufs(
             line_idx,
+            pane_ctx.syntax.map(Arc::as_ref),
             &pane_ctx.pane.providers.highlights,
             pane_ctx.rope,
             pane_ctx.tree,

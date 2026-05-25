@@ -18,6 +18,9 @@ Thumbs.db
 # Build artifacts
 /dist/
 
+# Tree-sitter grammar test fixtures (fetched by scripts/fetch-test-grammars.sh)
+/tests/fixtures/grammars/
+
 # Planning docs (local only, never committed)
 
 # insta pending-snapshot files (created when a snapshot mismatches during review)
