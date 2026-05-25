@@ -407,10 +407,10 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
-        let line = buf.char_to_line(sel.head);
+        let line = buf.char_to_line(sel.anchor);
         let line_start = buf.line_to_char(line);
         let line_end_excl = line_end_exclusive(buf, line);
-        let found = nearest_word_on_line(buf, sel.head, line_start, line_end_excl);
+        let found = nearest_word_on_line(buf, sel.anchor, line_start, line_end_excl);
         apply_nearest_word_result(sel, found, mode)
     });
     result.debug_assert_valid(buf);

@@ -324,9 +324,9 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
         let rope = text.rope();
         let new_sels = sels.map_and_merge(|sel| {
-            let buf_line = text.char_to_line(sel.head);
+            let buf_line = text.char_to_line(sel.anchor);
             let (sub_row, _) =
-                format_row_col(rope, buf_line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
+                format_row_col(rope, buf_line, sel.anchor, &wrap_mode, tab_width, &whitespace, scratch);
 
             let (line_start, line_end_excl) =
                 sub_row_char_bounds(scratch, sub_row, buf_line, rope).unwrap_or_else(|| {
@@ -339,7 +339,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                     (ls, le)
                 });
 
-            let found = nearest_word_on_line(text, sel.head, line_start, line_end_excl);
+            let found = nearest_word_on_line(text, sel.anchor, line_start, line_end_excl);
             apply_nearest_word_result(sel, found, mode)
         });
         new_sels.debug_assert_valid(text);

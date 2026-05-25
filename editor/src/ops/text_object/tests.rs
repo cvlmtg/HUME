@@ -1088,17 +1088,17 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // Buffer: "hello\n     world\n"
     //          0 1 2 3 4 5 | 6 7 8 9 10 11 12 13 14 15 16
     //         h e l l o \n  _ _ _ _  _ w  o  r  l  d \n
-    // After move-down in extend mode: anchor stays at 0, head lands at 10 (space).
-    // nearest_word finds "world" = [11,15] (only next word on this line).
-    // new_end = max(10, 15) = 15 → selection grows from [0,10] to [0,15].
+    // After move-down in extend mode: anchor stays at 0 (on 'h'), head lands at 10 (space).
+    // Snap uses anchor=0 → nearest_word finds "hello" = [0,4] (anchor is already on a word).
+    // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
     let buf = Text::from("hello\n     world\n");
     let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Extend);
     let sel = result.primary();
     assert_eq!(
         (sel.anchor, sel.head),
-        (0, 15),
-        "extend must grow selection to include snapped word"
+        (0, 10),
+        "extend must not shrink selection when anchor word is already covered"
     );
     assert!(sel.anchor <= sel.head, "selection must remain forward");
 }
