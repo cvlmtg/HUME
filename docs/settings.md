@@ -95,7 +95,7 @@ Apply a global setting. Equivalent to `:set global key=value`. Validation failur
 (set-option! "scrolloff" "5")
 ```
 
-### `(keymap-bind! mode key-sequence command)`
+### `(bind-key! mode key-sequence command)`
 
 Bind a key sequence to a named command in the given mode.
 
@@ -104,24 +104,24 @@ Bind a key sequence to a named command in the given mode.
 - `command`: name of any registered command
 
 ```scheme
-(keymap-bind! "normal" "g r" "redo")
-(keymap-bind! "normal" "ctrl-k" "move-up")
+(bind-key! "normal" "g r" "redo")
+(bind-key! "normal" "ctrl-k" "move-up")
 ```
 
-### `(keymap-unbind! mode key-sequence)`
+### `(unbind-key! mode key-sequence)`
 
 Remove an existing binding.
 
 ```scheme
-(keymap-unbind! "normal" "Ctrl+c")
+(unbind-key! "normal" "Ctrl+c")
 ```
 
-### `(keymap-bind-wait-char! mode key-sequence command)`
+### `(bind-wait-char! mode key-sequence command)`
 
 Bind a key sequence to a wait-char node. The next keypress after the sequence is captured and made available to the command via `(pending-char)`.
 
 ```scheme
-(keymap-bind-wait-char! "normal" "m r" "helix-replace-surround")
+(bind-wait-char! "normal" "m r" "helix-replace-surround")
 ```
 
 ### `(define-command! name doc lambda)`

@@ -234,7 +234,7 @@ The prefix is sticky across motions and text objects, but consumed (cleared) by 
 | `Ctrl+o` | Jump backward in the jump list |
 | `Ctrl+i` / `Tab` | Jump forward in the jump list |
 
-### Pane Focus (`Ctrl+p` prefix) — M9+ stubs
+### Pane Focus (`Ctrl+p` prefix)
 
 | Sequence | Command |
 |----------|---------|
