@@ -33,8 +33,8 @@
 ;;
 ;; The call below reproduces the default layout.
 (configure-statusline!
-  '("Mode" "DirtyIndicator" "Separator" "FileName")  ; left
-  '()                                                  ; center
+  '("Mode" "DirtyIndicator" "Separator" "FileName")       ; left
+  '()                                                     ; center
   '("Position" "Selections" "MiniBuf" "MacroRecording"))  ; right
 
 ;; ── Key bindings ──────────────────────────────────────────────────────────────
@@ -109,12 +109,15 @@
 ;;     (call! "paste-after")))
 ;; (bind-key! "normal" "p" "paste-ring")
 ;;
+;; Or load the bundled plugin for the full p/P + Ctrl+V split:
+;;   (load-plugin "core:classic-paste")
+;;
 ;; Tip: multiple calls after one set-register-prefix! all inherit the same
 ;; register, so you can do e.g.:
 ;;   (set-register-prefix! "5")
-;;   (call! "yank")   ; yanks into register 5
+;;   (call! "yank")             ; yanks into register 5
 ;;   (set-register-prefix! "k")
-;;   (call! "paste-after")  ; pastes from kill ring
+;;   (call! "paste-after")      ; pastes from kill ring
 
 ;; Move down/up and immediately select the word under the new cursor position.
 ;; Uses define-command-extend! so Ctrl-J / Ctrl-K still work (one-shot extend).
@@ -138,9 +141,9 @@
 ;;
 ;; The verb encodes when the plugin loads:
 ;;
-;;   (load-plugin name)    — eager: load now, at startup.
+;;   (load-plugin name) — eager: load now, at startup.
 ;;   (declare-plugin name [keyword-args...])  — lazy: load on trigger or
-;;                           on an explicit later (load-plugin name).
+;;                               on an explicit later (load-plugin name).
 ;;
 ;;   name — "core:name"   (bundled core plugin)
 ;;        — "user/repo"   (third-party plugin from
@@ -174,14 +177,17 @@
 ;;   triggers still pending.  Use this to inspect lazy-load behaviour at
 ;;   runtime.
 ;;
-;; core:plum   — plugin manager (:plum-install, :plum-update, :plum-cleanup)
+;; core:plum           — plugin manager (:plum-install, :plum-update, :plum-cleanup)
 ;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
+;; core:classic-paste  — opt-in GUI-style paste split:
+;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
 ;;
 ;; Load plum first so it can install other declared plugins on the next
 ;; :plum-install run.
 
 ;; (load-plugin "core:plum")
 ;; (load-plugin "core:helix-surround")
+;; (load-plugin "core:classic-paste")
 
 ;; Declare third-party plugins to be installed by :plum-install.
 ;; These are absent on a fresh setup; PLUM installs them, then :reload-config
