@@ -805,6 +805,86 @@ fn paste_after_linewise_two_selections_same_line_no_duplication() {
     );
 }
 
+// ── linewise paste_before coverage ───────────────────────────────────────
+
+#[test]
+fn paste_before_linewise_cursor_on_last_line() {
+    // Cursor on 'l' (line 1, the last content line). Paste "X\n" before →
+    // inserted above line 1. Buffer becomes "hello\nX\nworld\n".
+    assert_state!(
+        "hello\nwor-[l]>d\n",
+        |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
+        "hello\n-[X\n]>world\n"
+    );
+}
+
+#[test]
+fn paste_before_linewise_multiline_content() {
+    // Paste "a\nb\n" (two lines) before cursor on line 0 → two new lines above.
+    // Buffer becomes "a\nb\nhello\nworld\n"; selection covers "a\nb\n".
+    assert_state!(
+        "h-[e]>llo\nworld\n",
+        |(buf, sels)| pb(buf, sels, &["a\nb\n".to_string()]),
+        "-[a\nb\n]>hello\nworld\n"
+    );
+}
+
+#[test]
+fn paste_before_linewise_over_full_line_selection() {
+    // Full-line selection — three-way split with both sides empty; identical
+    // to paste_after for non-collapsed selections.
+    assert_state!(
+        "-[hello\n]>world\n",
+        |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>world\n"
+    );
+}
+
+#[test]
+fn paste_before_linewise_three_way_split_both_sides() {
+    // Partial selection "ell" within "hello" — before="h", after="o".
+    assert_state!(
+        "h-[ell]>o\nworld\n",
+        |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
+        "h\n-[X\n]>o\nworld\n"
+    );
+}
+
+#[test]
+fn paste_before_linewise_two_selections_same_line_no_duplication() {
+    // Two non-collapsed selections on the same line — second reuses first's result.
+    assert_state!(
+        "-[he]>l-[lo]>\n",
+        |(buf, sels)| pb(buf, sels, &["X\n".to_string()]),
+        "-[X\n]>llo\n"
+    );
+}
+
+// ── linewise paste: overlapping line ranges (multi-line selections) ───────
+
+#[test]
+fn paste_after_linewise_overlapping_line_ranges_no_duplication() {
+    // Selection 1: "c\nx" — spans lines 0-1 (positions 2-4 in "abc\nxyz\nfoo\n").
+    // Selection 2: "z\nf" — spans lines 1-2 (positions 6-8).
+    // Line 1's prefix ("xy") was consumed by selection 1; selection 2 must not
+    // re-insert it as before_text. Without the fix, "xy" appears twice.
+    use crate::core::selection::{Selection, SelectionSet};
+    // parse_state requires at least one selection marker; we ignore the returned sels.
+    let (buf, _) = crate::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(2, 4), // "c\nx" — first_line=0, last_line=1
+            Selection::new(6, 8), // "z\nf" — first_line=1, last_line=2
+        ],
+        0,
+    );
+    let (new_buf, _new_sels, _cs) = pa(buf, sels, &["X\n".to_string()]);
+    let result = new_buf.to_string();
+    assert_eq!(result, "ab\nX\nyz\nX\noo\n", "no before_text duplication");
+    // "xy" must not appear — it was part of selection 1's consumed range.
+    assert!(!result.contains("xy"), "stale before_text must not be re-inserted");
+}
+
 // ── repeat_edit count=0 ───────────────────────────────────────────────────
 
 #[test]

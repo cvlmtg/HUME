@@ -577,14 +577,14 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "paste-ring-older",
-            "Cycle kill ring one step older and paste-after.",
+            "Cycle kill ring one step older and re-paste.",
             cmd_paste_ring_older,
         )
         .repeatable()
         .reg(self);
         ecmd(
             "paste-ring-newer",
-            "Cycle kill ring one step newer and paste-after.",
+            "Cycle kill ring one step newer and re-paste.",
             cmd_paste_ring_newer,
         )
         .repeatable()

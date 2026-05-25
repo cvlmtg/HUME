@@ -738,10 +738,11 @@ fn macro_with_two_pastes_does_not_panic() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    // Both pastes must have fired — "AB" appears at least twice.
+    // Both pastes must have fired — "AB" appears exactly twice.
     let buf = ed.doc().text().to_string();
-    assert!(
-        buf.matches("AB").count() >= 2,
+    assert_eq!(
+        buf.matches("AB").count(),
+        2,
         "both pastes in the macro must fire; got: {buf:?}"
     );
 }

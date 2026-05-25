@@ -279,44 +279,39 @@ fn paste_impl(
                 String::new()
             };
 
-            // Build replacement: [before\n] + value + [after\n], collapsing empty sides.
-            let mut insert = String::new();
-            if !before_text.is_empty() {
-                insert.push_str(&before_text);
-                insert.push('\n');
-            }
-            insert.push_str(text); // already ends with '\n'
-            if !after_text.is_empty() {
-                insert.push_str(&after_text);
-                insert.push('\n');
-            }
-
             let del_from = line_start;
             let del_to = line_end_exclusive(buf, last_line); // includes the \n
-            let from = del_from.max(b.old_pos()); // guard same-line multi-cursor
+            // `from` may exceed `del_from` when a prior selection consumed the
+            // beginning of this line range (overlapping line ranges from adjacent
+            // multi-line selections). In that case before_text is stale.
+            let from = del_from.max(b.old_pos());
             b.retain(from - b.old_pos());
             let delete_count = del_to.saturating_sub(from);
             b.delete(delete_count);
             if delete_count > 0 {
+                // Only include before_text when this selection owns the line start.
+                // If from > del_from, a prior selection already consumed that prefix.
+                let include_before = from == del_from && !before_text.is_empty();
+                let mut insert = String::new();
+                if include_before {
+                    insert.push_str(&before_text);
+                    insert.push('\n');
+                }
+                insert.push_str(text); // already ends with '\n'
+                if !after_text.is_empty() {
+                    insert.push_str(&after_text);
+                    insert.push('\n');
+                }
                 b.insert(&insert);
-
-                // Select the pasted value within the inserted content.
                 let total_chars = insert.chars().count();
-                let before_prefix = if before_text.is_empty() {
-                    0
-                } else {
-                    before_text.chars().count() + 1 // +1 for the '\n' after before_text
-                };
+                let before_prefix = if include_before { before_text.chars().count() + 1 } else { 0 };
                 let text_chars = text.chars().count();
                 let sel_start = b.new_pos() - total_chars + before_prefix;
                 let result_sel = Selection::new(sel_start, sel_start + text_chars - 1);
                 last_linewise = Some((first_line, result_sel));
                 new_sels.push(result_sel);
             } else {
-                // A prior selection on the same line already replaced it; skip
-                // re-inserting (avoids duplicating before_text). Reuse the range
-                // from that prior selection — b.new_pos() is unsafe here because it
-                // may equal buf_len when the last line was the final line.
+                // A prior selection already consumed this entire line range; reuse its result.
                 let reuse = last_linewise
                     .filter(|(line, _)| *line == first_line)
                     .map(|(_, s)| s)

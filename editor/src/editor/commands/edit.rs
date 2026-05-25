@@ -124,7 +124,6 @@ fn do_paste(ed: &mut Editor, before: bool) {
 
     let focused = ed.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    ed.pane_state[focused][buf].paste_before = before;
 
     // Append path: re-paste the verbatim values from the previous paste.
     // No ring/clipboard re-lookup — ring emptiness is irrelevant.
@@ -140,6 +139,7 @@ fn do_paste(ed: &mut Editor, before: bool) {
                 Selection::collapsed(s.end_inclusive(text))
             }
         });
+        ed.pane_state[focused][buf].paste_before = before;
         open_paste_session_and_apply(ed, focused, buf, before, &values);
         // Preserve the cycle position — the seeded origin from the first
         // paste in this run remains correct for `[`/`]`.
@@ -155,6 +155,7 @@ fn do_paste(ed: &mut Editor, before: bool) {
         return;
     };
 
+    ed.pane_state[focused][buf].paste_before = before;
     ed.last_paste = Some(values.clone());
     open_paste_session_and_apply(ed, focused, buf, before, &values);
     ed.kill_ring.seed_cycle(cycle_origin);
@@ -203,16 +204,26 @@ fn resolve_paste_values(ed: &mut Editor, last_cmd: Option<&str>) -> Option<(Vec<
                     CLIPBOARD_REGISTER,
                 );
                 let values = cow.map(|c| c.to_vec()); // end borrow of ed.registers
-                if let Some(w) = warn {
-                    ed.report(Severity::Warning, w);
+                // When clipboard is unavailable, fall back to ring head silently.
+                // Only emit the warning when the fallback also fails — otherwise the
+                // user sees a warning alongside a successful paste, which is confusing.
+                match values {
+                    None => {
+                        if let Some(head) = ed.kill_ring.head() {
+                            return Some((head.to_vec(), Some(0)));
+                        }
+                        if let Some(w) = warn {
+                            ed.report(Severity::Warning, w);
+                        }
+                        None
+                    }
+                    Some(vals) => {
+                        if let Some(w) = warn {
+                            ed.report(Severity::Warning, w);
+                        }
+                        Some((vals, None))
+                    }
                 }
-                // When both clipboard and in-memory 'c' are empty, fall back to
-                // ring head so the user can still paste a recent delete/yank.
-                if values.is_none() {
-                    let head = ed.kill_ring.head()?.to_vec();
-                    return Some((head, Some(0)));
-                }
-                Some((values?, None))
             }
         }
         Some(BLACK_HOLE_REGISTER) => None,

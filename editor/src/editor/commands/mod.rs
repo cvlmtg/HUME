@@ -37,7 +37,7 @@ use super::{Editor, RegisterPrefix};
 /// Only `change` and `delete` belong here. Paste-family commands are handled
 /// via the append path in `do_paste` (which re-uses `last_paste` verbatim);
 /// they never reach this check.
-pub(super) const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
+pub(crate) const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
 
 /// Commands that must not commit the open paste session before dispatch.
 /// `[` and `]` re-paste from the same snapshot and should fold into one undo step.

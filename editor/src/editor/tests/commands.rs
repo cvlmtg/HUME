@@ -856,14 +856,14 @@ fn kill_ring_register_pastes_ring_head() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>world\n");
-    ed.handle_key(key('d')); // delete "hello" → ring head = ["hello"]
+    ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
 
     // Seed clipboard with "wrong" to confirm "kp doesn't read it.
     ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.handle_key(key('p'));
+    ed.feed_key(key('p'));
 
     assert!(
         ed.doc().text().to_string().contains("hello"),
@@ -880,7 +880,7 @@ fn kill_ring_register_pastes_ring_head() {
 fn kill_ring_register_paste_seeds_cycle() {
     // Build a ring with 2 entries: push "first" then "second" (head).
     let mut ed = editor_from("-[second]>X\n");
-    ed.handle_key(key('d')); // ring head = ["second"]
+    ed.feed_key(key('d')); // ring head = ["second"]
 
     // Manually push an older entry.
     ed.kill_ring.push(vec!["first".to_string()]);
@@ -890,7 +890,7 @@ fn kill_ring_register_paste_seeds_cycle() {
     // seeded at the head so [ can cycle to the older entry.
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.handle_key(key('p'));
+    ed.feed_key(key('p'));
 
     assert!(
         ed.doc().text().to_string().contains("first"),
@@ -898,7 +898,7 @@ fn kill_ring_register_paste_seeds_cycle() {
     );
 
     // [ should cycle to the next-older entry ("second").
-    ed.handle_key(key('['));
+    ed.feed_key(key('['));
     assert!(
         ed.doc().text().to_string().contains("second"),
         "[ after \"kp cycled to older ring entry"
@@ -916,7 +916,7 @@ fn kill_ring_register_yank_pushes_ring_only() {
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.handle_key(key('y')); // "ky → ring push, no clipboard
+    ed.feed_key(key('y')); // "ky → ring push, no clipboard
 
     assert_eq!(
         ed.kill_ring.head(),
@@ -936,7 +936,7 @@ fn kill_ring_register_delete_pushes_ring() {
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.handle_key(key('d')); // "kd → delete + push ring
+    ed.feed_key(key('d')); // "kd → delete + push ring
 
     assert_eq!(ed.doc().text().to_string(), "world\n", "buffer after delete");
     assert_eq!(
@@ -1072,23 +1072,28 @@ fn smart_p_motion_resets_to_clipboard() {
 /// A subsequent `p` (no preceding `c`/`d`) reads from the clipboard.
 #[test]
 fn smart_p_after_yank_reads_clipboard() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use crate::editor::commands::SMART_P_LAST_CMDS;
 
     let mut ed = editor_from("-[hello]> world\n");
-    ed.feed_key(key('y')); // yank → clipboard + ring
-    // Clipboard and ring both get "hello".
-    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hello"], "clipboard written");
-    assert!(ed.kill_ring.head().is_some(), "ring written");
-    // Now move right and paste — last_command = "yank" ∉ SMART_P_LAST_CMDS → clipboard.
-    // (Both paths yield the same "hello" since y wrote both, but we verify
-    // last_command is reset by checking the heuristic does NOT pick ring-only.)
+    ed.feed_key(key('y')); // yank → clipboard="hello" + ring="hello"
+
+    // Verify yank did not set last_command to anything in SMART_P_LAST_CMDS.
     assert!(
-        !ed.last_command.as_deref().is_some_and(|c| [
-            "change", "delete", "paste-after", "paste-before",
-            "paste-ring-older", "paste-ring-newer"
-        ].contains(&c)),
+        !ed.last_command.as_deref().is_some_and(|c| SMART_P_LAST_CMDS.contains(&c)),
         "last_command after bare y is not in SMART_P_LAST_CMDS"
     );
+
+    // Push a distinct value to ring so ring-head ≠ clipboard.
+    // Now: clipboard="hello", ring head="RING".
+    ed.kill_ring.push(vec!["RING".to_string()]);
+
+    // Move right and paste — should read clipboard ("hello"), not ring head ("RING").
+    ed.feed_key(key('l'));
+    ed.feed_key(key('p'));
+
+    let buf = ed.doc().text().to_string();
+    assert!(buf.contains("hello"), "p after y reads clipboard");
+    assert!(!buf.contains("RING"), "ring head must not be used after y");
 }
 
 /// Consecutive `p p` after `d` keeps reading the ring (last_command stays in set).
@@ -1105,13 +1110,12 @@ fn smart_p_consecutive_paste_stays_in_ring() {
     // last_command = "paste-after" ∈ PASTE_FAMILY_CMDS → is_append = true → appends from last_paste.
     ed.feed_key(key('p')); // second paste → still from ring
     // Buffer should contain "X" twice (pasted) and NOT "CLIP".
-    assert!(
-        !ed.doc().text().to_string().contains("CLIP"),
-        "second consecutive p still reads ring"
-    );
+    let buf = ed.doc().text().to_string();
+    assert!(buf.contains("X"), "ring entry appears in buffer");
+    assert!(!buf.contains("CLIP"), "second consecutive p still reads ring");
 }
 
-/// `x d p` pastes the kill-ring head, not the clipboard (PASTERING.md rule 17).
+/// `x d p` pastes the kill-ring head, not the clipboard.
 ///
 /// `last_command = "delete"` is in `SMART_P_LAST_CMDS`, so bare `p` reads the
 /// ring even when the clipboard holds different content.
@@ -1247,8 +1251,11 @@ fn paste_ring_older_empty_ring_is_noop() {
     let before = state(&ed);
     ed.feed_key(key('['));
     assert_eq!(state(&ed), before, "[ on empty ring is a no-op");
+    // Capture fresh snapshot so ] is verified against actual post-[ state,
+    // not the original — if [ accidentally mutated state, this catches both.
+    let after_open = state(&ed);
     ed.feed_key(key(']'));
-    assert_eq!(state(&ed), before, "] on empty ring is a no-op");
+    assert_eq!(state(&ed), after_open, "] on empty ring is a no-op");
 }
 
 /// `[ ]` cycle within a paste session: the ring cursor walks older then back newer.
@@ -1406,8 +1413,7 @@ fn paste_before_cycle_stays_above_linewise() {
     );
 }
 
-/// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard
-/// paste (PASTERING.md rule 19).
+/// `p [ p` duplicates the currently-cycled entry — never does a fresh clipboard paste.
 ///
 /// After `[` swaps the paste to the ring head, `last_command = "paste-ring-older"`
 /// is in `PASTE_FAMILY_CMDS`, so the next `p` must append (not replace).
@@ -1422,7 +1428,12 @@ fn paste_after_cycle_appends_cycled_entry() {
 
     // p: last_command=None → clipboard "CLIP"; seed_cycle(None).
     ed.feed_key(key('p'));
-    // [: cycle_older None→0="RING"; replaces paste; last_paste=["RING"].
+    assert!(
+        ed.doc().text().to_string().contains("CLIP"),
+        "first p must paste clipboard (last_command=None → not in SMART_P_LAST_CMDS)"
+    );
+
+    // [: cycle_older None→0="RING"; replaces "CLIP" with "RING"; last_paste=["RING"].
     ed.feed_key(key('['));
     // p: is_append (last_command="paste-ring-older" ∈ PASTE_FAMILY) → append last_paste.
     ed.feed_key(key('p'));
@@ -1431,28 +1442,34 @@ fn paste_after_cycle_appends_cycled_entry() {
     assert_eq!(
         buf.matches("RING").count(),
         2,
-        "p after [ must duplicate the cycled entry (rule 19)"
+        "p after [ must duplicate the cycled entry"
     );
     assert!(
         !buf.contains("CLIP"),
-        "clipboard content must not appear — p after [ appends ring entry, not clipboard"
+        "clipboard must not appear after [ cycle"
     );
 }
 
 /// Consecutive `p` presses append copies rather than replacing the selected paste.
 #[test]
 fn consecutive_paste_appends_copies() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
     let mut ed = editor_from("-[ab]>\n");
-    ed.feed_key(key('y')); // yank "ab" to clipboard + ring
-    ed.feed_key(key('d')); // delete, buffer = "\n"; ring head = "ab"
-    ed.feed_key(key('p')); // paste "ab" (from ring, prev=delete); "ab" selected
-    ed.feed_key(key('p')); // prev=paste-after → APPEND another copy
+    ed.clipboard.force_unavailable();
+    // Seed clipboard with "CLIP" (distinct from ring) to falsify the assertion:
+    // if the second p reads clipboard instead of last_paste, "CLIP" would appear.
+    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], last_command = "delete"
+    ed.feed_key(key('p')); // smart-p reads ring head "ab" (last_command="delete"); last_paste=["ab"]
+    ed.feed_key(key('p')); // is_append → appends from last_paste = ["ab"]
     let buf = ed.doc().text().to_string();
     assert_eq!(
         buf.matches("ab").count(),
         2,
         "two consecutive p presses must stack two copies of 'ab'"
     );
+    assert!(!buf.contains("CLIP"), "clipboard not used — append reads last_paste");
 }
 
 /// Consecutive `p` presses append when the previous paste came from the CLIPBOARD
