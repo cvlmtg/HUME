@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Query, QueryCursor};
@@ -15,9 +15,11 @@ use crate::types::{Scope, ScopeId};
 ///
 /// # Usage
 ///
-/// 1. Create with `TreeSitterHighlighter::new(id, language, query_source)`.
-/// 2. After each edit, call `update(source_bytes, new_tree)` to keep the
-///    source snapshot and parse tree in sync with the buffer.
+/// 1. Create with `TreeSitterHighlighter::new(language, query_source)`.
+/// 2. After each re-parse, call `refresh_source(bytes)` to keep the cached
+///    source snapshot in sync with the buffer. The parse tree is read from
+///    `SourceContext.tree` at query time — `SharedBuffer.tree` is the single
+///    authoritative owner.
 /// 3. Register with `ProviderSet::add_highlight_source`.
 ///
 /// # Byte offsets
@@ -34,7 +36,7 @@ use crate::types::{Scope, ScopeId};
 /// starting byte, and by trimming the longer one when a shorter one is
 /// contained within it. The output is always sorted and non-overlapping.
 pub struct TreeSitterHighlighter {
-    query: Query,
+    query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
     /// Mutable state: must stay in sync with the rope/buffer.
@@ -42,10 +44,10 @@ pub struct TreeSitterHighlighter {
 }
 
 struct TsState {
-    /// Full file bytes. Updated on every edit via `update()`.
+    /// Full file bytes, refreshed on every re-parse via `refresh_source`.
+    /// Kept here because `cursor.matches` requires a contiguous `&[u8]` for
+    /// query predicates, which ropey cannot provide directly.
     source: Vec<u8>,
-    /// Latest parse tree.
-    tree: tree_sitter::Tree,
     /// Scratch buffer for raw captures — retained across calls to avoid reallocation.
     raw: Vec<(usize, usize, ScopeId)>,
     /// Reused query cursor — tree-sitter recommends reuse to amortise its internal allocation.
@@ -53,27 +55,65 @@ struct TsState {
 }
 
 impl TreeSitterHighlighter {
-    /// Create a new provider.
+    /// Create a new provider using Helix-style pass-through scope names.
     ///
-    /// `scope_map` maps tree-sitter capture names (e.g. `"keyword"`) to
-    /// engine scope names (e.g. `Scope("keyword")`). Captures not in the map
-    /// are silently ignored.
+    /// Every tree-sitter capture name (e.g. `"keyword.function"`) is used
+    /// directly as the engine scope name. The theme's dot-notation cascade
+    /// (`keyword.function` → `keyword` → default) handles unknowns. This is
+    /// the standard constructor for Helix-compatible `highlights.scm` queries.
     ///
-    /// `registry` is the session-wide [`ScopeRegistry`]. Each scope in
-    /// `scope_map` is interned here so it can be resolved in O(1) at render
-    /// time via [`crate::theme::Theme::resolve`].
+    /// Use [`new_with_scope_map`] when explicit capture→scope remapping is needed.
     pub fn new(
+        language: &Language,
+        query_source: &str,
+        registry: &mut ScopeRegistry,
+        initial_source: Vec<u8>,
+    ) -> Result<Self, tree_sitter::QueryError> {
+        let query = Arc::new(Query::new(language, query_source)?);
+        Ok(Self::from_shared_query(query, registry, initial_source))
+    }
+
+    /// Create a provider from a pre-compiled, shared query.
+    ///
+    /// Use this when the `Query` has already been compiled at language
+    /// registration time (e.g. from `GrammarBundle.query`) to avoid
+    /// re-parsing the `highlights.scm` source per buffer open.
+    pub fn from_shared_query(
+        query: Arc<Query>,
+        registry: &mut ScopeRegistry,
+        initial_source: Vec<u8>,
+    ) -> Self {
+        let capture_scopes: Vec<Option<ScopeId>> = query
+            .capture_names()
+            .iter()
+            .map(|name| Some(registry.intern_runtime(name)))
+            .collect();
+        Self {
+            query,
+            capture_scopes,
+            state: Mutex::new(TsState {
+                source: initial_source,
+                raw: Vec::new(),
+                cursor: QueryCursor::new(),
+            }),
+        }
+    }
+
+    /// Create a new provider with an explicit capture-name → scope-name map.
+    ///
+    /// Captures not present in `scope_map` are silently ignored. Use this for
+    /// grammars where tree-sitter capture names don't match the engine scope
+    /// convention directly.
+    pub fn new_with_scope_map(
         language: &Language,
         query_source: &str,
         scope_map: &[(&str, Scope)],
         registry: &mut ScopeRegistry,
         initial_source: Vec<u8>,
-        initial_tree: tree_sitter::Tree,
     ) -> Result<Self, tree_sitter::QueryError> {
-        let query = Query::new(language, query_source)?;
-        let capture_names = query.capture_names();
-        // Intern each mapped scope into the registry; unmapped captures stay None.
-        let capture_scopes: Vec<Option<ScopeId>> = capture_names
+        let query = Arc::new(Query::new(language, query_source)?);
+        let capture_scopes: Vec<Option<ScopeId>> = query
+            .capture_names()
             .iter()
             .map(|name| {
                 scope_map
@@ -82,25 +122,28 @@ impl TreeSitterHighlighter {
                     .map(|(_, s)| registry.intern(s.0))
             })
             .collect();
-
         Ok(Self {
             query,
             capture_scopes,
             state: Mutex::new(TsState {
                 source: initial_source,
-                tree: initial_tree,
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
             }),
         })
     }
 
-    /// Update the source snapshot and parse tree after an edit.
-    /// Call this before the next render frame.
-    pub fn update(&self, new_source: Vec<u8>, new_tree: tree_sitter::Tree) {
+    /// Refresh the internal source snapshot after a re-parse.
+    ///
+    /// Reuses the existing `Vec<u8>` allocation (clear + extend_from_slice) so
+    /// the steady-state per-frame cost is a copy, not an alloc.
+    ///
+    /// The parse tree is not stored here — `SharedBuffer.tree` is the single
+    /// authoritative owner, passed to `highlights_for_line` via `SourceContext.tree`.
+    pub fn refresh_source(&self, bytes: &[u8]) {
         let mut state = self.state.lock().expect("highlight state lock poisoned");
-        state.source = new_source;
-        state.tree = new_tree;
+        state.source.clear();
+        state.source.extend_from_slice(bytes);
     }
 }
 
@@ -115,6 +158,7 @@ impl HighlightSource for TreeSitterHighlighter {
         ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
+        let Some(tree) = ctx.tree else { return };
         let mut state = self.state.lock().expect("highlight state lock poisoned");
 
         // Compute the absolute byte range for this line.
@@ -127,7 +171,6 @@ impl HighlightSource for TreeSitterHighlighter {
 
         // Destructure into split borrows so the compiler sees all fields as disjoint.
         let TsState {
-            ref tree,
             ref source,
             ref mut raw,
             ref mut cursor,
@@ -135,7 +178,6 @@ impl HighlightSource for TreeSitterHighlighter {
         cursor.set_byte_range(line_start..line_end);
         raw.clear();
 
-        // tree-sitter 0.24 returns a StreamingIterator, not a regular Iterator.
         let root = tree.root_node();
         let source_bytes = source.as_slice();
         let mut matches = cursor.matches(&self.query, root, source_bytes);
@@ -192,6 +234,6 @@ impl HighlightSource for TreeSitterHighlighter {
 #[cfg(test)]
 mod tests {
     // Tree-sitter integration tests require a compiled language grammar, so
-    // they live in the integration test suite rather than here.
-    // This module is exercised by example binaries and integration tests.
+    // they live in the integration test suite (`engine/tests/grammar_integration.rs`).
+    // This module is exercised by those integration tests.
 }

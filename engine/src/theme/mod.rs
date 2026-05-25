@@ -9,53 +9,91 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 // ScopeRegistry
 // ---------------------------------------------------------------------------
 
-/// Maps `&'static str` scope names to compact [`ScopeId`] integers.
+/// Maps scope name strings to compact [`ScopeId`] integers.
 ///
-/// Populate the registry by calling [`intern`] once per scope name at
-/// construction time (e.g. when registering a `TreeSitterHighlighter`).
-/// Then call [`Theme::bake`] with the registry before the first render.
-/// After baking, [`Theme::resolve`] is an O(1) `Vec` index — no hashing.
+/// Two registration paths:
+/// - [`intern`] for `&'static str` — used by engine builtins and theme loaders.
+/// - [`intern_runtime`] for `&str` — used by Steel-loaded language configs
+///   where scope names are runtime strings. Owned copies are stored to avoid
+///   leaking; the total number of distinct scopes is bounded by `u16::MAX`.
+///
+/// Populate at construction time, then call [`Theme::bake`] before the first
+/// render. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
 pub struct ScopeRegistry {
-    map: HashMap<&'static str, ScopeId>,
-    names: Vec<&'static str>,
+    /// Fast-path map for static string literals (engine builtins, theme load).
+    static_map: HashMap<&'static str, ScopeId>,
+    /// Owned-key map for runtime strings (Steel-registered language captures).
+    runtime_map: HashMap<String, ScopeId>,
+    /// Combined name table; index is the `ScopeId`. Both registration paths
+    /// push here so `name_of` works uniformly.
+    names: Vec<Box<str>>,
 }
 
 impl ScopeRegistry {
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            static_map: HashMap::new(),
+            runtime_map: HashMap::new(),
             names: Vec::new(),
         }
     }
 
-    /// Return the [`ScopeId`] for `name`, interning it if not yet seen.
-    pub fn intern(&mut self, name: &'static str) -> ScopeId {
-        if let Some(&id) = self.map.get(name) {
-            return id;
-        }
+    fn next_id(&self) -> ScopeId {
         debug_assert!(
             self.names.len() < u16::MAX as usize,
             "ScopeRegistry overflow: more than 65 535 distinct scope names"
         );
-        let id = ScopeId(self.names.len() as u16);
-        self.names.push(name);
-        self.map.insert(name, id);
+        ScopeId(self.names.len() as u16)
+    }
+
+    /// Return the [`ScopeId`] for a `&'static str` scope name, interning if new.
+    pub fn intern(&mut self, name: &'static str) -> ScopeId {
+        if let Some(&id) = self.static_map.get(name) {
+            return id;
+        }
+        // Also check the runtime map in case the same name was registered earlier
+        // via `intern_runtime` (e.g. a plugin loaded before a bake with a literal scope).
+        if let Some(&id) = self.runtime_map.get(name) {
+            return id;
+        }
+        let id = self.next_id();
+        self.names.push(Box::from(name));
+        self.static_map.insert(name, id);
+        id
+    }
+
+    /// Return the [`ScopeId`] for any `&str` scope name, interning if new.
+    ///
+    /// Use this for runtime-generated scope names (e.g. tree-sitter capture
+    /// names from a Steel-loaded `(register-grammar!)`). The name is owned by
+    /// the registry; no leak occurs.
+    pub fn intern_runtime(&mut self, name: &str) -> ScopeId {
+        // Check static map first — static literals take precedence and share ids.
+        if let Some(&id) = self.static_map.get(name) {
+            return id;
+        }
+        if let Some(&id) = self.runtime_map.get(name) {
+            return id;
+        }
+        let id = self.next_id();
+        self.names.push(Box::from(name));
+        self.runtime_map.insert(name.to_owned(), id);
         id
     }
 
     /// Look up an already-interned scope without inserting.
-    pub fn get(&self, name: &'static str) -> Option<ScopeId> {
-        self.map.get(name).copied()
+    pub fn get(&self, name: &str) -> Option<ScopeId> {
+        self.static_map.get(name).copied().or_else(|| self.runtime_map.get(name).copied())
     }
 
-    /// Reverse-lookup: return the name that was interned as `id`.
+    /// Reverse-lookup: return the name interned as `id`.
     ///
     /// Panics if `id` is out of range (i.e. not produced by this registry).
-    pub fn name_of(&self, id: ScopeId) -> &'static str {
-        self.names[id.0 as usize]
+    pub fn name_of(&self, id: ScopeId) -> &str {
+        &self.names[id.0 as usize]
     }
 
     pub fn len(&self) -> usize {

@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use slotmap::{SlotMap, new_key_type};
 
+use crate::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
@@ -29,11 +32,20 @@ new_key_type! {
 pub struct SharedBuffer {
     /// Incremental tree-sitter parse tree, rebuilt on each edit.
     pub tree: Option<tree_sitter::Tree>,
+    /// Tree-sitter highlight provider for this buffer's language, if configured.
+    ///
+    /// Stored here (not per-pane) because highlights are a pure function of
+    /// the buffer content, not the viewport. All panes sharing this buffer share
+    /// the same highlighter. After each re-parse, call `refresh_source` on it to
+    /// keep the internal source snapshot in sync. The parse tree is owned by
+    /// `SharedBuffer.tree` and passed to the highlighter at query time via
+    /// `SourceContext.tree`; the highlighter never stores its own tree copy.
+    pub syntax: Option<Arc<TreeSitterHighlighter>>,
 }
 
 impl SharedBuffer {
     pub fn new() -> Self {
-        Self { tree: None }
+        Self { tree: None, syntax: None }
     }
 }
 
