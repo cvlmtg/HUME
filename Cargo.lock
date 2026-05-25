@@ -987,6 +987,7 @@ dependencies = [
  "slotmap",
  "steel-core",
  "tempfile",
+ "tree-sitter",
  "unicode-segmentation",
  "unicode-width 0.2.0",
  "windows-sys 0.61.2",

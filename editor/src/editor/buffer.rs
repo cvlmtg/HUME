@@ -7,6 +7,7 @@ use crate::core::search_state::{SearchMatches, SearchPattern};
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 use crate::editor::pane_state::EditGroup;
+use crate::editor::syntax::BufferParser;
 use crate::os::io::FileMeta;
 use crate::settings::BufferOverrides;
 
@@ -50,6 +51,14 @@ pub(crate) struct Buffer {
     /// Detected or explicitly set language identity (e.g. `"rust"`, `"json"`).
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<String>,
+    /// Monotonically increasing counter, bumped on every text mutation.
+    /// `reparse_stale_buffers` skips a buffer when this equals
+    /// `parser.parsed_gen`.
+    pub(crate) text_gen: u64,
+    /// Per-buffer tree-sitter parse state. `None` when no grammar is attached
+    /// or the buffer exceeds `syntax-highlight-max-bytes`.
+    #[allow(dead_code)] // read in B2 (reparse_stale_buffers / setup_buffer_syntax)
+    pub(crate) parser: Option<BufferParser>,
 }
 
 impl Buffer {
@@ -74,6 +83,8 @@ impl Buffer {
             search_matches: SearchMatches::default(),
             overrides: BufferOverrides::default(),
             language: None,
+            text_gen: 0,
+            parser: None,
         }
     }
 
@@ -99,6 +110,13 @@ impl Buffer {
     #[allow(dead_code)] // used when closing the last buffer in multi-buffer
     pub(crate) fn scratch() -> Self {
         Self::new(Text::empty(), SelectionSet::default())
+    }
+
+    /// Replace the buffer text and bump `text_gen` so `reparse_stale_buffers`
+    /// knows a new parse is needed. All text-mutating paths go through here.
+    fn set_text(&mut self, text: Text) {
+        self.text = text;
+        self.text_gen += 1;
     }
 
     /// Set the buffer's file path, enforcing the "path has a basename"
@@ -190,7 +208,7 @@ impl Buffer {
         let inverse_cs = cs.invert(&self.text);
         self.history
             .record(cs.clone(), inverse_cs, sels, new_sels.clone());
-        self.text = new_text;
+        self.set_text(new_text);
         (new_sels, cs)
     }
 
@@ -216,7 +234,7 @@ impl Buffer {
             Some(acc) => acc.compose(cs.clone()),
         });
 
-        self.text = new_text;
+        self.set_text(new_text);
         (new_sels, cs)
     }
 
@@ -250,7 +268,7 @@ impl Buffer {
         };
 
         group.cs = Some(new_cs);
-        self.text = new_text;
+        self.set_text(new_text);
         (new_sels, propagation_cs)
     }
 
@@ -304,7 +322,7 @@ impl Buffer {
         let (new_text, new_sels) = txn
             .apply(&self.text)
             .expect("inverse transaction failed — history is corrupt");
-        self.text = new_text;
+        self.set_text(new_text);
         Some((new_sels, txn.into_changes()))
     }
 
@@ -316,7 +334,7 @@ impl Buffer {
         let (new_text, new_sels) = txn
             .apply(&self.text)
             .expect("forward transaction failed — history is corrupt");
-        self.text = new_text;
+        self.set_text(new_text);
         Some((new_sels, txn.into_changes()))
     }
 
@@ -348,7 +366,7 @@ impl Buffer {
                 let (new_text, new_sels) = txn
                     .apply(&self.text)
                     .expect("goto_revision transaction failed — history is corrupt");
-                self.text = new_text;
+                self.set_text(new_text);
                 *sels = new_sels;
             }
         }
@@ -918,5 +936,57 @@ mod tests {
     fn set_path_rejects_dotdot() {
         let mut b = Buffer::new(Text::empty(), SelectionSet::default());
         b.set_path(Some(PathBuf::from("..")));
+    }
+
+    // ── text_gen ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn text_gen_starts_at_zero() {
+        let b = Buffer::new(Text::empty(), SelectionSet::default());
+        assert_eq!(b.text_gen, 0);
+    }
+
+    #[test]
+    fn text_gen_bumped_by_apply_edit() {
+        let mut d = doc("-[h]>ello\n");
+        let before = d.buf.text_gen;
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        assert_eq!(d.buf.text_gen, before + 1);
+    }
+
+    #[test]
+    fn text_gen_bumped_by_apply_edit_grouped() {
+        let mut d = doc("-[h]>ello\n");
+        d.begin_edit_group();
+        let before = d.buf.text_gen;
+        d.apply_edit_grouped(|b, s| insert_char(b, s, 'x'));
+        assert_eq!(d.buf.text_gen, before + 1, "each grouped edit bumps gen");
+    }
+
+    #[test]
+    fn text_gen_bumped_by_undo() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        let before = d.buf.text_gen;
+        d.undo();
+        assert_eq!(d.buf.text_gen, before + 1);
+    }
+
+    #[test]
+    fn text_gen_bumped_by_redo() {
+        let mut d = doc("-[h]>ello\n");
+        d.apply_edit(|b, s| insert_char(b, s, 'x'));
+        d.undo();
+        let before = d.buf.text_gen;
+        d.redo();
+        assert_eq!(d.buf.text_gen, before + 1);
+    }
+
+    #[test]
+    fn text_gen_not_bumped_when_undo_at_root() {
+        let mut d = doc("-[h]>ello\n");
+        let before = d.buf.text_gen;
+        d.undo(); // nothing to undo — no-op
+        assert_eq!(d.buf.text_gen, before, "no-op undo must not bump gen");
     }
 }

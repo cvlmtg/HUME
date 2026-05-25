@@ -1,14 +1,26 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use globset::{GlobSet, GlobSetBuilder};
 
+use engine::grammar::LoadedGrammar;
+use engine::theme::ScopeRegistry;
+
+// ── GrammarBundle ─────────────────────────────────────────────────────────────
+
+/// Tree-sitter grammar + precompiled highlight query, shared across all buffers
+/// of a given language.
+#[allow(dead_code)] // fields consumed in B2 (setup_buffer_syntax / reparse_stale_buffers)
+pub(crate) struct GrammarBundle {
+    pub(crate) grammar: LoadedGrammar,
+    pub(crate) query: Arc<tree_sitter::Query>,
+}
+
 // ── LanguageConfig ────────────────────────────────────────────────────────────
 
-/// Static configuration for one language: detection rules only.
-///
-/// Shared via `Arc` — multiple open buffers of the same language each hold a
-/// clone. No grammar / tree-sitter data here; this is identity only.
+/// Language identity + optional grammar. Shared via `Arc`; rebuilt (new Arc)
+/// when a grammar is attached via `attach_grammar`.
 pub(crate) struct LanguageConfig {
     pub name: String,
     pub extensions: Vec<String>,
@@ -17,6 +29,30 @@ pub(crate) struct LanguageConfig {
     pub globs: Vec<String>,
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
+    /// Tree-sitter grammar + highlight query, `None` until `attach_grammar` is called.
+    #[allow(dead_code)] // read in B2 (BufferParser::new, setup_buffer_syntax)
+    pub grammar: Option<GrammarBundle>,
+}
+
+// ── BufferParser ──────────────────────────────────────────────────────────────
+
+/// Per-buffer parse state. `lang` is a keepalive — ensures `GrammarBundle`
+/// (and its loaded `.so`) stays alive at least as long as this parser.
+#[allow(dead_code)] // fields consumed in B2 (reparse_stale_buffers)
+pub(crate) struct BufferParser {
+    pub(crate) lang: Arc<LanguageConfig>,
+    pub(crate) parser: tree_sitter::Parser,
+    pub(crate) parsed_gen: u64,
+}
+
+impl BufferParser {
+    #[allow(dead_code)] // called in B2 (setup_buffer_syntax)
+    pub(crate) fn new(lang: Arc<LanguageConfig>) -> Option<Self> {
+        let bundle = lang.grammar.as_ref()?;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(bundle.grammar.language()).ok()?;
+        Some(Self { lang, parser, parsed_gen: 0 })
+    }
 }
 
 // ── LanguageRegistry ──────────────────────────────────────────────────────────
@@ -39,12 +75,21 @@ pub(crate) struct LanguageRegistry {
 pub(crate) enum RegisterError {
     /// The combined glob pattern set exceeded globset's NFA size limit.
     GlobBuild(globset::Error),
+    /// Failed to open the grammar shared library.
+    GrammarLoad(engine::grammar::GrammarLoadError),
+    /// Failed to read the highlights query file.
+    HighlightsRead(std::io::Error),
+    /// Failed to compile the highlights query.
+    QueryBuild(tree_sitter::QueryError),
 }
 
 impl std::fmt::Display for RegisterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GlobBuild(e) => write!(f, "glob set compilation failed: {e}"),
+            Self::GrammarLoad(e) => write!(f, "grammar load failed: {e:?}"),
+            Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
+            Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
         }
     }
 }
@@ -102,6 +147,7 @@ impl LanguageRegistry {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.iter().map(|s| s.to_string()).collect(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
+            grammar: None,
         });
         self.lang_order.retain(|n| n.as_str() != name);
         self.lang_order.push(name.to_owned());
@@ -182,6 +228,55 @@ impl LanguageRegistry {
         self.compiled_globs = compiled;
         self.glob_lang_names = names;
         Some(config)
+    }
+
+    /// Attach a tree-sitter grammar to a language.
+    #[allow(dead_code)] // called in B3 (register_grammar! Steel builtin)
+    ///
+    /// Reads the highlights query file, compiles it, interns all capture names
+    /// into `scope_reg`, then replaces the `Arc<LanguageConfig>` in the registry
+    /// so all subsequent `by_name`/`by_extension` lookups see the grammar.
+    ///
+    /// Auto-registers the identity (no extensions/globs/shebangs) if the language
+    /// name is not already known.
+    pub(crate) fn attach_grammar(
+        &mut self,
+        name: &str,
+        grammar_path: &Path,
+        symbol: &str,
+        highlights_path: &Path,
+        scope_reg: &mut ScopeRegistry,
+    ) -> Result<Arc<LanguageConfig>, RegisterError> {
+        let grammar =
+            LoadedGrammar::open(grammar_path, symbol).map_err(RegisterError::GrammarLoad)?;
+        let highlights_src =
+            std::fs::read_to_string(highlights_path).map_err(RegisterError::HighlightsRead)?;
+        let query = Arc::new(
+            tree_sitter::Query::new(grammar.language(), &highlights_src)
+                .map_err(RegisterError::QueryBuild)?,
+        );
+        for name_str in query.capture_names() {
+            scope_reg.intern_runtime(name_str);
+        }
+        let existing = self.by_name.get(name);
+        let new_config = Arc::new(LanguageConfig {
+            name: name.to_owned(),
+            extensions: existing.map_or_else(Vec::new, |c| c.extensions.clone()),
+            globs: existing.map_or_else(Vec::new, |c| c.globs.clone()),
+            shebangs: existing.map_or_else(Vec::new, |c| c.shebangs.clone()),
+            grammar: Some(GrammarBundle { grammar, query }),
+        });
+        self.by_name.insert(name.to_owned(), Arc::clone(&new_config));
+        for ext in &new_config.extensions {
+            self.by_ext.insert(ext.clone(), Arc::clone(&new_config));
+        }
+        Ok(new_config)
+    }
+
+    /// Returns `true` if `name` has an attached tree-sitter grammar.
+    #[allow(dead_code)] // called in B3 (language-has-grammar? Steel builtin)
+    pub(crate) fn has_grammar(&self, name: &str) -> bool {
+        self.by_name.get(name).is_some_and(|c| c.grammar.is_some())
     }
 
     fn build_globs(
