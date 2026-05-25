@@ -346,9 +346,9 @@ fn char_offset_to_col(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::{ScopeRegistry, Theme};
+    use crate::theme::Theme;
     use crate::types::{
-        CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, ScopeId, Selection,
+        CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection,
     };
     use std::collections::HashMap;
 

@@ -111,8 +111,7 @@ impl Editor {
                             self.report(Severity::Error, format!("inline-output enter failed: {e}"));
                             return;
                         }
-                        print!("\r\n\x1b[1m--- running {name} ---\x1b[0m\r\n\r\n");
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                        crate::os::terminal::print_running_banner(name);
                     }
 
                     let result = self
@@ -137,8 +136,7 @@ impl Editor {
 
                     // Re-enter the alt-screen unconditionally — on both success and error.
                     if inline_output {
-                        print!("\r\n\x1b[2m--- press any key to return to editor ---\x1b[0m\r\n");
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                        crate::os::terminal::print_return_prompt();
                         crate::os::terminal::wait_for_keypress();
                         let kitty = self.kitty_enabled;
                         let mouse = self.settings.mouse_enabled;

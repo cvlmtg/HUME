@@ -227,10 +227,10 @@ pub(crate) fn detect_language(
             }
         }
 
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if let Some(lang) = registry.by_extension(ext) {
-                return Some(lang.name.clone());
-            }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && let Some(lang) = registry.by_extension(ext)
+        {
+            return Some(lang.name.clone());
         }
     }
 

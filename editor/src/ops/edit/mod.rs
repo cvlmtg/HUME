@@ -533,11 +533,6 @@ pub(crate) fn replace_selections(
         // in result-buffer coordinates for later selection reconstruction.
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
-        // The loop always executes at least once (pos starts at sel_start ≤ sel_end),
-        // so new_sel_end is always overwritten before use. Rust cannot prove
-        // the loop runs, so we initialise to new_sel_start as a safe sentinel.
-        #[allow(unused_assignments)]
-        let mut new_sel_end = new_sel_start;
 
         let mut pos = sel_start;
         loop {
@@ -554,15 +549,14 @@ pub(crate) fn replace_selections(
                 b.delete(next - pos);
                 b.insert_char(effective_ch);
             }
-            // Track the last position processed (whether replaced or retained)
-            // so the reconstructed selection covers the full original range.
-            new_sel_end = b.new_pos() - 1;
-
             if pos >= sel_end {
                 break;
             }
             pos = next;
         }
+        // new_pos() is one past the last written char — the final grapheme of the
+        // replaced range. -1 gives the cursor position (inclusive last char).
+        let new_sel_end = b.new_pos() - 1;
 
         // Reconstruct the selection with its original direction.
         // `Selection::directed` is the canonical constructor for this pattern:

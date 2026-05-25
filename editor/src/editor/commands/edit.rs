@@ -1,3 +1,5 @@
+use engine::pipeline::{BufferId, PaneId};
+
 use crate::core::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
@@ -115,39 +117,26 @@ fn do_paste(ed: &mut Editor, before: bool) {
 
     // Append path: re-paste the verbatim values from the previous paste.
     // No ring/clipboard re-lookup — ring emptiness is irrelevant.
-    if is_append {
-        if let Some(values) = ed.last_paste.clone() {
-            // Collapse the just-pasted selection so the new paste stacks
-            // adjacent to it rather than replacing it.
-            let text = ed.buffers.get(buf).text();
-            let sels = std::mem::take(&mut ed.pane_state[focused][buf].selections);
-            ed.pane_state[focused][buf].selections = sels.map(|s| {
-                if before {
-                    Selection::collapsed(s.start())
-                } else {
-                    Selection::collapsed(s.end_inclusive(text))
-                }
-            });
-
-            // Open a new paste session (snapshot pre-paste state).
-            let pre_sels = ed.pane_state[focused][buf].selections.clone();
-            ed.buffers.get(buf).begin_edit_group(&mut ed.pane_state[focused][buf].paste_group, pre_sels);
-
-            let paste_fn = if before { paste_before } else { paste_after };
-            doc_ops::apply_doc_edit_regrouped(
-                &mut ed.buffers,
-                &mut ed.pane_state,
-                focused,
-                buf,
-                |b, s| paste_fn(b, s, &values),
-            );
-            // Preserve the cycle position — the seeded origin from the first
-            // paste in this run remains correct for `[`/`]`.
-            return;
-        }
-        // Fall through: is_append but nothing ever pasted (e.g. lone `[`/`]`
-        // no-op before any paste) — treat as a fresh paste.
+    if is_append && let Some(values) = ed.last_paste.clone() {
+        // Collapse the just-pasted selection so the new paste stacks
+        // adjacent to it rather than replacing it.
+        let text = ed.buffers.get(buf).text();
+        let sels = std::mem::take(&mut ed.pane_state[focused][buf].selections);
+        ed.pane_state[focused][buf].selections = sels.map(|s| {
+            if before {
+                Selection::collapsed(s.start())
+            } else {
+                Selection::collapsed(s.end_inclusive(text))
+            }
+        });
+        open_paste_session_and_apply(ed, focused, buf, before, &values);
+        // Preserve the cycle position — the seeded origin from the first
+        // paste in this run remains correct for `[`/`]`.
+        return;
     }
+
+    // Fall through: is_append but nothing ever pasted (e.g. lone `[`/`]`
+    // no-op before any paste) or !is_append — treat as a fresh paste.
 
     // Fresh paste: resolve source via register prefix / Smart-p / clipboard.
     // Returns None to signal a no-op (black-hole, empty register, empty ring+clipboard).
@@ -156,21 +145,31 @@ fn do_paste(ed: &mut Editor, before: bool) {
     };
 
     ed.last_paste = Some(values.clone());
+    open_paste_session_and_apply(ed, focused, buf, before, &values);
+    ed.kill_ring.seed_cycle(cycle_origin);
+}
 
-    // Open a new paste session (snapshot pre-paste state).
+/// Snapshot the pre-paste selections, open a paste group, and apply one paste
+/// from `values`. Does **not** seed the kill-ring cycle cursor — the caller
+/// handles that for the fresh-paste path; the append path preserves the existing
+/// cycle position.
+fn open_paste_session_and_apply(
+    ed: &mut Editor,
+    focused: PaneId,
+    buf: BufferId,
+    before: bool,
+    values: &[String],
+) {
     let pre_sels = ed.pane_state[focused][buf].selections.clone();
     ed.buffers.get(buf).begin_edit_group(&mut ed.pane_state[focused][buf].paste_group, pre_sels);
-
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut ed.buffers,
         &mut ed.pane_state,
         focused,
         buf,
-        |b, s| paste_fn(b, s, &values),
+        |b, s| paste_fn(b, s, values),
     );
-
-    ed.kill_ring.seed_cycle(cycle_origin);
 }
 
 /// Resolve values for a **fresh** paste and the ring-slot origin for seeding.

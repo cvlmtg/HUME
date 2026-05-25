@@ -273,6 +273,24 @@ pub(crate) fn leave_inline_output(
     Ok(())
 }
 
+/// Print the `--- running NAME ---` bold banner and flush stdout.
+///
+/// Called by the inline-output flow just after [`enter_inline_output`] so the
+/// user sees a clear separator between the editor and subprocess output.
+pub(crate) fn print_running_banner(name: &str) {
+    print!("\r\n\x1b[1m--- running {name} ---\x1b[0m\r\n\r\n");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+}
+
+/// Print the `--- press any key to return to editor ---` dim prompt and flush.
+///
+/// Called before [`wait_for_keypress`] so the user knows how to dismiss the
+/// inline output and return to the editor.
+pub(crate) fn print_return_prompt() {
+    print!("\r\n\x1b[2m--- press any key to return to editor ---\x1b[0m\r\n");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+}
+
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
 /// events. Used by the inline-output flow to hold subprocess output on screen
 /// until the user is ready to return to the editor.
