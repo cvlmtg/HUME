@@ -475,8 +475,8 @@ impl ScriptingHost {
                 let mut defs = self.process_pending_cmds(plugin_cmds);
                 // Drain transitive `(load-plugin …)` calls made by the body.
                 // Activate them before finalising the parent so that a transitive
-                // failure leaves the parent in `Failed` (not the inconsistent
-                // `Loaded`+no-commands state the old `?`-abort produced).
+                // failure leaves the parent in `Failed` rather than an inconsistent
+                // `Loaded`+no-commands state.
                 for req in requires {
                     match self.activate_plugin(&req, settings, keymap, builtin_names, budget_ms) {
                         Ok(d) => defs.extend(d),

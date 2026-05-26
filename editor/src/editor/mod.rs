@@ -137,13 +137,12 @@ pub(super) struct FindChar {
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
-// The editor uses `engine::types::EditorMode` directly. It unifies the old
-// `Mode` enum and the `extend: bool` field: sticky extend is represented as
-// `EditorMode::Extend`. One-shot ctrl-extend is a per-dispatch local variable
-// and is NOT a mode change.
+// The editor uses `engine::types::EditorMode` directly. Sticky extend is
+// represented as `EditorMode::Extend`. One-shot ctrl-extend is a per-dispatch
+// local variable and is NOT a mode change.
 //
 // `pub(crate) use EditorMode as Mode;` lets all internal modules use `Mode`
-// as an unqualified alias without a rename migration sweep.
+// as an unqualified alias.
 pub(crate) use engine::types::EditorMode as Mode;
 
 // ── Editor ────────────────────────────────────────────────────────────────────

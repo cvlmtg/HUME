@@ -13,7 +13,7 @@
 //! they need, letting Rust prove the borrows are disjoint.
 //!
 //! `no_self_mut_method_calls_in_editor_module` enforces this by denylisting
-//! the old facility methods.  A method enters the denylist the moment it is
+//! the facility methods.  A method enters the denylist the moment it is
 //! identified as a borrow-conflict source.  Once the method is deleted, set
 //! `migrated: true` so the test also confirms the `fn` definition is gone and
 //! cannot be accidentally re-added.

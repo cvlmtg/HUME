@@ -457,10 +457,9 @@ impl ChangeSet {
         let mut b_cur: Option<Operation> = b_ops.next();
 
         // Each iteration moves `a_cur` and `b_cur` into a single match,
-        // destructures them directly, and writes the results back. This
-        // eliminates the previous `if matches! { take().expect() }` idiom —
-        // ownership flows through the match arms instead of being plucked out
-        // after a separate borrow-only check.
+        // destructures them directly, and writes the results back. Ownership
+        // flows through the match arms instead of being plucked out after a
+        // separate borrow-only check.
         loop {
             match (a_cur, b_cur) {
                 // ── Done ─────────────────────────────────────────────────────
@@ -484,8 +483,7 @@ impl ChangeSet {
                 // B added new text that didn't exist in A's output. It goes
                 // straight to output regardless of what A is doing. The Delete
                 // arm above has higher priority (it comes first in the match),
-                // so this arm only fires when A is not a Delete — correctly
-                // matching the previous `if matches!` priority order.
+                // so this arm only fires when A is not a Delete.
                 // The catch-all `a` handles `(None, Insert)` correctly too.
                 (a, Some(Operation::Insert(s))) => {
                     push_merge(&mut result, Operation::Insert(s));

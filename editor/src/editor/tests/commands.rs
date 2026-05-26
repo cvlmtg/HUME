@@ -408,7 +408,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
 // ── Insert-entry variants position the cursor correctly ────────────────────
 
 /// `a` collapses to one past the end of the selection and enters Insert mode.
-/// On a collapsed cursor this is identical to the old "append after cursor".
+/// On a collapsed cursor this is identical to a plain "append after cursor".
 #[test]
 fn a_enters_insert_after_selection_end() {
     let mut ed = editor_from("-[h]>ello\n");

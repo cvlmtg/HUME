@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn angle_brackets_are_plain_chars() {
-        // In the new format, < and > are just characters — no special quoting needed.
+        // < and > are just characters — no special quoting needed.
         assert_eq!(parse("<").unwrap(), vec![key(KeyCode::Char('<'))]);
         assert_eq!(parse(">").unwrap(), vec![key(KeyCode::Char('>'))]);
     }

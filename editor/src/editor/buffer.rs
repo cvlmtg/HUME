@@ -388,8 +388,7 @@ mod tests {
     // ── DocHelper ─────────────────────────────────────────────────────────────
     //
     // Thin test wrapper that keeps a `SelectionSet` alongside the `Buffer` so
-    // the tests can use the old ergonomic API without the new buffer requiring
-    // sels to be passed at every call site.
+    // tests get an ergonomic API instead of passing sels at every call site.
 
     struct DocHelper {
         buf: Buffer,

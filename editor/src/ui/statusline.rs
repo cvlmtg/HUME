@@ -190,8 +190,8 @@ fn pad_left(
 
 /// Append a 1-space padding span to the right section.
 ///
-/// Mirrors [`pad_left`] for the trailing edge, replacing the old hardcoded
-/// `+1` right-margin offset in the placement arithmetic.
+/// Mirrors [`pad_left`] for the trailing edge; supplies the right-margin
+/// offset used by the placement arithmetic.
 fn pad_right(
     mut spans: Vec<(Cow<'static, str>, Style)>,
     colors: &crate::ui::theme::EditorColors,

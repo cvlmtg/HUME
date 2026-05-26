@@ -269,9 +269,8 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 // Fix 1 — replace_buffer_in_place must clear stale engine syntax state
 // ---------------------------------------------------------------------------
 
-/// Regression: replace_buffer_in_place used to leave ev.buffers[id].tree / .syntax
-/// pointing at the old content. Without the fix, both would still be Some after
-/// replacing with a scratch buffer.
+/// Regression: replace_buffer_in_place must clear ev.buffers[id].tree / .syntax.
+/// Without the engine-side clear, both stay Some after replacing with a scratch buffer.
 ///
 /// Flip: if the engine-side clear is removed, the two `.is_none()` asserts fail.
 #[test]
@@ -301,9 +300,9 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
 // Fix 3 — reparse_stale_buffers must re-attach on shrink below cap
 // ---------------------------------------------------------------------------
 
-/// Regression: once a buffer's parser was detached (via the max_bytes growth branch),
-/// reparse_stale_buffers used to skip it forever (`None => continue`). Without the
-/// fix, the second `reparse_stale_buffers` call leaves parser=None.
+/// Regression: once a buffer's parser is detached (via the max_bytes growth branch),
+/// reparse_stale_buffers must re-attach it on shrink below cap. Without the re-attach
+/// branch, the second `reparse_stale_buffers` call leaves parser=None.
 ///
 /// Flip: if the re-attach branch is removed, the final `parser.is_some()` assert fails.
 #[test]

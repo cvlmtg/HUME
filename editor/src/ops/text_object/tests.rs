@@ -48,8 +48,7 @@ fn inner_line_combining_grapheme_before_newline() {
     // "cafe\u{0301}" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5).
     // inner_line must include the full last grapheme cluster, so the
     // selection end must be 4 (the combining mark) not 3 (the 'e' alone).
-    // The old `last - 1` arithmetic would have produced a broken
-    // mid-cluster end position.
+    // Naive `last - 1` arithmetic would produce a broken mid-cluster end position.
     assert_state!(
         "-[c]>afe\u{0301}\n",
         |(buf, sels)| cmd_inner_line(&buf, sels, MotionMode::Move),

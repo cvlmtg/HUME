@@ -67,7 +67,7 @@ impl IntoTestResult for SelectionSet {
     }
 }
 
-/// Legacy `(Text, SelectionSet)` — still emitted by internal helpers.
+/// `(Text, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
 impl IntoTestResult for (Text, SelectionSet) {
     fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
         self

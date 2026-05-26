@@ -110,8 +110,8 @@ pub(crate) struct HookResult {
 /// Editor-side references bundled for a single Steel eval in command mode.
 ///
 /// Passed to [`super::ScriptingHost::call_steel_cmd`] and [`super::ScriptingHost::fire_hook`]
-/// to replace the previous 8-parameter sprawl.  All fields have the same
-/// lifetime `'a` so a single `'a` annotation on those methods suffices.
+/// as a single bundle.  All fields have the same lifetime `'a` so a single
+/// `'a` annotation on those methods suffices.
 pub(crate) struct EditorSteelRefs<'a> {
     pub(crate) settings: &'a mut EditorSettings,
     pub(crate) keymap: &'a mut Keymap,

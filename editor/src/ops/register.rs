@@ -636,8 +636,8 @@ mod tests {
 
     #[test]
     fn letter_a_is_not_a_valid_register_name() {
-        // Regression guard: the tutor previously claimed 'a' was a valid register.
-        // It never was — is_valid_register_name must keep rejecting it.
+        // Regression guard: 'a' is not a valid register name —
+        // is_valid_register_name must keep rejecting it.
         assert!(!is_valid_register_name('a'), "'a' must be invalid");
     }
 
