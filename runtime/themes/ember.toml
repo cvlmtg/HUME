@@ -1,96 +1,158 @@
-"ui.cursor.primary" = { fg = "black", bg = "amber_bright" }
-"ui.cursor" = { fg = "black", bg = "amber_dim" }
-"ui.cursor.insert"  = {}
-"ui.cursor.match" = { fg = "match_fg", bg = "match_bg", modifiers = [ "bold" ] }
-"ui.selection" = { fg = "selection_fg", bg = "selection_bg" }
-"ui.selection.primary" = { fg = "selection_fg", bg = "selection_bg", modifiers = [ "bold" ] }
-"ui.selection.search" = { fg = "search_fg", bg = "search_bg" }
-"ui.cursorline" = { bg = "surface_hi" }
-"ui.virtual" = { fg = "dim" }
-"ui.whitespace" = { fg = "#3a2c1c" }
-"ui.indent_guide" = { fg = "#3a2c1c" }
-"ui.linenr" = { fg = "dim" }
-"ui.linenr.selected" = { fg = "amber_dim", modifiers = [ "bold" ] }
+"ui.background" = { bg = "bg" }
+"ui.text" = { fg = "fg" }
+"ui.text.focus" = { fg = "bright_fg" }
+"ui.text.inactive" = { fg = "muted" }
+"ui.text.info" = { fg = "blue" }
+"ui.window" = { fg = "surface" }
+"ui.popup" = { fg = "fg", bg = "surface" }
+"ui.popup.info" = { fg = "fg", bg = "surface" }
 "ui.menu" = { fg = "fg", bg = "surface" }
-"ui.menu.selected" = { fg = "white", bg = "selection_bg", modifiers = [ "bold" ] }
-"ui.statusline" = { fg = "black", bg = "gold" }
-"ui.statusline.mode.normal" = { fg = "black", bg = "gold", modifiers = [ "bold" ] }
-"ui.statusline.mode.insert" = { fg = "fg", bg = "mode_insert_bg", modifiers = [ "bold" ] }
-"ui.statusline.mode.extend" = { fg = "fg", bg = "mode_extend_bg", modifiers = [ "bold" ] }
-"ui.statusline.mode.search" = { fg = "fg", bg = "mode_search_bg", modifiers = [ "bold" ] }
-"ui.statusline.mode.command" = { fg = "fg", bg = "mode_command_bg", modifiers = [ "bold" ] }
-"ui.statusline.mode.select" = { fg = "fg", bg = "mode_select_bg", modifiers = [ "bold" ] }
-"comment" = { fg = "dim", modifiers = [ "italic" ] }
-"constant" = "ember"
-"constant.numeric" = "ember"
-"constant.character" = "ember"
-"constant.builtin" = { fg = "amber_bright" }
-"string" = "ember"
-"string.special.key" = { fg = "gold" }
-"string.regexp" = { fg = "ember" }
-"string.special" = { fg = "warm_magenta" }
-"escape" = { fg = "warm_red" }
-"keyword" = { fg = "amber", modifiers = [ "bold" ] }
-"keyword.control" = { fg = "ember", modifiers = [ "bold" ] }
-"keyword.operator" = { fg = "amber_dim" }
-"keyword.function" = { fg = "amber", modifiers = [ "bold" ] }
-"type" = { fg = "amber_bright" }
-"type.builtin" = { fg = "amber_bright", modifiers = [ "bold" ] }
-"function" = { fg = "gold", modifiers = [ "bold" ] }
-"function.builtin" = { fg = "gold", modifiers = [ "italic" ] }
-"function.method" = { fg = "gold" }
-"variable" = { fg = "fg" }
-"variable.builtin" = { fg = "amber" }
-"variable.parameter" = { fg = "#dcc9b3" }
-"operator" = { fg = "fg" }
-"punctuation" = { fg = "dim" }
-"punctuation.delimiter" = { fg = "dim" }
-"punctuation.bracket" = { fg = "mid" }
-"label" = { fg = "warm_magenta" }
-"attribute" = { fg = "amber_bright" }
-"property" = { fg = "#e8d8c4" }
-"namespace" = { fg = "amber_dim" }
-"tag" = { fg = "ember" }
-"markup.heading" = { fg = "amber_bright", modifiers = [ "bold" ] }
+"ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
+"ui.menu.scroll" = { fg = "muted", bg = "surface" }
+"ui.help" = { fg = "fg", bg = "surface" }
+"ui.selection" = { fg = "fg", bg = "bright_muted" }
+"ui.selection.primary" = { fg = "fg", bg = "plum" }
+"ui.selection.search" = { fg = "bg", bg = "gold" }
+"ui.cursor" = { fg = "fg", bg = "muted" }
+"ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
+"ui.cursor.insert" = {}
+"ui.cursor.select" = { bg = "plum" }
+"ui.cursor.match" = { fg = "fg", bg = "plum" }
+"ui.cursorline.primary" = { bg = "surface" }
+"ui.cursorline.secondary" = { bg = "surface" }
+"ui.linenr" = { fg = "muted" }
+"ui.linenr.selected" = { fg = "gold" }
+"ui.statusline" = { fg = "bg", bg = "gold" }
+"ui.statusline.inactive" = { fg = "muted", bg = "bg" }
+"ui.statusline.separator" = { fg = "surface" }
+"ui.statusline.mode.normal" = { fg = "bg", bg = "gold" }
+"ui.statusline.mode.insert" = { fg = "bg", bg = "plum" }
+"ui.statusline.mode.extend" = { fg = "bg", bg = "blue" }
+"ui.statusline.mode.search" = { fg = "bg", bg = "red" }
+"ui.statusline.mode.command" = { fg = "bg", bg = "green" }
+"ui.statusline.mode.select" = { fg = "bg", bg = "blue" }
+"ui.bufferline" = { fg = "muted", bg = "bg" }
+"ui.bufferline.active" = { fg = "bright_fg", bg = "surface" }
+"ui.bufferline.background" = { bg = "bg" }
+"ui.virtual" = { fg = "muted" }
+"ui.virtual.whitespace" = { fg = "surface" }
+"ui.virtual.indent-guide" = { fg = "surface" }
+"ui.virtual.inlay-hint" = { fg = "muted" }
+"ui.virtual.inlay-hint.parameter" = { fg = "muted" }
+"ui.virtual.inlay-hint.type" = { fg = "muted" }
+"ui.virtual.ruler" = { fg = "surface" }
+"ui.virtual.wrap" = { fg = "muted" }
+"ui.virtual.jump-label" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
+"ui.gutter" = { bg = "bg" }
+"ui.gutter.selected" = { bg = "surface" }
+"diagnostic.error" = "red"
+"diagnostic.warning" = "gold"
+"diagnostic.info" = "blue"
+"diagnostic.hint" = "green"
+"diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
+"error" = { fg = "red" }
+"warning" = { fg = "gold" }
+"info" = { fg = "blue" }
+"hint" = { fg = "green" }
+"diff.plus" = { fg = "green" }
+"diff.minus" = { fg = "red" }
+"diff.delta" = { fg = "blue" }
+"diff.plus.gutter" = { fg = "green" }
+"diff.minus.gutter" = { fg = "red" }
+"diff.delta.gutter" = { fg = "blue" }
+"markup.heading" = { fg = "gold", modifiers = [ "bold" ] }
+"markup.heading.1" = { fg = "gold", modifiers = [ "bold" ] }
+"markup.heading.2" = { fg = "gold", modifiers = [ "bold" ] }
+"markup.heading.3" = { fg = "gold" }
+"markup.heading.4" = { fg = "gold" }
+"markup.heading.5" = { fg = "gold" }
+"markup.heading.6" = { fg = "muted" }
+"markup.heading.marker" = { fg = "muted" }
 "markup.bold" = { modifiers = [ "bold" ] }
 "markup.italic" = { modifiers = [ "italic" ] }
-"markup.list" = { fg = "amber" }
-"markup.link.url" = { fg = "warm_cyan", underline = "line" }
-"diagnostic" = { underline = "curl" }
-"diagnostic.error" = "warm_red"
-"diagnostic.warning" = "warm_magenta"
-"diagnostic.info" = "warm_cyan"
-"diagnostic.hint" = "warm_green"
-"diff.minus" = "warm_red"
-"diff.plus" = "warm_green"
-"diff.delta" = "warm_magenta"
+"markup.strikethrough" = { modifiers = [ "crossed_out" ] }
+"markup.link" = { fg = "blue", modifiers = [ "underlined" ] }
+"markup.link.url" = { fg = "blue", modifiers = [ "underlined" ] }
+"markup.link.text" = { fg = "plum" }
+"markup.link.label" = { fg = "plum" }
+"markup.quote" = { fg = "muted", modifiers = [ "italic" ] }
+"markup.raw" = { fg = "plum" }
+"markup.raw.block" = { fg = "fg" }
+"markup.raw.inline" = { fg = "plum" }
+"markup.list" = { fg = "gold" }
+"markup.list.checked" = { fg = "green" }
+"markup.list.unchecked" = { fg = "muted" }
+"attribute" = { fg = "gold" }
+"type" = { fg = "gold" }
+"type.builtin" = { fg = "gold" }
+"type.parameter" = { fg = "gold" }
+"type.enum" = { fg = "gold" }
+"type.enum.variant" = { fg = "gold" }
+"constructor" = { fg = "gold" }
+"constant" = { fg = "gold", modifiers = [ "bold" ] }
+"constant.builtin" = { fg = "gold", modifiers = [ "bold" ] }
+"constant.builtin.boolean" = { fg = "gold", modifiers = [ "bold" ] }
+"constant.character" = { fg = "plum" }
+"constant.character.escape" = { fg = "plum" }
+"constant.numeric" = { fg = "plum" }
+"constant.numeric.integer" = { fg = "plum" }
+"constant.numeric.float" = { fg = "plum" }
+"string" = { fg = "plum" }
+"string.regexp" = { fg = "plum" }
+"string.special" = { fg = "plum" }
+"string.special.symbol" = { fg = "plum" }
+"string.special.path" = { fg = "plum" }
+"string.special.url" = { fg = "blue", modifiers = [ "underlined" ] }
+"comment" = { fg = "muted", modifiers = [ "italic" ] }
+"comment.line" = { fg = "muted", modifiers = [ "italic" ] }
+"comment.block" = { fg = "muted", modifiers = [ "italic" ] }
+"comment.block.documentation" = { fg = "muted", modifiers = [ "italic" ] }
+"variable" = { fg = "fg" }
+"variable.builtin" = { fg = "gold" }
+"variable.parameter" = { fg = "fg" }
+"variable.other" = { fg = "fg" }
+"variable.other.member" = { fg = "fg" }
+"label" = { fg = "gold" }
+"punctuation" = { fg = "muted" }
+"punctuation.bracket" = "muted"
+"punctuation.delimiter" = "muted"
+"punctuation.special" = { fg = "gold" }
+"keyword" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control.conditional" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control.repeat" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control.import" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control.return" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.control.exception" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.operator" = { fg = "gold" }
+"keyword.directive" = { fg = "gold" }
+"keyword.function" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.storage" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.storage.type" = { fg = "gold", modifiers = [ "bold" ] }
+"keyword.storage.modifier" = { fg = "gold", modifiers = [ "bold" ] }
+"operator" = { fg = "gold" }
+"function" = { fg = "gold" }
+"function.builtin" = { fg = "gold" }
+"function.method" = { fg = "gold" }
+"function.macro" = { fg = "gold" }
+"function.special" = { fg = "gold" }
+"tag" = { fg = "gold" }
+"tag.builtin" = { fg = "gold" }
+"tag.attribute" = { fg = "gold" }
+"namespace" = { fg = "fg" }
+"module" = { fg = "fg" }
+"special" = { fg = "gold" }
 
 [palette]
-"bg" = "#1a1410"
-"fg" = "#f5e6d3"
-"surface" = "#241c14"
-"surface_hi" = "#3a2c1c"
-"amber" = "#ffb347"
-"amber_bright" = "#ffd166"
-"amber_dim" = "#cc8a3a"
-"gold" = "#e6a23c"
-"ember" = "#ff8c42"
-"mode_insert_bg" = "#2a5a4a"
-"mode_extend_bg" = "#b87a28"
-"mode_search_bg" = "#c25a28"
-"mode_command_bg" = "#5a7a3a"
-"mode_select_bg" = "#5a3a7a"
-"selection_bg" = "#5a3a1a"
-"selection_fg" = "#fff4dc"
-"search_bg" = "#7a5520"
-"search_fg" = "#fff4dc"
-"match_bg" = "#5a3e14"
-"match_fg" = "#ffd166"
-"warm_green" = "#a3be8c"
-"warm_red" = "#e57373"
-"warm_cyan" = "#88c0d0"
-"warm_magenta" = "#d08fa3"
-"white" = "#ffffff"
-"black" = "#000000"
-"dim" = "#7a6a55"
-"mid" = "#a89980"
+"bg" = "#191810"
+"surface" = "#2E2B3E"
+"fg" = "#e9e7e2"
+"muted" = "#6E6A5E"
+"gold" = "#e6af51"
+"plum" = "#C586C0"
+"dark_plum" = "#8B4B87"
+"bright_muted" = "#9A9690"
+"red" = "#E06060"
+"green" = "#7EBD7E"
+"blue" = "#6CA6D4"
+"bright_fg" = "#EBE8E0"
