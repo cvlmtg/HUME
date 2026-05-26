@@ -17,6 +17,7 @@
     ::-webkit-scrollbar-thumb:hover { background: #45475a; }
     select { cursor: pointer; }
     select option { background: #24273a; color: #cad3f5; }
+    @keyframes hume-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -303,7 +304,7 @@ function exportTOML(palette, scopes) {
 const SCOPES = [
   ["UI", [
     "ui.background", "ui.foreground", "ui.cursor", "ui.cursor.match",
-    "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected",
+    "ui.selection", "ui.selection.primary", "ui.selection.search", "ui.linenr", "ui.linenr.selected",
     "ui.statusline", "ui.statusline.normal", "ui.statusline.insert",
     "ui.popup", "ui.menu", "ui.menu.selected", "ui.window", "ui.gutter",
   ]],
@@ -337,8 +338,8 @@ const DEFAULT_PAL = {
 
 const DEFAULT_SC = {
   "ui.background": "black", "ui.foreground": "white", "ui.cursor": "blue",
-  "ui.cursor.match": "yellow", "ui.selection": "dark-gray",
-  "ui.selection.primary": "dark-gray", "ui.linenr": "gray",
+  "ui.cursor.match": { fg: "yellow", bg: "#3a371a", modifiers: ["bold"] }, "ui.selection": { bg: "dark-gray" },
+  "ui.selection.primary": { bg: "gray" }, "ui.selection.search": { fg: "orange", bg: "#3a2a14" }, "ui.linenr": "gray",
   "ui.linenr.selected": "yellow",
   "ui.statusline": { fg: "white", bg: "dark-gray" },
   "ui.statusline.normal": { fg: "black", bg: "blue" },
@@ -347,7 +348,7 @@ const DEFAULT_SC = {
   "ui.menu": { fg: "white", bg: "dark-gray" },
   "ui.menu.selected": { fg: "black", bg: "blue" },
   "ui.window": "gray", "ui.gutter": "gray",
-  comment: "gray", constant: "orange", "constant.numeric": "orange",
+  comment: { fg: "gray", modifiers: ["italic"] }, constant: "orange", "constant.numeric": "orange",
   "constant.character": "orange", "constant.character.escape": "magenta",
   string: "green", "string.special": "cyan",
   keyword: "magenta", "keyword.control": "magenta",
@@ -359,30 +360,41 @@ const DEFAULT_SC = {
   label: "cyan", punctuation: "light-gray",
   "punctuation.bracket": "light-gray", "punctuation.delimiter": "light-gray",
   namespace: "magenta", attribute: "yellow", module: "magenta",
-  "markup.heading": "blue", "markup.bold": "orange",
-  "markup.italic": "magenta", "markup.link": "cyan",
+  "markup.heading": { fg: "blue", modifiers: ["bold"] },
+  "markup.bold": { fg: "orange", modifiers: ["bold"] },
+  "markup.italic": { fg: "magenta", modifiers: ["italic"] },
+  "markup.link": { fg: "cyan", modifiers: ["underlined"] },
   "markup.raw": "green", "markup.list": "red",
   "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
   "diagnostic.error": "red", "diagnostic.warning": "yellow",
   "diagnostic.info": "blue", "diagnostic.hint": "cyan",
 };
 
-function resolve(val, pal) {
-  if (!val) return null;
-  if (typeof val === "object") return { fg: resolve(val.fg, pal), bg: resolve(val.bg, pal) };
-  if (val.startsWith("#")) return val;
-  return pal[val] || val;
+function resolveColor(c, pal) {
+  if (!c || typeof c !== "string") return null;
+  return c.startsWith("#") ? c : (pal[c] || c);
 }
 
-function scopeLookup(id, sc, pal) {
+function resolve(val, pal) {
+  if (!val) return null;
+  if (typeof val === "object") return { fg: resolveColor(val.fg, pal), bg: resolveColor(val.bg, pal) };
+  return resolveColor(val, pal);
+}
+
+function lookupRaw(id, sc) {
   let key = id;
   while (key) {
-    if (sc[key] !== undefined && sc[key] !== "") return resolve(sc[key], pal);
+    if (sc[key] !== undefined && sc[key] !== "") return sc[key];
     const dot = key.lastIndexOf(".");
     if (dot === -1) break;
     key = key.slice(0, dot);
   }
   return null;
+}
+
+function scopeLookup(id, sc, pal) {
+  const v = lookupRaw(id, sc);
+  return v == null ? null : resolve(v, pal);
 }
 
 function fgc(id, sc, pal, fb) {
@@ -395,6 +407,67 @@ function bgc(id, sc, pal, fb) {
   const c = scopeLookup(id, sc, pal);
   if (!c) return fb;
   return typeof c === "object" ? (c.bg || fb) : "transparent";
+}
+
+// Returns a fully normalised style for a scope (including modifiers and underline),
+// walking the dotted fallback chain. Returns null when no scope matches.
+function fullStyle(id, sc, pal) {
+  const v = lookupRaw(id, sc);
+  if (v == null) return null;
+  if (typeof v === "string") return { fg: resolveColor(v, pal), bg: null, mods: [], underline: null };
+  const u = v.underline;
+  return {
+    fg: resolveColor(v.fg, pal),
+    bg: resolveColor(v.bg, pal),
+    mods: Array.isArray(v.modifiers) ? v.modifiers : [],
+    underline: u
+      ? (typeof u === "string"
+          ? { style: u, color: null }
+          : { style: u.style || "line", color: resolveColor(u.color, pal) })
+      : null,
+  };
+}
+
+function cssUnderlineStyle(s) {
+  if (s === "curl" || s === "wavy" || s === "undercurl") return "wavy";
+  if (s === "dotted") return "dotted";
+  if (s === "dashed") return "dashed";
+  return "solid";
+}
+
+// Build a React style object for a token or markup span from its scope's theme style.
+// `tag` (optional) overrides fg/bg and appends modifiers (used for cursor/selection/match).
+// `editorBg` is the canvas background, needed for the `reversed` modifier.
+function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
+  const s = scopeId ? fullStyle(scopeId, sc, pal) : null;
+  let fg = tag?.fg ?? s?.fg ?? fallbackFg;
+  let bg = tag?.bg ?? s?.bg ?? null;
+  const mods = [...(s?.mods ?? []), ...(tag?.mods ?? [])];
+  const u = s?.underline;
+
+  if (mods.includes("reversed")) { const t = fg; fg = editorBg; bg = t; }
+
+  const decos = [];
+  if (mods.includes("strikethrough") || mods.includes("crossed_out")) decos.push("line-through");
+  if (mods.includes("underlined") || u) decos.push("underline");
+
+  const css = {};
+  css.color = mods.includes("hidden") ? "transparent" : fg;
+  if (bg != null) css.background = bg;
+  if (mods.includes("bold")) css.fontWeight = 700;
+  if (mods.includes("italic")) css.fontStyle = "italic";
+  if (mods.includes("dim")) css.opacity = 0.6;
+  if (decos.length) {
+    css.textDecoration = decos.join(" ");
+    if (u) {
+      css.textDecorationStyle = cssUnderlineStyle(u.style);
+      if (u.color) css.textDecorationColor = u.color;
+    }
+  }
+  if (mods.includes("slow_blink")) css.animation = "hume-blink 1s steps(1,end) infinite";
+  else if (mods.includes("rapid_blink")) css.animation = "hume-blink 0.5s steps(1,end) infinite";
+  if (tag) { css.borderRadius = 2; css.padding = "0 1px"; }
+  return css;
 }
 
 function Acc({ title, open, onToggle, count, children }) {
@@ -447,11 +520,18 @@ function ScopeRow({ id, value, palette, onChange }) {
   const [bgHex, setBgHex] = useState("");
 
   const emit = (newFg, newBg) => {
-    if (!hasBg) { onChange(newFg); return; }
-    if (newFg === "" && newBg === "") onChange({});
-    else if (newBg === "")            onChange(newFg);
-    else if (newFg === "")            onChange({ bg: newBg });
-    else                              onChange({ fg: newFg, bg: newBg });
+    const extra = (typeof value === "object" && value !== null)
+      ? Object.fromEntries(Object.entries(value).filter(([k]) => k !== "fg" && k !== "bg"))
+      : {};
+    const hasExtra = Object.keys(extra).length > 0;
+    if (!hasBg) {
+      onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
+      return;
+    }
+    if (newFg === "" && newBg === "") onChange(hasExtra ? { ...extra } : {});
+    else if (newBg === "")            onChange(hasExtra ? { ...extra, fg: newFg } : newFg);
+    else if (newFg === "")            onChange({ ...extra, bg: newBg });
+    else                              onChange({ ...extra, fg: newFg, bg: newBg });
   };
 
   const sel = { ...INPUT, flex: 1, minWidth: 0 };
@@ -512,17 +592,17 @@ const CODE = [
   { n: 1, t: [["use ", "keyword"], ["std", "namespace"], ["::", "punctuation.delimiter"], ["collections", "module"], ["::", "punctuation.delimiter"], ["HashMap", "type"], [";", "punctuation.delimiter"]] },
   { n: 2, t: [] },
   { n: 3, t: [["/// A theme palette for the editor", "comment"]] },
-  { n: 4, t: [["pub ", "keyword"], ["struct ", "keyword"], ["Theme", "type"], [" {", "punctuation.bracket"]] },
-  { n: 5, sel: true, t: [["    name", "variable"], [":", "punctuation.delimiter"], [" String", "type.builtin"], [",", "punctuation.delimiter"]] },
+  { n: 4, t: [["pub ", "keyword"], ["struct ", "keyword"], ["Theme", "type", "search"], [" {", "punctuation.bracket"]] },
+  { n: 5, t: [["    ", ""], ["n", "variable", "cursor"], ["ame", "variable", "sel"], [":", "punctuation.delimiter"], [" String", "type.builtin"], [",", "punctuation.delimiter"]] },
   { n: 6, t: [["    colors", "variable"], [":", "punctuation.delimiter"], [" HashMap", "type"], ["<", "punctuation.bracket"], ["String", "type.builtin"], [", ", "punctuation.delimiter"], ["Color", "type"], [">", "punctuation.bracket"], [",", "punctuation.delimiter"]] },
   { n: 7, t: [["}", "punctuation.bracket"]] },
   { n: 8, t: [] },
-  { n: 9, t: [["impl ", "keyword"], ["Theme", "type"], [" {", "punctuation.bracket"]] },
-  { n: 10, t: [["    pub ", "keyword"], ["fn ", "keyword.function"], ["new", "function"], ["(", "punctuation.bracket"], ["name", "variable.parameter"], [": ", "punctuation.delimiter"], ["&", "operator"], ["str", "type.builtin"], [")", "punctuation.bracket"], [" -> ", "operator"], ["Self", "type.builtin"], [" {", "punctuation.bracket"]] },
+  { n: 9, t: [["impl ", "keyword"], ["Theme", "type", "search"], [" {", "punctuation.bracket"]] },
+  { n: 10, t: [["    pub ", "keyword"], ["fn ", "keyword.function"], ["new", "function"], ["(", "punctuation.bracket", "match"], ["name", "variable.parameter"], [": ", "punctuation.delimiter"], ["&", "operator"], ["str", "type.builtin"], [")", "punctuation.bracket", "match"], [" -> ", "operator"], ["Self", "type.builtin"], [" {", "punctuation.bracket"]] },
   { n: 11, t: [["        let ", "keyword"], ["count", "variable"], [" = ", "operator"], ["42", "constant.numeric"], [";", "punctuation.delimiter"]] },
   { n: 12, t: [["        let ", "keyword"], ["msg", "variable"], [" = ", "operator"], ['"Theme loaded"', "string"], [";", "punctuation.delimiter"]] },
   { n: 13, t: [["        println!", "function.macro"], ["(", "punctuation.bracket"], ['"{}"', "string"], [", ", "punctuation.delimiter"], ["msg", "variable"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
-  { n: 14, t: [["        Self", "type.builtin"], [" { ", "punctuation.bracket"], ["name", "variable"], [": ", "punctuation.delimiter"], ["name", "variable.parameter"], [".", "punctuation.delimiter"], ["to_string", "function.method"], ["()", "punctuation.bracket"], [" }", "punctuation.bracket"]] },
+  { n: 14, t: [["        Self", "type.builtin"], [" { ", "punctuation.bracket"], ["name", "variable", "sel2"], [": ", "punctuation.delimiter"], ["name", "variable.parameter", "sel2"], [".", "punctuation.delimiter"], ["to_string", "function.method"], ["()", "punctuation.bracket"], [" }", "punctuation.bracket"]] },
   { n: 15, t: [["    }", "punctuation.bracket"]] },
   { n: 16, t: [["}", "punctuation.bracket"]] },
   { n: 17, t: [] },
@@ -533,14 +613,34 @@ function Preview({ pal, sc }) {
   const FG = fgc("ui.foreground", sc, pal, fgc("ui.text", sc, pal, "#c0caf5"));
   const lnr = fgc("ui.linenr", sc, pal, "#565f89");
   const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
-  const selBg = bgc("ui.selection", sc, pal, "#33374c");
   const stFg = fgc("ui.statusline", sc, pal, "#c0caf5");
   const stBg = bgc("ui.statusline", sc, pal, "#33374c");
   const mnFg = fgc("ui.statusline.normal", sc, pal, "#1a1b26");
   const mnBg = bgc("ui.statusline.normal", sc, pal, "#7aa2f7");
   const brd = fgc("ui.window", sc, pal, "#565f89");
-  const fg = id => fgc(id, sc, pal, FG);
   const statusBg = stBg !== "transparent" ? stBg : BG;
+
+  const selPrimBg = bgc("ui.selection.primary", sc, pal, "#565f89");
+  const selSecBg  = bgc("ui.selection", sc, pal, "#33374c");
+
+  const searchFg = fgc("ui.selection.search", sc, pal, "#ff9e64");
+  const searchBg = bgc("ui.selection.search", sc, pal, "#3a2a14");
+
+  const cursorBg = bgc("ui.cursor.primary", sc, pal, bgc("ui.cursor", sc, pal, "#888888"));
+  const cursorlineBg = bgc("ui.cursorline.primary", sc, pal, bgc("ui.cursorline", sc, pal, "transparent"));
+
+  function tagStyle(tag) {
+    if (!tag) return null;
+    if (tag === "cursor") return { bg: cursorBg };
+    if (tag === "sel")    return { bg: selPrimBg };
+    if (tag === "sel2")   return { bg: selSecBg };
+    if (tag === "match") {
+      const m = fullStyle("ui.cursor.match", sc, pal);
+      return { fg: m?.fg, bg: m?.bg, mods: m?.mods ?? [] };
+    }
+    if (tag === "search") return { fg: searchFg, bg: searchBg };
+    return null;
+  }
 
   return (
     <div style={{ background: BG, borderRadius: 8, overflow: "hidden", border: "1px solid " + C.border, fontFamily: MONO, fontSize: 13, lineHeight: "20px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
@@ -556,12 +656,12 @@ function Preview({ pal, sc }) {
         {CODE.map(line => {
           const isCur = line.n === 5;
           return (
-            <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? selBg + "44" : "transparent", minHeight: 20 }}>
+            <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? cursorlineBg : "transparent", minHeight: 20 }}>
               <span style={{ display: "inline-block", width: 44, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
-              <span style={{ background: line.sel ? selBg + "88" : "transparent", borderRadius: line.sel ? 2 : 0, padding: line.sel ? "0 2px" : "0", whiteSpace: "pre" }}>
+              <span style={{ whiteSpace: "pre" }}>
                 {line.t.length === 0 && <span>{" "}</span>}
                 {line.t.map((tok, i) => (
-                  <span key={i} style={{ color: tok[1] ? fg(tok[1]) : FG, fontStyle: tok[1] === "comment" ? "italic" : "normal" }}>{tok[0]}</span>
+                  <span key={i} style={tokenStyle(tok[1], sc, pal, FG, BG, tagStyle(tok[2]))}>{tok[0]}</span>
                 ))}
               </span>
             </div>
@@ -680,6 +780,8 @@ function HelixThemeEditor() {
     return !filter || id.toLowerCase().includes(filter.toLowerCase());
   }), [filter, catFilter]);
 
+  const markupBg = bgc("ui.background", scopes, adjPalette, "#1a1b26");
+
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: MONO, display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "12px 20px", background: C.bgHeader, borderBottom: "1px solid " + C.border, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -731,18 +833,18 @@ function HelixThemeEditor() {
             })}
           </div>
 
-          <div style={{ borderRadius: 6, padding: "12px 16px", background: bgc("ui.background", scopes, adjPalette, "#1a1b26"), border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
-            <div style={{ color: fgc("markup.heading", scopes, adjPalette, "#7aa2f7"), fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{"# Markup Preview"}</div>
+          <div style={{ borderRadius: 6, padding: "12px 16px", background: markupBg, border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
+            <div style={{ ...tokenStyle("markup.heading", scopes, adjPalette, "#7aa2f7", markupBg), fontSize: 14, marginBottom: 4 }}>{"# Markup Preview"}</div>
             <div style={{ color: fgc("ui.foreground", scopes, adjPalette, "#c0caf5") }}>
               {"Normal text with "}
-              <span style={{ color: fgc("markup.bold", scopes, adjPalette, "#ff9e64"), fontWeight: 700 }}>{"**bold**"}</span>
+              <span style={tokenStyle("markup.bold", scopes, adjPalette, "#ff9e64", markupBg)}>{"**bold**"}</span>
               {" and "}
-              <span style={{ color: fgc("markup.italic", scopes, adjPalette, "#bb9af7"), fontStyle: "italic" }}>{"_italic_"}</span>
+              <span style={tokenStyle("markup.italic", scopes, adjPalette, "#bb9af7", markupBg)}>{"_italic_"}</span>
               {" and "}
-              <span style={{ color: fgc("markup.link", scopes, adjPalette, "#7dcfff"), textDecoration: "underline" }}>{"[link](url)"}</span>
+              <span style={tokenStyle("markup.link", scopes, adjPalette, "#7dcfff", markupBg)}>{"[link](url)"}</span>
             </div>
-            <div style={{ color: fgc("markup.list", scopes, adjPalette, "#f7768e") }}>{"- list item"}</div>
-            <span style={{ color: fgc("markup.raw", scopes, adjPalette, "#9ece6a"), background: fgc("markup.raw", scopes, adjPalette, "#9ece6a") + "15", padding: "1px 5px", borderRadius: 3 }}>{"`code`"}</span>
+            <div style={tokenStyle("markup.list", scopes, adjPalette, "#f7768e", markupBg)}>{"- list item"}</div>
+            <span style={{ ...tokenStyle("markup.raw", scopes, adjPalette, "#9ece6a", markupBg), background: fgc("markup.raw", scopes, adjPalette, "#9ece6a") + "15", padding: "1px 5px", borderRadius: 3 }}>{"`code`"}</span>
           </div>
         </div>
 
