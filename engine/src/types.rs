@@ -70,12 +70,18 @@ pub enum UnderlineStyle {
 }
 
 bitflags! {
-    /// Text modifiers that compose independently (bold, italic, strikethrough).
+    /// Text modifiers that compose independently. Mirrors Helix's modifier set
+    /// (minus `underlined`, which is tracked via `UnderlineStyle`).
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub struct Modifiers: u8 {
         const BOLD          = 0b0000_0001;
         const ITALIC        = 0b0000_0010;
         const STRIKETHROUGH = 0b0000_0100;
+        const DIM           = 0b0000_1000;
+        const REVERSED      = 0b0001_0000;
+        const HIDDEN        = 0b0010_0000;
+        const SLOW_BLINK    = 0b0100_0000;
+        const RAPID_BLINK   = 0b1000_0000;
     }
 }
 
@@ -96,6 +102,21 @@ impl From<ResolvedStyle> for ratatui::style::Style {
         }
         if s.modifiers.contains(Modifiers::STRIKETHROUGH) {
             style = style.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+        }
+        if s.modifiers.contains(Modifiers::DIM) {
+            style = style.add_modifier(ratatui::style::Modifier::DIM);
+        }
+        if s.modifiers.contains(Modifiers::REVERSED) {
+            style = style.add_modifier(ratatui::style::Modifier::REVERSED);
+        }
+        if s.modifiers.contains(Modifiers::HIDDEN) {
+            style = style.add_modifier(ratatui::style::Modifier::HIDDEN);
+        }
+        if s.modifiers.contains(Modifiers::SLOW_BLINK) {
+            style = style.add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        }
+        if s.modifiers.contains(Modifiers::RAPID_BLINK) {
+            style = style.add_modifier(ratatui::style::Modifier::RAPID_BLINK);
         }
         // Underline styles: ratatui supports UNDERLINED modifier + underline_color.
         // Wavy/dotted/dashed require terminal support and may not map 1:1.
@@ -430,6 +451,21 @@ mod tests {
             r.add_modifier
                 .contains(ratatui::style::Modifier::UNDERLINED)
         );
+    }
+
+    #[test]
+    fn new_modifiers_convert_to_ratatui() {
+        let s = ResolvedStyle {
+            modifiers: Modifiers::DIM | Modifiers::REVERSED | Modifiers::HIDDEN
+                | Modifiers::SLOW_BLINK | Modifiers::RAPID_BLINK,
+            ..Default::default()
+        };
+        let r: ratatui::style::Style = s.into();
+        assert!(r.add_modifier.contains(ratatui::style::Modifier::DIM));
+        assert!(r.add_modifier.contains(ratatui::style::Modifier::REVERSED));
+        assert!(r.add_modifier.contains(ratatui::style::Modifier::HIDDEN));
+        assert!(r.add_modifier.contains(ratatui::style::Modifier::SLOW_BLINK));
+        assert!(r.add_modifier.contains(ratatui::style::Modifier::RAPID_BLINK));
     }
 
     #[test]

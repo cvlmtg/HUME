@@ -201,7 +201,17 @@ fn parse_style_table(
     {
         for item in arr {
             if let Some(s) = item.as_str() {
-                style.modifiers |= parse_modifier(key, s)?;
+                match s {
+                    // Helix exposes underline as a modifier; route it to the dedicated
+                    // underline field so underline has a single source of truth. A more
+                    // specific `underline = "..."` key (parsed just above) wins.
+                    "underlined" => {
+                        if style.underline == UnderlineStyle::None {
+                            style.underline = UnderlineStyle::Solid;
+                        }
+                    }
+                    _ => style.modifiers |= parse_modifier(key, s)?,
+                }
             }
         }
     }
@@ -259,6 +269,11 @@ fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError> {
         "italic" => Ok(Modifiers::ITALIC),
         // Accept both "strikethrough" (HUME name) and "crossed_out" (Helix name).
         "strikethrough" | "crossed_out" => Ok(Modifiers::STRIKETHROUGH),
+        "dim" => Ok(Modifiers::DIM),
+        "reversed" => Ok(Modifiers::REVERSED),
+        "hidden" => Ok(Modifiers::HIDDEN),
+        "slow_blink" => Ok(Modifiers::SLOW_BLINK),
+        "rapid_blink" => Ok(Modifiers::RAPID_BLINK),
         // Treat unrecognized modifiers as errors so themes don't silently lose styling.
         _ => Err(ThemeError::BadModifier {
             key: key.to_owned(),
@@ -711,5 +726,61 @@ dark_gray = "#808080"
         let cm = theme.resolve_by_name(crate::types::Scope("comment"));
         assert_eq!(kw.underline, UnderlineStyle::Wavy);
         assert_eq!(cm.underline, UnderlineStyle::Solid);
+    }
+
+    // ── Full Helix modifier set ───────────────────────────────────────────────
+
+    #[test]
+    fn all_modifiers_parse_correctly() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "all_mods",
+            r##"
+"keyword" = { modifiers = ["bold","italic","crossed_out","dim","reversed","hidden","slow_blink","rapid_blink"] }
+"##,
+        );
+        let theme = load_theme("all_mods", &paths(dir.path())).unwrap();
+        let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
+        let expected = Modifiers::BOLD
+            | Modifiers::ITALIC
+            | Modifiers::STRIKETHROUGH
+            | Modifiers::DIM
+            | Modifiers::REVERSED
+            | Modifiers::HIDDEN
+            | Modifiers::SLOW_BLINK
+            | Modifiers::RAPID_BLINK;
+        assert_eq!(kw.modifiers, expected);
+    }
+
+    #[test]
+    fn underlined_modifier_maps_to_solid() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "underlined_mod",
+            r##"
+"keyword" = { fg = "#ffffff", modifiers = ["underlined"] }
+"##,
+        );
+        let theme = load_theme("underlined_mod", &paths(dir.path())).unwrap();
+        let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
+        assert_eq!(kw.underline, UnderlineStyle::Solid);
+        assert_eq!(kw.modifiers, Modifiers::empty());
+    }
+
+    #[test]
+    fn underline_key_wins_over_underlined_modifier() {
+        let dir = TempDir::new().unwrap();
+        write_theme(
+            dir.path(),
+            "underline_priority",
+            r##"
+"keyword" = { underline = "wavy", modifiers = ["underlined"] }
+"##,
+        );
+        let theme = load_theme("underline_priority", &paths(dir.path())).unwrap();
+        let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
+        assert_eq!(kw.underline, UnderlineStyle::Wavy);
     }
 }
