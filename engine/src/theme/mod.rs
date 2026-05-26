@@ -135,6 +135,9 @@ pub struct UiScopes {
     pub cursor_insert_primary: ResolvedStyle,
     /// Primary selection highlight. Falls back to `selection` if unset.
     pub selection_primary: ResolvedStyle,
+    /// Pane background colour. Painted behind all content cells so the theme bg shows
+    /// through trailing whitespace and empty lines rather than the terminal default.
+    pub background: ResolvedStyle,
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +273,7 @@ impl Theme {
             cursor: self.resolve_raw("ui.cursor"),
             cursor_insert: self.resolve_raw("ui.cursor.insert"),
             selection: self.resolve_raw("ui.selection"),
-            cursorline: self.resolve_raw("ui.cursorline"),
+            cursorline: self.resolve_raw("ui.cursorline.primary"),
             virtual_text: self.resolve_raw("ui.virtual"),
             indent_guide: self.resolve_raw("ui.indent_guide"),
             // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
@@ -286,6 +289,7 @@ impl Theme {
             },
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw("ui.selection.primary"),
+            background: self.resolve_raw("ui.background"),
         }
     }
 }

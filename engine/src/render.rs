@@ -24,6 +24,9 @@ pub(crate) struct ComposeCtx<'a> {
     pub indent_guide_style: ratatui::style::Style,
     pub pane_rect: ratatui::layout::Rect,
     pub theme: &'a Theme,
+    /// Background colour from `ui.background`, threaded to every row so trailing
+    /// cells and gutter cells use the theme bg rather than the terminal default.
+    pub pane_bg: Option<ratatui::style::Color>,
 }
 
 /// Render a single display row at `screen_row` into the ratatui buffer.
@@ -64,12 +67,11 @@ pub(crate) fn compose_row(
         // the slow path. Gutter rendering is ~100 calls/frame, not per-grapheme.
         let scope_style: ratatui::style::Style =
             compose_ctx.theme.resolve_by_name(cell.scope).into();
-        // Cursorline bg is the base; the gutter scope style layers on top.
+        // Cursorline/pane bg is the base; the gutter scope style layers on top.
         // If the scope defines its own bg, it wins; otherwise the row bg shows through.
-        let style = if let Some(bg) = row_bg {
-            ratatui::style::Style::default().bg(bg).patch(scope_style)
-        } else {
-            scope_style
+        let style = match row_bg.or(compose_ctx.pane_bg) {
+            Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
+            None => scope_style,
         };
 
         // Right-align within usable width, then write a trailing separator space.
@@ -94,12 +96,15 @@ pub(crate) fn compose_row(
     match row.kind {
         RowKind::Filler => {
             set_cell(buf, content_x_origin, y, "~", compose_ctx.tilde_style);
-            clear_row_span(buf, content_x_origin + 1, right_edge, y);
+            match compose_ctx.pane_bg {
+                Some(bg) => fill_row_bg(buf, content_x_origin + 1, right_edge, y, bg),
+                None => clear_row_span(buf, content_x_origin + 1, right_edge, y),
+            }
         }
         _ => {
-            // Fill the content row with the row background (cursorline or default).
-            // This ensures the tint extends to the right edge past the last grapheme.
-            match row_bg {
+            // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
+            // background shows past the last grapheme rather than the terminal default.
+            match row_bg.or(compose_ctx.pane_bg) {
                 Some(bg) => fill_row_bg(buf, content_x_origin, right_edge, y, bg),
                 None => clear_row_span(buf, content_x_origin, right_edge, y),
             }
@@ -295,7 +300,10 @@ pub(crate) fn render_tilde_fillers(
     {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
-        clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y);
+        match compose_ctx.pane_bg {
+            Some(bg) => fill_row_bg(buf, compose_ctx.pane_rect.x, right_edge, y, bg),
+            None => clear_row_span(buf, compose_ctx.pane_rect.x, right_edge, y),
+        }
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
         set_cell(buf, content_x, y, "~", compose_ctx.tilde_style);
         screen_row += 1;
@@ -481,6 +489,7 @@ mod tests {
             indent_guide_style: ratatui::style::Style::default(),
             pane_rect,
             theme: &theme,
+            pane_bg: None,
         };
         compose(
             &rows,
@@ -543,6 +552,7 @@ mod tests {
             indent_guide_style: ratatui::style::Style::default(),
             pane_rect,
             theme: &theme,
+            pane_bg: None,
         };
         compose(
             &rows,
@@ -601,6 +611,7 @@ mod tests {
             indent_guide_style: ratatui::style::Style::default(),
             pane_rect,
             theme: &theme,
+            pane_bg: None,
         };
         compose(
             rows,

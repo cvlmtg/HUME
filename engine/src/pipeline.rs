@@ -508,6 +508,7 @@ pub(crate) fn render_pane(
         indent_guide_style: pane_ctx.theme.ui.indent_guide.into(),
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
+        pane_bg: pane_ctx.theme.ui.background.bg,
     };
 
     let mut vc = ViewportCursor {
