@@ -3,8 +3,8 @@
 // Steel builtin (command-mode branch).
 //
 // All tests require grammar fixtures built by `scripts/fetch-test-grammars.sh`.
-// They will panic on a fixture-less checkout until the separate CI task (#2)
-// adds graceful-skip — consistent with engine/tests/grammar_integration.rs.
+// On a fixture-less checkout the helpers panic with a clear install message.
+// CI installs fixtures before running tests so panic never fires there.
 
 use super::*;
 

@@ -222,7 +222,10 @@ impl LanguageRegistry {
         let new_order: Vec<String> =
             self.lang_order.iter().filter(|n| n.as_str() != name).cloned().collect();
         let (compiled, names) = Self::build_globs(&self.by_name, &new_order)
-            .unwrap_or_else(|_| (GlobSet::empty(), Vec::new()));
+            .unwrap_or_else(|e| {
+                eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
+                (GlobSet::empty(), Vec::new())
+            });
         self.lang_order = new_order;
         self.compiled_globs = compiled;
         self.glob_lang_names = names;

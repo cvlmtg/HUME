@@ -48,7 +48,7 @@ impl Editor {
 
         // Build highlighter from shared query (capture names already interned at
         // attach_grammar time — intern_runtime deduplicates).
-        let query = Arc::clone(&lang_config.grammar.as_ref().unwrap().query);
+        let query = Arc::clone(&lang_config.grammar.as_ref().expect("grammar.is_some() checked at match guard, line 30").query);
         let highlighter =
             TreeSitterHighlighter::from_shared_query(query, &mut self.engine_view.registry, source_bytes);
 
@@ -119,7 +119,7 @@ impl Editor {
             // Full reparse — owned source avoids borrow conflict with get_mut below.
             let source_bytes = self.buffers.get(bid).text().to_string().into_bytes();
             let tree = {
-                let bp = self.buffers.get_mut(bid).parser.as_mut().unwrap();
+                let bp = self.buffers.get_mut(bid).parser.as_mut().expect("parser.is_some() guaranteed: is_none branch continues at line 110");
                 bp.parser.parse(&source_bytes, None)
             };
             {
@@ -129,7 +129,7 @@ impl Editor {
                     hl.refresh_source(&source_bytes);
                 }
             }
-            self.buffers.get_mut(bid).parser.as_mut().unwrap().parsed_gen = text_gen;
+            self.buffers.get_mut(bid).parser.as_mut().expect("parser.is_some() guaranteed: is_none branch continues at line 110").parsed_gen = text_gen;
         }
     }
 

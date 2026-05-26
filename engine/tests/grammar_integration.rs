@@ -46,16 +46,16 @@ fn highlights_path(name: &str) -> PathBuf {
 
 #[test]
 fn loads_rust_grammar() {
-    let grammar =
-        LoadedGrammar::open(&grammar_path("rust"), "tree_sitter_rust").expect("open rust grammar");
+    let gpath = grammar_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).expect("set rust language");
 }
 
 #[test]
 fn loads_json_grammar() {
-    let grammar =
-        LoadedGrammar::open(&grammar_path("json"), "tree_sitter_json").expect("open json grammar");
+    let gpath = grammar_path("json");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).expect("set json language");
 }
@@ -66,7 +66,8 @@ fn loads_json_grammar() {
 
 #[test]
 fn parses_rust_function_signature() {
-    let grammar = LoadedGrammar::open(&grammar_path("rust"), "tree_sitter_rust").unwrap();
+    let gpath = grammar_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
 
@@ -82,7 +83,8 @@ fn parses_rust_function_signature() {
 
 #[test]
 fn parses_json_object() {
-    let grammar = LoadedGrammar::open(&grammar_path("json"), "tree_sitter_json").unwrap();
+    let gpath = grammar_path("json");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
 
@@ -101,7 +103,8 @@ fn parses_json_object() {
 
 #[test]
 fn highlights_emit_keyword_event() {
-    let grammar = LoadedGrammar::open(&grammar_path("rust"), "tree_sitter_rust").unwrap();
+    let gpath = grammar_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
 
@@ -141,7 +144,8 @@ fn highlights_emit_keyword_event() {
 #[test]
 fn highlights_for_line_correct_on_nonzero_line() {
     let source = b"fn foo() {}\nlet x = 1;\n";
-    let grammar = LoadedGrammar::open(&grammar_path("rust"), "tree_sitter_rust").unwrap();
+    let gpath = grammar_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
     let tree = parser.parse(source as &[u8], None).expect("parse");
@@ -182,8 +186,8 @@ fn highlights_for_line_correct_on_nonzero_line() {
 // Mutation gate: removing the trim branch re-emits function from 0, failing the start check.
 #[test]
 fn highlight_overlap_shorter_wins_at_shared_start() {
-    let grammar =
-        LoadedGrammar::open(&grammar_path("rust"), "tree_sitter_rust").expect("open rust grammar");
+    let gpath = grammar_path("rust");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
 
@@ -218,8 +222,8 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
 // Mutation gate: removing the `else if` guard produces two spans, failing the count.
 #[test]
 fn highlight_overlap_fully_contained_is_dropped() {
-    let grammar =
-        LoadedGrammar::open(&grammar_path("json"), "tree_sitter_json").expect("open json grammar");
+    let gpath = grammar_path("json");
+    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(grammar.language()).unwrap();
 
