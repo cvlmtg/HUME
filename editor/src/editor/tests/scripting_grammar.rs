@@ -264,3 +264,75 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
         .unwrap();
     assert!(ed.languages.has_grammar("json"), "has_grammar must be true after attach");
 }
+
+// ---------------------------------------------------------------------------
+// Fix 1 — replace_buffer_in_place must clear stale engine syntax state
+// ---------------------------------------------------------------------------
+
+/// Regression: replace_buffer_in_place used to leave ev.buffers[id].tree / .syntax
+/// pointing at the old content. Without the fix, both would still be Some after
+/// replacing with a scratch buffer.
+///
+/// Flip: if the engine-side clear is removed, the two `.is_none()` asserts fail.
+#[test]
+fn replace_buffer_in_place_clears_engine_syntax_state() {
+    let (parser, hl) = grammar_fixture("json");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
+    ed.languages
+        .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
+        .unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    assert!(ed.engine_view.buffers[bid].tree.is_some(), "tree must be set before replace");
+    assert!(ed.engine_view.buffers[bid].syntax.is_some(), "syntax must be set before replace");
+
+    // Replace with a scratch buffer (no path, language=None). detect_and_set_language
+    // returns None → set_buffer_language no-ops; the engine-side clear in
+    // ops::replace_buffer_in_place is the load-bearing cleanup here.
+    ed.replace_buffer_in_place(bid, Buffer::scratch());
+
+    assert!(ed.engine_view.buffers[bid].tree.is_none(), "stale tree must be cleared on replace");
+    assert!(ed.engine_view.buffers[bid].syntax.is_none(), "stale syntax must be cleared on replace");
+    assert!(ed.buffers.get(bid).parser.is_none(), "parser must be cleared on replace");
+}
+
+// ---------------------------------------------------------------------------
+// Fix 3 — reparse_stale_buffers must re-attach on shrink below cap
+// ---------------------------------------------------------------------------
+
+/// Regression: once a buffer's parser was detached (via the max_bytes growth branch),
+/// reparse_stale_buffers used to skip it forever (`None => continue`). Without the
+/// fix, the second `reparse_stale_buffers` call leaves parser=None.
+///
+/// Flip: if the re-attach branch is removed, the final `parser.is_some()` assert fails.
+#[test]
+fn reparse_reattaches_after_shrink_under_cap() {
+    let (parser, hl) = grammar_fixture("json");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
+    ed.languages
+        .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
+        .unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    assert!(ed.buffers.get(bid).parser.is_some(), "parser must be set initially");
+
+    // Force detach by setting a 1-byte cap — any non-empty buffer exceeds it.
+    ed.settings.syntax_highlight_max_bytes = 1;
+    ed.reparse_stale_buffers();
+    assert!(ed.buffers.get(bid).parser.is_none(), "parser must detach when exceeding cap");
+    assert!(ed.engine_view.buffers[bid].syntax.is_none(), "syntax must be cleared on detach");
+
+    // Restore a generous cap — next reparse must re-attach.
+    ed.settings.syntax_highlight_max_bytes = usize::MAX;
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.buffers.get(bid).parser.is_some(),
+        "parser must re-attach when buffer shrinks back under cap",
+    );
+    assert!(
+        ed.engine_view.buffers[bid].syntax.is_some(),
+        "engine syntax must be rebuilt after re-attach",
+    );
+}

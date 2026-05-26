@@ -113,6 +113,10 @@ impl Editor {
             id,
             new_doc,
         );
+        // Re-detect language and rebuild syntax (mirrors open_buffer). For scratch
+        // (no path/language), detect returns None and set_buffer_language no-ops —
+        // the engine-side clear in ops::replace_buffer_in_place is the cleanup there.
+        self.detect_and_set_language(id);
     }
 
     /// Redirect the focused pane to `target` without recording a jump.

@@ -166,6 +166,11 @@ pub(crate) fn replace_buffer_in_place(
         "replace_buffer_in_place: new_doc must have no active search state",
     );
     *buffers.get_mut(id) = new_doc;
+    // The new doc carries no parser/language; drop the engine-side parse tree
+    // and highlighter that still reference the old content. Callers that need
+    // language re-detection (e.g. :e! via the Editor wrapper) handle that separately.
+    ev.buffers[id].tree = None;
+    ev.buffers[id].syntax = None;
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes

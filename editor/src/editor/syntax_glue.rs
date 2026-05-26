@@ -95,11 +95,23 @@ impl Editor {
                 continue;
             }
 
-            // Gen-gate: skip if already up to date or no parser attached.
-            let parsed_gen = match &buf.parser {
-                Some(p) => p.parsed_gen,
-                None => continue,
-            };
+            // Re-attach if no parser but buffer is under cap and language has a grammar.
+            // Covers: buffers that opened over-cap and later shrank, or that had their
+            // parser detached by the growth branch above.
+            if buf.parser.is_none() {
+                if byte_len <= max_bytes
+                    && self.buffers.get(bid).language.as_deref()
+                        .and_then(|l| self.languages.by_name(l))
+                        .is_some_and(|c| c.grammar.is_some())
+                {
+                    self.setup_buffer_syntax(bid);
+                }
+                continue;
+            }
+
+            // Gen-gate: skip if already up to date.
+            // buf.parser.is_some() is guaranteed — the is_none branch above continues.
+            let parsed_gen = buf.parser.as_ref().expect("parser is_none handled above").parsed_gen;
             if parsed_gen == text_gen {
                 continue;
             }

@@ -30,11 +30,11 @@ use crate::types::{Scope, ScopeId};
 ///
 /// # Overlapping captures
 ///
-/// tree-sitter queries can produce overlapping captures (e.g. an outer
-/// `@type` and an inner `@type.builtin`). This provider resolves overlaps by
-/// keeping the shorter (more specific) interval when two intervals share a
-/// starting byte, and by trimming the longer one when a shorter one is
-/// contained within it. The output is always sorted and non-overlapping.
+/// Parse-tree nodes are nested or disjoint — never partially overlapping.
+/// This provider flattens them so the **innermost** (shortest) capture wins
+/// at every byte: e.g. `@string.escape` inside `@string` renders with the
+/// escape scope, not the generic string scope. The output is always sorted
+/// and non-overlapping.
 pub struct TreeSitterHighlighter {
     query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
@@ -52,6 +52,8 @@ struct TsState {
     raw: Vec<(usize, usize, ScopeId)>,
     /// Reused query cursor — tree-sitter recommends reuse to amortise its internal allocation.
     cursor: QueryCursor,
+    /// Scratch stack for the nested-capture flattener — retained to avoid reallocation.
+    stack: Vec<(usize, ScopeId)>,
 }
 
 impl TreeSitterHighlighter {
@@ -95,6 +97,7 @@ impl TreeSitterHighlighter {
                 source: initial_source,
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
+                stack: Vec::new(),
             }),
         }
     }
@@ -129,6 +132,7 @@ impl TreeSitterHighlighter {
                 source: initial_source,
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
+                stack: Vec::new(),
             }),
         })
     }
@@ -174,6 +178,7 @@ impl HighlightSource for TreeSitterHighlighter {
             ref source,
             ref mut raw,
             ref mut cursor,
+            ref mut stack,
         } = *state;
         cursor.set_byte_range(line_start..line_end);
         raw.clear();
@@ -206,23 +211,114 @@ impl HighlightSource for TreeSitterHighlighter {
             return;
         }
 
-        // Sort by (start, length ascending — shorter = more specific wins).
-        raw.sort_by_key(|&(start, end, _)| (start, end - start));
+        // Sort outermost-first (start asc, end desc), then flatten so the innermost
+        // capture wins at every byte.
+        raw.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        flatten_overlaps(raw, stack, out);
+    }
+}
 
-        // Resolve overlaps: keep the first (most specific) interval at each
-        // byte position. Trim or drop intervals that are fully subsumed.
-        let mut max_end: usize = 0;
-        for (start, end, scope) in raw.drain(..) {
-            if start >= max_end {
-                out.push((start, end, scope));
-                max_end = end;
-            } else if end <= max_end {
-                // Fully contained within a previous interval — skip.
+// ---------------------------------------------------------------------------
+// flatten_overlaps
+// ---------------------------------------------------------------------------
+
+/// Flatten nested/disjoint capture intervals so the innermost wins at every byte.
+///
+/// `raw` must already be sorted outermost-first (start asc, end desc) and is
+/// drained by this call. `stack` is scratch storage (cleared on entry); on
+/// return both `raw` and `stack` are empty. Non-overlapping, sorted intervals
+/// are appended to `out`.
+fn flatten_overlaps(
+    raw: &mut Vec<(usize, usize, ScopeId)>,
+    stack: &mut Vec<(usize, ScopeId)>,
+    out: &mut Vec<(usize, usize, ScopeId)>,
+) {
+    debug_assert!(stack.is_empty());
+    let mut pos = 0usize;
+    for (start, end, scope) in raw.drain(..) {
+        // Close intervals that end at or before `start`, innermost first.
+        while let Some(&(top_end, top_scope)) = stack.last() {
+            if top_end <= start {
+                if pos < top_end {
+                    out.push((pos, top_end, top_scope));
+                    pos = top_end;
+                }
+                stack.pop();
             } else {
-                // Partially overlapping — trim start to max_end.
-                out.push((max_end, end, scope));
-                max_end = end;
+                break;
             }
         }
+        // Fill the gap between `pos` and `start` with the enclosing scope.
+        if let Some(&(_, top_scope)) = stack.last() && pos < start {
+            out.push((pos, start, top_scope));
+        }
+        pos = start;
+        stack.push((end, scope));
+    }
+    // Drain remaining open intervals, innermost first.
+    while let Some((top_end, top_scope)) = stack.pop() {
+        if pos < top_end {
+            out.push((pos, top_end, top_scope));
+            pos = top_end;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(n: u16) -> ScopeId {
+        ScopeId(n)
+    }
+
+    fn run(mut raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
+        raw.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        let mut stack = Vec::new();
+        let mut out = Vec::new();
+        flatten_overlaps(&mut raw, &mut stack, &mut out);
+        out
+    }
+
+    #[test]
+    fn inner_wins_non_shared_start() {
+        // Regression: outer @string [0,8), inner @string.escape [5,7).
+        // Old sweep dropped the inner; stack flattener emits it correctly.
+        let got = run(vec![(0, 8, s(0)), (5, 7, s(1))]);
+        assert_eq!(got, vec![(0, 5, s(0)), (5, 7, s(1)), (7, 8, s(0))]);
+    }
+
+    #[test]
+    fn inner_wins_shared_start() {
+        // Shared start: outer [0,10), inner [0,4) — inner wins its region.
+        let got = run(vec![(0, 10, s(0)), (0, 4, s(1))]);
+        assert_eq!(got, vec![(0, 4, s(1)), (4, 10, s(0))]);
+    }
+
+    #[test]
+    fn disjoint_gap_preserved() {
+        // Two disjoint intervals; uncovered gap has no output.
+        let got = run(vec![(0, 3, s(0)), (5, 8, s(1))]);
+        assert_eq!(got, vec![(0, 3, s(0)), (5, 8, s(1))]);
+    }
+
+    #[test]
+    fn three_level_nesting() {
+        // [0,20) A, [5,15) B, [8,10) C — each level wins its region.
+        let got = run(vec![(0, 20, s(0)), (5, 15, s(1)), (8, 10, s(2))]);
+        assert_eq!(
+            got,
+            vec![
+                (0, 5, s(0)),
+                (5, 8, s(1)),
+                (8, 10, s(2)),
+                (10, 15, s(1)),
+                (15, 20, s(0)),
+            ]
+        );
     }
 }
