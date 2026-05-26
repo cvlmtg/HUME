@@ -46,5 +46,31 @@ jobs:
       - name: Build
         run: cargo build --all-targets
 
+      # ── Grammar test fixtures ──────────────────────────────────────────────
+      # Fixtures are grammar shared libraries (.so/.dylib/.dll) compiled from the
+      # revisions in runtime/scheme/grammar-sources.scm (the shipped SSOT).
+      # A helix-pin bump changes grammar-sources.scm and therefore the cache key,
+      # triggering a rebuild. On Windows, MSVC dev tools are needed by tree-sitter build.
+
+      - name: Setup MSVC developer environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache grammar fixtures
+        id: fixture-cache
+        uses: actions/cache@v5
+        with:
+          path: tests/fixtures/grammars
+          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/grammar-sources.scm') }}
+
+      - name: Install tree-sitter CLI
+        if: steps.fixture-cache.outputs.cache-hit != 'true'
+        run: npm install -g tree-sitter-cli
+
+      - name: Build grammar fixtures
+        if: steps.fixture-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash scripts/fetch-test-grammars.sh
+
       - name: Test
         run: cargo test --all-targets

@@ -24,7 +24,7 @@ fn grammar_path(name: &str) -> PathBuf {
     let p = fixture_base.join(name).join(format!("parser.{suffix}"));
     if !p.exists() {
         panic!(
-            "grammar fixture missing: {}\nrun `scripts/fetch-test-grammars.sh` from repo root",
+            "grammar fixture missing: {}\ninstall the tree-sitter CLI (npm i -g tree-sitter-cli) and run scripts/fetch-test-grammars.sh from the repo root",
             p.display()
         );
     }
