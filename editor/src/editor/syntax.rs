@@ -11,7 +11,6 @@ use engine::theme::ScopeRegistry;
 
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
 /// of a given language.
-#[allow(dead_code)] // fields consumed in B2 (setup_buffer_syntax / reparse_stale_buffers)
 pub(crate) struct GrammarBundle {
     pub(crate) grammar: LoadedGrammar,
     pub(crate) query: Arc<tree_sitter::Query>,
@@ -30,7 +29,6 @@ pub(crate) struct LanguageConfig {
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
     /// Tree-sitter grammar + highlight query, `None` until `attach_grammar` is called.
-    #[allow(dead_code)] // read in B2 (BufferParser::new, setup_buffer_syntax)
     pub grammar: Option<GrammarBundle>,
 }
 
@@ -38,15 +36,16 @@ pub(crate) struct LanguageConfig {
 
 /// Per-buffer parse state. `lang` is a keepalive — ensures `GrammarBundle`
 /// (and its loaded `.so`) stays alive at least as long as this parser.
-#[allow(dead_code)] // fields consumed in B2 (reparse_stale_buffers)
 pub(crate) struct BufferParser {
+    // Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
+    // this parser is alive.
+    #[allow(dead_code)]
     pub(crate) lang: Arc<LanguageConfig>,
     pub(crate) parser: tree_sitter::Parser,
     pub(crate) parsed_gen: u64,
 }
 
 impl BufferParser {
-    #[allow(dead_code)] // called in B2 (setup_buffer_syntax)
     pub(crate) fn new(lang: Arc<LanguageConfig>) -> Option<Self> {
         let bundle = lang.grammar.as_ref()?;
         let mut parser = tree_sitter::Parser::new();
@@ -211,7 +210,7 @@ impl LanguageRegistry {
     }
 
     /// Remove a registered language by name, returning it if present.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn remove(&mut self, name: &str) -> Option<Arc<LanguageConfig>> {
         let config = self.by_name.remove(name)?;
         for ext in &config.extensions {
@@ -231,7 +230,6 @@ impl LanguageRegistry {
     }
 
     /// Attach a tree-sitter grammar to a language.
-    #[allow(dead_code)] // called in B3 (register_grammar! Steel builtin)
     ///
     /// Reads the highlights query file, compiles it, interns all capture names
     /// into `scope_reg`, then replaces the `Arc<LanguageConfig>` in the registry
@@ -274,7 +272,6 @@ impl LanguageRegistry {
     }
 
     /// Returns `true` if `name` has an attached tree-sitter grammar.
-    #[allow(dead_code)] // called in B3 (language-has-grammar? Steel builtin)
     pub(crate) fn has_grammar(&self, name: &str) -> bool {
         self.by_name.get(name).is_some_and(|c| c.grammar.is_some())
     }

@@ -123,7 +123,6 @@ impl Editor {
 
     /// Called when one or more grammars are attached. Re-runs `setup_buffer_syntax`
     /// on every open buffer whose language is in `names`.
-    #[allow(dead_code)] // called in B3 (Steel register-grammar! sweep)
     pub(super) fn sweep_buffers_for_grammars(&mut self, names: Vec<String>) {
         if names.is_empty() {
             return;

@@ -57,7 +57,6 @@ pub(crate) struct Buffer {
     pub(crate) text_gen: u64,
     /// Per-buffer tree-sitter parse state. `None` when no grammar is attached
     /// or the buffer exceeds `syntax-highlight-max-bytes`.
-    #[allow(dead_code)] // read in B2 (reparse_stale_buffers / setup_buffer_syntax)
     pub(crate) parser: Option<BufferParser>,
 }
 

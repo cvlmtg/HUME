@@ -230,6 +230,7 @@ mod multi_pane;
 mod page_scroll;
 mod pane_sync;
 mod per_pane_jumps;
+mod scripting_grammar;
 mod search;
 mod select_all;
 mod surround;

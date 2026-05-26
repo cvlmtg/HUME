@@ -226,14 +226,3 @@ impl HighlightSource for TreeSitterHighlighter {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    // Tree-sitter integration tests require a compiled language grammar, so
-    // they live in the integration test suite (`engine/tests/grammar_integration.rs`).
-    // This module is exercised by those integration tests.
-}
