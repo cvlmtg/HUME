@@ -113,6 +113,10 @@ pub fn cmd_yank(
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
 fn do_paste(ed: &mut Editor, before: bool) {
+    if ed.focused_buffer_read_only() {
+        ed.report(Severity::Info, "Buffer is read-only".to_string());
+        return;
+    }
     // Clone last_command so the borrow on ed ends before the mutable call below.
     let last_command = ed.last_command.clone();
     let last_cmd = last_command.as_deref();

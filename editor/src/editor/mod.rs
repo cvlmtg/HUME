@@ -61,7 +61,7 @@ use scripting_setup::theme_search_paths;
 pub(crate) use minibuf::MiniBuffer;
 
 use message_log::MessageLog;
-pub(crate) use message_log::{ScratchView, Severity};
+pub(crate) use message_log::Severity;
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
@@ -221,9 +221,6 @@ pub(crate) struct Editor {
     /// Persistent log of warnings, errors, and trace entries accumulated during
     /// the session. Reviewed via `:messages`.
     pub(crate) message_log: MessageLog,
-    /// When `Some`, the editor displays this read-only overlay instead of the
-    /// real document. Dismissed with `q` or Escape. Used by `:messages`.
-    pub(crate) scratch_view: Option<ScratchView>,
     /// All editor settings — global defaults and per-buffer-overridable values.
     ///
     /// This is the single source of truth for every configurable setting.
@@ -416,6 +413,11 @@ impl Editor {
         self.buffers.get_mut(bid)
     }
 
+    /// `true` when the focused buffer rejects user edits.
+    pub(crate) fn focused_buffer_read_only(&self) -> bool {
+        self.doc().is_read_only()
+    }
+
     /// Resolved formatting context for the focused doc and pane:
     /// `(wrap_mode, tab_width, whitespace)`. The wrap_mode has its `width: 0`
     /// sentinel substituted via `pane.content_width(...)` — safe to hand to
@@ -477,6 +479,10 @@ impl Editor {
     /// original command, so that the re-executed command's call here becomes a
     /// no-op for undo/repeat purposes — only the cursor motion takes effect.
     pub(super) fn begin_insert_session(&mut self) {
+        if self.focused_buffer_read_only() {
+            self.report(Severity::Info, "Buffer is read-only".to_string());
+            return;
+        }
         if !self.is_group_open_current() {
             self.begin_edit_group_current();
             self.insert_session = Some(InsertSession {
@@ -583,7 +589,6 @@ impl Editor {
             completion_view: Arc::new(RwLock::new(None)),
             status_msg: None,
             message_log: MessageLog::new(),
-            scratch_view: None,
             settings,
             registry: registry::CommandRegistry::with_defaults(),
             keymap: keymap::Keymap::default(),

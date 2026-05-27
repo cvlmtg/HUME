@@ -64,11 +64,11 @@ pub(crate) fn validate_new_path(
         )
     })?;
     let canonical_dest = canonical_parent.join(file_name);
-    if let Ok(meta) = crate::os::fs::symlink_metadata(&canonical_dest) {
-        if meta.file_type().is_symlink() {
-            steel::stop!(Generic =>
-                "{fn_name}: dest is a symlink (refusing to follow): {}", dest.display());
-        }
+    if let Ok(meta) = crate::os::fs::symlink_metadata(&canonical_dest)
+        && meta.file_type().is_symlink()
+    {
+        steel::stop!(Generic =>
+            "{fn_name}: dest is a symlink (refusing to follow): {}", dest.display());
     }
     sandbox_write_check(&canonical_dest, &dest.to_string_lossy(), kind)
 }

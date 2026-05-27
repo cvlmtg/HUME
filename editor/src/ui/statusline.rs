@@ -349,17 +349,7 @@ fn render_element(
         }
         StatusElement::Separator => (Cow::Borrowed("│"), colors.statusline),
         StatusElement::FileName => {
-            let name: &str = if let Some(ref sv) = editor.scratch_view {
-                sv.label
-            } else {
-                editor
-                    .doc()
-                    .path()
-                    .and_then(|p| p.file_name())
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("[scratch]")
-            };
-            (Cow::Owned(name.to_string()), colors.statusline)
+            (Cow::Owned(editor.doc().display_name()), colors.statusline)
         }
         StatusElement::Position => {
             let buf = editor.doc().text();

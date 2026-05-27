@@ -32,6 +32,9 @@ pub(crate) fn apply_doc_edit(
     buf_id: BufferId,
     cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
 ) {
+    if buffers.get(buf_id).is_read_only() {
+        return;
+    }
     // O(1) rope snapshot — ropey uses structural sharing.
     let rope_pre = buffers.get(buf_id).text().rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
@@ -54,6 +57,9 @@ pub(crate) fn apply_doc_edit_grouped(
     buf_id: BufferId,
     cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
 ) {
+    if buffers.get(buf_id).is_read_only() {
+        return;
+    }
     let rope_pre = buffers.get(buf_id).text().rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let doc = buffers.get_mut(buf_id);
@@ -76,6 +82,9 @@ pub(crate) fn apply_doc_edit_regrouped(
     buf_id: BufferId,
     cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
 ) {
+    if buffers.get(buf_id).is_read_only() {
+        return;
+    }
     let rope_pre = buffers.get(buf_id).text().rope().clone();
     // Borrow paste_group from pane_state; NLL ends this borrow after the call.
     let pbs = &mut pane_state[focused_pane_id][buf_id];

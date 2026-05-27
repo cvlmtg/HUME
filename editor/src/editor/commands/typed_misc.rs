@@ -1,14 +1,14 @@
-use super::super::{ops, ScratchView, Severity};
+use super::super::{ops, Severity};
 use super::super::Editor;
 use crate::core::error::CommandError;
 
 // ── Message log ──────────────────────────────────────────────────────────────
 
-/// `:messages` — open the message log in a read-only scratch buffer.
+/// `:messages` — open the message log in a read-only buffer.
 ///
 /// Displays all logged warnings, errors, and trace entries accumulated during
-/// the session. Cursor starts at the last entry (most recent). Dismissed with
-/// `q` or Escape.
+/// the session. Cursor starts at the last entry (most recent). Dismiss with
+/// `:bd` or switch away with `:b#`.
 pub fn typed_messages(
     ed: &mut Editor,
     _arg: Option<&str>,
@@ -19,13 +19,14 @@ pub fn typed_messages(
         ed.report(Severity::Info, "No messages".to_string());
         return Ok(());
     }
-    let sv = ScratchView::from_text(&content, "[messages]");
-    ed.scratch_view = Some(sv);
+    // Position cursor at last content line (most recent entry).
+    let last_line = content.lines().count().saturating_sub(1);
     ed.message_log.mark_all_seen();
+    ed.open_read_only_view("[messages]", &content, last_line);
     Ok(())
 }
 
-/// `:ls` / `:list-buffers` — open a read-only scratch view listing every open buffer.
+/// `:ls` / `:list-buffers` — open a read-only buffer listing every open buffer.
 ///
 /// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
 /// dirty (`+`) flag, short name, and home-shortened absolute path.
@@ -61,7 +62,7 @@ pub fn typed_list_buffers(
         let name = path_ref
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
-            .unwrap_or("[scratch]");
+            .unwrap_or(buf.label.as_deref().unwrap_or("*scratch*"));
         let path = path_ref
             .map(crate::os::path::shorten_home)
             .unwrap_or_default();
@@ -76,11 +77,7 @@ pub fn typed_list_buffers(
         }
     }
 
-    ed.scratch_view = Some(ScratchView::from_text_at_line(
-        &out,
-        "[buffers]",
-        current_rope_line,
-    ));
+    ed.open_read_only_view("[buffers]", &out, current_rope_line);
     Ok(())
 }
 
@@ -101,7 +98,7 @@ pub fn typed_plugin_status(
         ed.report(Severity::Info, "No plugins declared".to_string());
         return Ok(());
     }
-    ed.scratch_view = Some(ScratchView::from_text(&out, "[plugin-status]"));
+    ed.open_read_only_view("[plugin-status]", &out, 0);
     Ok(())
 }
 

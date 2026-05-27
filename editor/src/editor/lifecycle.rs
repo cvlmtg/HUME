@@ -162,7 +162,6 @@ impl Editor {
             completion_view,
             status_msg: None,
             message_log: MessageLog::new(),
-            scratch_view: None,
             settings,
             registry: CommandRegistry::with_defaults(),
             keymap: Keymap::default(),
@@ -272,35 +271,25 @@ impl Editor {
             // draw closure so the lifetime is tied to this stack frame.
             let statusline = crate::ui::statusline::HumeStatusline { editor: self };
 
-            // Split borrows: `engine_view`, `doc`, and `scratch_view` are
-            // disjoint fields of `self`. Extract the rope and pane settings
-            // to render before moving `engine_view` into the draw closure.
-            let rope: &ropey::Rope = if let Some(ref sv) = self.scratch_view {
-                sv.buf.rope()
-            } else {
-                self.doc().text().rope()
-            };
+            // Split borrows: `engine_view` and `doc` are disjoint fields of
+            // `self`. Extract the rope and pane settings to render before
+            // moving `engine_view` into the draw closure.
+            let rope: &ropey::Rope = self.doc().text().rope();
             let buffer_id = self.focused_buffer_id();
             let pane_id = self.focused_pane_id;
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
             let pane_settings = {
-                let mode = if self.scratch_view.is_some() {
-                    EditorMode::Normal
-                } else {
-                    self.mode
-                };
-                let (raw_wrap, len_lines) = if let Some(ref sv) = self.scratch_view {
-                    (self.settings.wrap_mode, sv.buf.len_lines())
-                } else {
-                    (self.doc().overrides.wrap_mode(&self.settings), self.doc().text().len_lines())
-                };
+                let (raw_wrap, len_lines) = (
+                    self.doc().overrides.wrap_mode(&self.settings),
+                    self.doc().text().len_lines(),
+                );
                 let pane = &self.engine_view.panes[self.focused_pane_id];
                 let wrap_mode = raw_wrap.resolve(pane.content_width(len_lines));
                 let tab_width = self.doc().overrides.tab_width(&self.settings);
                 let whitespace = self.doc().overrides.whitespace(&self.settings);
                 PaneRenderSettings {
-                    mode,
+                    mode: self.mode,
                     wrap_mode,
                     tab_width,
                     whitespace,
@@ -476,21 +465,35 @@ impl Editor {
             vp.height = terminal_height.saturating_sub(1);
         }
 
-        // 2. Sync selection mirrors for every pane (scratch-view override is
-        //    handled inside sync_all_pane_mirrors for the focused pane).
+        // 2. Sync selection mirrors for every pane.
         self.sync_all_pane_mirrors();
 
-        if let Some(ref sv) = self.scratch_view {
-            // ── Scratch view path ─────────────────────────────────────────────
-            // Use the scratch rope for scroll calculations.
-            // The real document and all highlight providers are untouched.
-            let cursor_char = sv.sels.primary().head;
-            let rope = sv.buf.rope();
-            let scrolloff = self.settings.scrolloff;
-            let tab_width = self.settings.tab_width;
-            let whitespace = self.settings.whitespace.clone();
+        // 3. Sync line-number style provider (depends on buffer overrides).
+        {
+            let ln_style = self.doc().overrides.line_number_style(&self.settings);
+            self.engine_view.panes[self.focused_pane_id]
+                .providers
+                .sync_line_number_style(ln_style);
+        }
+
+        // 4. Scroll so the primary cursor stays visible.
+        let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+            .selections
+            .primary()
+            .head;
+        let scrolloff = self.settings.scrolloff;
+        let tab_width = self.doc().overrides.tab_width(&self.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.settings);
+        {
+            let buf_id = self.focused_buffer_id();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+            let len_lines = self.buffers.get(buf_id).text().len_lines();
+            let rope = self.buffers.get(buf_id).text().rope();
+            let wrap_mode = {
+                let pane = &self.engine_view.panes[self.focused_pane_id];
+                raw_wrap.resolve(pane.content_width(len_lines))
+            };
             let pane = &mut self.engine_view.panes[self.focused_pane_id];
-            let wrap_mode = self.settings.wrap_mode.resolve(pane.content_width(sv.buf.len_lines()));
             scroll_into_view(
                 pane,
                 rope,
@@ -501,58 +504,17 @@ impl Editor {
                 &whitespace,
                 scrolloff,
             );
-            // No highlight updates for scratch view — no search or bracket matches.
-        } else {
-            // ── Normal document path ──────────────────────────────────────────
-
-            // 3. Sync line-number style provider (depends on buffer overrides).
-            {
-                let ln_style = self.doc().overrides.line_number_style(&self.settings);
-                self.engine_view.panes[self.focused_pane_id]
-                    .providers
-                    .sync_line_number_style(ln_style);
-            }
-
-            // 4. Scroll so the primary cursor stays visible.
-            let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
-                .selections
-                .primary()
-                .head;
-            let scrolloff = self.settings.scrolloff;
-            let tab_width = self.doc().overrides.tab_width(&self.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.settings);
-            {
-                let buf_id = self.focused_buffer_id();
-                let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-                let len_lines = self.buffers.get(buf_id).text().len_lines();
-                let rope = self.buffers.get(buf_id).text().rope();
-                let wrap_mode = {
-                    let pane = &self.engine_view.panes[self.focused_pane_id];
-                    raw_wrap.resolve(pane.content_width(len_lines))
-                };
-                let pane = &mut self.engine_view.panes[self.focused_pane_id];
-                scroll_into_view(
-                    pane,
-                    rope,
-                    cursor_char,
-                    &mut ctx.cursor_format,
-                    &wrap_mode,
-                    tab_width,
-                    &whitespace,
-                    scrolloff,
-                );
-            }
-
-            // 5. Reparse any visible buffer whose text changed since the last frame.
-            self.reparse_stale_buffers();
-
-            // 6. Sync highlight data (search matches, bracket matches) to shared
-            //    Arc buffers read by the highlight providers during rendering.
-            self.update_highlight_providers();
-
-            // 6. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
-            self.sync_completion_view();
         }
+
+        // 5. Reparse any visible buffer whose text changed since the last frame.
+        self.reparse_stale_buffers();
+
+        // 6. Sync highlight data (search matches, bracket matches) to shared
+        //    Arc buffers read by the highlight providers during rendering.
+        self.update_highlight_providers();
+
+        // 7. Sync completion-popup view to the shared Arc for `CompletionOverlay`.
+        self.sync_completion_view();
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
@@ -567,17 +529,9 @@ impl Editor {
         let Self {
             pane_state,
             engine_view,
-            scratch_view,
-            focused_pane_id,
             ..
         } = &mut *self;
         for (pid, pane) in engine_view.panes.iter_mut() {
-            if pid == *focused_pane_id
-                && let Some(sv) = scratch_view.as_ref()
-            {
-                write_pane_mirror(pane, &sv.sels);
-                continue;
-            }
             if let Some(pbs) = pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
                 write_pane_mirror(pane, &pbs.selections);
             }

@@ -1,6 +1,4 @@
-use crate::ops::MotionMode;
-
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 
 use super::{Editor, Mode};
 
@@ -20,14 +18,6 @@ impl Editor {
         // Any keypress dismisses the previous transient status message.
         self.status_msg = None;
 
-        // ── Scratch view intercept ────────────────────────────────────────────
-        // When a scratch buffer is open (e.g. `:messages`), intercept all keys
-        // for navigation and dismissal. The real document is left untouched.
-        if self.scratch_view.is_some() {
-            self.handle_scratch_key(key);
-            return;
-        }
-
         match self.mode {
             Mode::Normal | Mode::Extend => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
@@ -45,42 +35,6 @@ impl Editor {
             keys.push(key);
         }
         self.skip_macro_record = false;
-    }
-
-    // ── Scratch view mode ─────────────────────────────────────────────────────
-
-    /// Handle a keypress while a scratch buffer (`:messages`, `:help`, …) is open.
-    ///
-    /// Only navigation and dismissal are supported. All other keys are silently
-    /// swallowed so the real document cannot be accidentally modified.
-    fn handle_scratch_key(&mut self, key: KeyEvent) {
-        use crate::ops::motion::{
-            cmd_goto_first_line, cmd_goto_last_line, cmd_select_line, cmd_select_line_backward,
-        };
-        use KeyCode::{Char, Down, Esc, Up};
-
-        let sv = self
-            .scratch_view
-            .as_mut()
-            .expect("called only when scratch_view is Some");
-        match key.code {
-            Char('q') | Esc => {
-                self.scratch_view = None;
-            }
-            Char('j') | Down => {
-                sv.sels = cmd_select_line(&sv.buf, sv.sels.clone(), MotionMode::Move);
-            }
-            Char('k') | Up => {
-                sv.sels = cmd_select_line_backward(&sv.buf, sv.sels.clone(), MotionMode::Move);
-            }
-            Char('g') => {
-                sv.sels = cmd_goto_first_line(&sv.buf, sv.sels.clone(), 1, MotionMode::Move);
-            }
-            Char('G') => {
-                sv.sels = cmd_goto_last_line(&sv.buf, sv.sels.clone(), 1, MotionMode::Move);
-            }
-            _ => {} // swallow all other keys
-        }
     }
 }
 

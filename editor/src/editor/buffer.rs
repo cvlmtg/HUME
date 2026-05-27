@@ -58,6 +58,13 @@ pub(crate) struct Buffer {
     /// Per-buffer tree-sitter parse state. `None` when no grammar is attached
     /// or the buffer exceeds `syntax-highlight-max-bytes`.
     pub(crate) parser: Option<BufferParser>,
+    /// When `true`, all forward text mutations are blocked at the `doc_ops`
+    /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
+    /// language/syntax — a read-only buffer may still be highlighted.
+    pub(crate) read_only: bool,
+    /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
+    /// Shown in the statusline and `:ls` instead of `*scratch*`.
+    pub(crate) label: Option<String>,
 }
 
 impl Buffer {
@@ -84,6 +91,8 @@ impl Buffer {
             language: None,
             text_gen: 0,
             parser: None,
+            read_only: false,
+            label: None,
         }
     }
 
@@ -109,6 +118,36 @@ impl Buffer {
     #[allow(dead_code)] // used when closing the last buffer in multi-buffer
     pub(crate) fn scratch() -> Self {
         Self::new(Text::empty(), SelectionSet::default())
+    }
+
+    /// Create a read-only view buffer from in-memory content.
+    ///
+    /// Used for `:messages`, `:ls`, and `:plugin-status`. The buffer has no
+    /// backing file, no language detection, and blocks all user edits.
+    pub(crate) fn read_only_view(text: Text, label: String) -> Self {
+        let mut buf = Self::new(text, SelectionSet::default());
+        buf.read_only = true;
+        buf.label = Some(label);
+        buf
+    }
+
+    /// Replace the content of a read-only view buffer with new text.
+    ///
+    /// Resets history to a clean root and clears search state so the refreshed
+    /// buffer is non-dirty and has no stale match data. This is a system
+    /// refresh — it intentionally bypasses the `read_only` guard in `doc_ops`.
+    pub(crate) fn set_view_content(&mut self, text: Text) {
+        let text_len = text.len_chars();
+        self.history = History::new(SelectionSet::default(), text_len);
+        self.saved_revision = self.history.current_id();
+        self.search_pattern = None;
+        self.search_matches = SearchMatches::default();
+        self.set_text(text);
+    }
+
+    /// `true` when the buffer blocks user edits.
+    pub(crate) fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     /// Replace the buffer text and bump `text_gen` so `reparse_stale_buffers`
@@ -167,8 +206,12 @@ impl Buffer {
         self.history.initial_sels().clone()
     }
 
-    /// The name shown in the UI: basename for named buffers, `*scratch*` for unnamed ones.
+    /// The name shown in the UI: label for view buffers, basename for named
+    /// buffers, `*scratch*` for unnamed ones.
     pub(crate) fn display_name(&self) -> String {
+        if let Some(ref label) = self.label {
+            return label.clone();
+        }
         self.path()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())

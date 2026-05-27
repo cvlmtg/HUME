@@ -1,17 +1,10 @@
-//! Persistent message log and scratch-buffer overlay.
+//! Persistent message log.
 //!
 //! The [`MessageLog`] accumulates [`LogEntry`] values produced during an editing
 //! session — config warnings, scripting errors, plugin conflicts. Entries survive
 //! keypresses and can be reviewed at any time via `:messages`.
-//!
-//! The [`ScratchView`] is a read-only overlay that temporarily replaces the main
-//! document in the editor's render and key-dispatch paths. Used by `:messages`;
-//! designed to be reusable for `:help` and similar commands later.
 
 use std::collections::VecDeque;
-
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
 
 // ── Severity ─────────────────────────────────────────────────────────────────
 
@@ -182,47 +175,6 @@ impl MessageLog {
     }
 }
 
-// ── ScratchView ──────────────────────────────────────────────────────────────
-
-/// A read-only buffer overlay that temporarily replaces the main document view.
-///
-/// When `Editor::scratch_view` is `Some`, the engine renders this buffer instead
-/// of `editor.doc`, and all keys are intercepted for navigation / dismissal.
-///
-/// Used by `:messages`; designed to be reusable for `:help` later.
-pub(crate) struct ScratchView {
-    /// The read-only content to display.
-    pub(crate) buf: Text,
-    /// Current cursor/scroll position within the scratch buffer.
-    pub(crate) sels: SelectionSet,
-    /// Label shown in the statusline FileName slot (e.g. `"[messages]"`).
-    pub(crate) label: &'static str,
-}
-
-impl ScratchView {
-    /// Build a scratch view from a multi-line string, cursor at the last line.
-    pub(crate) fn from_text(text: &str, label: &'static str) -> Self {
-        let buf = Text::from(text);
-        // Position the cursor at the start of the last content line so the user
-        // sees the most recent entries when the buffer opens.
-        let last_line = buf.rope().len_lines().saturating_sub(2); // skip trailing \n line
-        let last_char = buf.rope().line_to_char(last_line);
-        let sels = SelectionSet::single(Selection::collapsed(last_char));
-        Self { buf, sels, label }
-    }
-
-    /// Build a scratch view with the cursor placed at `line` (0-indexed).
-    /// Out-of-bounds lines are clamped to the last content line.
-    pub(crate) fn from_text_at_line(text: &str, label: &'static str, line: usize) -> Self {
-        let buf = Text::from(text);
-        let last_content = buf.rope().len_lines().saturating_sub(2);
-        let target_line = line.min(last_content);
-        let char_pos = buf.rope().line_to_char(target_line);
-        let sels = SelectionSet::single(Selection::collapsed(char_pos));
-        Self { buf, sels, label }
-    }
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -359,49 +311,6 @@ mod tests {
         assert_eq!(lines[0], "[warning] bad key");
         assert_eq!(lines[1], "[error] crash");
         assert_eq!(lines[2], "[trace] stack trace here");
-    }
-
-    #[test]
-    fn scratch_view_cursor_at_last_line() {
-        // The scratch view should open with cursor on the last content line.
-        let sv = ScratchView::from_text("line1\nline2\nline3\n", "[test]");
-        // "line3" starts at char offset 12 (6 + 6).
-        let head = sv.sels.primary().head;
-        let text = sv.buf.rope().to_string();
-        let line_start = text[..text.char_indices().nth(head).map(|(i, _)| i).unwrap_or(0)]
-            .rfind('\n')
-            .map(|i| i + 1)
-            .unwrap_or(0);
-        let line_content: String = text[line_start..]
-            .chars()
-            .take_while(|&c| c != '\n')
-            .collect();
-        assert_eq!(line_content, "line3");
-    }
-
-    #[test]
-    fn scratch_view_at_line_zero_positions_at_header() {
-        let sv = ScratchView::from_text_at_line("header\nline1\nline2\n", "[test]", 0);
-        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
-        assert_eq!(line, 0);
-    }
-
-    #[test]
-    fn scratch_view_at_line_mid_positions_correctly() {
-        let sv = ScratchView::from_text_at_line("header\nline1\nline2\n", "[test]", 2);
-        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
-        assert_eq!(line, 2);
-    }
-
-    #[test]
-    fn scratch_view_at_line_out_of_bounds_clamps_to_last_content() {
-        // 3 content lines + trailing empty line from final \n → len_lines() = 4 → last_content = 2
-        let sv = ScratchView::from_text_at_line("a\nb\nc\n", "[test]", 999);
-        let line = sv.buf.rope().char_to_line(sv.sels.primary().head);
-        assert_eq!(
-            line, 2,
-            "out-of-bounds line must clamp to last content line"
-        );
     }
 
     #[test]

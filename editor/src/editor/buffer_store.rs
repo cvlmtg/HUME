@@ -54,6 +54,17 @@ impl BufferStore {
             .find_map(|(id, buf)| buf.path().filter(|p| *p == path).map(|_| id))
     }
 
+    /// Find a read-only view buffer by its label (e.g. `"[messages]"`).
+    ///
+    /// Returns the first `BufferId` whose `buffer.label == Some(label)`.
+    /// Used by `open_read_only_view` to reuse existing view buffers instead
+    /// of accumulating duplicates.
+    pub(crate) fn find_by_label(&self, label: &str) -> Option<BufferId> {
+        self.buffers
+            .iter()
+            .find_map(|(id, buf)| buf.label.as_deref().filter(|l| *l == label).map(|_| id))
+    }
+
     /// Infallible getter. Panics if `id` was never seeded — that is a caller bug.
     pub(crate) fn get(&self, id: BufferId) -> &Buffer {
         self.buffers

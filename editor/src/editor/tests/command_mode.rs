@@ -570,11 +570,16 @@ fn colon_b_hash_switches_to_alternate() {
 fn colon_list_buffers_aliases_work() {
     let mut ed = editor_from("-[h]>ello\n");
     submit(&mut ed, "ls");
-    assert!(ed.scratch_view.is_some(), ":ls must open scratch view");
-    ed.handle_key(key_esc()); // dismiss scratch view
+    assert!(
+        ed.doc().is_read_only() && ed.doc().display_name() == "[buffers]",
+        ":ls must open the read-only [buffers] view buffer"
+    );
 
     submit(&mut ed, "list-buffers");
-    assert!(ed.scratch_view.is_some(), ":list-buffers must open scratch view");
+    assert!(
+        ed.doc().is_read_only() && ed.doc().display_name() == "[buffers]",
+        ":list-buffers must open the read-only [buffers] view buffer"
+    );
 }
 
 /// `:e! /path` (force + path, no space between `!` and arg) must parse as

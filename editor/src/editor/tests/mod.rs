@@ -11,7 +11,7 @@ use crate::editor::buffer::Buffer;
 use crate::testing::{parse_state, serialize_state};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::{Editor, Mode};
+use super::{Editor, Mode, Severity};
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 

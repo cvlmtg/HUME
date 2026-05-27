@@ -149,6 +149,45 @@ impl Editor {
         );
     }
 
+    /// Open or refresh a read-only view buffer (`:messages`, `:ls`, `:plugin-status`).
+    ///
+    /// If a buffer with this label already exists, replaces its content in-place
+    /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
+    /// fresh read-only buffer. Then switches the focused pane to it and positions
+    /// the cursor at `cursor_line` (0-indexed, clamped to last content line).
+    pub(crate) fn open_read_only_view(
+        &mut self,
+        label: &'static str,
+        content: &str,
+        cursor_line: usize,
+    ) {
+        use crate::core::selection::{Selection, SelectionSet};
+        use crate::core::text::Text;
+
+        let text = Text::from(content);
+        let bid = if let Some(existing) = self.buffers.find_by_label(label) {
+            self.buffers.get_mut(existing).set_view_content(text);
+            existing
+        } else {
+            let doc = Buffer::read_only_view(text, label.to_owned());
+            self.open_buffer(doc)
+        };
+
+        let already_focused = self.focused_buffer_id() == bid;
+        if !already_focused {
+            self.switch_to_buffer_with_jump(bid);
+        }
+
+        // Position cursor at the requested line (clamped to last content line).
+        let pid = self.focused_pane_id;
+        let rope = self.buffers.get(bid).text().rope().clone();
+        let last_content = rope.len_lines().saturating_sub(2); // skip trailing \n line
+        let target_line = cursor_line.min(last_content);
+        let char_pos = rope.line_to_char(target_line);
+        self.pane_state[pid][bid].selections =
+            SelectionSet::single(Selection::collapsed(char_pos));
+    }
+
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.
     pub(crate) fn current_jump_entry(&self) -> crate::core::jump_list::JumpEntry {
         use crate::core::jump_list::JumpEntry;
