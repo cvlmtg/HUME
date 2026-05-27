@@ -709,6 +709,43 @@ mod tests {
     }
 
     #[test]
+    fn insert_head_is_transparent_without_insert_scope() {
+        // Theme defines ui.cursor with a block bg but NOT ui.cursor.insert.
+        // In Insert mode the head cell must NOT inherit the block bg so the real
+        // terminal bar cursor shows through.
+        let rope = ropey::Rope::from_str("abcde");
+        let graphemes = make_graphemes(5);
+        let rows = vec![make_row(0..5)];
+        // Two selections: head 0 = primary, head 2 = secondary.
+        let selections =
+            vec![Selection { anchor: 0, head: 0 }, Selection { anchor: 2, head: 2 }];
+
+        let mut styles_map = HashMap::new();
+        styles_map.insert(
+            "ui.cursor",
+            ResolvedStyle {
+                bg: Some(ratatui::style::Color::Red),
+                ..Default::default()
+            },
+        );
+        let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            EditorMode::Insert,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+
+        assert_eq!(scratch.styles[0].bg, None, "primary insert head has no block bg");
+        assert_eq!(scratch.styles[2].bg, None, "secondary insert head has no block bg");
+    }
+
+    #[test]
     fn cursorline_applies_only_to_primary_head_line() {
         // Two selection heads on lines 0 and 2; line 1 should not get cursorline.
         // "a\nb\nc": a=char0, \n=char1, b=char2, \n=char3, c=char4

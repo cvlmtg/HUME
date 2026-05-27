@@ -8,7 +8,6 @@
 # ── Cursor ────────────────────────────────────────────────────────────────────
 "ui.cursor.primary" = { fg = "bg0", bg = "fg0" }
 "ui.cursor"         = { fg = "bg0", bg = "fg3" }
-"ui.cursor.insert"  = {}
 
 # ── Selection / cursor-line ───────────────────────────────────────────────────
 "ui.selection"  = { bg = "bg3" }

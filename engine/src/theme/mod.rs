@@ -271,26 +271,34 @@ impl Theme {
     fn compute_ui(&self) -> UiScopes {
         UiScopes {
             cursor: self.resolve_raw("ui.cursor"),
-            cursor_insert: self.resolve_raw("ui.cursor.insert"),
+            // Insert and block cursors are distinct shapes, not a specificity hierarchy.
+            // No dot-notation parent fallback: absent → empty (no-op layer) so the real
+            // terminal bar cursor shows through the head cell.
+            cursor_insert: self.resolve_cursor_chain(&["ui.cursor.insert"]),
             selection: self.resolve_raw("ui.selection"),
             cursorline: self.resolve_raw("ui.cursorline.primary"),
             virtual_text: self.resolve_raw("ui.virtual"),
             indent_guide: self.resolve_raw("ui.indent_guide"),
             // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
             cursor_primary: self.resolve_raw("ui.cursor.primary"),
-            // Primary insert cursor: if no explicit ui.cursor.primary.insert is defined, prefer
-            // ui.cursor.insert over ui.cursor.primary — the mode-specific style takes precedence
-            // over the primary-generic style. Dot-notation alone would give the wrong chain
-            // (ui.cursor.primary.insert → ui.cursor.primary → ui.cursor, skipping ui.cursor.insert).
-            cursor_insert_primary: if self.raw.contains_key("ui.cursor.primary.insert") {
-                self.resolve_raw("ui.cursor.primary.insert")
-            } else {
-                self.resolve_raw("ui.cursor.insert") // falls back to ui.cursor
-            },
+            // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,
+            // then empty. No fallback to the block ui.cursor (same rationale as cursor_insert).
+            cursor_insert_primary: self.resolve_cursor_chain(&[
+                "ui.cursor.primary.insert",
+                "ui.cursor.insert",
+            ]),
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw("ui.selection.primary"),
             background: self.resolve_raw("ui.background"),
         }
+    }
+
+    /// Resolve a cursor scope from an explicit, ordered key list with NO dot-notation
+    /// parent fallback. Insert and block cursors are distinct shapes, not a specificity
+    /// hierarchy: `ui.cursor.insert` must never inherit `ui.cursor`'s block background.
+    /// Returns an empty (all-`None`) style when no listed key is defined.
+    fn resolve_cursor_chain(&self, keys: &[&str]) -> ResolvedStyle {
+        keys.iter().find_map(|k| self.raw.get(*k).copied()).unwrap_or_default()
     }
 }
 
