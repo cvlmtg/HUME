@@ -7,7 +7,7 @@
 ;;; Commands defined here:
 ;;;   :plum-install-grammar  — install grammar for current (or named) language
 ;;;   :plum-update-grammar   — re-clone and recompile (purges old source)
-;;;   :plum-ensure-grammars  — install all missing declared grammars
+;;;   :plum-ensure-grammars  — install named grammars not yet compiled (list required)
 ;;;   :plum-list-grammars    — log installed / declared / orphan / missing
 ;;;   :plum-cleanup-grammars — delete orphan compiled grammars
 
@@ -53,16 +53,14 @@
 (define (plum/grammar-highlights-path name)
   (path-join (plum/grammar-source-dir name) "highlights.scm"))
 
+;;; Helix commit pin, read once at plugin load.
+(define *plum-helix-pin*
+  (call-with-input-file (path-join (runtime-dir) "scheme" "helix-pin.scm") read))
+
 ;;; URL for the Helix-pinned highlights query for `name`.
 (define (plum/helix-query-url name)
-  (define helix-pin
-    (call-with-input-file
-      (path-join (runtime-dir) "scheme" "helix-pin.scm")
-      read))
-  (string-append
-    "https://raw.githubusercontent.com/helix-editor/helix/"
-    helix-pin
-    "/runtime/queries/" name "/highlights.scm"))
+  (string-append "https://raw.githubusercontent.com/helix-editor/helix/"
+                 *plum-helix-pin* "/runtime/queries/" name "/highlights.scm"))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
@@ -70,27 +68,27 @@
 (define (plum/grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
+;;; Strip the platform extension from `filename`, returning the grammar name,
+;;; or `#f` if the file has no extension (e.g. "sources" dir, dotfiles like
+;;; ".DS_Store" where the dot is at position 0).
+(define (plum/grammar-name-from-file filename)
+  (let* ((len (string-length filename))
+         (last-dot
+           (let search ((i (- len 1)))
+             (cond ((<= i 0) -1)
+                   ((equal? (substring filename i (+ i 1)) ".") i)
+                   (else (search (- i 1)))))))
+    (if (> last-dot 0) (substring filename 0 last-dot) #f)))
+
 ;;; Names of all compiled grammars on disk (filenames in <data>/grammars/
-;;; matching .<ext> suffix, excluding the sources/ subdirectory).
+;;; with a real extension, excluding the sources/ subdirectory and dotfiles).
 (define (plum/installed-grammars)
   (let ((gdir (plum/grammars-dir)))
     (if (not (path-exists? gdir))
         '()
-        (filter
-          (lambda (name) (not (equal? name "sources")))
-          (map (lambda (filename)
-                 ;; Strip the platform extension to get the grammar name.
-                 (let* ((dot (string-length filename))
-                        (last-dot
-                          (let search ((i (- dot 1)))
-                            (cond ((< i 0) dot)
-                                  ((equal? (substring filename i (+ i 1)) ".") i)
-                                  (else (search (- i 1)))))))
-                   (substring filename 0 last-dot)))
-               (filter
-                 (lambda (e) (and (plum/valid-dir-entry? e)
-                                  (not (equal? e "sources"))))
-                 (list-dir gdir)))))))
+        (filter (lambda (x) x)
+                (map plum/grammar-name-from-file
+                     (filter plum/valid-dir-entry? (list-dir gdir)))))))
 
 ;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
@@ -130,7 +128,7 @@
 ;;; Called at plugin load time.  For each declared grammar that is already
 ;;; compiled on disk, call register-grammar! (no subprocess).  Missing grammars
 ;;; are silently skipped — the user opts in to auto-install via:
-;;;   (call! "plum-ensure-grammars")   ; in init.scm, after (load-plugin "core:plum")
+;;;   (call! "plum-ensure-grammars" '("rust" "json"))  ; in init.scm, list required
 (define (plum/register-installed-grammars!)
   (for-each
     (lambda (name)
@@ -174,11 +172,13 @@
               (plum/install-grammar name)))))))
 
 (define-command-inline-output! "plum-ensure-grammars"
-  "Install all declared grammars that are not yet compiled."
-  (lambda ()
-    (let ((missing (plum/missing-grammars)))
+  "Install the named grammars (a list) that are not yet compiled."
+  (lambda (grammars)
+    (unless (and (list? grammars) (not (null? grammars)))
+      (error "plum-ensure-grammars: requires a non-empty list of grammar names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
+    (let ((missing (filter (lambda (name) (not (plum/grammar-installed? name))) grammars)))
       (if (null? missing)
-          (log! 'info "PLUM: all declared grammars are installed")
+          (log! 'info "PLUM: all requested grammars are installed")
           (plum/batch-run "installed grammar" missing plum/install-grammar)))))
 
 (define-command! "plum-list-grammars"

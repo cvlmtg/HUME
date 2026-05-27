@@ -62,10 +62,7 @@ pub(crate) fn compile_grammar(
         steel::stop!(Generic =>
             "compile-grammar!: src must not contain '..' components: {}", src);
     }
-    if super::fs::has_dotdot(&out_path) {
-        steel::stop!(Generic =>
-            "compile-grammar!: out must not contain '..' components: {}", out);
-    }
+    super::shell::validate_new_path(&out_path, "compile-grammar!", super::shell::SandboxKind::Grammars)?;
 
     // Sandbox-check src (must exist → full canonicalize).
     let canonical_src = crate::os::fs::canonicalize(&src_path).map_err(|e| {
@@ -79,37 +76,6 @@ pub(crate) fn compile_grammar(
             Err(SteelErr::new(
                 steel::rerrs::ErrorKind::Generic,
                 format!("compile-grammar!: src '{src}' is outside the grammars sandbox"),
-            ))
-        } else {
-            Ok(())
-        }
-    })??;
-
-    // Sandbox-check out (may not exist yet → parent canonicalize + file_name).
-    let out_parent = out_path.parent().ok_or_else(|| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("compile-grammar!: out has no parent: {out}"),
-        )
-    })?;
-    let canonical_out_parent = crate::os::fs::canonicalize(out_parent).map_err(|e| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("compile-grammar!: cannot resolve parent of '{out}': {e}"),
-        )
-    })?;
-    let file_name = out_path.file_name().ok_or_else(|| {
-        SteelErr::new(
-            steel::rerrs::ErrorKind::Generic,
-            format!("compile-grammar!: out has no file name (ends with '.'?): {out}"),
-        )
-    })?;
-    let canonical_out = canonical_out_parent.join(file_name);
-    super::fs::with_data_grammars(|sandbox| {
-        if !canonical_out.starts_with(sandbox) {
-            Err(SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("compile-grammar!: out '{out}' is outside the grammars sandbox"),
             ))
         } else {
             Ok(())

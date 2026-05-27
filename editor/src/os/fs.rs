@@ -40,3 +40,7 @@ pub(crate) fn remove_file(p: &Path) -> io::Result<()> {
 pub(crate) fn read_to_string(p: &Path) -> io::Result<String> {
     fs::read_to_string(p)
 }
+
+pub(crate) fn symlink_metadata(p: &Path) -> io::Result<fs::Metadata> {
+    fs::symlink_metadata(p)
+}

@@ -1104,6 +1104,35 @@ fn define_command_collision_with_builtin_keeps_builtin() {
     );
 }
 
+/// A lazy plugin whose body contains a top-level `(call! "move-right")` must
+/// have that command executed when the plugin is activated at runtime (command
+/// trigger).  Before the fix, the queued command was silently dropped because
+/// `activate_and_register` never drained `pending_startup_commands`.
+///
+/// Flip: remove the `drain_command_queue(queued, …)` call in
+/// `activate_and_register` → cursor does not move → `assert_ne!` fails.
+#[test]
+#[cfg(not(windows))]
+fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
+    // Plugin defines "trigger-me" (the command stub key) + calls move-right at
+    // load time.  When "trigger-me" is dispatched, the plugin activates and the
+    // body-level (call! "move-right") should execute.
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:on-command '("trigger-me"))"#,
+        r#"(define-command! "trigger-me" "doc" (lambda () (+ 1 0)))
+           (call! "move-right")"#,
+    );
+    let before = state(&ed);
+
+    type_cmd(&mut ed, ":trigger-me");
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "body-level (call! \"move-right\") must execute when the plugin activates at runtime"
+    );
+}
+
 /// Keymap lint is silent when every bound key targets a registered command.
 ///
 /// Flip: the test above binds an *unknown* name and asserts a Warning is

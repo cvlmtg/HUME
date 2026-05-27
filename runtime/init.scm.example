@@ -191,12 +191,12 @@
 ;; Missing grammars are NOT auto-installed — opt in explicitly with (call! …):
 ;;
 ;;   (load-plugin "core:plum")
-;;   (call! "plum-ensure-grammars")   ; install all missing grammars at startup
+;;   (call! "plum-ensure-grammars" '("rust" "json"))   ; install listed grammars at startup
 ;;
 ;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
 ;;   :plum-install-grammar  — install grammar for current buffer's language
 ;;   :plum-update-grammar   — re-clone + recompile (purges old source)
-;;   :plum-ensure-grammars  — install all declared-but-missing grammars
+;;   :plum-ensure-grammars  — install listed grammars not yet compiled (list required)
 ;;   :plum-list-grammars    — show installed / declared / orphan / missing
 ;;   :plum-cleanup-grammars — delete orphan compiled grammars
 

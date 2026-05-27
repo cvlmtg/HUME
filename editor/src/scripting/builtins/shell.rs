@@ -64,6 +64,12 @@ pub(crate) fn validate_new_path(
         )
     })?;
     let canonical_dest = canonical_parent.join(file_name);
+    if let Ok(meta) = crate::os::fs::symlink_metadata(&canonical_dest) {
+        if meta.file_type().is_symlink() {
+            steel::stop!(Generic =>
+                "{fn_name}: dest is a symlink (refusing to follow): {}", dest.display());
+        }
+    }
     sandbox_write_check(&canonical_dest, &dest.to_string_lossy(), kind)
 }
 
@@ -379,6 +385,55 @@ mod tests {
         assert!(
             err.to_string().contains("sandbox"),
             "expected sandbox error, got: {err}"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn git_clone_rev_rejects_symlink_dest() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let link = tmp.path().join("hume/grammars/sources/evil");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let dest = link.to_string_lossy().to_string();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = git_clone_rev(
+            &mut ctx,
+            "https://example.com/ts-rust.git".into(),
+            dest,
+            "abc123".into(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("symlink"),
+            "expected symlink error, got: {err}"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn curl_fetch_rejects_symlink_dest() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        let outside = tmp.path().join("outside.txt");
+        fs::write(&outside, b"").unwrap();
+        let link = tmp.path().join("hume/grammars/sources/rust/highlights.scm");
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let dest = link.to_string_lossy().to_string();
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = curl_fetch(&mut ctx, "https://example.com/hl.scm".into(), dest).unwrap_err();
+        assert!(
+            err.to_string().contains("symlink"),
+            "expected symlink error, got: {err}"
         );
     }
 }

@@ -2108,6 +2108,74 @@ fn load_plugin_in_body_absent_dep_errors() {
     );
 }
 
+// ── arity-1 command list-arg validation (plum-ensure-grammars pattern) ───────
+
+/// An arity-1 command that validates its arg is a non-empty list must error
+/// when called with no args (#f from minibuffer path).
+///
+/// Flip: change `unless` guard to `(when #t ...)` and the error disappears.
+#[test]
+fn arity1_list_command_rejects_false_arg() {
+    use steel::rvals::SteelVal;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "needs-list" ""
+             (lambda (items)
+               (unless (and (list? items) (not (null? items)))
+                 (error "needs-list: requires a non-empty list"))
+               (call! "move-right")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd(
+            "%hume-cmd-needs-list",
+            None,
+            vec![SteelVal::BoolV(false)],
+            test_refs(&mut s, &mut km),
+        )
+        .unwrap_err();
+    assert!(
+        err.contains("requires a non-empty list"),
+        "expected list-required error, got: {err}"
+    );
+}
+
+/// An arity-1 command that validates its arg is a non-empty list must succeed
+/// when passed a real list.
+///
+/// Flip: change the guard to always error and the Ok below becomes Err.
+#[test]
+fn arity1_list_command_accepts_list_arg() {
+    use steel::rvals::IntoSteelVal as _;
+    use steel::rvals::SteelVal;
+    let mut h = host();
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    h.eval_source(
+        r#"(define-command! "needs-list" ""
+             (lambda (items)
+               (unless (and (list? items) (not (null? items)))
+                 (error "needs-list: requires a non-empty list"))
+               (call! "move-right")))"#,
+        &mut s,
+        &mut km,
+    )
+    .unwrap();
+    let items: Vec<SteelVal> = vec!["rust".into_steelval().unwrap()];
+    let list_val = items.into_steelval().unwrap();
+    let result = h.call_steel_cmd(
+        "%hume-cmd-needs-list",
+        None,
+        vec![list_val],
+        test_refs(&mut s, &mut km),
+    );
+    assert!(result.is_ok(), "expected Ok for valid list arg, got: {:?}", result.err());
+}
+
 /// `(load-plugin …)` raises a Steel error when called from a command body
 /// (`is_init = false`), mirroring the `register-hook!` guard.
 ///

@@ -11,6 +11,7 @@ impl Editor {
     /// report triple.
     pub(super) fn activate_and_register(&mut self, plugin: &crate::scripting::attribution::PluginId) {
         let budget = self.settings.steel_init_budget_ms as u64;
+        let startup_base = self.scripting.as_ref().map_or(0, |h| h.pending_startup_commands.len());
         let result = {
             let Some(host) = self.scripting.as_mut() else { return };
             host.activate_plugin(
@@ -23,8 +24,18 @@ impl Editor {
         };
         match result {
             Ok(cmds) => self.register_steel_cmds(cmds),
-            Err(e) => self.report(Severity::Error, e),
+            Err(e) => {
+                self.report(Severity::Error, e);
+                return;
+            }
         }
+        let queued = match self.scripting.as_mut() {
+            Some(h) if h.pending_startup_commands.len() > startup_base => {
+                h.pending_startup_commands.split_off(startup_base)
+            }
+            _ => return,
+        };
+        self.drain_command_queue(queued, 1, false);
     }
 
     /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
