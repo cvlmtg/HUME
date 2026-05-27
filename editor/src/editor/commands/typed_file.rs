@@ -10,11 +10,24 @@ pub fn typed_quit(
     force: bool,
 ) -> Result<(), CommandError> {
     if !force && ed.doc().is_dirty() {
-        Err(CommandError("Unsaved changes (add ! to override)".into()))
-    } else {
-        ed.should_quit = true;
-        Ok(())
+        return Err(CommandError("Unsaved changes (add ! to override)".into()));
     }
+
+    let current = ed.focused_buffer_id();
+    // "Real" = has a backing file OR is editable (a writable scratch buffer).
+    // Pure read-only view buffers like [messages] are ephemeral — not worth staying for.
+    let any_other_real = ed
+        .buffers
+        .iter()
+        .filter(|(id, _)| *id != current)
+        .any(|(_, buf)| buf.path().is_some() || !buf.is_read_only());
+
+    if !any_other_real {
+        ed.should_quit = true;
+    } else {
+        ed.close_buffer(current);
+    }
+    Ok(())
 }
 
 pub fn typed_write(

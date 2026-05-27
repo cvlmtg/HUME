@@ -244,6 +244,93 @@ fn colon_q_on_clean_buffer_quits() {
     assert!(ed.should_quit);
 }
 
+// ── :q multi-buffer behavior ──────────────────────────────────────────────────
+
+#[test]
+fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
+    // :q on a view buffer when a real (file) buffer is also open should
+    // close the view buffer and switch to the file buffer — not exit hume.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let file_buf = ed.focused_buffer_id();
+    // Open a read-only view buffer (simulates :messages).
+    ed.open_read_only_view("[test-view]", "log line\n", 0);
+    let view_buf = ed.focused_buffer_id();
+    assert_ne!(file_buf, view_buf, "must have switched to view buffer");
+
+    type_cmd(&mut ed, ":q");
+
+    assert!(!ed.should_quit, ":q must not exit when a real buffer remains");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        file_buf,
+        ":q must switch focus back to the file buffer"
+    );
+    assert_eq!(ed.buffers.len(), 1, "view buffer must be removed");
+}
+
+#[test]
+fn colon_q_real_buffer_with_editable_scratch_switches_not_quits() {
+    // An editable scratch buffer (no path, not read-only) is a "real" buffer —
+    // :q on a file buffer should switch to it rather than exit.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let file_buf = ed.focused_buffer_id();
+    let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.switch_to_buffer_without_jump(file_buf);
+
+    type_cmd(&mut ed, ":q");
+
+    assert!(!ed.should_quit, ":q must not exit when an editable scratch buffer remains");
+    assert_eq!(ed.focused_buffer_id(), scratch_id, "must switch to the scratch buffer");
+}
+
+#[test]
+fn colon_q_one_of_two_file_buffers_switches_not_quits() {
+    // :q with two file buffers open closes the current one and switches.
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let first_buf = ed.focused_buffer_id();
+
+    let tmp2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp2.path(), "world\n").unwrap();
+    let (_, meta2) = crate::os::io::read_file(tmp2.path()).unwrap();
+    let mut buf2 = crate::editor::buffer::Buffer::new(
+        crate::core::text::Text::from("world\n"),
+        SelectionSet::default(),
+    );
+    buf2.set_path(Some(tmp2.path().to_path_buf()));
+    buf2.file_meta = Some(meta2);
+    let second_buf = ed.open_buffer(buf2);
+    ed.switch_to_buffer_without_jump(second_buf);
+    assert_eq!(ed.focused_buffer_id(), second_buf);
+
+    type_cmd(&mut ed, ":q");
+
+    assert!(!ed.should_quit, ":q must not exit when another file buffer remains");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        first_buf,
+        ":q must switch to the MRU other buffer"
+    );
+    assert_eq!(ed.buffers.len(), 1, "closed buffer must be removed");
+}
+
+#[test]
+fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
+    // View buffers (labeled, no path) count as scratch — :q on the last
+    // file buffer should exit hume even when a view buffer is still open.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let file_buf = ed.focused_buffer_id();
+    ed.open_read_only_view("[test-view]", "log line\n", 0);
+    // Switch focus back to the file buffer.
+    ed.switch_to_buffer_without_jump(file_buf);
+
+    type_cmd(&mut ed, ":q");
+
+    assert!(
+        ed.should_quit,
+        ":q must exit when the only remaining buffer is a view buffer"
+    );
+}
+
 #[test]
 fn colon_w_path_creates_new_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
