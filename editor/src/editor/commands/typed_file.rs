@@ -30,6 +30,20 @@ pub fn typed_quit(
     Ok(())
 }
 
+pub fn typed_quit_all(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    if !force && ed.buffers.iter().any(|(_, buf)| buf.is_dirty()) {
+        return Err(CommandError(
+            "Unsaved changes in open buffers (add ! to override)".into(),
+        ));
+    }
+    ed.should_quit = true;
+    Ok(())
+}
+
 pub fn typed_write(
     ed: &mut Editor,
     arg: Option<&str>,

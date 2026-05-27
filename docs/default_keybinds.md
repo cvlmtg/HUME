@@ -294,6 +294,7 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 | `:quit` | `:q` | Quit the editor |
 | `:write` | `:w` | Write current buffer to disk |
 | `:write-quit` | `:wq` | Write and quit |
+| `:quit-all` | `:qa` | Quit the editor, closing all buffers |
 | `:toggle-soft-wrap` | `:wrap` | Toggle soft line wrapping |
 | `:set global <key>=<value>` | | Set a global setting |
 | `:set buffer <key>=<value>` | | Set a buffer-local setting override |

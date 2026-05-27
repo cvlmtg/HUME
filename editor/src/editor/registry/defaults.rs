@@ -844,6 +844,7 @@ impl CommandRegistry {
         }
 
         typed_cmd!("quit", "Close the editor.", &["q"], typed_quit);
+        typed_cmd!("quit-all", "Quit the editor, closing all buffers.", &["qa"], typed_quit_all);
         typed_cmd!("write", "Write changes to disk.", &["w"], typed_write);
         typed_cmd!(
             "write-quit",

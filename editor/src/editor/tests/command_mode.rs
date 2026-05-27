@@ -361,6 +361,80 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     assert_eq!(ed.buffers.len(), 1, "dirty buffer must be removed");
 }
 
+// ── :qa quit-all behavior ─────────────────────────────────────────────────────
+
+#[test]
+fn colon_qa_quits_single_clean_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_cmd(&mut ed, ":qa");
+    assert!(ed.should_quit);
+}
+
+#[test]
+fn colon_qa_quits_with_multiple_clean_buffers() {
+    // :qa must exit even when :q would only close the focused buffer.
+    // Validity: replace `should_quit = true` with `close_buffer` and this fails.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let _scratch = ed.open_buffer(Buffer::scratch());
+    ed.switch_to_buffer_without_jump(ed.focused_buffer_id()); // stay on file buf
+
+    type_cmd(&mut ed, ":qa");
+
+    assert!(ed.should_quit, ":qa must quit with multiple clean buffers");
+}
+
+#[test]
+fn colon_qa_refused_when_a_background_buffer_is_dirty() {
+    // :qa must check ALL buffers, not just the focused one.
+    // Validity: swap `ed.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
+    // this test fails — the dirty background buffer would be silently ignored.
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let file_buf = ed.focused_buffer_id();
+
+    // Open a second file buffer and dirty it.
+    let tmp2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp2.path(), "world\n").unwrap();
+    let (_, meta2) = crate::os::io::read_file(tmp2.path()).unwrap();
+    let mut buf2 = crate::editor::buffer::Buffer::new(
+        crate::core::text::Text::from("world\n"),
+        SelectionSet::default(),
+    );
+    buf2.set_path(Some(tmp2.path().to_path_buf()));
+    buf2.file_meta = Some(meta2);
+    let bg_buf = ed.open_buffer(buf2);
+    ed.switch_to_buffer_without_jump(bg_buf);
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "background buffer must be dirty");
+
+    // Switch focus back to the clean file buffer.
+    ed.switch_to_buffer_without_jump(file_buf);
+    assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
+
+    type_cmd(&mut ed, ":qa");
+
+    assert!(!ed.should_quit, ":qa must be refused when any buffer is dirty");
+    assert_eq!(
+        ed.status_msg.as_deref(),
+        Some("Unsaved changes in open buffers (add ! to override)"),
+    );
+}
+
+#[test]
+fn colon_qa_bang_quits_despite_dirty_buffers() {
+    // :qa! must discard unsaved changes and quit unconditionally.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty());
+
+    type_cmd(&mut ed, ":qa!");
+
+    assert!(ed.should_quit, ":qa! must quit despite dirty buffer");
+}
+
 #[test]
 fn colon_w_path_creates_new_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
