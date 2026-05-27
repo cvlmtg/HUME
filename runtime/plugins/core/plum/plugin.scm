@@ -13,7 +13,6 @@
 ;;; To disable startup auto-install of missing grammars:
 ;;;   (set! *plum-auto-install-grammars* #f)   ; after (load-plugin "core:plum")
 
-(require "lib.scm")
 (require "plugins.scm")
 (require "grammars.scm")
 

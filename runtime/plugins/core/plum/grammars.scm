@@ -12,6 +12,9 @@
 ;;;   :plum-list-grammars    — log installed / declared / orphan / missing
 ;;;   :plum-cleanup-grammars — delete orphan compiled grammars
 
+(require "lib.scm")
+(provide plum/declare-grammar-source! plum/ensure-grammars!)
+
 ;; ── Grammar source registry ───────────────────────────────────────────────────
 
 ;;; Hash: name → (url rev symbol subpath)

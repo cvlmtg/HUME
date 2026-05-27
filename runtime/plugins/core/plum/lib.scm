@@ -1,5 +1,7 @@
 ;;; core:plum/lib.scm — shared utilities for the PLUM plugin manager.
 
+(provide plum/valid-dir-entry? plum/batch-run)
+
 ;; ── Directory entry filter ────────────────────────────────────────────────────
 
 ;;; Return #t if `name` is a valid, traversable directory entry (not "." or "..").

@@ -1,5 +1,7 @@
 ;;; core:plum/plugins.scm — plugin installation and management commands.
 
+(require "lib.scm")
+
 ;; ── Path helpers ──────────────────────────────────────────────────────────────
 
 (define (plum/plugins-dir)
