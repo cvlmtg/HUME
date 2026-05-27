@@ -13,7 +13,7 @@
 
 ;;; Run `thunk` on each name in `names`, collecting errors rather than
 ;;; aborting.  Logs per-item progress and a summary at the end.
-;;; Returns void.
+;;; Returns the count of successful thunk calls.
 (define (plum/batch-run verb names thunk)
   (let loop ((names names) (ok 0) (errs '()))
     (cond
@@ -23,7 +23,8 @@
                             (number->string ok) " " verb
                             " — "
                             (number->string (length errs)) " failed"))
-       (for-each (lambda (e) (log! 'error e)) (reverse errs)))
+       (for-each (lambda (e) (log! 'error e)) (reverse errs))
+       ok)
       (else
        (let ((name (car names)))
          (log! 'info (string-append "PLUM: " verb " " name))

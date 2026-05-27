@@ -62,10 +62,12 @@
     (let ((missing (plum/missing-plugins)))
       (if (null? missing)
           (log! 'info "PLUM: nothing to install")
-          (plum/batch-run "installed" missing
-            (lambda (name)
-              (git-clone (string-append "https://github.com/" name ".git")
-                         (plum/plugin-dir name))))))))
+          (let ((n (plum/batch-run "installed" missing
+                     (lambda (name)
+                       (git-clone (string-append "https://github.com/" name ".git")
+                                  (plum/plugin-dir name))))))
+            (when (> n 0)
+              (call! "reload-config")))))))
 
 (define-command! "plum-cleanup"
   "Remove on-disk plugins that are no longer declared in init.scm."
@@ -82,8 +84,10 @@
     (let ((installed (plum/installed-plugins)))
       (if (null? installed)
           (log! 'info "PLUM: no installed plugins to update")
-          (plum/batch-run "updated" installed
-            (lambda (name) (git-pull (plum/plugin-dir name))))))))
+          (let ((n (plum/batch-run "updated" installed
+                     (lambda (name) (git-pull (plum/plugin-dir name))))))
+            (when (> n 0)
+              (call! "reload-config")))))))
 
 (define-command! "plum-list"
   "Log the declared, installed, orphan, and missing plugin lists."

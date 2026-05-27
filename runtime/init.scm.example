@@ -165,8 +165,8 @@
 ;;
 ;;   (declare-plugin "user/repo") with no keywords — bare-lazy: records the
 ;;     plugin without loading it.  Body runs only when (load-plugin "user/repo")
-;;     is called later, or never (PLUM installs it; reload-config loads it next
-;;     startup).
+;;     is called later, or never (PLUM installs it; config reloads automatically
+;;     so the plugin activates in the same session).
 ;;
 ;; Inside a plugin body, (load-plugin "user/dep") pulls in a dependency
 ;; immediately.  If the dependency is absent on disk, init aborts with an error.
@@ -206,8 +206,9 @@
 ;; (load-plugin "core:classic-paste")
 
 ;; Declare third-party plugins to be installed by :plum-install.
-;; These are absent on a fresh setup; PLUM installs them, then :reload-config
-;; loads them.  No error on first run — the absent case is silently skipped.
+;; These are absent on a fresh setup; PLUM installs them and reloads the config
+;; automatically so they activate in the same session.
+;; No error on first run — the absent case is silently skipped.
 ;; (load-plugin "alice/my-theme")
 ;; (load-plugin "bob/rust-extras")
 
