@@ -338,21 +338,22 @@ fn reparse_reattaches_after_shrink_under_cap() {
 }
 
 // ---------------------------------------------------------------------------
-// Startup auto-install: pending_grammar_installs deferral
+// Startup command queue: (call! …) at init defers to pending_startup_commands
 // ---------------------------------------------------------------------------
 
-/// With one grammar installed (compiled lib inside data/grammars/) and one
-/// declared-but-missing, a minimal init that mirrors the `plum/ensure-grammars!`
-/// contract must:
-///   - register the installed grammar (no subprocess; pending_grammar_installs
-///     remains empty for that name)
-///   - push the missing name to `pending_grammar_installs`
+/// Passive load contract: an init that registers installed grammars directly
+/// (like plum/register-installed-grammars!) must NOT push anything to
+/// `pending_startup_commands`.  A separate `(call! "some-cmd")` call in the
+/// same init MUST push exactly one `QueuedCommand` into `pending_startup_commands`.
 ///
-/// Flip: if queue-grammar-install! never pushed, pending_grammar_installs would
-/// be empty and the editor would skip the startup bracket.
+/// Flip: if passive load accidentally pushed, the startup drainer would fire an
+/// extra command.  If (call!) in init silently dropped the entry, the user's
+/// opt-in `(call! "plum-ensure-grammars")` would never run.
 #[test]
 #[cfg(not(windows))]
-fn ensure_grammars_queues_missing_and_registers_installed() {
+fn passive_load_registers_installed_and_call_queues_startup_command() {
+    use crate::scripting::QueuedCommand;
+
     let (parser, hl) = grammar_fixture("json");
     let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
 
@@ -361,22 +362,16 @@ fn ensure_grammars_queues_missing_and_registers_installed() {
     std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
 
-    // Copy the fixture parser into the grammars sandbox so path-exists? succeeds
-    // on the sandboxed path returned by grammar-output-path.
     let grammar_out = data_dir.join("grammars").join(format!("json.{ext}"));
     std::fs::copy(&parser, &grammar_out).unwrap();
-
-    // Copy the highlights file into the sources dir so register-grammar! has
-    // an accessible highlights path.
     let hl_dest = data_dir.join("grammars/sources/json-hl.scm");
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
-    // The Steel init mirrors plum/ensure-grammars! using the real builtins:
-    //  - grammar-output-path  returns <data>/grammars/<name>.<ext>  (sandboxed)
-    //  - path-exists?         checks the grammars sandbox
-    //  - register-grammar!    attaches a grammar in init mode
-    //  - queue-grammar-install! defers missing grammars for post-init install
+    // Mirrors the new plum/register-installed-grammars! contract:
+    //  - register "json" (installed on disk) — no side effects on startup queue
+    //  - skip "phantom" (missing) — passive, nothing queued
+    //  - call! "plum-ensure-grammars" — must land in pending_startup_commands
     std::fs::write(&init_path, format!(
         r#"
 (define hl-path "{hl}")
@@ -384,44 +379,34 @@ fn ensure_grammars_queues_missing_and_registers_installed() {
 (define (grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
-(define (do-ensure! names)
+(define (do-register! names)
   (for-each
     (lambda (name)
-      (cond
-        ((grammar-installed? name)
-         (register-grammar! name (grammar-output-path name) "tree_sitter_json" hl-path))
-        (else
-         (queue-grammar-install! name))))
+      (when (and (grammar-installed? name) (path-exists? hl-path))
+        (register-grammar! name (grammar-output-path name) "tree_sitter_json" hl-path)))
     names))
 
-(do-ensure! (list "json" "phantom"))
+(do-register! (list "json" "phantom"))
+(call! "plum-ensure-grammars")
         "#,
         hl = hl_dest.display(),
     )).unwrap();
 
     let mut host = ScriptingHost::new();
     host.data_dir = Some(data_dir.clone());
-    // Re-initialize dirs after ScriptingHost::new() (which calls init_dirs with
-    // system dirs) so grammar-output-path returns paths in our temp sandbox.
     crate::scripting::builtins::fs::init_dirs(Some(data_dir.clone()), None);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     host.eval_init(&init_path, &mut s, &mut km, Default::default())
         .expect("eval_init must succeed");
 
-    // "phantom" must be queued; "json" must not be (it was registered directly).
+    // No grammar names are left in a separate queue — that field is gone.
+    // The (call!) call must have produced exactly one pending startup command.
     assert_eq!(
-        host.pending_grammar_installs,
-        vec!["phantom".to_string()],
-        "only the missing grammar must be in pending_grammar_installs"
+        host.pending_startup_commands,
+        vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
+        "(call!) in init must push to pending_startup_commands"
     );
-
-    // Editor wiring: run_startup_grammar_install detects non-empty list.
-    let mut ed = editor_from("-[a]>b\n");
-    ed.scripting = Some(host);
-    let has_pending = ed.scripting.as_ref()
-        .is_some_and(|s| !s.pending_grammar_installs.is_empty());
-    assert!(has_pending, "pending_grammar_installs must be non-empty before startup bracket");
 }
 
 // ---------------------------------------------------------------------------

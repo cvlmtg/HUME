@@ -1,9 +1,8 @@
 ;;; core:plum/grammars.scm — tree-sitter grammar installation pipeline.
 ;;;
-;;; Provided procedures (callable from user init.scm via (call! …)):
-;;;   plum/declare-grammar-source!  — declare a grammar name + source info
-;;;   plum/ensure-grammars!         — register installed, queue missing for
-;;;                                   startup auto-install if *plum-auto-install-grammars*
+;;; Provided procedures:
+;;;   plum/declare-grammar-source!         — declare a grammar name + source info
+;;;   plum/register-installed-grammars!    — register already-compiled grammars (passive)
 ;;;
 ;;; Commands defined here:
 ;;;   :plum-install-grammar  — install grammar for current (or named) language
@@ -13,7 +12,7 @@
 ;;;   :plum-cleanup-grammars — delete orphan compiled grammars
 
 (require "lib.scm")
-(provide plum/declare-grammar-source! plum/ensure-grammars!)
+(provide plum/declare-grammar-source! plum/register-installed-grammars!)
 
 ;; ── Grammar source registry ───────────────────────────────────────────────────
 
@@ -126,27 +125,20 @@
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path)))
 
-;; ── Startup auto-install control ─────────────────────────────────────────────
+;; ── Startup grammar registration ─────────────────────────────────────────────
 
-;;; Set to #f in init.scm to disable startup auto-install of missing grammars.
-(define *plum-auto-install-grammars* #t)
-
-;;; Called at plugin load time.  For each declared grammar:
-;;;   - Already compiled → register-grammar! (queues PendingLanguageReg, no subprocess).
-;;;   - Missing + auto-install enabled → queue-grammar-install! (signals the editor
-;;;     to run the startup bracket after init.scm completes).
-(define (plum/ensure-grammars!)
+;;; Called at plugin load time.  For each declared grammar that is already
+;;; compiled on disk, call register-grammar! (no subprocess).  Missing grammars
+;;; are silently skipped — the user opts in to auto-install via:
+;;;   (call! "plum-ensure-grammars")   ; in init.scm, after (load-plugin "core:plum")
+(define (plum/register-installed-grammars!)
   (for-each
     (lambda (name)
       (let ((out  (grammar-output-path name))
             (hl   (plum/grammar-highlights-path name))
             (sym  (plum/grammar-source-symbol name)))
-        (cond
-          ((plum/grammar-installed? name)
-           (when (path-exists? hl)
-             (register-grammar! name out sym hl)))
-          (*plum-auto-install-grammars*
-           (queue-grammar-install! name)))))
+        (when (and (plum/grammar-installed? name) (path-exists? hl))
+          (register-grammar! name out sym hl))))
     (hash-keys->list *plum-grammar-sources*)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────

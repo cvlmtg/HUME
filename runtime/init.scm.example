@@ -187,10 +187,11 @@
 ;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
 ;;
 ;; Load plum first so it can install plugins and grammars.
-;; When PLUM loads it checks the pinned grammar catalog and:
-;;   - registers any already-compiled grammars immediately (no subprocess)
-;;   - auto-installs any missing grammars via an alt-screen bracket before the
-;;     editor starts (set *plum-auto-install-grammars* to #f to disable)
+;; When PLUM loads it registers any already-compiled grammars (no subprocess).
+;; Missing grammars are NOT auto-installed — opt in explicitly with (call! …):
+;;
+;;   (load-plugin "core:plum")
+;;   (call! "plum-ensure-grammars")   ; install all missing grammars at startup
 ;;
 ;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
 ;;   :plum-install-grammar  — install grammar for current buffer's language
@@ -200,9 +201,6 @@
 ;;   :plum-cleanup-grammars — delete orphan compiled grammars
 
 ;; (load-plugin "core:plum")
-
-;; Opt out of startup auto-install (PLUM must be loaded first):
-;; (set! *plum-auto-install-grammars* #f)
 
 ;; (load-plugin "core:helix-surround")
 ;; (load-plugin "core:classic-paste")

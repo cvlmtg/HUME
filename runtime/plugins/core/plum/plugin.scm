@@ -10,8 +10,8 @@
 ;;; Usage in init.scm (add before other third-party plugin declarations):
 ;;;   (load-plugin "core:plum")
 ;;;
-;;; To disable startup auto-install of missing grammars:
-;;;   (set! *plum-auto-install-grammars* #f)   ; after (load-plugin "core:plum")
+;;; To auto-install missing grammars at startup, add after the load:
+;;;   (call! "plum-ensure-grammars")
 
 (require "plugins.scm")
 (require "grammars.scm")
@@ -26,4 +26,4 @@
 
 ;; ── Register installed grammars + queue missing ones ─────────────────────────
 
-(plum/ensure-grammars!)
+(plum/register-installed-grammars!)

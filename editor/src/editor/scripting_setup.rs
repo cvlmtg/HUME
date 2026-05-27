@@ -254,30 +254,24 @@ impl Editor {
         }
     }
 
-    // ── Startup grammar install ───────────────────────────────────────────────
+    // ── Startup command drain ─────────────────────────────────────────────────
 
-    /// If `plum/ensure-grammars!` queued missing grammars during `init_scripting`,
-    /// dispatch `plum-ensure-grammars` once so they install with live progress in
-    /// the alt-screen bracket.  No-op when nothing is pending (common case).
+    /// Drain commands queued by `(call! …)` in init.scm or plugin load bodies.
     ///
-    /// Called from `lib.rs` after `init_scripting` and `open_extra_files`, before
-    /// `run`.  The `plum-ensure-grammars` command is defined with
-    /// `define-command-inline-output!`, so its own dispatch arm handles the
-    /// enter/leave alt-screen bracket.
-    pub(crate) fn run_startup_grammar_install(&mut self) {
-        let has_pending = self
+    /// Called from `lib.rs` after `init_scripting` and `open_extra_files`.
+    /// No-op when nothing is pending (common case).  Commands with
+    /// `inline_output` get the alt-screen bracket automatically via the normal
+    /// `execute_keymap_command` / `SteelBacked` dispatch path.
+    pub(crate) fn run_startup_commands(&mut self) {
+        let cmds = self
             .scripting
-            .as_ref()
-            .is_some_and(|s| !s.pending_grammar_installs.is_empty());
-        if !has_pending {
+            .as_mut()
+            .map(|s| std::mem::take(&mut s.pending_startup_commands))
+            .unwrap_or_default();
+        if cmds.is_empty() {
             return;
         }
-        self.execute_keymap_command(
-            "plum-ensure-grammars".into(),
-            1,
-            false,
-            vec![],
-        );
+        self.drain_command_queue(cmds, 1, false);
     }
 
     // ── Theme loading ─────────────────────────────────────────────────────────

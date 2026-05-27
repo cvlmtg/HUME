@@ -177,10 +177,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "git-clone-rev", shell::git_clone_rev);
     engine.register_fn_with_ctx(HUME_CTX, "curl-fetch", shell::curl_fetch);
 
-    // Grammar compilation and startup install signalling
+    // Grammar compilation
     engine.register_fn_with_ctx(HUME_CTX, "grammar-output-path", grammar::grammar_output_path);
     engine.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
-    engine.register_fn_with_ctx(HUME_CTX, "queue-grammar-install!", grammar::queue_grammar_install);
 
     // Logging — push messages to the editor message log
     engine.register_fn_with_ctx(HUME_CTX, "log!", fs::log_msg);

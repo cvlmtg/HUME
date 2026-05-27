@@ -144,23 +144,27 @@ fn define_command_inner(
 /// `%call!` — fixed-arity-2 Rust primitive underlying the `(call! name args…)` macro.
 ///
 /// The BOOTSTRAP macro `(call! name args…)` desugars to `(%call! name (list args…))`,
-/// so this function always receives `(name, args-list)`.  Queues `(name, args_vec)`
-/// for execution after the current Steel command proc returns.
+/// so this function always receives `(name, args-list)`.
 ///
-/// Only valid inside a `SteelBacked` command invocation; raises a Steel error
-/// if called from top-level `init.scm`.
+/// During init (init.scm or plugin load): queues `(name, args_vec)` into
+/// `pending_startup_commands`, drained by `Editor::run_startup_commands` after all
+/// plugins activate.  This is the mechanism for opt-in startup side-effects like
+/// `(call! "plum-ensure-grammars")` in init.scm.
+///
+/// During command dispatch: queues into `cmd_queue` for execution after the current
+/// Steel command proc returns (existing behavior).
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
     args: SteelVal,
 ) -> SteelResult {
-    require_cmd_ctx!(ctx, "%call!");
     let args_vec = steel_list_to_vec(args)?;
-    ctx.cmd_queue.push(QueuedCommand {
-        name,
-        args: args_vec,
-        register: ctx.current_register_prefix,
-    });
+    let qc = QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix };
+    if ctx.is_init {
+        ctx.pending_startup_commands.push(qc);
+    } else {
+        ctx.cmd_queue.push(qc);
+    }
     Ok(SteelVal::Void)
 }
 
@@ -267,19 +271,14 @@ mod tests {
     }
 
     #[test]
-    fn call_bang_outside_invocation_errors() {
+    fn call_bang_in_init_queues_startup_command() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        ctx.is_init = true;
-        let err = call_command_primitive(
-            &mut ctx,
-            "move-right".to_string(),
-            make_list(vec![]),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("not available during init"),
-            "got: {err}"
+        let mut ctx = h.ctx_init();
+        call_command_primitive(&mut ctx, "plum-ensure-grammars".to_string(), make_list(vec![])).unwrap();
+        drop(ctx);
+        assert_eq!(
+            h.pending_startup_commands,
+            vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
         );
     }
 

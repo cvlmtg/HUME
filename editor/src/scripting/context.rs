@@ -84,9 +84,9 @@ pub(crate) struct SteelCtx<'a> {
     /// `set-buffer-language!` calls deferred during this eval; drained by the
     /// consumer (mappings.rs / fire_hook_silent) before cmd_queue dispatch.
     pub(crate) pending_language_sets: PendingLanguageSets,
-    /// Grammar names queued by `(queue-grammar-install! …)` during init.
-    /// Flushed into `ScriptingHost.pending_grammar_installs` after the eval.
-    pub(crate) pending_grammar_installs: &'a mut Vec<String>,
+    /// Commands queued by `(call! …)` during init (init.scm or plugin load).
+    /// Drained by `Editor::run_startup_commands` after all plugins activate.
+    pub(crate) pending_startup_commands: &'a mut Vec<QueuedCommand>,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ impl<'a> SteelCtx<'a> {
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             pending_language_regs: host.pending_language_regs,
-            pending_grammar_installs: host.pending_grammar_installs,
+            pending_startup_commands: host.pending_startup_commands,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: host.declared_plugins,
@@ -180,7 +180,7 @@ impl<'a> SteelCtx<'a> {
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             pending_language_regs: host.pending_language_regs,
-            pending_grammar_installs: host.pending_grammar_installs,
+            pending_startup_commands: host.pending_startup_commands,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: host.declared_plugins,

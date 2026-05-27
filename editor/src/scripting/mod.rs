@@ -93,7 +93,7 @@ pub(crate) struct HostBundle<'a> {
     declared_plugins: &'a mut Vec<String>,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
     pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    pending_grammar_installs: &'a mut Vec<String>,
+    pending_startup_commands: &'a mut Vec<QueuedCommand>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
@@ -171,10 +171,9 @@ pub(crate) struct ScriptingHost {
     /// Language identity registrations queued by `(define-language! …)`.
     /// Drained by `Editor::flush_pending_language_regs` after each `eval_init` boundary.
     pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
-    /// Grammar names queued by `(queue-grammar-install! …)` during init.
-    /// Drained by `Editor::run_startup_grammar_install` after `init_scripting`.
-    /// Non-empty signals that missing grammars need the startup install bracket.
-    pub(crate) pending_grammar_installs: Vec<String>,
+    /// Commands queued by `(call! …)` during init (init.scm or plugin load).
+    /// Drained by `Editor::run_startup_commands` after all plugins activate.
+    pub(crate) pending_startup_commands: Vec<QueuedCommand>,
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     pub(crate) data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if absent.
@@ -229,7 +228,7 @@ impl ScriptingHost {
             declared_plugins: Vec::new(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
-            pending_grammar_installs: Vec::new(),
+            pending_startup_commands: Vec::new(),
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -299,7 +298,7 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -315,7 +314,7 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_grammar_installs,
+                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -445,7 +444,7 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -461,7 +460,7 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_grammar_installs,
+                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -570,7 +569,7 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -586,7 +585,7 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_grammar_installs,
+                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -659,7 +658,7 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -675,7 +674,7 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_grammar_installs,
+                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),

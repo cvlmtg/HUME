@@ -10,7 +10,7 @@ use super::attribution::PluginStack;
 use super::context::SteelCtx;
 use super::hooks::HookRegistry;
 use super::lazy::LazyRegistry;
-use super::types::{EditorSteelRefs, PendingLanguageReg};
+use super::types::{EditorSteelRefs, PendingLanguageReg, QueuedCommand};
 use super::HostBundle;
 
 /// Backing storage for [`SteelCtx`] in unit tests.
@@ -29,7 +29,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) declared_plugins: Vec<String>,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
     pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
-    pub(crate) pending_grammar_installs: Vec<String>,
+    pub(crate) pending_startup_commands: Vec<QueuedCommand>,
     pub(crate) data_dir: Option<PathBuf>,
     pub(crate) runtime_dir: Option<PathBuf>,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
@@ -48,7 +48,7 @@ impl SteelCtxTestHarness {
             declared_plugins: Vec::new(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
-            pending_grammar_installs: Vec::new(),
+            pending_startup_commands: Vec::new(),
             data_dir: None,
             runtime_dir: None,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -68,7 +68,7 @@ impl SteelCtxTestHarness {
             declared_plugins,
             pending_messages,
             pending_language_regs,
-            pending_grammar_installs,
+            pending_startup_commands,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -82,7 +82,7 @@ impl SteelCtxTestHarness {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),
@@ -106,7 +106,7 @@ impl SteelCtxTestHarness {
             declared_plugins,
             pending_messages,
             pending_language_regs,
-            pending_grammar_installs,
+            pending_startup_commands,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -120,7 +120,7 @@ impl SteelCtxTestHarness {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_grammar_installs,
+                pending_startup_commands,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),

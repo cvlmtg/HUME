@@ -2,7 +2,7 @@
 //!
 //! | Steel name             | Signature           | Notes                          |
 //! |------------------------|---------------------|--------------------------------|
-//! | `grammar-output-path`  | `string → string`   | `<data>/grammars/<name>.<ext>` |
+//! | `grammar-output-path`  | `string → string`      | `<data>/grammars/<name>.<ext>` |
 //! | `compile-grammar!`     | `string string → void` | `tree-sitter build -o out src` |
 
 use std::path::PathBuf;
@@ -21,24 +21,6 @@ fn platform_grammar_ext() -> &'static str {
     { "dll" }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { "so" }
-}
-
-/// `(queue-grammar-install! name)` — signal that grammar `name` is missing and
-/// should be installed after `init.scm` finishes.
-///
-/// Init-only: raises a Steel error when called from a command body.
-/// The editor drains `ScriptingHost.pending_grammar_installs` after
-/// `init_scripting` and runs the startup install bracket if non-empty.
-pub(crate) fn queue_grammar_install(
-    ctx: &mut SteelCtx,
-    name: String,
-) -> Result<SteelVal, SteelErr> {
-    if !ctx.is_init {
-        steel::stop!(Generic =>
-            "queue-grammar-install!: only callable during init (use inside plum/ensure-grammars!)");
-    }
-    ctx.pending_grammar_installs.push(name);
-    Ok(SteelVal::Void)
 }
 
 /// `(grammar-output-path name)` — return the output path for a compiled grammar:
@@ -270,42 +252,4 @@ mod tests {
         );
     }
 
-    // ── queue-grammar-install! ────────────────────────────────────────────────
-
-    /// Flip: if queue-grammar-install! were callable in command mode it would
-    /// push silently; this test ensures the error fires in non-init context.
-    #[test]
-    fn queue_grammar_install_rejects_command_mode() {
-        let tmp = TempDir::new().unwrap();
-        setup(&tmp);
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        // SteelCtxTestHarness.ctx() builds command mode (is_init = false)
-        let err = queue_grammar_install(&mut ctx, "json".to_string()).unwrap_err();
-        assert!(
-            err.to_string().contains("only callable during init"),
-            "expected init-only error, got: {err}"
-        );
-    }
-
-    /// Flip: if queue-grammar-install! in init mode returned an error or didn't
-    /// push, pending_grammar_installs would be empty.
-    #[test]
-    fn queue_grammar_install_pushes_in_init_mode() {
-        let tmp = TempDir::new().unwrap();
-        setup(&tmp);
-        let mut h = SteelCtxTestHarness::new();
-        {
-            let mut ctx = h.ctx_init();
-            queue_grammar_install(&mut ctx, "json".to_string())
-                .expect("must succeed in init mode");
-            queue_grammar_install(&mut ctx, "rust".to_string())
-                .expect("must succeed in init mode");
-        }
-        assert_eq!(
-            h.pending_grammar_installs,
-            vec!["json".to_string(), "rust".to_string()],
-            "both grammar names must be queued"
-        );
-    }
 }
