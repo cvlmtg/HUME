@@ -110,6 +110,7 @@ mod tests {
             ("MiniBuf", StatusElement::MiniBuf),
             ("MacroRecording", StatusElement::MacroRecording),
             ("Language", StatusElement::Language),
+            ("ReadOnly", StatusElement::ReadOnly),
         ] {
             let got = name.parse::<StatusElement>().unwrap();
             assert_eq!(got, expected, "element '{name}' mismatch");

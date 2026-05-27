@@ -77,9 +77,11 @@ pub(crate) enum StatusElement {
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
     MacroRecording,
-    /// The focused buffer's language identifier (e.g. `"rust"`, `"json"`), or
+    /// The focused buffer's language identifier, rendered as `"[rust]"`, or
     /// empty when no language is detected (scratch buffers, unknown filetypes).
     Language,
+    /// Read-only indicator: `"[RO]"` when the buffer is read-only, empty otherwise.
+    ReadOnly,
 }
 
 impl fmt::Display for StatusElement {
@@ -98,6 +100,7 @@ impl fmt::Display for StatusElement {
             StatusElement::MiniBuf => "MiniBuf",
             StatusElement::MacroRecording => "MacroRecording",
             StatusElement::Language => "Language",
+            StatusElement::ReadOnly => "ReadOnly",
         })
     }
 }
@@ -120,9 +123,10 @@ impl FromStr for StatusElement {
             "MiniBuf" => Ok(StatusElement::MiniBuf),
             "MacroRecording" => Ok(StatusElement::MacroRecording),
             "Language" => Ok(StatusElement::Language),
+            "ReadOnly" => Ok(StatusElement::ReadOnly),
             _ => Err(format!(
                 "unknown element '{s}'; valid names: Cwd DirtyIndicator FileName KittyProtocol \
-                 Language LineEnding MacroRecording MiniBuf Mode Position SearchMatches Selections Separator"
+                 Language LineEnding MacroRecording MiniBuf Mode Position ReadOnly SearchMatches Selections Separator"
             )),
         }
     }
@@ -157,6 +161,8 @@ impl Default for StatusLineConfig {
             left: vec![
                 StatusElement::Position,
                 StatusElement::FileName,
+                StatusElement::Language,
+                StatusElement::ReadOnly,
                 StatusElement::DirtyIndicator,
             ],
             center: vec![],
@@ -164,7 +170,6 @@ impl Default for StatusLineConfig {
                 StatusElement::MacroRecording,
                 StatusElement::SearchMatches,
                 StatusElement::KittyProtocol,
-                StatusElement::Language,
                 StatusElement::Separator,
                 StatusElement::Mode,
             ],
@@ -417,9 +422,13 @@ fn render_element(
                 (Cow::Borrowed(""), colors.statusline)
             }
         }
-        StatusElement::Language => {
-            let label = editor.doc().language.as_deref().unwrap_or("");
-            (Cow::Owned(label.to_string()), colors.statusline)
+        StatusElement::Language => match editor.doc().language.as_deref() {
+            Some(lang) => (Cow::Owned(format!("[{lang}]")), colors.statusline),
+            None => (Cow::Borrowed(""), colors.statusline),
+        },
+        StatusElement::ReadOnly => {
+            let label = if editor.doc().is_read_only() { "[RO]" } else { "" };
+            (Cow::Borrowed(label), colors.statusline)
         }
     }
 }
@@ -634,12 +643,35 @@ mod tests {
     }
 
     #[test]
-    fn language_element_renders_identifier() {
+    fn language_element_renders_bracketed() {
         let mut ed = test_editor();
         ed.doc_mut().language = Some("rust".to_string());
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::Language, &ed, &colors);
-        assert_eq!(text.as_ref(), "rust");
+        assert_eq!(text.as_ref(), "[rust]");
+    }
+
+    // ── ReadOnly element ──────────────────────────────────────────────────────
+
+    #[test]
+    fn readonly_element_empty_for_normal_buffer() {
+        let ed = test_editor();
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors);
+        assert!(text.is_empty(), "expected empty for writable buffer, got {text:?}");
+    }
+
+    #[test]
+    fn readonly_element_renders_ro_label() {
+        use crate::editor::buffer::Buffer;
+        let buf = Buffer::read_only_view(
+            crate::core::text::Text::from("hello\n"),
+            "[test]".to_string(),
+        );
+        let ed = crate::editor::Editor::for_testing(buf);
+        let colors = crate::ui::theme::EditorColors::default();
+        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors);
+        assert_eq!(text.as_ref(), "[RO]");
     }
 
     // ── center_x arithmetic ───────────────────────────────────────────────────
