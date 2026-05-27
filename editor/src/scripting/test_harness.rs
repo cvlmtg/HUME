@@ -29,6 +29,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) declared_plugins: Vec<String>,
     pub(crate) pending_messages: Vec<(crate::editor::Severity, String)>,
     pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
+    pub(crate) pending_grammar_installs: Vec<String>,
     pub(crate) data_dir: Option<PathBuf>,
     pub(crate) runtime_dir: Option<PathBuf>,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
@@ -47,10 +48,49 @@ impl SteelCtxTestHarness {
             declared_plugins: Vec::new(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
+            pending_grammar_installs: Vec::new(),
             data_dir: None,
             runtime_dir: None,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Build a `SteelCtx` in init mode (`is_init = true`) borrowing from this
+    /// harness.  Inspect harness fields after the call to read side-effects.
+    pub(crate) fn ctx_init(&mut self) -> SteelCtx<'_> {
+        let Self {
+            settings,
+            keymap,
+            plugin_stack,
+            cmd_owners,
+            hooks,
+            lazy_registry,
+            declared_plugins,
+            pending_messages,
+            pending_language_regs,
+            pending_grammar_installs,
+            data_dir,
+            runtime_dir,
+            interrupt_flag,
+        } = self;
+        SteelCtx::new_init(
+            HostBundle {
+                plugin_stack,
+                cmd_owners,
+                hooks,
+                lazy_registry,
+                declared_plugins,
+                pending_messages,
+                pending_language_regs,
+                pending_grammar_installs,
+                data_dir: data_dir.as_deref(),
+                runtime_dir: runtime_dir.as_deref(),
+                interrupt_flag: Arc::clone(interrupt_flag),
+            },
+            settings,
+            keymap,
+            Default::default(),
+        )
     }
 
     /// Build a `SteelCtx` in command mode (`is_init = false`) borrowing from
@@ -66,6 +106,7 @@ impl SteelCtxTestHarness {
             declared_plugins,
             pending_messages,
             pending_language_regs,
+            pending_grammar_installs,
             data_dir,
             runtime_dir,
             interrupt_flag,
@@ -79,6 +120,7 @@ impl SteelCtxTestHarness {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
+                pending_grammar_installs,
                 data_dir: data_dir.as_deref(),
                 runtime_dir: runtime_dir.as_deref(),
                 interrupt_flag: Arc::clone(interrupt_flag),

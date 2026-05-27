@@ -1,0 +1,311 @@
+//! Grammar compilation builtins for HUME's Steel scripting engine.
+//!
+//! | Steel name             | Signature           | Notes                          |
+//! |------------------------|---------------------|--------------------------------|
+//! | `grammar-output-path`  | `string → string`   | `<data>/grammars/<name>.<ext>` |
+//! | `compile-grammar!`     | `string string → void` | `tree-sitter build -o out src` |
+
+use std::path::PathBuf;
+
+use steel::rerrs::SteelErr;
+use steel::rvals::{IntoSteelVal, SteelVal};
+
+use crate::editor::Severity;
+use crate::scripting::SteelCtx;
+
+/// Platform-specific shared library extension for tree-sitter grammars.
+fn platform_grammar_ext() -> &'static str {
+    #[cfg(target_os = "macos")]
+    { "dylib" }
+    #[cfg(target_os = "windows")]
+    { "dll" }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { "so" }
+}
+
+/// `(queue-grammar-install! name)` — signal that grammar `name` is missing and
+/// should be installed after `init.scm` finishes.
+///
+/// Init-only: raises a Steel error when called from a command body.
+/// The editor drains `ScriptingHost.pending_grammar_installs` after
+/// `init_scripting` and runs the startup install bracket if non-empty.
+pub(crate) fn queue_grammar_install(
+    ctx: &mut SteelCtx,
+    name: String,
+) -> Result<SteelVal, SteelErr> {
+    if !ctx.is_init {
+        steel::stop!(Generic =>
+            "queue-grammar-install!: only callable during init (use inside plum/ensure-grammars!)");
+    }
+    ctx.pending_grammar_installs.push(name);
+    Ok(SteelVal::Void)
+}
+
+/// `(grammar-output-path name)` — return the output path for a compiled grammar:
+/// `<data>/grammars/<name>.<platform-ext>`.
+///
+/// `name` must be a single normal path component (no `..`, no separators).
+/// Safe in both init and command mode — does not touch the filesystem.
+pub(crate) fn grammar_output_path(
+    _ctx: &mut SteelCtx,
+    name: String,
+) -> Result<SteelVal, SteelErr> {
+    let filename = format!("{}.{}", name, platform_grammar_ext());
+    let path = super::fs::with_data_grammars_or_subpath(&filename, |p| p.to_path_buf())?;
+    path.to_string_lossy()
+        .as_ref()
+        .into_steelval()
+        .map_err(|e| {
+            SteelErr::new(steel::rerrs::ErrorKind::ConversionError, e.to_string())
+        })
+}
+
+/// `(compile-grammar! src out)` — compile the tree-sitter grammar source at
+/// `src` to `out` via `tree-sitter build -o <out> <src>`.
+///
+/// Both paths must resolve inside `<data>/grammars/`.
+///
+/// - **Init mode**: logs a Warning on failure and returns `#<void>` — a
+///   missing `tree-sitter` binary should not abort the editor on startup.
+/// - **Command mode**: raises a Steel error on failure so the user sees it.
+pub(crate) fn compile_grammar(
+    ctx: &mut SteelCtx,
+    src: String,
+    out: String,
+) -> Result<SteelVal, SteelErr> {
+    let src_path = PathBuf::from(&src);
+    let out_path = PathBuf::from(&out);
+
+    if super::fs::has_dotdot(&src_path) {
+        steel::stop!(Generic =>
+            "compile-grammar!: src must not contain '..' components: {}", src);
+    }
+    if super::fs::has_dotdot(&out_path) {
+        steel::stop!(Generic =>
+            "compile-grammar!: out must not contain '..' components: {}", out);
+    }
+
+    // Sandbox-check src (must exist → full canonicalize).
+    let canonical_src = crate::os::fs::canonicalize(&src_path).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("compile-grammar!: cannot resolve src '{src}': {e}"),
+        )
+    })?;
+    super::fs::with_data_grammars(|sandbox| {
+        if !canonical_src.starts_with(sandbox) {
+            Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("compile-grammar!: src '{src}' is outside the grammars sandbox"),
+            ))
+        } else {
+            Ok(())
+        }
+    })??;
+
+    // Sandbox-check out (may not exist yet → parent canonicalize + file_name).
+    let out_parent = out_path.parent().ok_or_else(|| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("compile-grammar!: out has no parent: {out}"),
+        )
+    })?;
+    let canonical_out_parent = crate::os::fs::canonicalize(out_parent).map_err(|e| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("compile-grammar!: cannot resolve parent of '{out}': {e}"),
+        )
+    })?;
+    let file_name = out_path.file_name().ok_or_else(|| {
+        SteelErr::new(
+            steel::rerrs::ErrorKind::Generic,
+            format!("compile-grammar!: out has no file name (ends with '.'?): {out}"),
+        )
+    })?;
+    let canonical_out = canonical_out_parent.join(file_name);
+    super::fs::with_data_grammars(|sandbox| {
+        if !canonical_out.starts_with(sandbox) {
+            Err(SteelErr::new(
+                steel::rerrs::ErrorKind::Generic,
+                format!("compile-grammar!: out '{out}' is outside the grammars sandbox"),
+            ))
+        } else {
+            Ok(())
+        }
+    })??;
+
+    ctx.log(
+        Severity::Trace,
+        format!("compile-grammar!: `tree-sitter build -o {out} {src}`"),
+    );
+
+    let result = crate::os::process::tree_sitter_build(&src_path, &out_path);
+    let msg = match result {
+        Ok(status) if status.success() => return Ok(SteelVal::Void),
+        Ok(status) => format!(
+            "compile-grammar!: `tree-sitter build` failed ({})",
+            crate::os::process::exit_code_str(status)
+        ),
+        Err(e) => format!("compile-grammar!: cannot run tree-sitter: {e}"),
+    };
+
+    if ctx.is_init {
+        ctx.log(Severity::Warning, msg);
+        Ok(SteelVal::Void)
+    } else {
+        Err(SteelErr::new(steel::rerrs::ErrorKind::Generic, msg))
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scripting::SteelCtxTestHarness;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn setup(tmp: &TempDir) {
+        let data_dir = tmp.path().join("hume");
+        fs::create_dir_all(data_dir.join("plugins")).unwrap();
+        fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+        super::super::fs::init_dirs(Some(data_dir), None);
+    }
+
+    // ── grammar-output-path ───────────────────────────────────────────────────
+
+    /// Flip: if grammar-output-path returned a path outside grammars/, the prefix
+    /// check in compile-grammar! would catch it and error — but path construction
+    /// must be correct so compile-grammar! can use it directly.
+    #[test]
+    #[cfg(not(windows))]
+    fn grammar_output_path_returns_grammars_subpath() {
+        use std::env;
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+        unsafe { env::set_var("XDG_DATA_HOME", tmp.path()) };
+        super::super::fs::init_dirs(Some(data_dir), None);
+
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = grammar_output_path(&mut ctx, "json".to_string()).unwrap();
+        let s = match result {
+            SteelVal::StringV(s) => s.to_string(),
+            other => panic!("expected string, got {other:?}"),
+        };
+        let ext = platform_grammar_ext();
+        assert!(
+            s.ends_with(&format!("json.{ext}")),
+            "output path must end with json.{ext}, got: {s}"
+        );
+        assert!(
+            s.contains("grammars"),
+            "output path must be inside grammars dir, got: {s}"
+        );
+    }
+
+    // ── compile-grammar! sandbox checks ──────────────────────────────────────
+
+    /// Flip: if sandbox checks were removed, a path traversal to outside grammars/
+    /// would not be caught — this test exercises the src-side check.
+    #[test]
+    fn compile_grammar_rejects_dotdot_in_src() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        let data_dir = tmp.path().join("hume");
+        let evil_src = format!("{}/grammars/sources/json/../../..", data_dir.display());
+        let valid_out = format!("{}/grammars/json.dylib", data_dir.display());
+
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = compile_grammar(&mut ctx, evil_src, valid_out).unwrap_err();
+        assert!(
+            err.to_string().contains(".."),
+            "expected .. rejection, got: {err}"
+        );
+    }
+
+    #[test]
+    fn compile_grammar_rejects_src_outside_grammars_sandbox() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        // src points to plugins/ — wrong sandbox
+        let data_dir = tmp.path().join("hume");
+        let bad_src = format!("{}/plugins/repo", data_dir.display());
+        fs::create_dir_all(&bad_src).unwrap();
+        let valid_out = format!("{}/grammars/json.dylib", data_dir.display());
+
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = compile_grammar(&mut ctx, bad_src, valid_out).unwrap_err();
+        assert!(
+            err.to_string().contains("grammars sandbox") || err.to_string().contains("outside"),
+            "expected sandbox error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn compile_grammar_rejects_out_outside_grammars_sandbox() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+
+        // src is valid; out points outside grammars/
+        let data_dir = tmp.path().join("hume");
+        let valid_src = format!("{}/grammars/sources/json", data_dir.display());
+        fs::create_dir_all(&valid_src).unwrap();
+        let bad_out = format!("{}/evil.dylib", tmp.path().display());
+
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let err = compile_grammar(&mut ctx, valid_src, bad_out).unwrap_err();
+        assert!(
+            err.to_string().contains("grammars sandbox")
+                || err.to_string().contains("outside")
+                || err.to_string().contains("cannot resolve"),
+            "expected sandbox error, got: {err}"
+        );
+    }
+
+    // ── queue-grammar-install! ────────────────────────────────────────────────
+
+    /// Flip: if queue-grammar-install! were callable in command mode it would
+    /// push silently; this test ensures the error fires in non-init context.
+    #[test]
+    fn queue_grammar_install_rejects_command_mode() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        // SteelCtxTestHarness.ctx() builds command mode (is_init = false)
+        let err = queue_grammar_install(&mut ctx, "json".to_string()).unwrap_err();
+        assert!(
+            err.to_string().contains("only callable during init"),
+            "expected init-only error, got: {err}"
+        );
+    }
+
+    /// Flip: if queue-grammar-install! in init mode returned an error or didn't
+    /// push, pending_grammar_installs would be empty.
+    #[test]
+    fn queue_grammar_install_pushes_in_init_mode() {
+        let tmp = TempDir::new().unwrap();
+        setup(&tmp);
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            queue_grammar_install(&mut ctx, "json".to_string())
+                .expect("must succeed in init mode");
+            queue_grammar_install(&mut ctx, "rust".to_string())
+                .expect("must succeed in init mode");
+        }
+        assert_eq!(
+            h.pending_grammar_installs,
+            vec!["json".to_string(), "rust".to_string()],
+            "both grammar names must be queued"
+        );
+    }
+}

@@ -1,8 +1,12 @@
 //! Filesystem, directory, and logging builtins for HUME's Steel scripting engine.
 //!
-//! **Write-path operations** (`make-dir`, `delete-dir`) are hard-sandboxed to
-//! `<data>/plugins/`.  **Read-path operations** (`list-dir`, `path-exists?`)
-//! are additionally allowed under `<runtime>/plugins/`.
+//! **Write-path operations** (`make-dir`, `delete-dir`, `delete-file`) are
+//! sandboxed:
+//! - `make-dir`, `delete-dir` → `<data>/plugins/` only.
+//! - `delete-file` → `<data>/grammars/` only.
+//!
+//! **Read-path operations** (`list-dir`, `path-exists?`) are additionally
+//! allowed under `<runtime>/plugins/` and `<data>/grammars/`.
 //!
 //! Security invariant (see `feedback_security_canonicalize`): every
 //! `canonicalize` call on an untrusted path must hard-fail via `steel::stop!`
@@ -10,15 +14,16 @@
 //!
 //! # Builtins registered here
 //!
-//! | Steel name      | Signature                      | Notes                              |
-//! |-----------------|--------------------------------|------------------------------------|
-//! | `data-dir`      | `() → string \| #f`            | HUME data directory (XDG), or `#f` if HOME/APPDATA unset |
-//! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent     |
-//! | `path-exists?`  | `string → bool`                | Sandboxed read                     |
-//! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only |
-//! | `make-dir`      | `string → void`                | Sandboxed write to `<data>/plugins`|
-//! | `delete-dir`    | `string → void`                | Sandboxed write to `<data>/plugins`|
-//! | `log!`          | `symbol string → void`         | Push to the pending message buffer |
+//! | Steel name      | Signature                      | Notes                                        |
+//! |-----------------|--------------------------------|----------------------------------------------|
+//! | `data-dir`      | `() → string \| #f`            | HUME data directory (XDG), or `#f` if unset  |
+//! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
+//! | `path-exists?`  | `string → bool`                | Sandboxed read                               |
+//! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only           |
+//! | `make-dir`      | `string → void`                | Sandboxed write to `<data>/plugins/`         |
+//! | `delete-dir`    | `string → void`                | Sandboxed write to `<data>/plugins/`         |
+//! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/`        |
+//! | `log!`          | `symbol string → void`         | Push to the pending message buffer           |
 
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};
@@ -40,10 +45,13 @@ struct ScriptDirs {
     data_dir_display: Option<PathBuf>,
     /// `<runtime>/` as a display path (same UNC reasoning).
     runtime_dir_display: Option<PathBuf>,
-    /// Canonical `<data>/plugins/` — the write-path sandbox root.
-    /// `None` when `data_dir` is `None`; every write sandbox check then fails
-    /// closed.
+    /// Canonical `<data>/plugins/` — sandbox root for plugin operations.
+    /// `None` when `data_dir` is unavailable or directory creation fails;
+    /// write sandbox checks fail closed.
     data_plugins: Option<PathBuf>,
+    /// Canonical `<data>/grammars/` — sandbox root for grammar operations.
+    /// `None` when `data_dir` is unavailable or directory creation fails.
+    data_grammars: Option<PathBuf>,
     /// Canonical `<runtime>/plugins/` — allowed for read-path ops only.
     runtime_plugins: Option<PathBuf>,
 }
@@ -87,20 +95,40 @@ fn strip_unc_prefix(p: PathBuf) -> PathBuf {
 
 /// Initialize the directory TLS.  Must be called exactly once during
 /// [`crate::scripting::ScriptingHost::new`] before any builtins are invoked.
+///
+/// Eagerly creates `<data>/plugins/`, `<data>/grammars/`, and
+/// `<data>/grammars/sources/` so grammar and plugin paths exist before any
+/// sandbox check runs.  If creation or canonicalization fails for a sandbox
+/// root, that root is set to `None` and the corresponding write operations
+/// fail closed rather than silently permitting writes to a bogus prefix.
 pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
-    // Canonicalize eagerly so all subsequent starts_with comparisons are
-    // reliable (e.g. macOS /tmp → /private/tmp). Falls back to the raw path
-    // when the directory does not exist yet (first run). When data_dir is
-    // None (HOME/APPDATA unset), data_plugins is also None and every write
-    // sandbox check fails closed.
-    let canonical_data = data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or(d));
+    // Eagerly create sandbox subdirs from the raw data_dir path before
+    // canonicalizing, so a first-run (dir doesn't exist yet) gets the dirs.
+    // Each step is fail-closed: if creation or canonicalize fails the sandbox
+    // root is None and write operations will be rejected.
+
+    // <data>/plugins/
+    let data_plugins = data_dir.as_ref().and_then(|d| {
+        let p = d.join("plugins");
+        crate::os::fs::create_dir_all(&p).ok()?;
+        crate::os::fs::canonicalize(&p).ok()
+    });
+
+    // <data>/grammars/ and <data>/grammars/sources/
+    let data_grammars = data_dir.as_ref().and_then(|d| {
+        let g = d.join("grammars");
+        crate::os::fs::create_dir_all(&g.join("sources")).ok()?;
+        crate::os::fs::canonicalize(&g).ok()
+    });
+
+    // Canonicalize data_dir for the display form; fall back to raw path when
+    // the directory doesn't exist (e.g. sandboxed FS test environments).
+    let canonical_data =
+        data_dir.map(|d| crate::os::fs::canonicalize(&d).unwrap_or(d));
     // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
     // segments on Windows without producing malformed extended-length paths.
-    let data_dir_display = canonical_data.as_ref().map(|d| strip_unc_prefix(d.clone()));
-    let data_plugins = canonical_data.as_ref().map(|d| {
-        let p = d.join("plugins");
-        crate::os::fs::canonicalize(&p).unwrap_or(p)
-    });
+    let data_dir_display = canonical_data.map(strip_unc_prefix);
+
     let canonical_runtime = runtime_dir.and_then(|rt| crate::os::fs::canonicalize(&rt).ok());
     let runtime_dir_display = canonical_runtime
         .as_ref()
@@ -115,6 +143,7 @@ pub(crate) fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>)
             data_dir_display,
             runtime_dir_display,
             data_plugins,
+            data_grammars,
             runtime_plugins,
         });
     });
@@ -144,6 +173,39 @@ pub(crate) fn with_data_plugins<R>(f: impl FnOnce(&Path) -> R) -> Result<R, Stee
     })
 }
 
+/// Call `f` with the canonical write-sandbox root (`<data>/grammars/`).
+/// Used by grammar builtins to sandbox compile/fetch operations.
+pub(crate) fn with_data_grammars<R>(f: impl FnOnce(&Path) -> R) -> Result<R, SteelErr> {
+    with_dirs(|dirs| match dirs.data_grammars.as_deref() {
+        Some(p) => Ok(f(p)),
+        None => Err(SteelErr::new(
+            ErrorKind::Generic,
+            "no data directory — HOME/APPDATA unset; grammar operations unavailable".to_string(),
+        )),
+    })
+}
+
+/// Call `f` with `<data>/grammars/<seg>` where `seg` must be a single Normal
+/// path component (no `..`, no `.`, no separators).
+pub(crate) fn with_data_grammars_or_subpath<R>(
+    seg: &str,
+    f: impl FnOnce(&Path) -> R,
+) -> Result<R, SteelErr> {
+    let seg_path = std::path::Path::new(seg);
+    let mut comps = seg_path.components();
+    let valid = matches!(
+        (comps.next(), comps.next()),
+        (Some(Component::Normal(_)), None)
+    );
+    if !valid {
+        return Err(SteelErr::new(
+            ErrorKind::Generic,
+            format!("invalid path segment '{seg}': must be a single normal component (no '..' / '.' / separators)"),
+        ));
+    }
+    with_data_grammars(|grammars| f(&grammars.join(seg)))
+}
+
 // ── Sandbox predicates ────────────────────────────────────────────────────────
 
 fn is_under_write_sandbox(canonical: &Path) -> bool {
@@ -151,6 +213,10 @@ fn is_under_write_sandbox(canonical: &Path) -> bool {
         dirs.data_plugins
             .as_deref()
             .is_some_and(|p| canonical.starts_with(p))
+            || dirs
+                .data_grammars
+                .as_deref()
+                .is_some_and(|g| canonical.starts_with(g))
     })
 }
 
@@ -159,6 +225,10 @@ fn is_under_read_sandbox(canonical: &Path) -> bool {
         dirs.data_plugins
             .as_deref()
             .is_some_and(|p| canonical.starts_with(p))
+            || dirs
+                .data_grammars
+                .as_deref()
+                .is_some_and(|g| canonical.starts_with(g))
             || dirs
                 .runtime_plugins
                 .as_deref()
@@ -493,6 +563,57 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     Ok(SteelVal::Void)
 }
 
+// ── delete-file ──────────────────────────────────────────────────────────────
+
+/// `(delete-file path)` — delete a single file.
+///
+/// Sandboxed to `<data>/grammars/`.  Idempotent: returns `#<void>` when the
+/// path does not exist.  Rejects directories — use `delete-dir` for those.
+pub(crate) fn delete_file(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    let raw = one_string(args, "delete-file")?;
+    let path = PathBuf::from(&raw);
+
+    let canonical = match crate::os::fs::canonicalize(&path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(SteelVal::Void),
+        Err(e) => {
+            return Err(SteelErr::new(
+                ErrorKind::Generic,
+                format!("delete-file: cannot resolve path '{raw}': {e}"),
+            ));
+        }
+    };
+
+    with_dirs(|dirs| {
+        if !dirs.data_grammars.as_deref().is_some_and(|g| canonical.starts_with(g)) {
+            Err(SteelErr::new(
+                ErrorKind::Generic,
+                format!(
+                    "delete-file: refusing '{}' — outside the grammars sandbox (<data>/grammars/)",
+                    canonical.display()
+                ),
+            ))
+        } else {
+            Ok(())
+        }
+    })?;
+
+    if canonical.is_dir() {
+        steel::stop!(Generic =>
+            "delete-file: '{}' is a directory; use delete-dir instead",
+            canonical.display());
+    }
+
+    match crate::os::fs::remove_file(&canonical) {
+        Ok(()) => Ok(SteelVal::Void),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
+        Err(e) => Err(SteelErr::new(
+            ErrorKind::Generic,
+            format!("delete-file: cannot remove '{}': {e}", canonical.display()),
+        )),
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -507,8 +628,17 @@ mod tests {
         let data_dir = tmp.path().join("hume");
         let plugins = data_dir.join("plugins");
         fs::create_dir_all(&plugins).unwrap();
+        fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
         init_dirs(Some(data_dir), None);
         plugins
+    }
+
+    fn setup_grammars(tmp: &TempDir) -> PathBuf {
+        let data_dir = tmp.path().join("hume");
+        fs::create_dir_all(data_dir.join("plugins")).unwrap();
+        fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+        init_dirs(Some(data_dir.clone()), None);
+        data_dir.join("grammars")
     }
 
     // ── delete-dir ───────────────────────────────────────────────────────────
@@ -742,6 +872,72 @@ mod tests {
             !s.starts_with(r"\\?\"),
             "data-dir must not return an extended-length UNC path, got: {s}"
         );
+    }
+
+    // ── delete-file ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_file_removes_file() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let f = grammars.join("json.dylib");
+        fs::write(&f, b"fake").unwrap();
+
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        assert_eq!(delete_file(&args).unwrap(), SteelVal::Void);
+        assert!(!f.exists());
+    }
+
+    #[test]
+    fn delete_file_nonexistent_is_noop() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let missing = grammars.join("nobody.dylib").to_string_lossy().to_string();
+        assert_eq!(
+            delete_file(&[SteelVal::StringV(missing.into())]).unwrap(),
+            SteelVal::Void
+        );
+    }
+
+    #[test]
+    fn delete_file_rejects_directory() {
+        let tmp = TempDir::new().unwrap();
+        let grammars = setup_grammars(&tmp);
+        let dir = grammars.join("sources");
+        let args = vec![SteelVal::StringV(dir.to_string_lossy().to_string().into())];
+        let err = delete_file(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("directory"),
+            "expected directory error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn delete_file_rejects_outside_grammars_sandbox() {
+        let tmp = TempDir::new().unwrap();
+        let plugins = setup(&tmp);
+        // A file inside plugins/ is NOT in the grammars sandbox.
+        let f = plugins.join("somefile");
+        fs::write(&f, b"x").unwrap();
+        let args = vec![SteelVal::StringV(f.to_string_lossy().to_string().into())];
+        let err = delete_file(&args).unwrap_err();
+        assert!(
+            err.to_string().contains("grammars sandbox"),
+            "expected grammars sandbox error, got: {err}"
+        );
+    }
+
+    // ── init_dirs fail-closed ─────────────────────────────────────────────────
+
+    #[test]
+    fn init_dirs_creates_grammars_sources() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("hume");
+        // data_dir does not exist yet; init_dirs should create the subdirs.
+        init_dirs(Some(data_dir.clone()), None);
+        assert!(data_dir.join("plugins").is_dir());
+        assert!(data_dir.join("grammars").is_dir());
+        assert!(data_dir.join("grammars/sources").is_dir());
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

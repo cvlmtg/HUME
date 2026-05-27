@@ -33,6 +33,10 @@ pub(crate) fn remove_dir_all(p: &Path) -> io::Result<()> {
     fs::remove_dir_all(p)
 }
 
+pub(crate) fn remove_file(p: &Path) -> io::Result<()> {
+    fs::remove_file(p)
+}
+
 pub(crate) fn read_to_string(p: &Path) -> io::Result<String> {
     fs::read_to_string(p)
 }

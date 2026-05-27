@@ -7,6 +7,7 @@
 
 pub(crate) mod buffers;
 pub(crate) mod commands;
+pub(crate) mod grammar;
 pub(crate) mod panes;
 pub(crate) mod fs;
 pub(crate) mod hooks;
@@ -170,9 +171,16 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     engine.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
 
-    // Shell — narrow git wrappers only (no generic run-process)
+    // Shell — narrow git/curl wrappers only (no generic run-process)
     engine.register_fn_with_ctx(HUME_CTX, "git-clone", shell::git_clone);
     engine.register_fn_with_ctx(HUME_CTX, "git-pull", shell::git_pull);
+    engine.register_fn_with_ctx(HUME_CTX, "git-clone-rev", shell::git_clone_rev);
+    engine.register_fn_with_ctx(HUME_CTX, "curl-fetch", shell::curl_fetch);
+
+    // Grammar compilation and startup install signalling
+    engine.register_fn_with_ctx(HUME_CTX, "grammar-output-path", grammar::grammar_output_path);
+    engine.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
+    engine.register_fn_with_ctx(HUME_CTX, "queue-grammar-install!", grammar::queue_grammar_install);
 
     // Logging — push messages to the editor message log
     engine.register_fn_with_ctx(HUME_CTX, "log!", fs::log_msg);
@@ -220,6 +228,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_value("list-dir", SteelVal::FuncV(fs::list_dir));
     engine.register_value("make-dir", SteelVal::FuncV(fs::make_dir));
     engine.register_value("delete-dir", SteelVal::FuncV(fs::delete_dir));
+    engine.register_value("delete-file", SteelVal::FuncV(fs::delete_file));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`).
     // Runs before any user init.scm; HUME_CTX is not yet set but the

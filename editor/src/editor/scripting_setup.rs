@@ -254,6 +254,32 @@ impl Editor {
         }
     }
 
+    // ── Startup grammar install ───────────────────────────────────────────────
+
+    /// If `plum/ensure-grammars!` queued missing grammars during `init_scripting`,
+    /// dispatch `plum-ensure-grammars` once so they install with live progress in
+    /// the alt-screen bracket.  No-op when nothing is pending (common case).
+    ///
+    /// Called from `lib.rs` after `init_scripting` and `open_extra_files`, before
+    /// `run`.  The `plum-ensure-grammars` command is defined with
+    /// `define-command-inline-output!`, so its own dispatch arm handles the
+    /// enter/leave alt-screen bracket.
+    pub(crate) fn run_startup_grammar_install(&mut self) {
+        let has_pending = self
+            .scripting
+            .as_ref()
+            .is_some_and(|s| !s.pending_grammar_installs.is_empty());
+        if !has_pending {
+            return;
+        }
+        self.execute_keymap_command(
+            "plum-ensure-grammars".into(),
+            1,
+            false,
+            vec![],
+        );
+    }
+
     // ── Theme loading ─────────────────────────────────────────────────────────
 
     /// Test-only wrapper: splits the three disjoint `Editor` fields so tests can

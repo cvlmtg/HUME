@@ -1,10 +1,11 @@
 // Editor-level tests for the tree-sitter grammar wiring: setup_buffer_syntax,
-// reparse_stale_buffers, sweep_buffers_for_grammars, and the register-grammar!
-// Steel builtin (command-mode branch).
+// reparse_stale_buffers, sweep_buffers_for_grammars, the register-grammar!
+// Steel builtin, and the M9.3 install pipeline.
 //
-// All tests require grammar fixtures built by `scripts/fetch-test-grammars.sh`.
-// On a fixture-less checkout the helpers panic with a clear install message.
-// CI installs fixtures before running tests so panic never fires there.
+// Tests that use the grammar fixture (grammar_fixture()) require the shared
+// library built by `scripts/fetch-test-grammars.sh`.  On a fixture-less
+// checkout the helper panics with a clear install message; CI installs
+// fixtures before running tests so panic never fires there.
 
 use super::*;
 
@@ -333,5 +334,223 @@ fn reparse_reattaches_after_shrink_under_cap() {
     assert!(
         ed.engine_view.buffers[bid].syntax.is_some(),
         "engine syntax must be rebuilt after re-attach",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Startup auto-install: pending_grammar_installs deferral
+// ---------------------------------------------------------------------------
+
+/// With one grammar installed (compiled lib inside data/grammars/) and one
+/// declared-but-missing, a minimal init that mirrors the `plum/ensure-grammars!`
+/// contract must:
+///   - register the installed grammar (no subprocess; pending_grammar_installs
+///     remains empty for that name)
+///   - push the missing name to `pending_grammar_installs`
+///
+/// Flip: if queue-grammar-install! never pushed, pending_grammar_installs would
+/// be empty and the editor would skip the startup bracket.
+#[test]
+#[cfg(not(windows))]
+fn ensure_grammars_queues_missing_and_registers_installed() {
+    let (parser, hl) = grammar_fixture("json");
+    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path().join("hume");
+    std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+    std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
+
+    // Copy the fixture parser into the grammars sandbox so path-exists? succeeds
+    // on the sandboxed path returned by grammar-output-path.
+    let grammar_out = data_dir.join("grammars").join(format!("json.{ext}"));
+    std::fs::copy(&parser, &grammar_out).unwrap();
+
+    // Copy the highlights file into the sources dir so register-grammar! has
+    // an accessible highlights path.
+    let hl_dest = data_dir.join("grammars/sources/json-hl.scm");
+    std::fs::copy(&hl, &hl_dest).unwrap();
+
+    let init_path = tmp.path().join("init.scm");
+    // The Steel init mirrors plum/ensure-grammars! using the real builtins:
+    //  - grammar-output-path  returns <data>/grammars/<name>.<ext>  (sandboxed)
+    //  - path-exists?         checks the grammars sandbox
+    //  - register-grammar!    attaches a grammar in init mode
+    //  - queue-grammar-install! defers missing grammars for post-init install
+    std::fs::write(&init_path, format!(
+        r#"
+(define hl-path "{hl}")
+
+(define (grammar-installed? name)
+  (path-exists? (grammar-output-path name)))
+
+(define (do-ensure! names)
+  (for-each
+    (lambda (name)
+      (cond
+        ((grammar-installed? name)
+         (register-grammar! name (grammar-output-path name) "tree_sitter_json" hl-path))
+        (else
+         (queue-grammar-install! name))))
+    names))
+
+(do-ensure! (list "json" "phantom"))
+        "#,
+        hl = hl_dest.display(),
+    )).unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(data_dir.clone());
+    // Re-initialize dirs after ScriptingHost::new() (which calls init_dirs with
+    // system dirs) so grammar-output-path returns paths in our temp sandbox.
+    crate::scripting::builtins::fs::init_dirs(Some(data_dir.clone()), None);
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init must succeed");
+
+    // "phantom" must be queued; "json" must not be (it was registered directly).
+    assert_eq!(
+        host.pending_grammar_installs,
+        vec!["phantom".to_string()],
+        "only the missing grammar must be in pending_grammar_installs"
+    );
+
+    // Editor wiring: run_startup_grammar_install detects non-empty list.
+    let mut ed = editor_from("-[a]>b\n");
+    ed.scripting = Some(host);
+    let has_pending = ed.scripting.as_ref()
+        .is_some_and(|s| !s.pending_grammar_installs.is_empty());
+    assert!(has_pending, "pending_grammar_installs must be non-empty before startup bracket");
+}
+
+// ---------------------------------------------------------------------------
+// e2e grammar install (network + tree-sitter CLI required)
+// ---------------------------------------------------------------------------
+
+/// End-to-end: clone → curl → tree-sitter build → register-grammar! for JSON.
+///
+/// Gated by `HUME_REQUIRE_LIVE_GRAMMAR_E2E=1`; otherwise skipped when git,
+/// curl, or tree-sitter is absent or GitHub is unreachable.
+#[test]
+#[cfg(not(windows))]
+fn install_real_json_grammar_e2e() {
+    use std::process::Command;
+
+    let require_live = std::env::var("HUME_REQUIRE_LIVE_GRAMMAR_E2E")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    // Check prerequisites; skip unless HUME_REQUIRE_LIVE_GRAMMAR_E2E=1.
+    let has_git     = Command::new("git").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+    let has_curl    = Command::new("curl").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+    let has_ts      = Command::new("tree-sitter").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+
+    if !has_git || !has_curl || !has_ts {
+        if require_live {
+            panic!("HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 but git={has_git} curl={has_curl} tree-sitter={has_ts}");
+        }
+        eprintln!("install_real_json_grammar_e2e: skipping (git={has_git} curl={has_curl} ts={has_ts})");
+        return;
+    }
+
+    // Read the pinned JSON grammar source from grammar-sources.scm.
+    // We run a minimal Steel eval to extract it rather than parsing Scheme by hand.
+    // For simplicity, just use the known stable JSON grammar we already test.
+    let url = "https://github.com/tree-sitter/tree-sitter-json";
+    let rev = "94f5c527b2965465956c2000ed6134957997a8c5"; // pinned in grammar-sources.scm
+
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path().join("hume");
+    std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
+    std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
+
+    let src_dir = data_dir.join("grammars/sources/json");
+    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
+
+    // Step 1: git clone --filter=blob:none
+    let status = crate::os::process::git_clone_rev(url, &src_dir, rev);
+    match &status {
+        Err(e) => {
+            if require_live {
+                panic!("git_clone_rev failed: {e}");
+            }
+            eprintln!("install_real_json_grammar_e2e: skipping (clone failed: {e})");
+            return;
+        }
+        Ok(s) if !s.success() => {
+            if require_live {
+                panic!("git_clone_rev non-zero exit");
+            }
+            eprintln!("install_real_json_grammar_e2e: skipping (clone non-zero exit)");
+            return;
+        }
+        Ok(_) => {}
+    }
+    assert!(src_dir.exists(), "clone must create src dir");
+
+    // Step 2: tree-sitter build
+    let status = crate::os::process::tree_sitter_build(&src_dir, &out_path)
+        .expect("tree_sitter_build must not fail to spawn");
+    if !status.success() {
+        if require_live {
+            panic!("tree-sitter build failed");
+        }
+        eprintln!("install_real_json_grammar_e2e: skipping (build failed)");
+        return;
+    }
+    assert!(out_path.exists(), "compiled grammar must exist after build");
+
+    // Step 3: register-grammar! via editor scripting
+    let hl_path = src_dir.join("highlights.scm");
+    // Fetch highlights query via curl.
+    let helix_pin = "9f8bae62f3d4d96e816657a4f3571c57e6e9540d"; // matches helix-pin.scm
+    let hl_url = format!("https://raw.githubusercontent.com/helix-editor/helix/{helix_pin}/runtime/queries/json/highlights.scm");
+    let curl_status = crate::os::process::curl_fetch(&hl_url, &hl_path);
+    match &curl_status {
+        Err(e) => {
+            if require_live { panic!("curl_fetch failed: {e}"); }
+            eprintln!("install_real_json_grammar_e2e: skipping (curl failed: {e})");
+            return;
+        }
+        Ok(s) if !s.success() => {
+            if require_live { panic!("curl_fetch non-zero exit"); }
+            eprintln!("install_real_json_grammar_e2e: skipping (curl non-zero)");
+            return;
+        }
+        Ok(_) => {}
+    }
+    assert!(hl_path.exists(), "highlights query must exist after curl");
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    let init_path = tmp.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            r#"(define-command! "attach-json-e2e" "e2e" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+            out_path.display(),
+            hl_path.display(),
+        ),
+    ).unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.data_dir = Some(data_dir);
+    let mut s = EditorSettings::default();
+    let mut km = Keymap::default();
+    let cmds = host.eval_init(&init_path, &mut s, &mut km, Default::default())
+        .expect("eval_init");
+    ed.register_steel_cmds(cmds);
+    ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":attach-json-e2e");
+
+    assert!(ed.languages.has_grammar("json"), "grammar must be registered after e2e install");
+    assert!(
+        ed.engine_view.buffers[bid].syntax.is_some(),
+        "syntax must be set after e2e install + sweep"
     );
 }

@@ -177,15 +177,33 @@
 ;;   triggers still pending.  Use this to inspect lazy-load behaviour at
 ;;   runtime.
 ;;
-;; core:plum           — plugin manager (:plum-install, :plum-update, :plum-cleanup)
+;; core:plum           — plugin manager + grammar installer
+;;                       Plugin commands: :plum-install, :plum-update, :plum-cleanup
+;;                       Grammar commands: :plum-install-grammar, :plum-update-grammar,
+;;                                         :plum-list-grammars, :plum-ensure-grammars,
+;;                                         :plum-cleanup-grammars
 ;; core:helix-surround — md/mr surround shortcuts (bind-wait-char! already set)
 ;; core:classic-paste  — opt-in GUI-style paste split:
 ;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
 ;;
-;; Load plum first so it can install other declared plugins on the next
-;; :plum-install run.
+;; Load plum first so it can install plugins and grammars.
+;; When PLUM loads it checks the pinned grammar catalog and:
+;;   - registers any already-compiled grammars immediately (no subprocess)
+;;   - auto-installs any missing grammars via an alt-screen bracket before the
+;;     editor starts (set *plum-auto-install-grammars* to #f to disable)
+;;
+;; Grammar install pipeline (requires git, curl, tree-sitter CLI on PATH):
+;;   :plum-install-grammar  — install grammar for current buffer's language
+;;   :plum-update-grammar   — re-clone + recompile (purges old source)
+;;   :plum-ensure-grammars  — install all declared-but-missing grammars
+;;   :plum-list-grammars    — show installed / declared / orphan / missing
+;;   :plum-cleanup-grammars — delete orphan compiled grammars
 
 ;; (load-plugin "core:plum")
+
+;; Opt out of startup auto-install (PLUM must be loaded first):
+;; (set! *plum-auto-install-grammars* #f)
+
 ;; (load-plugin "core:helix-surround")
 ;; (load-plugin "core:classic-paste")
 

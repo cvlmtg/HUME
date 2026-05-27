@@ -53,6 +53,9 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     editor.init_scripting();
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
+    // Install any grammars queued by plum/ensure-grammars! during init.scm.
+    // No-op when all declared grammars are already compiled.
+    editor.run_startup_grammar_install();
 
     let result = editor.run(&mut term);
 
