@@ -746,3 +746,76 @@ fn macro_with_two_pastes_does_not_panic() {
         "both pastes in the macro must fire; got: {buf:?}"
     );
 }
+
+// ── Macro guard on read-only buffers ─────────────────────────────────────────
+
+/// `q` on a read-only view buffer must not arm macro_pending.
+/// Validity: removing the `!self.focused_buffer_read_only()` guard from the `q`
+/// intercept causes this test to fail (macro_pending is Some, key is eaten).
+#[test]
+fn macro_q_on_read_only_buffer_does_not_arm_pending() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "msg one".to_string());
+    ed.report(Severity::Warning, "msg two".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only(), "focused buffer must be read-only");
+
+    let head_before = ed.current_selections().primary().head;
+
+    ed.handle_key(key('q'));
+    assert!(
+        ed.macro_pending.is_none(),
+        "q on read-only must not arm macro_pending"
+    );
+
+    // The key that would have been swallowed as a register name must dispatch
+    // normally — Up should move the cursor backward in the buffer.
+    ed.handle_key(key_up());
+    assert!(
+        ed.current_selections().primary().head < head_before,
+        "Up after q on read-only must move the cursor, not be swallowed as a register name"
+    );
+}
+
+/// `Q` on a read-only view buffer must not arm macro_pending.
+#[test]
+fn macro_big_q_on_read_only_buffer_does_not_arm_pending() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only());
+
+    ed.handle_key(key('Q'));
+    assert!(
+        ed.macro_pending.is_none(),
+        "Q on read-only must not arm macro_pending"
+    );
+    assert!(
+        ed.macro_recording.is_none(),
+        "no recording should have started"
+    );
+}
+
+/// A recording started on a normal buffer can be stopped with `Q` after
+/// navigating to a read-only buffer — the stop branch must not be blocked.
+#[test]
+fn macro_recording_can_be_stopped_on_read_only_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "test".to_string());
+
+    // Start recording on the normal (writable) buffer.
+    ed.handle_key(key('Q'));
+    ed.handle_key(key('Q'));
+    assert!(ed.macro_recording.is_some(), "recording must start");
+
+    // Switch to the read-only view buffer.
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only());
+
+    // Q must stop the in-progress recording even on a read-only buffer.
+    ed.handle_key(key('Q'));
+    assert!(
+        ed.macro_recording.is_none(),
+        "Q must stop recording even when the focused buffer is read-only"
+    );
+}

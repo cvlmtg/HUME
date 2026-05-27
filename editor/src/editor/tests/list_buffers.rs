@@ -257,3 +257,97 @@ fn view_buffer_blocks_insert_mode() {
         "i must not enter Insert mode on a read-only buffer"
     );
 }
+
+// ── Post-review fixes ─────────────────────────────────────────────────────────
+
+/// `:ls` called twice must not list the `[buffers]` buffer in its own output.
+/// Validity: remove the `find_by_label("[buffers]")` skip from typed_list_buffers
+/// and this test fails on the second call (output contains a `[buffers]` row).
+#[test]
+fn ls_does_not_list_itself_on_second_call() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    // First call: [buffers] doesn't yet exist, so output is clean.
+    let out1 = ls_output(&mut ed);
+    assert!(!out1.contains("[buffers]"), "first :ls must not mention [buffers]");
+
+    // Switch back to the scratch buffer so the second :ls triggers a real switch.
+    let scratch_id = ed
+        .buffers
+        .iter()
+        .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
+        .map(|(id, _)| id)
+        .expect("scratch buffer must still exist");
+    ed.switch_to_buffer_without_jump(scratch_id);
+
+    // Second call: [buffers] exists now but must be excluded from the listing.
+    let out2 = ls_output(&mut ed);
+    assert!(
+        !out2.contains("[buffers]"),
+        ":ls must not list the [buffers] view buffer in its own output; got:\n{out2}"
+    );
+
+    // Row count must be stable — one content row for the scratch buffer, one header.
+    assert_eq!(
+        out1.lines().count(),
+        out2.lines().count(),
+        ":ls row count must not grow across repeated calls"
+    );
+}
+
+/// `:ls` must not push an entry to the jump list — view buffers are ephemeral.
+/// Validity: change switch_to_buffer_without_jump back to switch_to_buffer_with_jump
+/// in open_read_only_view and this test fails (departure buffer gains a jump entry).
+#[test]
+fn ls_does_not_pollute_jump_list() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let scratch_id = ed.focused_buffer_id(); // the buffer we switch away from
+    let pid = ed.focused_pane_id;
+
+    // No jump entries for the scratch buffer before :ls.
+    assert!(!ed.pane_jumps[pid].entries_for_buffer(scratch_id));
+
+    ed.execute_typed("ls", None).unwrap();
+
+    assert!(
+        !ed.pane_jumps[pid].entries_for_buffer(scratch_id),
+        ":ls must not push a jump entry for the departure buffer"
+    );
+}
+
+/// `u` and `Ctrl+R` on a read-only buffer must be no-ops.
+/// Validity: remove the is_read_only() guards from apply_doc_undo/apply_doc_redo
+/// and this test fails (undo reverts the edit, changing the buffer text).
+#[test]
+fn read_only_buffer_blocks_undo_and_redo() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    // Make an edit to create undo history.
+    ed.handle_key(key('d'));
+    let after_delete = ed.doc().text().to_string();
+
+    // Flip the buffer to read-only (simulates the condition where a view buffer
+    // somehow has undo history — e.g. from a future API path).
+    ed.doc_mut().read_only = true;
+
+    // u (undo) must be a no-op.
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        after_delete,
+        "u must not undo on a read-only buffer"
+    );
+
+    // Ctrl+R (redo) must also be a no-op.
+    ed.doc_mut().read_only = false; // undo first to create redo history
+    ed.handle_key(key('u'));
+    let after_undo = ed.doc().text().to_string();
+    ed.doc_mut().read_only = true;
+
+    ed.handle_key(key_ctrl('r'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        after_undo,
+        "Ctrl+R must not redo on a read-only buffer"
+    );
+}

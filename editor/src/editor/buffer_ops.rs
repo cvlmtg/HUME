@@ -175,12 +175,12 @@ impl Editor {
 
         let already_focused = self.focused_buffer_id() == bid;
         if !already_focused {
-            self.switch_to_buffer_with_jump(bid);
+            self.switch_to_buffer_without_jump(bid);
         }
 
         // Position cursor at the requested line (clamped to last content line).
         let pid = self.focused_pane_id;
-        let rope = self.buffers.get(bid).text().rope().clone();
+        let rope = self.buffers.get(bid).text().rope();
         let last_content = rope.len_lines().saturating_sub(2); // skip trailing \n line
         let target_line = cursor_line.min(last_content);
         let char_pos = rope.line_to_char(target_line);

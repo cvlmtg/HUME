@@ -102,6 +102,9 @@ pub(crate) fn apply_doc_undo(
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
+    if buffers.get(buf_id).is_read_only() {
+        return;
+    }
     // rope_pre is the current (post-edit) text: undo's CS maps post-edit
     // positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
@@ -120,6 +123,9 @@ pub(crate) fn apply_doc_redo(
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
+    if buffers.get(buf_id).is_read_only() {
+        return;
+    }
     let rope_pre = buffers.get(buf_id).text().rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
         pane_state[focused_pane_id][buf_id].selections = new_sels;

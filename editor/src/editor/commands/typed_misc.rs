@@ -19,10 +19,10 @@ pub fn typed_messages(
         ed.report(Severity::Info, "No messages".to_string());
         return Ok(());
     }
-    // Position cursor at last content line (most recent entry).
-    let last_line = content.lines().count().saturating_sub(1);
     ed.message_log.mark_all_seen();
-    ed.open_read_only_view("[messages]", &content, last_line);
+    // open_read_only_view clamps cursor_line to the last content line — pass
+    // usize::MAX so it always positions at the bottom (most recent entry).
+    ed.open_read_only_view("[messages]", &content, usize::MAX);
     Ok(())
 }
 
@@ -41,13 +41,21 @@ pub fn typed_list_buffers(
 
     let header = format!("{:>4}    {:<32}  {}\n", "buf", "name", "path");
     let mut out = header;
-    // The header occupies rope line 0; each buffer occupies rope line `idx + 1`.
-    // `current_rope_line` tracks that index so the cursor opens on the right row.
+    // The [buffers] view buffer (if it already exists from a prior :ls) must not
+    // appear in its own listing. All other buffers — including [messages] and
+    // [plugin-status] — are listed normally.
+    let buffers_view_id = ed.buffers.find_by_label("[buffers]");
+    // `row` counts emitted rows (1-based, offset by the header at rope line 0).
+    // Tracked independently from the slotmap iteration index because [buffers]
+    // may be skipped without a row being emitted.
+    let mut row: usize = 0;
     let mut current_rope_line: usize = 1;
 
-    for (idx, (id, buf)) in ed.buffers.iter().enumerate() {
-        let display_num = idx + 1;
-        let rope_line = idx + 1; // 1 header line before buffer rows
+    for (id, buf) in ed.buffers.iter() {
+        if buffers_view_id == Some(id) {
+            continue;
+        }
+        row += 1;
 
         let cur_marker = if id == current {
             '%'
@@ -69,11 +77,11 @@ pub fn typed_list_buffers(
 
         out.push_str(&format!(
             "{:>4}  {}{}  {:<32}  {}\n",
-            display_num, cur_marker, dirty_marker, name, path
+            row, cur_marker, dirty_marker, name, path
         ));
 
         if id == current {
-            current_rope_line = rope_line;
+            current_rope_line = row; // rope line = header(0) + emitted rows(1-based)
         }
     }
 

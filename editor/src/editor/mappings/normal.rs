@@ -183,19 +183,24 @@ impl Editor {
             match key.code {
                 KeyCode::Char('Q') => {
                     if let Some((reg, keys)) = self.macro_recording.take() {
+                        // Always allow stopping an in-progress recording, even if
+                        // the user has navigated to a read-only buffer since starting.
                         self.registers.write_macro(reg, keys);
-                    } else if !self.is_replaying {
+                    } else if !self.is_replaying && !self.focused_buffer_read_only() {
                         self.macro_pending = Some(MacroPending::Record);
                     }
-                    // During replay: silently ignore (no nested recording).
+                    // During replay, or on a read-only buffer: silently ignore.
                     return;
                 }
                 KeyCode::Char('q') => {
-                    if !self.is_replaying && self.macro_recording.is_none() {
+                    if !self.is_replaying
+                        && self.macro_recording.is_none()
+                        && !self.focused_buffer_read_only()
+                    {
                         // Replay: wait for the register-name key.
                         self.macro_pending = Some(MacroPending::Replay);
                     }
-                    // During recording or replay: silently ignore.
+                    // During recording, replay, or on a read-only buffer: silently ignore.
                     return;
                 }
                 KeyCode::Char('"') => {
