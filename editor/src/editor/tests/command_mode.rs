@@ -332,6 +332,36 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
 }
 
 #[test]
+fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
+    // :q! on a dirty file buffer must discard changes and close the buffer —
+    // not quit — when another real buffer is open.
+    // Validity: remove the `any_other_real` branch from typed_quit and this
+    // test fails (should_quit becomes true, discarding the scratch buffer).
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let dirty_buf = ed.focused_buffer_id();
+
+    // Dirty the buffer.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "buffer must be dirty before :q!");
+
+    // Open a second real buffer (editable scratch).
+    let scratch_id = ed.open_buffer(Buffer::scratch());
+    ed.switch_to_buffer_without_jump(dirty_buf);
+
+    type_cmd(&mut ed, ":q!");
+
+    assert!(!ed.should_quit, ":q! must not quit when another real buffer remains");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        scratch_id,
+        ":q! must switch focus to the remaining real buffer"
+    );
+    assert_eq!(ed.buffers.len(), 1, "dirty buffer must be removed");
+}
+
+#[test]
 fn colon_w_path_creates_new_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("new_file.txt");

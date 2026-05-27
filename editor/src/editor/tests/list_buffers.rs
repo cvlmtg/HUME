@@ -351,3 +351,48 @@ fn read_only_buffer_blocks_undo_and_redo() {
         "Ctrl+R must not redo on a read-only buffer"
     );
 }
+
+/// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
+/// read-only" and leave the buffer content unchanged.
+/// Validity: remove the `focused_buffer_read_only()` guard from `do_paste`
+/// and this test fails (status_msg will not contain the expected message,
+/// and the paste would silently diverge from the read-only contract).
+#[test]
+fn view_buffer_blocks_paste() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    // Yank from the writable buffer so the kill-ring / clipboard is non-empty.
+    ed.handle_key(key('y'));
+    ed.handle_key(key('y'));
+
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only());
+    let content_before = ed.doc().text().to_string();
+
+    // p (paste after)
+    ed.handle_key(key('p'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        content_before,
+        "p must not mutate a read-only buffer"
+    );
+    assert_eq!(
+        ed.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "p must report 'Buffer is read-only'"
+    );
+
+    // P (paste before)
+    ed.handle_key(key('P'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        content_before,
+        "P must not mutate a read-only buffer"
+    );
+    assert_eq!(
+        ed.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "P must report 'Buffer is read-only'"
+    );
+}
