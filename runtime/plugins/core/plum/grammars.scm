@@ -5,7 +5,7 @@
 ;;;   plum/register-installed-grammars!    — register already-compiled grammars (passive)
 ;;;
 ;;; Commands defined here:
-;;;   :plum-install-grammar  — install grammar for current (or named) language
+;;;   :plum-install-grammar  — install grammar for the current buffer's language
 ;;;   :plum-update-grammar   — re-clone and recompile (purges old source)
 ;;;   :plum-ensure-grammars  — install named grammars not yet compiled (list required)
 ;;;   :plum-list-grammars    — log installed / declared / orphan / missing
@@ -142,7 +142,7 @@
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
 (define-command-inline-output! "plum-install-grammar"
-  "Install the tree-sitter grammar for the current buffer's language (or NAME)."
+  "Install the tree-sitter grammar for the current buffer's language."
   (lambda ()
     (let ((name (buffer-language (current-buffer))))
       (if (equal? name "")

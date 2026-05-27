@@ -19,6 +19,46 @@ use crate::settings::EditorSettings;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// `<repo>/runtime/scheme/` — the runtime catalog directory.
+fn runtime_scheme_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime/scheme")
+}
+
+/// Read `(url, rev)` for grammar `name` from `grammar-sources.scm`, the same
+/// catalog PLUM reads at runtime. Avoids duplicating pins into the test (they
+/// drift otherwise). Entries are 5-tuples of quoted strings:
+///   ("name" "url" "rev" "symbol" "subpath")
+/// so splitting a matched line on `"` puts the values at odd indices.
+fn grammar_source(name: &str) -> (String, String) {
+    let catalog = std::fs::read_to_string(runtime_scheme_dir().join("grammar-sources.scm"))
+        .expect("read grammar-sources.scm");
+    let needle = format!("(\"{name}\" ");
+    let line = catalog
+        .lines()
+        .find(|l| l.trim_start().starts_with(&needle))
+        .unwrap_or_else(|| panic!("no grammar-sources.scm entry for '{name}'"));
+    let fields: Vec<&str> = line.split('"').collect();
+    (fields[3].to_string(), fields[5].to_string())
+}
+
+/// Read the pinned helix commit SHA from `helix-pin.scm` (one quoted literal,
+/// the rest of the file is `;;;` comments).
+fn helix_pin() -> String {
+    let s = std::fs::read_to_string(runtime_scheme_dir().join("helix-pin.scm"))
+        .expect("read helix-pin.scm");
+    s.lines()
+        .find(|l| !l.trim_start().starts_with(';') && l.contains('"'))
+        .and_then(|l| {
+            let a = l.find('"')? + 1;
+            let b = l[a..].find('"')? + a;
+            Some(l[a..b].to_string())
+        })
+        .expect("helix-pin.scm must contain a quoted SHA")
+}
+
 fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -439,11 +479,10 @@ fn install_real_json_grammar_e2e() {
         return;
     }
 
-    // Read the pinned JSON grammar source from grammar-sources.scm.
-    // We run a minimal Steel eval to extract it rather than parsing Scheme by hand.
-    // For simplicity, just use the known stable JSON grammar we already test.
-    let url = "https://github.com/tree-sitter/tree-sitter-json";
-    let rev = "94f5c527b2965465956c2000ed6134957997a8c5"; // pinned in grammar-sources.scm
+    // Read the JSON grammar's url + pinned rev straight from the runtime catalog
+    // (single source of truth — no hardcoded pins to drift out of sync).
+    let (url, rev) = grammar_source("json");
+    let (url, rev) = (url.as_str(), rev.as_str());
 
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("hume");
@@ -489,9 +528,9 @@ fn install_real_json_grammar_e2e() {
 
     // Step 3: register-grammar! via editor scripting
     let hl_path = src_dir.join("highlights.scm");
-    // Fetch highlights query via curl.
-    let helix_pin = "9f8bae62f3d4d96e816657a4f3571c57e6e9540d"; // matches helix-pin.scm
-    let hl_url = format!("https://raw.githubusercontent.com/helix-editor/helix/{helix_pin}/runtime/queries/json/highlights.scm");
+    // Fetch highlights query via curl, using the helix commit pinned in the catalog.
+    let pin = helix_pin();
+    let hl_url = format!("https://raw.githubusercontent.com/helix-editor/helix/{pin}/runtime/queries/json/highlights.scm");
     let curl_status = crate::os::process::curl_fetch(&hl_url, &hl_path);
     match &curl_status {
         Err(e) => {
@@ -538,4 +577,22 @@ fn install_real_json_grammar_e2e() {
         ed.engine_view.buffers[bid].syntax.is_some(),
         "syntax must be set after e2e install + sweep"
     );
+}
+
+/// `grammar_source` / `helix_pin` must parse real values out of the runtime
+/// catalog so the e2e installs the actually-pinned revision. Always runs (no
+/// network), so a malformed catalog or a broken parser is caught in normal CI.
+///
+/// Flip: point `grammar_source` at a bogus field index → the SHA-length /
+/// prefix assertions below fail.
+#[test]
+fn catalog_parsing_extracts_json_pins() {
+    let (url, rev) = grammar_source("json");
+    assert_eq!(url, "https://github.com/tree-sitter/tree-sitter-json");
+    assert_eq!(rev.len(), 40, "git rev must be a full 40-char SHA, got: {rev}");
+    assert!(rev.chars().all(|c| c.is_ascii_hexdigit()), "rev must be hex: {rev}");
+
+    let pin = helix_pin();
+    assert!(!pin.is_empty(), "helix pin must be non-empty");
+    assert!(pin.chars().all(|c| c.is_ascii_hexdigit()), "helix pin must be hex: {pin}");
 }

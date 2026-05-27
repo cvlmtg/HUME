@@ -2,8 +2,10 @@
 //!
 //! **Write-path operations** (`make-dir`, `delete-dir`, `delete-file`) are
 //! sandboxed:
-//! - `make-dir`, `delete-dir` → `<data>/plugins/` only.
-//! - `delete-file` → `<data>/grammars/` only.
+//! - `make-dir`, `delete-dir` → the write sandbox (`<data>/plugins/` or
+//!   `<data>/grammars/`); `delete-dir` on `<data>/grammars/sources/` is how
+//!   `plum-update-grammar` purges a stale source tree.
+//! - `delete-file` → `<data>/grammars/` only (narrower than the write sandbox).
 //!
 //! **Read-path operations** (`list-dir`, `path-exists?`) are additionally
 //! allowed under `<runtime>/plugins/` and `<data>/grammars/`.
@@ -20,8 +22,8 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-exists?`  | `string → bool`                | Sandboxed read                               |
 //! | `list-dir`      | `string → list-of-string`      | Sandboxed read; returns names only           |
-//! | `make-dir`      | `string → void`                | Sandboxed write to `<data>/plugins/`         |
-//! | `delete-dir`    | `string → void`                | Sandboxed write to `<data>/plugins/`         |
+//! | `make-dir`      | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
+//! | `delete-dir`    | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
 //! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/`        |
 //! | `log!`          | `symbol string → void`         | Push to the pending message buffer           |
 
@@ -489,7 +491,8 @@ pub(crate) fn list_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(make-dir path)` — create `path` and any missing parent directories.
 ///
-/// Sandboxed to `<data>/plugins/`.  Rejects any path containing `..`.
+/// Sandboxed to the write sandbox (`<data>/plugins/` or `<data>/grammars/`).
+/// Rejects any path containing `..`.
 pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     let raw = one_string(args, "make-dir")?;
     let path = PathBuf::from(&raw);
@@ -511,7 +514,7 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     if !is_under_write_sandbox(&effective) {
         steel::stop!(Generic =>
-            "make-dir: path is outside the write sandbox (<data>/plugins/): {}", raw);
+            "make-dir: path is outside the write sandbox (<data>/plugins/ or <data>/grammars/): {}", raw);
     }
 
     crate::os::fs::create_dir_all(&path).map_err(|e| {
@@ -527,8 +530,9 @@ pub(crate) fn make_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// `(delete-dir path)` — recursively delete `path` and all its contents.
 ///
-/// Sandboxed to `<data>/plugins/`.  `path` must exist; `canonicalize` failure
-/// is a hard error — never falls back to the raw path.
+/// Sandboxed to the write sandbox (`<data>/plugins/` or `<data>/grammars/`).
+/// `path` must exist; `canonicalize` failure is a hard error — never falls
+/// back to the raw path.
 ///
 /// Returns `#<void>` (including when `path` does not exist — idempotent).
 pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
@@ -550,7 +554,7 @@ pub(crate) fn delete_dir(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
     if !is_under_write_sandbox(&canonical) {
         steel::stop!(Generic =>
-            "delete-dir: refusing to delete '{}' — outside the write sandbox (<data>/plugins/)",
+            "delete-dir: refusing to delete '{}' — outside the write sandbox (<data>/plugins/ or <data>/grammars/)",
             canonical.display());
     }
 
