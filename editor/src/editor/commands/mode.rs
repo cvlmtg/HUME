@@ -71,6 +71,7 @@ pub fn cmd_insert_at_line_end(
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
+    ed.mark_insert_step_back();
     Ok(())
 }
 
@@ -93,8 +94,9 @@ pub fn cmd_insert_at_selection_start(
 /// Enter insert mode after the end of each selection (one past max of anchor and head).
 /// For a collapsed cursor this is identical to `a`.
 ///
-/// Clamps to `len_chars() - 1` so pressing `a` on the structural trailing `\n`
-/// (the last char in the buffer) does not place the cursor out of bounds.
+/// On Esc, the cursor steps back one grapheme (`mark_insert_step_back`) so that
+/// pressing `a` again re-enters Insert at the same spot rather than advancing forward.
+/// Clamps to `len_chars() - 1` so `a` on the buffer-final `\n` stays in bounds.
 pub fn cmd_insert_at_selection_end(
     ed: &mut Editor,
     _count: usize,
@@ -108,6 +110,7 @@ pub fn cmd_insert_at_selection_end(
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
     });
     ed.begin_insert_session();
+    ed.mark_insert_step_back();
     Ok(())
 }
 

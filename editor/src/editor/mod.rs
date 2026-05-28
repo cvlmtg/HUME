@@ -18,7 +18,8 @@ use engine::types::EditorMode;
 use slotmap::SecondaryMap;
 
 use self::registry::CommandRegistry;
-use crate::core::selection::SelectionSet;
+use crate::core::grapheme::prev_grapheme_boundary;
+use crate::core::selection::{Selection, SelectionSet};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
@@ -76,6 +77,8 @@ pub(crate) use message_log::Severity;
 /// [`begin_insert_session`] that recording should be suppressed.
 pub(super) struct InsertSession {
     keystrokes: Vec<KeyEvent>,
+    /// Step cursor back one grapheme on exit (set for `a` / `A` entry).
+    step_back_on_exit: bool,
 }
 
 /// A recorded editing action that can be replayed by `.`.
@@ -500,9 +503,18 @@ impl Editor {
             self.begin_edit_group_current();
             self.insert_session = Some(InsertSession {
                 keystrokes: Vec::new(),
+                step_back_on_exit: false,
             });
         }
         self.mode = Mode::Insert;
+    }
+
+    /// Mark the active insert session as append-style so the cursor steps back
+    /// one grapheme on exit (see [`end_insert_session`]).
+    pub(super) fn mark_insert_step_back(&mut self) {
+        if let Some(s) = self.insert_session.as_mut() {
+            s.step_back_on_exit = true;
+        }
     }
 
     /// Exit Insert mode and finalise the undo/repeat state.
@@ -510,12 +522,34 @@ impl Editor {
     /// Commits the open edit group (creating one undo step for the whole
     /// insert session) and moves the recorded keystrokes into `last_repeatable_action`
     /// for dot-repeat, then sets the mode to Normal.
+    ///
+    /// When the session was started with `mark_insert_step_back` (i.e. entered via
+    /// `a` or `A`), each selection head steps back one grapheme so that pressing
+    /// `a` again re-enters Insert at the same position rather than advancing forward.
+    /// The step is clamped to the current line start so it never crosses a `\n`.
     pub(super) fn end_insert_session(&mut self) {
+        let step_back = self.insert_session.as_ref().map_or(false, |s| s.step_back_on_exit);
         self.commit_edit_group_current();
         if let (Some(session), Some(action)) =
             (self.insert_session.take(), self.last_repeatable_action.as_mut())
         {
             action.insert_keys = session.keystrokes;
+        }
+        if step_back {
+            let focused = self.focused_pane_id;
+            let buf = self.focused_buffer_id();
+            doc_ops::apply_doc_motion(&self.buffers, &mut self.pane_state, focused, buf, |b, sels| {
+                sels.map(|sel| {
+                    let head = sel.head;
+                    let line_start = b.line_to_char(b.char_to_line(head));
+                    let new_head = if head > line_start {
+                        prev_grapheme_boundary(b, head)
+                    } else {
+                        head
+                    };
+                    Selection::collapsed(new_head)
+                })
+            });
         }
         // Engine pane is synced by `prepare_frame` each frame.
         self.mode = EditorMode::Normal;

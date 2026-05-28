@@ -463,6 +463,58 @@ fn a_on_wide_selection_collapses_after_end() {
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
+// ── `a` / `A` step-back on Esc ────────────────────────────────────────────────
+
+/// After `a` + typing + Esc the cursor must land on the last typed character,
+/// not one position past it. A second `a` should re-enter Insert at the same
+/// spot rather than advancing further.
+#[test]
+fn a_esc_steps_cursor_back_to_last_typed_char() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('a')); // cursor → 'e', Insert
+    ed.handle_key(key('X'));
+    ed.handle_key(key_esc());
+
+    // Cursor must be on 'X', not on 'e' (one past where X was inserted).
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "h-[X]>ello\n");
+}
+
+/// Regression: `$ a <text> Esc a` must not jump to the next line.
+/// After Esc the cursor must sit on the last appended character (on the same
+/// line), so that a second `a` re-enters Insert at the end of that line.
+#[test]
+fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.handle_key(key('A')); // jump to end of line → '\n', Insert
+    ed.handle_key(key('X'));
+    ed.handle_key(key_esc());
+
+    // Cursor on 'X' (last appended char), still on line 1.
+    assert_eq!(state(&ed), "hello-[X]>\nworld\n");
+
+    // A second `a` must re-enter Insert on the same line, not on 'w'.
+    ed.handle_key(key('a'));
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(state(&ed), "helloX-[\n]>world\n");
+}
+
+/// `i` must NOT step the cursor back on Esc — only `a`/`A` do.
+#[test]
+fn i_esc_does_not_step_cursor_back() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('i')); // cursor stays on 'h', Insert
+    ed.handle_key(key('X'));
+    ed.handle_key(key_esc());
+
+    // No step-back: cursor stays on 'h', not on 'X'.
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "X-[h]>ello\n");
+}
+
 // ── `S` splits selection on newlines ──────────────────────────────────────────
 
 /// `S` must split a multi-line selection into one cursor per line, which is
