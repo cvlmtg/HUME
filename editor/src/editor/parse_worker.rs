@@ -27,16 +27,27 @@ pub(super) struct ParseRequest {
     pub(super) source_bytes: Vec<u8>,
 }
 
+pub(super) enum ParseOutcome {
+    /// Parse succeeded; inner value is the fresh tree.
+    Ok(tree_sitter::Tree),
+    /// `Parser::set_language` rejected the grammar ABI, or the grammar was
+    /// detached between enqueue and execution.  Treated as permanent — syntax
+    /// is detached on arrival.
+    AbiRejected,
+    /// `Parser::parse` returned `None` (transient; currently unreachable without
+    /// a cancellation flag).  Syntax stays attached; the next frame retries.
+    ParseFailed,
+}
+
 pub(super) struct ParseDone {
     pub(super) bid: BufferId,
     pub(super) text_gen: u64,
     /// Identity token — compared via `Arc::ptr_eq` on the main thread to detect
     /// grammar swaps that occurred while the request was in flight.
     pub(super) lang: Arc<LanguageConfig>,
-    /// `None` when `Parser::set_language` rejected the grammar ABI.
-    pub(super) tree: Option<tree_sitter::Tree>,
-    /// Moved back from the worker so `refresh_source` can reuse the allocation
-    /// without an extra copy.
+    pub(super) outcome: ParseOutcome,
+    /// Allocated on the main thread before posting; returned here so the
+    /// highlighter source can be refreshed without a second allocation on install.
     pub(super) source_bytes: Vec<u8>,
 }
 
@@ -82,7 +93,7 @@ impl WorkerState {
             // highest-text_gen request per BufferId.  Superseded requests are
             // already obsolete and would produce trees the main thread discards.
             let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
-            batch.insert(first.bid, first);
+            coalesce_one(&mut batch, first);
             let disconnected = 'drain: loop {
                 match self.rx.try_recv() {
                     Ok(r) => coalesce_one(&mut batch, r),
@@ -113,32 +124,32 @@ impl WorkerState {
             let bundle = match req.lang.grammar.as_ref() {
                 Some(b) => b,
                 None => {
-                    // Grammar detached between enqueue and execution.
                     self.current_lang = None;
-                    return self.send_done(req, None);
+                    return self.send_done(req, ParseOutcome::AbiRejected);
                 }
             };
             match self.parser.set_language(&bundle.grammar.language()) {
                 Ok(()) => self.current_lang = Some(Arc::clone(&req.lang)),
                 Err(_) => {
-                    // ABI mismatch — should not happen after a successful
-                    // attach, but handle defensively.
                     self.current_lang = None;
-                    return self.send_done(req, None);
+                    return self.send_done(req, ParseOutcome::AbiRejected);
                 }
             }
         }
 
-        let tree = self.parser.parse(&req.source_bytes, None);
-        self.send_done(req, tree)
+        let outcome = match self.parser.parse(&req.source_bytes, None) {
+            Some(tree) => ParseOutcome::Ok(tree),
+            None => ParseOutcome::ParseFailed,
+        };
+        self.send_done(req, outcome)
     }
 
-    fn send_done(&self, req: ParseRequest, tree: Option<tree_sitter::Tree>) -> Flow {
+    fn send_done(&self, req: ParseRequest, outcome: ParseOutcome) -> Flow {
         match self.tx.send(ParseDone {
             bid: req.bid,
             text_gen: req.text_gen,
             lang: req.lang,
-            tree,
+            outcome,
             source_bytes: req.source_bytes,
         }) {
             Ok(()) => Flow::Continue,
@@ -158,8 +169,10 @@ enum Flow {
 /// Records a pending parse request so `reparse_stale_buffers` can avoid
 /// re-submitting for a buffer whose request is already in flight.
 pub(super) struct InFlight {
-    /// `text_gen` of the submitted request.
     pub(super) text_gen: u64,
+    /// Grammar identity at submission time.  Used to avoid clearing a newer
+    /// in-flight entry when a stale `ParseDone` for the same buffer arrives.
+    pub(super) lang: Arc<LanguageConfig>,
 }
 
 pub(super) struct ParseWorker {
@@ -217,13 +230,30 @@ impl ParseWorker {
         }
         if let Some(ref tx) = self.tx_req {
             let bid = req.bid;
-            let in_flight = InFlight { text_gen: req.text_gen };
+            let in_flight = InFlight { text_gen: req.text_gen, lang: Arc::clone(&req.lang) };
             match tx.send(req) {
                 Ok(()) => { self.in_flight.insert(bid, in_flight); }
                 Err(_) => {
                     self.disconnected = true;
                     self.in_flight.clear();
                 }
+            }
+        }
+    }
+
+    /// Remove `in_flight[bid]` only when its identity matches the given `(text_gen, lang)`.
+    ///
+    /// A plain `remove` would silently discard a *newer* in-flight entry that
+    /// `post` may have already recorded for the same buffer.
+    pub(super) fn clear_in_flight_if_matches(
+        &mut self,
+        bid: BufferId,
+        text_gen: u64,
+        lang: &Arc<LanguageConfig>,
+    ) {
+        if let Some(inf) = self.in_flight.get(&bid) {
+            if inf.text_gen == text_gen && Arc::ptr_eq(&inf.lang, lang) {
+                self.in_flight.remove(&bid);
             }
         }
     }
@@ -252,7 +282,7 @@ mod tests {
     use engine::grammar::LoadedGrammar;
     use engine::pipeline::BufferId;
 
-    use super::{LanguageConfig, ParseRequest, ParseWorker, coalesce_one};
+    use super::{LanguageConfig, ParseOutcome, ParseRequest, ParseWorker, coalesce_one};
     use crate::editor::syntax::GrammarBundle;
 
     fn grammar_path(name: &str) -> PathBuf {
@@ -358,7 +388,7 @@ mod tests {
         // switch language on the second request.
         let done1 = worker.rx_done.recv_timeout(Duration::from_secs(5))
             .expect("json parse timed out");
-        assert!(done1.tree.is_some(), "json parse must succeed");
+        assert!(matches!(done1.outcome, ParseOutcome::Ok(_)), "json parse must succeed");
         assert!(Arc::ptr_eq(&done1.lang, &json_lang));
 
         worker.post(ParseRequest {
@@ -369,7 +399,7 @@ mod tests {
         });
         let done2 = worker.rx_done.recv_timeout(Duration::from_secs(5))
             .expect("rust parse timed out");
-        assert!(done2.tree.is_some(), "rust parse must succeed after language switch");
+        assert!(matches!(done2.outcome, ParseOutcome::Ok(_)), "rust parse must succeed after language switch");
         assert!(Arc::ptr_eq(&done2.lang, &rust_lang));
     }
 }

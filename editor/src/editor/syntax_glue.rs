@@ -4,7 +4,7 @@ use engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use engine::pipeline::BufferId;
 
 use super::Editor;
-use super::parse_worker::{ParseDone, ParseRequest};
+use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use super::syntax::BufferSyntax;
 
 impl Editor {
@@ -62,6 +62,15 @@ impl Editor {
         }
         self.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
 
+        // Empty buffers need no parse — mark up to date so reparse_stale_buffers
+        // skips them until the first edit arrives.
+        if self.buffers.get(bid).text().len_bytes() == 0 {
+            self.buffers.get_mut(bid).syntax.as_mut()
+                .expect("syntax just set above")
+                .parsed_gen = text_gen;
+            return;
+        }
+
         // Post parse request asynchronously.  The first frame after attachment
         // will render without highlights; results arrive on a subsequent frame.
         // Tests use `join_pending_parses` to synchronise before asserting state.
@@ -77,50 +86,55 @@ impl Editor {
     /// - the grammar identity changed (grammar was swapped while in flight)
     /// - the text advanced past this result (another edit arrived first)
     fn install_parse_done(&mut self, done: ParseDone) {
-        let bid = done.bid;
+        let ParseDone { bid, text_gen, lang, outcome, source_bytes } = done;
 
         // Discard if syntax was detached while the request was in flight.
         let Some(buf_syntax) = self.buffers.get(bid).syntax.as_ref() else {
-            self.parse_worker.in_flight.remove(&bid);
+            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
             return;
         };
 
         // Discard if the grammar was swapped between enqueue and arrival.
-        if !Arc::ptr_eq(&done.lang, &buf_syntax.lang) {
-            self.parse_worker.in_flight.remove(&bid);
+        if !Arc::ptr_eq(&lang, &buf_syntax.lang) {
+            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
             return;
         }
 
         // Discard if the text moved on since this request was submitted.
         let current_text_gen = self.buffers.get(bid).text_gen;
-        if done.text_gen != current_text_gen {
-            self.parse_worker.in_flight.remove(&bid);
+        if text_gen != current_text_gen {
+            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
             return;
         }
 
-        match done.tree {
-            Some(tree) => {
+        match outcome {
+            ParseOutcome::Ok(tree) => {
                 let sbuf = &mut self.engine_view.buffers[bid];
                 sbuf.tree = Some(tree);
                 if let Some(hl) = sbuf.syntax.as_deref() {
-                    hl.refresh_source(&done.source_bytes);
+                    hl.refresh_source(&source_bytes);
                 }
             }
-            None => {
-                // Parser rejected the grammar (ABI mismatch) — detach syntax.
+            ParseOutcome::AbiRejected => {
+                // Grammar rejected by parser ABI — detach syntax permanently.
                 let sbuf = &mut self.engine_view.buffers[bid];
                 sbuf.tree = None;
                 sbuf.syntax = None;
                 self.buffers.get_mut(bid).syntax = None;
-                self.parse_worker.in_flight.remove(&bid);
+                self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
+                return;
+            }
+            ParseOutcome::ParseFailed => {
+                // Transient parse failure — leave syntax attached, allow retry next frame.
+                self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
                 return;
             }
         }
 
         self.buffers.get_mut(bid).syntax.as_mut()
             .expect("syntax.is_some() guaranteed: checked above before install")
-            .parsed_gen = done.text_gen;
-        self.parse_worker.in_flight.remove(&bid);
+            .parsed_gen = text_gen;
+        self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
     }
 
     /// Reparse any visible buffer whose text has changed since the last parse.
@@ -132,25 +146,17 @@ impl Editor {
     /// requests for stale buffers.  The renderer reads whatever tree is currently
     /// committed — a frame with a slightly stale tree (or no tree) is acceptable.
     pub(super) fn reparse_stale_buffers(&mut self) {
-        // Surface a one-shot warning if the worker exited unexpectedly.
-        // `disconnected` stays true for the session lifetime; `disconnect_logged`
-        // ensures the message fires exactly once.
-        if self.parse_worker.disconnected {
-            if !self.parse_worker.disconnect_logged {
-                use super::Severity;
-                self.message_log.push(
-                    Severity::Error,
-                    "parse worker disconnected — syntax highlighting suspended".to_owned(),
-                );
-                self.parse_worker.disconnect_logged = true;
-            }
-            return;
-        }
-
-        // Drain phase: install any parse results the worker has completed since
-        // the previous frame.
+        // Drain phase: runs even when disconnected — buffered results produced
+        // before the worker exited are still valid and should land.
         while let Ok(done) = self.parse_worker.rx_done.try_recv() {
             self.install_parse_done(done);
+        }
+
+        // Surface a one-shot warning if the worker exited unexpectedly and
+        // suspend further request submission for this session.
+        if self.parse_worker.disconnected {
+            self.surface_parse_worker_disconnect();
+            return;
         }
 
         // Deduplicated set of visible BufferIds.
@@ -224,7 +230,7 @@ impl Editor {
     /// Block until all in-flight parse requests have produced results, then
     /// drain and install them.  Used in tests and wherever a sync checkpoint
     /// is needed (e.g. a future `:write` guarantee).
-    #[allow(dead_code)] // called from tests; available as a sync checkpoint for future production use
+    #[cfg(test)]
     pub(crate) fn join_pending_parses(&mut self) {
         while !self.parse_worker.in_flight.is_empty() {
             match self.parse_worker.rx_done.recv() {
@@ -232,9 +238,21 @@ impl Editor {
                 Err(_) => {
                     self.parse_worker.disconnected = true;
                     self.parse_worker.in_flight.clear();
+                    self.surface_parse_worker_disconnect();
                     return;
                 }
             }
+        }
+    }
+
+    fn surface_parse_worker_disconnect(&mut self) {
+        if !self.parse_worker.disconnect_logged {
+            use super::Severity;
+            self.message_log.push(
+                Severity::Error,
+                "parse worker disconnected — syntax highlighting suspended".to_owned(),
+            );
+            self.parse_worker.disconnect_logged = true;
         }
     }
 
