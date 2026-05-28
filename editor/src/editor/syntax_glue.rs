@@ -235,15 +235,18 @@ impl Editor {
                     sbuf.tree = Some(tree);
                     sbuf.tree_source = source_bytes;
                 }
-                // Drain pending edits baked into the installed tree.
+                // Drain pending edits baked into the installed tree, and
+                // advance tree_gen to match the newly installed precise tree.
                 if let Some(syn) = self.buffers.get_mut(bid).syntax.as_mut() {
                     syn.pending_edits.retain(|(g, _)| *g > text_gen);
+                    syn.tree_gen = text_gen;
                 }
             }
             ParseOutcome::ParseFailed => {
                 // Advance parsed_gen so this generation is not retried every
                 // frame.  The next edit will bump text_gen and trigger a fresh
-                // attempt.
+                // attempt.  tree_gen is NOT advanced — the committed tree (if
+                // any) still describes whatever generation it was baked to.
             }
         }
 
@@ -257,9 +260,9 @@ impl Editor {
     /// Called from `prepare_frame` before `update_highlight_providers`. Detaches
     /// syntax from a buffer that has grown past `syntax-highlight-max-bytes`.
     ///
-    /// Non-blocking: drains any completed backend results, then submits new
-    /// requests for stale buffers.  The renderer reads whatever tree is currently
-    /// committed — a frame with a slightly stale tree (or no tree) is acceptable.
+    /// Non-blocking: drains any completed backend results, then for each stale
+    /// buffer bakes pending edits into the committed tree (keeping the renderer
+    /// coordinate-aligned every frame) and submits an incremental reparse request.
     pub(super) fn reparse_stale_buffers(&mut self) {
         // Drain phase: runs even when disconnected — buffered results produced
         // before the worker exited are still valid and should land.
@@ -323,58 +326,86 @@ impl Editor {
                 continue;
             }
 
+            // Bake any pending edits into the committed tree so the renderer
+            // stays coordinate-aligned with the live text every frame, even
+            // while a background reparse is in flight.
+            //
+            // On a complete chain: applies each InputEdit to sbuf.tree in-place,
+            // refreshes tree_source to match the live rope, advances tree_gen to
+            // text_gen, and clears pending_edits.
+            //
+            // On a chain break (mutation bypassed doc_ops): clears pending_edits
+            // and leaves tree_gen unchanged; the subsequent post falls back to a
+            // full reparse.
+            //
+            // When no tree exists yet (initial open, first edit before first
+            // parse completes): skips silently; tree_gen stays at 0.
+            {
+                let buf_syntax = self.buffers.get(bid).syntax.as_ref()
+                    .expect("syntax is_some guaranteed above");
+                let pending = &buf_syntax.pending_edits;
+                let tree_gen = buf_syntax.tree_gen;
+                let has_pending = !pending.is_empty();
+                let has_tree = self.engine_view.buffers[bid].tree.is_some();
+
+                if has_pending && has_tree {
+                    let chain_ok = pending[0].0 == tree_gen + 1
+                        && pending.last().unwrap().0 == text_gen;
+
+                    if chain_ok {
+                        // Collect before taking mutable borrows.
+                        let edits: Vec<_> = pending.iter().map(|(_, e)| *e).collect();
+                        let new_source: Vec<u8> =
+                            self.buffers.get(bid).text().rope().bytes().collect();
+                        {
+                            let sbuf = &mut self.engine_view.buffers[bid];
+                            let tree = sbuf.tree.as_mut().expect("has_tree checked above");
+                            for edit in &edits {
+                                tree.edit(edit);
+                            }
+                            sbuf.tree_source = new_source;
+                        }
+                        let syn = self.buffers.get_mut(bid).syntax.as_mut()
+                            .expect("syntax is_some guaranteed above");
+                        syn.tree_gen = text_gen;
+                        syn.pending_edits.clear();
+                    } else {
+                        // pending_edits chain is broken — a text mutation bypassed
+                        // doc_ops without recording edits.  Full reparse required.
+                        debug_assert!(
+                            false,
+                            "pending_edits chain broken: tree_gen={tree_gen}, \
+                             text_gen={text_gen}, first={:?}, last={:?}",
+                            pending.first().map(|(g, _)| *g),
+                            pending.last().map(|(g, _)| *g),
+                        );
+                        self.buffers.get_mut(bid).syntax.as_mut()
+                            .expect("syntax is_some guaranteed above")
+                            .pending_edits.clear();
+                    }
+                }
+            }
+
             // In-flight check: skip if we already have a pending request for
             // the current text_gen.
             if self.parse_worker.is_in_flight(bid, text_gen) {
                 continue;
             }
 
-            // Compute old_tree for incremental re-parsing.
-            // Clone the installed tree and apply all pending InputEdits to shift
-            // its node coordinates into the new document's space.  On a chain
-            // break (missed gen) or when no tree exists yet, fall back to a full
-            // reparse (old_tree = None) and clear any stale pending_edits.
+            // Build old_tree for incremental re-parsing.  The committed tree has
+            // been baked to text_gen (when the edit chain was intact and a tree
+            // existed), so clone it directly.  Falls back to None (full reparse)
+            // when no tree exists yet or the chain was broken.
             let old_tree: Option<tree_sitter::Tree> = {
-                let sbuf = &self.engine_view.buffers[bid];
-                let buf_syntax = self.buffers.get(bid).syntax.as_ref()
-                    .expect("syntax is_some guaranteed above");
-                let pending = &buf_syntax.pending_edits;
-                let parsed_gen = buf_syntax.parsed_gen;
-
-                match sbuf.tree.as_ref() {
-                    Some(tree)
-                        if !pending.is_empty()
-                            && pending[0].0 == parsed_gen + 1
-                            && pending.last().unwrap().0 == text_gen =>
-                    {
-                        let mut cloned = tree.clone();
-                        for (_, edit) in pending {
-                            cloned.edit(edit);
-                        }
-                        Some(cloned)
-                    }
-                    Some(_) if !pending.is_empty() => {
-                        // pending_edits chain is broken — a text mutation bypassed
-                        // doc_ops without recording edits.  Full reparse required.
-                        debug_assert!(
-                            false,
-                            "pending_edits chain broken: parsed_gen={parsed_gen}, \
-                             text_gen={text_gen}, first={:?}, last={:?}",
-                            pending.first().map(|(g, _)| *g),
-                            pending.last().map(|(g, _)| *g),
-                        );
-                        None
-                    }
-                    _ => None,
+                let tree_gen = self.buffers.get(bid).syntax.as_ref()
+                    .expect("syntax is_some guaranteed above")
+                    .tree_gen;
+                if tree_gen == text_gen {
+                    self.engine_view.buffers[bid].tree.clone()
+                } else {
+                    None
                 }
             };
-
-            // Clear stale/broken pending_edits when falling back to full reparse.
-            if old_tree.is_none() {
-                if let Some(syn) = self.buffers.get_mut(bid).syntax.as_mut() {
-                    syn.pending_edits.clear();
-                }
-            }
 
             let text = self.buffers.get(bid).text().clone();
             let lang = Arc::clone(

@@ -47,19 +47,26 @@ pub(crate) struct BufferSyntax {
     /// `text_gen` of the most recently installed tree.  When this equals
     /// `Buffer.text_gen`, the installed tree is up to date.
     pub(crate) parsed_gen: u64,
-    /// Edits recorded since the last successfully installed tree, in order.
+    /// Text generation whose coordinates the committed `sbuf.tree` currently
+    /// describes.  Advanced each time pending edits are baked into the committed
+    /// tree in `reparse_stale_buffers`, and on each precise parse install in
+    /// `apply_parse_outcome`.  Separate from `parsed_gen` because edits can
+    /// outpace the worker: `tree_gen` advances every frame (on bake), while
+    /// `parsed_gen` advances only when the worker delivers a result.
+    pub(crate) tree_gen: u64,
+    /// Edits recorded since the last bake or installed tree, in order.
     ///
     /// Each entry is `(text_gen, edit)` where `text_gen` is the generation
-    /// produced by the edit.  A contiguous chain from `parsed_gen + 1` to the
-    /// current `Buffer.text_gen` enables incremental re-parsing; a gap triggers
-    /// a full reparse.  Entries with `gen ≤ installed_text_gen` are drained on
-    /// each successful `apply_parse_outcome`.
+    /// produced by the edit.  A contiguous chain from `tree_gen + 1` to the
+    /// current `Buffer.text_gen` enables in-place baking of the committed tree;
+    /// a gap triggers a full reparse.  Entries are cleared on each successful
+    /// bake and drained (up to the installed gen) on each `apply_parse_outcome`.
     pub(crate) pending_edits: Vec<(u64, tree_sitter::InputEdit)>,
 }
 
 impl BufferSyntax {
     pub(crate) fn new(lang: Arc<LanguageConfig>) -> Self {
-        Self { lang, parsed_gen: 0, pending_edits: Vec::new() }
+        Self { lang, parsed_gen: 0, tree_gen: 0, pending_edits: Vec::new() }
     }
 }
 

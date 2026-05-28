@@ -528,7 +528,7 @@ impl Editor {
     /// `a` again re-enters Insert at the same position rather than advancing forward.
     /// The step is clamped to the current line start so it never crosses a `\n`.
     pub(super) fn end_insert_session(&mut self) {
-        let step_back = self.insert_session.as_ref().map_or(false, |s| s.step_back_on_exit);
+        let step_back = self.insert_session.as_ref().is_some_and(|s| s.step_back_on_exit);
         self.commit_edit_group_current();
         if let (Some(session), Some(action)) =
             (self.insert_session.take(), self.last_repeatable_action.as_mut())

@@ -184,6 +184,98 @@ fn incremental_tree_matches_full_reparse() {
     );
 }
 
+/// After an edit, a single `reparse_stale_buffers` call must bake the pending
+/// edits into the committed tree (coordinate-aligning it with the live text)
+/// before the background precise parse is installed.  This is the key invariant
+/// that prevents the pre-M9.5-fix highlight flicker.
+///
+/// With InlineParseBackend, `post` resolves immediately into the queue but does
+/// NOT drain in the same call.  So after exactly one `reparse_stale_buffers`:
+/// - the bake has run  (tree_gen == text_gen, pending cleared, tree coords shifted)
+/// - the precise parse is queued but NOT yet installed (parsed_gen < text_gen)
+///
+/// Flip: without the bake the tree's root end_byte would still equal the
+/// pre-edit byte count, and tree_source would lag the live rope.
+#[test]
+fn bake_aligns_committed_tree_before_precise_install() {
+    let (mut ed, bid) = json_editor("{}\n");
+    let old_byte_len = ed.buffers.get(bid).text().len_bytes();
+
+    // Insert one space at the buffer start.
+    ed.feed_key(key('i'));
+    ed.feed_key(key(' '));
+    ed.feed_key(key_esc());
+
+    let text_gen_after = ed.buffers.get(bid).text_gen;
+    let new_byte_len = ed.buffers.get(bid).text().len_bytes();
+    assert_eq!(new_byte_len, old_byte_len + 1, "insert added one byte");
+
+    // One call: bakes pending edits + posts the incremental reparse request.
+    // InlineParseBackend resolves the request synchronously into its internal
+    // queue, but the queue is NOT drained until the NEXT call's drain phase.
+    ed.reparse_stale_buffers();
+
+    let syn = ed.buffers.get(bid).syntax.as_ref().unwrap();
+    assert_eq!(syn.tree_gen, text_gen_after, "tree_gen must equal text_gen after bake");
+    assert!(
+        syn.parsed_gen < text_gen_after,
+        "parsed_gen must not yet equal text_gen — precise parse queued, not installed",
+    );
+    assert!(syn.pending_edits.is_empty(), "pending_edits must be cleared by the bake");
+
+    // Committed tree must be coordinate-aligned: root end_byte == new text length.
+    // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
+    let root_end = ed.engine_view.buffers[bid]
+        .tree.as_ref().unwrap()
+        .root_node().end_byte();
+    assert_eq!(
+        root_end, new_byte_len,
+        "baked tree root end_byte must equal new text byte count; \
+         pre-fix this would equal {} (stale)", old_byte_len,
+    );
+
+    // tree_source must match the live rope.
+    let live_bytes = ed.buffers.get(bid).text().to_bytes();
+    assert_eq!(
+        ed.engine_view.buffers[bid].tree_source,
+        live_bytes,
+        "tree_source must be refreshed to live bytes after bake",
+    );
+}
+
+/// Two edits without an intervening drain: the bake must handle a chain of
+/// multiple pending InputEdits and advance tree_gen in one shot.
+#[test]
+fn bake_handles_multi_edit_chain_in_one_shot() {
+    let (mut ed, bid) = json_editor("{}\n");
+
+    // Two separate insert-mode characters → two text_gen bumps, two pending edits.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('A'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key('a'));
+    ed.feed_key(key('B'));
+    ed.feed_key(key_esc());
+
+    let text_gen_after = ed.buffers.get(bid).text_gen;
+    let new_byte_len = ed.buffers.get(bid).text().len_bytes();
+
+    let pending_count = ed.buffers.get(bid).syntax.as_ref().unwrap().pending_edits.len();
+    assert!(pending_count >= 2, "two edits must produce ≥2 pending entries");
+
+    // One call bakes all pending edits at once.
+    ed.reparse_stale_buffers();
+
+    let syn = ed.buffers.get(bid).syntax.as_ref().unwrap();
+    assert_eq!(syn.tree_gen, text_gen_after, "tree_gen must jump to text_gen after bake");
+    assert!(syn.pending_edits.is_empty(), "all pending edits cleared by bake");
+
+    let root_end = ed.engine_view.buffers[bid]
+        .tree.as_ref().unwrap()
+        .root_node().end_byte();
+    assert_eq!(root_end, new_byte_len, "multi-edit baked tree must span new byte length");
+}
+
 #[test]
 fn grammar_swap_clears_pending_and_full_reparses() {
     let (mut ed, bid) = json_editor("{\"x\":1}\n");
