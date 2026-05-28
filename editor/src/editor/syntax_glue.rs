@@ -119,6 +119,10 @@ impl Editor {
             sbuf.tree = None;
         }
         self.buffers.get_mut(bid).syntax = None;
+        // Must clear before posting the fresh request: is_in_flight() matches on
+        // text_gen alone, so a stale entry (different Arc<LanguageConfig> after a
+        // grammar swap via sweep_buffers_for_grammars) would short-circuit the
+        // reparse_stale_buffers request-phase even though the language changed.
         self.parse_worker.remove_in_flight(bid);
 
         // Resolve language → grammar bundle.
@@ -167,7 +171,11 @@ impl Editor {
             return;
         }
 
-        // Post parse request.  Results arrive via drain_done in reparse_stale_buffers.
+        // Post parse request.  tree stays None until the backend responds, so the
+        // first painted frame after open is uncoloured.  Colour arrives on a later
+        // frame once drain_done in reparse_stale_buffers installs the result.
+        // Accepted tradeoff for uniform-path simplicity; the 8 ms in-flight poll in
+        // the run loop (lifecycle.rs) makes the flash imperceptible interactively.
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
         let text = self.buffers.get(bid).text().clone();
@@ -196,6 +204,9 @@ impl Editor {
         outcome: ParseOutcome,
     ) {
         // Discard if the buffer was closed while the request was in flight.
+        // Also covers slot reuse: BufferId is a generational slotmap key, so a
+        // closed-then-reopened slot has a bumped version and the stale bid fails
+        // here — it can never reach, let alone clobber, the new buffer.
         if self.buffers.try_get(bid).is_none() {
             return;
         }
