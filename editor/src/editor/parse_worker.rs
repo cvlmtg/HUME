@@ -184,6 +184,9 @@ pub(super) trait ParseBackend {
         lang: &Arc<LanguageConfig>,
     );
 
+    /// True if any parse request is currently in flight.
+    fn has_in_flight(&self) -> bool;
+
     fn is_disconnected(&self) -> bool;
     fn is_disconnect_logged(&self) -> bool;
     fn mark_disconnect_logged(&mut self);
@@ -291,6 +294,8 @@ impl ParseBackend for ThreadedParseBackend {
         }
     }
 
+    fn has_in_flight(&self) -> bool { !self.in_flight.is_empty() }
+
     fn is_disconnected(&self) -> bool { self.disconnected }
     fn is_disconnect_logged(&self) -> bool { self.disconnect_logged }
     fn mark_disconnect_logged(&mut self) { self.disconnect_logged = true; }
@@ -343,6 +348,8 @@ impl ParseBackend for InlineParseBackend {
     fn is_in_flight(&self, _bid: BufferId, _text_gen: u64) -> bool { false }
     fn remove_in_flight(&mut self, _bid: BufferId) {}
     fn clear_in_flight_if_matches(&mut self, _bid: BufferId, _text_gen: u64, _lang: &Arc<LanguageConfig>) {}
+    // Inline parses complete synchronously inside `post` — nothing is ever pending.
+    fn has_in_flight(&self) -> bool { false }
     fn is_disconnected(&self) -> bool { false }
     fn is_disconnect_logged(&self) -> bool { false }
     fn mark_disconnect_logged(&mut self) {}

@@ -336,6 +336,13 @@ impl Editor {
             let _ = crate::os::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
+            // While a parse is in flight block for at most 8 ms so that the
+            // completed tree is drained and painted without waiting for input.
+            // When no parse is pending fall through to the blocking read so we
+            // never burn CPU while the editor is idle.
+            if self.parse_worker.has_in_flight() && !event::poll(Duration::from_millis(8))? {
+                continue;
+            }
             match event::read()? {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
