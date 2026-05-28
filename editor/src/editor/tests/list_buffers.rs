@@ -396,3 +396,23 @@ fn view_buffer_blocks_paste() {
         "P must report 'Buffer is read-only'"
     );
 }
+
+/// `:w` on a read-only view buffer ([buffers]) must error with
+/// "Buffer is read-only", not "no file name".
+///
+/// Validity: remove the `is_read_only()` guard from `write_file` and this
+/// test fails — the status_msg will contain "no file name" instead.
+#[test]
+fn view_buffer_blocks_write() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.execute_typed("ls", None).unwrap();
+    assert!(ed.doc().is_read_only());
+
+    ed.execute_typed("w", None).unwrap_err();
+    assert_eq!(
+        ed.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        ":w on a read-only view must report 'Buffer is read-only'"
+    );
+}

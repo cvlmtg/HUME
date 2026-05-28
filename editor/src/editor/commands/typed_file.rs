@@ -176,6 +176,7 @@ pub fn typed_set(
 /// `:w` (no argument) targets the same path.
 ///
 /// If `arg` is `None`, writes to the current file. Errors with
+/// "Buffer is read-only" if the focused buffer has `read_only = true`, or
 /// "no file name" if the buffer is a scratch buffer with no path.
 ///
 /// When `force` is `true`, a `PermissionDenied` rename error triggers a
@@ -230,6 +231,9 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Err(e) => Err(CommandError(e.to_string())),
         }
     } else {
+        if ed.doc().is_read_only() {
+            return Err(CommandError("Buffer is read-only".into()));
+        }
         // Write to the current file.
         let Some(meta) = ed.doc().file_meta.as_ref() else {
             return Err(CommandError("no file name".into()));
