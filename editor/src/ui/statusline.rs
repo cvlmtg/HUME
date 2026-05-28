@@ -367,7 +367,7 @@ fn render_element(
             )
         }
         StatusElement::KittyProtocol => {
-            let label = if editor.kitty_enabled { "🐱" } else { "" };
+            let label = if editor.kitty_enabled { "🐱\u{FE0E}" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
