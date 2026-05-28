@@ -30,6 +30,7 @@ use self::keymap::{Keymap, WaitCharPending};
 
 mod buffer_ops;
 mod lifecycle;
+mod parse_worker;
 mod scripting_setup;
 
 pub(crate) mod buffer;
@@ -369,6 +370,14 @@ pub(crate) struct Editor {
     ///
     /// Set at startup; updated by `:cd`. Avoids a `getcwd` syscall every frame.
     pub(super) cwd: PathBuf,
+
+    // ── Tree-sitter parse worker ──────────────────────────────────────────────
+    /// Dedicated thread that runs `tree_sitter::Parser` off the main thread.
+    ///
+    /// `reparse_stale_buffers` posts requests here and drains completed trees
+    /// each frame.  `join_pending_parses` blocks until in-flight requests land —
+    /// used by tests and for sync checkpoints (e.g. future `:write` guarantee).
+    parse_worker: parse_worker::ParseWorker,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -626,6 +635,7 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             languages: syntax::LanguageRegistry::new(),
             cwd: std::env::temp_dir(),
+            parse_worker: parse_worker::ParseWorker::new(),
         }
     }
 

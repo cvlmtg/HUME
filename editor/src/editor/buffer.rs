@@ -7,7 +7,7 @@ use crate::core::search_state::{SearchMatches, SearchPattern};
 use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 use crate::editor::pane_state::EditGroup;
-use crate::editor::syntax::BufferParser;
+use crate::editor::syntax::BufferSyntax;
 use crate::os::io::FileMeta;
 use crate::settings::BufferOverrides;
 
@@ -57,7 +57,7 @@ pub(crate) struct Buffer {
     pub(crate) text_gen: u64,
     /// Per-buffer tree-sitter parse state. `None` when no grammar is attached
     /// or the buffer exceeds `syntax-highlight-max-bytes`.
-    pub(crate) parser: Option<BufferParser>,
+    pub(crate) parser: Option<BufferSyntax>,
     /// When `true`, all forward text mutations are blocked at the `doc_ops`
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
     /// language/syntax — a read-only buffer may still be highlighted.

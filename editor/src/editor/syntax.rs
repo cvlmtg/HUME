@@ -32,25 +32,26 @@ pub(crate) struct LanguageConfig {
     pub grammar: Option<GrammarBundle>,
 }
 
-// ── BufferParser ──────────────────────────────────────────────────────────────
+// ── BufferSyntax ──────────────────────────────────────────────────────────────
 
-/// Per-buffer parse state. `lang` is a keepalive — ensures `GrammarBundle`
-/// (and its loaded `.so`) stays alive at least as long as this parser.
-pub(crate) struct BufferParser {
-    // Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
-    // this parser is alive.
-    #[allow(dead_code)]
+/// Per-buffer syntax attachment state.
+///
+/// The `tree_sitter::Parser` no longer lives here — it lives on the parse
+/// worker thread.  This struct tracks the grammar identity (for keepalive and
+/// grammar-swap detection via `Arc::ptr_eq`) and the most recently installed
+/// tree generation.
+pub(crate) struct BufferSyntax {
+    /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
+    /// this buffer is syntax-attached.
     pub(crate) lang: Arc<LanguageConfig>,
-    pub(crate) parser: tree_sitter::Parser,
+    /// `text_gen` of the most recently installed tree.  When this equals
+    /// `Buffer.text_gen`, the installed tree is up to date.
     pub(crate) parsed_gen: u64,
 }
 
-impl BufferParser {
-    pub(crate) fn new(lang: Arc<LanguageConfig>) -> Option<Self> {
-        let bundle = lang.grammar.as_ref()?;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(bundle.grammar.language()).ok()?;
-        Some(Self { lang, parser, parsed_gen: 0 })
+impl BufferSyntax {
+    pub(crate) fn new(lang: Arc<LanguageConfig>) -> Self {
+        Self { lang, parsed_gen: 0 }
     }
 }
 

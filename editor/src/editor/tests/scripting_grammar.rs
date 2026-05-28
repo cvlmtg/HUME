@@ -97,6 +97,7 @@ fn attach_then_set_language_attaches_syntax() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.join_pending_parses();
     assert!(ed.buffers.get(bid).parser.is_some(), "parser must be set after attach");
     assert!(ed.engine_view.buffers[bid].syntax.is_some(), "engine syntax must be set");
     assert!(ed.engine_view.buffers[bid].tree.is_some(), "engine tree must be set");
@@ -178,8 +179,9 @@ fn reparse_advances_parsed_gen_after_edit() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.join_pending_parses();
 
-    // setup_buffer_syntax sets parsed_gen = text_gen.
+    // setup_buffer_syntax sets parsed_gen = text_gen (after join).
     let gen0 = ed.buffers.get(bid).text_gen;
     assert_eq!(
         ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
@@ -200,6 +202,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     );
 
     ed.reparse_stale_buffers();
+    ed.join_pending_parses();
     assert_eq!(
         ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
         gen1,
@@ -324,6 +327,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.join_pending_parses();
     assert!(ed.engine_view.buffers[bid].tree.is_some(), "tree must be set before replace");
     assert!(ed.engine_view.buffers[bid].syntax.is_some(), "syntax must be set before replace");
 
@@ -375,6 +379,87 @@ fn reparse_reattaches_after_shrink_under_cap() {
         ed.engine_view.buffers[bid].syntax.is_some(),
         "engine syntax must be rebuilt after re-attach",
     );
+}
+
+// ---------------------------------------------------------------------------
+// M9.4 — Off-main-thread parse worker
+// ---------------------------------------------------------------------------
+
+/// The reparse path is now async: immediately after an edit, `reparse_stale_buffers`
+/// posts a request but does not block.  `parsed_gen` should still lag `text_gen` until
+/// `join_pending_parses` is called.
+#[test]
+fn parse_worker_result_is_async_then_installed() {
+    let (parser, hl) = grammar_fixture("json");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
+    ed.languages
+        .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
+        .unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.join_pending_parses();
+
+    let gen0 = ed.buffers.get(bid).text_gen;
+
+    // Edit — bumps text_gen.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_esc());
+    let gen1 = ed.buffers.get(bid).text_gen;
+    assert!(gen1 > gen0);
+
+    // One non-blocking reparse call posts the request but does not install the tree.
+    // parsed_gen should still equal gen0 (the async parse is not yet done).
+    ed.reparse_stale_buffers();
+    assert_eq!(
+        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        gen0,
+        "parsed_gen must still lag immediately after non-blocking reparse_stale_buffers",
+    );
+
+    // After join, the result is installed.
+    ed.join_pending_parses();
+    ed.reparse_stale_buffers(); // drain in case the result arrived just after the join
+    assert_eq!(
+        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        gen1,
+        "parsed_gen must equal text_gen after join_pending_parses",
+    );
+}
+
+/// Verify that sweeping with a new grammar after one is already in flight does not
+/// leave a stale `InFlight` entry that silences the follow-up request.
+///
+/// Flip: if sweep_buffers_for_grammars did not clear in_flight[bid], the
+/// next reparse_stale_buffers call would see in_flight.text_gen == text_gen and
+/// skip posting, leaving parsed_gen permanently stale.
+#[test]
+fn grammar_swap_clears_stale_in_flight() {
+    let (parser_json, hl_json) = grammar_fixture("json");
+    let (parser_rust, hl_rust) = grammar_fixture("rust");
+    let mut ed = editor_from("-[f]>n main() {}\n");
+    let bid = ed.focused_buffer_id();
+
+    // Register json and set buffer to json.
+    ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
+    ed.languages.register_identity("rust", &["rs"], &[], &[]).unwrap();
+    ed.languages
+        .attach_grammar("json", &parser_json, "tree_sitter_json", &hl_json, &mut ed.engine_view.registry)
+        .unwrap();
+    ed.set_buffer_language(bid, Some("json".to_owned()));
+    ed.join_pending_parses();
+
+    // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
+    ed.languages
+        .attach_grammar("rust", &parser_rust, "tree_sitter_rust", &hl_rust, &mut ed.engine_view.registry)
+        .unwrap();
+    ed.set_buffer_language(bid, Some("rust".to_owned()));
+    ed.join_pending_parses();
+
+    let rust_lang = ed.buffers.get(bid).parser.as_ref().unwrap().lang.name.clone();
+    assert_eq!(rust_lang, "rust", "buffer must be parsed with rust grammar after swap");
+    assert!(ed.engine_view.buffers[bid].tree.is_some(), "rust parse must produce a tree");
 }
 
 // ---------------------------------------------------------------------------
