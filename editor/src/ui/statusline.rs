@@ -53,7 +53,7 @@ pub(crate) enum StatusElement {
     /// Selection count as `"N sels"`, or the empty string when only one
     /// selection is active (so it occupies no space in single-cursor mode).
     Selections,
-    /// Kitty keyboard protocol indicator: `"🐱"` when active, empty otherwise.
+    /// Kitty keyboard protocol indicator: `"ᓚᘏᗢ"` when active, empty otherwise.
     ///
     /// Useful for diagnosing whether the protocol was successfully negotiated.
     KittyProtocol,
@@ -367,7 +367,7 @@ fn render_element(
             )
         }
         StatusElement::KittyProtocol => {
-            let label = if editor.kitty_enabled { "🐱\u{FE0E}" } else { "" };
+            let label = if editor.kitty_enabled { "ᓚᘏᗢ" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
         StatusElement::Selections => (Cow::Borrowed(""), colors.statusline),
