@@ -120,11 +120,10 @@ fn highlights_emit_keyword_event() {
         grammar.language(),
         &highlights_source,
         &mut scope_reg,
-        source.to_vec(),
     )
     .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext { rope: &rope, tree: Some(&tree), line_start_byte: 0 };
+    let ctx = SourceContext { rope: &rope, tree: Some(&tree), source, line_start_byte: 0 };
     let mut out = Vec::new();
     highlighter.highlights_for_line(0, &ctx, &mut out);
 
@@ -159,12 +158,11 @@ fn highlights_for_line_correct_on_nonzero_line() {
         grammar.language(),
         &highlights_source,
         &mut scope_reg,
-        source.to_vec(),
     )
     .expect("highlighter");
 
     let line_start_byte = rope.line_to_byte(1);
-    let ctx = SourceContext { rope: &rope, tree: Some(&tree), line_start_byte };
+    let ctx = SourceContext { rope: &rope, tree: Some(&tree), source, line_start_byte };
     let mut out = Vec::new();
     highlighter.highlights_for_line(1, &ctx, &mut out);
 
@@ -199,10 +197,10 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
     let highlighter =
-        TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg, source.to_vec())
+        TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
             .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext { rope: &rope, tree: Some(&tree), line_start_byte: 0 };
+    let ctx = SourceContext { rope: &rope, tree: Some(&tree), source, line_start_byte: 0 };
     let mut out = Vec::new();
     highlighter.highlights_for_line(0, &ctx, &mut out);
 
@@ -235,10 +233,10 @@ fn highlight_overlap_fully_contained_is_dropped() {
     let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
 
     let highlighter =
-        TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg, source.to_vec())
+        TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
             .expect("highlighter creation should succeed");
 
-    let ctx = SourceContext { rope: &rope, tree: Some(&tree), line_start_byte: 0 };
+    let ctx = SourceContext { rope: &rope, tree: Some(&tree), source, line_start_byte: 0 };
     let mut out = Vec::new();
     highlighter.highlights_for_line(0, &ctx, &mut out);
 

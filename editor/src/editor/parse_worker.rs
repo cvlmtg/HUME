@@ -57,10 +57,16 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
     match batch.entry(req.bid) {
         Entry::Vacant(v) => { v.insert(req); }
         Entry::Occupied(mut o) => {
-            if req.text_gen > o.get().text_gen {
+            // Keep the latest generation; when generations are equal, a different
+            // grammar Arc means a grammar swap on a quiescent buffer — take the
+            // new entry so the fresh grammar wins even without a text edit.
+            if req.text_gen > o.get().text_gen
+                || (req.text_gen == o.get().text_gen
+                    && !Arc::ptr_eq(&req.lang, &o.get().lang))
+            {
                 o.insert(req);
             }
-            // else: drop req — older or equal-gen duplicate.
+            // else: drop req — older or same-grammar equal-gen duplicate.
         }
     }
 }
@@ -76,12 +82,12 @@ fn do_parse(
     cancel: &AtomicBool,
 ) -> ParseDone {
     let language_changed = current_lang.as_ref()
-        .map_or(true, |cur| !Arc::ptr_eq(cur, &req.lang));
+        .is_none_or(|cur| !Arc::ptr_eq(cur, &req.lang));
 
     if language_changed {
         let bundle = req.lang.grammar.as_ref()
             .expect("grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting");
-        parser.set_language(&bundle.grammar.language())
+        parser.set_language(bundle.grammar.language())
             .expect("ABI verified at grammar registration time in attach_grammar");
         *current_lang = Some(Arc::clone(&req.lang));
     }
@@ -95,7 +101,7 @@ fn do_parse(
         let bytes = &req.source_bytes;
         let len = bytes.len();
         match parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
+            &mut |i, _| if i < len { &bytes[i..] } else { Default::default() },
             None,
             Some(options),
         ) {
@@ -188,8 +194,6 @@ pub(super) trait ParseBackend {
     fn has_in_flight(&self) -> bool;
 
     fn is_disconnected(&self) -> bool;
-    fn is_disconnect_logged(&self) -> bool;
-    fn mark_disconnect_logged(&mut self);
 }
 
 // ── InFlight record ───────────────────────────────────────────────────────────
@@ -211,7 +215,6 @@ pub(super) struct ThreadedParseBackend {
     rx_done: mpsc::Receiver<ParseDone>,
     in_flight: HashMap<BufferId, InFlight>,
     disconnected: bool,
-    disconnect_logged: bool,
     cancel: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -240,7 +243,6 @@ impl ThreadedParseBackend {
             rx_done,
             in_flight: HashMap::new(),
             disconnected: false,
-            disconnect_logged: false,
             cancel,
             thread: Some(thread),
         }
@@ -267,8 +269,16 @@ impl ParseBackend for ThreadedParseBackend {
 
     fn drain_done(&mut self) -> Vec<ParseDone> {
         let mut out = Vec::new();
-        while let Ok(done) = self.rx_done.try_recv() {
-            out.push(done);
+        loop {
+            match self.rx_done.try_recv() {
+                Ok(done) => out.push(done),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.disconnected = true;
+                    self.in_flight.clear();
+                    break;
+                }
+            }
         }
         out
     }
@@ -287,18 +297,16 @@ impl ParseBackend for ThreadedParseBackend {
         text_gen: u64,
         lang: &Arc<LanguageConfig>,
     ) {
-        if let Some(inf) = self.in_flight.get(&bid) {
-            if inf.text_gen == text_gen && Arc::ptr_eq(&inf.lang, lang) {
-                self.in_flight.remove(&bid);
-            }
+        if let Some(inf) = self.in_flight.get(&bid)
+            && inf.text_gen == text_gen && Arc::ptr_eq(&inf.lang, lang)
+        {
+            self.in_flight.remove(&bid);
         }
     }
 
     fn has_in_flight(&self) -> bool { !self.in_flight.is_empty() }
 
     fn is_disconnected(&self) -> bool { self.disconnected }
-    fn is_disconnect_logged(&self) -> bool { self.disconnect_logged }
-    fn mark_disconnect_logged(&mut self) { self.disconnect_logged = true; }
 }
 
 impl Drop for ThreadedParseBackend {
@@ -351,8 +359,6 @@ impl ParseBackend for InlineParseBackend {
     // Inline parses complete synchronously inside `post` — nothing is ever pending.
     fn has_in_flight(&self) -> bool { false }
     fn is_disconnected(&self) -> bool { false }
-    fn is_disconnect_logged(&self) -> bool { false }
-    fn mark_disconnect_logged(&mut self) {}
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -441,6 +447,33 @@ mod tests {
             bid, text_gen: 3, lang: Arc::clone(&lang), source_bytes: b"REPLACED".to_vec(),
         });
         assert_eq!(batch[&bid].source_bytes, b"333", "equal-gen request must be dropped");
+    }
+
+    #[test]
+    fn coalesce_one_same_gen_different_lang_replaces() {
+        use std::collections::HashMap;
+        let bid = fresh_bid();
+        let lang_a = make_lang("json", "tree_sitter_json");
+        let lang_b = make_lang("rust", "tree_sitter_rust");
+        let mut batch: HashMap<BufferId, ParseRequest> = HashMap::new();
+
+        // lang_a arrives first at gen 5.
+        coalesce_one(&mut batch, ParseRequest {
+            bid, text_gen: 5, lang: Arc::clone(&lang_a), source_bytes: b"{}".to_vec(),
+        });
+        // lang_b at the same gen — grammar swap on a quiescent buffer.
+        coalesce_one(&mut batch, ParseRequest {
+            bid, text_gen: 5, lang: Arc::clone(&lang_b), source_bytes: b"fn f(){}".to_vec(),
+        });
+        // The new lang must win.
+        assert!(Arc::ptr_eq(&batch[&bid].lang, &lang_b), "grammar swap must replace same-gen entry");
+        assert_eq!(batch[&bid].source_bytes, b"fn f(){}", "source must match the winning lang");
+
+        // A second request with the same lang does not replace.
+        coalesce_one(&mut batch, ParseRequest {
+            bid, text_gen: 5, lang: Arc::clone(&lang_b), source_bytes: b"REPLACED".to_vec(),
+        });
+        assert_eq!(batch[&bid].source_bytes, b"fn f(){}", "same-lang equal-gen request must be dropped");
     }
 
     // ── ThreadedParseBackend shutdown ─────────────────────────────────────────

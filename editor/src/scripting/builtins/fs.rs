@@ -223,19 +223,13 @@ fn is_under_write_sandbox(canonical: &Path) -> bool {
 }
 
 fn is_under_read_sandbox(canonical: &Path) -> bool {
-    with_dirs(|dirs| {
-        dirs.data_plugins
-            .as_deref()
-            .is_some_and(|p| canonical.starts_with(p))
-            || dirs
-                .data_grammars
-                .as_deref()
-                .is_some_and(|g| canonical.starts_with(g))
-            || dirs
-                .runtime_plugins
+    // Write sandbox ⊆ read sandbox; extend with the read-only runtime root.
+    is_under_write_sandbox(canonical)
+        || with_dirs(|dirs| {
+            dirs.runtime_plugins
                 .as_deref()
                 .is_some_and(|rp| canonical.starts_with(rp))
-    })
+        })
 }
 
 /// Returns `true` if `path` contains any `..` (ParentDir) components.

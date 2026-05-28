@@ -72,8 +72,10 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) pending_steel_cmds: Vec<PendingSteelCmd>,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
-    // ── Command-mode fields (meaningful only when is_init = false) ────────────
+    // ── Queued commands and input state ──────────────────────────────────────
     /// Commands queued by `(call! …)`, with their positional args.
+    /// In init mode, drained by the host into `pending_startup_commands` after
+    /// each eval; in command mode, returned in `SteelCmdResult`.
     pub(crate) cmd_queue: Vec<QueuedCommand>,
     /// Register prefix set by `(set-register-prefix! …)` and inherited by
     /// subsequent `(call! …)` calls until changed.  Resets per invocation
@@ -84,9 +86,6 @@ pub(crate) struct SteelCtx<'a> {
     /// `set-buffer-language!` calls deferred during this eval; drained by the
     /// consumer (mappings.rs / fire_hook_silent) before cmd_queue dispatch.
     pub(crate) pending_language_sets: PendingLanguageSets,
-    /// Commands queued by `(call! …)` during init (init.scm or plugin load).
-    /// Drained by `Editor::run_startup_commands` after all plugins activate.
-    pub(crate) pending_startup_commands: &'a mut Vec<QueuedCommand>,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
@@ -133,7 +132,6 @@ impl<'a> SteelCtx<'a> {
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             pending_language_regs: host.pending_language_regs,
-            pending_startup_commands: host.pending_startup_commands,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: host.declared_plugins,
@@ -180,7 +178,6 @@ impl<'a> SteelCtx<'a> {
             lazy_registry: host.lazy_registry,
             pending_messages: host.pending_messages,
             pending_language_regs: host.pending_language_regs,
-            pending_startup_commands: host.pending_startup_commands,
             data_dir: host.data_dir,
             runtime_dir: host.runtime_dir,
             declared_plugins: host.declared_plugins,

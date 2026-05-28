@@ -40,8 +40,6 @@ impl Editor {
 
         // Build highlighter from shared query (capture names already interned at
         // attach_grammar time — intern_runtime deduplicates).
-        // Initial source is empty — refresh_source is called when the first
-        // ParseDone arrives from the backend.
         let query = Arc::clone(
             &lang_config
                 .grammar
@@ -50,7 +48,7 @@ impl Editor {
                 .query,
         );
         let highlighter =
-            TreeSitterHighlighter::from_shared_query(query, &mut self.engine_view.registry, Vec::new());
+            TreeSitterHighlighter::from_shared_query(query, &mut self.engine_view.registry);
 
         let text_gen = self.buffers.get(bid).text_gen;
 
@@ -74,58 +72,70 @@ impl Editor {
         // Post parse request.  Results arrive via drain_done in reparse_stale_buffers.
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
-        let source_bytes = self.buffers.get(bid).text().to_string().into_bytes();
+        let source_bytes = self.buffers.get(bid).text().to_bytes();
         self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, source_bytes });
     }
 
-    /// Install a `ParseDone` result: update `sbuf.tree`, refresh the highlighter
-    /// source, and advance `buf.syntax.parsed_gen`.
+    /// Install a `ParseDone` result: update `sbuf.tree`+`sbuf.tree_source` and
+    /// advance `buf.syntax.parsed_gen`.
     ///
     /// Discards the result silently when:
+    /// - the buffer was closed while the request was in flight
     /// - the buffer no longer has a syntax attachment (language was cleared)
     /// - the grammar identity changed (grammar was swapped while in flight)
     /// - the text advanced past this result (another edit arrived first)
     fn install_parse_done(&mut self, done: ParseDone) {
         let ParseDone { bid, text_gen, lang, outcome, source_bytes } = done;
+        self.apply_parse_outcome(bid, text_gen, &lang, outcome, source_bytes);
+        self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
+    }
+
+    fn apply_parse_outcome(
+        &mut self,
+        bid: engine::pipeline::BufferId,
+        text_gen: u64,
+        lang: &Arc<super::syntax::LanguageConfig>,
+        outcome: ParseOutcome,
+        source_bytes: Vec<u8>,
+    ) {
+        // Discard if the buffer was closed while the request was in flight.
+        if self.buffers.try_get(bid).is_none() {
+            return;
+        }
 
         // Discard if syntax was detached while the request was in flight.
         let Some(buf_syntax) = self.buffers.get(bid).syntax.as_ref() else {
-            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
             return;
         };
 
         // Discard if the grammar was swapped between enqueue and arrival.
-        if !Arc::ptr_eq(&lang, &buf_syntax.lang) {
-            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
+        if !Arc::ptr_eq(lang, &buf_syntax.lang) {
             return;
         }
 
         // Discard if the text moved on since this request was submitted.
-        let current_text_gen = self.buffers.get(bid).text_gen;
-        if text_gen != current_text_gen {
-            self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
+        if text_gen != self.buffers.get(bid).text_gen {
             return;
         }
 
         match outcome {
             ParseOutcome::Ok(tree) => {
+                // Write tree and its source bytes together so they are always
+                // consistent with each other at render time.
                 let sbuf = &mut self.engine_view.buffers[bid];
                 sbuf.tree = Some(tree);
-                if let Some(hl) = sbuf.syntax.as_deref() {
-                    hl.refresh_source(&source_bytes);
-                }
+                sbuf.tree_source = source_bytes;
             }
             ParseOutcome::ParseFailed => {
-                // Transient parse failure — leave syntax attached, allow retry next frame.
-                self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
-                return;
+                // Advance parsed_gen so this generation is not retried every
+                // frame.  The next edit will bump text_gen and trigger a fresh
+                // attempt.
             }
         }
 
         self.buffers.get_mut(bid).syntax.as_mut()
             .expect("syntax.is_some() guaranteed: checked above before install")
             .parsed_gen = text_gen;
-        self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
     }
 
     /// Reparse any visible buffer whose text has changed since the last parse.
@@ -206,7 +216,7 @@ impl Editor {
             }
 
             // Post a fresh async request.
-            let source_bytes = self.buffers.get(bid).text().to_string().into_bytes();
+            let source_bytes = self.buffers.get(bid).text().to_bytes();
             let lang = Arc::clone(
                 &self.buffers.get(bid).syntax
                     .as_ref()
@@ -218,13 +228,13 @@ impl Editor {
     }
 
     fn surface_parse_worker_disconnect(&mut self) {
-        if !self.parse_worker.is_disconnect_logged() {
+        if !self.parse_worker_disconnect_logged {
             use super::Severity;
             self.message_log.push(
                 Severity::Error,
                 "parse worker disconnected — syntax highlighting suspended".to_owned(),
             );
-            self.parse_worker.mark_disconnect_logged();
+            self.parse_worker_disconnect_logged = true;
         }
     }
 

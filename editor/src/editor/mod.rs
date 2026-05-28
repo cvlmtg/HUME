@@ -378,6 +378,10 @@ pub(crate) struct Editor {
     /// each frame.  Tests use `InlineParseBackend` (via `for_testing`) which
     /// completes parses inside `post` — no blocking helpers needed.
     parse_worker: Box<dyn parse_worker::ParseBackend>,
+    /// Whether the one-shot "parse worker disconnected" message has already been
+    /// pushed to the message log.  Lives here, not on the backend trait, because
+    /// it is UI dedup state, not execution-backend state.
+    parse_worker_disconnect_logged: bool,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -636,6 +640,7 @@ impl Editor {
             languages: syntax::LanguageRegistry::new(),
             cwd: std::env::temp_dir(),
             parse_worker: Box::new(parse_worker::InlineParseBackend::new()),
+            parse_worker_disconnect_logged: false,
         }
     }
 

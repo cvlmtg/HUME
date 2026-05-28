@@ -200,6 +200,7 @@ impl Editor {
             languages: crate::editor::syntax::LanguageRegistry::new(),
             cwd: std::env::current_dir().unwrap_or_default(),
             parse_worker: Box::new(crate::editor::parse_worker::ThreadedParseBackend::new()),
+            parse_worker_disconnect_logged: false,
         })
     }
 
@@ -242,25 +243,16 @@ impl Editor {
                     .selections
                     .primary()
                     .head;
-                let (vp, gutter_w) = {
-                    let pane = &self.engine_view.panes[self.focused_pane_id];
-                    let gw = crate::cursor::gutter_width(
-                        pane.providers.gutter_columns(),
-                        self.doc().text().len_lines(),
-                    );
-                    (pane.viewport.clone(), gw)
-                };
-                let content_width = vp.width.saturating_sub(gutter_w).max(1);
-                let wrap_mode = self.doc().overrides.wrap_mode(&self.settings).resolve(content_width);
-                let tab_width = self.doc().overrides.tab_width(&self.settings);
-                let whitespace = self.doc().overrides.whitespace(&self.settings);
+                let (pane_settings_cursor, gutter_w) =
+                    self.resolve_focused_pane_settings();
+                let vp = self.engine_view.panes[self.focused_pane_id].viewport.clone();
                 crate::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
                     cursor_char,
-                    &wrap_mode,
-                    tab_width,
-                    &whitespace,
+                    &pane_settings_cursor.wrap_mode,
+                    pane_settings_cursor.tab_width,
+                    &pane_settings_cursor.whitespace,
                     &mut ctx,
                 )
                 .map(|(col, row)| (col + gutter_w, row))
@@ -280,22 +272,7 @@ impl Editor {
             let pane_id = self.focused_pane_id;
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
-            let pane_settings = {
-                let (raw_wrap, len_lines) = (
-                    self.doc().overrides.wrap_mode(&self.settings),
-                    self.doc().text().len_lines(),
-                );
-                let pane = &self.engine_view.panes[self.focused_pane_id];
-                let wrap_mode = raw_wrap.resolve(pane.content_width(len_lines));
-                let tab_width = self.doc().overrides.tab_width(&self.settings);
-                let whitespace = self.doc().overrides.whitespace(&self.settings);
-                PaneRenderSettings {
-                    mode: self.mode,
-                    wrap_mode,
-                    tab_width,
-                    whitespace,
-                }
-            };
+            let (pane_settings, _) = self.resolve_focused_pane_settings();
             let engine_view = &self.engine_view;
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
@@ -407,6 +384,27 @@ impl Editor {
         Ok(())
     }
 
+    /// Resolve the focused pane's render settings and gutter width.
+    ///
+    /// Returns `(PaneRenderSettings, gutter_w)`.  Centralises the three places
+    /// in the render loop that previously each rebuilt wrap_mode / tab_width /
+    /// whitespace independently (the cursor-screen block, the pane_settings
+    /// block, and `draw_once`).
+    fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
+        let len_lines = self.doc().text().len_lines();
+        let pane = &self.engine_view.panes[self.focused_pane_id];
+        let gutter_w = crate::cursor::gutter_width(
+            pane.providers.gutter_columns(),
+            len_lines,
+        );
+        let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+        let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
+        let wrap_mode = raw_wrap.resolve(content_width);
+        let tab_width = self.doc().overrides.tab_width(&self.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.settings);
+        (PaneRenderSettings { mode: self.mode, wrap_mode, tab_width, whitespace }, gutter_w)
+    }
+
     /// Paint one frame immediately — called before `init_scripting` so the
     /// editor chrome is visible during Steel engine init instead of a blank
     /// alt-screen.  Skips the statusline and cursor-position overlay (those
@@ -419,15 +417,7 @@ impl Editor {
         let rope = self.doc().text().rope();
         let buffer_id = self.focused_buffer_id();
         let pane_id = self.focused_pane_id;
-        let pane_settings = {
-            let len_lines = self.doc().text().len_lines();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-            let tab_width = self.doc().overrides.tab_width(&self.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let pane = &self.engine_view.panes[self.focused_pane_id];
-            let wrap_mode = raw_wrap.resolve(pane.content_width(len_lines));
-            PaneRenderSettings { mode: self.mode, wrap_mode, tab_width, whitespace }
-        };
+        let (pane_settings, _) = self.resolve_focused_pane_settings();
         let engine_view = &self.engine_view;
         let _ = crate::os::terminal::begin_synchronized_update();
         term.draw(|frame| {

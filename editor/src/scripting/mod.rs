@@ -93,7 +93,6 @@ pub(crate) struct HostBundle<'a> {
     declared_plugins: &'a mut Vec<String>,
     pending_messages: &'a mut Vec<(crate::editor::Severity, String)>,
     pending_language_regs: &'a mut Vec<PendingLanguageReg>,
-    pending_startup_commands: &'a mut Vec<QueuedCommand>,
     data_dir: Option<&'a std::path::Path>,
     runtime_dir: Option<&'a std::path::Path>,
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
@@ -288,7 +287,7 @@ impl ScriptingHost {
         // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
         // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
         // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
-        let (eval_result, init_cmds, pending_plugin_loads) = {
+        let (eval_result, init_cmds, pending_plugin_loads, startup_cmds) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -298,7 +297,6 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -314,7 +312,6 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -329,9 +326,11 @@ impl ScriptingHost {
                 result,
                 steel_ctx.pending_steel_cmds,
                 steel_ctx.pending_plugin_loads,
+                steel_ctx.cmd_queue,
             )
         };
 
+        self.pending_startup_commands.extend(startup_cmds);
         eval_result?;
 
         let mut all_cmds = self.process_pending_cmds(init_cmds);
@@ -434,7 +433,7 @@ impl ScriptingHost {
         // Attribution: push before the require eval, pop after.
         self.plugin_stack.push(id.clone());
 
-        let (plugin_result, plugin_cmds, requires) = {
+        let (plugin_result, plugin_cmds, requires, plugin_startup_cmds) = {
             let Self {
                 engine,
                 plugin_stack,
@@ -444,7 +443,6 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -460,7 +458,6 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -471,8 +468,10 @@ impl ScriptingHost {
             );
 
             let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
-            (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads)
+            (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)
         };
+
+        self.pending_startup_commands.extend(plugin_startup_cmds);
 
         self.plugin_stack.pop();
 
@@ -569,7 +568,6 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -585,7 +583,6 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),
@@ -658,7 +655,6 @@ impl ScriptingHost {
                 declared_plugins,
                 pending_messages,
                 pending_language_regs,
-                pending_startup_commands,
                 data_dir,
                 runtime_dir,
                 interrupt_flag,
@@ -674,7 +670,6 @@ impl ScriptingHost {
                     declared_plugins,
                     pending_messages,
                     pending_language_regs,
-                    pending_startup_commands,
                     data_dir: data_dir.as_deref(),
                     runtime_dir: runtime_dir.as_deref(),
                     interrupt_flag: Arc::clone(interrupt_flag),

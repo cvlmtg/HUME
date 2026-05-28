@@ -215,6 +215,19 @@ impl Text {
         self.rope.len_bytes()
     }
 
+    /// Collect the full text into a contiguous `Vec<u8>`.
+    ///
+    /// Walks rope chunks directly into a pre-sized `Vec` to avoid the
+    /// intermediate `String` allocation that `to_string().into_bytes()` would
+    /// produce (peak 2× buffer size vs 1×).
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.rope.len_bytes());
+        for chunk in self.rope.chunks() {
+            out.extend_from_slice(chunk.as_bytes());
+        }
+        out
+    }
+
     #[cfg(test)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///

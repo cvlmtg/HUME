@@ -62,7 +62,10 @@ pub(crate) fn compile_grammar(
         steel::stop!(Generic =>
             "compile-grammar!: src must not contain '..' components: {}", src);
     }
-    super::shell::validate_new_path(&out_path, "compile-grammar!", super::shell::SandboxKind::Grammars)?;
+    // validate_new_path returns the canonical dest — use it for the subprocess
+    // so the same resolved path is used for both the check and the spawn.
+    let canonical_out =
+        super::shell::validate_new_path(&out_path, "compile-grammar!", super::shell::SandboxKind::Grammars)?;
 
     // Sandbox-check src (must exist → full canonicalize).
     let canonical_src = crate::os::fs::canonicalize(&src_path).map_err(|e| {
@@ -87,7 +90,7 @@ pub(crate) fn compile_grammar(
         format!("compile-grammar!: `tree-sitter build -o {out} {src}`"),
     );
 
-    let result = crate::os::process::tree_sitter_build(&src_path, &out_path);
+    let result = crate::os::process::tree_sitter_build(&canonical_src, &canonical_out);
     let msg = match result {
         Ok(status) if status.success() => return Ok(SteelVal::Void),
         Ok(status) => format!(

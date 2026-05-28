@@ -16,10 +16,9 @@ use crate::types::{Scope, ScopeId};
 /// # Usage
 ///
 /// 1. Create with `TreeSitterHighlighter::new(language, query_source)`.
-/// 2. After each re-parse, call `refresh_source(bytes)` to keep the cached
-///    source snapshot in sync with the buffer. The parse tree is read from
-///    `SourceContext.tree` at query time — `SharedBuffer.tree` is the single
-///    authoritative owner.
+/// 2. After each re-parse, write the new tree and source bytes to `SharedBuffer`
+///    together.  Pass them to `highlights_for_line` via `SourceContext` at render
+///    time — neither is stored here.
 /// 3. Register with `ProviderSet::add_highlight_source`.
 ///
 /// # Byte offsets
@@ -30,11 +29,11 @@ use crate::types::{Scope, ScopeId};
 ///
 /// # Overlapping captures
 ///
-/// Parse-tree nodes are nested or disjoint — never partially overlapping.
-/// This provider flattens them so the **innermost** (shortest) capture wins
-/// at every byte: e.g. `@string.escape` inside `@string` renders with the
-/// escape scope, not the generic string scope. The output is always sorted
-/// and non-overlapping.
+/// Individual parse-tree nodes are nested or disjoint, but captures from
+/// *different* query patterns can produce partially-overlapping spans after
+/// line clipping.  `highlights_for_line` uses a sweep-line algorithm that
+/// tolerates any overlap and always emits sorted, non-overlapping output where
+/// the **last-started** capture wins at every byte.
 pub struct TreeSitterHighlighter {
     query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
@@ -44,15 +43,11 @@ pub struct TreeSitterHighlighter {
 }
 
 struct TsState {
-    /// Full file bytes, refreshed on every re-parse via `refresh_source`.
-    /// Kept here because `cursor.matches` requires a contiguous `&[u8]` for
-    /// query predicates, which ropey cannot provide directly.
-    source: Vec<u8>,
     /// Scratch buffer for raw captures — retained across calls to avoid reallocation.
     raw: Vec<(usize, usize, ScopeId)>,
     /// Reused query cursor — tree-sitter recommends reuse to amortise its internal allocation.
     cursor: QueryCursor,
-    /// Scratch stack for the nested-capture flattener — retained to avoid reallocation.
+    /// Scratch stack for the overlap flattener — retained to avoid reallocation.
     stack: Vec<(usize, ScopeId)>,
 }
 
@@ -69,10 +64,9 @@ impl TreeSitterHighlighter {
         language: &Language,
         query_source: &str,
         registry: &mut ScopeRegistry,
-        initial_source: Vec<u8>,
     ) -> Result<Self, tree_sitter::QueryError> {
         let query = Arc::new(Query::new(language, query_source)?);
-        Ok(Self::from_shared_query(query, registry, initial_source))
+        Ok(Self::from_shared_query(query, registry))
     }
 
     /// Create a provider from a pre-compiled, shared query.
@@ -83,7 +77,6 @@ impl TreeSitterHighlighter {
     pub fn from_shared_query(
         query: Arc<Query>,
         registry: &mut ScopeRegistry,
-        initial_source: Vec<u8>,
     ) -> Self {
         let capture_scopes: Vec<Option<ScopeId>> = query
             .capture_names()
@@ -94,7 +87,6 @@ impl TreeSitterHighlighter {
             query,
             capture_scopes,
             state: Mutex::new(TsState {
-                source: initial_source,
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
                 stack: Vec::new(),
@@ -112,7 +104,6 @@ impl TreeSitterHighlighter {
         query_source: &str,
         scope_map: &[(&str, Scope)],
         registry: &mut ScopeRegistry,
-        initial_source: Vec<u8>,
     ) -> Result<Self, tree_sitter::QueryError> {
         let query = Arc::new(Query::new(language, query_source)?);
         let capture_scopes: Vec<Option<ScopeId>> = query
@@ -129,25 +120,11 @@ impl TreeSitterHighlighter {
             query,
             capture_scopes,
             state: Mutex::new(TsState {
-                source: initial_source,
                 raw: Vec::new(),
                 cursor: QueryCursor::new(),
                 stack: Vec::new(),
             }),
         })
-    }
-
-    /// Refresh the internal source snapshot after a re-parse.
-    ///
-    /// Reuses the existing `Vec<u8>` allocation (clear + extend_from_slice) so
-    /// the steady-state per-frame cost is a copy, not an alloc.
-    ///
-    /// The parse tree is not stored here — `SharedBuffer.tree` is the single
-    /// authoritative owner, passed to `highlights_for_line` via `SourceContext.tree`.
-    pub fn refresh_source(&self, bytes: &[u8]) {
-        let mut state = self.state.lock().expect("highlight state lock poisoned");
-        state.source.clear();
-        state.source.extend_from_slice(bytes);
     }
 }
 
@@ -163,6 +140,7 @@ impl HighlightSource for TreeSitterHighlighter {
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
         let Some(tree) = ctx.tree else { return };
+        let source_bytes = ctx.source;
         let mut state = self.state.lock().expect("highlight state lock poisoned");
 
         // Compute the absolute byte range for this line.
@@ -175,7 +153,6 @@ impl HighlightSource for TreeSitterHighlighter {
 
         // Destructure into split borrows so the compiler sees all fields as disjoint.
         let TsState {
-            ref source,
             ref mut raw,
             ref mut cursor,
             ref mut stack,
@@ -184,7 +161,6 @@ impl HighlightSource for TreeSitterHighlighter {
         raw.clear();
 
         let root = tree.root_node();
-        let source_bytes = source.as_slice();
         let mut matches = cursor.matches(&self.query, root, source_bytes);
         while let Some(m) = matches.next() {
             for cap in m.captures {
@@ -207,13 +183,6 @@ impl HighlightSource for TreeSitterHighlighter {
             }
         }
 
-        if raw.is_empty() {
-            return;
-        }
-
-        // Sort outermost-first (start asc, end desc), then flatten so the innermost
-        // capture wins at every byte.
-        raw.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
         flatten_overlaps(raw, stack, out);
     }
 }
@@ -222,44 +191,72 @@ impl HighlightSource for TreeSitterHighlighter {
 // flatten_overlaps
 // ---------------------------------------------------------------------------
 
-/// Flatten nested/disjoint capture intervals so the innermost wins at every byte.
+/// Flatten capture intervals into sorted, non-overlapping output.
 ///
-/// `raw` must already be sorted outermost-first (start asc, end desc) and is
-/// drained by this call. `stack` is scratch storage (cleared on entry); on
-/// return both `raw` and `stack` are empty. Non-overlapping, sorted intervals
-/// are appended to `out`.
+/// Uses a sweep-line over start/end events so partial overlaps (which can
+/// arise when captures from different query patterns are line-clipped) are
+/// handled correctly.  `raw` is drained; `stack` and `events` are scratch
+/// storage cleared on entry.  Non-overlapping, sorted intervals are appended
+/// to `out`.
+///
+/// When intervals overlap, the **last-opened** (most recently started) scope
+/// wins at any given byte, matching tree-sitter's own priority model.
 fn flatten_overlaps(
     raw: &mut Vec<(usize, usize, ScopeId)>,
     stack: &mut Vec<(usize, ScopeId)>,
     out: &mut Vec<(usize, usize, ScopeId)>,
 ) {
     debug_assert!(stack.is_empty());
-    let mut pos = 0usize;
-    for (start, end, scope) in raw.drain(..) {
-        // Close intervals that end at or before `start`, innermost first.
-        while let Some(&(top_end, top_scope)) = stack.last() {
-            if top_end <= start {
-                if pos < top_end {
-                    out.push((pos, top_end, top_scope));
-                    pos = top_end;
-                }
-                stack.pop();
-            } else {
-                break;
-            }
-        }
-        // Fill the gap between `pos` and `start` with the enclosing scope.
-        if let Some(&(_, top_scope)) = stack.last() && pos < start {
-            out.push((pos, start, top_scope));
-        }
-        pos = start;
-        stack.push((end, scope));
+    if raw.is_empty() {
+        return;
     }
-    // Drain remaining open intervals, innermost first.
-    while let Some((top_end, top_scope)) = stack.pop() {
-        if pos < top_end {
-            out.push((pos, top_end, top_scope));
-            pos = top_end;
+
+    // Build a sorted event list: (pos, is_end, scope).
+    // End events sort before start events at the same position so a closing
+    // interval is popped before a new one is pushed at the same byte.
+    let mut events: Vec<(usize, bool, ScopeId)> = Vec::with_capacity(raw.len() * 2);
+    for &(start, end, scope) in raw.iter() {
+        events.push((start, false, scope)); // Start
+        events.push((end, true, scope));    // End
+    }
+    raw.clear();
+    // Sort: by position, ends before starts at the same position.
+    events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+
+    let mut pos = 0usize;
+    for (event_pos, is_end, scope) in events {
+        // Emit the gap before this event using the currently active scope.
+        if let Some(&(_, active_scope)) = stack.last()
+            && pos < event_pos
+        {
+            out.push((pos, event_pos, active_scope));
+        }
+        pos = event_pos;
+
+        if is_end {
+            // Pop this scope from the active set (find by value, last occurrence).
+            if let Some(idx) = stack.iter().rposition(|&(_, s)| s == scope) {
+                stack.remove(idx);
+            }
+        } else {
+            stack.push((event_pos, scope));
+        }
+    }
+    stack.clear();
+
+    // Merge adjacent segments that share the same scope — they can arise when
+    // an overlapping interval ends while another with the same scope is still
+    // active (e.g. A=[0,5), B=[3,8): at pos=5 A ends, B continues, producing
+    // (3,5,B) then (5,8,B) without a merge pass).
+    if out.len() > 1 {
+        let mut i = 0;
+        while i + 1 < out.len() {
+            if out[i].2 == out[i + 1].2 && out[i].1 == out[i + 1].0 {
+                out[i].1 = out[i + 1].1;
+                out.remove(i + 1);
+            } else {
+                i += 1;
+            }
         }
     }
 }
@@ -277,7 +274,6 @@ mod tests {
     }
 
     fn run(mut raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
-        raw.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
         let mut stack = Vec::new();
         let mut out = Vec::new();
         flatten_overlaps(&mut raw, &mut stack, &mut out);
@@ -320,5 +316,20 @@ mod tests {
                 (15, 20, s(0)),
             ]
         );
+    }
+
+    #[test]
+    fn partial_overlap_last_started_wins() {
+        // A=[0,5), B=[3,8): overlapping, not nested.  In the overlap region
+        // [3,5) B started last so it wins; B continues alone in [5,8).
+        let got = run(vec![(0, 5, s(0)), (3, 8, s(1))]);
+        assert_eq!(got, vec![(0, 3, s(0)), (3, 8, s(1))]);
+    }
+
+    #[test]
+    fn identical_ranges_last_pushed_wins() {
+        // Two captures of the same byte range: last-opened (s(1)) wins entirely.
+        let got = run(vec![(0, 5, s(0)), (0, 5, s(1))]);
+        assert_eq!(got, vec![(0, 5, s(1))]);
     }
 }

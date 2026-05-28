@@ -562,9 +562,10 @@ argument), then Enter. Many have short aliases.
 
   :w              save (write) the current buffer to its file
   :w <path>       save to a different path (save-as)
-  :q              quit (fails if unsaved changes exist)
-  :q!             quit and discard unsaved changes
+  :q              close the current buffer; quit when it is the last open buffer
+  :q!             close and discard unsaved changes
   :wq             save and quit
+  :qa             quit the editor (refuses if any buffer is unsaved; use :qa! to force)
 
   The tutor is opened as a sandboxed copy in a temporary directory
   (something like `/tmp/hume-1234/tutor.txt`), so `:w` saves only to
@@ -621,8 +622,9 @@ argument), then Enter. Many have short aliases.
   >> Try `:version` to confirm which build you are running.
 
   ── Lesson 8 Summary ──────────────────────────────────────────────
-  :w / :w <path>   save / save-as      :e <path>   open file
-  :q / :q! / :wq   quit                :ls         list buffers
+  :w / :w <path>   save / save-as         :e <path>   open file
+  :q / :q!         close buffer / discard :ls         list buffers
+  :qa / :qa!       quit all / force       :wq         save and quit
   :bn / :bp / :b   navigate buffers    :bd / :bd!  close buffer
   Ctrl+o / Ctrl+i  jump backward / forward
   % = current file, # = alternate file in command args

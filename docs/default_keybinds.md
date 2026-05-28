@@ -291,10 +291,10 @@ Auto-pairs: when `auto-pairs-enabled` is on, typing an opening delimiter (`(`, `
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `:quit` | `:q` | Quit the editor |
+| `:quit` | `:q` | Close the current buffer; quit when it is the last real buffer. Add `!` to discard unsaved changes. |
 | `:write` | `:w` | Write current buffer to disk |
 | `:write-quit` | `:wq` | Write and quit |
-| `:quit-all` | `:qa` | Quit the editor, closing all buffers |
+| `:quit-all` | `:qa` | Quit the editor, refusing if any buffer has unsaved changes. Use `:qa!` to force. |
 | `:toggle-soft-wrap` | `:wrap` | Toggle soft line wrapping |
 | `:set global <key>=<value>` | | Set a global setting |
 | `:set buffer <key>=<value>` | | Set a buffer-local setting override |

@@ -146,25 +146,17 @@ fn define_command_inner(
 /// The BOOTSTRAP macro `(call! name args…)` desugars to `(%call! name (list args…))`,
 /// so this function always receives `(name, args-list)`.
 ///
-/// During init (init.scm or plugin load): queues `(name, args_vec)` into
-/// `pending_startup_commands`, drained by `Editor::run_startup_commands` after all
-/// plugins activate.  This is the mechanism for opt-in startup side-effects like
-/// `(call! "plum-ensure-grammars")` in init.scm.
-///
-/// During command dispatch: queues into `cmd_queue` for execution after the current
-/// Steel command proc returns (existing behavior).
+/// Queues `(name, args_vec)` into `ctx.cmd_queue`.  In init mode, the host drains
+/// `cmd_queue` into `ScriptingHost::pending_startup_commands` after each eval, so
+/// `Editor::run_startup_commands` picks them up after all plugins activate.  In
+/// command mode, `cmd_queue` is returned in `SteelCmdResult` for immediate dispatch.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
     args: SteelVal,
 ) -> SteelResult {
     let args_vec = steel_list_to_vec(args)?;
-    let qc = QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix };
-    if ctx.is_init {
-        ctx.pending_startup_commands.push(qc);
-    } else {
-        ctx.cmd_queue.push(qc);
-    }
+    ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
     Ok(SteelVal::Void)
 }
 
@@ -271,13 +263,12 @@ mod tests {
     }
 
     #[test]
-    fn call_bang_in_init_queues_startup_command() {
+    fn call_bang_in_init_queues_to_cmd_queue() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx_init();
         call_command_primitive(&mut ctx, "plum-ensure-grammars".to_string(), make_list(vec![])).unwrap();
-        drop(ctx);
         assert_eq!(
-            h.pending_startup_commands,
+            ctx.cmd_queue,
             vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
         );
     }

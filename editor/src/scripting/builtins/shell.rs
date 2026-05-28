@@ -31,11 +31,16 @@ pub(crate) enum SandboxKind {
 /// 2. Has a parent that exists and canonicalizes.
 /// 3. Has a file-name component (`file_name()` is None for paths ending in `.`).
 /// 4. `<canonical-parent>/<file-name>` is inside the requested sandbox root.
+/// 5. `dest` is not a symlink (symlinks rejected to prevent TOCTOU escapes).
+///
+/// Returns the canonical destination path so callers can pass it directly to
+/// subprocesses, closing the TOCTOU window between the sandbox check and the
+/// spawn.
 pub(crate) fn validate_new_path(
     dest: &Path,
     fn_name: &str,
     kind: SandboxKind,
-) -> Result<(), SteelErr> {
+) -> Result<PathBuf, SteelErr> {
     if super::fs::has_dotdot(dest) {
         steel::stop!(Generic =>
             "{fn_name}: dest must not contain '..' components: {}", dest.display());
@@ -64,13 +69,22 @@ pub(crate) fn validate_new_path(
         )
     })?;
     let canonical_dest = canonical_parent.join(file_name);
-    if let Ok(meta) = crate::os::fs::symlink_metadata(&canonical_dest)
-        && meta.file_type().is_symlink()
-    {
-        steel::stop!(Generic =>
-            "{fn_name}: dest is a symlink (refusing to follow): {}", dest.display());
+    match crate::os::fs::symlink_metadata(&canonical_dest) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            steel::stop!(Generic =>
+                "{fn_name}: dest is a symlink (refusing to follow): {}", dest.display());
+        }
+        // Path does not yet exist — that is the expected case for a new dest.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        // Any other error (EACCES, EIO, …) means we cannot verify safety.
+        Err(e) => {
+            steel::stop!(Generic =>
+                "{fn_name}: cannot stat dest '{}': {e}", dest.display());
+        }
+        Ok(_) => {} // exists and is not a symlink — fine
     }
-    sandbox_write_check(&canonical_dest, &dest.to_string_lossy(), kind)
+    sandbox_write_check(&canonical_dest, &dest.to_string_lossy(), kind)?;
+    Ok(canonical_dest)
 }
 
 // ── git-clone ─────────────────────────────────────────────────────────────────
@@ -87,8 +101,7 @@ pub(crate) fn git_clone(
     url: String,
     dest: String,
 ) -> Result<SteelVal, SteelErr> {
-    let dest_path = PathBuf::from(&dest);
-    validate_new_path(&dest_path, "git-clone", SandboxKind::Plugins)?;
+    let dest_path = validate_new_path(&PathBuf::from(&dest), "git-clone", SandboxKind::Plugins)?;
 
     ctx.log(
         Severity::Trace,
@@ -167,8 +180,8 @@ pub(crate) fn git_clone_rev(
     dest: String,
     rev: String,
 ) -> Result<SteelVal, SteelErr> {
-    let dest_path = PathBuf::from(&dest);
-    validate_new_path(&dest_path, "git-clone-rev", SandboxKind::Grammars)?;
+    let dest_path =
+        validate_new_path(&PathBuf::from(&dest), "git-clone-rev", SandboxKind::Grammars)?;
 
     ctx.log(
         Severity::Trace,
@@ -203,8 +216,8 @@ pub(crate) fn curl_fetch(
     url: String,
     dest: String,
 ) -> Result<SteelVal, SteelErr> {
-    let dest_path = PathBuf::from(&dest);
-    validate_new_path(&dest_path, "curl-fetch", SandboxKind::Grammars)?;
+    let dest_path =
+        validate_new_path(&PathBuf::from(&dest), "curl-fetch", SandboxKind::Grammars)?;
 
     // Create parent after the sandbox check so we don't mkdir outside the sandbox.
     if let Some(parent) = dest_path.parent() {
