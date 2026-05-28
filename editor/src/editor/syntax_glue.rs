@@ -115,15 +115,6 @@ impl Editor {
                     hl.refresh_source(&source_bytes);
                 }
             }
-            ParseOutcome::AbiRejected => {
-                // Grammar rejected by parser ABI — detach syntax permanently.
-                let sbuf = &mut self.engine_view.buffers[bid];
-                sbuf.tree = None;
-                sbuf.syntax = None;
-                self.buffers.get_mut(bid).syntax = None;
-                self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
-                return;
-            }
             ParseOutcome::ParseFailed => {
                 // Transient parse failure — leave syntax attached, allow retry next frame.
                 self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);

@@ -31,10 +31,6 @@ pub(super) struct ParseRequest {
 pub(super) enum ParseOutcome {
     /// Parse succeeded; inner value is the fresh tree.
     Ok(tree_sitter::Tree),
-    /// `Parser::set_language` rejected the grammar ABI, or the grammar was
-    /// detached between enqueue and execution.  Treated as permanent — syntax
-    /// is detached on arrival.
-    AbiRejected,
     /// `Parser::parse` returned `None` (transient; currently unreachable without
     /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
     ParseFailed,
@@ -83,20 +79,11 @@ fn do_parse(
         .map_or(true, |cur| !Arc::ptr_eq(cur, &req.lang));
 
     if language_changed {
-        let bundle = match req.lang.grammar.as_ref() {
-            Some(b) => b,
-            None => {
-                *current_lang = None;
-                return make_done(req, ParseOutcome::AbiRejected);
-            }
-        };
-        match parser.set_language(&bundle.grammar.language()) {
-            Ok(()) => *current_lang = Some(Arc::clone(&req.lang)),
-            Err(_) => {
-                *current_lang = None;
-                return make_done(req, ParseOutcome::AbiRejected);
-            }
-        }
+        let bundle = req.lang.grammar.as_ref()
+            .expect("grammar must be Some — setup_buffer_syntax verifies grammar.is_some() before posting");
+        parser.set_language(&bundle.grammar.language())
+            .expect("ABI verified at grammar registration time in attach_grammar");
+        *current_lang = Some(Arc::clone(&req.lang));
     }
 
     let outcome = {
