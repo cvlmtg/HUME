@@ -466,6 +466,14 @@ fn install_real_json_grammar_e2e() {
         .map(|v| v == "1")
         .unwrap_or(false);
 
+    if !require_live {
+        eprintln!(
+            "install_real_json_grammar_e2e: skipping \
+             (set HUME_REQUIRE_LIVE_GRAMMAR_E2E=1 to run live e2e)"
+        );
+        return;
+    }
+
     // Check prerequisites; skip unless HUME_REQUIRE_LIVE_GRAMMAR_E2E=1.
     let has_git     = Command::new("git").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
     let has_curl    = Command::new("curl").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);

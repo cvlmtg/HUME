@@ -24,15 +24,15 @@ fn minibuf_input(ed: &Editor) -> &str {
 
 #[test]
 fn tab_on_command_prefix_single_match_completes_silently() {
-    // ":quit" is the only registered command starting with "qui".
+    // "reload-config" is the only registered command starting with "relo".
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "qui".chars() {
+    for ch in "relo".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_tab());
 
-    assert_eq!(minibuf_input(&ed), "quit");
+    assert_eq!(minibuf_input(&ed), "reload-config");
     // Single-match: no popup state.
     assert!(ed.completion.is_none());
 }

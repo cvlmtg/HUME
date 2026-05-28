@@ -73,4 +73,6 @@ jobs:
         run: bash scripts/fetch-test-grammars.sh
 
       - name: Test
+        env:
+          HUME_REQUIRE_LIVE_GRAMMAR_E2E: "1"
         run: cargo test --all-targets
