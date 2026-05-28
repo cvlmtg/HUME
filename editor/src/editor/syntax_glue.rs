@@ -20,7 +20,7 @@ impl Editor {
             sbuf.syntax = None;
             sbuf.tree = None;
         }
-        self.buffers.get_mut(bid).parser = None;
+        self.buffers.get_mut(bid).syntax = None;
         self.parse_worker.in_flight.remove(&bid);
 
         // Resolve language → grammar bundle.
@@ -60,7 +60,7 @@ impl Editor {
             sbuf.tree = None;
             sbuf.syntax = Some(Arc::new(highlighter));
         }
-        self.buffers.get_mut(bid).parser = Some(BufferSyntax::new(Arc::clone(&lang_config)));
+        self.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
 
         // Post parse request asynchronously.  The first frame after attachment
         // will render without highlights; results arrive on a subsequent frame.
@@ -70,7 +70,7 @@ impl Editor {
     }
 
     /// Install a `ParseDone` result: update `sbuf.tree`, refresh the highlighter
-    /// source, and advance `buf.parser.parsed_gen`.
+    /// source, and advance `buf.syntax.parsed_gen`.
     ///
     /// Discards the result silently when:
     /// - the buffer no longer has a syntax attachment (language was cleared)
@@ -80,7 +80,7 @@ impl Editor {
         let bid = done.bid;
 
         // Discard if syntax was detached while the request was in flight.
-        let Some(buf_syntax) = self.buffers.get(bid).parser.as_ref() else {
+        let Some(buf_syntax) = self.buffers.get(bid).syntax.as_ref() else {
             self.parse_worker.in_flight.remove(&bid);
             return;
         };
@@ -111,14 +111,14 @@ impl Editor {
                 let sbuf = &mut self.engine_view.buffers[bid];
                 sbuf.tree = None;
                 sbuf.syntax = None;
-                self.buffers.get_mut(bid).parser = None;
+                self.buffers.get_mut(bid).syntax = None;
                 self.parse_worker.in_flight.remove(&bid);
                 return;
             }
         }
 
-        self.buffers.get_mut(bid).parser.as_mut()
-            .expect("parser.is_some() guaranteed: checked above before install")
+        self.buffers.get_mut(bid).syntax.as_mut()
+            .expect("syntax.is_some() guaranteed: checked above before install")
             .parsed_gen = done.text_gen;
         self.parse_worker.in_flight.remove(&bid);
     }
@@ -171,19 +171,19 @@ impl Editor {
             let byte_len = buf.text().len_bytes();
 
             // Detach if grown past cap.
-            if buf.parser.is_some() && byte_len > max_bytes {
+            if buf.syntax.is_some() && byte_len > max_bytes {
                 let sbuf = &mut self.engine_view.buffers[bid];
                 sbuf.syntax = None;
                 sbuf.tree = None;
-                self.buffers.get_mut(bid).parser = None;
+                self.buffers.get_mut(bid).syntax = None;
                 self.parse_worker.in_flight.remove(&bid);
                 continue;
             }
 
-            // Re-attach if no parser but buffer is under cap and language has a grammar.
+            // Re-attach if no syntax but buffer is under cap and language has a grammar.
             // Covers: buffers that opened over-cap and later shrank, or that had their
-            // parser detached by the growth branch above.
-            if buf.parser.is_none() {
+            // syntax detached by the growth branch above.
+            if buf.syntax.is_none() {
                 if byte_len <= max_bytes
                     && self.buffers.get(bid).language.as_deref()
                         .and_then(|l| self.languages.by_name(l))
@@ -195,8 +195,8 @@ impl Editor {
             }
 
             // Gen-gate: skip if already up to date.
-            // buf.parser.is_some() is guaranteed — the is_none branch above continues.
-            let parsed_gen = buf.parser.as_ref().expect("parser is_none handled above").parsed_gen;
+            // buf.syntax.is_some() is guaranteed — the is_none branch above continues.
+            let parsed_gen = buf.syntax.as_ref().expect("syntax is_none handled above").parsed_gen;
             if parsed_gen == text_gen {
                 continue;
             }
@@ -212,9 +212,9 @@ impl Editor {
             // Post a fresh async request.
             let source_bytes = self.buffers.get(bid).text().to_string().into_bytes();
             let lang = Arc::clone(
-                &self.buffers.get(bid).parser
+                &self.buffers.get(bid).syntax
                     .as_ref()
-                    .expect("parser is_some guaranteed above")
+                    .expect("syntax is_some guaranteed above")
                     .lang,
             );
             self.parse_worker.post(ParseRequest { bid, text_gen, lang, source_bytes });
@@ -224,6 +224,7 @@ impl Editor {
     /// Block until all in-flight parse requests have produced results, then
     /// drain and install them.  Used in tests and wherever a sync checkpoint
     /// is needed (e.g. a future `:write` guarantee).
+    #[allow(dead_code)] // called from tests; available as a sync checkpoint for future production use
     pub(crate) fn join_pending_parses(&mut self) {
         while !self.parse_worker.in_flight.is_empty() {
             match self.parse_worker.rx_done.recv() {

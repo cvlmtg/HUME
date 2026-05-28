@@ -53,11 +53,12 @@ pub(crate) struct Buffer {
     pub(crate) language: Option<String>,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
-    /// `parser.parsed_gen`.
+    /// `syntax.parsed_gen`.
     pub(crate) text_gen: u64,
-    /// Per-buffer tree-sitter parse state. `None` when no grammar is attached
+    /// Per-buffer tree-sitter syntax attachment. Holds grammar identity and the
+    /// `text_gen` of the last installed tree. `None` when no grammar is attached
     /// or the buffer exceeds `syntax-highlight-max-bytes`.
-    pub(crate) parser: Option<BufferSyntax>,
+    pub(crate) syntax: Option<BufferSyntax>,
     /// When `true`, all forward text mutations are blocked at the `doc_ops`
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
     /// language/syntax — a read-only buffer may still be highlighted.
@@ -90,7 +91,7 @@ impl Buffer {
             overrides: BufferOverrides::default(),
             language: None,
             text_gen: 0,
-            parser: None,
+            syntax: None,
             read_only: false,
             label: None,
         }

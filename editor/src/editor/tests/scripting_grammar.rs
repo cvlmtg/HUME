@@ -98,7 +98,7 @@ fn attach_then_set_language_attaches_syntax() {
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
     ed.join_pending_parses();
-    assert!(ed.buffers.get(bid).parser.is_some(), "parser must be set after attach");
+    assert!(ed.buffers.get(bid).syntax.is_some(), "syntax must be set after attach");
     assert!(ed.engine_view.buffers[bid].syntax.is_some(), "engine syntax must be set");
     assert!(ed.engine_view.buffers[bid].tree.is_some(), "engine tree must be set");
 }
@@ -114,10 +114,10 @@ fn clear_language_detaches_syntax_keeps_identity() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_some());
+    assert!(ed.buffers.get(bid).syntax.is_some());
 
     ed.set_buffer_language(bid, None);
-    assert!(ed.buffers.get(bid).parser.is_none(), "parser must be cleared on language=None");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "syntax must be cleared on language=None");
     assert!(ed.engine_view.buffers[bid].syntax.is_none(), "syntax must be cleared");
     assert!(ed.engine_view.buffers[bid].tree.is_none(), "tree must be cleared");
     // Identity survives detach — grammar is gone, language definition is not.
@@ -133,13 +133,13 @@ fn sweep_attaches_syntax_on_matching_language() {
     ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
     // Set language BEFORE grammar is attached — no syntax yet.
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_none(), "no grammar → parser must be absent");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "no grammar → parser must be absent");
 
     ed.languages
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.sweep_buffers_for_grammars(vec!["json".to_owned()]);
-    assert!(ed.buffers.get(bid).parser.is_some(), "sweep must attach parser when language matches");
+    assert!(ed.buffers.get(bid).syntax.is_some(), "sweep must attach parser when language matches");
 }
 
 /// Flip: if sweep applies to all buffers regardless of name, the first assert would fail.
@@ -151,12 +151,12 @@ fn sweep_no_op_for_nonmatching_language() {
     ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
     // Set language but don't attach grammar yet — parser stays absent.
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_none());
+    assert!(ed.buffers.get(bid).syntax.is_none());
 
     // Sweep for a different language — must leave the json buffer untouched.
     ed.sweep_buffers_for_grammars(vec!["rust".to_owned()]);
     assert!(
-        ed.buffers.get(bid).parser.is_none(),
+        ed.buffers.get(bid).syntax.is_none(),
         "wrong-language sweep must not attach parser for json buffer",
     );
 
@@ -165,7 +165,7 @@ fn sweep_no_op_for_nonmatching_language() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.sweep_buffers_for_grammars(vec!["json".to_owned()]);
-    assert!(ed.buffers.get(bid).parser.is_some(), "correct-language sweep must attach parser");
+    assert!(ed.buffers.get(bid).syntax.is_some(), "correct-language sweep must attach parser");
 }
 
 /// Flip: without reparse_stale_buffers the parsed_gen would stay at gen0 even after the edit.
@@ -184,7 +184,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     // setup_buffer_syntax sets parsed_gen = text_gen (after join).
     let gen0 = ed.buffers.get(bid).text_gen;
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen0,
         "parsed_gen must equal text_gen after initial setup",
     );
@@ -196,7 +196,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     let gen1 = ed.buffers.get(bid).text_gen;
     assert!(gen1 > gen0, "edit must bump text_gen");
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen0,
         "parsed_gen must lag behind text_gen before reparse",
     );
@@ -204,7 +204,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.reparse_stale_buffers();
     ed.join_pending_parses();
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen1,
         "reparse must advance parsed_gen to current text_gen",
     );
@@ -212,7 +212,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     // Second call is a no-op — parsed_gen stays at gen1.
     ed.reparse_stale_buffers();
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen1,
         "second reparse must be a no-op when gen already matches",
     );
@@ -229,12 +229,12 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_some(), "parser must be set initially");
+    assert!(ed.buffers.get(bid).syntax.is_some(), "syntax must be set initially");
 
     // Any non-empty buffer exceeds 1 byte.
     ed.settings.syntax_highlight_max_bytes = 1;
     ed.reparse_stale_buffers();
-    assert!(ed.buffers.get(bid).parser.is_none(), "parser must detach when exceeding max_bytes");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "syntax must detach when exceeding max_bytes");
     assert!(ed.engine_view.buffers[bid].syntax.is_none(), "syntax must be cleared");
 }
 
@@ -278,7 +278,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     ed.register_steel_cmds(cmds);
     ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_none(), "no grammar attached yet");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "no grammar attached yet");
 
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":attach-json");
@@ -338,14 +338,14 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
 
     assert!(ed.engine_view.buffers[bid].tree.is_none(), "stale tree must be cleared on replace");
     assert!(ed.engine_view.buffers[bid].syntax.is_none(), "stale syntax must be cleared on replace");
-    assert!(ed.buffers.get(bid).parser.is_none(), "parser must be cleared on replace");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "syntax must be cleared on replace");
 }
 
 // ---------------------------------------------------------------------------
 // Fix 3 — reparse_stale_buffers must re-attach on shrink below cap
 // ---------------------------------------------------------------------------
 
-/// Regression: once a buffer's parser is detached (via the max_bytes growth branch),
+/// Regression: once a buffer's syntax is detached (via the max_bytes growth branch),
 /// reparse_stale_buffers must re-attach it on shrink below cap. Without the re-attach
 /// branch, the second `reparse_stale_buffers` call leaves parser=None.
 ///
@@ -360,20 +360,20 @@ fn reparse_reattaches_after_shrink_under_cap() {
         .attach_grammar("json", &parser, "tree_sitter_json", &hl, &mut ed.engine_view.registry)
         .unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
-    assert!(ed.buffers.get(bid).parser.is_some(), "parser must be set initially");
+    assert!(ed.buffers.get(bid).syntax.is_some(), "syntax must be set initially");
 
     // Force detach by setting a 1-byte cap — any non-empty buffer exceeds it.
     ed.settings.syntax_highlight_max_bytes = 1;
     ed.reparse_stale_buffers();
-    assert!(ed.buffers.get(bid).parser.is_none(), "parser must detach when exceeding cap");
+    assert!(ed.buffers.get(bid).syntax.is_none(), "syntax must detach when exceeding cap");
     assert!(ed.engine_view.buffers[bid].syntax.is_none(), "syntax must be cleared on detach");
 
     // Restore a generous cap — next reparse must re-attach.
     ed.settings.syntax_highlight_max_bytes = usize::MAX;
     ed.reparse_stale_buffers();
     assert!(
-        ed.buffers.get(bid).parser.is_some(),
-        "parser must re-attach when buffer shrinks back under cap",
+        ed.buffers.get(bid).syntax.is_some(),
+        "syntax must re-attach when buffer shrinks back under cap",
     );
     assert!(
         ed.engine_view.buffers[bid].syntax.is_some(),
@@ -413,7 +413,7 @@ fn parse_worker_result_is_async_then_installed() {
     // parsed_gen should still equal gen0 (the async parse is not yet done).
     ed.reparse_stale_buffers();
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen0,
         "parsed_gen must still lag immediately after non-blocking reparse_stale_buffers",
     );
@@ -422,7 +422,7 @@ fn parse_worker_result_is_async_then_installed() {
     ed.join_pending_parses();
     ed.reparse_stale_buffers(); // drain in case the result arrived just after the join
     assert_eq!(
-        ed.buffers.get(bid).parser.as_ref().unwrap().parsed_gen,
+        ed.buffers.get(bid).syntax.as_ref().unwrap().parsed_gen,
         gen1,
         "parsed_gen must equal text_gen after join_pending_parses",
     );
@@ -457,7 +457,7 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     ed.join_pending_parses();
 
-    let rust_lang = ed.buffers.get(bid).parser.as_ref().unwrap().lang.name.clone();
+    let rust_lang = ed.buffers.get(bid).syntax.as_ref().unwrap().lang.name.clone();
     assert_eq!(rust_lang, "rust", "buffer must be parsed with rust grammar after swap");
     assert!(ed.engine_view.buffers[bid].tree.is_some(), "rust parse must produce a tree");
 }
