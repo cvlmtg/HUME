@@ -21,7 +21,7 @@ impl Editor {
             sbuf.tree = None;
         }
         self.buffers.get_mut(bid).syntax = None;
-        self.parse_worker.in_flight.remove(&bid);
+        self.parse_worker.remove_in_flight(bid);
 
         // Resolve language → grammar bundle.
         let lang_name = match self.buffers.get(bid).language.clone() {
@@ -41,7 +41,7 @@ impl Editor {
         // Build highlighter from shared query (capture names already interned at
         // attach_grammar time — intern_runtime deduplicates).
         // Initial source is empty — refresh_source is called when the first
-        // ParseDone arrives from the worker.
+        // ParseDone arrives from the backend.
         let query = Arc::clone(
             &lang_config
                 .grammar
@@ -54,7 +54,7 @@ impl Editor {
 
         let text_gen = self.buffers.get(bid).text_gen;
 
-        // Write engine state: tree stays None until the worker responds.
+        // Write engine state: tree stays None until the backend responds.
         {
             let sbuf = &mut self.engine_view.buffers[bid];
             sbuf.tree = None;
@@ -71,9 +71,9 @@ impl Editor {
             return;
         }
 
-        // Post parse request asynchronously.  The first frame after attachment
-        // will render without highlights; results arrive on a subsequent frame.
-        // Tests use `join_pending_parses` to synchronise before asserting state.
+        // Post parse request.  Results arrive via drain_done in reparse_stale_buffers.
+        // Tests: InlineParseBackend completes the parse inside post() — a single
+        // reparse_stale_buffers call drains and installs the result.
         let source_bytes = self.buffers.get(bid).text().to_string().into_bytes();
         self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, source_bytes });
     }
@@ -142,19 +142,20 @@ impl Editor {
     /// Called from `prepare_frame` before `update_highlight_providers`. Detaches
     /// syntax from a buffer that has grown past `syntax-highlight-max-bytes`.
     ///
-    /// Non-blocking: drains any completed worker results, then submits new
+    /// Non-blocking: drains any completed backend results, then submits new
     /// requests for stale buffers.  The renderer reads whatever tree is currently
     /// committed — a frame with a slightly stale tree (or no tree) is acceptable.
     pub(super) fn reparse_stale_buffers(&mut self) {
         // Drain phase: runs even when disconnected — buffered results produced
         // before the worker exited are still valid and should land.
-        while let Ok(done) = self.parse_worker.rx_done.try_recv() {
+        let dones = self.parse_worker.drain_done();
+        for done in dones {
             self.install_parse_done(done);
         }
 
         // Surface a one-shot warning if the worker exited unexpectedly and
         // suspend further request submission for this session.
-        if self.parse_worker.disconnected {
+        if self.parse_worker.is_disconnected() {
             self.surface_parse_worker_disconnect();
             return;
         }
@@ -182,7 +183,7 @@ impl Editor {
                 sbuf.syntax = None;
                 sbuf.tree = None;
                 self.buffers.get_mut(bid).syntax = None;
-                self.parse_worker.in_flight.remove(&bid);
+                self.parse_worker.remove_in_flight(bid);
                 continue;
             }
 
@@ -209,9 +210,7 @@ impl Editor {
 
             // In-flight check: skip if we already have a pending request for
             // the current text_gen.
-            if self.parse_worker.in_flight.get(&bid)
-                .is_some_and(|inf| inf.text_gen == text_gen)
-            {
+            if self.parse_worker.is_in_flight(bid, text_gen) {
                 continue;
             }
 
@@ -227,32 +226,14 @@ impl Editor {
         }
     }
 
-    /// Block until all in-flight parse requests have produced results, then
-    /// drain and install them.  Used in tests and wherever a sync checkpoint
-    /// is needed (e.g. a future `:write` guarantee).
-    #[cfg(test)]
-    pub(crate) fn join_pending_parses(&mut self) {
-        while !self.parse_worker.in_flight.is_empty() {
-            match self.parse_worker.rx_done.recv() {
-                Ok(done) => self.install_parse_done(done),
-                Err(_) => {
-                    self.parse_worker.disconnected = true;
-                    self.parse_worker.in_flight.clear();
-                    self.surface_parse_worker_disconnect();
-                    return;
-                }
-            }
-        }
-    }
-
     fn surface_parse_worker_disconnect(&mut self) {
-        if !self.parse_worker.disconnect_logged {
+        if !self.parse_worker.is_disconnect_logged() {
             use super::Severity;
             self.message_log.push(
                 Severity::Error,
                 "parse worker disconnected — syntax highlighting suspended".to_owned(),
             );
-            self.parse_worker.disconnect_logged = true;
+            self.parse_worker.mark_disconnect_logged();
         }
     }
 

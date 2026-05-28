@@ -81,6 +81,9 @@ pub(crate) enum RegisterError {
     HighlightsRead(std::io::Error),
     /// Failed to compile the highlights query.
     QueryBuild(tree_sitter::QueryError),
+    /// Grammar ABI version is outside the range the bundled tree-sitter
+    /// library supports.  Recompile the grammar with a compatible generator.
+    AbiIncompatible { name: String, abi: usize, supported: std::ops::RangeInclusive<usize> },
 }
 
 impl std::fmt::Display for RegisterError {
@@ -90,6 +93,8 @@ impl std::fmt::Display for RegisterError {
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e:?}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
+            Self::AbiIncompatible { name, abi, supported } =>
+                write!(f, "grammar '{name}' ABI {abi} not in supported range {supported:?}"),
         }
     }
 }
@@ -251,6 +256,15 @@ impl LanguageRegistry {
     ) -> Result<Arc<LanguageConfig>, RegisterError> {
         let grammar =
             LoadedGrammar::open(grammar_path, symbol).map_err(RegisterError::GrammarLoad)?;
+        let abi = grammar.language().abi_version();
+        let supported = tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
+        if !supported.contains(&abi) {
+            return Err(RegisterError::AbiIncompatible {
+                name: name.to_owned(),
+                abi,
+                supported,
+            });
+        }
         let highlights_src =
             std::fs::read_to_string(highlights_path).map_err(RegisterError::HighlightsRead)?;
         let query = Arc::new(

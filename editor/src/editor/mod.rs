@@ -372,12 +372,12 @@ pub(crate) struct Editor {
     pub(super) cwd: PathBuf,
 
     // ── Tree-sitter parse worker ──────────────────────────────────────────────
-    /// Dedicated thread that runs `tree_sitter::Parser` off the main thread.
+    /// Parse backend: threaded in production, synchronous-inline in tests.
     ///
-    /// `reparse_stale_buffers` posts requests here and drains completed trees
-    /// each frame.  `join_pending_parses` blocks until in-flight requests land —
-    /// used by tests and for sync checkpoints (e.g. future `:write` guarantee).
-    parse_worker: parse_worker::ParseWorker,
+    /// `reparse_stale_buffers` drains completed results and posts new requests
+    /// each frame.  Tests use `InlineParseBackend` (via `for_testing`) which
+    /// completes parses inside `post` — no blocking helpers needed.
+    parse_worker: Box<dyn parse_worker::ParseBackend>,
 }
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -635,7 +635,7 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             languages: syntax::LanguageRegistry::new(),
             cwd: std::env::temp_dir(),
-            parse_worker: parse_worker::ParseWorker::new(),
+            parse_worker: Box::new(parse_worker::InlineParseBackend::new()),
         }
     }
 

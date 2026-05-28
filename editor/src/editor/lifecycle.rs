@@ -199,7 +199,7 @@ impl Editor {
             builtin_cmd_names: std::collections::HashSet::new(),
             languages: crate::editor::syntax::LanguageRegistry::new(),
             cwd: std::env::current_dir().unwrap_or_default(),
-            parse_worker: crate::editor::parse_worker::ParseWorker::new(),
+            parse_worker: Box::new(crate::editor::parse_worker::ThreadedParseBackend::new()),
         })
     }
 

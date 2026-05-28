@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc};
 use std::thread;
 
 use engine::pipeline::BufferId;
@@ -12,6 +12,7 @@ const _: fn() = || {
     fn _assert_send<T: Send>() {}
     _assert_send::<ParseRequest>();
     _assert_send::<ParseDone>();
+    _assert_send::<ParseOutcome>();
 };
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ pub(super) enum ParseOutcome {
     /// is detached on arrival.
     AbiRejected,
     /// `Parser::parse` returned `None` (transient; currently unreachable without
-    /// a cancellation flag).  Syntax stays attached; the next frame retries.
+    /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
     ParseFailed,
 }
 
@@ -68,15 +69,68 @@ fn coalesce_one(batch: &mut HashMap<BufferId, ParseRequest>, req: ParseRequest) 
     }
 }
 
+// ── Shared parse logic ────────────────────────────────────────────────────────
+
+/// Execute a parse request synchronously, returning the finished `ParseDone`.
+/// Used by both `WorkerState` and `InlineParseBackend` (the latter in tests).
+fn do_parse(
+    parser: &mut tree_sitter::Parser,
+    current_lang: &mut Option<Arc<LanguageConfig>>,
+    req: ParseRequest,
+    cancel: &AtomicBool,
+) -> ParseDone {
+    let language_changed = current_lang.as_ref()
+        .map_or(true, |cur| !Arc::ptr_eq(cur, &req.lang));
+
+    if language_changed {
+        let bundle = match req.lang.grammar.as_ref() {
+            Some(b) => b,
+            None => {
+                *current_lang = None;
+                return make_done(req, ParseOutcome::AbiRejected);
+            }
+        };
+        match parser.set_language(&bundle.grammar.language()) {
+            Ok(()) => *current_lang = Some(Arc::clone(&req.lang)),
+            Err(_) => {
+                *current_lang = None;
+                return make_done(req, ParseOutcome::AbiRejected);
+            }
+        }
+    }
+
+    let outcome = {
+        use std::ops::ControlFlow;
+        let mut progress = |_state: &tree_sitter::ParseState| -> ControlFlow<()> {
+            if cancel.load(Ordering::Relaxed) { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+        };
+        let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
+        let bytes = &req.source_bytes;
+        let len = bytes.len();
+        match parser.parse_with_options(
+            &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
+            None,
+            Some(options),
+        ) {
+            Some(tree) => ParseOutcome::Ok(tree),
+            None => ParseOutcome::ParseFailed,
+        }
+    };
+    make_done(req, outcome)
+}
+
+fn make_done(req: ParseRequest, outcome: ParseOutcome) -> ParseDone {
+    ParseDone { bid: req.bid, text_gen: req.text_gen, lang: req.lang, outcome, source_bytes: req.source_bytes }
+}
+
 // ── Worker internals (stays on the worker thread) ─────────────────────────────
 
 struct WorkerState {
     rx: mpsc::Receiver<ParseRequest>,
     tx: mpsc::Sender<ParseDone>,
     parser: tree_sitter::Parser,
-    /// Arc of the language currently loaded into `parser`, used to detect
-    /// language switches via `Arc::ptr_eq` without extra clones.
     current_lang: Option<Arc<LanguageConfig>>,
+    cancel: Arc<AtomicBool>,
 }
 
 impl WorkerState {
@@ -103,7 +157,8 @@ impl WorkerState {
             };
 
             for (_, req) in batch {
-                if self.parse_one(req) == Flow::Exit {
+                let done = do_parse(&mut self.parser, &mut self.current_lang, req, &self.cancel);
+                if self.tx.send(done).is_err() {
                     return;
                 }
             }
@@ -113,97 +168,76 @@ impl WorkerState {
             }
         }
     }
-
-    /// Parse one request and send the result back.  Returns `Exit` when the
-    /// result channel is closed (editor dropped).
-    fn parse_one(&mut self, req: ParseRequest) -> Flow {
-        let language_changed = self.current_lang.as_ref()
-            .map_or(true, |cur| !Arc::ptr_eq(cur, &req.lang));
-
-        if language_changed {
-            let bundle = match req.lang.grammar.as_ref() {
-                Some(b) => b,
-                None => {
-                    self.current_lang = None;
-                    return self.send_done(req, ParseOutcome::AbiRejected);
-                }
-            };
-            match self.parser.set_language(&bundle.grammar.language()) {
-                Ok(()) => self.current_lang = Some(Arc::clone(&req.lang)),
-                Err(_) => {
-                    self.current_lang = None;
-                    return self.send_done(req, ParseOutcome::AbiRejected);
-                }
-            }
-        }
-
-        let outcome = match self.parser.parse(&req.source_bytes, None) {
-            Some(tree) => ParseOutcome::Ok(tree),
-            None => ParseOutcome::ParseFailed,
-        };
-        self.send_done(req, outcome)
-    }
-
-    fn send_done(&self, req: ParseRequest, outcome: ParseOutcome) -> Flow {
-        match self.tx.send(ParseDone {
-            bid: req.bid,
-            text_gen: req.text_gen,
-            lang: req.lang,
-            outcome,
-            source_bytes: req.source_bytes,
-        }) {
-            Ok(()) => Flow::Continue,
-            Err(_) => Flow::Exit,
-        }
-    }
 }
 
-#[derive(PartialEq, Eq)]
-enum Flow {
-    Continue,
-    Exit,
+// ── ParseBackend trait ────────────────────────────────────────────────────────
+
+/// Abstraction over the parse backend so tests can inject a synchronous
+/// implementation that avoids threads and blocking.
+pub(super) trait ParseBackend {
+    fn post(&mut self, req: ParseRequest);
+
+    /// Drain all available parse results.  Must be called before
+    /// `is_in_flight` or other state queries on the same frame.
+    fn drain_done(&mut self) -> Vec<ParseDone>;
+
+    /// Whether `bid` has an in-flight request matching `text_gen`.
+    fn is_in_flight(&self, bid: BufferId, text_gen: u64) -> bool;
+
+    /// Unconditionally remove the in-flight record for `bid`.
+    fn remove_in_flight(&mut self, bid: BufferId);
+
+    /// Remove the in-flight record for `bid` only when both `text_gen` and
+    /// grammar identity match.  Avoids clearing a newer in-flight entry when
+    /// a stale `ParseDone` arrives for the same buffer.
+    fn clear_in_flight_if_matches(
+        &mut self,
+        bid: BufferId,
+        text_gen: u64,
+        lang: &Arc<LanguageConfig>,
+    );
+
+    fn is_disconnected(&self) -> bool;
+    fn is_disconnect_logged(&self) -> bool;
+    fn mark_disconnect_logged(&mut self);
 }
 
-// ── ParseWorker handle (lives on the main thread) ─────────────────────────────
+// ── InFlight record ───────────────────────────────────────────────────────────
 
 /// Records a pending parse request so `reparse_stale_buffers` can avoid
 /// re-submitting for a buffer whose request is already in flight.
-pub(super) struct InFlight {
-    pub(super) text_gen: u64,
-    /// Grammar identity at submission time.  Used to avoid clearing a newer
-    /// in-flight entry when a stale `ParseDone` for the same buffer arrives.
-    pub(super) lang: Arc<LanguageConfig>,
+struct InFlight {
+    text_gen: u64,
+    /// Grammar identity at submission time — used by `clear_in_flight_if_matches`
+    /// to avoid evicting a newer in-flight entry when a stale result arrives.
+    lang: Arc<LanguageConfig>,
 }
 
-pub(super) struct ParseWorker {
+// ── ThreadedParseBackend (production) ─────────────────────────────────────────
+
+pub(super) struct ThreadedParseBackend {
     /// `None` after `Drop` closes the channel to signal the worker.
     tx_req: Option<mpsc::Sender<ParseRequest>>,
-    /// Incoming parse results.  Drained by `reparse_stale_buffers` and by
-    /// `Editor::join_pending_parses`.
-    pub(super) rx_done: mpsc::Receiver<ParseDone>,
-    /// Per-buffer record of the most recently submitted (but not yet installed)
-    /// request.  Keyed by `BufferId`; at most one entry per buffer.
-    pub(super) in_flight: HashMap<BufferId, InFlight>,
-    /// Set when `tx_req.send` returns `Err` (worker exited unexpectedly).
-    /// Once set, suppresses all further sends; parsing is suspended for the
-    /// lifetime of this editor session.
-    pub(super) disconnected: bool,
-    /// Set after the disconnect has been surfaced to the message log so the
-    /// warning fires exactly once.
-    pub(super) disconnect_logged: bool,
+    rx_done: mpsc::Receiver<ParseDone>,
+    in_flight: HashMap<BufferId, InFlight>,
+    disconnected: bool,
+    disconnect_logged: bool,
+    cancel: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
-impl ParseWorker {
+impl ThreadedParseBackend {
     pub(super) fn new() -> Self {
         let (tx_req, rx_req) = mpsc::channel::<ParseRequest>();
         let (tx_done, rx_done) = mpsc::channel::<ParseDone>();
+        let cancel = Arc::new(AtomicBool::new(false));
 
         let state = WorkerState {
             rx: rx_req,
             tx: tx_done,
             parser: tree_sitter::Parser::new(),
             current_lang: None,
+            cancel: Arc::clone(&cancel),
         };
 
         let thread = thread::Builder::new()
@@ -217,22 +251,22 @@ impl ParseWorker {
             in_flight: HashMap::new(),
             disconnected: false,
             disconnect_logged: false,
+            cancel,
             thread: Some(thread),
         }
     }
+}
 
-    /// Submit a parse request and record it in `in_flight`.
-    ///
-    /// No-op (and `disconnected` is set on first failure) if the worker has exited.
-    pub(super) fn post(&mut self, req: ParseRequest) {
+impl ParseBackend for ThreadedParseBackend {
+    fn post(&mut self, req: ParseRequest) {
         if self.disconnected {
             return;
         }
         if let Some(ref tx) = self.tx_req {
             let bid = req.bid;
-            let in_flight = InFlight { text_gen: req.text_gen, lang: Arc::clone(&req.lang) };
+            let inf = InFlight { text_gen: req.text_gen, lang: Arc::clone(&req.lang) };
             match tx.send(req) {
-                Ok(()) => { self.in_flight.insert(bid, in_flight); }
+                Ok(()) => { self.in_flight.insert(bid, inf); }
                 Err(_) => {
                     self.disconnected = true;
                     self.in_flight.clear();
@@ -241,11 +275,23 @@ impl ParseWorker {
         }
     }
 
-    /// Remove `in_flight[bid]` only when its identity matches the given `(text_gen, lang)`.
-    ///
-    /// A plain `remove` would silently discard a *newer* in-flight entry that
-    /// `post` may have already recorded for the same buffer.
-    pub(super) fn clear_in_flight_if_matches(
+    fn drain_done(&mut self) -> Vec<ParseDone> {
+        let mut out = Vec::new();
+        while let Ok(done) = self.rx_done.try_recv() {
+            out.push(done);
+        }
+        out
+    }
+
+    fn is_in_flight(&self, bid: BufferId, text_gen: u64) -> bool {
+        self.in_flight.get(&bid).is_some_and(|inf| inf.text_gen == text_gen)
+    }
+
+    fn remove_in_flight(&mut self, bid: BufferId) {
+        self.in_flight.remove(&bid);
+    }
+
+    fn clear_in_flight_if_matches(
         &mut self,
         bid: BufferId,
         text_gen: u64,
@@ -257,16 +303,62 @@ impl ParseWorker {
             }
         }
     }
+
+    fn is_disconnected(&self) -> bool { self.disconnected }
+    fn is_disconnect_logged(&self) -> bool { self.disconnect_logged }
+    fn mark_disconnect_logged(&mut self) { self.disconnect_logged = true; }
 }
 
-impl Drop for ParseWorker {
+impl Drop for ThreadedParseBackend {
     fn drop(&mut self) {
-        // Closing tx_req causes the worker's rx.recv() to return Err, exiting the loop.
+        // Signal cancellation first so an in-progress parse exits at the next
+        // progress-callback tick rather than blocking shutdown.
+        self.cancel.store(true, Ordering::Release);
+        // Closing tx_req causes the worker's rx.recv() to return Err.
         self.tx_req = None;
         if let Some(jh) = self.thread.take() {
             let _ = jh.join();
         }
     }
+}
+
+// ── InlineParseBackend (tests only) ──────────────────────────────────────────
+
+/// Synchronous parse backend for tests.  `post` runs the parse immediately and
+/// queues the result; `drain_done` flushes the queue.  No threads, no channels,
+/// no waiting — tests call `reparse_stale_buffers` instead of blocking helpers.
+#[cfg(test)]
+pub(super) struct InlineParseBackend {
+    parser: tree_sitter::Parser,
+    current_lang: Option<Arc<LanguageConfig>>,
+    done: std::collections::VecDeque<ParseDone>,
+}
+
+#[cfg(test)]
+impl InlineParseBackend {
+    pub(super) fn new() -> Self {
+        Self { parser: tree_sitter::Parser::new(), current_lang: None, done: std::collections::VecDeque::new() }
+    }
+}
+
+#[cfg(test)]
+impl ParseBackend for InlineParseBackend {
+    fn post(&mut self, req: ParseRequest) {
+        let no_cancel = AtomicBool::new(false);
+        let done = do_parse(&mut self.parser, &mut self.current_lang, req, &no_cancel);
+        self.done.push_back(done);
+    }
+
+    fn drain_done(&mut self) -> Vec<ParseDone> {
+        self.done.drain(..).collect()
+    }
+
+    fn is_in_flight(&self, _bid: BufferId, _text_gen: u64) -> bool { false }
+    fn remove_in_flight(&mut self, _bid: BufferId) {}
+    fn clear_in_flight_if_matches(&mut self, _bid: BufferId, _text_gen: u64, _lang: &Arc<LanguageConfig>) {}
+    fn is_disconnected(&self) -> bool { false }
+    fn is_disconnect_logged(&self) -> bool { false }
+    fn mark_disconnect_logged(&mut self) {}
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -282,7 +374,8 @@ mod tests {
     use engine::grammar::LoadedGrammar;
     use engine::pipeline::BufferId;
 
-    use super::{LanguageConfig, ParseOutcome, ParseRequest, ParseWorker, coalesce_one};
+    use super::{LanguageConfig, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
+    use super::ParseBackend as _;
     use crate::editor::syntax::GrammarBundle;
 
     fn grammar_path(name: &str) -> PathBuf {
@@ -356,17 +449,17 @@ mod tests {
         assert_eq!(batch[&bid].source_bytes, b"333", "equal-gen request must be dropped");
     }
 
-    // ── ParseWorker shutdown ──────────────────────────────────────────────────
+    // ── ThreadedParseBackend shutdown ─────────────────────────────────────────
 
     #[test]
     fn worker_shutdown_joins_thread() {
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         std::thread::spawn(move || {
-            drop(ParseWorker::new());
+            drop(ThreadedParseBackend::new());
             let _ = tx.send(());
         });
         rx.recv_timeout(Duration::from_secs(1))
-            .expect("ParseWorker::drop did not return within 1 s");
+            .expect("ThreadedParseBackend::drop did not return within 1 s");
     }
 
     // ── Language switch re-sets cached parser ─────────────────────────────────
@@ -375,7 +468,7 @@ mod tests {
     fn worker_language_switch_produces_trees_for_both() {
         let json_lang = make_lang("json", "tree_sitter_json");
         let rust_lang = make_lang("rust", "tree_sitter_rust");
-        let mut worker = ParseWorker::new();
+        let mut worker = ThreadedParseBackend::new();
         let bid = fresh_bid();
 
         worker.post(ParseRequest {
