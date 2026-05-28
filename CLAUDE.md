@@ -9,8 +9,9 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
-- **Named commands** (`editor/src/ops/edit/`, `editor/src/ops/motion/`) are pure `(Buffer, SelectionSet) -> (Buffer, SelectionSet)` functions. They have no knowledge of keys.
-- **Keymaps** (`src/editor/keymap.rs`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Insert).
+- **Workspace**: two crates — `engine/` (rendering pipeline, pane geometry) and `editor/` (buffer, ops, scripting, keymaps, everything else).
+- **Named commands** (`editor/src/ops/edit/`, `editor/src/ops/motion/`) are pure functions of buffer + selections (plus command-specific params like `count: usize`, `MotionMode`). Edits also return a `ChangeSet`. They have no knowledge of keys.
+- **Keymaps** (`editor/src/editor/keymap/`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Extend, Insert).
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
 ## Rules
@@ -25,11 +26,10 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Day-one architectural invariants
 These must be respected from the first line of code — retrofitting is expensive:
-- **Selections**: Always `Vec<Selection>`. Single cursor is a vec of length 1. All edit operations iterate over selections. Selections are always inclusive — `anchor == head` is a 1-char selection covering the character at that index, never a zero-width point.
-- **Display lines**: The renderer iterates "display lines" (buffer line or virtual line), never buffer lines directly. Initially 1:1, but the abstraction is required for virtual lines later.
+- **Selections**: Selections live in a `SelectionSet` (`Vec<Selection>` + `primary: usize` index, kept sorted by start, non-overlapping, non-empty). All edit operations iterate over selections. Selections are always inclusive — `anchor == head` is a 1-char selection covering the character at that index, never a zero-width point.
 - **Grapheme clusters**: All motions, selections, and edit operations work on grapheme clusters (`unicode-segmentation`), never raw bytes or `char`. This is the text boundary abstraction — retrofitting is expensive.
   - **Forbidden**: `pos += 1`, `pos -= 1`, `start += 1`, `start -= 1`, `end += 1`, `end -= 1`, `head += 1`, `head -= 1`, `char_at(pos + 1)`, `char_at(pos - 1)` in any motion or selection code. These step over raw chars and will land mid-cluster on combining sequences (e.g. `é` = U+0065 + U+0301) or ZWJ emoji.
-  - **Required**: `next_grapheme_boundary(buf, pos)` and `prev_grapheme_boundary(buf, pos)` from `src/core/grapheme.rs` for all position advances in motion/selection logic.
+  - **Required**: `next_grapheme_boundary(buf, pos)` and `prev_grapheme_boundary(buf, pos)` from `editor/src/core/grapheme.rs` for all position advances in motion/selection logic.
   - **Allowed**: `line += 1` for line-level iteration, `i += 1` in bracket/delimiter scanning (ASCII only), `len_chars() - 1` for end-of-buffer clamping.
   - **Enforced**: `cargo test no_raw_char_stepping_in_motion_code` (in `editor/src/core/lints.rs`) recursively scans `editor/src/ops/` plus `editor/src/auto_pairs.rs` and `editor/src/helpers.rs` for forbidden patterns and fails the build if found.
 
@@ -40,8 +40,20 @@ This project is both a product and a learning journey. Write the best Rust possi
 - **No magic**: No macro-heavy abstractions that hide what's happening. Macros only when they genuinely reduce boilerplate.
 - **Clean and readable**: Performance and clarity are not at odds in Rust — the compiler optimizes idiomatic patterns well. When in doubt, prefer the version a newcomer can follow.
 
-## Teaching Guidelines
-- When writing non-obvious code, add a brief inline comment explaining *why*, not just *what*
-- When choosing between multiple valid approaches, briefly note why you picked this one
-- Point out when you're using an important Rust concept (ownership, lifetimes, traits, iterators, etc.)
-- When using a Rust feature that might be unfamiliar (lifetimes, trait bounds, zero-cost abstractions), explain why it's the right tool — in code comments or conversation.
+## Documentation audiences
+Every piece of writing in this repo targets one of three audiences. Know which one before you write, and don't mix them.
+
+1. **End users** — people running HUME who want to use it. Lives in `README.md`, `docs/settings.md`, `docs/default_keybinds.md`, `runtime/tutor.txt`, `runtime/init.scm.example`, and any `:help`-style content surfaced inside the editor.
+   - No internal names. Don't reference Rust types, Steel builtins used only by the implementation, or module paths. ❌ "the next key pressed is passed as `(pending-char)`" — `pending-char` is a code internal; describe the *behaviour* instead.
+   - No babysitting. Assume the reader can follow a short instruction. ❌ "These are absent on a fresh setup" — say what to do, not what the reader will or won't see.
+   - Describe what the editor does and how to drive it. Nothing about why it's built that way.
+
+2. **Learners / curious developers** — people who want to understand HUME's *concepts*, not its code yet. Lives in `LEARNING.md` and `docs/learning/*.md`.
+   - High-level explanations of ideas: the text model, motions vs text objects, the undo tree, etc.
+   - No source-file paths, no `editor/src/...` references, no function names. If the explanation needs them to land, it belongs in a source comment instead.
+   - Code snippets are fine when they illustrate an *idea*; they should read as pseudocode-with-Rust-syntax, not as a tour of the actual implementation.
+
+3. **Source readers (contributors)** — people with the file open. The only doc surface for this audience is inline source-code comments. Conversely, source-code comments target only this audience — never an end user, never a learner.
+   - Add a brief comment when the *why* is non-obvious; never narrate the *what* (well-named identifiers handle that).
+   - When choosing between multiple valid approaches, briefly note why this one.
+   - Point out important Rust concepts in use (ownership, lifetimes, traits, iterators), especially when the feature might be unfamiliar.
