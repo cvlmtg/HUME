@@ -18,6 +18,9 @@ use std::io;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Output};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
+
 /// Run `git clone -- <url> <dest>` and return captured output.
 ///
 /// The caller is responsible for validating that `dest` resolves inside the
@@ -45,6 +48,7 @@ pub(crate) fn git_clone_rev(url: &str, dest: &Path, rev: &str) -> io::Result<Exi
     let status = Command::new("git")
         .args(["clone", "--filter=blob:none", "--", url])
         .arg(dest)
+        .new_process_group()
         .status()?;
     if !status.success() {
         return Ok(status);
@@ -58,6 +62,7 @@ pub(crate) fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
         .args(["-C"])
         .arg(dir)
         .args(["checkout", "--force", "--end-of-options", rev, "--"])
+        .new_process_group()
         .status()
 }
 
@@ -69,6 +74,7 @@ pub(crate) fn curl_fetch(url: &str, dest: &Path) -> io::Result<ExitStatus> {
         .args(["-fsSL", "-o"])
         .arg(dest)
         .args(["--", url])
+        .new_process_group()
         .status()
 }
 
@@ -79,6 +85,7 @@ pub(crate) fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus
         .args(["build", "-o"])
         .arg(out)
         .arg(src)
+        .new_process_group()
         .status()
 }
 
@@ -88,5 +95,68 @@ pub(crate) fn exit_code_str(status: ExitStatus) -> String {
     match status.code() {
         Some(c) => format!("exit code {c}"),
         None => "killed by signal".to_string(),
+    }
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+/// Extension trait to set the child as its own process group leader on Unix.
+///
+/// On Unix: calls `setpgid(0, 0)` via `CommandExt::process_group(0)` so
+/// Ctrl+C (SIGINT to the terminal's foreground process group) reaches only
+/// the child, not HUME.  On other platforms this is a no-op.
+trait NewProcessGroup {
+    fn new_process_group(&mut self) -> &mut Self;
+}
+
+impl NewProcessGroup for Command {
+    fn new_process_group(&mut self) -> &mut Self {
+        #[cfg(unix)]
+        self.process_group(0);
+        self
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that Ctrl+C (SIGINT to the child's process group) kills the
+    /// child but not HUME.  Uses the shell `kill` command to avoid a libc dep.
+    ///
+    /// Behavioral guarantee: after `process_group(0)` the child is its own
+    /// process group leader, so `kill -INT -<child_pid>` targets only that
+    /// group.  If the test process survives past the assert the guarantee holds.
+    #[test]
+    #[cfg(unix)]
+    fn sigint_to_child_group_does_not_kill_hume() {
+        use std::process::Command;
+
+        // Spawn a long-lived child so we can signal it before it exits.
+        let child = Command::new("sleep")
+            .arg("30")
+            .new_process_group()
+            .spawn()
+            .expect("spawn sleep");
+        let child_pid = child.id();
+
+        // Send SIGINT to the child's process group (pgid == child_pid after
+        // process_group(0)).
+        let kill_status = Command::new("kill")
+            .args(["-INT", &format!("-{child_pid}")])
+            .status()
+            .expect("kill");
+        assert!(kill_status.success(), "kill -INT -{child_pid} failed");
+
+        // Wait for the child — must have been killed by the signal.
+        let exit = child.wait_with_output().expect("wait").status;
+        assert!(
+            !exit.success(),
+            "child should have been killed by SIGINT, got: {exit:?}"
+        );
+
+        // Reaching here means HUME survived — the guarantee holds.
     }
 }
