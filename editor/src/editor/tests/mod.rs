@@ -221,6 +221,7 @@ mod dot_repeat;
 mod file_io;
 mod find;
 mod hooks;
+mod incremental_parse;
 mod language;
 mod jump_list;
 mod kitty;

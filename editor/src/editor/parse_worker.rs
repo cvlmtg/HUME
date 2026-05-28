@@ -5,6 +5,7 @@ use std::thread;
 use engine::pipeline::BufferId;
 
 use super::syntax::LanguageConfig;
+use crate::core::text::Text;
 
 // Compile-time Send assertions — tree_sitter::Tree is Send+Sync;
 // tree_sitter::Parser is Send+!Sync (lives on the worker thread only).
@@ -23,14 +24,19 @@ pub(super) struct ParseRequest {
     /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
     /// the worker holds this request.
     pub(super) lang: Arc<LanguageConfig>,
-    /// Full-text snapshot at `text_gen`.  O(n) allocation; the incremental
-    /// milestone (M9.5) will replace this with `InputEdit` + delta.
-    pub(super) source_bytes: Vec<u8>,
+    /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
+    /// thread only when the parse succeeds, avoiding the main-thread allocation.
+    pub(super) text: Text,
+    /// Previous parse tree with all pending `InputEdit`s applied, enabling
+    /// incremental re-parsing.  `None` for a full reparse (first parse, grammar
+    /// swap, or broken edit chain).
+    pub(super) old_tree: Option<tree_sitter::Tree>,
 }
 
 pub(super) enum ParseOutcome {
-    /// Parse succeeded; inner value is the fresh tree.
-    Ok(tree_sitter::Tree),
+    /// Parse succeeded.  Carries the fresh tree and the serialised source bytes
+    /// needed to keep `SharedBuffer.tree_source` consistent with the new tree.
+    Ok(tree_sitter::Tree, Vec<u8>),
     /// `Parser::parse` returned `None` (transient; currently unreachable without
     /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
     ParseFailed,
@@ -43,9 +49,6 @@ pub(super) struct ParseDone {
     /// grammar swaps that occurred while the request was in flight.
     pub(super) lang: Arc<LanguageConfig>,
     pub(super) outcome: ParseOutcome,
-    /// Allocated on the main thread before posting; returned here so the
-    /// highlighter source can be refreshed without a second allocation on install.
-    pub(super) source_bytes: Vec<u8>,
 }
 
 // ── Coalescing helper ─────────────────────────────────────────────────────────
@@ -98,22 +101,31 @@ fn do_parse(
             if cancel.load(Ordering::Relaxed) { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
         };
         let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
-        let bytes = &req.source_bytes;
-        let len = bytes.len();
-        match parser.parse_with_options(
-            &mut |i, _| if i < len { &bytes[i..] } else { Default::default() },
-            None,
+        // Feed the rope via chunked callback — avoids the full Vec<u8> allocation
+        // on the main thread.  `chunk_at_byte` returns a &str slice directly into
+        // the rope's immutable B-tree nodes (lifetime tied to `req.text`).
+        let rope = req.text.rope();
+        let len_bytes = rope.len_bytes();
+        let result = parser.parse_with_options(
+            &mut |byte_offset, _| {
+                if byte_offset >= len_bytes {
+                    return b"" as &[u8];
+                }
+                let (chunk, chunk_byte_start, _, _) = rope.chunk_at_byte(byte_offset);
+                &chunk.as_bytes()[byte_offset - chunk_byte_start..]
+            },
+            req.old_tree.as_ref(),
             Some(options),
-        ) {
-            Some(tree) => ParseOutcome::Ok(tree),
+        );
+        match result {
+            // Materialise source bytes here (worker thread) for the highlighter.
+            // On ParseFailed we skip the allocation entirely.
+            Some(tree) => ParseOutcome::Ok(tree, req.text.to_bytes()),
             None => ParseOutcome::ParseFailed,
         }
     };
-    make_done(req, outcome)
-}
 
-fn make_done(req: ParseRequest, outcome: ParseOutcome) -> ParseDone {
-    ParseDone { bid: req.bid, text_gen: req.text_gen, lang: req.lang, outcome, source_bytes: req.source_bytes }
+    ParseDone { bid: req.bid, text_gen: req.text_gen, lang: req.lang, outcome }
 }
 
 // ── Worker internals (stays on the worker thread) ─────────────────────────────
@@ -374,7 +386,7 @@ mod tests {
     use engine::grammar::LoadedGrammar;
     use engine::pipeline::BufferId;
 
-    use super::{LanguageConfig, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
+    use super::{LanguageConfig, ParseOutcome, ParseRequest, ThreadedParseBackend, Text, coalesce_one};
     use super::ParseBackend as _;
     use crate::editor::syntax::GrammarBundle;
 
@@ -426,27 +438,31 @@ mod tests {
 
         // Gen 2 lands first.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 2, lang: Arc::clone(&lang), source_bytes: b"22".to_vec(),
+            bid, text_gen: 2, lang: Arc::clone(&lang),
+            text: Text::from("bb\n"), old_tree: None,
         });
         // Gen 1 must not overwrite gen 2.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 1, lang: Arc::clone(&lang), source_bytes: b"1".to_vec(),
+            bid, text_gen: 1, lang: Arc::clone(&lang),
+            text: Text::from("a\n"), old_tree: None,
         });
         assert_eq!(batch[&bid].text_gen, 2, "lower-gen request must not overwrite");
-        assert_eq!(batch[&bid].source_bytes, b"22", "source must match the winning gen");
+        assert_eq!(batch[&bid].text.len_chars(), 3, "text must match the winning gen");
 
         // Gen 3 must overwrite gen 2.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 3, lang: Arc::clone(&lang), source_bytes: b"333".to_vec(),
+            bid, text_gen: 3, lang: Arc::clone(&lang),
+            text: Text::from("ccc\n"), old_tree: None,
         });
         assert_eq!(batch[&bid].text_gen, 3, "higher-gen request must win");
-        assert_eq!(batch[&bid].source_bytes, b"333");
+        assert_eq!(batch[&bid].text.len_chars(), 4);
 
         // Equal gen must not overwrite (no-op).
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 3, lang: Arc::clone(&lang), source_bytes: b"REPLACED".to_vec(),
+            bid, text_gen: 3, lang: Arc::clone(&lang),
+            text: Text::from("REPLACED\n"), old_tree: None,
         });
-        assert_eq!(batch[&bid].source_bytes, b"333", "equal-gen request must be dropped");
+        assert_eq!(batch[&bid].text.len_chars(), 4, "equal-gen request must be dropped");
     }
 
     #[test]
@@ -459,21 +475,24 @@ mod tests {
 
         // lang_a arrives first at gen 5.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_a), source_bytes: b"{}".to_vec(),
+            bid, text_gen: 5, lang: Arc::clone(&lang_a),
+            text: Text::from("{}\n"), old_tree: None,
         });
         // lang_b at the same gen — grammar swap on a quiescent buffer.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_b), source_bytes: b"fn f(){}".to_vec(),
+            bid, text_gen: 5, lang: Arc::clone(&lang_b),
+            text: Text::from("fn f(){}\n"), old_tree: None,
         });
         // The new lang must win.
         assert!(Arc::ptr_eq(&batch[&bid].lang, &lang_b), "grammar swap must replace same-gen entry");
-        assert_eq!(batch[&bid].source_bytes, b"fn f(){}", "source must match the winning lang");
+        assert_eq!(batch[&bid].text.len_chars(), 9, "text must match the winning lang");
 
         // A second request with the same lang does not replace.
         coalesce_one(&mut batch, ParseRequest {
-            bid, text_gen: 5, lang: Arc::clone(&lang_b), source_bytes: b"REPLACED".to_vec(),
+            bid, text_gen: 5, lang: Arc::clone(&lang_b),
+            text: Text::from("REPLACED\n"), old_tree: None,
         });
-        assert_eq!(batch[&bid].source_bytes, b"fn f(){}", "same-lang equal-gen request must be dropped");
+        assert_eq!(batch[&bid].text.len_chars(), 9, "same-lang equal-gen request must be dropped");
     }
 
     // ── ThreadedParseBackend shutdown ─────────────────────────────────────────
@@ -502,24 +521,26 @@ mod tests {
             bid,
             text_gen: 1,
             lang: Arc::clone(&json_lang),
-            source_bytes: b"{\"x\": 1}".to_vec(),
+            text: Text::from("{\"x\": 1}\n"),
+            old_tree: None,
         });
         // Ensure json parse is done before sending rust, so the worker must
         // switch language on the second request.
         let done1 = worker.rx_done.recv_timeout(Duration::from_secs(5))
             .expect("json parse timed out");
-        assert!(matches!(done1.outcome, ParseOutcome::Ok(_)), "json parse must succeed");
+        assert!(matches!(done1.outcome, ParseOutcome::Ok(..)), "json parse must succeed");
         assert!(Arc::ptr_eq(&done1.lang, &json_lang));
 
         worker.post(ParseRequest {
             bid,
             text_gen: 2,
             lang: Arc::clone(&rust_lang),
-            source_bytes: b"fn main() {}".to_vec(),
+            text: Text::from("fn main() {}\n"),
+            old_tree: None,
         });
         let done2 = worker.rx_done.recv_timeout(Duration::from_secs(5))
             .expect("rust parse timed out");
-        assert!(matches!(done2.outcome, ParseOutcome::Ok(_)), "rust parse must succeed after language switch");
+        assert!(matches!(done2.outcome, ParseOutcome::Ok(..)), "rust parse must succeed after language switch");
         assert!(Arc::ptr_eq(&done2.lang, &rust_lang));
     }
 }

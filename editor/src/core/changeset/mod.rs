@@ -164,6 +164,11 @@ impl ChangeSet {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
     }
 
+    /// The ordered list of operations in this changeset.
+    pub(crate) fn ops(&self) -> &[Operation] {
+        &self.ops
+    }
+
     // ── apply ────────────────────────────────────────────────────────────────
 
     /// Apply this changeset to `buf`, producing a new buffer.

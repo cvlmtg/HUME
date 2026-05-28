@@ -4,8 +4,106 @@ use engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use engine::pipeline::BufferId;
 
 use super::Editor;
+use super::buffer::Buffer;
 use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use super::syntax::BufferSyntax;
+use crate::core::changeset::{ChangeSet, Operation};
+
+// ── Incremental parse helpers ─────────────────────────────────────────────────
+
+/// Translate a `ChangeSet` into a sequence of `tree_sitter::InputEdit`s.
+///
+/// `rope` must be the buffer text **before** the edit (the old document).  All
+/// char offsets in the changeset are converted to byte offsets and (row, byte-col)
+/// positions via the rope's index helpers.
+fn input_edits_from_changeset(
+    cs: &ChangeSet,
+    rope: &ropey::Rope,
+) -> Vec<tree_sitter::InputEdit> {
+    let mut edits = Vec::new();
+    let mut pre_char: usize = 0;
+    let mut ops = cs.ops().iter();
+
+    while let Some(op) = ops.next() {
+        match op {
+            Operation::Retain(n) => { pre_char += n; }
+            Operation::Delete(del_n) => {
+                let start_char = pre_char;
+                let old_end_char = pre_char + del_n;
+                // A following Insert forms a replace — consume it together.
+                let inserted = match ops.as_slice().first() {
+                    Some(Operation::Insert(s)) => { let s = s.as_str(); ops.next(); s }
+                    _ => "",
+                };
+                edits.push(make_input_edit(start_char, old_end_char, inserted, rope));
+                pre_char = old_end_char;
+            }
+            Operation::Insert(ins_s) => {
+                // Pure insert: old document position doesn't advance.
+                edits.push(make_input_edit(pre_char, pre_char, ins_s.as_str(), rope));
+            }
+        }
+    }
+    edits
+}
+
+/// Build a single `InputEdit` from char-indexed old/new positions and the inserted text.
+fn make_input_edit(
+    start_char: usize,
+    old_end_char: usize,
+    inserted: &str,
+    rope: &ropey::Rope,
+) -> tree_sitter::InputEdit {
+    let start_byte    = rope.char_to_byte(start_char);
+    let old_end_byte  = rope.char_to_byte(old_end_char);
+    let new_end_byte  = start_byte + inserted.len(); // str::len() is byte count
+
+    let start_row     = rope.char_to_line(start_char);
+    let start_col     = start_byte - rope.line_to_byte(start_row);
+
+    let old_end_row   = rope.char_to_line(old_end_char);
+    let old_end_col   = old_end_byte - rope.line_to_byte(old_end_row);
+
+    let (new_end_row, new_end_col) = new_end_point(start_row, start_col, inserted);
+
+    tree_sitter::InputEdit {
+        start_byte,
+        old_end_byte,
+        new_end_byte,
+        start_position:   tree_sitter::Point { row: start_row,   column: start_col   },
+        old_end_position: tree_sitter::Point { row: old_end_row, column: old_end_col },
+        new_end_position: tree_sitter::Point { row: new_end_row, column: new_end_col },
+    }
+}
+
+/// Compute `new_end_position` for an insertion starting at `(start_row, start_col)`.
+fn new_end_point(start_row: usize, start_col: usize, inserted: &str) -> (usize, usize) {
+    let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
+    if newline_count == 0 {
+        (start_row, start_col + inserted.len())
+    } else {
+        // Column is the byte count after the last newline in the inserted text.
+        let last_nl = inserted.rfind('\n').unwrap();
+        (start_row + newline_count, inserted.len() - last_nl - 1)
+    }
+}
+
+/// Record one batch of `InputEdit`s on `buf.syntax.pending_edits`.
+///
+/// No-op when no grammar is attached (`buf.syntax` is `None`).
+/// Called from `doc_ops` immediately after every text mutation.
+pub(super) fn record_pending_edits(
+    buf: &mut Buffer,
+    text_gen: u64,
+    cs: &ChangeSet,
+    rope_pre: &ropey::Rope,
+) {
+    if let Some(syn) = buf.syntax.as_mut() {
+        for edit in input_edits_from_changeset(cs, rope_pre) {
+            syn.pending_edits.push((text_gen, edit));
+        }
+    }
+}
 
 impl Editor {
     /// Attach the tree-sitter highlighter for `bid`.
@@ -72,8 +170,8 @@ impl Editor {
         // Post parse request.  Results arrive via drain_done in reparse_stale_buffers.
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
-        let source_bytes = self.buffers.get(bid).text().to_bytes();
-        self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, source_bytes });
+        let text = self.buffers.get(bid).text().clone();
+        self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, text, old_tree: None });
     }
 
     /// Install a `ParseDone` result: update `sbuf.tree`+`sbuf.tree_source` and
@@ -85,8 +183,8 @@ impl Editor {
     /// - the grammar identity changed (grammar was swapped while in flight)
     /// - the text advanced past this result (another edit arrived first)
     fn install_parse_done(&mut self, done: ParseDone) {
-        let ParseDone { bid, text_gen, lang, outcome, source_bytes } = done;
-        self.apply_parse_outcome(bid, text_gen, &lang, outcome, source_bytes);
+        let ParseDone { bid, text_gen, lang, outcome } = done;
+        self.apply_parse_outcome(bid, text_gen, &lang, outcome);
         self.parse_worker.clear_in_flight_if_matches(bid, text_gen, &lang);
     }
 
@@ -96,7 +194,6 @@ impl Editor {
         text_gen: u64,
         lang: &Arc<super::syntax::LanguageConfig>,
         outcome: ParseOutcome,
-        source_bytes: Vec<u8>,
     ) {
         // Discard if the buffer was closed while the request was in flight.
         if self.buffers.try_get(bid).is_none() {
@@ -119,12 +216,18 @@ impl Editor {
         }
 
         match outcome {
-            ParseOutcome::Ok(tree) => {
+            ParseOutcome::Ok(tree, source_bytes) => {
                 // Write tree and its source bytes together so they are always
                 // consistent with each other at render time.
-                let sbuf = &mut self.engine_view.buffers[bid];
-                sbuf.tree = Some(tree);
-                sbuf.tree_source = source_bytes;
+                {
+                    let sbuf = &mut self.engine_view.buffers[bid];
+                    sbuf.tree = Some(tree);
+                    sbuf.tree_source = source_bytes;
+                }
+                // Drain pending edits baked into the installed tree.
+                if let Some(syn) = self.buffers.get_mut(bid).syntax.as_mut() {
+                    syn.pending_edits.retain(|(g, _)| *g > text_gen);
+                }
             }
             ParseOutcome::ParseFailed => {
                 // Advance parsed_gen so this generation is not retried every
@@ -215,15 +318,61 @@ impl Editor {
                 continue;
             }
 
-            // Post a fresh async request.
-            let source_bytes = self.buffers.get(bid).text().to_bytes();
+            // Compute old_tree for incremental re-parsing.
+            // Clone the installed tree and apply all pending InputEdits to shift
+            // its node coordinates into the new document's space.  On a chain
+            // break (missed gen) or when no tree exists yet, fall back to a full
+            // reparse (old_tree = None) and clear any stale pending_edits.
+            let old_tree: Option<tree_sitter::Tree> = {
+                let sbuf = &self.engine_view.buffers[bid];
+                let buf_syntax = self.buffers.get(bid).syntax.as_ref()
+                    .expect("syntax is_some guaranteed above");
+                let pending = &buf_syntax.pending_edits;
+                let parsed_gen = buf_syntax.parsed_gen;
+
+                match sbuf.tree.as_ref() {
+                    Some(tree)
+                        if !pending.is_empty()
+                            && pending[0].0 == parsed_gen + 1
+                            && pending.last().unwrap().0 == text_gen =>
+                    {
+                        let mut cloned = tree.clone();
+                        for (_, edit) in pending {
+                            cloned.edit(edit);
+                        }
+                        Some(cloned)
+                    }
+                    Some(_) if !pending.is_empty() => {
+                        // pending_edits chain is broken — a text mutation bypassed
+                        // doc_ops without recording edits.  Full reparse required.
+                        debug_assert!(
+                            false,
+                            "pending_edits chain broken: parsed_gen={parsed_gen}, \
+                             text_gen={text_gen}, first={:?}, last={:?}",
+                            pending.first().map(|(g, _)| *g),
+                            pending.last().map(|(g, _)| *g),
+                        );
+                        None
+                    }
+                    _ => None,
+                }
+            };
+
+            // Clear stale/broken pending_edits when falling back to full reparse.
+            if old_tree.is_none() {
+                if let Some(syn) = self.buffers.get_mut(bid).syntax.as_mut() {
+                    syn.pending_edits.clear();
+                }
+            }
+
+            let text = self.buffers.get(bid).text().clone();
             let lang = Arc::clone(
                 &self.buffers.get(bid).syntax
                     .as_ref()
                     .expect("syntax is_some guaranteed above")
                     .lang,
             );
-            self.parse_worker.post(ParseRequest { bid, text_gen, lang, source_bytes });
+            self.parse_worker.post(ParseRequest { bid, text_gen, lang, text, old_tree });
         }
     }
 
@@ -257,5 +406,182 @@ impl Editor {
         for bid in bids {
             self.setup_buffer_syntax(bid);
         }
+    }
+}
+
+// ── Unit tests for input_edits_from_changeset ─────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use crate::core::changeset::ChangeSetBuilder;
+    use super::{input_edits_from_changeset, new_end_point};
+
+    #[test]
+    fn pure_insert_at_start() {
+        let rope = ropey::Rope::from_str("hello\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.insert("AB");
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 0);
+        assert_eq!(e.old_end_byte, 0);
+        assert_eq!(e.new_end_byte, 2);
+        assert_eq!(e.start_position, tree_sitter::Point { row: 0, column: 0 });
+        assert_eq!(e.old_end_position, tree_sitter::Point { row: 0, column: 0 });
+        assert_eq!(e.new_end_position, tree_sitter::Point { row: 0, column: 2 });
+    }
+
+    #[test]
+    fn pure_insert_middle() {
+        let rope = ropey::Rope::from_str("hello\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(3);
+        b.insert("XY");
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 3);
+        assert_eq!(e.old_end_byte, 3);
+        assert_eq!(e.new_end_byte, 5);
+        assert_eq!(e.new_end_position.column, 5);
+    }
+
+    #[test]
+    fn pure_delete_single_char() {
+        let rope = ropey::Rope::from_str("abc\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(1);
+        b.delete(1);
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 1);
+        assert_eq!(e.old_end_byte, 2);
+        assert_eq!(e.new_end_byte, 1);
+    }
+
+    #[test]
+    fn delete_crosses_line_boundary() {
+        let rope = ropey::Rope::from_str("foo\nbar\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(3);
+        b.delete(3); // deletes "\nba"
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 3);
+        assert_eq!(e.old_end_byte, 6);
+        assert_eq!(e.new_end_byte, 3);
+        assert_eq!(e.old_end_position, tree_sitter::Point { row: 1, column: 2 });
+    }
+
+    #[test]
+    fn replace_within_one_line() {
+        let rope = ropey::Rope::from_str("hello world\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(6);
+        b.delete(5);
+        b.insert("Rust");
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 6);
+        assert_eq!(e.old_end_byte, 11);
+        assert_eq!(e.new_end_byte, 10);
+        assert_eq!(e.new_end_position.column, 10);
+    }
+
+    #[test]
+    fn multiline_insert_new_end_position() {
+        let rope = ropey::Rope::from_str("ab\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.retain(1);
+        b.insert("foo\nbar\n");
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        // "foo\nbar\n" — 2 newlines; last '\n' at byte 7; col = 8 - 7 - 1 = 0
+        assert_eq!(e.new_end_position.row, 2);
+        assert_eq!(e.new_end_position.column, 0);
+    }
+
+    #[test]
+    fn two_separate_edit_sites_emit_two_edits() {
+        let rope = ropey::Rope::from_str("abc\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.delete(1);    // delete 'a'
+        b.retain(1);    // keep 'b'
+        b.delete(1);    // delete 'c'
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 2);
+        assert!(edits[0].start_byte < edits[1].start_byte, "edits must be in order");
+        assert_eq!(edits[0].start_byte, 0);
+        assert_eq!(edits[0].old_end_byte, 1);
+        assert_eq!(edits[1].start_byte, 2);
+        assert_eq!(edits[1].old_end_byte, 3);
+    }
+
+    #[test]
+    fn multibyte_utf8_byte_offsets() {
+        // "é" = U+00E9 (precomposed) = 2 bytes in UTF-8, 1 char.
+        // "漢" = U+6F22 = 3 bytes, 1 char.
+        let rope = ropey::Rope::from_str("é漢\n");
+        let mut b = ChangeSetBuilder::new(rope.len_chars());
+        b.delete(1); // delete "é" (1 char, but 2 bytes)
+        b.retain_rest();
+        let cs = b.finish();
+
+        let edits = input_edits_from_changeset(&cs, &rope);
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0];
+        assert_eq!(e.start_byte, 0);
+        // "é" (U+00E9) = 2 bytes — different from char count of 1.
+        assert_eq!(e.old_end_byte, 2, "byte offset must count bytes not chars");
+        assert_eq!(e.new_end_byte, 0);
+    }
+
+    #[test]
+    fn new_end_point_no_newlines() {
+        let (row, col) = new_end_point(2, 5, "hello");
+        assert_eq!(row, 2);
+        assert_eq!(col, 10); // 5 + 5
+    }
+
+    #[test]
+    fn new_end_point_with_newlines() {
+        let (row, col) = new_end_point(1, 3, "foo\nbar\nbaz");
+        // 2 newlines → row + 2 = 3; col = "baz".len() = 3
+        assert_eq!(row, 3);
+        assert_eq!(col, 3);
+    }
+
+    #[test]
+    fn new_end_point_trailing_newline() {
+        // Inserted text ends with '\n' — col must be 0.
+        let (row, col) = new_end_point(0, 0, "foo\n");
+        assert_eq!(row, 1);
+        assert_eq!(col, 0);
     }
 }
