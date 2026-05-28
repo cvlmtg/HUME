@@ -24,14 +24,13 @@ where keys perform commands rather than typing text. Press `i` to enter
 Insert mode and type; `Esc` to return to Normal mode.
 
 The most important thing about HUME: the cursor IS the selection.
-There is no zero-width cursor. The selection always covers at least
-one character — the one "under" the cursor.
+The selection always covers at least one character — the one "under"
+the cursor.
 
 This shapes HUME's editing model: SELECT FIRST, ACT SECOND. Make a
 selection (navigate to a word, extend to a region, match a pattern),
-then apply a command (delete, change, yank). There is no combined
-"operator + motion" shorthand — you build the selection, then act.
-Every lesson builds on this idea.
+then apply a command (delete, change, yank). Build the selection, then
+act. Every lesson builds on this idea.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   1 — M O V I N G   A R O U N D
@@ -96,8 +95,8 @@ Every lesson builds on this idea.
     2{   jump two paragraphs back
 
   Counts work on motions, find/till (`3f.` finds the third dot),
-  search (`3n`), and the dot-repeat (`3.`). They do NOT multiply
-  edits — the HUME idiom is: count the motion, then act once.
+  search (`3n`), and the dot-repeat (`3.`). Counts apply to motions,
+  not edits.
 
   Note: `0` alone jumps to line start; with a count already pending,
   it becomes a digit (so `10w`, `20j`).
@@ -480,7 +479,6 @@ covers how to create and manage them.
   Line gamma — select and delete me.
 
   >> Pressing `x` gives you a line selection; then `d` deletes the line.
-     This is the "delete a line" idiom — there is no `dd` shortcut.
 
 7.4  EXTEND MODE
 
@@ -664,9 +662,7 @@ MACROS
 
 UNDO TREE
 
-  Undo in HUME is linear by default. Every edit is one step back with `u`,
-  one step forward with `U` or `Ctrl+r`. There is no branch navigation
-  yet.
+  Undo is linear: `u` steps back, `U` / `Ctrl+r` step forward.
 
 SOFT WRAP
 
@@ -678,10 +674,6 @@ WHERE TO GO FROM HERE
   ROADMAP.md    Design decisions and what is planned next.
   :messages     Check warnings from your session.
   :version      Confirm your build.
-
-  HUME is under active development. Features listed in ROADMAP.md
-  under future milestones may not exist yet — when in doubt, try the
-  command and see if it works.
 
   Thank you for reading. "What we call a mind is nothing but a heap
   or collection of different perceptions … It is a succession of

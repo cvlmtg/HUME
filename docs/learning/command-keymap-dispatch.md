@@ -44,13 +44,13 @@ outside their inputs. This makes them trivially testable and composable.
 ### Extend mode is a runtime parameter, not separate commands
 
 There is no `"extend-left"` or `"extend-select-word"` command. Each base
-command (e.g. `"move-left"`, `"select-word"`) receives a `Move`/`Extend`
+command (e.g. `"move-left"`, `"select-word"`) receives a move/extend
 parameter at dispatch time when the user is in extend mode. The command
 branches internally:
 
-- `Move` mode: the anchor collapses to the new cursor position (a fresh
+- **Move** mode: the anchor collapses to the new cursor position (a fresh
   one-character selection).
-- `Extend` mode: the anchor stays fixed, only the head moves.
+- **Extend** mode: the anchor stays fixed, only the head moves.
 
 This means adding a new motion requires **one function and one registration**
 — the extend variant comes for free from the parameter.
@@ -106,7 +106,7 @@ HUME maintains three separate tries:
 The **extend trie** is intentionally sparse — by default it only overrides `o`
 (which flips anchor and head, mirroring Helix/Kakoune's visual `o`). Any key
 not found in the extend trie falls through to the normal trie with extend mode
-active, which applies `Extend` semantics automatically.
+active, which applies extend semantics automatically.
 
 This lets Steel customise per-key extend-mode overrides: "when in extend mode
 and the user presses this key, run this specific command instead of the usual
@@ -123,7 +123,7 @@ The flow on any keypress:
 ```
 keypress
   → keymap trie walk     → a command name (e.g. "move-right")
-  → dispatcher           → converts extend flag to Move/Extend mode
+  → dispatcher           → converts extend flag to move/extend mode
   → registry lookup      → the function for "move-right"
   → call                 → function(buffer, selections, count, mode)
 ```

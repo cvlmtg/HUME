@@ -271,13 +271,10 @@ impl SelectionSet {
         self.selections.remove(idx);
         let new_len = self.selections.len();
         self.primary = if idx < self.primary {
-            // Removed a selection before the primary — primary shifts down.
             self.primary - 1
         } else if idx == self.primary {
-            // Removed the primary itself — advance to the next, wrapping.
             idx % new_len
         } else {
-            // Removed a selection after the primary — primary unchanged.
             self.primary
         };
         self

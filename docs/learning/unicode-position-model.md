@@ -42,12 +42,12 @@ regardless of how many bytes each one takes.
 ```
 
 `é` is a single `char` at offset 3 — no partial-character hazard. This is
-`ropey`'s native addressing unit, and it is what HUME's `Buffer`, `Selection`,
-and `SelectionSet` use for all positions.
+`ropey`'s native addressing unit, and it is what HUME's buffer, selections,
+and selection sets use for all positions.
 
 Char offsets make sense for an editor at the storage layer:
 - `insert(at, text)` and `remove(from, to)` can be expressed cleanly.
-- `anchor` and `head` in a `Selection` are meaningful without knowing the
+- The anchor and head of a selection are meaningful without knowing the
   encoding of any particular character.
 
 ## Grapheme cluster
@@ -66,8 +66,8 @@ character, which may be composed of multiple Unicode scalar values.
 ```
 
 Pressing the right-arrow key on `"👨‍👩‍👧"` should advance the cursor past the
-entire emoji in one step, not stop five times. This is the job of
-`grapheme.rs`: it takes a `&Buffer` and returns the next/previous **valid
+entire emoji in one step, not stop five times. This is the job of the
+grapheme layer: given the buffer, it returns the next/previous **valid
 grapheme boundary** as a char offset.
 
 ## Architectural rule

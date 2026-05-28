@@ -3,10 +3,9 @@
 ## The select-then-act model
 
 In HUME, edit operations never act on a bare cursor position. They act on a
-`SelectionSet` — a struct wrapping a `Vec<Selection>` with a `primary` index
-that identifies the main cursor. Selections are always
-**inclusive**: `anchor == head` is a 1-char selection covering the character at
-that index, not a zero-width point. Each `Selection` is either:
+selection set — an ordered list of selections with one marked primary. Selections
+are always **inclusive**: a single-position selection covers exactly one character,
+never a zero-width point. Each selection is either:
 
 - **Single-character** (`anchor == head`): the cursor sits on exactly one character.
 - **Multi-character** (`anchor != head`): a contiguous region of selected text.
@@ -22,12 +21,12 @@ and multicursor editing all fall out of the same loop.
 
 ## Multi-selection edit ordering
 
-A `SelectionSet` can contain multiple selections simultaneously (multicursor).
+A selection set can contain multiple selections simultaneously (multicursor).
 When an edit touches multiple positions, **the order of application matters**:
 inserting a character at offset 0 shifts every position to its right, so
 naively applying edits one-by-one would corrupt subsequent offsets.
 
-HUME avoids this entirely with `ChangeSetBuilder`: all input positions are
+HUME avoids this entirely with a change-set builder: all input positions are
 expressed in **original-buffer coordinates**, and the builder handles the
 translation internally. See the [Changesets](changesets.md) section.
 
@@ -67,7 +66,7 @@ to every selection in the set simultaneously. The *primary* is just the
    | `s` | Search | Holds last search pattern |
 
    The default register (receives all yanks/deletes when no register is
-   named) is an internal sentinel (`'"'`) — users never type it.
+   named) is an internal sentinel — users never type it.
 
    **Why not `a`–`z`?** Traditional named registers borrow letters for text
    storage, forcing special registers into punctuation (`+`, `_`). HUME flips
@@ -106,12 +105,10 @@ to every selection in the set simultaneously. The *primary* is just the
      back to the register — the kill ring already holds the selection's history,
      so the user can reach it via `"kp` (head) or by cycling with `[`/`]`.
 
-   The key insight is `sel.is_cursor()` — the selection state already encodes
-   whether the user made an intentional selection. No separate `R` command
-   needed. No `"0` register hack needed (in Vim, yanking always writes `"0`
-   in addition to `"`, so after a delete you can still paste the pre-delete
-   yank with `"0p`; HUME avoids the problem by never clobbering the ring entry
-   on replace).
+   The selection state already encodes whether the user made an intentional
+   selection — no separate command needed. HUME avoids the Vim `"0` register
+   workaround by never clobbering the ring entry on replace: the kill ring
+   already holds the selection's history.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world, cycling
 forward and backward through primaries is how you "focus" a different cursor

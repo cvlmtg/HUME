@@ -7,17 +7,17 @@ The difference is in how the anchor of that selection is determined:
 
 | Concept | Inner fn output | Anchor of resulting selection |
 |---------|----------------|-------------------------------|
-| Motion | new *head* position | determined by `MotionMode` (may come from old selection state) |
+| Motion | new *head* position | determined by the motion mode (may come from old selection state) |
 | Text object | absolute `(start, end)` range | always `start` — independent of previous selection |
 
-A motion inner function only answers "where does the head go?". With
-`MotionMode::Move` (`h`, `l`, `j`, `k`), the anchor collapses to the new head,
-producing a single-character selection. With `MotionMode::Extend`, the anchor
-stays fixed and only the head moves — growing the selection.
+A motion inner function only answers "where does the head go?". In move mode
+(`h`, `l`, `j`, `k`), the anchor collapses to the new head, producing a
+single-character selection. In extend mode, the anchor stays fixed and only
+the head moves — growing the selection.
 
-A text object bypasses `MotionMode` entirely. It returns a complete range and
-the framework always creates `Selection::new(start, end)` — the previous
-anchor is discarded.
+A text object bypasses the motion mode entirely. It returns a complete range
+and the framework always creates a new selection from start to end — the
+previous anchor is discarded.
 
 Word motions (`w`/`b`/`W`/`B`) sit in between: navigational like motions but
 returning a full word range. They use a third framework, `apply_word_select`,

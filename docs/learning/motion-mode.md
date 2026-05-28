@@ -8,41 +8,35 @@ mode) without needing a separate `"extend-left"` command.
 
 ## A concrete walkthrough
 
-Buffer: `"hello world\n"`, cursor on `'h'` (position 0).
+Buffer: `"hello world\n"`, cursor on `'h'` (position 0). The selection is a
+single-character selection on `'h'`: anchor = 0, head = 0.
 
-Before `l` is pressed, the `SelectionSet` contains one selection:
+Pressing `l` invokes the motion framework with `MotionMode::Move`, a count of 1,
+and a one-step position function (`move_right`).
 
-```
-Selection { anchor: 0, head: 0 }   ← single-char selection on 'h'
-```
+**Step 1 — inner position function.** `move_right` computes the next grapheme
+boundary from position 0, returning 1. It knows nothing about anchors or
+multi-cursor — just a coordinate calculation.
 
-Pressing `l` calls `apply_motion(buf, sels, MotionMode::Move, 1, move_right)`.
-
-**Step 1 — inner motion function.** `move_right(buf, head=0)` returns
-`next_grapheme_boundary(buf, 0)` = 1. It knows nothing about the old selection
-or anchors — just a coordinate calculation.
-
-**Step 2 — apply `MotionMode::Move`.** `apply_motion` builds the new selection:
+**Step 2 — apply `MotionMode::Move`.** The framework collapses anchor and head
+to the new position:
 
 ```
-Move → anchor = new_head (1), head = new_head (1)
-Result: Selection { anchor: 1, head: 1 }
+Move → anchor = 1, head = 1   (single-char selection on 'e')
 ```
 
-The cursor is on `'e'`, a single-character selection.
+Now suppose the cursor is at position 2 (on `'l'`) and the user presses `l` in
+extend mode:
 
-Now suppose the cursor is at `{ anchor: 2, head: 2 }` on `'l'` and the user
-presses `l` in extend mode:
-
-**Step 2 — apply `MotionMode::Extend`.**
+**Step 2 — apply `MotionMode::Extend`.** The framework keeps the old anchor
+and moves only the head:
 
 ```
-Extend → anchor = old_anchor (2), head = new_head (3)
-Result: Selection { anchor: 2, head: 3 }
+Extend → anchor = 2 (unchanged), head = 3
 ```
 
-The selection grew from `'l'` to cover both `'l'` characters (`"ll"`) — the
-anchor stayed put.
+The selection grew from `'l'` to cover both `'l'` characters — the anchor
+stayed put.
 
 ## The two modes
 
@@ -58,23 +52,23 @@ anchor stayed put.
 > which set the anchor to the old *head*. This was the Kakoune model for word
 > motions: `w` accumulated the traversed span from cursor to next word start.
 > `Select` was removed when `w`/`b`/`W`/`B` were redesigned to select the
-> whole destination word via `apply_word_select` — see [Word Motions](word-motions.md).
+> whole destination word — see [Word Motions](word-motions.md).
 
 ## Why separate the inner function from the mode
 
-The inner function `fn(&Buffer, usize) -> usize` is a pure coordinate
-calculation — it knows nothing about anchors or multi-cursor. `MotionMode` is
-a concern of the keymap layer, not of the motion itself. This means:
+The inner position function is a pure coordinate calculation — it knows
+nothing about anchors or multi-cursor. `MotionMode` is a concern of the
+dispatch layer, not of the motion itself. This means:
 
 - Adding a new motion (e.g. "next paragraph") requires one position function;
-  Move and Extend variants come for free.
+  `Move` and `Extend` variants come for free.
 - Testing the motion is simple: just assert on the returned position.
-- The same `move_right` inner function powers both `l` (Move) and `l` in
+- The same `move_right` position function powers both `l` (Move) and `l` in
   extend mode (Extend) — no separate command needed.
 
-```rust
-match mode {
-    MotionMode::Move   => Selection::cursor(new_head),
-    MotionMode::Extend => Selection::new(sel.anchor, new_head),
-}
+The framework branches on the mode when constructing the resulting selection:
+
+```
+Move   → anchor = new_head, head = new_head   (collapsed single-char)
+Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
 ```

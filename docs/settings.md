@@ -87,7 +87,7 @@ All settings and keymap changes available from `init.scm`:
 
 ### `(set-option! key value)`
 
-Apply a global setting. Equivalent to `:set global key=value`. Validation failures are surfaced as startup warnings; the rest of the config continues loading.
+Apply a global setting. Equivalent to `:set global key=value`. Invalid values are rejected.
 
 ```scheme
 (set-option! "tab-width" "2")
@@ -126,7 +126,7 @@ Bind a key sequence to a wait-char node. The next keypress after the sequence is
 
 ### `(define-command! name doc lambda)`
 
-Register a Steel lambda as a named mappable command. The command can then be bound with `keymap-bind!` or invoked via `(call! ...)`.
+Register a Steel lambda as a named mappable command. The command can then be bound with `bind-key!` or invoked via `(call! ...)`.
 
 ```scheme
 (define-command! "my-command" "Description shown in command help."
@@ -135,7 +135,7 @@ Register a Steel lambda as a named mappable command. The command can then be bou
     (call! "delete")))
 ```
 
-If a command with the same name is already registered, the new registration is rejected with a warning (no shadowing).
+Command names must be unique; duplicate registrations are rejected.
 
 ### `(call! command-name args…)`
 
@@ -149,7 +149,7 @@ Queue a named command for execution with optional positional args.
 
 ### `(pending-char)`
 
-Returns the wait-char argument as a single-character string. Empty string if no wait-char is pending. Only meaningful inside a command registered with `keymap-bind-wait-char!`.
+Returns the wait-char argument as a single-character string. Empty string if no wait-char is pending. Only meaningful inside a command registered with `bind-wait-char!`.
 
 ```scheme
 (let ((ch (pending-char)))

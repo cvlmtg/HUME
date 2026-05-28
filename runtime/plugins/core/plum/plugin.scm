@@ -6,12 +6,6 @@
 ;;; Grammar commands:  :plum-install-grammar  :plum-update-grammar
 ;;;                    :plum-ensure-grammars  :plum-list-grammars
 ;;;                    :plum-cleanup-grammars
-;;;
-;;; Usage in init.scm (add before other third-party plugin declarations):
-;;;   (load-plugin "core:plum")
-;;;
-;;; To auto-install grammars at startup, pass an explicit list after the load:
-;;;   (call! "plum-ensure-grammars" '("rust" "json"))
 
 (require "plugins.scm")
 (require "grammars.scm")

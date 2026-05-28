@@ -4,28 +4,20 @@
 
 Three distinct patterns exist for creating selections from cursor movement:
 
-| Framework | Inner fn signature | Anchor | Typical use |
+| Framework | Inner fn returns | Anchor | Typical use |
 |---|---|---|---|
-| `apply_motion` | `fn(&Buffer, usize) -> usize` | Via `MotionMode` | `h/j/k/l`, paragraph, goto-line |
-| `apply_text_object` | `fn(&Buffer, usize) -> Option<(usize, usize)>` | Always `start` | `iw`, `i(`, `i"` |
-| `apply_word_select` | `fn(&Buffer, usize) -> Option<(usize, usize)>` | Always `word_start` | `w/b/W/B` |
+| `apply_motion` | a new head position | via `MotionMode` | `h/j/k/l`, paragraph, goto-line |
+| `apply_text_object` | an optional `(start, end)` range | always `start` | `iw`, `i(`, `i"` |
+| `apply_word_select` | an optional `(start, end)` range | always `word_start` | `w/b/W/B` |
 
 `apply_word_select` occupies a middle ground: its inner function returns a full
 range like a text object, but it is navigational like a motion — counting,
 crossing line boundaries, and stopping at buffer edges.
 
-```rust
-fn apply_word_select(
-    buf: &Buffer,
-    sels: SelectionSet,
-    count: usize,
-    motion: impl Fn(&Buffer, usize) -> Option<(usize, usize)>,
-) -> SelectionSet
-```
-
-When the inner function returns `None` (no word in that direction), the
+When the inner function returns nothing (no word in that direction), the
 iteration stops early and the current selection is preserved — a true no-op.
-Compare `apply_motion`, where the inner function always returns a position.
+`apply_motion`'s inner function always returns a position; it can never
+produce a no-op this way.
 
 ## Kakoune, Helix, and HUME
 

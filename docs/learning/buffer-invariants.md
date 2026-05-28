@@ -89,11 +89,11 @@ into a mechanical property of the language rather than a manual obligation.
 Allocating a temporary, using it on the success path, and automatically
 discarding it on the failure path requires zero explicit cleanup code.
 
-```rust
-let inv_cs = cs.invert(&buf);       // build the inverse while buf is still original
-match cs.apply(&buf) {
-    Ok(new_buf) => { /* push inv_cs to undo stack */ }
-    Err(e)      => { /* inv_cs is automatically freed here — no cleanup needed */ }
+```
+let inverse = build_inverse(changeset, original_buf);  // build while original is intact
+match apply(changeset, original_buf) {
+    Ok(new_buf) => { /* push inverse onto undo stack */ }
+    Err(e)      => { /* inverse is freed here — no cleanup needed */ }
 }
 ```
 

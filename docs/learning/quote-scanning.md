@@ -12,7 +12,7 @@ allow nested same-character quotes). A different algorithm is needed.
 
 ## The parity scan
 
-`find_quote_pair` scans the current line and uses parity to assign roles:
+The quote scanner walks the current line and uses parity to assign roles:
 
 ```
 Position:  0   1   2   3   4   5   6   7

@@ -20,15 +20,14 @@ The representation is a sequence of three operations:
 Insert("!"), Retain(6), Insert("!"), Retain(5)
 ```
 
-This single object describes the entire multi-cursor edit. `apply` takes the
-buffer by reference, clones the underlying rope (O(1) — Ropey uses Arc-based
-structural sharing), and executes Delete/Insert operations on the clone —
-each O(log n). Retain operations are free (the chars are already there).
+This single object describes the entire multi-cursor edit. Applying it clones
+the underlying rope (O(1) — arc-based structural sharing) and executes each
+Delete/Insert on the clone — each O(log n). Retain operations are free.
 Total cost: O(k log n) for k non-retain operations.
 
-The original buffer remains intact after `apply`. The caller must still call
-`invert` before `apply` if it needs the inverse, because `invert` reads
-deleted text from the original rope at inversion time.
+The original buffer remains intact after application. The inverse must be
+computed from the original before applying the forward changeset, because
+inversion reads the deleted text from the original at that point.
 
 ## Why not just mutate the buffer directly?
 
@@ -47,51 +46,50 @@ the edit as data, which enables:
    a single A→C changeset. This is essential for grouping keystrokes into
    undo steps (typing a word should undo as one operation, not per-character).
 
-3. **Position mapping.** Given a position in the old document, `map_pos`
-   computes where it ends up in the new document — accounting for all
-   insertions and deletions. An `Assoc` parameter (`Before`/`After`) controls
+3. **Position mapping.** Given a position in the old document, the changeset
+   can compute where it ends up in the new document — accounting for all
+   insertions and deletions. An association parameter (before/after) controls
    which side of an insertion the position sticks to.
 
-   Note that edit operations and undo/redo never call `map_pos`. Edit
-   operations use `new_pos()` directly; undo/redo restores selections from the
-   stored `Transaction` (see below). `Assoc` is reserved for **external
-   positions** — things that exist independently of any specific edit, like LSP
-   diagnostic ranges or bookmarks. When a diagnostic sits at offset 5 and text
-   is inserted at offset 5, `Assoc::Before` keeps it glued to the left of the
-   insertion; `Assoc::After` pushes it past.
+   Edit operations and undo/redo never use position mapping. Edits compute
+   result positions directly during construction; undo/redo restores selections
+   from the stored transaction (see below). Position mapping is reserved for
+   **external positions** — things that exist independently of any specific
+   edit, like LSP diagnostic ranges or bookmarks. When a diagnostic sits at
+   offset 5 and text is inserted at offset 5, before-sticky keeps it glued to
+   the left of the insertion; after-sticky pushes it past.
 
 ## The builder pattern
 
-Edit operations build changesets incrementally using `ChangeSetBuilder`. The
-builder tracks two cursors:
+Edit operations build changesets incrementally using a builder. The builder
+tracks two cursors:
 
-- `old_pos` — how far we have consumed in the old document
-- `new_pos` — how far we have produced in the new document
+- consumed position — how far we have read in the old document
+- produced position — how far we have written in the new document
 
-This dual tracking replaces the manual delta accumulator. After each
-`insert()` call, `new_pos()` tells you exactly where a cursor should land
-in the result buffer.
+This dual tracking replaces manual delta accumulation. After each insert, the
+produced position tells you exactly where a cursor should land in the result.
 
 ```text
-Builder state for insert_char('x') with cursor at offset 3 in "hello":
+Building insert_char('x') with cursor at offset 3 in "hello":
 
-  b.retain(3)     →  old_pos=3, new_pos=3    (skip "hel")
-  b.insert("x")   →  old_pos=3, new_pos=4    (insert 'x')
-  b.retain_rest()  →  old_pos=5, new_pos=6    (keep "lo")
+  retain(3)     →  consumed=3, produced=3    (skip "hel")
+  insert("x")   →  consumed=3, produced=4    (insert 'x')
+  retain_rest() →  consumed=5, produced=6    (keep "lo")
 
   Result: Retain(3), Insert("x"), Retain(2)
-  Cursor: b.new_pos() at time of insert = 4  →  "helx|lo"
+  Cursor position at insert time = 4  →  "helx|lo"
 ```
 
 All positions are in **original-buffer space** — no delta tracking, no
-intermediate buffer clones. The builder handles the coordinate translation
+intermediate buffer clones. The builder handles coordinate translation
 internally.
 
 ## Transactions: changesets with cursor state
 
-A changeset describes only the text change. A *Transaction* pairs it with the
+A changeset describes only the text change. A *transaction* pairs it with the
 cursor positions that should be in effect **after** the changeset is applied.
-This invariant holds for every Transaction, forward or inverse — the cursor
+This invariant holds for every transaction, forward or inverse — the cursor
 state stored is always where you land after running the transaction, never
 before.
 
@@ -101,7 +99,7 @@ you were before the edit. To redo: apply the forward transaction. The cursors
 that come with it are where the edit originally left you. Undo is just "apply
 the inverse" — no special cursor logic needed.
 
-At edit time you build two Transactions from the same changeset:
+At edit time you build two transactions from the same changeset:
 
 - The **inverse** (for undo) pairs the inverse changeset with the *pre-edit*
   cursor positions. Applying it returns both the text and the cursors to where
@@ -114,7 +112,7 @@ applied, because inverting a changeset reads the deleted text from the original
 buffer to reconstruct what was there. Once the buffer is overwritten with the
 new content, the original deleted text is gone.
 
-The history manager stores both Transactions. Applying the inverse restores
+The history manager stores both transactions. Applying the inverse restores
 both the text and the cursor positions in a single step.
 
 ## The undo tree

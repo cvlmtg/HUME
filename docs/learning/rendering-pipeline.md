@@ -84,10 +84,10 @@ fill remaining rows with empty filler (tilde rows, or blank)
 ```
 
 Processing one buffer line at a time keeps peak memory proportional to the
-width of one line, not the height of the viewport. The `Vec`s that hold
-scratch data (display rows, grapheme entries, style values) are reused across
-frames — they grow to their steady-state size after a few frames and then
-cause no further allocation.
+width of one line, not the height of the viewport. The scratch buffers that hold
+display rows, grapheme entries, and style values are reused across frames —
+they grow to their steady-state size after a few frames and then cause no
+further allocation.
 
 ## Scope-based theming
 
@@ -105,11 +105,11 @@ rest.
 
 ## The engine/editor boundary
 
-The engine crate is self-contained — it knows nothing about HUME's `Editor`
-struct, file loading, or modes. It receives a buffer's text via a closure
-(`get_rope`) rather than by owning or borrowing the buffer directly. This keeps
-the engine testable in isolation and prevents a circular dependency between the
-editor layer and the rendering layer.
+The engine crate is self-contained — it knows nothing about the editor's
+top-level state, file loading, or modes. It receives a buffer's text via a
+closure that returns the buffer's text, rather than by owning or borrowing
+the buffer directly. This keeps the engine testable in isolation and prevents
+a circular dependency between the editor layer and the rendering layer.
 
 Per-frame data that crosses the boundary (search highlights, bracket match
 positions) is written by the editor into a shared slot before rendering begins,

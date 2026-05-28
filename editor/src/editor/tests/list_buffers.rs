@@ -187,8 +187,7 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
     );
 }
 
-/// Bug regression: syntax highlighting from the previously focused buffer must
-/// not bleed into the messages view. The view buffer must have no language.
+/// View buffers must carry no language so syntax highlighting from the prior focus does not bleed in.
 #[test]
 fn view_buffer_has_no_language() {
     let mut ed = editor_from("-[h]>ello\n");

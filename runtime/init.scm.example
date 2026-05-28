@@ -45,8 +45,8 @@
 ;;   command-name  — any command name visible in :commands
 ;;
 ;; (bind-wait-char! mode key-sequence command-name)
-;;   Like bind-key! but the next key pressed is passed as (pending-char) to the
-;;   command.  Used for surround-style "verb + char" bindings.
+;;   Like bind-key! but the next keypress is captured as the wait-char argument.
+;;   Used for surround-style "verb + char" bindings.
 ;;
 ;; Ergonomic batch variants are also available:
 ;;
@@ -68,7 +68,7 @@
 ;; (bind-key! "normal" "U" "undo")
 
 ;; Open a new line below and enter insert mode with Ctrl-Enter.
-;; (bind-key! "normal" "ctrl-enter" "open_below")
+;; (bind-key! "normal" "ctrl-enter" "open-below")
 
 ;; ── Custom commands ───────────────────────────────────────────────────────────
 ;;
@@ -80,10 +80,9 @@
 ;; (define-command-inline-output! name doc-string (lambda () body...))
 ;;   Same as define-command!, but exits the alt-screen before the command runs
 ;;   so that subprocess output (install scripts, formatters, linters) streams
-;;   live to the terminal.  After the command returns a "press any key" prompt
-;;   is shown; the editor re-enters the alt-screen on the next keypress and
-;;   redraws from scratch.  Use this for any command that shells out with
-;;   output you want the user to read (e.g. plum install, cargo fmt).
+;;   live to the terminal.  After the command finishes, press any key to return
+;;   to the editor.  Use this for any command that shells out with output you
+;;   want to read (e.g. plum install, cargo fmt).
 ;;
 ;; The command becomes available as ":name" in the command bar.
 ;; Use (call! "other-command") or (call! "cmd" arg1 arg2…) to invoke any
@@ -187,8 +186,8 @@
 ;;                       p/P → kill-ring head; Ctrl+V / Ctrl+Shift+V → OS clipboard
 ;;
 ;; Load plum first so it can install plugins and grammars.
-;; When PLUM loads it registers any already-compiled grammars (no subprocess).
-;; Missing grammars are NOT auto-installed — opt in explicitly with (call! …):
+;; PLUM registers any already-compiled grammars on load.
+;; Install missing grammars explicitly:
 ;;
 ;;   (load-plugin "core:plum")
 ;;   (call! "plum-ensure-grammars" '("rust" "json"))   ; install listed grammars at startup
@@ -206,9 +205,7 @@
 ;; (load-plugin "core:classic-paste")
 
 ;; Declare third-party plugins to be installed by :plum-install.
-;; These are absent on a fresh setup; PLUM installs them and reloads the config
-;; automatically so they activate in the same session.
-;; No error on first run — the absent case is silently skipped.
+;; PLUM installs declared plugins and reloads the config so they activate.
 ;; (load-plugin "alice/my-theme")
 ;; (load-plugin "bob/rust-extras")
 

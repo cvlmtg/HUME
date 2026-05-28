@@ -42,7 +42,6 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 | The Command/Keymap/Dispatch Architecture | [docs/learning/command-keymap-dispatch.md](docs/learning/command-keymap-dispatch.md) |
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
 | Display Lines and Soft Wrap | [docs/learning/display-lines-and-soft-wrap.md](docs/learning/display-lines-and-soft-wrap.md) |
-| Disjoint Borrows and Free Functions | [docs/learning/disjoint-borrow-free-functions.md](docs/learning/disjoint-borrow-free-functions.md) |
 
 ### Plugins & registers
 

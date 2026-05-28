@@ -22,8 +22,8 @@ use crate::editor::SearchDirection;
 /// case-insensitive; patterns containing any uppercase character stay
 /// case-sensitive.
 ///
-/// The user can always override with explicit inline flags (`(?i)` to force
-/// insensitive, `(?-i)` to force sensitive on a lowercase pattern).
+/// Explicit `(?i)`/`(?-i)` in the pattern wins: smart-case only prepends `(?i)`,
+/// so a later flag group in the pattern overrides it.
 pub(crate) fn compile_search_regex(pattern: &str) -> Option<Regex> {
     let effective;
     let pat = if pattern.chars().any(|c| c.is_uppercase()) {

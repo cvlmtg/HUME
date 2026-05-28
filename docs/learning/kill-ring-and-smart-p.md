@@ -68,8 +68,8 @@ reads that name and routes accordingly:
 - **Previous command was a delete or change** → paste reads the kill-ring head
   (most recently killed text). Swap idioms work.
 - **Previous command was a paste or paste-cycle** → consecutive paste presses
-  append from `last_paste` (the same values verbatim), independent of what the
-  ring or clipboard hold at that moment.
+  append the same values verbatim, independent of what the ring or clipboard
+  hold at that moment.
 - **Anything else** → paste reads the system clipboard. Cross-application
   paste remains one keystroke.
 

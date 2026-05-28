@@ -1,6 +1,6 @@
 # Default Key Bindings
 
-All bindings listed here are the built-in defaults. Any of them can be overridden or extended in your `~/.config/hume/init.scm` using `(keymap-bind! ...)`.
+All bindings listed here are the built-in defaults. Any of them can be overridden or extended in your `~/.config/hume/init.scm` using `(bind-key! ...)`.
 
 ---
 
@@ -15,7 +15,7 @@ All bindings listed here are the built-in defaults. Any of them can be overridde
 | `j` / `↓` | Move down one visual line |
 | `k` / `↑` | Move up one visual line |
 
-> **Ctrl+motion extend (kitty only):** When the kitty keyboard protocol is active, `Ctrl+h/j/k/l` run the same motion with extend mode on for that keypress only (one-shot extend without toggling `e`). This is handled at runtime and not visible in the keymap. `Ctrl+w` and `Ctrl+b` also work the same way (extend-next-word and extend-prev-word). In legacy mode these are silent no-ops.
+> **Ctrl+motion extend (kitty only):** `Ctrl+h/j/k/l` run the same motion with extend mode on for that keypress only (one-shot extend without toggling `e`). `Ctrl+w` and `Ctrl+b` also work the same way (extend-next-word and extend-prev-word). Requires the kitty keyboard protocol.
 
 ### Word Motion
 
@@ -141,7 +141,7 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 | `m w `` ` `` | `` ` … ` `` |
 | `m w <other>` | `<other> … <other>` |
 
-> **Note:** bare `[` and `]` (without a preceding `m` prefix) are bound to kill-ring cycling (`paste-ring-older` / `paste-ring-newer`). `m w [`, `m i [`, `m a [`, and `m s [` are unaffected — the `[` there is consumed as part of the multi-key sequence, not dispatched as a standalone command.
+> **Note:** bare `[` and `]` (without a preceding `m` prefix) are bound to kill-ring cycling (`paste-ring-older` / `paste-ring-newer`). `m w [`, `m i [`, `m a [`, and `m s [` are unaffected.
 
 ### Edit
 
@@ -163,10 +163,10 @@ Wrap each selection with a delimiter pair. Press `m w` then a character; if it's
 
 `p` and `P` decide what to paste based on the last command:
 
-- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (most recently killed or pasted text). This preserves the `dp` char-swap and `xdp` line-swap muscle memory.
-- **Otherwise** — reads the system clipboard. This is the path for cross-app paste: copy in a browser, then bare `p` in HUME.
+- **After `d`, `c`, or a paste/ring command** — reads the kill ring head (most recently killed or pasted text).
+- **Otherwise** — reads the system clipboard.
 
-`[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle re-pastes from the session's snapshot so the previous paste is fully replaced — no extra lines accumulate. The whole session records as one undo step. `[`/`]` without an open session are noops. Consecutive `p` presses append copies (each is a new session and a separate undo step).
+`[` and `]` cycle within the current **paste session** (opened by a preceding `p`/`P`). Each cycle replaces the previous paste. The whole session records as one undo step. Consecutive `p` presses append copies (each is a new session and a separate undo step).
 
 To force a specific source, use the register prefix `"`:
 

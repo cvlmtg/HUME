@@ -170,7 +170,7 @@ mod tests {
             .prop_flat_map(move |n| {
                 // Generate 2*n positions in 0..buf_len and pair them up.
                 proptest::collection::vec(0..buf_len, 2 * n).prop_flat_map(move |positions| {
-                    let _ = max_pos; // suppress unused warning
+                    let _ = max_pos;
                     proptest::collection::vec(proptest::bool::ANY, n).prop_map(move |flips| {
                         let sels: Vec<Selection> = positions
                             .chunks(2)
