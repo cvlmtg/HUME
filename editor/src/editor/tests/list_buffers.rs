@@ -415,3 +415,59 @@ fn view_buffer_blocks_write() {
         ":w on a read-only view must report 'Buffer is read-only'"
     );
 }
+
+/// `:w /path` on a synthetic buffer writes the file but leaves the buffer
+/// pathless, labeled, and read-only — the buffer itself is unaffected.
+///
+/// Validity: remove the `is_synthetic()` guard from `write_file` and this
+/// test fails — `doc().path()` will be `Some(...)` instead of `None`.
+#[test]
+#[cfg(not(windows))]
+fn view_buffer_save_as_stays_synthetic() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let out_path = tmp.path().to_path_buf();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_synthetic());
+    assert!(ed.doc().is_read_only());
+
+    let content_before = ed.doc().text().to_string();
+
+    ed.execute_typed("w", Some(out_path.to_str().unwrap())).unwrap();
+
+    // File on disk must have the buffer content.
+    let written = std::fs::read_to_string(&out_path).unwrap();
+    assert_eq!(written, content_before, "file on disk must match buffer content");
+
+    // Buffer state must be unchanged — still synthetic, still pathless, still RO.
+    assert!(ed.doc().path().is_none(), "synthetic buffer must stay pathless after :w /path");
+    assert_eq!(ed.doc().display_name(), "[messages]", "label must be preserved");
+    assert!(ed.doc().is_synthetic(), "is_synthetic() must remain true");
+    assert!(ed.doc().is_read_only(), "is_read_only() must remain true");
+}
+
+/// `:e!` on a synthetic buffer (path-less, labeled) must error with
+/// "no file name" — there is no source to reload from, force or not.
+///
+/// Validity: restore the force-branch that replaces with scratch and this
+/// test fails — the buffer becomes a scratch buffer instead of erroring.
+#[test]
+fn synthetic_buffer_e_bang_errors() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_synthetic());
+
+    let err = ed.execute_typed("e!", None).unwrap_err();
+    assert!(
+        err.to_string().contains("no file name"),
+        ":e! on synthetic must error 'no file name', got: {err}"
+    );
+
+    // Buffer must be untouched.
+    assert!(ed.doc().is_synthetic(), "buffer must still be synthetic");
+    assert_eq!(ed.doc().display_name(), "[messages]", "label must be preserved");
+    assert!(ed.doc().is_read_only(), "buffer must still be read-only");
+}

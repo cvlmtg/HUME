@@ -56,12 +56,6 @@ pub fn typed_edit(
     } else {
         // Reload current file.
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
-            if force {
-                // :e! on scratch: replace with fresh scratch.
-                let id = ed.focused_buffer_id();
-                ed.replace_buffer_in_place(id, crate::editor::buffer::Buffer::scratch());
-                return Ok(());
-            }
             return Err(CommandError("no file name".into()));
         };
         if ed.doc().is_dirty() && !force {

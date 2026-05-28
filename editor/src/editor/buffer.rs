@@ -151,6 +151,15 @@ impl Buffer {
         self.read_only
     }
 
+    /// `true` for in-memory view buffers (e.g. `[messages]`, `[buffers]`).
+    ///
+    /// Synthetic buffers have no backing file (`path = None`) but carry a
+    /// display label. Scratch buffers are path-less too, but have no label —
+    /// that distinction is what this predicate captures.
+    pub(crate) fn is_synthetic(&self) -> bool {
+        self.path.is_none() && self.label.is_some()
+    }
+
     /// Replace the buffer text and bump `text_gen` so `reparse_stale_buffers`
     /// knows a new parse is needed. All text-mutating paths go through here.
     fn set_text(&mut self, text: Text) {

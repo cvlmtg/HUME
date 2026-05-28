@@ -221,8 +221,12 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Ok((meta, retried)) => {
                 // Store the canonicalized path so path and file_meta.resolved_path
                 // always agree, even when the user supplied a relative or symlink path.
-                ed.doc_mut().set_path(Some(meta.resolved_path.clone()));
-                ed.doc_mut().file_meta = Some(meta);
+                // Synthetic buffers (e.g. [messages]) stay path-less after save-as —
+                // the write dumps content to disk but the buffer itself is unaffected.
+                if !ed.doc().is_synthetic() {
+                    ed.doc_mut().set_path(Some(meta.resolved_path.clone()));
+                    ed.doc_mut().file_meta = Some(meta);
+                }
                 ed.doc_mut().mark_saved();
                 ed.report(write_severity(retried), write_msg(line_count, retried));
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
