@@ -32,12 +32,6 @@ use crate::core::text::Text;
 /// discarding `old_buf` — `invert` reads the original rope to reconstruct
 /// deleted text, and that content is gone once you move on to the new buffer.
 ///
-/// ## Separation of concerns
-///
-/// Separating `ChangeSet` (pure text transform) from `Transaction` (text +
-/// selections) keeps the changeset algebra clean: `compose`, `invert`, and
-/// `map_pos` are document-level operations that don't need to know about
-/// cursors. The `Transaction` adds cursor semantics on top.
 #[derive(Debug, Clone)]
 pub(crate) struct Transaction {
     changes: ChangeSet,

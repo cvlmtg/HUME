@@ -3,15 +3,7 @@ use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use crate::core::text::Text;
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
-/// `char_offset`.
-///
-/// A grapheme cluster is what a user perceives as a single character — an
-/// ASCII letter, a combining sequence like `é` (U+0065 + U+0301), or a
-/// multi-codepoint emoji like `👨‍👩‍👧` (joined via Zero Width Joiner). Using
-/// grapheme boundaries ensures cursor movement never lands mid-cluster.
-///
-/// Returns `buf.len_chars()` when `char_offset` is already at (or past) the
-/// end of the buffer.
+/// `char_offset`, or `buf.len_chars()` when already at (or past) the end.
 ///
 /// # Why byte offsets internally?
 ///

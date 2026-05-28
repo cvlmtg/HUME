@@ -5,11 +5,8 @@ use crate::core::text::Text;
 
 /// A single atomic edit operation within a changeset.
 ///
-/// A changeset decomposes any text transformation into a sequence of three
-/// primitives. This is the standard Operational Transformation (OT)
-/// representation used by CodeMirror, Xi-editor, and Helix.
-///
-/// The operations are applied sequentially against the old document:
+/// A changeset decomposes any text transformation into three OT primitives,
+/// applied sequentially against the old document:
 /// - `Retain` advances through both old and new documents (1:1 mapping)
 /// - `Delete` consumes from the old document only (chars vanish)
 /// - `Insert` produces into the new document only (chars appear)
@@ -41,18 +38,11 @@ pub(crate) enum Operation {
 ///           After  → 5  (cursor moves past the inserted text)
 /// ```
 ///
-/// **When you need this:** `Assoc` is only relevant when calling `map_pos`
-/// to move positions that were *not* produced by the edit itself — for
-/// example:
-/// - **External position tracking** — LSP diagnostic ranges, bookmarks, and
-///   marks live in old-doc space and must be re-anchored after every edit.
-/// - **Collaborative editing** — remote cursor positions arrive in old-doc
-///   space and must be mapped through locally applied changesets.
-///
-/// Edit operations in HUME compute new cursor positions directly from
-/// `ChangeSetBuilder::new_pos()`, so they never consult `map_pos`. Undo/redo
-/// uses a store-and-restore strategy (the inverse `Transaction` carries the
-/// original `SelectionSet`), also without `map_pos`.
+/// `Assoc` is only relevant when calling `map_pos` to re-anchor positions
+/// that were not produced by the edit itself (e.g. external bookmarks or LSP
+/// diagnostic ranges). HUME's edit operations compute result positions directly
+/// from the builder, and undo/redo restores selections from the stored inverse
+/// transaction — neither path calls `map_pos`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").

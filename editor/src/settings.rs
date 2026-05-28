@@ -25,12 +25,6 @@
 //!
 //! Settings with non-trivial resolution (`auto_pairs_ref`, whitespace
 //! sub-fields) are handled manually below the macro invocation.
-//!
-//! ## Future layers
-//!
-//! The design accommodates a future EditorConfig layer between buffer overrides
-//! and global settings without changing the public API: callers always go
-//! through [`BufferOverrides`] accessors and [`EditorSettings`].
 
 use engine::builtins::line_number::LineNumberStyle;
 use engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
