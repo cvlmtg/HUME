@@ -51,6 +51,10 @@ jobs:
       # revisions in runtime/scheme/grammar-sources.scm (the shipped SSOT).
       # A helix-pin bump changes grammar-sources.scm and therefore the cache key,
       # triggering a rebuild. On Windows, MSVC dev tools are needed by tree-sitter build.
+      #
+      # The tree-sitter CLI is installed unconditionally (not gated on cache-hit)
+      # because the live e2e test (HUME_REQUIRE_LIVE_GRAMMAR_E2E=1) runs its own
+      # clone + tree-sitter build and needs the CLI regardless of fixture cache state.
 
       - name: Setup MSVC developer environment (Windows)
         if: runner.os == 'Windows'
@@ -64,7 +68,6 @@ jobs:
           key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/grammar-sources.scm') }}
 
       - name: Install tree-sitter CLI
-        if: steps.fixture-cache.outputs.cache-hit != 'true'
         run: npm install -g tree-sitter-cli
 
       - name: Build grammar fixtures
