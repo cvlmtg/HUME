@@ -133,6 +133,7 @@ mod tests {
     #[cfg(unix)]
     fn sigint_to_child_group_does_not_kill_hume() {
         use std::process::Command;
+        use std::time::Duration;
 
         // Spawn a long-lived child so we can signal it before it exits.
         let child = Command::new("sleep")
@@ -141,6 +142,22 @@ mod tests {
             .spawn()
             .expect("spawn sleep");
         let child_pid = child.id();
+
+        // `process_group(0)` calls setpgid(0,0) in the child's pre-exec hook,
+        // which races with the parent thread.  Poll with `kill -0 -<pgid>`
+        // (signal 0 = existence probe) until the group is established so the
+        // SIGINT below is not sent to a non-existent group.
+        for _ in 0..50 {
+            let exists = Command::new("kill")
+                .args(["-0", &format!("-{child_pid}")])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if exists {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
 
         // Send SIGINT to the child's process group (pgid == child_pid after
         // process_group(0)).

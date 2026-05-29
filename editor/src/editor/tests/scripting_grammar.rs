@@ -644,10 +644,12 @@ fn install_real_json_grammar_e2e() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     let init_path = tmp.path().join("init.scm");
+    // Command name must not contain digits: parse_typed_command stops the name
+    // scan at the first non-[A-Za-z_-] char (Vim convention — digits are args).
     std::fs::write(
         &init_path,
         format!(
-            r#"(define-command! "attach-json-e2e" "e2e" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+            r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
             out_path.display(),
             hl_path.display(),
         ),
@@ -664,12 +666,20 @@ fn install_real_json_grammar_e2e() {
     ed.set_buffer_language(bid, Some("json".to_owned()));
     ed.scripting = Some(host);
 
-    type_cmd(&mut ed, ":attach-json-e2e");
+    type_cmd(&mut ed, ":attach-json");
 
-    assert!(ed.languages.has_grammar("json"), "grammar must be registered after e2e install");
+    let errors: Vec<String> = ed
+        .message_log
+        .entries()
+        .map(|e| format!("{:?}: {}", e.severity, e.text))
+        .collect();
+    assert!(
+        ed.languages.has_grammar("json"),
+        "grammar must be registered after e2e install; log={errors:#?}",
+    );
     assert!(
         ed.engine_view.buffers[bid].syntax.is_some(),
-        "syntax must be set after e2e install + sweep"
+        "syntax must be set after e2e install + sweep; log={errors:#?}",
     );
 }
 
