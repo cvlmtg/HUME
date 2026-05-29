@@ -1,6 +1,7 @@
-// Scripting integration tests — live in the editor crate to access both
-// scripting:: (the separate crate) and editor types (EditorSettings, etc.).
-use super::test_harness::MockHost;
+#[path = "scripting/test_harness.rs"]
+mod test_harness;
+
+use test_harness::MockHost;
 use scripting::*;
 use scripting::watchdog::EvalWatchdog;
 use engine::pipeline::BufferId;
@@ -167,7 +168,7 @@ fn load_plugin_malformed_name_errors() {
 
 #[test]
 fn configure_statusline_sets_left_section() {
-    use crate::ui::statusline::StatusElement;
+    use hume::ui::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -188,7 +189,7 @@ fn configure_statusline_sets_left_section() {
 
 #[test]
 fn configure_statusline_all_sections() {
-    use crate::ui::statusline::StatusElement;
+    use hume::ui::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -248,7 +249,7 @@ fn configure_statusline_unknown_element_errors() {
 
 #[test]
 fn configure_statusline_new_elements() {
-    use crate::ui::statusline::StatusElement;
+    use hume::ui::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -1036,7 +1037,7 @@ fn bind_key_extend_creates_force_extending_leaf() {
         &mut mock,
     )
     .unwrap();
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
     let (name, force_extend) = mock.keymap
@@ -1056,7 +1057,7 @@ fn bind_key_does_not_force_extend() {
 
     h.eval_source(r#"(bind-key! "normal" "z" "select-line")"#, &mut mock)
         .unwrap();
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
     let (_, force_extend) = mock.keymap
@@ -1083,7 +1084,7 @@ fn unbind_key_removes_default_binding() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let h_key = &[KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)];
     assert!(
@@ -1302,7 +1303,7 @@ const PRELUDE_MACROS: &str = r#"
 
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut h = host();
@@ -1335,7 +1336,7 @@ fn prelude_bind_keys_batch_binds_multiple() {
 
 #[test]
 fn prelude_bind_keys_extend_creates_force_extend_leaves() {
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut h = host();
@@ -1369,7 +1370,7 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
 
 #[test]
 fn prelude_unbind_keys_batch_removes_bindings() {
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut h = host();
@@ -1439,7 +1440,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     h.eval_init(&init_path, &mut mock, builtin_names)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
-    use crate::editor::keymap::BindMode;
+    use hume::KeymapBindMode as BindMode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE);
     let w = KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE);

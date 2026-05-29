@@ -540,3 +540,82 @@ mod tests {
         assert_eq!(round_trip("-[\n]>"), "-[\n]>");
     }
 }
+
+// ── MockHost ─────────────────────────────────────────────────────────────────
+
+/// Minimal [`scripting::EditorHost`] for lib tests that need to call
+/// `ScriptingHost::eval_source` or similar without a full editor session.
+///
+/// Duplicates the struct from `editor/tests/scripting/test_harness.rs` so
+/// lib tests (in `src/`) can use it without access to the integration test
+/// binary's modules.
+pub(crate) struct MockHost {
+    pub(crate) settings: crate::settings::EditorSettings,
+    pub(crate) keymap: crate::editor::keymap::Keymap,
+    pub(crate) grammars: std::collections::HashSet<String>,
+    pub(crate) focused_buffer_id: engine::pipeline::BufferId,
+    pub(crate) focused_pane_id: engine::pipeline::PaneId,
+}
+
+impl MockHost {
+    pub(crate) fn new() -> Self {
+        Self {
+            settings: crate::settings::EditorSettings::default(),
+            keymap: crate::editor::keymap::Keymap::default(),
+            grammars: std::collections::HashSet::new(),
+            focused_buffer_id: engine::pipeline::BufferId::default(),
+            focused_pane_id: engine::pipeline::PaneId::default(),
+        }
+    }
+}
+
+impl scripting::EditorHost for MockHost {
+    fn focused_buffer_id(&self) -> engine::pipeline::BufferId { self.focused_buffer_id }
+    fn focused_pane_id(&self) -> engine::pipeline::PaneId { self.focused_pane_id }
+    fn buffer_ids(&self) -> Vec<engine::pipeline::BufferId> { vec![] }
+    fn pane_ids(&self) -> Vec<engine::pipeline::PaneId> { vec![] }
+    fn buffer_exists(&self, _id: engine::pipeline::BufferId) -> bool { false }
+    fn buffer_path(&self, _id: engine::pipeline::BufferId) -> Option<std::path::PathBuf> { None }
+    fn buffer_display_name(&self, _id: engine::pipeline::BufferId) -> Option<String> { None }
+    fn buffer_is_dirty(&self, _id: engine::pipeline::BufferId) -> Option<bool> { None }
+    fn buffer_stored_language(&self, _id: engine::pipeline::BufferId) -> Option<String> { None }
+    fn open_buffer(&mut self, _path: &std::path::Path) -> Result<engine::pipeline::BufferId, String> { Err("MockHost: open_buffer not available".into()) }
+    fn close_buffer(&mut self, _id: engine::pipeline::BufferId) -> engine::pipeline::BufferId { self.focused_buffer_id }
+    fn switch_to_buffer(&mut self, _current: engine::pipeline::BufferId, target: engine::pipeline::BufferId) { self.focused_buffer_id = target; }
+    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+        use crate::settings::{BufferOverrides, SettingScope, apply_setting};
+        let mut dummy = BufferOverrides::default();
+        apply_setting(SettingScope::Global, key, value, &mut self.settings, &mut dummy)
+    }
+    fn configure_statusline(&mut self, l: Vec<String>, c: Vec<String>, r: Vec<String>) -> Result<(), String> {
+        use crate::ui::statusline::{StatusElement, StatusLineConfig};
+        let parse = |list: Vec<String>, sec: &str| -> Result<Vec<StatusElement>, String> {
+            list.iter().map(|s| s.parse::<StatusElement>().map_err(|e| format!("{sec}: {e}"))).collect()
+        };
+        self.settings.statusline = StatusLineConfig { left: parse(l, "left")?, center: parse(c, "center")?, right: parse(r, "right")? };
+        Ok(())
+    }
+    fn bind_key(&mut self, mode: scripting::host::BindMode, keys: &[crossterm::event::KeyEvent], cmd: &str, fe: bool) -> Result<(), String> {
+        use crate::editor::keymap::BindMode;
+        let m = match mode { scripting::host::BindMode::Normal => BindMode::Normal, scripting::host::BindMode::Extend => BindMode::Extend, scripting::host::BindMode::Insert => BindMode::Insert };
+        self.keymap.bind_user_with_extend(m, keys, std::borrow::Cow::Owned(cmd.to_owned()), fe);
+        Ok(())
+    }
+    fn bind_wait_char(&mut self, mode: scripting::host::BindMode, keys: &[crossterm::event::KeyEvent], cmd: &str) -> Result<(), String> {
+        use crate::editor::keymap::BindMode;
+        let m = match mode { scripting::host::BindMode::Normal => BindMode::Normal, scripting::host::BindMode::Extend => BindMode::Extend, scripting::host::BindMode::Insert => BindMode::Insert };
+        self.keymap.bind_wait_char_user(m, keys, std::borrow::Cow::Owned(cmd.to_owned()));
+        Ok(())
+    }
+    fn unbind_key(&mut self, mode: scripting::host::BindMode, keys: &[crossterm::event::KeyEvent]) -> Result<(), String> {
+        use crate::editor::keymap::BindMode;
+        let m = match mode { scripting::host::BindMode::Normal => BindMode::Normal, scripting::host::BindMode::Extend => BindMode::Extend, scripting::host::BindMode::Insert => BindMode::Insert };
+        self.keymap.unbind_user(m, keys);
+        Ok(())
+    }
+    fn attach_grammar(&mut self, name: &str, _gp: &std::path::Path, _sym: &str, _hl: &std::path::Path) -> Result<(), String> { self.grammars.insert(name.to_owned()); Ok(()) }
+    fn has_grammar(&self, language: &str) -> bool { self.grammars.contains(language) }
+    fn is_valid_register_name(&self, ch: char) -> bool { crate::ops::register::is_valid_register_name(ch) }
+    fn steel_init_budget_ms(&self) -> u64 { self.settings.steel_init_budget_ms as u64 }
+    fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
+}

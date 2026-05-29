@@ -64,7 +64,7 @@ pub(crate) fn is_valid_macro_register(ch: char) -> bool {
 /// black hole (`b`), and clipboard (`c`). The default register (`"`), search
 /// register (`s`), and macro register (`q`) are intentionally excluded — `q`
 /// is written via `Q` recording, not the prefix; the others cannot be named.
-pub(crate) fn is_valid_register_name(ch: char) -> bool {
+pub fn is_valid_register_name(ch: char) -> bool {
     ch.is_ascii_digit()
         || ch == KILL_RING_REGISTER
         || ch == CLIPBOARD_REGISTER

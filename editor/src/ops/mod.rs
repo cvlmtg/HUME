@@ -1,7 +1,7 @@
 pub(crate) mod edit;
 pub(crate) mod motion;
 pub(crate) mod pair;
-pub(crate) mod register;
+pub mod register;
 pub(crate) mod search;
 pub(crate) mod selection_cmd;
 pub(crate) mod surround;

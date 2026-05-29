@@ -2,7 +2,7 @@ use super::*;
 
 use crate::core::error::CommandError;
 use scripting::ScriptingHost;
-use crate::scripting_tests::test_harness::MockHost;
+use crate::testing::MockHost;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

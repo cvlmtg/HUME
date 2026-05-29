@@ -1,13 +1,16 @@
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("HUME_GIT_SHA"));
 
-pub(crate) mod auto_pairs;
+pub mod auto_pairs;
 pub(crate) mod core;
 pub(crate) mod cursor;
-pub(crate) mod editor;
+pub mod editor;
 pub(crate) mod helpers;
-pub(crate) mod ops;
-pub(crate) mod settings;
-pub(crate) mod ui;
+pub mod ops;
+pub mod settings;
+pub mod ui;
+
+// Re-exports for editor/tests/ integration tests.
+pub use editor::keymap::{BindMode as KeymapBindMode, Keymap};
 
 // The test DSL is compiled only when running tests. It lives in its own
 // module so every other module can `use crate::testing::*;` inside
@@ -18,8 +21,6 @@ mod proptest_doc;
 mod proptest_editor;
 #[cfg(test)]
 pub(crate) mod testing;
-#[cfg(test)]
-mod scripting_tests;
 
 /// Start the editor.
 ///

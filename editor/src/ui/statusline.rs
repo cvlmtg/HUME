@@ -31,7 +31,7 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 /// The Steel scripting layer constructs [`StatusLineConfig`] values at
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatusElement {
+pub enum StatusElement {
     /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
     ///
     /// Rendered with the per-mode color. Contains no padding — the renderer's
@@ -146,7 +146,7 @@ impl FromStr for StatusElement {
 /// 42:7 notes.txt              │ NOR
 /// ```
 #[derive(Debug, Clone)]
-pub(crate) struct StatusLineConfig {
+pub struct StatusLineConfig {
     /// Elements rendered left-aligned at the start of the statusline row.
     pub left: Vec<StatusElement>,
     /// Elements centered between the left and right sections. Empty by default.

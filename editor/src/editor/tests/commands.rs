@@ -1707,7 +1707,7 @@ fn setup_arity_test(
     is_variadic: bool,
 ) -> Editor {
     use scripting::{ScriptingHost, SteelCmdDef};
-    use crate::scripting_tests::test_harness::MockHost;
+    use crate::testing::MockHost;
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();

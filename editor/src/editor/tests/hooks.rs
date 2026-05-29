@@ -8,7 +8,7 @@ fn hook_cmd_queue_is_dispatched() {
     use scripting::ScriptingHost;
     use scripting::builtins::ids::SteelBufferId;
     use scripting::hooks::HookId;
-    use crate::scripting_tests::test_harness::MockHost;
+    use crate::testing::MockHost;
 
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");

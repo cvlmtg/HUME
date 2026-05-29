@@ -41,7 +41,7 @@ mod clipboard;
 mod commands;
 pub(crate) mod completion;
 pub(crate) mod doc_ops;
-pub(crate) mod keymap;
+pub mod keymap;
 mod mappings;
 mod message_log;
 mod minibuf;

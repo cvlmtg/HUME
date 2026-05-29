@@ -40,7 +40,7 @@ use crate::ui::statusline::{StatusElement, StatusLineConfig};
 /// `Text` overrides a setting for the active buffer only (written to
 /// [`BufferOverrides`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SettingScope {
+pub enum SettingScope {
     Global,
     Text,
 }
@@ -127,7 +127,7 @@ macro_rules! define_settings {
         /// The [`Default`] impl is the single source of truth for these
         /// default values.
         #[derive(Clone)]
-        pub(crate) struct EditorSettings {
+        pub struct EditorSettings {
             $( pub $gname: $gtype, )*
             $( pub $bname: $btype, )*
             $( pub $egname: $egtype, )*
@@ -153,7 +153,7 @@ macro_rules! define_settings {
         /// Resolution is always lazy: call the accessor (e.g.
         /// [`Self::tab_width`]) with a `&EditorSettings` reference.
         #[derive(Default)]
-        pub(crate) struct BufferOverrides {
+        pub struct BufferOverrides {
             $( pub $bname: Option<$btype>, )*
             $( pub $ebname: Option<$ebtype>, )*
             $( pub $ooname: Option<$ootype>, )*
@@ -178,7 +178,7 @@ macro_rules! define_settings {
         ///
         /// Returns `Err(message)` on unknown key, wrong-scope key, or invalid
         /// value.
-        pub(crate) fn apply_setting(
+        pub fn apply_setting(
             scope: SettingScope,
             key: &str,
             value: &str,

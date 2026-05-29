@@ -9,7 +9,7 @@ use crate::ops::edit::apply_edit;
 
 /// A single bracket or quote pair for auto-pairing.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Pair {
+pub struct Pair {
     pub open: char,
     pub close: char,
 }

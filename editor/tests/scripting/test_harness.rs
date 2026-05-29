@@ -9,15 +9,14 @@ use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, PaneId};
 
 use scripting::host::{BindMode, EditorHost};
-use scripting::log::LogLevel;
 
 /// Minimal [`EditorHost`] that uses real `EditorSettings` and `Keymap`.
 ///
 /// Buffer/pane lifecycle methods (`open_buffer`, `close_buffer`, etc.) are not
 /// exercised in init-mode or pure-scripting tests; they return `Err` if called.
 pub(crate) struct MockHost {
-    pub(crate) settings: crate::settings::EditorSettings,
-    pub(crate) keymap: crate::editor::keymap::Keymap,
+    pub(crate) settings: hume::settings::EditorSettings,
+    pub(crate) keymap: hume::Keymap,
     /// Grammar names attached via `(register-grammar! …)` in command mode.
     pub(crate) grammars: std::collections::HashSet<String>,
     pub(crate) focused_buffer_id: BufferId,
@@ -27,8 +26,8 @@ pub(crate) struct MockHost {
 impl MockHost {
     pub(crate) fn new() -> Self {
         Self {
-            settings: crate::settings::EditorSettings::default(),
-            keymap: crate::editor::keymap::Keymap::default(),
+            settings: hume::settings::EditorSettings::default(),
+            keymap: hume::Keymap::default(),
             grammars: std::collections::HashSet::new(),
             focused_buffer_id: BufferId::default(),
             focused_pane_id: PaneId::default(),
@@ -80,7 +79,7 @@ impl EditorHost for MockHost {
         self.focused_buffer_id = target;
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        use crate::settings::{BufferOverrides, SettingScope, apply_setting};
+        use hume::settings::{BufferOverrides, SettingScope, apply_setting};
         let mut dummy = BufferOverrides::default();
         apply_setting(SettingScope::Global, key, value, &mut self.settings, &mut dummy)
     }
@@ -90,7 +89,7 @@ impl EditorHost for MockHost {
         center: Vec<String>,
         right: Vec<String>,
     ) -> Result<(), String> {
-        use crate::ui::statusline::{StatusElement, StatusLineConfig};
+        use hume::ui::statusline::{StatusElement, StatusLineConfig};
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
                 .map(|s| s.parse::<StatusElement>().map_err(|e| format!("{section}: {e}")))
@@ -148,7 +147,7 @@ impl EditorHost for MockHost {
         self.grammars.contains(language)
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
-        crate::ops::register::is_valid_register_name(ch)
+        hume::ops::register::is_valid_register_name(ch)
     }
     fn steel_init_budget_ms(&self) -> u64 {
         self.settings.steel_init_budget_ms as u64
@@ -158,12 +157,12 @@ impl EditorHost for MockHost {
     }
 }
 
-/// Map scripting `BindMode` → editor `crate::editor::keymap::BindMode`.
-fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
+/// Map scripting `BindMode` → editor `hume::KeymapBindMode`.
+fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {
     match mode {
-        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+        BindMode::Normal => hume::KeymapBindMode::Normal,
+        BindMode::Extend => hume::KeymapBindMode::Extend,
+        BindMode::Insert => hume::KeymapBindMode::Insert,
     }
 }
 

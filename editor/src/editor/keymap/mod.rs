@@ -258,7 +258,7 @@ impl KeyTrie {
 ///
 /// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BindMode {
+pub enum BindMode {
     Normal,
     /// Sparse extend-mode overrides. These are checked first in extend mode;
     /// a miss falls through to the normal trie with `extend = true`.
@@ -272,7 +272,7 @@ pub(crate) enum BindMode {
 ///
 /// [`Editor`]: super::Editor
 #[derive(Clone)]
-pub(crate) struct Keymap {
+pub struct Keymap {
     pub(super) normal: KeyTrie,
     /// Sparse extend-mode overrides (e.g. `o → flip-selections`).
     ///
@@ -300,7 +300,7 @@ impl Keymap {
     /// After the user completes `keys`, the next character is stored in
     /// `pending_char` and `command` is dispatched.  Interior nodes are created
     /// as needed.  `keys` must not be empty.
-    pub(crate) fn bind_wait_char_user(
+    pub fn bind_wait_char_user(
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
@@ -332,7 +332,7 @@ impl Keymap {
     /// that should always extend (see `cmd_extend!`).
     ///
     /// `keys` must not be empty.
-    pub(crate) fn bind_user_with_extend(
+    pub fn bind_user_with_extend(
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
@@ -360,7 +360,7 @@ impl Keymap {
     /// Remove a binding for a key sequence in the given mode.
     ///
     /// No-op if the sequence is not bound or any intermediate node is missing.
-    pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
+    pub fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
         let trie = match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
@@ -371,8 +371,7 @@ impl Keymap {
 
     /// Return the command name and `force_extend` flag for `keys` in `mode`,
     /// or `None` if the sequence is unbound.
-    #[cfg(test)]
-    pub(crate) fn lookup_command(
+    pub fn lookup_command(
         &self,
         mode: BindMode,
         keys: &[KeyEvent],
