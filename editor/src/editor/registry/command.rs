@@ -93,7 +93,7 @@ pub(crate) enum MappableCommand {
     ///
     /// `steel_proc` is the name under which the lambda is registered in the
     /// Steel engine's global namespace (e.g. `"%hume-cmd-my-command"`).
-    /// Dispatched by [`crate::scripting::ScriptingHost::call_steel_cmd`], which
+    /// Dispatched by [`scripting::ScriptingHost::call_steel_cmd`], which
     /// evaluates `(steel_proc)` and drains the resulting `steel_ctx.cmd_queue`.
     ///
     /// Not repeatable, not jump, not visual-line — these can be added as
@@ -123,7 +123,7 @@ pub(crate) enum MappableCommand {
     /// replaced by the real `SteelBacked` command, and dispatch re-runs.
     Lazy {
         name: Cow<'static, str>,
-        plugin: crate::scripting::attribution::PluginId,
+        plugin: scripting::attribution::PluginId,
     },
 }
 

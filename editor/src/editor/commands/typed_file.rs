@@ -203,7 +203,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
     };
 
     if let Some(path_str) = arg {
-        let expanded = crate::os::path::expand(path_str);
+        let expanded = platform::path::expand(path_str);
         let path: std::path::PathBuf = {
             let p = std::path::Path::new(expanded.as_ref());
             // Resolve relative paths against editor.cwd, not the process cwd,
@@ -212,10 +212,10 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         };
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
-        let result = match crate::os::io::read_file_meta(&path) {
-            Ok(meta) => crate::os::io::write_file_atomic(&content, &meta, force)
+        let result = match platform::io::read_file_meta(&path) {
+            Ok(meta) => platform::io::write_file_atomic(&content, &meta, force)
                 .map(|retried| (meta, retried)),
-            Err(_) => crate::os::io::write_file_new(&content, &path).map(|meta| (meta, false)),
+            Err(_) => platform::io::write_file_new(&content, &path).map(|meta| (meta, false)),
         };
         match result {
             Ok((meta, retried)) => {
@@ -242,7 +242,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         let Some(meta) = ed.doc().file_meta.as_ref() else {
             return Err(CommandError("no file name".into()));
         };
-        match crate::os::io::write_file_atomic(&content, meta, force) {
+        match platform::io::write_file_atomic(&content, meta, force) {
             Ok(retried) => {
                 ed.doc_mut().mark_saved();
                 ed.report(write_severity(retried), write_msg(line_count, retried));

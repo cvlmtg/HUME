@@ -8,7 +8,7 @@ use crate::core::selection::SelectionSet;
 use crate::core::text::Text;
 use crate::editor::pane_state::EditGroup;
 use crate::editor::syntax::BufferSyntax;
-use crate::os::io::FileMeta;
+use platform::io::FileMeta;
 use crate::settings::BufferOverrides;
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ impl Buffer {
     /// `search_pattern` and `search_matches` are left at their defaults
     /// (no active search) — caller contract for `replace_buffer_in_place`.
     pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
-        let (content, meta) = crate::os::io::read_file(path)?;
+        let (content, meta) = platform::io::read_file(path)?;
         let text = Text::from(content.as_str());
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);

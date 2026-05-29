@@ -165,7 +165,7 @@ impl Completer for BufferNameCompleter {
                 let display = if *name_count.get(&base).expect("base was counted above") >= 2 {
                     // Two or more buffers share this basename — show parent dir.
                     if let Some(parent) = buf.path().and_then(|p| p.parent()) {
-                        format!("{base}  ({}/)", crate::os::path::shorten_home(parent))
+                        format!("{base}  ({}/)", platform::path::shorten_home(parent))
                     } else {
                         base // scratch can't collide
                     }
@@ -205,7 +205,7 @@ pub(crate) struct PathCompleter {
 impl PathCompleter {
     /// Testable core of [`Completer::complete`].
     ///
-    /// `expand_fn` mirrors `crate::os::path::expand`: given a raw path string it
+    /// `expand_fn` mirrors `platform::path::expand`: given a raw path string it
     /// returns the tilde / env-var expanded form.  Tests pass a stub closure;
     /// production calls this with the real `expand`.
     fn complete_with_expand<F>(
@@ -221,7 +221,7 @@ impl PathCompleter {
         let (arg_start, prefix) = arg_prefix(input, cursor);
 
         // Split prefix into (dir_str, file_prefix).
-        let (dir_str, file_prefix) = crate::os::path::split_path_at_sep(prefix);
+        let (dir_str, file_prefix) = platform::path::split_path_at_sep(prefix);
 
         // Expand `~` and env vars for the directory lookup only; the literal
         // `dir_str` is still used in `replacement` below so `~/` is preserved
@@ -239,9 +239,9 @@ impl PathCompleter {
 
         let include_hidden = file_prefix.starts_with('.');
 
-        // `crate::os::fs::read_dir` wraps std::fs::read_dir.  On error (dir
+        // `platform::fs::read_dir` wraps std::fs::read_dir.  On error (dir
         // doesn't exist or no permission), return no candidates — not a hard error.
-        let rd = match crate::os::fs::read_dir(&dir) {
+        let rd = match platform::fs::read_dir(&dir) {
             Ok(rd) => rd,
             Err(_) => {
                 return CompletionResult {
@@ -286,7 +286,7 @@ impl PathCompleter {
 
 impl Completer for PathCompleter {
     fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
-        self.complete_with_expand(input, cursor, ctx, crate::os::path::expand)
+        self.complete_with_expand(input, cursor, ctx, platform::path::expand)
     }
 }
 
@@ -307,7 +307,7 @@ impl Completer for ThemeCompleter {
         let mut candidates: Vec<Completion> = Vec::new();
 
         for dir in &super::theme_search_paths() {
-            let entries = match crate::os::fs::read_dir(dir) {
+            let entries = match platform::fs::read_dir(dir) {
                 Ok(e) => e,
                 Err(_) => continue,
             };

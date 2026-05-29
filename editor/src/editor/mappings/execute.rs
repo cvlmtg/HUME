@@ -7,7 +7,8 @@ use super::super::{doc_ops, Editor, RegisterPrefix, RepeatableAction, Severity};
 use crate::core::jump_list::JumpEntry;
 use crate::core::selection::Selection;
 use crate::ops::MotionMode;
-use crate::scripting::{EditorSteelRefs, QueuedCommand};
+use crate::editor::host_impl::EditorHostImpl;
+use scripting::QueuedCommand;
 
 impl Editor {
     /// Execute a named command with the given count and extend flag.
@@ -107,42 +108,39 @@ impl Editor {
                     if inline_output {
                         let kitty = self.kitty_enabled;
                         let mouse = self.settings.mouse_enabled;
-                        if let Err(e) = crate::os::terminal::enter_inline_output(kitty, mouse) {
+                        if let Err(e) = platform::terminal::enter_inline_output(kitty, mouse) {
                             self.report(Severity::Error, format!("inline-output enter failed: {e}"));
                             return;
                         }
-                        crate::os::terminal::print_running_banner(name);
+                        platform::terminal::print_running_banner(name);
                     }
 
-                    let result = self
-                        .scripting
-                        .as_mut()
-                        .expect("checked above")
-                        .call_steel_cmd(
-                            steel_proc,
-                            char_arg,
-                            steel_args,
-                            EditorSteelRefs {
-                                settings: &mut self.settings,
-                                keymap: &mut self.keymap,
-                                focused_pane_id,
-                                focused_buffer_id,
-                                buffers: Some(&mut self.buffers),
-                                engine_view: Some(&mut self.engine_view),
-                                pane_state: Some(&mut self.pane_state),
-                                pane_jumps: Some(&mut self.pane_jumps),
-                                languages: Some(&mut self.languages),
-                            },
-                        );
+                    // `scripting` is disjoint from the other fields borrowed
+                    // here; Rust NLL splitting allows this simultaneous borrow.
+                    let result = {
+                        let host_scr = self.scripting.as_mut().expect("checked above");
+                        let mut impl_host = EditorHostImpl {
+                            settings: &mut self.settings,
+                            keymap: &mut self.keymap,
+                            focused_pane_id,
+                            focused_buffer_id,
+                            buffers: Some(&mut self.buffers),
+                            engine_view: Some(&mut self.engine_view),
+                            pane_state: Some(&mut self.pane_state),
+                            pane_jumps: Some(&mut self.pane_jumps),
+                            languages: Some(&mut self.languages),
+                        };
+                        host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, &mut impl_host)
+                    };
 
                     // Re-enter the alt-screen unconditionally — on both success and error.
                     if inline_output {
-                        crate::os::terminal::print_return_prompt();
-                        crate::os::terminal::wait_for_keypress();
+                        platform::terminal::print_return_prompt();
+                        platform::terminal::wait_for_keypress();
                         let kitty = self.kitty_enabled;
                         let mouse = self.settings.mouse_enabled;
                         let mouse_select = self.settings.mouse_select;
-                        let _ = crate::os::terminal::leave_inline_output(kitty, mouse, mouse_select);
+                        let _ = platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
                         self.force_full_redraw = true;
                     }
 

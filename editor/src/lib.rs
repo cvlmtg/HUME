@@ -6,8 +6,6 @@ pub(crate) mod cursor;
 pub(crate) mod editor;
 pub(crate) mod helpers;
 pub(crate) mod ops;
-pub(crate) mod os;
-pub(crate) mod scripting;
 pub(crate) mod settings;
 pub(crate) mod ui;
 
@@ -20,6 +18,8 @@ mod proptest_doc;
 mod proptest_editor;
 #[cfg(test)]
 pub(crate) mod testing;
+#[cfg(test)]
+mod scripting_tests;
 
 /// Start the editor.
 ///
@@ -27,7 +27,7 @@ pub(crate) mod testing;
 /// on exit. The `TerminalGuard` ensures restore runs on every exit path:
 /// clean return, `?`-propagated error, and panic unwinding.
 pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(e) = os::install_signal_handlers() {
+    if let Err(e) = platform::install_signal_handlers() {
         // Non-fatal: SIGTERM/SIGHUP will leak terminal state, but the editor
         // still works correctly for normal exit.
         eprintln!("hume: failed to install signal handlers: {e}");
@@ -41,11 +41,11 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     // Guard is declared first so it drops last. On any unwinding path the
     // Terminal's BufWriter flushes before restore() fires, ensuring no
     // buffered render bytes reach the main screen after the alt screen exits.
-    let mut guard = os::terminal::TerminalGuard::new();
+    let mut guard = platform::terminal::TerminalGuard::new();
 
     let mut editor = editor::Editor::open(first)?;
     let (mut term, kitty_enabled) =
-        os::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
+        platform::terminal::init(editor.settings.mouse_enabled, editor.settings.mouse_select)?;
     editor.kitty_enabled = kitty_enabled;
     // Paint the buffer with default settings immediately so the user sees the
     // editor chrome while Steel initialises, rather than a blank alt-screen.
@@ -60,7 +60,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
 
     // Explicit restore on the happy path so IO errors propagate to the caller.
     // Disarm the guard afterwards to suppress the drop-time call.
-    os::terminal::restore()?;
+    platform::terminal::restore()?;
     guard.disarm();
 
     Ok(result?)

@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn unregister_dynamic_commands_clears_steel_backed_and_lazy() {
-        use crate::scripting::attribution::PluginId;
+        use scripting::attribution::PluginId;
         let mut reg = CommandRegistry::with_defaults();
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-a".to_string()),

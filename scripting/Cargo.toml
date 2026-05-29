@@ -1,0 +1,19 @@
+[package]
+name = "scripting"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# Expose set_data_dir for editor integration tests.
+test-util = []
+
+[dependencies]
+engine = { path = "../engine" }
+platform = { path = "../platform" }
+steel-core = "0.8.2"
+crossterm = "0.29"
+slotmap = "1"
+tempfile = "3"
+
+[dev-dependencies]
+tempfile = "3"

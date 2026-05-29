@@ -16,8 +16,8 @@ use crate::core::search_state::SearchPattern;
 use crate::core::search_state::SearchMatches;
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
-use crate::os::terminal::Term;
-use crate::scripting::hooks::HookId;
+use platform::terminal::Term;
+use scripting::hooks::HookId;
 use steel::rvals::IntoSteelVal as _;
 
 use super::{Editor, Mode};
@@ -278,7 +278,7 @@ impl Editor {
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
-            let _ = crate::os::terminal::begin_synchronized_update();
+            let _ = platform::terminal::begin_synchronized_update();
             term.draw(|frame| {
                 engine_view.render(
                     frame.area(),
@@ -303,14 +303,14 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = crate::os::terminal::set_cursor_shape(self.mode);
+            let _ = platform::terminal::set_cursor_shape(self.mode);
             if last_cursor_color_mode != Some(self.mode) {
-                let _ = crate::os::terminal::set_cursor_color_for_mode(self.mode);
+                let _ = platform::terminal::set_cursor_color_for_mode(self.mode);
                 last_cursor_color_mode = Some(self.mode);
             }
             // Close the synchronized-output envelope: the terminal now atomically
             // paints the complete frame — clear + cells + cursor shape in one shot.
-            let _ = crate::os::terminal::end_synchronized_update();
+            let _ = platform::terminal::end_synchronized_update();
 
             // ── 3. Event ──────────────────────────────────────────────────────
             // While a parse is in flight block for at most 8 ms so that the
@@ -379,8 +379,8 @@ impl Editor {
             }
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
-        crate::os::terminal::reset_cursor_shape()?;
-        let _ = crate::os::terminal::set_cursor_color_for_mode(EditorMode::Normal); // emits reset sequence
+        platform::terminal::reset_cursor_shape()?;
+        let _ = platform::terminal::set_cursor_color_for_mode(EditorMode::Normal); // emits reset sequence
         Ok(())
     }
 
@@ -419,7 +419,7 @@ impl Editor {
         let pane_id = self.focused_pane_id;
         let (pane_settings, _) = self.resolve_focused_pane_settings();
         let engine_view = &self.engine_view;
-        let _ = crate::os::terminal::begin_synchronized_update();
+        let _ = platform::terminal::begin_synchronized_update();
         term.draw(|frame| {
             engine_view.render(
                 frame.area(),
@@ -436,7 +436,7 @@ impl Editor {
                 &mut ctx,
             );
         })?;
-        let _ = crate::os::terminal::end_synchronized_update();
+        let _ = platform::terminal::end_synchronized_update();
         Ok(())
     }
 
@@ -708,7 +708,7 @@ impl Editor {
             && self
                 .scripting
                 .as_ref()
-                .is_some_and(|h| !h.hooks.is_empty_for(HookId::OnModeChange))
+                .is_some_and(|h| h.has_hook_handlers(HookId::OnModeChange))
         {
             let old_val = mode_name(old)
                 .into_steelval()

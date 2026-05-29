@@ -1,6 +1,7 @@
 use super::*;
 use crate::editor::registry::MappableCommand;
-use crate::scripting::ScriptingHost;
+use crate::editor::scripting_setup::make_init_host;
+use scripting::{PluginStatus, ScriptingHost, hooks::HookId};
 use crate::settings::EditorSettings;
 use crate::editor::keymap::Keymap;
 
@@ -32,15 +33,15 @@ fn setup_lazy_editor(
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed in setup_lazy_editor");
 
     let triggers: std::collections::HashMap<_, _> =
-        host.lazy_registry.command_triggers.clone();
+        host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
     (ed, dir)
@@ -127,8 +128,8 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 #[test]
 #[cfg(not(windows))]
 fn body_error_removes_stub_and_marks_failed() {
-    use crate::scripting::lazy::PluginState;
-    use crate::scripting::attribution::PluginId;
+    
+    use scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
@@ -150,8 +151,8 @@ fn body_error_removes_stub_and_marks_failed() {
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Failed)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after body error"
     );
@@ -194,8 +195,8 @@ fn unregister_dynamic_commands_clears_lazy_stubs() {
 #[test]
 #[cfg(not(windows))]
 fn lazy_cmd_arg_passed_on_first_call() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     // The plugin defines a 1-arity "bar" that does nothing visible — we just
     // verify that after activation the command is SteelBacked (i.e. arg was
@@ -211,8 +212,8 @@ fn lazy_cmd_arg_passed_on_first_call() {
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first dispatch with arg"
     );
@@ -286,18 +287,20 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
     // Mirror real init_scripting order so the eager command reaches the
     // registry before register_lazy_command_stubs checks for collisions.
-    let cmds = host
-        .eval_init(&init_path, &mut s, &mut km, Default::default())
-        .expect("eval_init must succeed — collision is caught at stub registration, not here");
+    let cmds = {
+        let mut ih = make_init_host(&mut s, &mut km);
+        host.eval_init(&init_path, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed — collision is caught at stub registration, not here");
     ed.register_steel_cmds(cmds);
     let triggers: std::collections::HashMap<_, _> =
-        host.lazy_registry.command_triggers.clone();
+        host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -329,8 +332,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 #[test]
 #[cfg(not(windows))]
 fn event_trigger_activates_on_first_fire() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
@@ -340,13 +343,13 @@ fn event_trigger_activates_on_first_fire() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Declared { .. })
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
         ),
         "plugin must be Declared before first fire"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        !ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be populated before first fire"
     );
 
@@ -357,13 +360,13 @@ fn event_trigger_activates_on_first_fire() {
     assert_ne!(state(&ed), before, "hook handler must run and move the cursor on first fire");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be cleared after plugin loads"
     );
 }
@@ -376,8 +379,8 @@ fn event_trigger_activates_on_first_fire() {
 #[test]
 #[cfg(not(windows))]
 fn event_trigger_idempotent_on_second_fire() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
@@ -388,7 +391,7 @@ fn event_trigger_idempotent_on_second_fire() {
 
     ed.fire_hook_buffer_save(bid);  // first fire — activates
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be empty after first fire"
     );
 
@@ -398,8 +401,8 @@ fn event_trigger_idempotent_on_second_fire() {
     assert_ne!(state(&ed), after_first, "handler must run again on second fire");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
         ),
         "plugin must remain Loaded after second fire (not re-enter Declared)"
     );
@@ -413,8 +416,8 @@ fn event_trigger_idempotent_on_second_fire() {
 #[test]
 #[cfg(not(windows))]
 fn event_trigger_one_to_many_activates_all() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -441,10 +444,10 @@ fn event_trigger_one_to_many_activates_all() {
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -455,20 +458,20 @@ fn event_trigger_one_to_many_activates_all() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Loaded)
         ),
         "plugin A must be Loaded after fire"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be fully cleared after both plugins load"
     );
 }
@@ -481,8 +484,8 @@ fn event_trigger_one_to_many_activates_all() {
 #[test]
 #[cfg(not(windows))]
 fn event_plugin_failure_marks_failed_no_retry() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
@@ -496,13 +499,13 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Failed)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after body error"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.event_triggers.is_empty(),
+        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be cleared even after failure"
     );
     assert!(
@@ -515,8 +518,8 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Failed)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Failed)
         ),
         "plugin must remain Failed after second fire (no retry)"
     );
@@ -537,8 +540,8 @@ fn event_plugin_failure_marks_failed_no_retry() {
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_loads_bare_declared() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (dir, init_path) = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -558,17 +561,17 @@ fn load_plugin_loads_bare_declared() {
     };
 
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
     assert!(
-        matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+        matches!(host.plugin_status(&id), Some(PluginStatus::Loaded)),
         "bare-declared plugin must be Loaded after (load-plugin) in init.scm; got: {:?}",
-        host.lazy_registry.plugins.get(&id)
+        host.plugin_status(&id)
     );
 }
 
@@ -581,7 +584,7 @@ fn load_plugin_loads_bare_declared() {
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_absent_top_level_silently_skips() {
-    use crate::scripting::lazy::PluginState;
+    
 
     let (dir, init_path) = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -593,19 +596,14 @@ fn load_plugin_absent_top_level_silently_skips() {
     };
 
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("absent top-level load-plugin must not error");
 
     // Plugin was not inserted into lazy_registry (absent on disk).
-    let any_loaded = host
-        .lazy_registry
-        .plugins
-        .values()
-        .any(|s| matches!(s, PluginState::Loaded));
-    assert!(!any_loaded, "no plugin must be Loaded when absent on disk");
+    assert!(!host.has_any_loaded_plugin(), "no plugin must be Loaded when absent on disk");
 }
 
 /// `(load-plugin "user/tpa")` in a lazy plugin body (B) loads dependency A
@@ -617,8 +615,8 @@ fn load_plugin_absent_top_level_silently_skips() {
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_transitive_in_body_is_lazy() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -648,12 +646,12 @@ fn load_plugin_transitive_in_body_is_lazy() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers = host.lazy_registry.command_triggers.clone();
+    let triggers = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -663,15 +661,15 @@ fn load_plugin_transitive_in_body_is_lazy() {
     // After init: both Declared — A was not eagerly promoted.
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
-            Some(PluginState::Declared { .. })
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Declared)
         ),
         "dep A must be Declared after init (not promoted to eager)"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
-            Some(PluginState::Declared { .. })
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Declared)
         ),
         "plugin B must be Declared after init"
     );
@@ -683,15 +681,15 @@ fn load_plugin_transitive_in_body_is_lazy() {
     assert_ne!(state(&ed), before, "b-cmd must have moved the cursor after activation");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after dispatch"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Loaded)
         ),
         "dep A must be Loaded transitively after B activates"
     );
@@ -707,8 +705,8 @@ fn load_plugin_transitive_in_body_is_lazy() {
 #[test]
 #[cfg(not(windows))]
 fn language_trigger_activates_on_set() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
@@ -718,13 +716,13 @@ fn language_trigger_activates_on_set() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Declared { .. })
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
         ),
         "plugin must be Declared before first language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty() == false,
         "language_triggers must be populated before first set"
     );
 
@@ -735,13 +733,13 @@ fn language_trigger_activates_on_set() {
     assert_ne!(state(&ed), before, "on-language-set handler must run and move cursor on first set");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first language set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must be cleared after plugin loads"
     );
 }
@@ -754,8 +752,8 @@ fn language_trigger_activates_on_set() {
 #[test]
 #[cfg(not(windows))]
 fn language_trigger_idempotent_on_round_trip() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
@@ -766,7 +764,7 @@ fn language_trigger_idempotent_on_round_trip() {
 
     ed.set_buffer_language(bid, Some("rust".into()));  // first set — activates
     assert!(
-        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must be empty after first set"
     );
 
@@ -777,13 +775,13 @@ fn language_trigger_idempotent_on_round_trip() {
     assert_ne!(state(&ed), after_first, "handler must run again on second rust set");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
         ),
         "plugin must remain Loaded after round-trip (not re-enter Declared or fail)"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must remain cleared after round-trip"
     );
 }
@@ -796,8 +794,8 @@ fn language_trigger_idempotent_on_round_trip() {
 #[test]
 #[cfg(not(windows))]
 fn language_trigger_one_to_many_activates_all() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -824,10 +822,10 @@ fn language_trigger_one_to_many_activates_all() {
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -838,20 +836,20 @@ fn language_trigger_one_to_many_activates_all() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_a),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Loaded)
         ),
         "plugin A must be Loaded after language set"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id_b),
-            Some(PluginState::Loaded)
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after language set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must be fully cleared after both plugins load"
     );
 }
@@ -863,8 +861,8 @@ fn language_trigger_one_to_many_activates_all() {
 #[test]
 #[cfg(not(windows))]
 fn language_trigger_does_not_fire_on_unrelated_language() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
@@ -877,13 +875,13 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&id),
-            Some(PluginState::Declared { .. })
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
         ),
         "plugin must stay Declared when an unrelated language is set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().lazy_registry.language_triggers.contains_key("rust"),
+        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty() == false,
         "language_triggers[\"rust\"] must remain intact after an unrelated set"
     );
 }
@@ -1005,8 +1003,8 @@ fn keymap_lint_warns_on_unknown_command() {
 #[test]
 #[cfg(not(windows))]
 fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
-    use crate::scripting::attribution::PluginId;
-    use crate::scripting::lazy::PluginState;
+    use scripting::attribution::PluginId;
+    
     use crate::editor::Severity;
 
     // Create parent (user/tp) that defines "bar" and then loads user/dep.
@@ -1037,13 +1035,13 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(dir.path().to_path_buf());
+    host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     let init_path = dir.path().join("init.scm");
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers: std::collections::HashMap<_, _> = host.lazy_registry.command_triggers.clone();
+    let triggers: std::collections::HashMap<_, _> = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -1054,8 +1052,8 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
     // Parent must be Failed, not Loaded.
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().lazy_registry.plugins.get(&tp_id),
-            Some(PluginState::Failed)
+            ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
+            Some(PluginStatus::Failed)
         ),
         "parent plugin must be Failed when transitive dep fails"
     );

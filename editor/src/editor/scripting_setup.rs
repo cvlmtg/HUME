@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use engine::pipeline::BufferId;
+use engine::pipeline::{BufferId, PaneId};
 
-use crate::scripting::builtins::ids::SteelBufferId;
-use crate::scripting::{EditorSteelRefs, HookResult, SteelCmdDef, hooks::HookId};
+use scripting::builtins::ids::SteelBufferId;
+use scripting::{HookResult, SteelCmdDef, hooks::HookId};
 
-use super::{Editor, Severity, ops};
+use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
 
 impl Editor {
     // ── Message reporting ─────────────────────────────────────────────────────
@@ -38,10 +38,10 @@ impl Editor {
         let msgs = self
             .scripting
             .as_mut()
-            .map(|h| h.pending_messages.drain(..).collect::<Vec<_>>())
+            .map(|h| h.take_pending_messages())
             .unwrap_or_default();
-        for (sev, text) in msgs {
-            self.report(sev, text);
+        for (level, text) in msgs {
+            self.report(log_level_to_severity(level), text);
         }
     }
 
@@ -67,29 +67,29 @@ impl Editor {
         if self
             .scripting
             .as_ref()
-            .is_none_or(|h| h.hooks.is_empty_for(hook_id))
+            .is_none_or(|h| !h.has_hook_handlers(hook_id))
         {
             return;
         }
         let pid = self.focused_pane_id;
         let bid = self.focused_buffer_id();
+        // `scripting` is a distinct field from `settings`, `keymap`, `buffers`,
+        // `engine_view`, `pane_state`, `pane_jumps`, and `languages`, so Rust
+        // allows simultaneous `&mut` borrows of them through NLL splitting.
         let result = {
-            let host = self.scripting.as_mut().expect("checked above");
-            host.fire_hook(
-                hook_id,
-                args,
-                EditorSteelRefs {
-                    settings: &mut self.settings,
-                    keymap: &mut self.keymap,
-                    focused_pane_id: pid,
-                    focused_buffer_id: bid,
-                    buffers: Some(&mut self.buffers),
-                    engine_view: Some(&mut self.engine_view),
-                    pane_state: Some(&mut self.pane_state),
-                    pane_jumps: Some(&mut self.pane_jumps),
-                    languages: Some(&mut self.languages),
-                },
-            )
+            let host_scr = self.scripting.as_mut().expect("checked above");
+            let mut impl_host = EditorHostImpl {
+                settings: &mut self.settings,
+                keymap: &mut self.keymap,
+                focused_pane_id: pid,
+                focused_buffer_id: bid,
+                buffers: Some(&mut self.buffers),
+                engine_view: Some(&mut self.engine_view),
+                pane_state: Some(&mut self.pane_state),
+                pane_jumps: Some(&mut self.pane_jumps),
+                languages: Some(&mut self.languages),
+            };
+            host_scr.fire_hook(hook_id, args, &mut impl_host)
         };
         self.flush_script_messages();
         match result {
@@ -117,7 +117,7 @@ impl Editor {
         // Resolve the config path up front. `None` means neither XDG_CONFIG_HOME
         // nor HOME (APPDATA on Windows) is set — there is no meaningful place
         // to look for init.scm, so we skip scripting entirely and log a warning.
-        let Some(config_dir) = crate::os::dirs::config_dir() else {
+        let Some(config_dir) = platform::dirs::config_dir() else {
             self.report(
                 Severity::Warning,
                 "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
@@ -125,14 +125,14 @@ impl Editor {
             return;
         };
         let init_path = config_dir.join("init.scm");
-        let mut host = crate::scripting::ScriptingHost::new();
+        let mut host = scripting::ScriptingHost::new();
         // Trace the resolved directories so they're visible in `:messages`.
         // A missing runtime dir is a warning because `core:*` plugins need it.
-        match &host.runtime_dir {
+        match host.runtime_dir() {
             Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
             None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
         }
-        match &host.data_dir {
+        match host.data_dir() {
             Some(d) => self.report(
                 Severity::Trace,
                 format!("scripting: data dir = {}", d.display()),
@@ -156,13 +156,12 @@ impl Editor {
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that
         // exists but fails to parse/eval is an error reported separately.
-        if let Some(prelude_path) = host.runtime_dir.as_ref().map(|rt| rt.join("scheme/prelude.scm")) {
-            match host.eval_init(
-                &prelude_path,
-                &mut self.settings,
-                &mut self.keymap,
-                builtin_names.clone(),
-            ) {
+        //
+        // Each eval gets a fresh init-mode EditorHostImpl (buffer/pane refs
+        // are None; init builtins are guard-protected and never reach them).
+        if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
+            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            match host.eval_init(&prelude_path, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
                     "runtime/scheme/prelude.scm must not define commands"
@@ -175,14 +174,10 @@ impl Editor {
         }
         // Load languages.scm between prelude and init.scm so (define-language! …)
         // calls are available when init.scm and plugins run.
-        let langs_path = host.runtime_dir.as_ref().map(|rt| rt.join("scheme/languages.scm"));
+        let langs_path = host.runtime_dir().map(|rt| rt.join("scheme/languages.scm"));
         if let Some(langs_path) = langs_path {
-            match host.eval_init(
-                &langs_path,
-                &mut self.settings,
-                &mut self.keymap,
-                builtin_names.clone(),
-            ) {
+            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            match host.eval_init(&langs_path, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
                     "runtime/scheme/languages.scm must not define commands"
@@ -194,21 +189,18 @@ impl Editor {
             }
             self.flush_pending_language_regs(&mut host);
         }
-        match host.eval_init(
-            &init_path,
-            &mut self.settings,
-            &mut self.keymap,
-            builtin_names,
-        ) {
-            Ok(cmds) => self.register_steel_cmds(cmds),
-            Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
+        {
+            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            match host.eval_init(&init_path, &mut ih, builtin_names) {
+                Ok(cmds) => self.register_steel_cmds(cmds),
+                Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
+            }
         }
         // Register lazy-command stubs for every #:on-command trigger declared
         // during init.scm.  Must run after register_steel_cmds (eager plugins
         // may have defined commands that would collide) and before scripting=Some
         // so the borrow of &host is independent.
-        let triggers: std::collections::HashMap<String, _> =
-            host.lazy_registry.command_triggers.clone();
+        let triggers = host.command_triggers();
         self.register_lazy_command_stubs(&triggers);
         // Second flush: picks up any (define-language! …) calls from init.scm /
         // plugins that ran during init.scm.
@@ -216,8 +208,8 @@ impl Editor {
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
         self.history.set_capacity(self.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
-        for (sev, text) in host.pending_messages.drain(..) {
-            self.report(sev, text);
+        for (level, text) in host.take_pending_messages() {
+            self.report(log_level_to_severity(level), text);
         }
         self.scripting = Some(host);
         // Post-init lint: warn on keymap leaves that target an unknown command.
@@ -266,7 +258,7 @@ impl Editor {
         let cmds = self
             .scripting
             .as_mut()
-            .map(|s| std::mem::take(&mut s.pending_startup_commands))
+            .map(|s| s.take_startup_commands())
             .unwrap_or_default();
         if cmds.is_empty() {
             return;
@@ -331,7 +323,7 @@ impl Editor {
     /// for the same name would shadow it.
     pub(super) fn register_lazy_command_stubs(
         &mut self,
-        triggers: &std::collections::HashMap<String, crate::scripting::attribution::PluginId>,
+        triggers: &std::collections::HashMap<String, scripting::attribution::PluginId>,
     ) {
         for (name, plugin) in triggers {
             if self.registry.contains(name) {
@@ -358,12 +350,45 @@ impl Editor {
 /// Config themes (user-defined) are listed before runtime themes (bundled) so
 /// that user overrides shadow built-in ones. Both `ops::load_theme_by_name`
 /// and [`ThemeCompleter`] use this list as the single source of truth.
+/// Build an init-mode `EditorHostImpl` with no buffer/pane refs.
+///
+/// Init builtins (`set-option!`, `bind-key!`, etc.) are guard-protected —
+/// they never access buffer/pane data.
+pub(crate) fn make_init_host<'a>(
+    settings: &'a mut crate::settings::EditorSettings,
+    keymap: &'a mut crate::editor::keymap::Keymap,
+) -> EditorHostImpl<'a> {
+    use engine::pipeline::BufferId;
+    EditorHostImpl {
+        settings,
+        keymap,
+        focused_pane_id: PaneId::default(),
+        focused_buffer_id: BufferId::default(),
+        buffers: None,
+        engine_view: None,
+        pane_state: None,
+        pane_jumps: None,
+        languages: None,
+    }
+}
+
+/// Map scripting `LogLevel` → editor `Severity`.
+pub(crate) fn log_level_to_severity(level: scripting::LogLevel) -> Severity {
+    use scripting::LogLevel;
+    match level {
+        LogLevel::Info => Severity::Info,
+        LogLevel::Warning => Severity::Warning,
+        LogLevel::Error => Severity::Error,
+        LogLevel::Trace => Severity::Trace,
+    }
+}
+
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    if let Some(cfg) = crate::os::dirs::config_dir() {
+    if let Some(cfg) = platform::dirs::config_dir() {
         paths.push(cfg.join("themes"));
     }
-    if let Some(rt) = crate::os::dirs::runtime_dir() {
+    if let Some(rt) = platform::dirs::runtime_dir() {
         paths.push(rt.join("themes"));
     }
     paths

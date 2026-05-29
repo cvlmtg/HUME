@@ -291,7 +291,7 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
 
     let tmp2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = crate::os::io::read_file(tmp2.path()).unwrap();
+    let (_, meta2) = platform::io::read_file(tmp2.path()).unwrap();
     let mut buf2 = crate::editor::buffer::Buffer::new(
         crate::core::text::Text::from("world\n"),
         SelectionSet::default(),
@@ -394,7 +394,7 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     // Open a second file buffer and dirty it.
     let tmp2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = crate::os::io::read_file(tmp2.path()).unwrap();
+    let (_, meta2) = platform::io::read_file(tmp2.path()).unwrap();
     let mut buf2 = crate::editor::buffer::Buffer::new(
         crate::core::text::Text::from("world\n"),
         SelectionSet::default(),

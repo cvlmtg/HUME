@@ -13,7 +13,7 @@ use engine::types::EditorMode;
 use crate::core::grapheme::grapheme_col_in_line;
 use crate::core::text::LineEnding as TextLineEnding;
 use crate::editor::Editor;
-use crate::os::path::shorten_home;
+use platform::path::shorten_home;
 use crate::ui::theme::EditorColors;
 
 /// Hardcoded left section for Command/Search modes.

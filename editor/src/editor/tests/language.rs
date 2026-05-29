@@ -1,18 +1,17 @@
 use super::*;
 
 use crate::core::error::CommandError;
-use crate::scripting::ScriptingHost;
-use crate::settings::EditorSettings;
+use scripting::ScriptingHost;
+use crate::scripting_tests::test_harness::MockHost;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Attach a scripting host to `ed`, optionally evaluating `src` in init mode.
 fn attach_host(ed: &mut Editor, src: &str) {
     let mut host = ScriptingHost::new();
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
+    let mut mock = MockHost::new();
     if !src.is_empty() {
-        host.eval_source(src, &mut s, &mut km).expect("eval failed");
+        host.eval_source(src, &mut mock).expect("eval failed");
     }
     ed.scripting = Some(host);
 }
@@ -22,8 +21,6 @@ fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
     ed.languages.register_identity_no_rebuild(name, exts, &[], &[]);
     ed.languages.rebuild_glob_set().expect("rebuild ok");
 }
-
-use crate::editor::keymap::Keymap;
 
 // ── Buffer.language round-trip ────────────────────────────────────────────────
 
@@ -163,7 +160,7 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
 #[test]
 #[cfg(not(windows))]
 fn invalid_glob_in_define_language_warns_and_skips() {
-    use crate::scripting::PendingLanguageReg;
+    use scripting::PendingLanguageReg;
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let regs = vec![

@@ -5,22 +5,19 @@ use super::*;
 /// `fire_hook_silent` must dispatch commands queued by `(call! …)` inside hook bodies.
 #[test]
 fn hook_cmd_queue_is_dispatched() {
-    use crate::editor::keymap::Keymap;
-    use crate::scripting::ScriptingHost;
-    use crate::scripting::builtins::ids::SteelBufferId;
-    use crate::scripting::hooks::HookId;
-    use crate::settings::EditorSettings;
+    use scripting::ScriptingHost;
+    use scripting::builtins::ids::SteelBufferId;
+    use scripting::hooks::HookId;
+    use crate::scripting_tests::test_harness::MockHost;
 
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");
     // Wire up a scripting host with an on-buffer-open handler that calls move-right.
     let mut host = ScriptingHost::new();
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
+    let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
-        &mut s,
-        &mut km,
+        &mut mock,
     )
     .unwrap();
     ed.scripting = Some(host);

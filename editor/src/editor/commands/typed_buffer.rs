@@ -23,7 +23,7 @@ pub fn typed_edit(
     use std::path::Path;
 
     if let Some(path_str) = arg {
-        let expanded = crate::os::path::expand(path_str);
+        let expanded = platform::path::expand(path_str);
 
         // If a buffer is already open for this path, switch without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
@@ -87,10 +87,10 @@ pub fn typed_cd(
 ) -> Result<(), CommandError> {
     let target = match arg.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => {
-            let expanded = crate::os::path::expand(s);
+            let expanded = platform::path::expand(s);
             std::path::PathBuf::from(expanded.as_ref())
         }
-        None => crate::os::dirs::home_dir().ok_or_else(|| CommandError("HOME not set".into()))?,
+        None => platform::dirs::home_dir().ok_or_else(|| CommandError("HOME not set".into()))?,
     };
 
     let resolved = ed
@@ -106,7 +106,7 @@ pub fn typed_pwd(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    ed.report(Severity::Info, crate::os::path::shorten_home(&ed.cwd));
+    ed.report(Severity::Info, platform::path::shorten_home(&ed.cwd));
     Ok(())
 }
 

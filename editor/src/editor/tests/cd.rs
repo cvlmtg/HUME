@@ -101,7 +101,7 @@ fn typed_cd_relative_path() {
 #[cfg(not(windows))]
 fn typed_cd_no_arg_goes_home() {
     let _guard = CwdGuard::new();
-    let home = crate::os::dirs::home_dir().expect("HOME must be set for this test");
+    let home = platform::dirs::home_dir().expect("HOME must be set for this test");
     let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
 
@@ -114,7 +114,7 @@ fn typed_cd_no_arg_goes_home() {
 #[cfg(not(windows))]
 fn typed_cd_tilde_expands_to_home() {
     let _guard = CwdGuard::new();
-    let home = crate::os::dirs::home_dir().expect("HOME must be set for this test");
+    let home = platform::dirs::home_dir().expect("HOME must be set for this test");
     let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
 
@@ -238,7 +238,7 @@ fn typed_pwd_reports_current_directory() {
         .status_msg
         .as_deref()
         .expect(":pwd must report a message");
-    let expected = crate::os::path::shorten_home(&canonical);
+    let expected = platform::path::shorten_home(&canonical);
     assert_eq!(msg, expected, ":pwd must report shorten_home(cwd)");
 }
 
@@ -257,7 +257,7 @@ fn typed_pwd_long_alias_works() {
         .status_msg
         .as_deref()
         .expect(":print-working-directory must report a message");
-    let expected = crate::os::path::shorten_home(&canonical);
+    let expected = platform::path::shorten_home(&canonical);
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
 

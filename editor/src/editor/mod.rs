@@ -30,6 +30,7 @@ use crate::settings::EditorSettings;
 use self::keymap::{Keymap, WaitCharPending};
 
 mod buffer_ops;
+pub(crate) mod host_impl;
 mod lifecycle;
 mod parse_worker;
 mod scripting_setup;
@@ -357,7 +358,7 @@ pub(crate) struct Editor {
     /// `None` until [`Editor::init_scripting`] is called (immediately after
     /// `open()` returns, before the event loop starts). `Some` for the rest
     /// of the editor's lifetime.
-    pub(super) scripting: Option<crate::scripting::ScriptingHost>,
+    pub(super) scripting: Option<scripting::ScriptingHost>,
     /// Snapshot of Rust-builtin command names taken at the end of
     /// `init_scripting`.  Stable across reloads (built-ins never change at
     /// runtime).  Stored as a field so dispatch-time activation can borrow it

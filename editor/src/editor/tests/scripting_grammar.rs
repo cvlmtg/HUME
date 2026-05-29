@@ -12,7 +12,8 @@ use super::*;
 use std::path::PathBuf;
 
 use crate::editor::keymap::Keymap;
-use crate::scripting::ScriptingHost;
+use crate::editor::scripting_setup::make_init_host;
+use scripting::ScriptingHost;
 use crate::settings::EditorSettings;
 
 // ---------------------------------------------------------------------------
@@ -273,7 +274,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let mut host = ScriptingHost::new();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let cmds = host.eval_init(&init_path, &mut s, &mut km, Default::default()).expect("eval_init");
+    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }.expect("eval_init");
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -478,7 +479,7 @@ fn grammar_swap_clears_stale_in_flight() {
 #[test]
 #[cfg(not(windows))]
 fn passive_load_registers_installed_and_call_queues_startup_command() {
-    use crate::scripting::QueuedCommand;
+    use scripting::QueuedCommand;
 
     let (parser, hl) = grammar_fixture("json");
     let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
@@ -519,17 +520,17 @@ fn passive_load_registers_installed_and_call_queues_startup_command() {
     )).unwrap();
 
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(data_dir.clone());
-    crate::scripting::builtins::fs::init_dirs(Some(data_dir.clone()), None);
+    host.set_data_dir(data_dir.clone());
+    scripting::builtins::fs::init_dirs(Some(data_dir.clone()), None);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
     // No grammar names are left in a separate queue — that field is gone.
     // The (call!) call must have produced exactly one pending startup command.
     assert_eq!(
-        host.pending_startup_commands,
+        host.take_startup_commands(),
         vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
         "(call!) in init must push to pending_startup_commands"
     );
@@ -588,7 +589,7 @@ fn install_real_json_grammar_e2e() {
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
 
     // Step 1: git clone --filter=blob:none
-    let status = crate::os::process::git_clone_rev(url, &src_dir, rev);
+    let status = platform::process::git_clone_rev(url, &src_dir, rev);
     match &status {
         Err(e) => {
             if require_live {
@@ -609,7 +610,7 @@ fn install_real_json_grammar_e2e() {
     assert!(src_dir.exists(), "clone must create src dir");
 
     // Step 2: tree-sitter build
-    let status = crate::os::process::tree_sitter_build(&src_dir, &out_path)
+    let status = platform::process::tree_sitter_build(&src_dir, &out_path)
         .expect("tree_sitter_build must not fail to spawn");
     if !status.success() {
         if require_live {
@@ -625,7 +626,7 @@ fn install_real_json_grammar_e2e() {
     // Fetch highlights query via curl, using the helix commit pinned in the catalog.
     let pin = helix_pin();
     let hl_url = format!("https://raw.githubusercontent.com/helix-editor/helix/{pin}/runtime/queries/json/highlights.scm");
-    let curl_status = crate::os::process::curl_fetch(&hl_url, &hl_path);
+    let curl_status = platform::process::curl_fetch(&hl_url, &hl_path);
     match &curl_status {
         Err(e) => {
             if require_live { panic!("curl_fetch failed: {e}"); }
@@ -656,10 +657,10 @@ fn install_real_json_grammar_e2e() {
     ).unwrap();
 
     let mut host = ScriptingHost::new();
-    host.data_dir = Some(data_dir);
+    host.set_data_dir(data_dir);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let cmds = host.eval_init(&init_path, &mut s, &mut km, Default::default())
+    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
         .expect("eval_init");
     ed.register_steel_cmds(cmds);
     ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();

@@ -106,7 +106,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     std::fs::write(tmp.path(), file_content).unwrap();
     let path = tmp.path().to_path_buf();
     let tmp_path = tmp.into_temp_path();
-    let (_, meta) = crate::os::io::read_file(&path).unwrap();
+    let (_, meta) = platform::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
     ed.doc_mut().set_path(Some(path));
     ed.doc_mut().file_meta = Some(meta);

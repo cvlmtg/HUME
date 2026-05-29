@@ -72,7 +72,7 @@ pub fn typed_list_buffers(
             .and_then(|n| n.to_str())
             .unwrap_or(buf.label.as_deref().unwrap_or("*scratch*"));
         let path = path_ref
-            .map(crate::os::path::shorten_home)
+            .map(platform::path::shorten_home)
             .unwrap_or_default();
 
         out.push_str(&format!(
@@ -97,7 +97,7 @@ pub fn typed_plugin_status(
     _force: bool,
 ) -> Result<(), CommandError> {
     let out = if let Some(host) = ed.scripting.as_ref() {
-        host.lazy_registry.format_status()
+        host.lazy_status_string()
     } else {
         ed.report(Severity::Info, "Scripting disabled".to_string());
         return Ok(());
@@ -270,7 +270,7 @@ pub fn typed_tutor(
     _force: bool,
 ) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
-    let Some(runtime) = crate::os::dirs::runtime_dir() else {
+    let Some(runtime) = platform::dirs::runtime_dir() else {
         return Err(CommandError(
             "runtime directory not found (set HUME_RUNTIME to override)".into(),
         ));

@@ -6,20 +6,17 @@
 //!
 //! This module computes:
 //! - [`screen_pos`] — the `(col, row)` of the primary selection head in the
-//!   pane content area, for [`crossterm::cursor::SetCursorStyle`] placement.
+//!   pane content area (terminal cursor placement).
 //! - [`gutter_width`] — the gutter offset to add so the terminal cursor lands
 //!   at the correct absolute screen column.
 //! - [`sub_row`] — which wrapped display row the primary selection head is on
 //!   (used by scroll to keep the head visible).
-//! - [`shape`] — the [`crossterm::cursor::SetCursorStyle`] for the current mode.
 
-use crossterm::cursor::SetCursorStyle;
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::layout::gutter_width_for_line;
 use engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use engine::pipeline::RenderContext;
 use engine::providers::GutterColumn;
-use engine::types::EditorMode;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -128,18 +125,6 @@ pub(crate) fn sub_row(
         scratch,
     )
     .0
-}
-
-/// The terminal cursor shape for `mode`.
-///
-/// Bar modes (Insert, Command, Search, Select) get `SteadyBar`; all others
-/// get `SteadyBlock`.
-pub(crate) fn shape(mode: EditorMode) -> SetCursorStyle {
-    if mode.cursor_is_bar() {
-        SetCursorStyle::SteadyBar
-    } else {
-        SetCursorStyle::SteadyBlock
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -1706,15 +1706,13 @@ fn setup_arity_test(
     arity: u16,
     is_variadic: bool,
 ) -> Editor {
-    use crate::scripting::{ScriptingHost, SteelCmdDef};
-    use crate::editor::keymap::Keymap;
-    use crate::settings::EditorSettings;
+    use scripting::{ScriptingHost, SteelCmdDef};
+    use crate::scripting_tests::test_harness::MockHost;
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    host.eval_source(src, &mut s, &mut km).unwrap();
+    let mut mock = MockHost::new();
+    host.eval_source(src, &mut mock).unwrap();
     ed.register_steel_cmds(vec![SteelCmdDef {
         name: name.to_string(),
         doc: String::new(),
@@ -1779,7 +1777,7 @@ fn minibuffer_arity_rule_passes_false_when_no_arg() {
 /// The command needs no real lambda — the early return fires before call_steel_cmd.
 #[test]
 fn minibuffer_arity_rule_errors_on_arity_2() {
-    use crate::scripting::SteelCmdDef;
+    use scripting::SteelCmdDef;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.register_steel_cmds(vec![SteelCmdDef {

@@ -175,7 +175,7 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
     let is_sep = |slice: &str| {
         slice
             .chars()
-            .all(|c| c.is_whitespace() || crate::os::path::is_path_sep(c))
+            .all(|c| c.is_whitespace() || platform::path::is_path_sep(c))
     };
     let mut i = cursor;
     // Phase 1: skip trailing separators (whitespace or '/').

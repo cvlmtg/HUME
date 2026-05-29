@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 engine = { path = "../engine" }
+platform = { path = "../platform" }
+scripting = { path = "../scripting" }
 globset = "0.4"
 tree-sitter = "0.26.8"
 slotmap = "1"
@@ -14,22 +16,12 @@ unicode-segmentation.workspace = true
 unicode-width.workspace = true
 ratatui.workspace = true
 crossterm = "0.29"
-tempfile = "3"
 regex-cursor = "0.1.5"
 arboard = "3"
-ctrlc = { version = "3", features = ["termination"] }
-
-[target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal"] }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
-    "Win32_System_Console",
-    "Win32_Foundation",
-    "Win32_System_Threading",
-] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 proptest = "1.11.0"
 insta = "1.47"
+tempfile = "3"
+scripting = { path = "../scripting", features = ["test-util"] }

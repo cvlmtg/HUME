@@ -13,7 +13,7 @@ fn write_preserves_permissions() {
     // Set a non-default permission that differs from the tempfile default (0600).
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so file_meta captures the new permissions.
-    let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
+    let (_, meta) = platform::io::read_file(&tmp).unwrap();
     ed.doc_mut().file_meta = Some(meta);
 
     for ch in ":w".chars() {
@@ -48,7 +48,7 @@ fn write_follows_symlink() {
     symlink(real.path(), &link_path).unwrap();
 
     // Open via the symlink — io::read_file should resolve it.
-    let (_, meta) = crate::os::io::read_file(&link_path).unwrap();
+    let (_, meta) = platform::io::read_file(&link_path).unwrap();
     assert_eq!(
         meta.resolved_path,
         std::fs::canonicalize(real.path()).unwrap()
@@ -90,9 +90,9 @@ fn write_follows_symlink() {
 fn write_file_atomic_returns_false_on_plain_write() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), "initial\n").unwrap();
-    let meta = crate::os::io::read_file_meta(tmp.path()).unwrap();
+    let meta = platform::io::read_file_meta(tmp.path()).unwrap();
 
-    let retried = crate::os::io::write_file_atomic("updated\n", &meta, false).unwrap();
+    let retried = platform::io::write_file_atomic("updated\n", &meta, false).unwrap();
     assert!(!retried, "plain write should not trigger chmod-retry");
     assert_eq!(std::fs::read_to_string(tmp.path()).unwrap(), "updated\n");
 }
@@ -112,7 +112,7 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     // Make the target readonly and update the buffer's file_meta to match.
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o444)).unwrap();
-    let (_, meta) = crate::os::io::read_file(&tmp).unwrap();
+    let (_, meta) = platform::io::read_file(&tmp).unwrap();
     ed.doc_mut().file_meta = Some(meta);
 
     for ch in ":w!".chars() {

@@ -391,8 +391,8 @@ use engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
 
 use super::Editor;
-use crate::scripting::builtins::ids::SteelBufferId;
-use crate::scripting::hooks::HookId;
+use scripting::builtins::ids::SteelBufferId;
+use scripting::hooks::HookId;
 
 impl Editor {
     /// Set the language identity for buffer `bid`.
@@ -439,9 +439,9 @@ impl Editor {
     /// Fail-soft: glob-set build failures are logged as warnings, editor continues.
     pub(super) fn apply_pending_language_regs(
         &mut self,
-        regs: Vec<crate::scripting::PendingLanguageReg>,
+        regs: Vec<scripting::PendingLanguageReg>,
     ) {
-        use crate::scripting::PendingLanguageReg;
+        use scripting::PendingLanguageReg;
         let mut any_identity = false;
         let mut grammar_sweeps: Vec<String> = Vec::new();
         for reg in regs {
@@ -494,9 +494,9 @@ impl Editor {
     /// Drain `host.pending_language_regs` and apply them.
     pub(super) fn flush_pending_language_regs(
         &mut self,
-        host: &mut crate::scripting::ScriptingHost,
+        host: &mut scripting::ScriptingHost,
     ) {
-        let regs: Vec<_> = host.pending_language_regs.drain(..).collect();
+        let regs = host.take_pending_language_regs();
         self.apply_pending_language_regs(regs);
     }
 }

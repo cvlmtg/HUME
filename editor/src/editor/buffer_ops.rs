@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use engine::pipeline::BufferId;
 
 use crate::editor::buffer::Buffer;
-use crate::scripting::builtins::ids::SteelBufferId;
-use crate::scripting::hooks::HookId;
+use scripting::builtins::ids::SteelBufferId;
+use scripting::hooks::HookId;
 
 use super::{Editor, Severity, ops};
 
@@ -58,7 +58,7 @@ impl Editor {
 
     fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
         let lossy = path.to_string_lossy();
-        let expanded = crate::os::path::expand(&lossy);
+        let expanded = platform::path::expand(&lossy);
         let canonical = std::fs::canonicalize(expanded.as_ref())?;
         // open_or_dedup handles dedup internally; it does not switch focus.
         self.open_or_dedup(&canonical)?;
