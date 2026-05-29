@@ -18,7 +18,7 @@ use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
-use crate::core::jump_list::JumpList;
+use editing::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;

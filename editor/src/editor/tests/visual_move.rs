@@ -25,8 +25,8 @@ fn visual_test_editor(head: usize) -> Editor {
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
     // Build manually so we can place the cursor at an exact char offset.
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
@@ -212,11 +212,11 @@ fn visual_move_down_with_count() {
 /// k → sub-row 1: A should return to col 0 = char 76, B to col 3 = char 79.
 #[test]
 fn visual_move_per_selection_sticky_col() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
-    let buf = crate::core::text::Text::from(content.as_str());
+    let buf = editing::text::Text::from(content.as_str());
     // A at col 0, B at col 3 (primary).
     let sels = SelectionSet::from_vec(
         vec![
@@ -319,8 +319,8 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
 //   85  = 's'  (start of "short")
 
 fn word_wrap_editor() -> Editor {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
     let content = format!("{}+ ratatui\nshort\n", "a".repeat(75));
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));

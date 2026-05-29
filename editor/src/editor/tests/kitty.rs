@@ -204,8 +204,8 @@ fn kitty_ctrl_shift_u_is_noop() {
 // ── Ctrl+d / Ctrl+u — explicit leaf, must NOT extend ─────────────────────
 
 fn scroll_test_editor_kitty() -> Editor {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
     // 30 single-char lines — same shape as page_scroll tests.
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);

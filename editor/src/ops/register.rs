@@ -2,8 +2,8 @@ use std::collections::{HashMap, VecDeque};
 
 use crossterm::event::KeyEvent;
 
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //

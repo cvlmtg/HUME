@@ -363,8 +363,8 @@ fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
 mod tests {
     use tempfile::TempDir;
 
-    use crate::core::selection::SelectionSet;
-    use crate::core::text::Text;
+    use editing::selection::SelectionSet;
+    use editing::text::Text;
     use crate::editor::buffer::Buffer;
     use crate::editor::buffer_store::BufferStore;
     use crate::editor::registry::CommandRegistry;

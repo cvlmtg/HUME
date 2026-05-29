@@ -1,5 +1,5 @@
 [workspace]
-members = ["engine", "editor", "platform", "scripting"]
+members = ["engine", "editor", "platform", "scripting", "core"]
 resolver = "2"
 
 [profile.dev]

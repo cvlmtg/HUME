@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
-use crate::core::changeset::ChangeSet;
-use crate::core::error::CommandError;
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::changeset::ChangeSet;
+use editing::error::CommandError;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::ops::MotionMode;
 
 // ── MappableCommand ───────────────────────────────────────────────────────────

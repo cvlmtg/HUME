@@ -7,7 +7,7 @@ use super::Editor;
 use super::buffer::Buffer;
 use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use super::syntax::BufferSyntax;
-use crate::core::changeset::{ChangeSet, Operation};
+use editing::changeset::{ChangeSet, Operation};
 
 // ── Incremental parse helpers ─────────────────────────────────────────────────
 
@@ -455,7 +455,7 @@ impl Editor {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::changeset::ChangeSetBuilder;
+    use editing::changeset::ChangeSetBuilder;
     use super::{input_edits_from_changeset, new_end_point};
 
     #[test]

@@ -12,14 +12,14 @@ use engine::pipeline::{LayoutTree, SharedBuffer};
 #[cfg(test)]
 use engine::pane::Pane;
 #[cfg(test)]
-use crate::core::search_state::SearchPattern;
+use editing::search_state::SearchPattern;
 use engine::types::EditorMode;
 
 use slotmap::SecondaryMap;
 
 use self::registry::CommandRegistry;
-use crate::core::grapheme::prev_grapheme_boundary;
-use crate::core::selection::{Selection, SelectionSet};
+use editing::grapheme::prev_grapheme_boundary;
+use editing::selection::{Selection, SelectionSet};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
@@ -56,7 +56,7 @@ pub(crate) mod syntax;
 mod syntax_glue;
 mod visual_move;
 
-pub(crate) use crate::core::search_state::{SearchDirection, SearchState};
+pub(crate) use editing::search_state::{SearchDirection, SearchState};
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;
@@ -273,12 +273,12 @@ pub(crate) struct Editor {
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Per-pane navigable history of cursor positions before large movements.
     /// `jump-backward` (Ctrl+O) / `jump-forward` (Ctrl+I) traverse each pane's list.
-    pub(super) pane_jumps: SecondaryMap<PaneId, crate::core::jump_list::JumpList>,
+    pub(super) pane_jumps: SecondaryMap<PaneId, editing::jump_list::JumpList>,
 
     // ── Minibuffer history ───────────────────────────────────────────────────
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
     /// Recalled via Up/Down while the minibuffer is open.
-    pub(super) history: crate::core::minibuf_history::HistoryStore,
+    pub(super) history: editing::minibuf_history::HistoryStore,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -651,11 +651,11 @@ impl Editor {
                 let mut m = SecondaryMap::new();
                 m.insert(
                     pane_id,
-                    crate::core::jump_list::JumpList::new(jump_list_capacity),
+                    editing::jump_list::JumpList::new(jump_list_capacity),
                 );
                 m
             },
-            history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
+            history: editing::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,
@@ -701,7 +701,7 @@ impl Editor {
         self.pane_transient.insert(pid, PaneTransient::default());
         self.pane_jumps.insert(
             pid,
-            crate::core::jump_list::JumpList::new(self.settings.jump_list_capacity),
+            editing::jump_list::JumpList::new(self.settings.jump_list_capacity),
         );
         pid
     }
@@ -723,7 +723,7 @@ impl Editor {
         if !self.pane_jumps.contains_key(target) {
             self.pane_jumps.insert(
                 target,
-                crate::core::jump_list::JumpList::new(self.settings.jump_list_capacity),
+                editing::jump_list::JumpList::new(self.settings.jump_list_capacity),
             );
         }
         let bid = self.focused_buffer_id();
@@ -747,7 +747,7 @@ impl Editor {
         &self,
         pane: PaneId,
         buf: BufferId,
-    ) -> Option<&crate::core::selection::SelectionSet> {
+    ) -> Option<&editing::selection::SelectionSet> {
         self.pane_state
             .get(pane)
             .and_then(|m| m.get(buf))
@@ -762,7 +762,7 @@ impl Editor {
         &mut self,
         cmd_with_arg: &str,
         extra_arg: Option<&str>,
-    ) -> Result<(), crate::core::error::CommandError> {
+    ) -> Result<(), editing::error::CommandError> {
         use crate::editor::Severity;
         let (cmd, force, inline_arg) = mappings::command_mode::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
@@ -774,7 +774,7 @@ impl Editor {
             }
             result
         } else {
-            Err(crate::core::error::CommandError(format!(
+            Err(editing::error::CommandError(format!(
                 "unknown command: {cmd}"
             )))
         }

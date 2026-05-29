@@ -1,8 +1,8 @@
 use super::MotionMode;
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::{CharClass, classify_char, is_WORD_boundary, is_word_boundary};
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::{CharClass, classify_char, is_WORD_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
-use crate::core::text::Text;
-use crate::helpers::line_end_exclusive;
+use editing::text::Text;
+use editing::helpers::line_end_exclusive;
 
 // ── Paragraph motion helpers ─────────────────────────────────────────────────
 

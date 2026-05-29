@@ -2,7 +2,7 @@ use engine::pipeline::BufferId;
 
 use super::super::{Severity};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 

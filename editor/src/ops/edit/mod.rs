@@ -1,8 +1,8 @@
-use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::line_end_exclusive;
+use editing::changeset::{ChangeSet, ChangeSetBuilder};
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::line_end_exclusive;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //

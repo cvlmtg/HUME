@@ -1,5 +1,5 @@
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
 
 pub(crate) use super::MotionMode;
 

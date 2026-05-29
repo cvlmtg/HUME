@@ -1,10 +1,10 @@
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::text::Text;
+use crate::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::text::Text;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::parse_state;
+    use crate::selection::testing::parse_state;
 
     // ── classify_char ────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ mod tests {
 
 /// Exclusive end of `line`: char offset of the first char on the *next* line,
 /// or `buf.len_chars()` for the last line.
-pub(crate) fn line_end_exclusive(buf: &Text, line: usize) -> usize {
+pub fn line_end_exclusive(buf: &Text, line: usize) -> usize {
     if line + 1 < buf.len_lines() {
         buf.line_to_char(line + 1)
     } else {
@@ -196,7 +196,7 @@ pub(crate) fn line_end_exclusive(buf: &Text, line: usize) -> usize {
 /// walking forward from `line_start`. Used by vertical motions after computing
 /// a char-offset column target, ensuring the cursor always lands on a cluster
 /// boundary.
-pub(crate) fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -> usize {
+pub fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -> usize {
     let mut pos = line_start;
     loop {
         let next = next_grapheme_boundary(buf, pos);
@@ -214,7 +214,7 @@ pub(crate) fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: u
 /// line is empty (no other character to sit on). This is the single
 /// authoritative implementation — shared by `goto_line_end` in `motion.rs`
 /// and the multi-line expand/shrink commands in `selection_cmd.rs`.
-pub(crate) fn line_content_end(buf: &Text, line: usize) -> usize {
+pub fn line_content_end(buf: &Text, line: usize) -> usize {
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);
 
@@ -241,14 +241,14 @@ pub(crate) fn line_content_end(buf: &Text, line: usize) -> usize {
 /// `Eol` is distinct from `Space` so that `w` can stop at newlines (matching
 /// Helix), rather than treating `\n` as ordinary whitespace to skip over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CharClass {
+pub enum CharClass {
     Word,        // alphanumeric + underscore
     Punctuation, // other non-whitespace, non-newline
     Space,       // space, tab
     Eol,         // newline
 }
 
-pub(crate) fn classify_char(ch: char) -> CharClass {
+pub fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
     } else if ch == ' ' || ch == '\t' {
@@ -261,14 +261,14 @@ pub(crate) fn classify_char(ch: char) -> CharClass {
 }
 
 /// Any category change is a word boundary.
-pub(crate) fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
+pub fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
     a != b
 }
 
 /// Word and Punctuation are treated as the same "long word" class — only
 /// transitions involving Space or Eol count.
 #[allow(non_snake_case)]
-pub(crate) fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
+pub fn is_WORD_boundary(a: CharClass, b: CharClass) -> bool {
     let merge = |c: CharClass| {
         if c == CharClass::Punctuation {
             CharClass::Word

@@ -4,7 +4,7 @@
 //! Button-event tracking (mode 1002) is only enabled when `editor.mouse_select`
 //! is true, so `MouseEventKind::Drag` events are received only in that case.
 //!
-//! Click-to-position uses [`crate::cursor::screen_to_char_offset`] to convert
+//! Click-to-position uses [`editing::cursor::screen_to_char_offset`] to convert
 //! the terminal-absolute `(column, row)` from the mouse event into a buffer
 //! char offset.
 //!
@@ -17,8 +17,8 @@ use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::WrapMode;
 
 use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::cursor;
+use editing::selection::{Selection, SelectionSet};
+use editing::cursor;
 use crate::ops::MotionMode;
 
 use super::{Editor, Mode};

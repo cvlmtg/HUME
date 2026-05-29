@@ -13,9 +13,9 @@
 mod tests {
     use proptest::prelude::*;
 
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
-    use crate::core::changeset::ChangeSet;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
+    use editing::changeset::ChangeSet;
     use crate::editor::buffer::Buffer;
     use crate::ops::MotionMode;
     use crate::ops::edit::{

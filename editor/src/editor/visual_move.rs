@@ -5,8 +5,8 @@
 //! `FormatScratch` — unavailable in the pure `(&Text, SelectionSet) ->
 //! SelectionSet` motion signature — so they live here instead of `ops/motion`.
 
-use crate::core::selection::Selection;
-use crate::cursor::format_row_col;
+use editing::selection::Selection;
+use editing::cursor::format_row_col;
 use crate::ops::MotionMode;
 use crate::ops::motion::{cmd_move_down, cmd_move_up};
 use crate::ops::text_object::{
@@ -236,7 +236,7 @@ pub(super) fn cmd_visual_move_down(
     ed: &mut Editor,
     count: usize,
     mode: MotionMode,
-) -> Result<(), crate::core::error::CommandError> {
+) -> Result<(), editing::error::CommandError> {
     apply_visual_vertical(ed, count, true, mode);
     Ok(())
 }
@@ -245,7 +245,7 @@ pub(super) fn cmd_visual_move_up(
     ed: &mut Editor,
     count: usize,
     mode: MotionMode,
-) -> Result<(), crate::core::error::CommandError> {
+) -> Result<(), editing::error::CommandError> {
     apply_visual_vertical(ed, count, false, mode);
     Ok(())
 }
@@ -305,7 +305,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     ed: &mut Editor,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), crate::core::error::CommandError> {
+) -> Result<(), editing::error::CommandError> {
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
     if !wrap_mode.is_wrapping() {

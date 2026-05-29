@@ -1,6 +1,6 @@
 use super::*;
 use crate::assert_state;
-use crate::core::selection::{Selection, SelectionSet};
+use editing::selection::{Selection, SelectionSet};
 
 // ── Line ──────────────────────────────────────────────────────────────────
 

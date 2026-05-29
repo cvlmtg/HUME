@@ -11,7 +11,7 @@ use pretty_assertions::assert_eq;
 /// `switch_focused_pane` restores each pane's cursor exactly.
 #[test]
 fn d1_selections_are_pane_owned() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello world\n");
     let bid = ed.focused_buffer_id();
@@ -48,7 +48,7 @@ fn d1_selections_are_pane_owned() {
 /// each pane has its own `SearchCursor` in `pane_state`.
 #[test]
 fn d4a_search_pattern_is_per_buffer() {
-    use crate::core::search_state::SearchCursor;
+    use editing::search_state::SearchCursor;
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
@@ -86,9 +86,9 @@ fn d4a_search_pattern_is_per_buffer() {
 /// is touched by an edit; survives translate_in_place on untouched lines.
 #[test]
 fn d4b_sticky_col_is_per_selection() {
-    use crate::core::changeset::ChangeSetBuilder;
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::changeset::ChangeSetBuilder;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
 
     // "abc\ndef\n" — two lines.
     let text = Text::from("abc\ndef\n");
@@ -205,7 +205,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 /// D6 — `pane_transient[pid]` snapshots are per-pane and never aliased.
 #[test]
 fn d6_search_mode_snapshot_is_per_pane() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
@@ -254,7 +254,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
 /// Pane A deletes char 0; pane B's cursor at position 9 must slide to 8.
 #[test]
 fn d2_edit_in_pane_a_translates_pane_b_selections() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
@@ -284,7 +284,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 /// must ride the inverse CS back to 9.
 #[test]
 fn d3_undo_restores_acting_pane_and_translates_others() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
@@ -319,7 +319,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 /// merges them into one (proves translate_in_place calls merge_overlapping_in_place).
 #[test]
 fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     // "abcde\n" — 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
@@ -365,7 +365,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
 /// when synced via the per-frame path.
 #[test]
 fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     // "abcdefghij\n" — cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
@@ -407,7 +407,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 /// overwrite existing state (e.g. selections moved away from initial).
 #[test]
 fn ensure_is_idempotent() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     use crate::editor::pane_state;
 
     let mut ed = editor_from("-[h]>ello\n");

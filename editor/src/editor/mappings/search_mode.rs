@@ -5,9 +5,9 @@ use crossterm::event::KeyEvent;
 use super::super::commands::search_sel;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::{search_ops, Editor, Mode, SearchDirection};
-use crate::core::jump_list::JumpEntry;
-use crate::core::minibuf_history::{HistoryDir, HistoryStore};
-use crate::core::search_state::SearchPattern;
+use editing::jump_list::JumpEntry;
+use editing::minibuf_history::{HistoryDir, HistoryStore};
+use editing::search_state::SearchPattern;
 use crate::ops::search::{compile_search_regex, find_next_match};
 
 impl Editor {

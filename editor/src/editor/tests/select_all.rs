@@ -119,9 +119,9 @@ fn star_escapes_metacharacters() {
     let mut ed = editor_from("-[f]>oo.bar\n");
     // Select "foo.bar" first via `v$` equivalent — use the whole line.
     // Easier: just set up a selection covering "foo.bar".
-    let buf = crate::core::text::Text::from("foo.bar\n");
+    let buf = editing::text::Text::from("foo.bar\n");
     let sels =
-        crate::core::selection::SelectionSet::single(crate::core::selection::Selection::new(0, 6));
+        editing::selection::SelectionSet::single(editing::selection::Selection::new(0, 6));
     *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
     ed.set_current_selections(sels);
 

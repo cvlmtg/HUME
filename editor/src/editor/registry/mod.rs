@@ -497,7 +497,7 @@ mod tests {
             _ed: &mut Editor,
             _count: usize,
             _mode: crate::ops::MotionMode,
-        ) -> Result<(), crate::core::error::CommandError> {
+        ) -> Result<(), editing::error::CommandError> {
             Ok(())
         }
         let cmd = MappableCommand::EditorCmd {
@@ -539,7 +539,7 @@ mod tests {
             _ed: &mut Editor,
             _arg: Option<&str>,
             _force: bool,
-        ) -> Result<(), crate::core::error::CommandError> {
+        ) -> Result<(), editing::error::CommandError> {
             Ok(())
         }
         reg.register_typed(TypedCommand {
@@ -593,7 +593,7 @@ mod tests {
             _ed: &mut super::super::Editor,
             _count: usize,
             _mode: crate::ops::MotionMode,
-        ) -> Result<(), crate::core::error::CommandError> {
+        ) -> Result<(), editing::error::CommandError> {
             Ok(())
         }
         reg.register(MappableCommand::EditorCmd {

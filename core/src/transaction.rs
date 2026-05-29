@@ -1,7 +1,7 @@
-use crate::core::changeset::ChangeSet;
-use crate::core::error::TransactionError;
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use crate::changeset::ChangeSet;
+use crate::error::TransactionError;
+use crate::selection::SelectionSet;
+use crate::text::Text;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
 ///
@@ -33,14 +33,14 @@ use crate::core::text::Text;
 /// deleted text, and that content is gone once you move on to the new buffer.
 ///
 #[derive(Debug, Clone)]
-pub(crate) struct Transaction {
+pub struct Transaction {
     changes: ChangeSet,
     selection: SelectionSet,
 }
 
 impl Transaction {
     /// Create a transaction from a changeset and the resulting selection.
-    pub(crate) fn new(changes: ChangeSet, selection: SelectionSet) -> Self {
+    pub fn new(changes: ChangeSet, selection: SelectionSet) -> Self {
         Self { changes, selection }
     }
 
@@ -65,7 +65,7 @@ impl Transaction {
     ///   out of bounds for the post-apply buffer.
     ///
     /// The selection state after this transaction.
-    pub(crate) fn selection(&self) -> &SelectionSet {
+    pub fn selection(&self) -> &SelectionSet {
         &self.selection
     }
 
@@ -74,11 +74,11 @@ impl Transaction {
     /// Used by `Buffer::undo` / `Buffer::redo` to extract the CS for
     /// propagation to non-acting panes after `apply` has already validated and
     /// applied the transaction.
-    pub(crate) fn into_changes(self) -> ChangeSet {
+    pub fn into_changes(self) -> ChangeSet {
         self.changes
     }
 
-    pub(crate) fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
+    pub fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
         let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
         Ok((new_buf, self.selection.clone()))
@@ -90,9 +90,9 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::changeset::ChangeSetBuilder;
-    use crate::core::error::{ApplyError, ValidationError};
-    use crate::core::selection::Selection;
+    use crate::changeset::ChangeSetBuilder;
+    use crate::error::{ApplyError, ValidationError};
+    use crate::selection::Selection;
     use pretty_assertions::assert_eq;
 
     #[test]

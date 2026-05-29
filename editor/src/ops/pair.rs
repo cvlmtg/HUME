@@ -4,8 +4,8 @@
 //! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
 //! the cursor before replacing or deleting it).
 
-use crate::core::text::Text;
-use crate::helpers::line_end_exclusive;
+use editing::text::Text;
+use editing::helpers::line_end_exclusive;
 
 // ---------------------------------------------------------------------------
 // Bracket pairs

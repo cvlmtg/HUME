@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::SearchDirection;
 use crate::editor::buffer::Buffer;
 use crate::testing::{parse_state, serialize_state};
@@ -93,7 +93,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
     let buf = Text::from(text.as_str());
     let pos = buf.line_to_char(cursor_line);
-    let sels = SelectionSet::single(crate::core::selection::Selection::collapsed(pos));
+    let sels = SelectionSet::single(editing::selection::Selection::collapsed(pos));
     let doc = Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
     ed.mode = Mode::Normal;

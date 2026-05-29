@@ -1,5 +1,5 @@
-use crate::core::grapheme::next_grapheme_boundary;
-use crate::core::text::Text;
+use crate::grapheme::next_grapheme_boundary;
+use crate::text::Text;
 
 /// A single selection range within a buffer.
 ///
@@ -24,7 +24,7 @@ use crate::core::text::Text;
 /// Use `start()` / `end()` when you need the bounds irrespective of direction,
 /// and `anchor` / `head` when direction matters (e.g., when extending).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct Selection {
+pub struct Selection {
     /// The stationary end of the selection. Stays put when the user extends.
     pub anchor: usize,
     /// The moving end / cursor position.
@@ -38,7 +38,7 @@ pub(crate) struct Selection {
 
 impl Selection {
     /// A collapsed selection at `pos` (anchor == head == pos). `horiz: None`.
-    pub(crate) fn collapsed(pos: usize) -> Self {
+    pub fn collapsed(pos: usize) -> Self {
         Self {
             anchor: pos,
             head: pos,
@@ -48,7 +48,7 @@ impl Selection {
 
     /// A directional range from `anchor` to `head`. `horiz: None`.
     /// Passing `anchor == head` produces a single-character selection.
-    pub(crate) fn new(anchor: usize, head: usize) -> Self {
+    pub fn new(anchor: usize, head: usize) -> Self {
         Self {
             anchor,
             head,
@@ -61,7 +61,7 @@ impl Selection {
     /// Used *only* by visual j/k motion to carry the column across consecutive
     /// vertical moves. All other code uses [`new`] or [`collapsed`] which reset
     /// `horiz` to `None` by construction.
-    pub(crate) fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
+    pub fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
         Self {
             anchor,
             head,
@@ -80,7 +80,7 @@ impl Selection {
     /// content-aware bounds (e.g. trimmed whitespace edges, line extents) and
     /// the original direction must be preserved. It avoids leaking
     /// `anchor`/`head` field knowledge into every call site.
-    pub(crate) fn directed(start: usize, end: usize, forward: bool) -> Self {
+    pub fn directed(start: usize, end: usize, forward: bool) -> Self {
         if forward {
             Self::new(start, end)
         } else {
@@ -90,12 +90,12 @@ impl Selection {
     }
 
     /// Is this a single-character selection (anchor == head)?
-    pub(crate) fn is_collapsed(&self) -> bool {
+    pub fn is_collapsed(&self) -> bool {
         self.anchor == self.head
     }
 
     /// The smaller of the two offsets — the start of the selected range.
-    pub(crate) fn start(&self) -> usize {
+    pub fn start(&self) -> usize {
         self.anchor.min(self.head)
     }
 
@@ -109,7 +109,7 @@ impl Selection {
     ///
     /// In the inclusive cursor model this char IS part of the selection (the
     /// cursor or anchor sits on it). This is NOT an exclusive bound.
-    pub(crate) fn end(&self) -> usize {
+    pub fn end(&self) -> usize {
         self.anchor.max(self.head)
     }
 
@@ -122,7 +122,7 @@ impl Selection {
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
-    pub(crate) fn end_inclusive(&self, buf: &Text) -> usize {
+    pub fn end_inclusive(&self, buf: &Text) -> usize {
         // next_grapheme_boundary returns one past the cluster; subtract 1 to
         // get the last codepoint index (inclusive upper bound for the range).
         next_grapheme_boundary(buf, self.end()).saturating_sub(1)
@@ -132,7 +132,7 @@ impl Selection {
     /// versa. Useful for `flip selection` commands. `horiz` is cleared since
     /// the head moved to a potentially different column.
     #[must_use]
-    pub(crate) fn flip(self) -> Self {
+    pub fn flip(self) -> Self {
         Self {
             anchor: self.head,
             head: self.anchor,
@@ -150,7 +150,7 @@ impl Selection {
     /// to a negative position.
     #[cfg(test)]
     #[must_use]
-    pub(crate) fn shift(self, delta: isize) -> Self {
+    pub fn shift(self, delta: isize) -> Self {
         // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
         // a usize and returns None on overflow *or* underflow. Compared to the
         // previous `(x as isize + delta) as usize` cast pair, this fails loudly

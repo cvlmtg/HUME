@@ -1,6 +1,6 @@
 use engine::pipeline::{BufferId, PaneId};
 
-use crate::core::selection::Selection;
+use editing::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_selection, paste_after, paste_before, replace_selections};
 use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
@@ -9,7 +9,7 @@ use crate::ops::surround::wrap_each_selection;
 use super::super::{doc_ops, register_ops, Severity};
 use super::super::Editor;
 use super::{PASTE_FAMILY_CMDS, SMART_P_LAST_CMDS};
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 

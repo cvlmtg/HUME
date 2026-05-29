@@ -350,7 +350,7 @@ fn select_within_no_matches_keeps_originals() {
 /// Splitting on "aa" yields two "aa" selections, one from each original.
 #[test]
 fn select_within_multiple_selections_finds_matches_in_each() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // "aa bb aa\n"
     //  0123456789
     let mut ed = editor_from("-[aa bb aa]>\n");
@@ -385,7 +385,7 @@ fn select_within_multiple_selections_finds_matches_in_each() {
 /// selection produces results — the non-matching one is dropped.
 #[test]
 fn select_within_drops_selections_with_no_match() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // "aa bb cc\n"
     //  01234567
     let mut ed = editor_from("-[aa bb cc]>\n");
@@ -418,7 +418,7 @@ fn select_within_drops_selections_with_no_match() {
 /// When NO selection contains a match, the original selections are restored.
 #[test]
 fn select_within_multiple_selections_no_match_restores_all() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     let mut ed = editor_from("-[aa bb cc]>\n");
     let two_sels = SelectionSet::from_vec(vec![Selection::new(0, 1), Selection::new(3, 4)], 0);
     ed.set_current_selections(two_sels.clone());
@@ -442,7 +442,7 @@ fn select_within_multiple_selections_no_match_restores_all() {
 /// original primary selection, even when that selection is not first in order.
 #[test]
 fn select_within_primary_tracks_original_primary() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // "aa bb aa\n" — two selections, primary is the SECOND one (6..7).
     let mut ed = editor_from("-[aa bb aa]>\n");
     let two_sels = SelectionSet::from_vec(
@@ -473,7 +473,7 @@ fn select_within_primary_tracks_original_primary() {
 /// Esc after live-preview with multiple selections restores all originals.
 #[test]
 fn select_within_esc_restores_multiple_selections() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // Use wider original selections ("aa bb" and "aa") so the live-preview
     // of "aa" visibly shrinks them — confirming the snapshot is correct.
     // "aa bb aa\n"
@@ -632,7 +632,7 @@ fn search_n_after_select_within_with_no_prior_search() {
 /// selection, the two must merge — no duplicate/overlapping selections.
 #[test]
 fn search_n_merges_with_overlapping_secondary() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // "ab cd ab\n" — set up two selections already on the "ab" matches,
     // then confirm a search for "ab" and press `n` so the primary lands
     // on the second "ab", which is also the secondary.

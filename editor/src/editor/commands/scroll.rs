@@ -2,7 +2,7 @@ use crate::ops::MotionMode;
 
 use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //

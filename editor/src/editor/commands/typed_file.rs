@@ -1,6 +1,6 @@
 use super::super::{ops, Severity};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
@@ -190,7 +190,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         let buf = ed.doc().text();
         // The rope is always stored LF-normalized; restore CRLF for files that
         // originally used it so we don't silently change line endings on save.
-        let content = if buf.line_ending() == crate::core::text::LineEnding::CrLf {
+        let content = if buf.line_ending() == editing::text::LineEnding::CrLf {
             buf.to_string().replace('\n', "\r\n")
         } else {
             buf.to_string()

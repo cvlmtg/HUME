@@ -1,9 +1,9 @@
 use super::MotionMode;
 use super::pair::{find_bracket_pair, find_quote_pair};
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::{
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::{
     CharClass, classify_char, is_WORD_boundary, is_word_boundary, line_content_end,
     line_end_exclusive,
 };

@@ -143,8 +143,8 @@ impl BufferStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::selection::SelectionSet;
-    use crate::core::text::Text;
+    use editing::selection::SelectionSet;
+    use editing::text::Text;
     use engine::pipeline::{BufferId, EngineView};
     use engine::theme::Theme;
 

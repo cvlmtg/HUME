@@ -5,7 +5,7 @@ use std::thread;
 use engine::pipeline::BufferId;
 
 use super::syntax::LanguageConfig;
-use crate::core::text::Text;
+use editing::text::Text;
 
 // Compile-time Send assertions — tree_sitter::Tree is Send+Sync;
 // tree_sitter::Parser is Send+!Sync (lives on the worker thread only).

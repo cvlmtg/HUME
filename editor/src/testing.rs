@@ -1,5 +1,5 @@
-use crate::core::changeset::ChangeSet;
-use crate::core::selection::{Selection, SelectionSet};
+use editing::changeset::ChangeSet;
+use editing::selection::{Selection, SelectionSet};
 /// Test DSL for HUME editing operations.
 ///
 /// We use a compact, human-readable string format to express editor state
@@ -38,7 +38,7 @@ use crate::core::selection::{Selection, SelectionSet};
 ///
 /// For `-[hell]>o world\n`: anchor=0, head=3 (cursor is on the second 'l').
 /// For `<[hell]-o world\n`: head=0, anchor=3 (cursor is on 'h').
-use crate::core::text::Text;
+use editing::text::Text;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 

@@ -11,8 +11,8 @@ use pretty_assertions::assert_eq;
 // Line N starts at char 2*N.
 
 fn page_test_editor() -> Editor {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
     let content = "a\n".repeat(30);
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));

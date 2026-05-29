@@ -1,6 +1,6 @@
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
 use crate::ops::MotionMode;
 
 // ── Vertical copy ─────────────────────────────────────────────────────────────

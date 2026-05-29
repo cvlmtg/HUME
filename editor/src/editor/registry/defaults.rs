@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
 use crate::ops::motion::{

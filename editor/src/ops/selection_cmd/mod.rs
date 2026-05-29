@@ -7,8 +7,8 @@ pub(crate) use matching::{
 };
 
 use super::MotionMode;
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -315,11 +315,11 @@ mod tests {
     fn collapse_two_selections_same_head_merges() {
         // Two selections with different anchors but the same head collapse to
         // one cursor — map_and_merge must reduce the count.
-        let buf = crate::core::text::Text::from("hello\n");
-        let sels = crate::core::selection::SelectionSet::from_vec(
+        let buf = editing::text::Text::from("hello\n");
+        let sels = editing::selection::SelectionSet::from_vec(
             vec![
-                crate::core::selection::Selection::new(0, 3), // head at 3
-                crate::core::selection::Selection::new(1, 3), // head at 3
+                editing::selection::Selection::new(0, 3), // head at 3
+                editing::selection::Selection::new(1, 3), // head at 3
             ],
             0,
         );

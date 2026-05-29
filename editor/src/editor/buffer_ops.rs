@@ -161,8 +161,8 @@ impl Editor {
         content: &str,
         cursor_line: usize,
     ) {
-        use crate::core::selection::{Selection, SelectionSet};
-        use crate::core::text::Text;
+        use editing::selection::{Selection, SelectionSet};
+        use editing::text::Text;
 
         let text = Text::from(content);
         let bid = if let Some(existing) = self.buffers.find_by_label(label) {
@@ -189,8 +189,8 @@ impl Editor {
     }
 
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.
-    pub(crate) fn current_jump_entry(&self) -> crate::core::jump_list::JumpEntry {
-        use crate::core::jump_list::JumpEntry;
+    pub(crate) fn current_jump_entry(&self) -> editing::jump_list::JumpEntry {
+        use editing::jump_list::JumpEntry;
         let pid = self.focused_pane_id;
         let bid = self.focused_buffer_id();
         let sels = self.pane_state[pid][bid].selections.clone();

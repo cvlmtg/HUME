@@ -1,11 +1,11 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::core::changeset::ChangeSet;
-use crate::core::history::{History, RevisionId};
-use crate::core::search_state::{SearchMatches, SearchPattern};
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::changeset::ChangeSet;
+use editing::history::{History, RevisionId};
+use editing::search_state::{SearchMatches, SearchPattern};
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::pane_state::EditGroup;
 use crate::editor::syntax::BufferSyntax;
 use platform::io::FileMeta;
@@ -411,7 +411,7 @@ impl Buffer {
     pub(crate) fn goto_revision(
         &mut self,
         sels: &mut SelectionSet,
-        target: crate::core::history::RevisionId,
+        target: editing::history::RevisionId,
     ) {
         if let Some(transactions) = self.history.goto_revision(target) {
             for txn in transactions {
@@ -491,7 +491,7 @@ mod tests {
             }
         }
 
-        fn goto_revision(&mut self, target: crate::core::history::RevisionId) {
+        fn goto_revision(&mut self, target: editing::history::RevisionId) {
             self.buf.goto_revision(&mut self.sels, target);
         }
 
@@ -716,14 +716,14 @@ mod tests {
         let mut d = doc("-[L]>orem ipsum dolor sit amet\n");
 
         d.apply_edit(|b, _s| {
-            use crate::core::changeset::ChangeSetBuilder;
+            use editing::changeset::ChangeSetBuilder;
             let mut csb = ChangeSetBuilder::new(27);
             csb.retain(6);
             csb.delete(6);
             csb.retain_rest();
             let cs = csb.finish();
             let new_text = cs.apply(&b).unwrap();
-            use crate::core::selection::{Selection, SelectionSet};
+            use editing::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_text, new_sels, cs)
         });
@@ -731,7 +731,7 @@ mod tests {
         assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
         d.apply_edit(|b, _s| {
-            use crate::core::changeset::ChangeSetBuilder;
+            use editing::changeset::ChangeSetBuilder;
             let mut csb = ChangeSetBuilder::new(21);
             csb.retain(6);
             csb.delete(5);
@@ -739,14 +739,14 @@ mod tests {
             csb.retain_rest();
             let cs = csb.finish();
             let new_text = cs.apply(&b).unwrap();
-            use crate::core::selection::{Selection, SelectionSet};
+            use editing::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_text, new_sels, cs)
         });
         assert_eq!(d.text().to_string(), "Lorem foo sit amet\n");
 
         d.apply_edit(|b, _s| {
-            use crate::core::changeset::ChangeSetBuilder;
+            use editing::changeset::ChangeSetBuilder;
             let mut csb = ChangeSetBuilder::new(19);
             csb.retain(10);
             csb.delete(3);
@@ -754,7 +754,7 @@ mod tests {
             csb.retain_rest();
             let cs = csb.finish();
             let new_text = cs.apply(&b).unwrap();
-            use crate::core::selection::{Selection, SelectionSet};
+            use editing::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::collapsed(10));
             (new_text, new_sels, cs)
         });
@@ -767,14 +767,14 @@ mod tests {
         assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
         d.apply_edit(|b, _s| {
-            use crate::core::changeset::ChangeSetBuilder;
+            use editing::changeset::ChangeSetBuilder;
             let mut csb = ChangeSetBuilder::new(21);
             csb.retain(6);
             csb.delete(6);
             csb.retain_rest();
             let cs = csb.finish();
             let new_text = cs.apply(&b).unwrap();
-            use crate::core::selection::{Selection, SelectionSet};
+            use editing::selection::{Selection, SelectionSet};
             let new_sels = SelectionSet::single(Selection::collapsed(6));
             (new_text, new_sels, cs)
         });
@@ -814,7 +814,7 @@ mod tests {
         d.apply_edit(|b, s| insert_char(b, s, 'b'));
         d.apply_edit(|b, s| insert_char(b, s, 'c'));
         let initial = "-[h]>ello\n";
-        d.goto_revision(crate::core::history::RevisionId(0));
+        d.goto_revision(editing::history::RevisionId(0));
         assert_eq!(state(&d), initial);
     }
 

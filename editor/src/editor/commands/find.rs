@@ -1,11 +1,11 @@
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::ops::MotionMode;
 use crate::ops::motion::{find_char_backward, find_char_forward};
 
 use super::super::{doc_ops, FindChar};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 use crate::ops::motion::FindKind;
 
 // ── Find / till character ─────────────────────────────────────────────────────

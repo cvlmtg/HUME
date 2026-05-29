@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use engine::grammar::LoadedGrammar;
 
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::buffer::Buffer;
 
 // ── Setup ─────────────────────────────────────────────────────────────────────

@@ -15,17 +15,16 @@ use std::collections::VecDeque;
 
 use engine::pipeline::BufferId;
 
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
+use crate::selection::{Selection, SelectionSet};
+use crate::text::Text;
 
 /// Default capacity — kept here so tests can construct jump lists without
 /// importing `EditorSettings`.
-#[cfg(test)]
-pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
+pub const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct JumpEntry {
+pub struct JumpEntry {
     /// Buffer this position belongs to — needed for cross-buffer Ctrl+O/I.
     pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
@@ -37,7 +36,7 @@ pub(crate) struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
+    pub fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head);
         Self {
             buffer_id,
@@ -50,7 +49,7 @@ impl JumpEntry {
     ///
     /// Used at call sites that capture the cursor *before* a motion runs, so
     /// `primary_line` is already known and no buffer reference is needed.
-    pub(crate) fn from_pre_motion(
+    pub fn from_pre_motion(
         pre_primary: Selection,
         primary_line: usize,
         buffer_id: BufferId,
@@ -70,7 +69,7 @@ impl JumpEntry {
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
 #[derive(Debug)]
-pub(crate) struct JumpList {
+pub struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
@@ -80,7 +79,7 @@ pub(crate) struct JumpList {
 
 impl JumpList {
     /// Create a new jump list with the given capacity limit.
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             entries: VecDeque::new(),
             cursor: 0,
@@ -90,7 +89,7 @@ impl JumpList {
 
     /// Record a jump. Truncates forward history, deduplicates against the last
     /// entry by line number, and caps the list at `self.capacity`.
-    pub(crate) fn push(&mut self, entry: JumpEntry) {
+    pub fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
         // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
@@ -115,7 +114,7 @@ impl JumpList {
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
     /// in the remaining entries is preserved; clamps to `entries.len()` if the
     /// cursor falls past the end (which means "at the present").
-    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
+    pub fn prune_buffer(&mut self, id: BufferId) {
         let removed_before = self
             .entries
             .iter()
@@ -132,7 +131,7 @@ impl JumpList {
     /// Navigate backward. If at the present, saves `current` first so that
     /// `forward()` can return to it. Returns the entry to restore, or `None`
     /// if the list is empty / already at the oldest entry.
-    pub(crate) fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
+    pub fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
         if self.entries.is_empty() {
             return None;
         }
@@ -156,7 +155,7 @@ impl JumpList {
 
     /// Navigate forward. Returns the next entry, or `None` if already at the
     /// present.
-    pub(crate) fn forward(&mut self) -> Option<&JumpEntry> {
+    pub fn forward(&mut self) -> Option<&JumpEntry> {
         if self.cursor + 1 >= self.entries.len() {
             return None;
         }
@@ -170,8 +169,7 @@ impl JumpList {
     }
 
     /// Returns `true` if any entry in the list belongs to `id`.
-    #[cfg(test)]
-    pub(crate) fn entries_for_buffer(&self, id: BufferId) -> bool {
+    pub fn entries_for_buffer(&self, id: BufferId) -> bool {
         self.entries.iter().any(|e| e.buffer_id == id)
     }
 }
@@ -181,7 +179,7 @@ impl JumpList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::selection::{Selection, SelectionSet};
+    use crate::selection::{Selection, SelectionSet};
 
     /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
     /// Bypasses `JumpEntry::new` since unit tests don't have a Text.

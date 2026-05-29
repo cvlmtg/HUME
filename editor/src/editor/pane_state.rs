@@ -17,10 +17,10 @@
 use engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
-use crate::core::changeset::ChangeSet;
-use crate::core::search_state::SearchCursor;
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::changeset::ChangeSet;
+use editing::search_state::SearchCursor;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn pane_buffer_state_default_is_valid() {
-        use crate::core::selection::Selection;
+        use editing::selection::Selection;
         let state = PaneBufferState::default();
         assert_eq!(state.selections.primary(), Selection::collapsed(0));
         assert!(state.edit_group.is_none());

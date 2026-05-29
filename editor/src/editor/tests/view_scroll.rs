@@ -10,8 +10,8 @@ use pretty_assertions::assert_eq;
 // content is 100 chars and char 2*N is the start of line N.
 
 fn view_test_editor() -> Editor {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
     let content = "a\n".repeat(50);
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
@@ -23,7 +23,7 @@ fn view_test_editor() -> Editor {
 /// Move the primary selection head to the start of buffer line `line`. Avoids
 /// depending on a specific motion command.
 fn seek_to_line(ed: &mut Editor, line: usize) {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     let head = ed.doc().text().rope().line_to_char(line);
     let pid = ed.focused_pane_id;
     let bid = ed.focused_buffer_id();
@@ -95,8 +95,8 @@ fn zb_puts_cursor_at_bottom() {
 
 #[test]
 fn zz_in_wrap_mode_walks_display_rows() {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
 
     // Three buffer lines, the middle one wraps to 4 rows under Soft{4}:
     //   line 0: "line0"          → 2 rows ("line", "0")
@@ -124,8 +124,8 @@ fn zz_in_wrap_mode_walks_display_rows() {
 
 #[test]
 fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
 
     let content = "line0\nabcdefghijklmnop\nline2\n";
     let buf = Text::from(content);

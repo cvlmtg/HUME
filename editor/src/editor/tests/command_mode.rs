@@ -293,7 +293,7 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
     std::fs::write(tmp2.path(), "world\n").unwrap();
     let (_, meta2) = platform::io::read_file(tmp2.path()).unwrap();
     let mut buf2 = crate::editor::buffer::Buffer::new(
-        crate::core::text::Text::from("world\n"),
+        editing::text::Text::from("world\n"),
         SelectionSet::default(),
     );
     buf2.set_path(Some(tmp2.path().to_path_buf()));
@@ -396,7 +396,7 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     std::fs::write(tmp2.path(), "world\n").unwrap();
     let (_, meta2) = platform::io::read_file(tmp2.path()).unwrap();
     let mut buf2 = crate::editor::buffer::Buffer::new(
-        crate::core::text::Text::from("world\n"),
+        editing::text::Text::from("world\n"),
         SelectionSet::default(),
     );
     buf2.set_path(Some(tmp2.path().to_path_buf()));

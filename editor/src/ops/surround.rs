@@ -6,9 +6,9 @@
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 
-use crate::core::changeset::ChangeSet;
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
+use editing::changeset::ChangeSet;
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
 use crate::ops::MotionMode;
 use crate::ops::edit::apply_edit;
 use crate::ops::pair::{find_bracket_pair, find_quote_pair};
@@ -179,8 +179,8 @@ surround_cmd!(cmd_surround_backtick, quote, '`');
 mod tests {
     use super::*;
     use crate::assert_state;
-    use crate::core::selection::{Selection, SelectionSet};
-    use crate::core::text::Text;
+    use editing::selection::{Selection, SelectionSet};
+    use editing::text::Text;
 
     /// Helper: make a buffer + single-cursor SelectionSet and run a surround
     /// command, returning the resulting selections as `(anchor, head)` pairs.

@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use crate::core::changeset::{ChangeSet, ChangeSetBuilder};
-use crate::core::selection::SelectionSet;
-use crate::core::transaction::Transaction;
+use crate::changeset::{ChangeSet, ChangeSetBuilder};
+use crate::selection::SelectionSet;
+use crate::transaction::Transaction;
 
 // ── Arena index ───────────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ use crate::core::transaction::Transaction;
 /// friction that comes with self-referential structs, while still allowing
 /// O(1) parent/child traversal via a `Vec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RevisionId(pub(crate) usize);
+pub struct RevisionId(pub usize);
 
 // ── Revision ──────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ struct Revision {
 /// Buffers. The caller ([`crate::editor::buffer::Buffer`]) holds the current
 /// buffer. History stores only Transactions (changeset + selections). This
 /// keeps History a pure data structure with no Buffer dependency.
-pub(crate) struct History {
+pub struct History {
     /// Arena of all revisions. Index 0 is always the root.
     revisions: Vec<Revision>,
     /// The currently active revision.
@@ -96,7 +96,7 @@ impl History {
     /// `initial_sels` as its selection — this is the state before any edit.
     /// `buf_len` is the character length of the initial buffer (needed to
     /// build the identity ChangeSet).
-    pub(crate) fn new(initial_sels: SelectionSet, buf_len: usize) -> Self {
+    pub fn new(initial_sels: SelectionSet, buf_len: usize) -> Self {
         // Build an identity ChangeSet: retain every character unchanged.
         let mut b = ChangeSetBuilder::new(buf_len);
         b.retain_rest();
@@ -133,7 +133,7 @@ impl History {
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`
     ///   so redo restores them).
-    pub(crate) fn record(
+    pub fn record(
         &mut self,
         forward_cs: ChangeSet,
         inverse_cs: ChangeSet,
@@ -169,7 +169,7 @@ impl History {
     /// reference, to avoid lifetime conflicts when the caller also holds a
     /// reference to other fields of the owning struct (e.g. `Buffer::text`).
     /// `Transaction` is cheap to clone: its ChangeSet is a `Vec<Operation>`.
-    pub(crate) fn undo(&mut self) -> Option<Transaction> {
+    pub fn undo(&mut self) -> Option<Transaction> {
         let old_current = self.current;
         // Copy out the parent index before mutating current.
         let parent = self.revisions[old_current.0].parent?;
@@ -187,33 +187,30 @@ impl History {
     /// to the most recent edit, not the historically first one.
     ///
     /// Returns an owned `Transaction` for the same reason as [`undo`].
-    pub(crate) fn redo(&mut self) -> Option<Transaction> {
+    pub fn redo(&mut self) -> Option<Transaction> {
         // Copy out child_id before mutating current.
         let child_id = *self.revisions[self.current.0].children.last()?;
         self.current = child_id;
         Some(self.revisions[child_id.0].forward.clone())
     }
 
-    #[cfg(test)]
     /// True if there is at least one revision above the current position.
-    pub(crate) fn can_undo(&self) -> bool {
+    pub fn can_undo(&self) -> bool {
         self.revisions[self.current.0].parent.is_some()
     }
 
-    #[cfg(test)]
     /// True if the current revision has at least one child.
-    pub(crate) fn can_redo(&self) -> bool {
+    pub fn can_redo(&self) -> bool {
         !self.revisions[self.current.0].children.is_empty()
     }
 
     /// Total number of revisions in the tree (including the root).
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.revisions.len()
     }
 
     /// The currently active revision.
-    pub(crate) fn current_id(&self) -> RevisionId {
+    pub fn current_id(&self) -> RevisionId {
         self.current
     }
 
@@ -221,13 +218,12 @@ impl History {
     ///
     /// Used by `Buffer::initial_sels()` to seed `PaneBufferState` when a pane
     /// first views this buffer or when `:e!` reloads it.
-    pub(crate) fn initial_sels(&self) -> &SelectionSet {
+    pub fn initial_sels(&self) -> &SelectionSet {
         self.revisions[0].forward.selection()
     }
 
     /// Parent of a revision. `None` for the root.
-    #[cfg(test)]
-    pub(crate) fn parent(&self, id: RevisionId) -> Option<RevisionId> {
+    pub fn parent(&self, id: RevisionId) -> Option<RevisionId> {
         self.revisions[id.0].parent
     }
 
@@ -264,7 +260,7 @@ impl History {
     ///   `inverse` transaction (same as [`undo`]).
     /// - **Down leg** (LCA → `target`): for each node stepped into, use its
     ///   `forward` transaction (same as [`redo`]).
-    pub(crate) fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
+    pub fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
         if target == self.current {
             return None;
         }
@@ -324,7 +320,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::selection::{Selection, SelectionSet};
+    use crate::selection::{Selection, SelectionSet};
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

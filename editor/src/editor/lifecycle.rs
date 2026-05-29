@@ -10,10 +10,10 @@ use engine::pipeline::{
 };
 use engine::types::EditorMode;
 
-use crate::core::search_state::SearchCursor;
-use crate::core::search_state::SearchPattern;
+use editing::search_state::SearchCursor;
+use editing::search_state::SearchPattern;
 #[cfg(test)]
-use crate::core::search_state::SearchMatches;
+use editing::search_state::SearchMatches;
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
 use platform::terminal::Term;
@@ -30,7 +30,7 @@ use super::{Editor, Mode};
 /// re-located after the sort by matching the primary's unique head value.
 pub(super) fn write_pane_mirror(
     pane: &mut engine::pane::Pane,
-    sels: &crate::core::selection::SelectionSet,
+    sels: &editing::selection::SelectionSet,
 ) {
     use engine::types::Selection as EngineSelection;
     let primary_head = sels.primary().head;
@@ -57,8 +57,8 @@ impl Editor {
         use slotmap::SecondaryMap;
         use engine::builtins::line_number::{LineNumberColumn, LineNumberStyle as EngineLineNumberStyle};
         use engine::pipeline::{LayoutTree, SharedBuffer};
-        use crate::core::selection::{Selection, SelectionSet};
-        use crate::core::text::Text;
+        use editing::selection::{Selection, SelectionSet};
+        use editing::text::Text;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer_store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient};
@@ -171,16 +171,16 @@ impl Editor {
             last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,
-            search: crate::core::search_state::SearchState::default(),
+            search: editing::search_state::SearchState::default(),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(
                     pane_id,
-                    crate::core::jump_list::JumpList::new(jump_list_capacity),
+                    editing::jump_list::JumpList::new(jump_list_capacity),
                 );
                 m
             },
-            history: crate::core::minibuf_history::HistoryStore::new(history_capacity),
+            history: editing::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,
@@ -246,7 +246,7 @@ impl Editor {
                 let (pane_settings_cursor, gutter_w) =
                     self.resolve_focused_pane_settings();
                 let vp = self.engine_view.panes[self.focused_pane_id].viewport.clone();
-                crate::cursor::screen_pos(
+                editing::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
                     cursor_char,
@@ -393,7 +393,7 @@ impl Editor {
     fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
         let len_lines = self.doc().text().len_lines();
         let pane = &self.engine_view.panes[self.focused_pane_id];
-        let gutter_w = crate::cursor::gutter_width(
+        let gutter_w = editing::cursor::gutter_width(
             pane.providers.gutter_columns(),
             len_lines,
         );
@@ -780,7 +780,7 @@ pub(super) fn mode_name(m: EditorMode) -> &'static str {
 /// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
 /// from the start of the line — suitable for building highlight spans that the
 /// engine expects in line-relative byte coordinates.
-pub(super) fn char_to_line_byte(buf: &crate::core::text::Text, char_pos: usize) -> (usize, usize) {
+pub(super) fn char_to_line_byte(buf: &editing::text::Text, char_pos: usize) -> (usize, usize) {
     let line = buf.char_to_line(char_pos);
     let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
     let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);

@@ -2,7 +2,7 @@ use crate::ops::MotionMode;
 
 use super::super::{Severity};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
 

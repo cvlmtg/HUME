@@ -30,7 +30,7 @@ use engine::providers::GutterColumn;
 ///
 /// In no-wrap mode, `col` accounts for `viewport.horizontal_offset`.
 /// In wrap mode, `col` is the column within the display row (offset 0 = left edge).
-pub(crate) fn screen_pos(
+pub fn screen_pos(
     viewport: &ViewportState,
     rope: &ropey::Rope,
     cursor_char: usize,
@@ -99,14 +99,14 @@ pub(crate) fn screen_pos(
 ///
 /// Used to offset the terminal cursor column past line numbers and other gutter
 /// providers.
-pub(crate) fn gutter_width(gutter_columns: &[Box<dyn GutterColumn>], total_lines: usize) -> u16 {
+pub fn gutter_width(gutter_columns: &[Box<dyn GutterColumn>], total_lines: usize) -> u16 {
     gutter_width_for_line(gutter_columns, total_lines.saturating_sub(1))
 }
 
 /// Which wrapped display sub-row of buffer `line_idx` contains `cursor_char`.
 ///
 /// Used by `scroll::ensure_cursor_visible` to keep the selection head visible.
-pub(crate) fn sub_row(
+pub fn sub_row(
     rope: &ropey::Rope,
     line_idx: usize,
     cursor_char: usize,
@@ -136,7 +136,7 @@ pub(crate) fn sub_row(
 /// Returns `(sub_row, col)` where `sub_row` is the 0-based display row index
 /// within the line, and `col` is the display column within that row (the
 /// grapheme's `col` field from the engine format output).
-pub(crate) fn format_row_col(
+pub fn format_row_col(
     rope: &ropey::Rope,
     line_idx: usize,
     cursor_char: usize,
@@ -223,7 +223,7 @@ pub(crate) fn format_row_col(
 /// - below the last buffer line, or
 /// - the buffer is empty.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn screen_to_char_offset(
+pub fn screen_to_char_offset(
     screen_x: u16,
     screen_y: u16,
     gutter_w: u16,

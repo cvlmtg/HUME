@@ -78,7 +78,7 @@ fn pane_selections_synced_after_exit_insert() {
 /// primary info, so the engine always treated the earliest selection as primary.
 #[test]
 fn pane_selections_primary_is_first_even_when_not_earliest() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[a]>b\n");
 
@@ -123,7 +123,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
 /// head  order:   [A(3), B(8)]  → heads [3, 8]  — sorted     → OK
 #[test]
 fn pane_selections_sorted_by_head_not_start() {
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     // Text needs at least 11 chars. The -[h]> marker satisfies editor_from's
     // requirement; we replace the selection set immediately after.

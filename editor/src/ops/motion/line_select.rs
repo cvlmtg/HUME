@@ -1,7 +1,7 @@
 use super::MotionMode;
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::line_end_exclusive;
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::line_end_exclusive;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 

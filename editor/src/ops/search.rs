@@ -13,7 +13,7 @@
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
-use crate::core::text::Text;
+use editing::text::Text;
 use crate::editor::SearchDirection;
 
 // ── compile_search_regex ──────────────────────────────────────────────────────
@@ -288,7 +288,7 @@ fn search_last_in(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::text::Text;
+    use editing::text::Text;
 
     fn re(pattern: &str) -> Regex {
         Regex::new(pattern).expect("test regex should be valid")

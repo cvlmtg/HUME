@@ -8,7 +8,7 @@ use std::ops::Range;
 /// Internally, all buffer content is normalized to LF — `\r` is never present
 /// in the rope after loading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LineEnding {
+pub enum LineEnding {
     /// Unix / macOS (default)
     Lf,
     /// Windows / DOS
@@ -62,7 +62,7 @@ fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
 /// when needed, though the primary undo mechanism is changeset inversion
 /// (see `ChangeSet::invert`), not buffer snapshots.
 #[derive(Debug, Clone)]
-pub(crate) struct Text {
+pub struct Text {
     rope: Rope,
     /// Original line-ending style. The rope is always LF-normalized internally;
     /// this field records what to write back on save.
@@ -80,7 +80,7 @@ impl Text {
     ///
     /// `line_ending` must be propagated from the source buffer so that CRLF
     /// metadata is preserved across edits and correctly written back on save.
-    pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
+    pub fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
         debug_assert!(
@@ -96,12 +96,12 @@ impl Text {
     /// Ropey's `Rope::clone` is O(log n) (reference-counted tree nodes), so
     /// calling `.rope().clone()` is cheap and is the preferred way to get a
     /// mutable copy for operations that take `&Text` instead of consuming it.
-    pub(crate) fn rope(&self) -> &Rope {
+    pub fn rope(&self) -> &Rope {
         &self.rope
     }
 
     /// Create an empty buffer (contains only the structural trailing newline).
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             rope: Rope::from_str("\n"),
             line_ending: LineEnding::Lf,
@@ -112,14 +112,14 @@ impl Text {
     ///
     /// The rope is always stored with LF (`\n`) only; this records what
     /// to write back on save.
-    pub(crate) fn line_ending(&self) -> LineEnding {
+    pub fn line_ending(&self) -> LineEnding {
         self.line_ending
     }
 
     /// Total number of Unicode scalar values (chars) in the buffer.
     ///
     /// This is the unit used for all positions and ranges in HUME.
-    pub(crate) fn len_chars(&self) -> usize {
+    pub fn len_chars(&self) -> usize {
         self.rope.len_chars()
     }
 
@@ -128,14 +128,14 @@ impl Text {
     ///
     /// Edit operations that must not consume the trailing `\n` cap their
     /// `end_inclusive` at this value.
-    pub(crate) fn last_content_char(&self) -> usize {
+    pub fn last_content_char(&self) -> usize {
         self.len_chars().saturating_sub(2)
     }
 
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
     #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         debug_assert!(
             self.rope.len_chars() > 0,
             "Text invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
@@ -149,7 +149,7 @@ impl Text {
     ///
     /// For example: `"hello\nworld"` has 2 lines; `"hello\n"` has 2 lines
     /// (the second is empty).
-    pub(crate) fn len_lines(&self) -> usize {
+    pub fn len_lines(&self) -> usize {
         self.rope.len_lines()
     }
 
@@ -157,7 +157,7 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `line_idx >= self.len_lines()`.
-    pub(crate) fn line_to_char(&self, line_idx: usize) -> usize {
+    pub fn line_to_char(&self, line_idx: usize) -> usize {
         self.rope.line_to_char(line_idx)
     }
 
@@ -165,7 +165,7 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `char_idx > self.len_chars()`.
-    pub(crate) fn char_to_line(&self, char_idx: usize) -> usize {
+    pub fn char_to_line(&self, char_idx: usize) -> usize {
         self.rope.char_to_line(char_idx)
     }
 
@@ -176,17 +176,17 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or either bound is out of range.
-    pub(crate) fn slice(&self, range: Range<usize>) -> ropey::RopeSlice<'_> {
+    pub fn slice(&self, range: Range<usize>) -> ropey::RopeSlice<'_> {
         self.rope.slice(range)
     }
 
     /// A slice spanning the entire buffer.
-    pub(crate) fn full_slice(&self) -> ropey::RopeSlice<'_> {
+    pub fn full_slice(&self) -> ropey::RopeSlice<'_> {
         self.rope.slice(..)
     }
 
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
-    pub(crate) fn char_at(&self, char_idx: usize) -> Option<char> {
+    pub fn char_at(&self, char_idx: usize) -> Option<char> {
         if char_idx >= self.len_chars() {
             return None;
         }
@@ -198,7 +198,7 @@ impl Text {
     /// Used to convert regex match byte offsets (from `regex-cursor`) back to
     /// HUME's native char-offset coordinate system. The byte offset must lie on
     /// a UTF-8 codepoint boundary; behaviour is unspecified otherwise.
-    pub(crate) fn byte_to_char(&self, byte_idx: usize) -> usize {
+    pub fn byte_to_char(&self, byte_idx: usize) -> usize {
         self.rope.byte_to_char(byte_idx)
     }
 
@@ -206,12 +206,12 @@ impl Text {
     ///
     /// Used to translate HUME's char-indexed cursor positions into the byte
     /// offsets that `regex-cursor` operates on.
-    pub(crate) fn char_to_byte(&self, char_idx: usize) -> usize {
+    pub fn char_to_byte(&self, char_idx: usize) -> usize {
         self.rope.char_to_byte(char_idx)
     }
 
     /// Total byte length of the buffer content.
-    pub(crate) fn len_bytes(&self) -> usize {
+    pub fn len_bytes(&self) -> usize {
         self.rope.len_bytes()
     }
 
@@ -220,7 +220,7 @@ impl Text {
     /// Walks rope chunks directly into a pre-sized `Vec` to avoid the
     /// intermediate `String` allocation that `to_string().into_bytes()` would
     /// produce (peak 2× buffer size vs 1×).
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.rope.len_bytes());
         for chunk in self.rope.chunks() {
             out.extend_from_slice(chunk.as_bytes());
@@ -237,7 +237,7 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `at > self.len_chars()`.
-    pub(crate) fn insert(&self, at: usize, text: &str) -> Self {
+    pub fn insert(&self, at: usize, text: &str) -> Self {
         // Clone is O(log n) due to ropey's structural sharing.
         let mut rope = self.rope.clone();
         rope.insert(at, text);
@@ -259,7 +259,7 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or `range.end > self.len_chars()`.
-    pub(crate) fn remove(&self, range: Range<usize>) -> Self {
+    pub fn remove(&self, range: Range<usize>) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(range);
         Self {

@@ -7,7 +7,7 @@ use std::fmt;
 /// integrity errors) — `CommandError` represents a user-level failure such as
 /// "no match", "unsaved changes", or an I/O error during file write.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CommandError(pub String);
+pub struct CommandError(pub String);
 
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -17,10 +17,10 @@ impl fmt::Display for CommandError {
 
 impl std::error::Error for CommandError {}
 
-/// Errors returned by [`crate::core::changeset::ChangeSet::apply`] when the
+/// Errors returned by [`crate::changeset::ChangeSet::apply`] when the
 /// changeset cannot be applied to the given buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ApplyError {
+pub enum ApplyError {
     /// The buffer's length doesn't match the changeset's `len_before`.
     ///
     /// Every changeset is built for a specific document length. Applying it
@@ -54,10 +54,10 @@ impl fmt::Display for ApplyError {
     }
 }
 
-/// Errors returned by [`crate::core::transaction::Transaction::apply`], covering
+/// Errors returned by [`crate::transaction::Transaction::apply`], covering
 /// both changeset application and selection validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TransactionError {
+pub enum TransactionError {
     Apply(ApplyError),
     Validation(ValidationError),
 }
@@ -100,12 +100,12 @@ impl From<ValidationError> for TransactionError {
 /// Errors that arise when validating plugin-constructed state before it
 /// touches the buffer.
 ///
-/// These are returned from [`crate::core::selection::SelectionSet::validate`] and
-/// propagated through [`crate::core::transaction::Transaction::apply`] so that a
+/// These are returned from [`crate::selection::SelectionSet::validate`] and
+/// propagated through [`crate::transaction::Transaction::apply`] so that a
 /// plugin layer can surface a meaningful message instead of silently
 /// corrupting the editor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValidationError {
+pub enum ValidationError {
     /// A selection's `head` or `anchor` is >= `buf_len`.
     ///
     /// Cursor positions are zero-indexed and must be strictly less than

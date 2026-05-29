@@ -1,5 +1,5 @@
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::text::Text;
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::text::Text;
 
 // ── Character motions (inner) ─────────────────────────────────────────────────
 

@@ -605,6 +605,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "editing"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "engine",
+ "pretty_assertions",
+ "proptest",
+ "regex-cursor",
+ "ropey",
+ "slotmap",
+ "tempfile",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -974,6 +989,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "crossterm",
+ "editing",
  "engine",
  "globset",
  "insta",

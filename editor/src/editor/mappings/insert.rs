@@ -148,7 +148,7 @@ impl Editor {
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = crate::core::grapheme::prev_grapheme_boundary(buf, sel.head);
+            let prev = editing::grapheme::prev_grapheme_boundary(buf, sel.head);
             match (buf.char_at(prev), buf.char_at(sel.head)) {
                 (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,

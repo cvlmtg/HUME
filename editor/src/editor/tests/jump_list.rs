@@ -171,9 +171,9 @@ fn search_next_records_jump() {
 fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = "the editor and the editor\nother line\n";
-    let buf = crate::core::text::Text::from(text);
-    let sels = crate::core::selection::SelectionSet::single(
-        crate::core::selection::Selection::collapsed(0),
+    let buf = editing::text::Text::from(text);
+    let sels = editing::selection::SelectionSet::single(
+        editing::selection::Selection::collapsed(0),
     );
     let doc = crate::editor::buffer::Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);

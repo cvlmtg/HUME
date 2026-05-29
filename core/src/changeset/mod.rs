@@ -1,5 +1,5 @@
-use crate::core::error::ApplyError;
-use crate::core::text::Text;
+use crate::error::ApplyError;
+use crate::text::Text;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ use crate::core::text::Text;
 /// - `Delete` consumes from the old document only (chars vanish)
 /// - `Insert` produces into the new document only (chars appear)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Operation {
+pub enum Operation {
     /// Skip `n` chars unchanged. Advances both old and new cursors by `n`.
     Retain(usize),
     /// Remove `n` chars from the old document. Advances old cursor by `n`,
@@ -44,7 +44,7 @@ pub(crate) enum Operation {
 /// from the builder, and undo/redo restores selections from the stored inverse
 /// transaction — neither path calls `map_pos`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Assoc {
+pub enum Assoc {
     /// Stay before inserted text ("sticky left").
     /// Use this for anchors and positions that should remain pinned to the
     /// character that was at this offset before the edit.
@@ -71,7 +71,7 @@ pub(crate) enum Assoc {
 /// ops are omitted. This makes equality comparison meaningful and keeps
 /// `compose` simple.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChangeSet {
+pub struct ChangeSet {
     ops: Vec<Operation>,
     len_before: usize,
     len_after: usize,
@@ -160,12 +160,12 @@ impl ChangeSet {
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
     #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
     }
 
     /// The ordered list of operations in this changeset.
-    pub(crate) fn ops(&self) -> &[Operation] {
+    pub fn ops(&self) -> &[Operation] {
         &self.ops
     }
 
@@ -190,7 +190,7 @@ impl ChangeSet {
     ///   with `\n` (the changeset deleted the structural trailing newline).
     ///
     /// On error the original `buf` is untouched — the caller still owns it.
-    pub(crate) fn apply(&self, buf: &Text) -> Result<Text, ApplyError> {
+    pub fn apply(&self, buf: &Text) -> Result<Text, ApplyError> {
         if buf.len_chars() != self.len_before {
             return Err(ApplyError::LengthMismatch {
                 buf_len: buf.len_chars(),
@@ -255,7 +255,7 @@ impl ChangeSet {
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
     #[allow(dead_code)]
-    pub(crate) fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
+    pub fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
         debug_assert!(
             pos <= self.len_before,
             "map_pos: pos {pos} exceeds len_before {}",
@@ -320,7 +320,7 @@ impl ChangeSet {
     ///
     /// `rope_pre` must be the buffer text *before* the edit (the same snapshot
     /// passed to `translate_in_place`).
-    pub(crate) fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
+    pub fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
         let line_start = rope_pre.line_to_char(line);
         let line_end = if line + 1 < rope_pre.len_lines() {
             rope_pre.line_to_char(line + 1)
@@ -370,7 +370,7 @@ impl ChangeSet {
     /// # Panics
     /// Panics if `buf.len_chars() != self.len_before`.
     #[must_use]
-    pub(crate) fn invert(&self, buf: &Text) -> ChangeSet {
+    pub fn invert(&self, buf: &Text) -> ChangeSet {
         assert_eq!(
             buf.len_chars(),
             self.len_before,
@@ -430,7 +430,7 @@ impl ChangeSet {
     /// # Panics
     /// Panics if `self.len_after != other.len_before`.
     #[must_use]
-    pub(crate) fn compose(self, other: ChangeSet) -> ChangeSet {
+    pub fn compose(self, other: ChangeSet) -> ChangeSet {
         assert_eq!(
             self.len_after, other.len_before,
             "compose: self.len_after ({}) != other.len_before ({})",
@@ -555,8 +555,8 @@ impl ChangeSet {
     }
 }
 
-pub(crate) mod builder;
-pub(crate) use builder::ChangeSetBuilder;
+pub mod builder;
+pub use builder::ChangeSetBuilder;
 
 #[cfg(test)]
 mod tests;

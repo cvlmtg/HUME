@@ -1,6 +1,6 @@
 use super::super::{ops, Severity};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Message log ──────────────────────────────────────────────────────────────
 

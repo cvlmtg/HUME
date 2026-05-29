@@ -1,10 +1,12 @@
 mod single;
+#[cfg(test)]
+pub mod testing;
 
-pub(crate) use single::Selection;
+pub use single::Selection;
 
-use crate::core::changeset::{Assoc, ChangeSet};
-use crate::core::error::ValidationError;
-use crate::core::text::Text;
+use crate::changeset::{Assoc, ChangeSet};
+use crate::error::ValidationError;
+use crate::text::Text;
 
 /// The complete selection state for one buffer.
 ///
@@ -17,7 +19,7 @@ use crate::core::text::Text;
 /// Invariants 2 and 3 are enforced by [`SelectionSet::merge_overlapping`],
 /// which must be called after any operation that might violate them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SelectionSet {
+pub struct SelectionSet {
     /// The sorted, non-overlapping selections.
     ///
     /// `Vec` is the right choice here: in practice editors have at most dozens
@@ -48,7 +50,7 @@ impl Default for SelectionSet {
 
 impl SelectionSet {
     /// Create a set with a single selection. This is the normal starting state.
-    pub(crate) fn single(sel: Selection) -> Self {
+    pub fn single(sel: Selection) -> Self {
         Self {
             selections: vec![sel],
             primary: 0,
@@ -56,7 +58,7 @@ impl SelectionSet {
     }
 
     /// The primary (focused) selection.
-    pub(crate) fn primary(&self) -> Selection {
+    pub fn primary(&self) -> Selection {
         self.selections[self.primary]
     }
 
@@ -64,17 +66,17 @@ impl SelectionSet {
     ///
     /// Useful when rebuilding a `SelectionSet` after transforming all selections
     /// and you need to preserve which one is primary.
-    pub(crate) fn primary_index(&self) -> usize {
+    pub fn primary_index(&self) -> usize {
         self.primary
     }
 
     /// Number of selections.
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.selections.len()
     }
 
     /// Iterate over all selections in ascending `start()` order.
-    pub(crate) fn iter_sorted(&self) -> impl Iterator<Item = &Selection> {
+    pub fn iter_sorted(&self) -> impl Iterator<Item = &Selection> {
         self.selections.iter()
     }
 
@@ -82,7 +84,7 @@ impl SelectionSet {
     ///
     /// The engine layer (`EngineView::panes`) requires selections sorted by `head`,
     /// which differs from `start()` when anchor > head (reverse selections).
-    pub(crate) fn iter_head_sorted(&self) -> impl Iterator<Item = &Selection> {
+    pub fn iter_head_sorted(&self) -> impl Iterator<Item = &Selection> {
         let mut v: Vec<&Selection> = self.selections.iter().collect();
         v.sort_by_key(|s| s.head);
         v.into_iter()
@@ -102,7 +104,7 @@ impl SelectionSet {
     /// `Vec` with this closure (e.g. per-selection sticky columns) may rely on
     /// this guarantee.
     #[must_use]
-    pub(crate) fn map<F>(self, mut f: F) -> Self
+    pub fn map<F>(self, mut f: F) -> Self
     where
         F: FnMut(Selection) -> Selection,
     {
@@ -122,7 +124,7 @@ impl SelectionSet {
     ///
     /// Prefer plain [`map`](Self::map) only when you can prove `f` is
     /// order-preserving and overlap-free — it avoids the O(n log n) sort.
-    pub(crate) fn map_and_merge<F>(self, f: F) -> Self
+    pub fn map_and_merge<F>(self, f: F) -> Self
     where
         F: FnMut(Selection) -> Selection,
     {
@@ -131,7 +133,7 @@ impl SelectionSet {
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
     /// set. Panics if `idx >= len()`.
-    pub(crate) fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
+    pub fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
         self.selections[idx] = new_sel;
         self
     }
@@ -148,7 +150,7 @@ impl SelectionSet {
     /// The primary index is updated to point at the merged selection that
     /// contained the original primary.
     #[must_use]
-    pub(crate) fn merge_overlapping(mut self) -> Self {
+    pub fn merge_overlapping(mut self) -> Self {
         if self.selections.len() <= 1 {
             return self;
         }
@@ -235,7 +237,7 @@ impl SelectionSet {
     ///
     /// # Panics
     /// Panics if `selections` is empty or `primary >= selections.len()`.
-    pub(crate) fn from_vec(selections: Vec<Selection>, primary: usize) -> Self {
+    pub fn from_vec(selections: Vec<Selection>, primary: usize) -> Self {
         assert!(!selections.is_empty(), "SelectionSet must not be empty");
         assert!(primary < selections.len(), "primary index out of bounds");
         Self {
@@ -249,7 +251,7 @@ impl SelectionSet {
     /// Return a new set containing only the primary selection.
     ///
     /// All other selections are dropped. The primary index resets to 0.
-    pub(crate) fn keep_primary(self) -> Self {
+    pub fn keep_primary(self) -> Self {
         let primary = self.selections[self.primary];
         Self {
             selections: vec![primary],
@@ -263,7 +265,7 @@ impl SelectionSet {
     /// in document order, wrapping around to the first if the removed
     /// selection was the last. If `len() == 1`, returns `self` unchanged — you cannot
     /// remove the only selection. Panics if `idx >= len()`.
-    pub(crate) fn remove(mut self, idx: usize) -> Self {
+    pub fn remove(mut self, idx: usize) -> Self {
         if self.selections.len() <= 1 {
             return self; // can't remove the only selection — no-op
         }
@@ -284,7 +286,7 @@ impl SelectionSet {
     ///
     /// `delta = 1` moves to the next selection (forward), `-1` moves to the
     /// previous (backward). Works correctly for `|delta| >= len()` too.
-    pub(crate) fn cycle_primary(mut self, delta: isize) -> Self {
+    pub fn cycle_primary(mut self, delta: isize) -> Self {
         let len = self.selections.len() as isize;
         // `rem_euclid` gives a non-negative result even for negative `delta`,
         // so we never underflow into a huge `usize` value.
@@ -302,7 +304,7 @@ impl SelectionSet {
     /// Call this at every chokepoint where a `(Text, SelectionSet)` pair is
     /// produced: edit operations, motions, and `Transaction::apply`.
     #[inline]
-    pub(crate) fn debug_assert_valid(&self, buf: &Text) {
+    pub fn debug_assert_valid(&self, buf: &Text) {
         let buf_len = buf.len_chars();
         debug_assert!(
             buf_len > 0,
@@ -333,9 +335,9 @@ impl SelectionSet {
     ///
     /// Unlike [`debug_assert_valid`][Self::debug_assert_valid], this check
     /// runs in all builds — including release. Call it at the trust boundary
-    /// where plugin-constructed [`Transaction`][crate::core::transaction::Transaction]s
+    /// where plugin-constructed [`Transaction`][crate::transaction::Transaction]s
     /// enter the system.
-    pub(crate) fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
+    pub fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
         if buf_len == 0 {
             return Err(ValidationError::EmptyBuffer);
         }
@@ -367,7 +369,7 @@ impl SelectionSet {
     /// Merged selections get `horiz: None` regardless of their pre-merge values
     /// because the merged `head` is semantically a new position — the column it
     /// corresponds to was never latched by a vertical motion.
-    pub(crate) fn merge_overlapping_in_place(&mut self) {
+    pub fn merge_overlapping_in_place(&mut self) {
         if self.selections.len() <= 1 {
             return;
         }
@@ -428,7 +430,7 @@ impl SelectionSet {
     ///
     /// `rope_pre` must be the buffer text **before** the edit — the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
-    pub(crate) fn translate_in_place(&mut self, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+    pub fn translate_in_place(&mut self, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         for sel in &mut self.selections {
             let pre_line = rope_pre.char_to_line(sel.head);
             sel.anchor = cs.map_pos(sel.anchor, Assoc::After);
@@ -827,7 +829,7 @@ mod tests {
         let set = SelectionSet::single(Selection::collapsed(0));
         assert!(matches!(
             set.validate(0),
-            Err(crate::core::error::ValidationError::EmptyBuffer)
+            Err(crate::error::ValidationError::EmptyBuffer)
         ));
     }
 
@@ -837,7 +839,7 @@ mod tests {
         let set = SelectionSet::single(Selection::collapsed(5));
         assert!(matches!(
             set.validate(3),
-            Err(crate::core::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
+            Err(crate::error::ValidationError::SelectionOutOfBounds { field: "head", .. })
         ));
     }
 
@@ -847,7 +849,7 @@ mod tests {
         let set = SelectionSet::single(Selection::new(10, 1));
         assert!(matches!(
             set.validate(5),
-            Err(crate::core::error::ValidationError::SelectionOutOfBounds {
+            Err(crate::error::ValidationError::SelectionOutOfBounds {
                 field: "anchor",
                 ..
             })

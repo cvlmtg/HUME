@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::core::grapheme::next_grapheme_boundary;
-use crate::core::search_state::SearchPattern;
-use crate::core::selection::{Selection, SelectionSet};
-use crate::helpers::is_word_boundary;
+use editing::grapheme::next_grapheme_boundary;
+use editing::search_state::SearchPattern;
+use editing::selection::{Selection, SelectionSet};
+use editing::helpers::is_word_boundary;
 use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{
@@ -13,7 +13,7 @@ use crate::ops::text_object::inner_word_impl;
 
 use super::super::{MiniBuffer, Mode, SearchDirection};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Search ────────────────────────────────────────────────────────────────────
 

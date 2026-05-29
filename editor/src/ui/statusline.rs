@@ -10,8 +10,8 @@ use unicode_width::UnicodeWidthStr;
 use engine::render::fill_rect_bg;
 use engine::types::EditorMode;
 
-use crate::core::grapheme::grapheme_col_in_line;
-use crate::core::text::LineEnding as TextLineEnding;
+use editing::grapheme::grapheme_col_in_line;
+use editing::text::LineEnding as TextLineEnding;
 use crate::editor::Editor;
 use platform::path::shorten_home;
 use crate::ui::theme::EditorColors;
@@ -542,7 +542,7 @@ mod tests {
     // ── MacroRecording element ────────────────────────────────────────────────
 
     fn test_editor() -> crate::editor::Editor {
-        use crate::core::{
+        use editing::{
             selection::{Selection, SelectionSet},
             text::Text,
         };
@@ -588,7 +588,7 @@ mod tests {
     // ── LineEnding element ────────────────────────────────────────────────────
 
     fn test_editor_with_text(s: &str) -> crate::editor::Editor {
-        use crate::core::{
+        use editing::{
             selection::{Selection, SelectionSet},
             text::Text,
         };
@@ -665,7 +665,7 @@ mod tests {
     fn readonly_element_renders_ro_label() {
         use crate::editor::buffer::Buffer;
         let buf = Buffer::read_only_view(
-            crate::core::text::Text::from("hello\n"),
+            editing::text::Text::from("hello\n"),
             "[test]".to_string(),
         );
         let ed = crate::editor::Editor::for_testing(buf);

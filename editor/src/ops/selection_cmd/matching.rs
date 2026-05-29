@@ -1,9 +1,9 @@
 use regex_cursor::engines::meta::Regex;
 
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::{CharClass, classify_char, line_content_end};
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::{CharClass, classify_char, line_content_end};
 use crate::ops::search::find_matches_in_range;
 use crate::ops::MotionMode;
 

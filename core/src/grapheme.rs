@@ -1,6 +1,6 @@
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
-use crate::core::text::Text;
+use crate::text::Text;
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`, or `buf.len_chars()` when already at (or past) the end.
@@ -19,7 +19,7 @@ use crate::core::text::Text;
 /// O(n) in space and time. `GraphemeCursor` supports a chunk-at-a-time API
 /// (`next_boundary` / `provide_context`) that lets us stay O(log n) and
 /// allocation-free.
-pub(crate) fn next_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
+pub fn next_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
     let len_chars = buf.len_chars();
     if char_offset >= len_chars {
         return len_chars;
@@ -72,7 +72,7 @@ pub(crate) fn next_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
 /// `char_offset`.
 ///
 /// Returns `0` when `char_offset` is already at the start of the buffer.
-pub(crate) fn prev_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
+pub fn prev_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
     if char_offset == 0 {
         return 0;
     }
@@ -131,7 +131,7 @@ pub(crate) fn prev_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
-pub(crate) fn grapheme_count(buf: &Text, from_char: usize, to_char: usize) -> usize {
+pub fn grapheme_count(buf: &Text, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {
         return 0;
@@ -181,7 +181,7 @@ pub(crate) fn grapheme_count(buf: &Text, from_char: usize, to_char: usize) -> us
 /// This is a logical position (grapheme index), not a display column: wide
 /// characters count as one, not two. The value matches how many times the
 /// user pressed → to reach the cursor from the start of the line.
-pub(crate) fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usize {
+pub fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usize {
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }
 

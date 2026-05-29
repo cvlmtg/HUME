@@ -18,7 +18,7 @@ use slotmap::SecondaryMap;
 
 use engine::pipeline::{BufferId, PaneId};
 
-use crate::core::search_state::{SearchCursor, SearchMatches};
+use editing::search_state::{SearchCursor, SearchMatches};
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use crate::ops::search::{find_all_matches, search_match_info};

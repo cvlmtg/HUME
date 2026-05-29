@@ -1,5 +1,5 @@
-use crate::core::grapheme::next_grapheme_boundary;
-use crate::core::selection::Selection;
+use editing::grapheme::next_grapheme_boundary;
+use editing::selection::Selection;
 use crate::ops::MotionMode;
 use crate::ops::edit::insert_char;
 use crate::ops::motion::{
@@ -11,7 +11,7 @@ use crate::ops::selection_cmd::cmd_collapse_selection;
 use engine::types::EditorMode;
 use super::super::{doc_ops, MiniBuffer, Mode};
 use super::super::Editor;
-use crate::core::error::CommandError;
+use editing::error::CommandError;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 

@@ -98,7 +98,10 @@ mod tests {
     fn no_self_mut_method_calls_in_editor_module() {
         let manifest = std::env::var("CARGO_MANIFEST_DIR")
             .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
-        let root = std::path::Path::new(&manifest);
+        // lints.rs lives in the core crate; the scanned files are in the editor crate
+        // one level up in the workspace.
+        let core_root = std::path::Path::new(&manifest);
+        let root = core_root.parent().expect("workspace root").join("editor");
 
         let mut violations: Vec<String> = Vec::new();
 
@@ -210,11 +213,14 @@ mod tests {
 
         // Collect all non-test source files under src/ops/ plus two standalone files.
         // Using directory traversal so future submodule splits are covered automatically.
-        let root = std::path::Path::new(&manifest);
+        // lints.rs lives in the core crate; ops/ and auto_pairs.rs are in editor/.
+        let core_root = std::path::Path::new(&manifest);
+        let root = core_root.parent().expect("workspace root").join("editor");
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
         collect_source_rs(&root.join("src/ops"), &mut paths);
         paths.push(root.join("src/auto_pairs.rs"));
-        paths.push(root.join("src/helpers.rs"));
+        // helpers.rs moved to core; scan it from the core root instead
+        paths.push(core_root.join("src/helpers.rs"));
 
         // Forbidden patterns — raw +1/-1 steps on char-position variables.
         // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)
@@ -248,7 +254,7 @@ mod tests {
 
         for path in &paths {
             let file = path
-                .strip_prefix(root)
+                .strip_prefix(&root)
                 .unwrap_or(path)
                 .display()
                 .to_string();

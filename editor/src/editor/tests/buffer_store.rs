@@ -3,8 +3,8 @@ use pretty_assertions::assert_eq;
 
 // ── Phase 6 — BufferStore + buffer choke-points ───────────────────────────────
 
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::doc_ops;
 
 /// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
@@ -75,7 +75,7 @@ fn p6_replace_buffer_in_place_reseeds() {
     let focused = ed.focused_pane_id;
     doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, bid, |b, _sels| {
         let head = b.len_chars().saturating_sub(2);
-        SelectionSet::single(crate::core::selection::Selection::collapsed(head))
+        SelectionSet::single(editing::selection::Selection::collapsed(head))
     });
     let replacement = Buffer::new(Text::from("new content\n"), SelectionSet::default());
     ed.replace_buffer_in_place(bid, replacement);
@@ -159,7 +159,7 @@ fn p6_bd_force_closes_dirty_buffer() {
 /// or panics when the feature isn't yet wired.
 #[test]
 fn colon_split_vsplit_are_stubs() {
-    use crate::core::error::CommandError;
+    use editing::error::CommandError;
     for cmd in ["split", "vsplit", "sp", "vsp"] {
         let mut ed = editor_from("-[h]>ello\n");
         let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();

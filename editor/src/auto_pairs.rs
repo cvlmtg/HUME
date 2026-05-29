@@ -1,8 +1,8 @@
-use crate::core::changeset::ChangeSet;
-use crate::core::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use crate::core::selection::{Selection, SelectionSet};
-use crate::core::text::Text;
-use crate::helpers::{CharClass, classify_char};
+use editing::changeset::ChangeSet;
+use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
+use editing::helpers::{CharClass, classify_char};
 use crate::ops::edit::apply_edit;
 
 // ── Config ────────────────────────────────────────────────────────────────────

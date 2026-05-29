@@ -3,8 +3,8 @@ use crossterm::event::KeyEvent;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
-use crate::core::error::CommandError;
-use crate::core::minibuf_history::{HistoryDir, HistoryKind};
+use editing::error::CommandError;
+use editing::minibuf_history::{HistoryDir, HistoryKind};
 
 impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────

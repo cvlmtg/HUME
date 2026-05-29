@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 /// An explicit enum (rather than a raw `char`) keeps the variant set closed,
 /// exhaustively matched, and serializable to a stable key in a future env file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum HistoryKind {
+pub enum HistoryKind {
     /// `:` command-mode prompt.
     Command,
     /// `/` forward-search prompt.
@@ -27,7 +27,7 @@ pub(crate) enum HistoryKind {
 
 /// Direction for [`crate::editor::Editor::recall_history`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HistoryDir {
+pub enum HistoryDir {
     Prev,
     Next,
 }
@@ -40,7 +40,7 @@ pub(crate) enum HistoryDir {
 /// Navigation state (`cursor`, `scratch`) is reset at the start of each
 /// minibuffer session and has no meaning between sessions.
 #[derive(Debug)]
-pub(crate) struct History {
+pub struct History {
     entries: VecDeque<String>,
     capacity: usize,
     /// `None` = not currently navigating (at "scratch" / no Up pressed yet).
@@ -52,7 +52,7 @@ pub(crate) struct History {
 }
 
 impl History {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             entries: VecDeque::new(),
             capacity,
@@ -63,7 +63,7 @@ impl History {
 
     /// Record a submitted entry. Skips empty strings and consecutive duplicates.
     /// Always resets nav state — a confirm ends the session.
-    pub(crate) fn push(&mut self, entry: String) {
+    pub fn push(&mut self, entry: String) {
         self.begin_session();
         if entry.is_empty() {
             return;
@@ -79,7 +79,7 @@ impl History {
 
     /// Update the capacity limit. Trims oldest entries if the ring is already
     /// over the new limit. Called when `history-capacity` is changed at runtime.
-    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+    pub fn set_capacity(&mut self, new_cap: usize) {
         self.capacity = new_cap;
         while self.entries.len() > self.capacity {
             self.entries.pop_front();
@@ -88,7 +88,7 @@ impl History {
 
     /// Walk one step older. On the first call this session, stashes `current`
     /// as scratch. Returns `Some(text)` to install, `None` if no older entry exists.
-    pub(crate) fn prev(&mut self, current: &str) -> Option<String> {
+    pub fn prev(&mut self, current: &str) -> Option<String> {
         if self.entries.is_empty() {
             return None;
         }
@@ -110,7 +110,7 @@ impl History {
 
     /// Walk one step newer. Past newest: restores scratch and exits navigation.
     /// Returns `None` if not currently navigating.
-    pub(crate) fn next(&mut self) -> Option<String> {
+    pub fn next(&mut self) -> Option<String> {
         let i = self.cursor?;
         if i + 1 < self.entries.len() {
             let idx = i + 1;
@@ -126,13 +126,13 @@ impl History {
 
     /// Demote: the user edited a recalled entry. Clears the cursor so the next
     /// `prev` re-stashes the current (now-edited) text as fresh scratch.
-    pub(crate) fn demote_to_scratch(&mut self) {
+    pub fn demote_to_scratch(&mut self) {
         self.cursor = None;
         self.scratch = None;
     }
 
     /// Reset per-session nav state. Called when the minibuffer opens or closes.
-    pub(crate) fn begin_session(&mut self) {
+    pub fn begin_session(&mut self) {
         self.cursor = None;
         self.scratch = None;
     }
@@ -140,12 +140,12 @@ impl History {
     // ── Persistence hooks (unused in v1) ──────────────────────────────────────
 
     #[allow(dead_code)]
-    pub(crate) fn entries(&self) -> &VecDeque<String> {
+    pub fn entries(&self) -> &VecDeque<String> {
         &self.entries
     }
 
     #[allow(dead_code)]
-    pub(crate) fn restore(entries: Vec<String>, capacity: usize) -> Self {
+    pub fn restore(entries: Vec<String>, capacity: usize) -> Self {
         let mut ring = Self::new(capacity);
         for e in entries {
             ring.entries.push_back(e);
@@ -164,14 +164,14 @@ impl History {
 /// Container for all minibuffer history rings. A single instance lives on
 /// `Editor`; rings are accessed by [`HistoryKind`].
 #[derive(Debug)]
-pub(crate) struct HistoryStore {
+pub struct HistoryStore {
     command: History,
     search_f: History,
     search_b: History,
 }
 
 impl HistoryStore {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             command: History::new(capacity),
             search_f: History::new(capacity),
@@ -180,7 +180,7 @@ impl HistoryStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn get(&self, kind: HistoryKind) -> &History {
+    pub fn get(&self, kind: HistoryKind) -> &History {
         match kind {
             HistoryKind::Command => &self.command,
             HistoryKind::SearchForward => &self.search_f,
@@ -188,7 +188,7 @@ impl HistoryStore {
         }
     }
 
-    pub(crate) fn get_mut(&mut self, kind: HistoryKind) -> &mut History {
+    pub fn get_mut(&mut self, kind: HistoryKind) -> &mut History {
         match kind {
             HistoryKind::Command => &mut self.command,
             HistoryKind::SearchForward => &mut self.search_f,
@@ -198,7 +198,7 @@ impl HistoryStore {
 
     /// Map a minibuffer prompt character to its history kind.
     /// Returns `None` for prompts that have no associated history (e.g. `⫽`).
-    pub(crate) fn kind_for_prompt(prompt: char) -> Option<HistoryKind> {
+    pub fn kind_for_prompt(prompt: char) -> Option<HistoryKind> {
         match prompt {
             ':' => Some(HistoryKind::Command),
             '/' => Some(HistoryKind::SearchForward),
@@ -209,7 +209,7 @@ impl HistoryStore {
 
     /// Reset per-session nav state on every ring. Called when any minibuffer
     /// opens or closes.
-    pub(crate) fn begin_session_all(&mut self) {
+    pub fn begin_session_all(&mut self) {
         self.command.begin_session();
         self.search_f.begin_session();
         self.search_b.begin_session();
@@ -217,7 +217,7 @@ impl HistoryStore {
 
     /// Update the capacity of every ring and trim stale entries.
     /// Called when the `history-capacity` setting changes at runtime.
-    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+    pub fn set_capacity(&mut self, new_cap: usize) {
         self.command.set_capacity(new_cap);
         self.search_f.set_capacity(new_cap);
         self.search_b.set_capacity(new_cap);
@@ -226,7 +226,7 @@ impl HistoryStore {
     // ── Persistence hooks (unused in v1) ──────────────────────────────────────
 
     #[allow(dead_code)]
-    pub(crate) fn snapshot(&self) -> Vec<(HistoryKind, Vec<String>)> {
+    pub fn snapshot(&self) -> Vec<(HistoryKind, Vec<String>)> {
         vec![
             (
                 HistoryKind::Command,
@@ -244,7 +244,7 @@ impl HistoryStore {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn restore(snapshot: Vec<(HistoryKind, Vec<String>)>, capacity: usize) -> Self {
+    pub fn restore(snapshot: Vec<(HistoryKind, Vec<String>)>, capacity: usize) -> Self {
         let mut store = Self::new(capacity);
         for (kind, entries) in snapshot {
             *store.get_mut(kind) = History::restore(entries, capacity);

@@ -869,7 +869,7 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // "ab" (emitted on its own line via the prefix '\n'). Gap "y" (between sel1
     // end and sel2 start) is retained on its own line. Sel2 replaces "z\nf",
     // retaining "oo". Both pasted "X\n" ranges are selected.
-    use crate::core::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (buf, _) = crate::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
     let sels = SelectionSet::from_vec(

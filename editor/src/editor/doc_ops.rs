@@ -12,9 +12,9 @@ use slotmap::SecondaryMap;
 
 use engine::pipeline::{BufferId, PaneId};
 
-use crate::core::changeset::ChangeSet;
-use crate::core::selection::SelectionSet;
-use crate::core::text::Text;
+use editing::changeset::ChangeSet;
+use editing::selection::SelectionSet;
+use editing::text::Text;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 

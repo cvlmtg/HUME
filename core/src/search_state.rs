@@ -11,11 +11,11 @@
 
 use std::sync::Arc;
 
-use crate::core::history::RevisionId;
+use crate::history::RevisionId;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchDirection {
+pub enum SearchDirection {
     Forward,
     Backward,
 }
@@ -28,7 +28,7 @@ pub(crate) enum SearchDirection {
 /// no deep clone, no take/put-back dance. A present `SearchPattern` is always
 /// fully-valid by construction (invalid regexes are rejected at compile time and
 /// leave `Buffer.search_pattern = None`).
-pub(crate) struct SearchPattern {
+pub struct SearchPattern {
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
     /// Raw pattern string — used as an invalidation key for `SearchMatches`.
     pub pattern_str: String,
@@ -36,7 +36,7 @@ pub(crate) struct SearchPattern {
 
 /// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.
 #[derive(Default)]
-pub(crate) struct SearchMatches {
+pub struct SearchMatches {
     /// All non-overlapping matches as `(start_char, end_char_inclusive)` pairs,
     /// sorted in document order.
     pub matches: Vec<(usize, usize)>,
@@ -52,7 +52,7 @@ pub(crate) struct SearchMatches {
 /// `SearchMatches` (on `Buffer`) holds the full list; `SearchCursor` holds this
 /// pane's position within that list plus the cache keys needed to detect staleness.
 #[derive(Default)]
-pub(crate) struct SearchCursor {
+pub struct SearchCursor {
     /// `(current_1based_idx, total)` derived from `SearchMatches` + primary head.
     /// `None` when no search is active.
     pub match_count: Option<(usize, usize)>,
@@ -72,7 +72,7 @@ pub(crate) struct SearchCursor {
 /// All other search state (regex, matches, match count) lives in the
 /// per-buffer / per-pane tier: `Buffer.search_pattern`, `Buffer.search_matches`,
 /// and `PaneBufferState.search_cursor`.
-pub(crate) struct SearchState {
+pub struct SearchState {
     /// Direction of the current or last search.
     pub direction: SearchDirection,
 }
