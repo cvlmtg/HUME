@@ -54,7 +54,7 @@ jobs:
 
       - name: Setup MSVC developer environment (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: egor-tensin/vs-shell@v2.2
 
       - name: Cache grammar fixtures
         id: fixture-cache

@@ -20,7 +20,7 @@ arboard = "3"
 ctrlc = { version = "3", features = ["termination"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs"] }
+nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

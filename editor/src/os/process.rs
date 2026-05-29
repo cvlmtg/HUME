@@ -124,16 +124,22 @@ mod tests {
     use super::*;
 
     /// Verify that Ctrl+C (SIGINT to the child's process group) kills the
-    /// child but not HUME.  Uses the shell `kill` command to avoid a libc dep.
+    /// child but not HUME.
     ///
     /// Behavioral guarantee: after `process_group(0)` the child is its own
-    /// process group leader, so `kill -INT -<child_pid>` targets only that
+    /// process group leader, so `killpg(child_pid, SIGINT)` targets only that
     /// group.  If the test process survives past the assert the guarantee holds.
+    ///
+    /// `nix::killpg` is used instead of spawning `kill -INT -<pgid>` because
+    /// BSD `kill` and util-linux `kill` disagree on negative-pgid argument
+    /// parsing — the Linux version returned exit 0 without signalling, causing
+    /// `sleep` to run to completion and the test to fail.
     #[test]
     #[cfg(unix)]
     fn sigint_to_child_group_does_not_kill_hume() {
+        use nix::sys::signal::{Signal, killpg};
+        use nix::unistd::{Pid, setpgid};
         use std::process::Command;
-        use std::time::Duration;
 
         // Spawn a long-lived child so we can signal it before it exits.
         let child = Command::new("sleep")
@@ -141,31 +147,16 @@ mod tests {
             .new_process_group()
             .spawn()
             .expect("spawn sleep");
-        let child_pid = child.id();
+        let pid = Pid::from_raw(i32::try_from(child.id()).expect("pid fits i32"));
 
         // `process_group(0)` calls setpgid(0,0) in the child's pre-exec hook,
-        // which races with the parent thread.  Poll with `kill -0 -<pgid>`
-        // (signal 0 = existence probe) until the group is established so the
-        // SIGINT below is not sent to a non-existent group.
-        for _ in 0..50 {
-            let exists = Command::new("kill")
-                .args(["-0", &format!("-{child_pid}")])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if exists {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        // which races with the parent.  Calling setpgid(child, child) from the
+        // parent is idempotent and closes the race: if the child hasn't run its
+        // hook yet we set it; if it already exec'd we get EACCES (the child set
+        // it first) — either way the group is correct.
+        let _ = setpgid(pid, pid);
 
-        // Send SIGINT to the child's process group (pgid == child_pid after
-        // process_group(0)).
-        let kill_status = Command::new("kill")
-            .args(["-INT", &format!("-{child_pid}")])
-            .status()
-            .expect("kill");
-        assert!(kill_status.success(), "kill -INT -{child_pid} failed");
+        killpg(pid, Signal::SIGINT).expect("killpg");
 
         // Wait for the child — must have been killed by the signal.
         let exit = child.wait_with_output().expect("wait").status;
