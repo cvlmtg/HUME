@@ -6,7 +6,7 @@
 use engine::format::{FormatScratch, count_visual_rows};
 use engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 
-use editing::cursor;
+use super::cursor;
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -376,7 +376,7 @@ mod tests {
         // With a WrapMode::None, the whole line is one row, sub-row 0.
         let r = rope("hello world\n");
         let mut scratch = FormatScratch::new();
-        let sub = editing::cursor::sub_row(
+        let sub = cursor::sub_row(
             &r,
             0,
             5,
@@ -394,7 +394,7 @@ mod tests {
         let r = rope("abcdefgh\n");
         let mut scratch = FormatScratch::new();
         // Cursor at char 0 → sub-row 0.
-        let sub0 = editing::cursor::sub_row(
+        let sub0 = cursor::sub_row(
             &r,
             0,
             0,
@@ -405,7 +405,7 @@ mod tests {
         );
         assert_eq!(sub0, 0);
         // Cursor at char 4 → sub-row 1.
-        let sub1 = editing::cursor::sub_row(
+        let sub1 = cursor::sub_row(
             &r,
             0,
             4,

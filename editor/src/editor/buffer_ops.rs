@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use engine::pipeline::BufferId;
 
 use crate::editor::buffer::Buffer;
-use scripting::builtins::ids::SteelBufferId;
+use scripting::SteelBufferId;
 use scripting::hooks::HookId;
 
 use super::{Editor, Severity, ops};
@@ -76,7 +76,7 @@ impl Editor {
             doc,
         );
         self.detect_and_set_language(bid);
-        let val = SteelBufferId(bid).into_steel_val();
+        let val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
         bid
     }
@@ -96,7 +96,7 @@ impl Editor {
             id,
         );
         // Fire with the ID that was closed, not the new current buffer.
-        let val = SteelBufferId(id).into_steel_val();
+        let val = SteelBufferId::new(id).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferClose, &[val]);
     }
 
@@ -189,8 +189,8 @@ impl Editor {
     }
 
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.
-    pub(crate) fn current_jump_entry(&self) -> editing::jump_list::JumpEntry {
-        use editing::jump_list::JumpEntry;
+    pub(crate) fn current_jump_entry(&self) -> super::jump_list::JumpEntry {
+        use super::jump_list::JumpEntry;
         let pid = self.focused_pane_id;
         let bid = self.focused_buffer_id();
         let sels = self.pane_state[pid][bid].selections.clone();

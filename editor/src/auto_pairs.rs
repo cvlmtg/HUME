@@ -66,7 +66,7 @@ pub(crate) fn delete_pair(buf: Text, sels: SelectionSet) -> (Text, SelectionSet,
             "delete_pair called on non-collapsed selection"
         );
 
-        let p = sel.head;
+        let p = sel.head();
         let prev = prev_grapheme_boundary(buf, p);
         let next = next_grapheme_boundary(buf, p);
 

@@ -1,4 +1,4 @@
-//! Cross-platform path utilities for minibuffer completion.
+//! Cross-platform path utilities.
 //!
 //! On Unix the only path separator is `/`.  On Windows both `/` and `\` are
 //! accepted by the OS; we recognise either when parsing user input but always

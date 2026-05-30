@@ -3,7 +3,7 @@ mod test_harness;
 
 use test_harness::MockHost;
 use scripting::*;
-use scripting::watchdog::EvalWatchdog;
+use scripting::EvalWatchdog;
 use engine::pipeline::BufferId;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
@@ -696,7 +696,7 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
 
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
-use scripting::builtins::ids::SteelBufferId;
+use scripting::SteelBufferId;
 use scripting::hooks::HookId;
 
 #[test]
@@ -710,7 +710,7 @@ fn register_hook_fires_on_buffer_open() {
     )
     .unwrap();
     let bid = BufferId::default();
-    let val = SteelBufferId(bid).into_steel_val();
+    let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
         .fire_hook(
             HookId::OnBufferOpen,
@@ -733,7 +733,7 @@ fn register_hook_fires_on_buffer_close() {
     )
     .unwrap();
     let bid = BufferId::default();
-    let val = SteelBufferId(bid).into_steel_val();
+    let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
         .fire_hook(
             HookId::OnBufferClose,
@@ -756,7 +756,7 @@ fn register_hook_fires_on_buffer_save() {
     )
     .unwrap();
     let bid = BufferId::default();
-    let val = SteelBufferId(bid).into_steel_val();
+    let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
         .fire_hook(
             HookId::OnBufferSave,
@@ -820,7 +820,7 @@ fn register_hook_multiple_handlers_all_fire() {
     )
     .unwrap();
     let bid = BufferId::default();
-    let val = SteelBufferId(bid).into_steel_val();
+    let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
         .fire_hook(
             HookId::OnBufferSave,

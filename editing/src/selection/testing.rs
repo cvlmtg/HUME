@@ -1,8 +1,7 @@
 //! Test helper: parse the DSL marker format into `(Text, SelectionSet)`.
 //!
-//! The format is identical to the one used in `editor/src/testing.rs`; this
-//! copy lives here so that `core` crate unit tests can use it without
-//! depending on the editor crate.
+//! Shared by `editing` and `editor` tests; lives here so that `editing` unit
+//! tests can use it without depending on the editor crate.
 
 use crate::selection::{Selection, SelectionSet};
 use crate::text::Text;

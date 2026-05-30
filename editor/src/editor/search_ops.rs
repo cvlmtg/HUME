@@ -18,7 +18,7 @@ use slotmap::SecondaryMap;
 
 use engine::pipeline::{BufferId, PaneId};
 
-use editing::search_state::{SearchCursor, SearchMatches};
+use super::search_state::{SearchCursor, SearchMatches};
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use crate::ops::search::{find_all_matches, search_match_info};
@@ -90,7 +90,7 @@ pub(crate) fn update_pane_cursor(
     pid: PaneId,
     bid: BufferId,
 ) {
-    let head = pane_state[pid][bid].selections.primary().head;
+    let head = pane_state[pid][bid].selections.primary().head();
     let sm = &buffers.get(bid).search_matches;
     let cur = &pane_state[pid][bid].search_cursor;
 

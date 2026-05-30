@@ -38,17 +38,17 @@
 
 // ── Public submodules ─────────────────────────────────────────────────────────
 pub mod attribution;
-pub mod builtins;
+pub(crate) mod builtins;
 pub mod hooks;
 pub mod host;
-pub mod keys;
-pub mod lazy;
+pub(crate) mod keys;
+pub(crate) mod lazy;
 pub mod log;
 // ── Private implementation details ────────────────────────────────────────────
 mod codegen;
 mod context;
 mod types;
-pub mod watchdog;
+pub(crate) mod watchdog;
 #[cfg(test)]
 mod null_host;
 #[cfg(test)]
@@ -60,9 +60,13 @@ pub use hooks::HookId;
 pub use host::{BindMode, EditorHost};
 pub use log::LogLevel;
 pub use types::{
-    HookResult, PendingLanguageReg, PendingSteelCmd, QueuedCommand, SteelCmdDef, SteelCmdResult,
+    HookResult, PendingLanguageReg, QueuedCommand, SteelCmdDef, SteelCmdResult,
 };
 pub use attribution::PluginId;
+pub use builtins::ids::SteelBufferId;
+pub use watchdog::EvalWatchdog;
+#[cfg(any(test, feature = "test-util"))]
+pub use builtins::fs::init_dirs;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use codegen::{HUME_CTX, cmd_arg_global_name};
@@ -82,9 +86,9 @@ use steel::steel_vm::engine::Engine;
 use hooks::HookRegistry;
 use attribution::PluginStack;
 use lazy::{LazyRegistry, PluginState};
+use types::PendingSteelCmd;
 
 use codegen::{build_hook_program, cmd_proc_name, hook_arg_name, hook_proc_name};
-use watchdog::EvalWatchdog;
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
 
@@ -148,8 +152,8 @@ fn run_steel<'a>(
 
 /// The embedded Steel scripting host.
 ///
-/// Owns the [`Engine`] and all persistent scripting state.  Each eval or
-/// command call constructs a [`SteelCtx`] that borrows the persistent fields
+/// Owns the Steel `Engine` and all persistent scripting state.  Each eval or
+/// command call constructs a `SteelCtx` that borrows the persistent fields
 /// directly — no `mem::take`/put-back needed.
 ///
 /// Constructed once during `Editor::init_scripting()` and held for the
@@ -327,14 +331,14 @@ impl ScriptingHost {
         self.lazy_registry.format_status()
     }
 
-    /// Override the data directory.  Used only in tests that need a predictable
-    /// plugin install location.
     /// Peek at pending messages without draining.  Only for test assertions.
     #[cfg(any(test, feature = "test-util"))]
     pub fn peek_pending_messages(&self) -> &[(LogLevel, String)] {
         &self.pending_messages
     }
 
+    /// Override the data directory.  Used only in tests that need a predictable
+    /// plugin install location.
     #[cfg(any(test, feature = "test-util"))]
     pub fn set_data_dir(&mut self, dir: std::path::PathBuf) {
         self.data_dir = Some(dir);
@@ -501,7 +505,7 @@ impl ScriptingHost {
 
     /// Evaluate a plugin body by requiring its file into the Steel engine.
     ///
-    /// The plugin must be in [`PluginState::Declared`] in `self.lazy_registry`;
+    /// The plugin must be in the `Declared` state in `self.lazy_registry`;
     /// other states short-circuit:
     /// - `Loaded` / `Failed` — no-op (idempotent; `Failed` never retries).
     /// - `Loading` — no-op (re-entrancy guard: trigger cycle A→B→A skips).
@@ -639,13 +643,21 @@ impl ScriptingHost {
     /// commands it queued via `(call! …)`, plus an optional WaitChar
     /// command name requested via `(request-wait-char! …)`.
     ///
-    /// The caller (`SteelBacked` dispatch arm in `editor/mappings.rs`) executes
-    /// the returned commands and, if a wait-char was requested, enters WaitChar
-    /// mode for that command.
+    /// The caller executes the returned commands and, if a wait-char was
+    /// requested, enters WaitChar mode for that command.
     ///
     /// A watchdog thread enforces `host.steel_command_budget_ms()`.  If the
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
     /// interruption).
+    ///
+    /// # Design note — Steel in the signature
+    /// `args` is `Vec<SteelVal>` rather than an opaque owned type because the
+    /// caller (editor dispatch) constructs the args by wrapping already-resolved
+    /// Rust values via `IntoSteelVal` and passing them straight in. Introducing
+    /// an intermediate arg type would add conversion with no practical benefit:
+    /// the editor crate already depends on `steel-core` for `QueuedCommand`
+    /// and `SteelBufferId`. Encapsulating Steel on this side of the API is not
+    /// cost-free; the trade-off is accepted intentionally.
     pub fn call_steel_cmd<'a>(
         &'a mut self,
         steel_proc: &str,

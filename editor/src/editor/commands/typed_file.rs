@@ -10,7 +10,7 @@ pub fn typed_quit(
     force: bool,
 ) -> Result<(), CommandError> {
     if !force && ed.doc().is_dirty() {
-        return Err(CommandError("Unsaved changes (add ! to override)".into()));
+        return Err(CommandError::new("Unsaved changes (add ! to override)"));
     }
 
     let current = ed.focused_buffer_id();
@@ -36,8 +36,8 @@ pub fn typed_quit_all(
     force: bool,
 ) -> Result<(), CommandError> {
     if !force && ed.buffers.iter().any(|(_, buf)| buf.is_dirty()) {
-        return Err(CommandError(
-            "Unsaved changes in open buffers (add ! to override)".into(),
+        return Err(CommandError::new(
+            "Unsaved changes in open buffers (add ! to override)"
         ));
     }
     ed.should_quit = true;
@@ -101,21 +101,21 @@ pub fn typed_set(
 ) -> Result<(), CommandError> {
     const USAGE: &str = "Usage: :set global|buffer key=value";
     let Some(arg) = arg else {
-        return Err(CommandError(USAGE.into()));
+        return Err(CommandError::new(USAGE));
     };
     let Some((scope, rest)) = arg.split_once(' ') else {
-        return Err(CommandError(USAGE.into()));
+        return Err(CommandError::new(USAGE));
     };
     let Some((key, value)) = rest.split_once('=') else {
-        return Err(CommandError("Expected key=value".into()));
+        return Err(CommandError::new("Expected key=value"));
     };
     let bid = ed.focused_buffer_id();
 
     // Language is a per-buffer property, not a generic setting.
     if key == "language" {
         return match scope {
-            "global" => Err(CommandError(
-                "'language' is per-buffer — use ':set buffer language=<name>'".into(),
+            "global" => Err(CommandError::new(
+                "'language' is per-buffer — use ':set buffer language=<name>'"
             )),
             "buffer" => {
                 let new_lang = if value.is_empty() { None } else { Some(value.to_owned()) };
@@ -130,7 +130,7 @@ pub fn typed_set(
                 ed.set_buffer_language(bid, new_lang);
                 Ok(())
             }
-            _ => Err(CommandError(format!(
+            _ => Err(CommandError::new(format!(
                 "unknown scope '{scope}': expected 'global' or 'buffer'"
             ))),
         };
@@ -166,7 +166,7 @@ pub fn typed_set(
             &ed.settings.theme,
         );
     }
-    result.map_err(CommandError)
+    result.map_err(CommandError::new)
 }
 
 /// Serialize the buffer and write it to disk.
@@ -224,7 +224,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // Synthetic buffers (e.g. [messages]) stay path-less after save-as —
                 // the write dumps content to disk but the buffer itself is unaffected.
                 if !ed.doc().is_synthetic() {
-                    ed.doc_mut().set_path(Some(meta.resolved_path.clone()));
+                    ed.doc_mut().set_path(Some(meta.resolved_path().to_path_buf()));
                     ed.doc_mut().file_meta = Some(meta);
                 }
                 ed.doc_mut().mark_saved();
@@ -232,15 +232,15 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
-            Err(e) => Err(CommandError(e.to_string())),
+            Err(e) => Err(CommandError::new(e.to_string())),
         }
     } else {
         if ed.doc().is_read_only() {
-            return Err(CommandError("Buffer is read-only".into()));
+            return Err(CommandError::new("Buffer is read-only"));
         }
         // Write to the current file.
         let Some(meta) = ed.doc().file_meta.as_ref() else {
-            return Err(CommandError("no file name".into()));
+            return Err(CommandError::new("no file name"));
         };
         match platform::io::write_file_atomic(&content, meta, force) {
             Ok(retried) => {
@@ -249,7 +249,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 ed.fire_hook_buffer_save(ed.focused_buffer_id());
                 Ok(())
             }
-            Err(e) => Err(CommandError(e.to_string())),
+            Err(e) => Err(CommandError::new(e.to_string())),
         }
     }
 }

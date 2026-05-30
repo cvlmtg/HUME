@@ -133,7 +133,7 @@ fn ls_cursor_on_current_row() {
     ed.execute_typed("ls", None).unwrap();
 
     // After :ls the [buffers] view is focused; cursor position is in pane_state.
-    let cursor_char = ed.current_selections().primary().head;
+    let cursor_char = ed.current_selections().primary().head();
     let cursor_line = ed.doc().text().rope().char_to_line(cursor_char);
     let content = ed.doc().text().rope().to_string();
     let p2_name = p2.file_name().unwrap().to_str().unwrap();
@@ -172,17 +172,17 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
     ed.execute_typed("messages", None).unwrap();
 
     // Cursor starts at last content line. Move up one line.
-    let head_before = ed.current_selections().primary().head;
+    let head_before = ed.current_selections().primary().head();
     ed.handle_key(key_up());
 
     let sel = ed.current_selections().primary();
     // Selection must be collapsed (anchor == head) — not a whole-line span.
     assert_eq!(
-        sel.anchor, sel.head,
+        sel.anchor(), sel.head(),
         "Up in view buffer must produce a collapsed cursor, not a selection"
     );
     assert!(
-        sel.head < head_before,
+        sel.head() < head_before,
         "Up must move the cursor backward in the buffer"
     );
 }

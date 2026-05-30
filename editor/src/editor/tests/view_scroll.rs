@@ -43,7 +43,7 @@ fn zz_centres_cursor_in_viewport() {
     assert_eq!(ed.viewport().top_row_offset, 0);
     // Cursor is unchanged.
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         ed.doc().text().rope().line_to_char(25),
     );
 }

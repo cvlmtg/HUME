@@ -30,7 +30,7 @@ fn d1_selections_are_pane_owned() {
     // Back to pane A: head must be 2, not 6.
     ed.switch_focused_pane(pid_a);
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         2,
         "pane A head after switch"
     );
@@ -38,7 +38,7 @@ fn d1_selections_are_pane_owned() {
     // Back to pane B: head must be 6, not 2.
     ed.switch_focused_pane(pid_b);
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         6,
         "pane B head after switch"
     );
@@ -48,7 +48,7 @@ fn d1_selections_are_pane_owned() {
 /// each pane has its own `SearchCursor` in `pane_state`.
 #[test]
 fn d4a_search_pattern_is_per_buffer() {
-    use editing::search_state::SearchCursor;
+    use crate::editor::search_state::SearchCursor;
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
@@ -107,9 +107,9 @@ fn d4b_sticky_col_is_per_selection() {
 
     sels.translate_in_place(&cs, &rope);
     // Head moved from 4 to 5 (past the inserted 'X'), horiz preserved.
-    assert_eq!(sels.primary().head, 5, "head mapped past insert");
+    assert_eq!(sels.primary().head(), 5, "head mapped past insert");
     assert_eq!(
-        sels.primary().horiz,
+        sels.primary().horiz(),
         Some(0),
         "horiz preserved on untouched line"
     );
@@ -133,7 +133,7 @@ fn d4b_sticky_col_is_per_selection() {
     sels2.translate_in_place(&cs2, &rope2);
     // Head moved past insert; horiz must be reset because line 1 was touched.
     assert_eq!(
-        sels2.primary().horiz,
+        sels2.primary().horiz(),
         None,
         "horiz reset when head's line is touched"
     );
@@ -225,7 +225,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
             .as_ref()
             .unwrap()
             .primary()
-            .head,
+            .head(),
         1,
         "pane A pre_search_sels head"
     );
@@ -235,7 +235,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
             .as_ref()
             .unwrap()
             .primary()
-            .head,
+            .head(),
         3,
         "pane B pre_search_sels head"
     );
@@ -272,7 +272,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 
     // Pane A's cursor is now at 0 (post-delete); pane B's should be at 8.
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        ed.selections_for(pid_b, bid).unwrap().primary().head(),
         8,
         "pane B selection translated by forward CS"
     );
@@ -303,13 +303,13 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
     // Pane A's cursor is restored to pre-delete position.
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         0,
         "pane A cursor restored by undo"
     );
     // Pane B's cursor is translated back to 9 by the inverse CS.
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        ed.selections_for(pid_b, bid).unwrap().primary().head(),
         9,
         "pane B selection translated by inverse CS (undo)"
     );
@@ -351,7 +351,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
         "collapsed selections must merge after propagation"
     );
     assert_eq!(
-        pane_b_sels.primary().head,
+        pane_b_sels.primary().head(),
         1,
         "merged cursor at deletion point"
     );
@@ -385,7 +385,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 
     // Authoritative selection in pane_state must be at 4 (translated by CS).
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head,
+        ed.selections_for(pid_b, bid).unwrap().primary().head(),
         4,
         "pane B pane_state selection translated to 4"
     );
@@ -420,7 +420,7 @@ fn ensure_is_idempotent() {
     // ensure() on an already-seeded entry must not reset to initial_sels.
     pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid);
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         3,
         "ensure must not overwrite existing pane_state entry",
     );

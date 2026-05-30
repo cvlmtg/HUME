@@ -1,9 +1,9 @@
 //! Thin wrappers around `std::fs` primitives.
 //!
-//! Every filesystem syscall in the `editor` crate (outside `os::io`) must go
-//! through one of these functions so that `editor/src/os/` is the sole audit
-//! surface for file I/O. Each wrapper is a direct one-line delegation to
-//! `std::fs`; the value is the allow-list, not any added behavior.
+//! Every filesystem syscall in the workspace must go through one of these
+//! functions, providing a single audit surface for file I/O. Each wrapper is a
+//! direct one-line delegation to `std::fs`; the value is the allow-list, not
+//! any added behavior.
 
 use std::fs;
 use std::io;

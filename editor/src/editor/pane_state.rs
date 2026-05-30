@@ -18,7 +18,7 @@ use engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
 use editing::changeset::ChangeSet;
-use editing::search_state::SearchCursor;
+use super::search_state::SearchCursor;
 use editing::selection::SelectionSet;
 use editing::text::Text;
 use crate::editor::buffer::Buffer;

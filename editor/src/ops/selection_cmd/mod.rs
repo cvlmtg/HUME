@@ -23,7 +23,7 @@ pub(crate) fn cmd_collapse_selection(
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let new_sels = sels.map_and_merge(|s| Selection::collapsed(s.head));
+    let new_sels = sels.map_and_merge(|s| Selection::collapsed(s.head()));
     new_sels.debug_assert_valid(buf);
     new_sels
 }
@@ -283,12 +283,12 @@ mod tests {
     fn cycle_forward_advances_primary() {
         // Three cursors. After cycling forward, primary should be the next one.
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // two cursors, primary at 0
-        assert_eq!(sels.primary().head, 0);
+        assert_eq!(sels.primary().head(), 0);
         let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move);
-        assert_eq!(sels.primary().head, 3);
+        assert_eq!(sels.primary().head(), 3);
         // Cycle again — wraps back to first.
         let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move);
-        assert_eq!(sels.primary().head, 0);
+        assert_eq!(sels.primary().head(), 0);
     }
 
     // ── cmd_cycle_primary_backward ─────────────────────────────────────────
@@ -297,7 +297,7 @@ mod tests {
     fn cycle_backward_wraps_to_last() {
         let (buf, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at 0
         let sels = cmd_cycle_primary_backward(&buf, sels, MotionMode::Move);
-        assert_eq!(sels.primary().head, 3); // wraps to last
+        assert_eq!(sels.primary().head(), 3); // wraps to last
     }
 
     // ── additional collapse edge cases ─────────────────────────────────────
@@ -325,7 +325,7 @@ mod tests {
         );
         let result = cmd_collapse_selection(&buf, sels, MotionMode::Move);
         assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
-        assert_eq!(result.primary().head, 3);
+        assert_eq!(result.primary().head(), 3);
     }
 
     // ── additional flip edge cases ─────────────────────────────────────────
@@ -349,7 +349,7 @@ mod tests {
         let sels = cmd_cycle_primary_forward(&buf, sels, MotionMode::Move); // primary now at index 1 (head=3)
         let sels_out = cmd_keep_primary_selection(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 1);
-        assert_eq!(sels_out.primary().head, 3); // kept the second one
+        assert_eq!(sels_out.primary().head(), 3); // kept the second one
     }
 
     // ── additional remove_primary edge cases ───────────────────────────────
@@ -362,6 +362,6 @@ mod tests {
         let sels = cmd_cycle_primary_backward(&buf, sels, MotionMode::Move); // primary at last (head=6)
         let sels_out = cmd_remove_primary_selection(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
-        assert_eq!(sels_out.primary().head, 0); // wrapped to first
+        assert_eq!(sels_out.primary().head(), 0); // wrapped to first
     }
 }

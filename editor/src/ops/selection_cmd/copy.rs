@@ -46,8 +46,8 @@ fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -
 
     for i in 0..original_len {
         let sel = all_sels[i];
-        let anchor_line = buf.char_to_line(sel.anchor) as isize;
-        let head_line = buf.char_to_line(sel.head) as isize;
+        let anchor_line = buf.char_to_line(sel.anchor()) as isize;
+        let head_line = buf.char_to_line(sel.head()) as isize;
 
         // The outermost line in the copy direction determines the offset target.
         let outer_line = if direction > 0 {
@@ -70,8 +70,8 @@ fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -
         // Shift each endpoint by the same delta.
         let delta = target_outer as isize - outer_line;
 
-        let new_anchor = column_on_shifted_line(buf, sel.anchor, anchor_line as usize, delta);
-        let new_head = column_on_shifted_line(buf, sel.head, head_line as usize, delta);
+        let new_anchor = column_on_shifted_line(buf, sel.anchor(), anchor_line as usize, delta);
+        let new_head = column_on_shifted_line(buf, sel.head(), head_line as usize, delta);
 
         let new_sel = Selection::new(new_anchor, new_head);
 
@@ -133,7 +133,7 @@ mod tests {
         // Original cursor at offset 1 stays.
         // New cursor at offset 5 (line 1, col 1: 'a' is at 4, 'b' at 4...
         // "foo\n" = offsets 0-3, "bar\n" = offsets 4-7. Col 1 = offset 5.
-        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
         assert!(
             heads.contains(&1),
             "original cursor should remain at col 1 of line 0"
@@ -143,7 +143,7 @@ mod tests {
             "new cursor should be at col 1 of line 1"
         );
         // Primary should be the new copy (the one on line 1).
-        assert_eq!(sels_out.primary().head, 5);
+        assert_eq!(sels_out.primary().head(), 5);
     }
 
     #[test]
@@ -152,7 +152,7 @@ mod tests {
         let (buf, sels) = parse_state("foo\nb-[a]>r\n");
         let sels_out = cmd_copy_selection_on_next_line(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 1); // no copy added
-        assert_eq!(sels_out.primary().head, 5); // cursor unchanged
+        assert_eq!(sels_out.primary().head(), 5); // cursor unchanged
     }
 
     #[test]
@@ -166,7 +166,7 @@ mod tests {
         // "hello\n" = offsets 0-5, "hi\n" = offsets 6-8.
         // Last non-\n char = 'i' at offset 7.
         let copy = sels_out.primary();
-        assert_eq!(copy.head, 7);
+        assert_eq!(copy.head(), 7);
     }
 
     #[test]
@@ -181,11 +181,11 @@ mod tests {
         // The copy (primary) should be backward: anchor=6, head=4.
         let copy = sels_out.primary();
         assert!(
-            copy.anchor > copy.head,
+            copy.anchor() > copy.head(),
             "copy should preserve backward direction"
         );
-        assert_eq!(copy.head, 4); // 'b' at col 0 of line 1
-        assert_eq!(copy.anchor, 6); // 'r' at col 2 of line 1
+        assert_eq!(copy.head(), 4); // 'b' at col 0 of line 1
+        assert_eq!(copy.anchor(), 6); // 'r' at col 2 of line 1
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod tests {
         let (buf, sels) = parse_state("f-[o]>-[o]>\nbar\n");
         let sels_out = cmd_copy_selection_on_next_line(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 4); // 2 originals + 2 copies
-        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
         assert!(heads.contains(&1)); // original col 1
         assert!(heads.contains(&2)); // original col 2
         assert!(heads.contains(&5)); // copy of col 1 on line 1
@@ -240,14 +240,14 @@ mod tests {
         let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
         // Original at offset 5 (line 1, col 1). New at offset 1 (line 0, col 1).
-        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head).collect();
+        let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
         assert!(heads.contains(&5), "original cursor should remain");
         assert!(
             heads.contains(&1),
             "new cursor should be at col 1 of line 0"
         );
         // Primary is the new copy (on line 0).
-        assert_eq!(sels_out.primary().head, 1);
+        assert_eq!(sels_out.primary().head(), 1);
     }
 
     #[test]
@@ -267,6 +267,6 @@ mod tests {
         let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 2);
         // Copy should land at last char of "hi" = 'i' at offset 1.
-        assert_eq!(sels_out.primary().head, 1);
+        assert_eq!(sels_out.primary().head(), 1);
     }
 }

@@ -31,7 +31,7 @@
 //! cluster.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `src/ops/`,
-//! `src/auto_pairs.rs`, and `src/helpers.rs` for the forbidden patterns.
+//! `src/auto_pairs.rs`, and `src/core/helpers.rs` for the forbidden patterns.
 //!
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` where
 //! `<reason>` explains why raw arithmetic is safe (e.g. ASCII-only delimiter
@@ -98,10 +98,7 @@ mod tests {
     fn no_self_mut_method_calls_in_editor_module() {
         let manifest = std::env::var("CARGO_MANIFEST_DIR")
             .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
-        // lints.rs lives in the core crate; the scanned files are in the editor crate
-        // one level up in the workspace.
-        let core_root = std::path::Path::new(&manifest);
-        let root = core_root.parent().expect("workspace root").join("editor");
+        let root = std::path::Path::new(&manifest);
 
         let mut violations: Vec<String> = Vec::new();
 
@@ -163,7 +160,7 @@ mod tests {
             "\nBorrow-disjoint discipline violated.\n\
              Replace `self.<method>(…)` with the corresponding free function \
              from `doc_ops`, `search_ops`, etc., passing the fields it needs \
-             as separate parameters.  See `editor/src/core/lints.rs` for the \
+             as separate parameters.  See `editor/src/editor/lints.rs` for the \
              full rule.\n\
              Violations:\n{}\n",
             violations.join("\n"),
@@ -213,14 +210,13 @@ mod tests {
 
         // Collect all non-test source files under src/ops/ plus two standalone files.
         // Using directory traversal so future submodule splits are covered automatically.
-        // lints.rs lives in the core crate; ops/ and auto_pairs.rs are in editor/.
-        let core_root = std::path::Path::new(&manifest);
-        let root = core_root.parent().expect("workspace root").join("editor");
+        let root = std::path::Path::new(&manifest);
+        let workspace_root = root.parent().expect("workspace root");
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
         collect_source_rs(&root.join("src/ops"), &mut paths);
         paths.push(root.join("src/auto_pairs.rs"));
-        // helpers.rs moved to core; scan it from the core root instead
-        paths.push(core_root.join("src/helpers.rs"));
+        // helpers.rs lives in the editing crate — scan it from there.
+        paths.push(workspace_root.join("editing/src/helpers.rs"));
 
         // Forbidden patterns — raw +1/-1 steps on char-position variables.
         // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)
@@ -254,7 +250,7 @@ mod tests {
 
         for path in &paths {
             let file = path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .unwrap_or(path)
                 .display()
                 .to_string();

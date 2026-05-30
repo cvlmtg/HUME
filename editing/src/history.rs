@@ -13,7 +13,17 @@ use crate::transaction::Transaction;
 /// friction that comes with self-referential structs, while still allowing
 /// O(1) parent/child traversal via a `Vec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RevisionId(pub usize);
+pub struct RevisionId(pub(crate) usize);
+
+impl RevisionId {
+    /// Construct a `RevisionId` from a raw arena index.
+    ///
+    /// Prefer [`History::root_id`] for the root and reserve this for
+    /// external code that must name a specific revision (e.g. tests).
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
 
 // ── Revision ──────────────────────────────────────────────────────────────────
 
@@ -79,9 +89,9 @@ struct Revision {
 ///
 /// ## What History does NOT own
 ///
-/// Buffers. The caller ([`crate::editor::buffer::Buffer`]) holds the current
-/// buffer. History stores only Transactions (changeset + selections). This
-/// keeps History a pure data structure with no Buffer dependency.
+/// Buffers. The caller holds the current buffer. History stores only
+/// Transactions (changeset + selections), keeping it a pure data structure
+/// with no buffer dependency.
 pub struct History {
     /// Arena of all revisions. Index 0 is always the root.
     revisions: Vec<Revision>,
@@ -120,7 +130,7 @@ impl History {
 
     /// Record a new edit and advance the current position to it.
     ///
-    /// Creates a new [`Revision`] as a child of the current revision and makes
+    /// Creates a new revision as a child of the current revision and makes
     /// it the new `current`. The caller provides both the forward and inverse
     /// changesets — the inverse must have been computed against the pre-edit
     /// buffer before that buffer was replaced.
@@ -186,7 +196,7 @@ impl History {
     /// Vim/Helix behaviour: after undoing and making a new edit, redo goes
     /// to the most recent edit, not the historically first one.
     ///
-    /// Returns an owned `Transaction` for the same reason as [`undo`].
+    /// Returns an owned `Transaction` for the same reason as [`Self::undo`].
     pub fn redo(&mut self) -> Option<Transaction> {
         // Copy out child_id before mutating current.
         let child_id = *self.revisions[self.current.0].children.last()?;
@@ -209,6 +219,11 @@ impl History {
         self.revisions.len()
     }
 
+    /// The revision id of the root (initial document state, before any edit).
+    pub fn root_id() -> RevisionId {
+        RevisionId(0)
+    }
+
     /// The currently active revision.
     pub fn current_id(&self) -> RevisionId {
         self.current
@@ -216,8 +231,8 @@ impl History {
 
     /// The initial selections stored in the root revision.
     ///
-    /// Used by `Buffer::initial_sels()` to seed `PaneBufferState` when a pane
-    /// first views this buffer or when `:e!` reloads it.
+    /// Returned to the caller so pane state can be seeded when a pane first
+    /// views a buffer, or when the buffer is reloaded from disk.
     pub fn initial_sels(&self) -> &SelectionSet {
         self.revisions[0].forward.selection()
     }
@@ -239,7 +254,6 @@ impl History {
         chain
     }
 
-    #[allow(dead_code)]
     /// Jump to an arbitrary revision in the undo tree.
     ///
     /// Returns the sequence of [`Transaction`]s that must be applied
@@ -257,9 +271,9 @@ impl History {
     /// Ancestor (LCA):
     ///
     /// - **Up leg** (`current` → LCA): for each node stepped out of, use its
-    ///   `inverse` transaction (same as [`undo`]).
+    ///   `inverse` transaction (same as [`Self::undo`]).
     /// - **Down leg** (LCA → `target`): for each node stepped into, use its
-    ///   `forward` transaction (same as [`redo`]).
+    ///   `forward` transaction (same as [`Self::redo`]).
     pub fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
         if target == self.current {
             return None;

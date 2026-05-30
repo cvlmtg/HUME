@@ -1,7 +1,7 @@
 //! Process-spawning helpers.
 //!
-//! All `std::process::Command` usage in the editor crate lives here so that
-//! `editor/src/os/` is the sole audit surface for process spawning.
+//! All `std::process::Command` usage in this workspace lives here, providing
+//! a single audit surface for process spawning.
 //!
 //! Sandbox enforcement (path prefix checks) is the caller's responsibility;
 //! these functions only perform the spawn.
@@ -57,7 +57,7 @@ pub fn git_clone_rev(url: &str, dest: &Path, rev: &str) -> io::Result<ExitStatus
 }
 
 /// Run `git checkout --force <rev>` inside `dir` with inherited stdio.
-pub fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
+pub(crate) fn git_checkout(dir: &Path, rev: &str) -> io::Result<ExitStatus> {
     Command::new("git")
         .args(["-C"])
         .arg(dir)

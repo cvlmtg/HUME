@@ -270,8 +270,8 @@ fn select_within_confirm_replaces_selections() {
     );
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);
-    assert_eq!(ed.current_selections().primary().anchor, 0);
-    assert_eq!(ed.current_selections().primary().head, 1);
+    assert_eq!(ed.current_selections().primary().anchor(), 0);
+    assert_eq!(ed.current_selections().primary().head(), 1);
 }
 
 /// `s` + Esc restores original selections.

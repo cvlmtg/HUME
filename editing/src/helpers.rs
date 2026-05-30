@@ -211,9 +211,7 @@ pub fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -
 /// The last char offset a cursor can land on for `line`.
 ///
 /// Returns the last non-`\n` char on the line, or the `\n` itself when the
-/// line is empty (no other character to sit on). This is the single
-/// authoritative implementation — shared by `goto_line_end` in `motion.rs`
-/// and the multi-line expand/shrink commands in `selection_cmd.rs`.
+/// line is empty (no other character to sit on).
 pub fn line_content_end(buf: &Text, line: usize) -> usize {
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);

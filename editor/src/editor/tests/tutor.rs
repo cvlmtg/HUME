@@ -188,7 +188,7 @@ fn tutor_missing_file_returns_error() {
         result.is_err(),
         ":tutor on a missing file must return an error"
     );
-    let msg = result.unwrap_err().0;
+    let msg = result.unwrap_err().message().to_owned();
     assert!(
         msg.contains("tutor.txt not found"),
         "error message must mention 'tutor.txt not found', got: {msg:?}"

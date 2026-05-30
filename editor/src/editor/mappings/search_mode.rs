@@ -5,9 +5,9 @@ use crossterm::event::KeyEvent;
 use super::super::commands::search_sel;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::{search_ops, Editor, Mode, SearchDirection};
-use editing::jump_list::JumpEntry;
-use editing::minibuf_history::{HistoryDir, HistoryStore};
-use editing::search_state::SearchPattern;
+use super::super::jump_list::JumpEntry;
+use super::super::minibuf_history::{HistoryDir, HistoryStore};
+use super::super::search_state::SearchPattern;
 use crate::ops::search::{compile_search_regex, find_next_match};
 
 impl Editor {
@@ -148,7 +148,7 @@ impl Editor {
                         self.pane_transient[pid]
                             .pre_search_sels
                             .as_ref()
-                            .map(|s| s.primary().anchor)
+                            .map(|s| s.primary().anchor())
                             .unwrap_or(start),
                     )
                 } else {

@@ -358,7 +358,7 @@ fn render_element(
         }
         StatusElement::Position => {
             let buf = editor.doc().text();
-            let head = editor.current_selections().primary().head;
+            let head = editor.current_selections().primary().head();
             let head_line = buf.char_to_line(head);
             let col_0 = grapheme_col_in_line(buf, head_line, head);
             (

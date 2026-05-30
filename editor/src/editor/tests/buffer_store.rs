@@ -82,7 +82,7 @@ fn p6_replace_buffer_in_place_reseeds() {
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_selections();
     assert_eq!(
-        sels.primary().head,
+        sels.primary().head(),
         0,
         "selections reset after replace_buffer_in_place"
     );
@@ -164,9 +164,9 @@ fn colon_split_vsplit_are_stubs() {
         let mut ed = editor_from("-[h]>ello\n");
         let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();
         assert!(
-            err.0.contains("not yet implemented"),
+            err.message().contains("not yet implemented"),
             ":{cmd} must report not-yet-implemented, got: {:?}",
-            err.0,
+            err.message().to_owned(),
         );
         // execute_typed also sets status_msg so the user sees the error.
         assert!(

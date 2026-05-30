@@ -10,10 +10,10 @@ use engine::pipeline::{
 };
 use engine::types::EditorMode;
 
-use editing::search_state::SearchCursor;
-use editing::search_state::SearchPattern;
+use super::search_state::SearchCursor;
+use super::search_state::SearchPattern;
 #[cfg(test)]
-use editing::search_state::SearchMatches;
+use super::search_state::SearchMatches;
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
 use platform::terminal::Term;
@@ -33,12 +33,12 @@ pub(super) fn write_pane_mirror(
     sels: &editing::selection::SelectionSet,
 ) {
     use engine::types::Selection as EngineSelection;
-    let primary_head = sels.primary().head;
+    let primary_head = sels.primary().head();
     pane.selections.clear();
     pane.selections
         .extend(sels.iter_head_sorted().map(|s| EngineSelection {
-            anchor: s.anchor,
-            head: s.head,
+            anchor: s.anchor(),
+            head: s.head(),
         }));
     pane.primary_idx = pane
         .selections
@@ -171,16 +171,16 @@ impl Editor {
             last_repeatable_action: None,
             insert_session: None,
             explicit_count: false,
-            search: editing::search_state::SearchState::default(),
+            search: super::search_state::SearchState::default(),
             pane_jumps: {
                 let mut m = SecondaryMap::new();
                 m.insert(
                     pane_id,
-                    editing::jump_list::JumpList::new(jump_list_capacity),
+                    super::jump_list::JumpList::new(jump_list_capacity),
                 );
                 m
             },
-            history: editing::minibuf_history::HistoryStore::new(history_capacity),
+            history: super::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,
@@ -242,11 +242,11 @@ impl Editor {
                 let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
-                    .head;
+                    .head();
                 let (pane_settings_cursor, gutter_w) =
                     self.resolve_focused_pane_settings();
                 let vp = self.engine_view.panes[self.focused_pane_id].viewport.clone();
-                editing::cursor::screen_pos(
+                super::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
                     cursor_char,
@@ -303,9 +303,13 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = platform::terminal::set_cursor_shape(self.mode);
+            let _ = platform::terminal::set_cursor_shape(self.mode.cursor_is_bar());
             if last_cursor_color_mode != Some(self.mode) {
-                let _ = platform::terminal::set_cursor_color_for_mode(self.mode);
+                // Command/Search place the cursor on a white statusline background;
+                // use black so it remains visible. All other modes reset to default.
+                let black =
+                    matches!(self.mode, EditorMode::Command | EditorMode::Search);
+                let _ = platform::terminal::set_cursor_color(black);
                 last_cursor_color_mode = Some(self.mode);
             }
             // Close the synchronized-output envelope: the terminal now atomically
@@ -380,7 +384,7 @@ impl Editor {
         }
         // Restore the user's default cursor shape and colour before returning to the shell.
         platform::terminal::reset_cursor_shape()?;
-        let _ = platform::terminal::set_cursor_color_for_mode(EditorMode::Normal); // emits reset sequence
+        let _ = platform::terminal::set_cursor_color(false); // emits reset sequence
         Ok(())
     }
 
@@ -393,7 +397,7 @@ impl Editor {
     fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
         let len_lines = self.doc().text().len_lines();
         let pane = &self.engine_view.panes[self.focused_pane_id];
-        let gutter_w = editing::cursor::gutter_width(
+        let gutter_w = super::cursor::gutter_width(
             pane.providers.gutter_columns(),
             len_lines,
         );
@@ -478,7 +482,7 @@ impl Editor {
         let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
             .selections
             .primary()
-            .head;
+            .head();
         let scrolloff = self.settings.scrolloff;
         let tab_width = self.doc().overrides.tab_width(&self.settings);
         let whitespace = self.doc().overrides.whitespace(&self.settings);
@@ -632,7 +636,7 @@ impl Editor {
                 let head = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
-                    .head;
+                    .head();
                 if let Some(ch) = buf.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),

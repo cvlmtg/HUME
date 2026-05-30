@@ -100,7 +100,7 @@ fn typed_set_language_global_scope_errors() {
     attach_host(&mut ed, "");
     let result = run_cmd(&mut ed, "global language=rust");
     assert!(result.is_err(), "global language must be an error");
-    let msg = result.unwrap_err().0;
+    let msg = result.unwrap_err().message().to_owned();
     assert!(msg.contains("per-buffer"), "error should mention per-buffer: {msg}");
 }
 

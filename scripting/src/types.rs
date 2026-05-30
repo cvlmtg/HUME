@@ -11,7 +11,7 @@ pub struct PendingSteelCmd {
     /// The Steel lambda, captured at `define-command!` call time.
     pub proc: SteelVal,
     /// Attribution owner at call time — stored in `cmd_owners` for `(command-plugin …)`.
-    pub current_owner: attribution::Owner,
+    pub(crate) current_owner: attribution::Owner,
     /// Whether this command participates in sticky-Ctrl extend.
     /// Set by `(define-command-extend! …)`.
     pub extendable: bool,
@@ -30,8 +30,8 @@ pub struct SteelCmdDef {
     pub name: String,
     pub doc: String,
     /// Name under which the lambda is bound in Steel's global namespace
-    /// (e.g. `"%hume-cmd-my-command"`).  Used by
-    /// [`crate::scripting::ScriptingHost::call_steel_cmd`] at dispatch time.
+    /// (e.g. `"%hume-cmd-my-command"`).  Used by `ScriptingHost::call_steel_cmd`
+    /// at dispatch time.
     pub steel_proc: String,
     pub extendable: bool,
     /// Number of required positional parameters the lambda accepts.

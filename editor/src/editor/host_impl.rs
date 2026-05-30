@@ -1,8 +1,8 @@
 //! [`EditorHostImpl`] — the production implementation of the scripting crate's
 //! [`EditorHost`] trait.
 //!
-//! Holds the same split borrows that were previously bundled in
-//! `scripting::EditorSteelRefs<'a>`, plus the editor context needed by the
+//! Holds the split borrows needed by the scripting layer, plus the editor
+//! context needed by the
 //! init-only methods (settings, keymap).  Two construction sites create this:
 //!
 //! - **Command dispatch** (`mappings/execute.rs`): all optional fields are
@@ -18,7 +18,7 @@ use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
-use editing::jump_list::JumpList;
+use super::jump_list::JumpList;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;

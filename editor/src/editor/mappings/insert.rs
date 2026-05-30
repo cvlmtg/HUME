@@ -133,7 +133,7 @@ impl Editor {
     fn should_skip_close(&self, ch: char) -> bool {
         self.current_selections()
             .iter_sorted()
-            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head) == Some(ch))
+            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head()) == Some(ch))
     }
 
     /// Returns `true` if every selection is a cursor AND the pair
@@ -143,13 +143,13 @@ impl Editor {
     fn is_between_pair(&self, pairs: &[crate::auto_pairs::Pair]) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
-            if !sel.is_collapsed() || sel.head == 0 {
+            if !sel.is_collapsed() || sel.head() == 0 {
                 return false;
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = editing::grapheme::prev_grapheme_boundary(buf, sel.head);
-            match (buf.char_at(prev), buf.char_at(sel.head)) {
+            let prev = editing::grapheme::prev_grapheme_boundary(buf, sel.head());
+            match (buf.char_at(prev), buf.char_at(sel.head())) {
                 (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,
             }
@@ -167,7 +167,7 @@ impl Editor {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
-                || crate::auto_pairs::should_auto_pair_at(buf, sel.head, pair, ap_pairs)
+                || crate::auto_pairs::should_auto_pair_at(buf, sel.head(), pair, ap_pairs)
         })
     }
 }

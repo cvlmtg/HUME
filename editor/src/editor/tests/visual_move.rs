@@ -42,12 +42,12 @@ fn visual_move_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         76,
         "j: sub-row 0 → sub-row 1, col 0 → char 76"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz,
+        ed.current_selections().primary().horiz(),
         Some(0),
         "sticky col latched on first j"
     );
@@ -59,7 +59,7 @@ fn visual_move_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         81,
         "j: last sub-row → first char of next buffer line"
     );
@@ -71,7 +71,7 @@ fn visual_move_up_enters_last_subrow_of_previous_line() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         76,
         "k: buffer line n+1 → last sub-row of line n, col 0 → char 76"
     );
@@ -83,7 +83,7 @@ fn visual_move_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // sub-row 1 of line 0
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         0,
         "k: sub-row 1 → sub-row 0, col 0 → char 0"
     );
@@ -95,7 +95,7 @@ fn visual_move_up_at_top_stays_put() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         0,
         "k at first row: no-op"
     );
@@ -108,7 +108,7 @@ fn visual_move_down_at_bottom_stays_put() {
     let mut ed = visual_test_editor(81);
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         81,
         "j at last row: no-op"
     );
@@ -125,12 +125,12 @@ fn visual_preferred_col_stickiness() {
     // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         79,
         "j: clamped to last char on short sub-row"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz,
+        ed.current_selections().primary().horiz(),
         Some(40),
         "sticky col stays at 40"
     );
@@ -139,12 +139,12 @@ fn visual_preferred_col_stickiness() {
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         85,
         "j: clamped to last char on short second line"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz,
+        ed.current_selections().primary().horiz(),
         Some(40),
         "sticky col still 40"
     );
@@ -156,12 +156,12 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
     ed.handle_key(key('j')); // latches horiz on the selection
     assert!(
-        ed.current_selections().primary().horiz.is_some(),
+        ed.current_selections().primary().horiz().is_some(),
         "j latches sticky col"
     );
     ed.handle_key(key('l')); // horizontal motion — Selection::new() clears horiz
     assert!(
-        ed.current_selections().primary().horiz.is_none(),
+        ed.current_selections().primary().horiz().is_none(),
         "l resets sticky col"
     );
 }
@@ -176,12 +176,12 @@ fn visual_move_no_wrap_falls_back_to_buffer_line() {
     ed.handle_key(key('j'));
     // With no wrapping: j moves by one buffer line (0 → 81 "short").
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         81,
         "WrapMode::None: j moves by buffer line"
     );
     assert!(
-        ed.current_selections().primary().horiz.is_none(),
+        ed.current_selections().primary().horiz().is_none(),
         "no sticky col in non-wrap mode"
     );
 }
@@ -194,7 +194,7 @@ fn visual_move_down_with_count() {
     ed.handle_key(key('j'));
     // 2j from char 0: first j → char 76 (sub-row 1), second j → char 81 (next line).
     assert_eq!(
-        ed.current_selections().primary().head,
+        ed.current_selections().primary().head(),
         81,
         "2j: two visual rows from sub-row 0"
     );
@@ -233,7 +233,7 @@ fn visual_move_per_selection_sticky_col() {
     let sels = ed.current_selections().clone();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
     // Sorted by start(): A is first.
-    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
+    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head()).collect();
     assert_eq!(heads[0], 81, "A (col 0) → char 81 on line 1");
     assert_eq!(heads[1], 84, "B (col 3) → char 84 on line 1");
 
@@ -241,7 +241,7 @@ fn visual_move_per_selection_sticky_col() {
     ed.handle_key(key('k'));
     let sels = ed.current_selections().clone();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
-    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head).collect();
+    let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head()).collect();
     assert_eq!(heads[0], 76, "A returns to col 0 = char 76 on sub-row 1");
     assert_eq!(heads[1], 79, "B returns to col 3 = char 79 on sub-row 1");
 }
@@ -259,8 +259,8 @@ fn visual_extend_down_within_wrapped_line() {
     ed.handle_key(key('e')); // enter extend mode
     ed.handle_key(key('j'));
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor, 0, "anchor fixed at sub-row 0 col 0");
-    assert_eq!(sel.head, 76, "head extends to sub-row 1 col 0");
+    assert_eq!(sel.anchor(), 0, "anchor fixed at sub-row 0 col 0");
+    assert_eq!(sel.head(), 76, "head extends to sub-row 1 col 0");
 }
 
 /// extend-down crosses to the next buffer line when already on the last sub-row.
@@ -270,9 +270,9 @@ fn visual_extend_down_crosses_buffer_line() {
     ed.handle_key(key('e'));
     ed.handle_key(key('j'));
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor, 76, "anchor fixed at last sub-row");
+    assert_eq!(sel.anchor(), 76, "anchor fixed at last sub-row");
     assert_eq!(
-        sel.head, 81,
+        sel.head(), 81,
         "head crosses to first char of next buffer line"
     );
 }
@@ -284,8 +284,8 @@ fn visual_extend_up_within_wrapped_line() {
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor, 76, "anchor fixed at sub-row 1");
-    assert_eq!(sel.head, 0, "head retreats to sub-row 0 col 0");
+    assert_eq!(sel.anchor(), 76, "anchor fixed at sub-row 1");
+    assert_eq!(sel.head(), 0, "head retreats to sub-row 0 col 0");
 }
 
 /// extend-up enters the last sub-row of the previous buffer line.
@@ -295,9 +295,9 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor, 81, "anchor fixed at line 1 start");
+    assert_eq!(sel.anchor(), 81, "anchor fixed at line 1 start");
     assert_eq!(
-        sel.head, 76,
+        sel.head(), 76,
         "head enters last sub-row of previous buffer line"
     );
 }
@@ -341,7 +341,7 @@ fn select_word_nearest_scopes_to_visual_subrow() {
 
     // j: head moves to char 76 (leading space of sub-row 1).
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head, 76);
+    assert_eq!(ed.current_selections().primary().head(), 76);
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
@@ -351,9 +351,9 @@ fn select_word_nearest_scopes_to_visual_subrow() {
     );
 
     let sel = ed.current_selections().primary();
-    assert_ne!(sel.head, 75, "must NOT snap to '+' across the wrap boundary");
-    assert_eq!(sel.head, 83, "must snap to 'ratatui' (last char = 'i' at char 83)");
-    assert_eq!(sel.horiz, Some(0), "horiz preserved through snap");
+    assert_ne!(sel.head(), 75, "must NOT snap to '+' across the wrap boundary");
+    assert_eq!(sel.head(), 83, "must snap to 'ratatui' (last char = 'i' at char 83)");
+    assert_eq!(sel.horiz(), Some(0), "horiz preserved through snap");
 }
 
 /// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
@@ -377,12 +377,12 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     // First j + select: lands on "ratatui" (head = 83).
     ed.handle_key(key('j'));
     call_select(&mut ed);
-    let head_after_first_select = ed.current_selections().primary().head;
+    let head_after_first_select = ed.current_selections().primary().head();
     assert_eq!(head_after_first_select, 83);
 
     // Second j: must advance past 83 (crosses to line 1, sub-row 0 → 's' at 85).
     ed.handle_key(key('j'));
-    let head_after_second_j = ed.current_selections().primary().head;
+    let head_after_second_j = ed.current_selections().primary().head();
     assert!(
         head_after_second_j > head_after_first_select,
         "second j must advance past {head_after_first_select}; got {head_after_second_j}"
@@ -390,7 +390,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
 
     // Second select: must land strictly past the first select — never back.
     call_select(&mut ed);
-    let head_after_second_select = ed.current_selections().primary().head;
+    let head_after_second_select = ed.current_selections().primary().head();
     assert!(
         head_after_second_select > head_after_first_select,
         "second select must advance past {head_after_first_select}; got {head_after_second_select} (oscillation)"

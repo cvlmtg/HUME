@@ -6,7 +6,7 @@
 //! SelectionSet` motion signature — so they live here instead of `ops/motion`.
 
 use editing::selection::Selection;
-use editing::cursor::format_row_col;
+use super::cursor::format_row_col;
 use crate::ops::MotionMode;
 use crate::ops::motion::{cmd_move_down, cmd_move_up};
 use crate::ops::text_object::{
@@ -199,11 +199,11 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         // Pass 1: resolve each selection's sticky display column from sel.horiz,
         // computing it fresh on the first j/k press (when horiz is None).
         target_cols.extend(sels.iter_sorted().map(|sel| {
-            if let Some(col) = sel.horiz {
+            if let Some(col) = sel.horiz() {
                 col as u16
             } else {
-                let line = rope.char_to_line(sel.head);
-                let (_, col) = format_row_col(rope, line, sel.head, &wrap_mode, tab_width, &whitespace, scratch);
+                let line = rope.char_to_line(sel.head());
+                let (_, col) = format_row_col(rope, line, sel.head(), &wrap_mode, tab_width, &whitespace, scratch);
                 col as u16
             }
         }));
@@ -214,7 +214,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         let mut col_iter = cols.iter();
         sels.map_and_merge(|sel| {
             let &target_col = col_iter.next().unwrap();
-            let mut head = sel.head;
+            let mut head = sel.head();
             for _ in 0..count {
                 head = if down {
                     visual_move_down_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
@@ -222,7 +222,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
                     visual_move_up_one(rope, head, &wrap_mode, tab_width, &whitespace, target_col, scratch)
                 };
             }
-            let anchor = if mode == MotionMode::Extend { sel.anchor } else { head };
+            let anchor = if mode == MotionMode::Extend { sel.anchor() } else { head };
             Selection::with_horiz(anchor, head, target_col as u32)
         })
     });
@@ -324,9 +324,9 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
         let rope = text.rope();
         let new_sels = sels.map_and_merge(|sel| {
-            let buf_line = text.char_to_line(sel.anchor);
+            let buf_line = text.char_to_line(sel.anchor());
             let (sub_row, _) =
-                format_row_col(rope, buf_line, sel.anchor, &wrap_mode, tab_width, &whitespace, scratch);
+                format_row_col(rope, buf_line, sel.anchor(), &wrap_mode, tab_width, &whitespace, scratch);
 
             let (line_start, line_end_excl) =
                 sub_row_char_bounds(scratch, sub_row, buf_line, rope).unwrap_or_else(|| {
@@ -339,7 +339,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                     (ls, le)
                 });
 
-            let found = nearest_word_on_line(text, sel.anchor, line_start, line_end_excl);
+            let found = nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl);
             apply_nearest_word_result(sel, found, mode)
         });
         new_sels.debug_assert_valid(text);

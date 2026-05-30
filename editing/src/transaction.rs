@@ -52,19 +52,24 @@ impl Transaction {
     /// should drop the old buffer (or push an inverse transaction to the undo
     /// stack before doing so).
     ///
-    /// This is the trust boundary for plugin-constructed transactions. Named
-    /// commands in `edit.rs` build changesets by construction and call
-    /// [`ChangeSet::apply`] directly, bypassing this method. A plugin
-    /// assembling a [`Transaction`] manually goes through here and gets a
-    /// clear error instead of silent corruption or a crash.
+    /// This is the trust boundary for plugin-constructed transactions. Internal
+    /// named commands build changesets by construction and call
+    /// [`ChangeSet::apply`] directly. A plugin assembling a [`Transaction`]
+    /// manually goes through here and gets a clear error instead of silent
+    /// corruption or a crash.
     ///
     /// # Errors
     /// - [`TransactionError::Apply`] if the changeset is invalid for `buf`
     ///   (length mismatch or deleted the structural trailing `\n`).
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
-    ///
-    /// The selection state after this transaction.
+    pub fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
+        let new_buf = self.changes.apply(buf)?;
+        self.selection.validate(new_buf.len_chars())?;
+        Ok((new_buf, self.selection.clone()))
+    }
+
+    /// The selection state recorded in this transaction.
     pub fn selection(&self) -> &SelectionSet {
         &self.selection
     }
@@ -76,12 +81,6 @@ impl Transaction {
     /// applied the transaction.
     pub fn into_changes(self) -> ChangeSet {
         self.changes
-    }
-
-    pub fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
-        let new_buf = self.changes.apply(buf)?;
-        self.selection.validate(new_buf.len_chars())?;
-        Ok((new_buf, self.selection.clone()))
     }
 }
 

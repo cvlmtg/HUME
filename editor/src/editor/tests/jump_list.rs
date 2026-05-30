@@ -15,7 +15,7 @@ fn goto_first_line_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head),
+            .char_to_line(ed.current_selections().primary().head()),
         0
     );
 
@@ -89,7 +89,7 @@ fn large_motion_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head),
+            .char_to_line(ed.current_selections().primary().head()),
         10
     );
 
@@ -113,7 +113,7 @@ fn search_confirm_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head),
+            .char_to_line(ed.current_selections().primary().head()),
         15
     );
 

@@ -40,11 +40,11 @@ pub enum Operation {
 ///
 /// `Assoc` is only relevant when calling `map_pos` to re-anchor positions
 /// that were not produced by the edit itself (e.g. external bookmarks or LSP
-/// diagnostic ranges). HUME's edit operations compute result positions directly
-/// from the builder, and undo/redo restores selections from the stored inverse
+/// diagnostic ranges). Edit operations compute result positions directly from
+/// the builder, and undo/redo restores selections from the stored inverse
 /// transaction — neither path calls `map_pos`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Assoc {
+pub(crate) enum Assoc {
     /// Stay before inserted text ("sticky left").
     /// Use this for anchors and positions that should remain pinned to the
     /// character that was at this offset before the edit.
@@ -254,8 +254,7 @@ impl ChangeSet {
     ///
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
-    #[allow(dead_code)]
-    pub fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
+    pub(crate) fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
         debug_assert!(
             pos <= self.len_before,
             "map_pos: pos {pos} exceeds len_before {}",
@@ -320,7 +319,7 @@ impl ChangeSet {
     ///
     /// `rope_pre` must be the buffer text *before* the edit (the same snapshot
     /// passed to `translate_in_place`).
-    pub fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
+    pub(crate) fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
         let line_start = rope_pre.line_to_char(line);
         let line_end = if line + 1 < rope_pre.len_lines() {
             rope_pre.line_to_char(line + 1)

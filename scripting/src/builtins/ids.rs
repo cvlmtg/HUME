@@ -17,11 +17,18 @@ use steel::{
 
 /// Opaque Steel handle for a `BufferId`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SteelBufferId(pub BufferId);
+pub struct SteelBufferId(pub(crate) BufferId);
+
+impl SteelBufferId {
+    /// Wrap a `BufferId` into a Steel-facing opaque handle.
+    pub fn new(id: BufferId) -> Self {
+        Self(id)
+    }
+}
 
 /// Opaque Steel handle for a `PaneId`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SteelPaneId(pub PaneId);
+pub(crate) struct SteelPaneId(pub(crate) PaneId);
 
 impl SteelBufferId {
     /// Convert to a `SteelVal` without returning `Result`.
@@ -48,7 +55,7 @@ impl Custom for SteelPaneId {
 // ── Predicate builtins ────────────────────────────────────────────────────────
 
 /// `(buffer-id? v)` — return `#t` if `v` is an opaque `BufferId`.
-pub fn is_buffer_id(val: SteelVal) -> bool {
+pub(crate) fn is_buffer_id(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
         v.read()
             .as_any_ref()
@@ -60,7 +67,7 @@ pub fn is_buffer_id(val: SteelVal) -> bool {
 }
 
 /// `(pane-id? v)` — return `#t` if `v` is an opaque `PaneId`.
-pub fn is_pane_id(val: SteelVal) -> bool {
+pub(crate) fn is_pane_id(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
         v.read()
             .as_any_ref()
@@ -76,7 +83,7 @@ pub fn is_pane_id(val: SteelVal) -> bool {
 // SteelBufferId values wrapping the same BufferId are NOT `equal?` unless they
 // share the same Arc.  These builtins compare the inner IDs by value instead.
 
-pub fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
+pub(crate) fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {
         v.read()
             .as_any_ref()
@@ -103,12 +110,12 @@ fn downcast_pane_id(val: &SteelVal) -> Option<PaneId> {
 /// Returns `#t` if both `a` and `b` are buffer-ids wrapping the same
 /// underlying `BufferId`.  Prefer this over `equal?`, which only returns
 /// `#t` when both values share the same `Arc`.
-pub fn buffer_id_equal(a: SteelVal, b: SteelVal) -> bool {
+pub(crate) fn buffer_id_equal(a: SteelVal, b: SteelVal) -> bool {
     matches!((downcast_buffer_id(&a), downcast_buffer_id(&b)), (Some(x), Some(y)) if x == y)
 }
 
 /// `(pane-id=? a b)` — value-equality for opaque `PaneId` handles.
-pub fn pane_id_equal(a: SteelVal, b: SteelVal) -> bool {
+pub(crate) fn pane_id_equal(a: SteelVal, b: SteelVal) -> bool {
     matches!((downcast_pane_id(&a), downcast_pane_id(&b)), (Some(x), Some(y)) if x == y)
 }
 

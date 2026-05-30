@@ -36,7 +36,8 @@ use steel::rvals::SteelVal;
 use super::require_cmd_ctx;
 use crate::attribution::Owner;
 use crate::types::QueuedCommand;
-use crate::{PendingSteelCmd, SteelCtx};
+use crate::types::PendingSteelCmd;
+use crate::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
 

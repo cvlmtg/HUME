@@ -82,7 +82,7 @@ pub fn cmd_pane_focus_next(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }
 
 pub fn cmd_pane_focus_left(
@@ -90,7 +90,7 @@ pub fn cmd_pane_focus_left(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }
 
 pub fn cmd_pane_focus_right(
@@ -98,7 +98,7 @@ pub fn cmd_pane_focus_right(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }
 
 pub fn cmd_pane_focus_up(
@@ -106,7 +106,7 @@ pub fn cmd_pane_focus_up(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }
 
 pub fn cmd_pane_focus_down(
@@ -114,5 +114,5 @@ pub fn cmd_pane_focus_down(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }

@@ -59,18 +59,18 @@ impl HookId {
 
 /// Persistent per-hook handler lists, held on [`super::ScriptingHost`].
 #[derive(Debug, Default)]
-pub struct HookRegistry {
+pub(crate) struct HookRegistry {
     handlers: HashMap<HookId, Vec<SteelVal>>,
 }
 
 impl HookRegistry {
     /// Append `proc` to the handler list for `hook_id`.
-    pub fn register(&mut self, hook_id: HookId, proc: SteelVal) {
+    pub(crate) fn register(&mut self, hook_id: HookId, proc: SteelVal) {
         self.handlers.entry(hook_id).or_default().push(proc);
     }
 
     /// Return the handlers for `hook_id` in registration order.
-    pub fn handlers_for(&self, hook_id: HookId) -> &[SteelVal] {
+    pub(crate) fn handlers_for(&self, hook_id: HookId) -> &[SteelVal] {
         self.handlers
             .get(&hook_id)
             .map(Vec::as_slice)
@@ -78,7 +78,7 @@ impl HookRegistry {
     }
 
     /// `true` if no handlers are registered for `hook_id` (fast early-exit path).
-    pub fn is_empty_for(&self, hook_id: HookId) -> bool {
+    pub(crate) fn is_empty_for(&self, hook_id: HookId) -> bool {
         self.handlers.get(&hook_id).is_none_or(Vec::is_empty)
     }
 }

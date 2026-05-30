@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use engine::pipeline::{BufferId, PaneId};
 
-use scripting::builtins::ids::SteelBufferId;
+use scripting::SteelBufferId;
 use scripting::{HookResult, SteelCmdDef, hooks::HookId};
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
@@ -50,7 +50,7 @@ impl Editor {
     /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
     /// `commands.rs` share this rather than duplicating the arg construction.
     pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
-        let val = SteelBufferId(bid).into_steel_val();
+        let val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferSave, &[val]);
     }
 

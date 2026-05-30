@@ -54,7 +54,7 @@ pub fn cmd_half_page_up(
 // trim is vim's "smart scrolloff" behaviour and is intentional.
 
 fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
-    let cursor_char = ed.current_selections().primary().head;
+    let cursor_char = ed.current_selections().primary().head();
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
     let rope = ed.doc().text().rope().clone();
     let pane = &mut ed.engine_view.panes[ed.focused_pane_id];

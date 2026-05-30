@@ -50,7 +50,7 @@ fn write_follows_symlink() {
     // Open via the symlink — io::read_file should resolve it.
     let (_, meta) = platform::io::read_file(&link_path).unwrap();
     assert_eq!(
-        meta.resolved_path,
+        meta.resolved_path().to_path_buf(),
         std::fs::canonicalize(real.path()).unwrap()
     );
 

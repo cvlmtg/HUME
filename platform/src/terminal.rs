@@ -1,3 +1,14 @@
+//! Terminal lifecycle management.
+//!
+//! Entry point is [`init`]: enables raw mode, enters the alternate screen,
+//! probes for kitty keyboard protocol support, and returns a ratatui
+//! [`Term`] ready to render. [`restore`] reverses all of that and must be
+//! called before the process exits.
+//!
+//! Also provides cursor shape/colour control, DEC 2026 synchronized-update
+//! framing, and the inline-subprocess-output flow
+//! ([`enter_inline_output`]/[`leave_inline_output`]).
+
 use std::io::{self, BufWriter, Stdout, Write, stdout};
 
 use crossterm::{
@@ -12,7 +23,6 @@ use crossterm::{
         LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     },
 };
-use engine::types::EditorMode;
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 /// A ratatui `Terminal` backed by crossterm on stdout.
@@ -61,9 +71,9 @@ fn disable_mouse(out: &mut Stdout) -> io::Result<()> {
 /// - `mouse_select` additionally enables button-event tracking (`\x1b[?1002h`),
 ///   which sends drag events so the editor can create editor selections on drag.
 ///
-/// Returns `(Term, kitty_enabled)`. When `kitty_enabled` is `true`, the editor
-/// should activate Ctrl+motion extend shortcuts and filter `KeyEventKind::Release`
-/// events from the event loop.
+/// Returns `(Term, kitty_enabled)`. When `kitty_enabled` is `true`, the caller
+/// should filter `KeyEventKind::Release` events from the event loop and may
+/// enable Ctrl-modified key bindings that require the enhanced protocol.
 ///
 /// Call [`restore`] (or let the panic hook do it) before the process exits so
 /// the user's shell is left in a usable state.
@@ -176,30 +186,32 @@ impl Drop for TerminalGuard {
     }
 }
 
-/// Emit an OSC 12 sequence to set the terminal cursor colour for `mode`.
+/// Emit an OSC 12 sequence to set the terminal cursor colour.
 ///
-/// Command/Search mode positions the cursor in the statusline, which has a
-/// white background — a default (white) cursor would be invisible. We set it
-/// to black so it contrasts. All other modes reset to the terminal default.
+/// When `black` is `true`, sets the cursor to black — used when the cursor
+/// sits on a light-background surface (e.g. the statusline in Command/Search
+/// mode) where the default colour would be invisible.
+///
+/// When `black` is `false`, resets to the user's configured terminal default.
 ///
 /// OSC 12 (`\x1b]12;COLOR\x07`) is supported by the overwhelming majority of
 /// modern terminal emulators. The reset form (`\x1b]112;\x07`) restores the
 /// user's configured cursor colour.
-pub fn set_cursor_color_for_mode(mode: EditorMode) -> io::Result<()> {
-    let seq: &[u8] = match mode {
-        EditorMode::Command | EditorMode::Search => b"\x1b]12;black\x07",
-        _ => b"\x1b]112;\x07",
+pub fn set_cursor_color(black: bool) -> io::Result<()> {
+    let seq: &[u8] = if black {
+        b"\x1b]12;black\x07"
+    } else {
+        b"\x1b]112;\x07"
     };
     stdout().write_all(seq)
 }
 
-/// Emit a crossterm `SetCursorStyle` escape for the cursor shape appropriate
-/// to `mode`.
+/// Emit a crossterm `SetCursorStyle` escape for the cursor shape.
 ///
-/// Bar modes (Insert, Command, Search, Select) get `SteadyBar`; all others
-/// get `SteadyBlock`.
-pub fn set_cursor_shape(mode: EditorMode) -> io::Result<()> {
-    let style = if mode.cursor_is_bar() {
+/// When `bar` is `true`, emits `SteadyBar` (used for Insert/Command/Search/Select).
+/// When `bar` is `false`, emits `SteadyBlock` (used for Normal/Extend).
+pub fn set_cursor_shape(bar: bool) -> io::Result<()> {
+    let style = if bar {
         SetCursorStyle::SteadyBar
     } else {
         SetCursorStyle::SteadyBlock
@@ -279,25 +291,25 @@ pub fn leave_inline_output(
 
 /// Print the `--- running NAME ---` bold banner and flush stdout.
 ///
-/// Called by the inline-output flow just after [`enter_inline_output`] so the
-/// user sees a clear separator between the editor and subprocess output.
+/// Call just after [`enter_inline_output`] so the user sees a clear separator
+/// between the TUI and subprocess output.
 pub fn print_running_banner(name: &str) {
     print!("\r\n\x1b[1m--- running {name} ---\x1b[0m\r\n\r\n");
     let _ = std::io::Write::flush(&mut std::io::stdout());
 }
 
-/// Print the `--- press any key to return to editor ---` dim prompt and flush.
+/// Print the `--- press any key to return ---` dim prompt and flush stdout.
 ///
-/// Called before [`wait_for_keypress`] so the user knows how to dismiss the
-/// inline output and return to the editor.
+/// Call before [`wait_for_keypress`] so the user knows how to dismiss the
+/// subprocess output and return to the TUI.
 pub fn print_return_prompt() {
     print!("\r\n\x1b[2m--- press any key to return to editor ---\x1b[0m\r\n");
     let _ = std::io::Write::flush(&mut std::io::stdout());
 }
 
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
-/// events. Used by the inline-output flow to hold subprocess output on screen
-/// until the user is ready to return to the editor.
+/// events. Holds subprocess output on screen until the user is ready to return
+/// to the TUI.
 pub fn wait_for_keypress() {
     let _ = enable_raw_mode();
     loop {

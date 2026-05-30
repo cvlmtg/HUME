@@ -608,14 +608,9 @@ dependencies = [
 name = "editing"
 version = "0.1.0"
 dependencies = [
- "crossterm",
- "engine",
  "pretty_assertions",
  "proptest",
- "regex-cursor",
  "ropey",
- "slotmap",
- "tempfile",
  "unicode-segmentation",
 ]
 
@@ -1781,7 +1776,6 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "ctrlc",
- "engine",
  "nix 0.31.2",
  "ratatui",
  "tempfile",

@@ -12,7 +12,7 @@ use engine::pipeline::{LayoutTree, SharedBuffer};
 #[cfg(test)]
 use engine::pane::Pane;
 #[cfg(test)]
-use editing::search_state::SearchPattern;
+use search_state::SearchPattern;
 use engine::types::EditorMode;
 
 use slotmap::SecondaryMap;
@@ -40,10 +40,15 @@ pub(crate) mod buffer_store;
 mod clipboard;
 mod commands;
 pub(crate) mod completion;
+pub(crate) mod cursor;
 pub(crate) mod doc_ops;
+pub(crate) mod jump_list;
 pub mod keymap;
+#[cfg(test)]
+mod lints;
 mod mappings;
 mod message_log;
+pub(crate) mod minibuf_history;
 mod minibuf;
 mod mouse;
 pub(crate) mod ops;
@@ -51,12 +56,13 @@ pub(crate) mod pane_state;
 pub(crate) mod register_ops;
 mod registry;
 pub(crate) mod search_ops;
+pub(crate) mod search_state;
 pub(super) mod scroll;
 pub(crate) mod syntax;
 mod syntax_glue;
 mod visual_move;
 
-pub(crate) use editing::search_state::{SearchDirection, SearchState};
+pub(crate) use search_state::{SearchDirection, SearchState};
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;
@@ -273,12 +279,12 @@ pub(crate) struct Editor {
     // ── Jump list ────────────────────────────────────────────────────────────
     /// Per-pane navigable history of cursor positions before large movements.
     /// `jump-backward` (Ctrl+O) / `jump-forward` (Ctrl+I) traverse each pane's list.
-    pub(super) pane_jumps: SecondaryMap<PaneId, editing::jump_list::JumpList>,
+    pub(super) pane_jumps: SecondaryMap<PaneId, self::jump_list::JumpList>,
 
     // ── Minibuffer history ───────────────────────────────────────────────────
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
     /// Recalled via Up/Down while the minibuffer is open.
-    pub(super) history: editing::minibuf_history::HistoryStore,
+    pub(super) history: self::minibuf_history::HistoryStore,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
     ///
     /// When `true`, the terminal sends CSI-u sequences that disambiguate
@@ -541,7 +547,7 @@ impl Editor {
             let buf = self.focused_buffer_id();
             doc_ops::apply_doc_motion(&self.buffers, &mut self.pane_state, focused, buf, |b, sels| {
                 sels.map(|sel| {
-                    let head = sel.head;
+                    let head = sel.head();
                     let line_start = b.line_to_char(b.char_to_line(head));
                     let new_head = if head > line_start {
                         prev_grapheme_boundary(b, head)
@@ -651,11 +657,11 @@ impl Editor {
                 let mut m = SecondaryMap::new();
                 m.insert(
                     pane_id,
-                    editing::jump_list::JumpList::new(jump_list_capacity),
+                    self::jump_list::JumpList::new(jump_list_capacity),
                 );
                 m
             },
-            history: editing::minibuf_history::HistoryStore::new(history_capacity),
+            history: self::minibuf_history::HistoryStore::new(history_capacity),
             pane_state,
             pane_transient,
             engine_view,
@@ -701,7 +707,7 @@ impl Editor {
         self.pane_transient.insert(pid, PaneTransient::default());
         self.pane_jumps.insert(
             pid,
-            editing::jump_list::JumpList::new(self.settings.jump_list_capacity),
+            self::jump_list::JumpList::new(self.settings.jump_list_capacity),
         );
         pid
     }
@@ -723,7 +729,7 @@ impl Editor {
         if !self.pane_jumps.contains_key(target) {
             self.pane_jumps.insert(
                 target,
-                editing::jump_list::JumpList::new(self.settings.jump_list_capacity),
+                self::jump_list::JumpList::new(self.settings.jump_list_capacity),
             );
         }
         let bid = self.focused_buffer_id();
@@ -770,11 +776,11 @@ impl Editor {
             let fun = tc.fun;
             let result = fun(self, arg, force);
             if let Err(ref e) = result {
-                self.report(Severity::Error, e.0.clone());
+                self.report(Severity::Error, e.message().to_owned());
             }
             result
         } else {
-            Err(editing::error::CommandError(format!(
+            Err(editing::error::CommandError::new(format!(
                 "unknown command: {cmd}"
             )))
         }

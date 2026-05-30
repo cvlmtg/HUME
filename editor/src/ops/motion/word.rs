@@ -245,7 +245,7 @@ pub(super) fn apply_word_select(
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
         for _ in 0..count {
-            match motion(buf, current.head) {
+            match motion(buf, current.head()) {
                 Some((anchor, head)) => current = Selection::new(anchor, head),
                 None => break, // no more words — stop early, keep last selection
             }
@@ -271,7 +271,7 @@ pub(super) fn apply_word_select_extend_forward(
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
         // Preserve direction of the original selection through all union steps.
-        let forward = current.anchor <= current.head;
+        let forward = current.anchor() <= current.head();
         for _ in 0..count {
             // Start from the far end so the search goes past the selection.
             match motion(buf, current.end()) {
@@ -304,7 +304,7 @@ pub(super) fn apply_word_select_extend_backward(
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
         let mut current = sel;
-        let forward = current.anchor <= current.head;
+        let forward = current.anchor() <= current.head();
         for _ in 0..count {
             // Start from the near end so the search goes past the selection.
             match motion(buf, current.start()) {

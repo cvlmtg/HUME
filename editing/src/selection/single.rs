@@ -26,14 +26,14 @@ use crate::text::Text;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Selection {
     /// The stationary end of the selection. Stays put when the user extends.
-    pub anchor: usize,
+    pub(crate) anchor: usize,
     /// The moving end / cursor position.
-    pub head: usize,
+    pub(crate) head: usize,
     /// Sticky display column for visual j/k motion. `None` means "not latched
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
     /// (constructors set it to `None`; only `with_horiz` preserves it).
-    pub horiz: Option<u32>,
+    pub(crate) horiz: Option<u32>,
 }
 
 impl Selection {
@@ -59,7 +59,7 @@ impl Selection {
     /// A directional selection with a preserved sticky display column.
     ///
     /// Used *only* by visual j/k motion to carry the column across consecutive
-    /// vertical moves. All other code uses [`new`] or [`collapsed`] which reset
+    /// vertical moves. All other code uses [`Self::new`] or [`Self::collapsed`] which reset
     /// `horiz` to `None` by construction.
     pub fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
         Self {
@@ -89,6 +89,21 @@ impl Selection {
         }
     }
 
+    /// The stationary end (the end that stays put when the user extends).
+    pub fn anchor(&self) -> usize {
+        self.anchor
+    }
+
+    /// The moving end / cursor position.
+    pub fn head(&self) -> usize {
+        self.head
+    }
+
+    /// Sticky display column for visual j/k motion, or `None` when not latched.
+    pub fn horiz(&self) -> Option<u32> {
+        self.horiz
+    }
+
     /// Is this a single-character selection (anchor == head)?
     pub fn is_collapsed(&self) -> bool {
         self.anchor == self.head
@@ -105,7 +120,7 @@ impl Selection {
     /// single-codepoint graphemes (the common case) this equals the last char
     /// in the selection. For multi-codepoint clusters (e.g. `e + \u{0301}`)
     /// the combining codepoints that follow are NOT included — use
-    /// [`end_inclusive`] when computing deletion or slice bounds.
+    /// [`Self::end_inclusive`] when computing deletion or slice bounds.
     ///
     /// In the inclusive cursor model this char IS part of the selection (the
     /// cursor or anchor sits on it). This is NOT an exclusive bound.
@@ -114,7 +129,7 @@ impl Selection {
     }
 
     /// The last char position covered by this selection, inclusive of any
-    /// combining codepoints that extend the grapheme at [`end`].
+    /// combining codepoints that extend the grapheme at [`Self::end`].
     ///
     /// For single-codepoint graphemes this equals `end()`. For multi-codepoint
     /// clusters (e.g. `e + \u{0301}` = é) this extends to the last codepoint

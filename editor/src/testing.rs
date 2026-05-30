@@ -266,16 +266,16 @@ pub(crate) fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
     let mut markers: Vec<Vec<&'static str>> = vec![vec![]; n + 1];
 
     for sel in sels.iter_sorted() {
-        if sel.anchor <= sel.head {
+        if sel.anchor() <= sel.head() {
             // Forward selection (including cursor where anchor == head).
             // `-[` at anchor, `]>` one past head.
-            markers[sel.anchor].push("-[");
-            markers[(sel.head + 1).min(n)].push("]>");
+            markers[sel.anchor()].push("-[");
+            markers[(sel.head() + 1).min(n)].push("]>");
         } else {
             // Backward selection (anchor > head).
             // `<[` at head, `]-` one past anchor.
-            markers[sel.head].push("<[");
-            markers[(sel.anchor + 1).min(n)].push("]-");
+            markers[sel.head()].push("<[");
+            markers[(sel.anchor() + 1).min(n)].push("]-");
         }
     }
 
@@ -368,8 +368,8 @@ mod tests {
         assert_eq!(sels.len(), 1);
         let s = sels.primary();
         assert!(s.is_collapsed());
-        assert_eq!(s.head, 0);
-        assert_eq!(s.anchor, 0);
+        assert_eq!(s.head(), 0);
+        assert_eq!(s.anchor(), 0);
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
         // hello-[\n]> — cursor on '\n' (offset 5)
         let (buf, sels) = parse_state("hello-[\n]>");
         assert_eq!(buf.to_string(), "hello\n");
-        assert_eq!(sels.primary().head, 5);
+        assert_eq!(sels.primary().head(), 5);
     }
 
     #[test]
@@ -385,7 +385,7 @@ mod tests {
         // hel-[l]>o\n — cursor on second 'l' (offset 3)
         let (buf, sels) = parse_state("hel-[l]>o\n");
         assert_eq!(buf.to_string(), "hello\n");
-        assert_eq!(sels.primary().head, 3);
+        assert_eq!(sels.primary().head(), 3);
     }
 
     #[test]
@@ -394,8 +394,8 @@ mod tests {
         let (buf, sels) = parse_state("-[hell]>o world\n");
         assert_eq!(buf.to_string(), "hello world\n");
         let s = sels.primary();
-        assert_eq!(s.anchor, 0);
-        assert_eq!(s.head, 3);
+        assert_eq!(s.anchor(), 0);
+        assert_eq!(s.head(), 3);
     }
 
     #[test]
@@ -404,8 +404,8 @@ mod tests {
         let (buf, sels) = parse_state("<[hel]-lo\n");
         assert_eq!(buf.to_string(), "hello\n");
         let s = sels.primary();
-        assert_eq!(s.anchor, 2);
-        assert_eq!(s.head, 0);
+        assert_eq!(s.anchor(), 2);
+        assert_eq!(s.head(), 0);
     }
 
     #[test]
@@ -414,8 +414,8 @@ mod tests {
         let (buf, sels) = parse_state("hi -[ther]>e\n");
         assert_eq!(buf.to_string(), "hi there\n");
         let s = sels.primary();
-        assert_eq!(s.anchor, 3);
-        assert_eq!(s.head, 6);
+        assert_eq!(s.anchor(), 3);
+        assert_eq!(s.head(), 6);
     }
 
     #[test]
@@ -424,8 +424,8 @@ mod tests {
         let (buf, sels) = parse_state("-[f]>oo-[ ]>bar\n");
         assert_eq!(buf.to_string(), "foo bar\n");
         assert_eq!(sels.len(), 2);
-        assert_eq!(sels.iter_sorted().next().unwrap().head, 0);
-        assert_eq!(sels.iter_sorted().nth(1).unwrap().head, 3);
+        assert_eq!(sels.iter_sorted().next().unwrap().head(), 0);
+        assert_eq!(sels.iter_sorted().nth(1).unwrap().head(), 3);
     }
 
     #[test]
@@ -437,8 +437,8 @@ mod tests {
         let mut it = sels.iter_sorted();
         let s0 = it.next().unwrap();
         let s1 = it.next().unwrap();
-        assert_eq!((s0.anchor, s0.head), (0, 1));
-        assert_eq!((s1.anchor, s1.head), (3, 4));
+        assert_eq!((s0.anchor(), s0.head()), (0, 1));
+        assert_eq!((s1.anchor(), s1.head()), (3, 4));
     }
 
     #[test]
@@ -446,7 +446,7 @@ mod tests {
         // "é" is U+00E9, a single Unicode scalar value (1 char).
         let (buf, sels) = parse_state("caf-[é]>\n");
         assert_eq!(buf.to_string(), "café\n");
-        assert_eq!(sels.primary().head, 3);
+        assert_eq!(sels.primary().head(), 3);
     }
 
     #[test]
@@ -454,7 +454,7 @@ mod tests {
         // -[\n]> — cursor on '\n' in a buffer that contains only the trailing newline
         let (buf, sels) = parse_state("-[\n]>");
         assert_eq!(buf.to_string(), "\n");
-        assert_eq!(sels.primary().head, 0);
+        assert_eq!(sels.primary().head(), 0);
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod tests {
         // Lone `-` and `<` (not followed by `[`) are plain buffer content.
         let (buf, sels) = parse_state("-[x]>a-b<c\n");
         assert_eq!(buf.to_string(), "xa-b<c\n");
-        assert_eq!(sels.primary().head, 0);
+        assert_eq!(sels.primary().head(), 0);
     }
 
     // ── serialize_state ───────────────────────────────────────────────────────

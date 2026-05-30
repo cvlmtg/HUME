@@ -28,7 +28,7 @@ pub(crate) fn apply_text_object(
     sels: SelectionSet,
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| match text_object(buf, sel.head) {
+    let result = sels.map_and_merge(|sel| match text_object(buf, sel.head()) {
         Some((start, end)) => Selection::new(start, end),
         None => sel,
     });
@@ -54,10 +54,10 @@ pub(crate) fn apply_text_object_extend(
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
-        let forward = sel.anchor <= sel.head;
+        let forward = sel.anchor() <= sel.head();
 
         // First try from head (correct for initial extend from a cursor).
-        if let Some((start, end)) = text_object(buf, sel.head) {
+        if let Some((start, end)) = text_object(buf, sel.head()) {
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
             if new_start != sel.start() || new_end != sel.end() {
@@ -374,17 +374,17 @@ pub(crate) fn apply_nearest_word_result(
 ) -> Selection {
     let Some((start, end)) = found else { return sel };
     match mode {
-        MotionMode::Move => match sel.horiz {
+        MotionMode::Move => match sel.horiz() {
             Some(h) => Selection::with_horiz(start, end, h),
             None => Selection::new(start, end),
         },
         MotionMode::Extend => {
-            let forward = sel.anchor <= sel.head;
+            let forward = sel.anchor() <= sel.head();
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
             let s = Selection::directed(new_start, new_end, forward);
-            match sel.horiz {
-                Some(h) => Selection::with_horiz(s.anchor, s.head, h),
+            match sel.horiz() {
+                Some(h) => Selection::with_horiz(s.anchor(), s.head(), h),
                 None => s,
             }
         }
@@ -407,10 +407,10 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map_and_merge(|sel| {
-        let line = buf.char_to_line(sel.anchor);
+        let line = buf.char_to_line(sel.anchor());
         let line_start = buf.line_to_char(line);
         let line_end_excl = line_end_exclusive(buf, line);
-        let found = nearest_word_on_line(buf, sel.anchor, line_start, line_end_excl);
+        let found = nearest_word_on_line(buf, sel.anchor(), line_start, line_end_excl);
         apply_nearest_word_result(sel, found, mode)
     });
     result.debug_assert_valid(buf);

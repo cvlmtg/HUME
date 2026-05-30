@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn hook_cmd_queue_is_dispatched() {
     use scripting::ScriptingHost;
-    use scripting::builtins::ids::SteelBufferId;
+    use scripting::SteelBufferId;
     use scripting::hooks::HookId;
     use crate::testing::MockHost;
 
@@ -24,7 +24,7 @@ fn hook_cmd_queue_is_dispatched() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    let val = SteelBufferId(bid).into_steel_val();
+    let val = SteelBufferId::new(bid).into_steel_val();
     ed.fire_hook_silent(HookId::OnBufferOpen, &[val]);
 
     assert_ne!(

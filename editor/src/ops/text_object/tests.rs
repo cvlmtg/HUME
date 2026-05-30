@@ -1054,8 +1054,8 @@ fn nearest_preserves_horiz_on_word() {
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
     let sel = result.primary();
     // "world" spans chars 6–10.
-    assert_eq!((sel.anchor, sel.head), (6, 10), "expected word range");
-    assert_eq!(sel.horiz, Some(5), "horiz must be preserved");
+    assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
+    assert_eq!(sel.horiz(), Some(5), "horiz must be preserved");
 }
 
 #[test]
@@ -1067,8 +1067,8 @@ fn nearest_preserves_horiz_on_whitespace() {
     let sels = SelectionSet::single(Selection::with_horiz(3, 3, 3));
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
     let sel = result.primary();
-    assert_eq!((sel.anchor, sel.head), (0, 1), "expected 'hi' range");
-    assert_eq!(sel.horiz, Some(3), "horiz must be preserved");
+    assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
+    assert_eq!(sel.horiz(), Some(3), "horiz must be preserved");
 }
 
 #[test]
@@ -1078,7 +1078,7 @@ fn nearest_no_horiz_is_cleared() {
     let sels = SelectionSet::single(Selection::new(6, 6));
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Move);
     let sel = result.primary();
-    assert_eq!(sel.horiz, None, "horiz must stay None");
+    assert_eq!(sel.horiz(), None, "horiz must stay None");
 }
 
 #[test]
@@ -1095,11 +1095,11 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Extend);
     let sel = result.primary();
     assert_eq!(
-        (sel.anchor, sel.head),
+        (sel.anchor(), sel.head()),
         (0, 10),
         "extend must not shrink selection when anchor word is already covered"
     );
-    assert!(sel.anchor <= sel.head, "selection must remain forward");
+    assert!(sel.anchor() <= sel.head(), "selection must remain forward");
 }
 
 #[test]
@@ -1108,7 +1108,7 @@ fn nearest_extend_preserves_horiz() {
     let sels = SelectionSet::single(Selection::with_horiz(0, 5, 7)); // anchor=0, head=5 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, MotionMode::Extend);
     assert_eq!(
-        result.primary().horiz,
+        result.primary().horiz(),
         Some(7),
         "horiz must survive extend mode"
     );

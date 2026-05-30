@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use editing::changeset::ChangeSet;
 use editing::history::{History, RevisionId};
-use editing::search_state::{SearchMatches, SearchPattern};
+use super::search_state::{SearchMatches, SearchPattern};
 use editing::selection::SelectionSet;
 use editing::text::Text;
 use crate::editor::pane_state::EditGroup;
@@ -107,7 +107,7 @@ impl Buffer {
         let text = Text::from(content.as_str());
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);
-        buf.set_path(Some(meta.resolved_path.clone()));
+        buf.set_path(Some(meta.resolved_path().to_path_buf()));
         buf.file_meta = Some(meta);
         Ok(buf)
     }
@@ -814,7 +814,7 @@ mod tests {
         d.apply_edit(|b, s| insert_char(b, s, 'b'));
         d.apply_edit(|b, s| insert_char(b, s, 'c'));
         let initial = "-[h]>ello\n";
-        d.goto_revision(editing::history::RevisionId(0));
+        d.goto_revision(editing::history::History::root_id());
         assert_eq!(state(&d), initial);
     }
 

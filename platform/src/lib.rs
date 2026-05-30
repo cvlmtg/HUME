@@ -1,3 +1,22 @@
+//! Platform abstraction layer for HUME.
+//!
+//! Consolidates all OS-specific operations so the rest of the codebase never
+//! calls `std::fs`, `std::process::Command`, or terminal escape sequences
+//! directly. Each sub-module is a narrow, auditable surface for one concern:
+//!
+//! - [`terminal`] — raw-mode lifecycle, ratatui `Terminal` type alias,
+//!   cursor shape/colour, kitty keyboard protocol, synchronized updates,
+//!   and the inline-subprocess output flow.
+//! - [`io`] — atomic file writes that preserve permissions and ownership.
+//! - [`fs`] — thin `std::fs` wrappers (the audit allow-list).
+//! - [`process`] — `std::process::Command` wrappers (the audit allow-list).
+//! - [`dirs`] — XDG/platform config, data, home, and runtime directories.
+//! - [`path`] — tilde/env-var expansion and path-separator utilities.
+//!
+//! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
+//! hidden behind private sub-modules; every public function has a uniform
+//! signature across platforms.
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]
@@ -40,7 +59,7 @@ pub fn install_signal_handlers() -> Result<(), ctrlc::Error> {
 /// keyboard protocol push, `Ok(false)` otherwise.
 ///
 /// Must be called after `enable_raw_mode()`.
-pub fn probe_kitty_support() -> std::io::Result<bool> {
+pub(crate) fn probe_kitty_support() -> std::io::Result<bool> {
     #[cfg(unix)]
     {
         unix::probe_kitty_support()

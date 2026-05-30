@@ -521,7 +521,7 @@ fn passive_load_registers_installed_and_call_queues_startup_command() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir.clone());
-    scripting::builtins::fs::init_dirs(Some(data_dir.clone()), None);
+    scripting::init_dirs(Some(data_dir.clone()), None);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }

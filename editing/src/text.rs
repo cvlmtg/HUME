@@ -70,7 +70,7 @@ pub struct Text {
 }
 
 impl Text {
-    /// Wrap a raw `Rope` into a `Text`. Inverse of `into_rope`.
+    /// Wrap a raw `Rope` into a `Text`.
     ///
     /// Used by `ChangeSet::apply` to construct the result buffer after
     /// mutating the rope directly. The trailing-`\n` invariant is enforced
@@ -80,7 +80,7 @@ impl Text {
     ///
     /// `line_ending` must be propagated from the source buffer so that CRLF
     /// metadata is preserved across edits and correctly written back on save.
-    pub fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
+    pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
         debug_assert!(
@@ -96,6 +96,13 @@ impl Text {
     /// Ropey's `Rope::clone` is O(log n) (reference-counted tree nodes), so
     /// calling `.rope().clone()` is cheap and is the preferred way to get a
     /// mutable copy for operations that take `&Text` instead of consuming it.
+    ///
+    /// # Design note
+    /// This exposes the `ropey` type directly. Callers (regex search, syntax
+    /// highlighting, scroll logic) need raw `Rope` / `RopeSlice` access for
+    /// performance, so the boundary is intentionally permeable here. `ropey`
+    /// is a stable, semver-pinned dependency; changing it would require
+    /// touching the caller sites regardless.
     pub fn rope(&self) -> &Rope {
         &self.rope
     }

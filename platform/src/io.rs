@@ -1,3 +1,11 @@
+//! Atomic file I/O with permission and ownership preservation.
+//!
+//! The key primitive is [`write_file_atomic`]: write to a sibling temp file,
+//! restore the original file's permissions and ownership, then `rename(2)` it
+//! into place. The caller always sees either the old content or the new content
+//! — never a partial write. [`FileMeta`] bundles the metadata captured on open
+//! so it can be faithfully restored on save.
+
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -6,27 +14,41 @@ use std::path::{Path, PathBuf};
 
 /// Metadata captured from a file on open, restored when saving atomically.
 ///
-/// Keeping this separate from the `Editor` struct means the I/O layer owns
-/// everything it needs to do a faithful round-trip: the real write target
-/// (symlink-resolved), permissions, and ownership.
+/// Bundles everything the I/O layer needs for a faithful round-trip: the real
+/// write target (symlink-resolved), permissions, and ownership. Constructed
+/// only by [`read_file_meta`] and [`read_file`]; never built directly.
 pub struct FileMeta {
     /// The canonical path after following all symlinks.
     ///
     /// Writes always target this path so the symlink itself is preserved —
     /// `rename(2)` replaces inodes, not symlink targets.
-    pub resolved_path: PathBuf,
+    ///
+    /// Private: always produced by `canonicalize` inside `read_file_meta` /
+    /// `read_file`. Constructing a `FileMeta` with an unresolved path would
+    /// silently break the atomic-write-to-symlink-target guarantee.
+    resolved_path: PathBuf,
 
     /// Original permission bits. Restored on the temp file before the rename
     /// so the file is never transiently exposed with wrong permissions.
-    pub permissions: fs::Permissions,
+    permissions: fs::Permissions,
 
     /// Original owner UID. Restored with `fchown` (best-effort, Unix only).
     #[cfg(unix)]
-    pub uid: u32,
+    uid: u32,
 
     /// Original group GID. Restored with `fchown` (best-effort, Unix only).
     #[cfg(unix)]
-    pub gid: u32,
+    gid: u32,
+}
+
+impl FileMeta {
+    /// The canonical path after following all symlinks.
+    ///
+    /// This is the target for atomic writes — using it ensures the symlink
+    /// itself is preserved while the content behind it is updated.
+    pub fn resolved_path(&self) -> &Path {
+        &self.resolved_path
+    }
 }
 
 // ── read_file_meta ────────────────────────────────────────────────────────────

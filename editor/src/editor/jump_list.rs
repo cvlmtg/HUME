@@ -15,12 +15,12 @@ use std::collections::VecDeque;
 
 use engine::pipeline::BufferId;
 
-use crate::selection::{Selection, SelectionSet};
-use crate::text::Text;
+use editing::selection::{Selection, SelectionSet};
+use editing::text::Text;
 
-/// Default capacity — kept here so tests can construct jump lists without
-/// importing `EditorSettings`.
-pub const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
+/// Default capacity — used in tests to construct jump lists without importing `EditorSettings`.
+#[cfg(test)]
+pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +37,7 @@ impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
     pub fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
-        let primary_line = buf.char_to_line(selections.primary().head);
+        let primary_line = buf.char_to_line(selections.primary().head());
         Self {
             buffer_id,
             selections,
@@ -169,7 +169,8 @@ impl JumpList {
     }
 
     /// Returns `true` if any entry in the list belongs to `id`.
-    pub fn entries_for_buffer(&self, id: BufferId) -> bool {
+    #[cfg(test)]
+    pub(crate) fn entries_for_buffer(&self, id: BufferId) -> bool {
         self.entries.iter().any(|e| e.buffer_id == id)
     }
 }
@@ -179,7 +180,7 @@ impl JumpList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::selection::{Selection, SelectionSet};
+    use editing::selection::{Selection, SelectionSet};
 
     /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
     /// Bypasses `JumpEntry::new` since unit tests don't have a Text.
@@ -286,7 +287,7 @@ mod tests {
         assert_eq!(e.primary_line, 10);
         let e = jl.backward(entry(0, 0)).unwrap();
         assert_eq!(e.primary_line, 5);
-        assert_eq!(e.selections.primary().head, 3);
+        assert_eq!(e.selections.primary().head(), 3);
     }
 
     #[test]

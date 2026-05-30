@@ -90,15 +90,15 @@ mod tests {
         // SelectionSet invariant 2: all positions strictly within the buffer.
         for sel in sels.iter_sorted() {
             assert!(
-                sel.head < len,
+                sel.head() < len,
                 "selection head {} out of bounds (buf len {})",
-                sel.head,
+                sel.head(),
                 len
             );
             assert!(
-                sel.anchor < len,
+                sel.anchor() < len,
                 "selection anchor {} out of bounds (buf len {})",
-                sel.anchor,
+                sel.anchor(),
                 len
             );
         }

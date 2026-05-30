@@ -391,7 +391,7 @@ use engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
 
 use super::Editor;
-use scripting::builtins::ids::SteelBufferId;
+use scripting::SteelBufferId;
 use scripting::hooks::HookId;
 
 impl Editor {
@@ -419,7 +419,7 @@ impl Editor {
         if let Some(name) = activate_name.as_deref() {
             self.activate_lazy_language_plugins(name);
         }
-        let bid_val = SteelBufferId(bid).into_steel_val();
+        let bid_val = SteelBufferId::new(bid).into_steel_val();
         self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);

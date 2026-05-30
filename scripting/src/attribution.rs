@@ -1,7 +1,7 @@
 //! Plugin attribution types: `PluginId`, `Owner`, and `PluginStack`.
 //!
 //! `PluginStack` tracks which plugin is currently executing; `current_owner()`
-//! returns the [`Owner`] to record at command-registration time. The result is
+//! returns the owner to record at command-registration time. The result is
 //! stored in `cmd_owners` and exposed to Steel via `(command-plugin …)`.
 
 use std::fmt;
@@ -151,7 +151,7 @@ impl Hash for PluginId {
 /// - [`Owner::Core`] is the fallback returned by `(command-plugin …)` for
 ///   built-in Rust commands that were never registered through Steel.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Owner {
+pub(crate) enum Owner {
     Core,
     User,
     Plugin(PluginId),
@@ -166,13 +166,13 @@ pub enum Owner {
 /// Core state is never mutated through the scripting layer — [`Owner::Core`] is
 /// only ever a *prior*, never the active attribution.
 #[derive(Debug, Default, Clone)]
-pub struct PluginStack {
+pub(crate) struct PluginStack {
     stack: Vec<PluginId>,
 }
 
 impl PluginStack {
     /// Push `id` onto the stack when entering a plugin body (via `activate_plugin`).
-    pub fn push(&mut self, id: PluginId) {
+    pub(crate) fn push(&mut self, id: PluginId) {
         self.stack.push(id);
     }
 
@@ -180,17 +180,17 @@ impl PluginStack {
     ///
     /// Gracefully no-ops on an empty stack — avoids panics on error-path
     /// cleanup where the stack may already be empty.
-    pub fn pop(&mut self) {
+    pub(crate) fn pop(&mut self) {
         self.stack.pop();
     }
 
     /// Returns `true` if no plugin is currently executing.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.stack.is_empty()
     }
 
     /// The [`Owner`] to attribute to the next mutation.
-    pub fn current_owner(&self) -> Owner {
+    pub(crate) fn current_owner(&self) -> Owner {
         match self.stack.last() {
             Some(id) => Owner::Plugin(id.clone()),
             None => Owner::User,

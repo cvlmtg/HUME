@@ -134,16 +134,8 @@ fn pane_selections_sorted_by_head_not_start() {
     // In start() order: [B, A].  In head order: [A, B].
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection {
-                anchor: 10,
-                head: 3,
-                horiz: None,
-            }, // A — primary
-            Selection {
-                anchor: 0,
-                head: 8,
-                horiz: None,
-            }, // B
+            Selection::new(10, 3), // A — primary
+            Selection::new(0, 8),  // B
         ],
         0, // primary is A
     );

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use editing::grapheme::next_grapheme_boundary;
-use editing::search_state::SearchPattern;
+use super::super::search_state::SearchPattern;
 use editing::selection::{Selection, SelectionSet};
 use editing::helpers::is_word_boundary;
 use crate::ops::MotionMode;
@@ -153,7 +153,7 @@ fn search_jump(
         (
             from,
             if mode == MotionMode::Extend {
-                Some(primary.anchor)
+                Some(primary.anchor())
             } else {
                 None
             },
@@ -219,7 +219,7 @@ fn search_jump(
             ed.set_primary_selection(new_sel);
             Ok(())
         }
-        None => Err(CommandError("no match".into())),
+        None => Err(CommandError::new("no match")),
     }
 }
 
@@ -274,7 +274,7 @@ pub fn cmd_select_all_matches(
 
     let matches = find_all_matches(ed.doc().text(), &regex);
     if matches.is_empty() {
-        return Err(CommandError("no matches".into()));
+        return Err(CommandError::new("no matches"));
     }
 
     let sels: Vec<Selection> = matches
@@ -334,7 +334,7 @@ pub fn cmd_use_selection_as_search(
 
     // If cursor (1-char selection), expand to inner word first.
     let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
-        let Some((start, end)) = inner_word_impl(buf, primary.head, is_word_boundary) else {
+        let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
             return Ok(()); // cursor on structural newline or similar — nothing to do
         };
         let word_text = buf.slice(start..end + 1).to_string();

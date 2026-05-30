@@ -37,10 +37,10 @@ pub fn typed_edit(
 
         let path = Path::new(expanded.as_ref());
         let canonical = std::fs::canonicalize(path)
-            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let (bid, is_new) = ed
             .open_or_dedup(&canonical)
-            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         if is_new {
             let name = canonical
                 .file_name()
@@ -56,13 +56,13 @@ pub fn typed_edit(
     } else {
         // Reload current file.
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
-            return Err(CommandError("no file name".into()));
+            return Err(CommandError::new("no file name"));
         };
         if ed.doc().is_dirty() && !force {
-            return Err(CommandError("unsaved changes (use :e! to force)".into()));
+            return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
         let doc = crate::editor::buffer::Buffer::from_file(&path)
-            .map_err(|e| CommandError(format!("{}: {e}", path.display())))?;
+            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let id = ed.focused_buffer_id();
         ed.replace_buffer_in_place(id, doc);
         let name = path
@@ -90,12 +90,12 @@ pub fn typed_cd(
             let expanded = platform::path::expand(s);
             std::path::PathBuf::from(expanded.as_ref())
         }
-        None => platform::dirs::home_dir().ok_or_else(|| CommandError("HOME not set".into()))?,
+        None => platform::dirs::home_dir().ok_or_else(|| CommandError::new("HOME not set"))?,
     };
 
     let resolved = ed
         .set_cwd(&target)
-        .map_err(|e| CommandError(format!("{}: {e}", target.display())))?;
+        .map_err(|e| CommandError::new(format!("{}: {e}", target.display())))?;
     ed.report(Severity::Info, format!("cwd: {}", resolved.display()));
     Ok(())
 }
@@ -120,7 +120,7 @@ pub fn typed_buffer_delete(
     force: bool,
 ) -> Result<(), CommandError> {
     if ed.doc().is_dirty() && !force {
-        return Err(CommandError("unsaved changes (use :bd! to force)".into()));
+        return Err(CommandError::new("unsaved changes (use :bd! to force)"));
     }
     let id = ed.focused_buffer_id();
     ed.close_buffer(id);
@@ -142,7 +142,7 @@ pub fn typed_buffer(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let arg = arg.ok_or_else(|| CommandError("usage: :b <name|#|index>".into()))?;
+    let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
     if bid != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(bid);
@@ -206,20 +206,20 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     if let Ok(n) = arg.parse::<usize>() {
         let idx = n
             .checked_sub(1)
-            .ok_or_else(|| CommandError(format!("no buffer at index {n}")))?;
+            .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")))?;
         return ed
             .buffers
             .iter()
             .nth(idx)
             .map(|(id, _)| id)
-            .ok_or_else(|| CommandError(format!("no buffer at index {n}")));
+            .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")));
     }
 
     // 2. Absolute path — match an open buffer by canonical OR lexical path.
     //    Lexical fallback keeps buffers reachable after their file is deleted.
     if Path::new(arg).is_absolute() {
         return find_buffer_by_path_arg(ed, arg)
-            .ok_or_else(|| CommandError(format!("{arg}: not an open buffer")));
+            .ok_or_else(|| CommandError::new(format!("{arg}: not an open buffer")));
     }
 
     // 3. Exact display-name match.
@@ -233,7 +233,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         1 => return Ok(exact[0]),
         n if n > 1 => {
             let labels: Vec<String> = exact.iter().map(|&id| label(ed.buffers.get(id))).collect();
-            return Err(CommandError(format!(
+            return Err(CommandError::new(format!(
                 "ambiguous buffer name '{arg}': {}",
                 labels.join(", ")
             )));
@@ -249,14 +249,14 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         .map(|(id, _)| id)
         .collect();
     match prefix_matches.len() {
-        0 => Err(CommandError(format!("no buffer matching '{arg}'"))),
+        0 => Err(CommandError::new(format!("no buffer matching '{arg}'"))),
         1 => Ok(prefix_matches[0]),
         _ => {
             let labels: Vec<String> = prefix_matches
                 .iter()
                 .map(|&id| label(ed.buffers.get(id)))
                 .collect();
-            Err(CommandError(format!(
+            Err(CommandError::new(format!(
                 "ambiguous prefix '{arg}': {}",
                 labels.join(", ")
             )))

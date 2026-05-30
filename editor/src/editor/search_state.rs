@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use crate::history::RevisionId;
+use editing::history::RevisionId;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

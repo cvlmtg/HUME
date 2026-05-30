@@ -40,10 +40,10 @@ pub(crate) fn apply_motion(
     let result = sels.map_and_merge(|sel| {
         // Apply the motion `count` times, feeding each result as the next
         // input. `fold` starting from the current head position.
-        let new_head = (0..count).fold(sel.head, |h, _| motion(buf, h));
+        let new_head = (0..count).fold(sel.head(), |h, _| motion(buf, h));
         match mode {
             MotionMode::Move => Selection::collapsed(new_head),
-            MotionMode::Extend => Selection::new(sel.anchor, new_head),
+            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
         }
     });
     result.debug_assert_valid(buf);

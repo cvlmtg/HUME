@@ -234,7 +234,7 @@ fn paste_impl(
                 // Linewise cursor paste: insert as whole new line(s).
                 // insert advances new_pos() by the char count of the inserted text,
                 // so new_pos() - text.chars().count() is the first inserted char.
-                let line = buf.char_to_line(sel.head);
+                let line = buf.char_to_line(sel.head());
                 let insert_at = if before {
                     buf.line_to_char(line)
                 } else {
@@ -254,7 +254,7 @@ fn paste_impl(
                 };
                 b.retain(insert_at - b.old_pos());
                 if text.is_empty() {
-                    new_sels.push(Selection::collapsed(sel.head));
+                    new_sels.push(Selection::collapsed(sel.head()));
                 } else {
                     b.insert(text);
                     let count = text.chars().count();
@@ -363,7 +363,7 @@ pub(crate) fn delete_char_forward(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
-            delete_one_grapheme(b, buf, new_sels, sel.head);
+            delete_one_grapheme(b, buf, new_sels, sel.head());
         } else {
             delete_sel_region(b, buf, sel, new_sels);
         }
@@ -384,7 +384,7 @@ pub(crate) fn delete_char_backward(
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
-            let p = sel.head;
+            let p = sel.head();
             if p == 0 {
                 // At start of buffer — nothing to delete to the left.
                 let sel = Selection::collapsed(b.new_pos());
@@ -551,7 +551,7 @@ pub(crate) fn replace_selections(
         // Reconstruct the selection with its original direction.
         // `Selection::directed` is the canonical constructor for this pattern:
         // it takes content-aware (start, end) bounds and a direction flag.
-        let forward = sel.anchor <= sel.head;
+        let forward = sel.anchor() <= sel.head();
         new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
     })
 }

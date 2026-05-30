@@ -4,9 +4,9 @@
 //! Button-event tracking (mode 1002) is only enabled when `editor.mouse_select`
 //! is true, so `MouseEventKind::Drag` events are received only in that case.
 //!
-//! Click-to-position uses [`editing::cursor::screen_to_char_offset`] to convert
-//! the terminal-absolute `(column, row)` from the mouse event into a buffer
-//! char offset.
+//! Click-to-position converts the terminal-absolute `(column, row)` from the
+//! mouse event into a buffer char offset via `screen_to_char_offset`
+//! (`editor/src/editor/cursor.rs`).
 //!
 //! Scroll wheel events move both the viewport and all cursors by the configured
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
@@ -18,7 +18,7 @@ use engine::pane::WrapMode;
 
 use super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use editing::selection::{Selection, SelectionSet};
-use editing::cursor;
+use super::cursor;
 use crate::ops::MotionMode;
 
 use super::{Editor, Mode};

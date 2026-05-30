@@ -15,5 +15,3 @@ crossterm = "0.29"
 slotmap = "1"
 tempfile = "3"
 
-[dev-dependencies]
-tempfile = "3"

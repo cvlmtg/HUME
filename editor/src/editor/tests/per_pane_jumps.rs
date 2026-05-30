@@ -14,7 +14,7 @@ fn p7_pane_jumps_ctrl_o_backward() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head),
+            .char_to_line(ed.current_selections().primary().head()),
         0
     );
 

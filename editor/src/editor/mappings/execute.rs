@@ -4,7 +4,7 @@ use super::super::commands::RING_CYCLE_CMDS;
 use super::super::keymap::WaitCharPending;
 use super::super::registry::MappableCommand;
 use super::super::{doc_ops, Editor, RegisterPrefix, RepeatableAction, Severity};
-use editing::jump_list::JumpEntry;
+use super::super::jump_list::JumpEntry;
 use editing::selection::Selection;
 use crate::ops::MotionMode;
 use crate::editor::host_impl::EditorHostImpl;
@@ -49,7 +49,7 @@ impl Editor {
             {
                 let bid = self.focused_buffer_id();
                 let primary = self.current_selections().primary();
-                Some((primary, self.doc().text().char_to_line(primary.head), bid))
+                Some((primary, self.doc().text().char_to_line(primary.head()), bid))
             } else {
                 None
             };
@@ -86,7 +86,7 @@ impl Editor {
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
                     if let Err(e) = fun(self, count, motion_mode) {
-                        self.report(Severity::Error, e.0);
+                        self.report(Severity::Error, e.message().to_owned());
                     }
                 }
                 MappableCommand::Lazy { ref plugin, .. } => {
@@ -173,7 +173,7 @@ impl Editor {
                 let post_line = self
                     .doc()
                     .text()
-                    .char_to_line(self.current_selections().primary().head);
+                    .char_to_line(self.current_selections().primary().head());
                 if is_explicit_jump
                     || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold
                 {

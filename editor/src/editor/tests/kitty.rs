@@ -225,7 +225,7 @@ fn ctrl_d_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
     let before = ed.current_selections().primary();
     assert_eq!(
-        before.anchor, before.head,
+        before.anchor(), before.head(),
         "precondition: collapsed selection"
     );
 
@@ -234,11 +234,11 @@ fn ctrl_d_does_not_extend_in_normal_mode() {
     let after = ed.current_selections().primary();
     // Selection must still be collapsed — anchor == head.
     assert_eq!(
-        after.anchor, after.head,
+        after.anchor(), after.head(),
         "Ctrl+d must not extend the selection"
     );
     // The cursor must have moved (scroll actually did something).
-    assert_ne!(after.head, before.head, "Ctrl+d must move the cursor");
+    assert_ne!(after.head(), before.head(), "Ctrl+d must move the cursor");
 }
 
 /// Ctrl+u scrolls without extending (symmetric with Ctrl+d).
@@ -251,7 +251,7 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
 
     let after = ed.current_selections().primary();
     assert_eq!(
-        after.anchor, after.head,
+        after.anchor(), after.head(),
         "Ctrl+u must not extend the selection"
     );
 }
@@ -261,7 +261,7 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
 #[test]
 fn extend_mode_ctrl_d_extends() {
     let mut ed = scroll_test_editor_kitty();
-    let before_anchor = ed.current_selections().primary().anchor;
+    let before_anchor = ed.current_selections().primary().anchor();
 
     ed.handle_key(key('e')); // enter sticky Extend mode
     ed.handle_key(key_ctrl('d'));
@@ -269,9 +269,9 @@ fn extend_mode_ctrl_d_extends() {
     let after = ed.current_selections().primary();
     // In Extend mode the anchor must not have moved.
     assert_eq!(
-        after.anchor, before_anchor,
+        after.anchor(), before_anchor,
         "anchor must be pinned in Extend mode"
     );
     // And head must have moved (scroll happened).
-    assert_ne!(after.head, before_anchor, "head must move in Extend mode");
+    assert_ne!(after.head(), before_anchor, "head must move in Extend mode");
 }

@@ -15,7 +15,7 @@ use engine::theme::loader::load_theme;
 
 use crate::editor::message_log::{MessageLog, Severity};
 
-use editing::jump_list::{JumpEntry, JumpList};
+use super::jump_list::{JumpEntry, JumpList};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{self, PaneBufferState};

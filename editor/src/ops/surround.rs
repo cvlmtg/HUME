@@ -132,7 +132,7 @@ fn select_surround(
         if i == primary_idx {
             new_primary = new_sels.len();
         }
-        if let Some((open_pos, close_pos)) = find_pair(buf, sel.head) {
+        if let Some((open_pos, close_pos)) = find_pair(buf, sel.head()) {
             new_sels.push(Selection::collapsed(open_pos));
             new_sels.push(Selection::collapsed(close_pos));
         } else {
@@ -192,7 +192,7 @@ mod tests {
         let buf = Text::from(text);
         let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
         let result = f(&buf, sels, MotionMode::Move);
-        result.iter_sorted().map(|s| (s.anchor, s.head)).collect()
+        result.iter_sorted().map(|s| (s.anchor(), s.head())).collect()
     }
 
     // ── Bracket surround ─────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ mod tests {
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Only the first cursor is inside parens; second is not.
         // First → cursors on ( and ), second preserved.
-        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor(), s.head())).collect();
         assert_eq!(pairs, vec![(0, 0), (2, 2), (5, 5)]);
     }
 
@@ -287,7 +287,7 @@ mod tests {
             SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
         // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
-        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor(), s.head())).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }
 
@@ -298,7 +298,7 @@ mod tests {
         let buf = Text::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(2, 4));
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
-        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor(), s.head())).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }
 
@@ -309,7 +309,7 @@ mod tests {
         let buf = Text::from("(hello)\n");
         let sels = SelectionSet::single(Selection::new(4, 2));
         let result = cmd_surround_paren(&buf, sels, MotionMode::Move);
-        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor, s.head)).collect();
+        let pairs: Vec<_> = result.iter_sorted().map(|s| (s.anchor(), s.head())).collect();
         assert_eq!(pairs, vec![(0, 0), (6, 6)]);
     }
 

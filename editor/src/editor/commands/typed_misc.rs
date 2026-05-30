@@ -139,7 +139,7 @@ pub fn typed_split(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":split not yet implemented".into()))
+    Err(CommandError::new(":split not yet implemented"))
 }
 
 pub fn typed_vsplit(
@@ -147,7 +147,7 @@ pub fn typed_vsplit(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    Err(CommandError(":vsplit not yet implemented".into()))
+    Err(CommandError::new(":vsplit not yet implemented"))
 }
 
 /// `:theme <name>` — load a theme by name from the theme search path.
@@ -271,19 +271,19 @@ pub fn typed_tutor(
 ) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
     let Some(runtime) = platform::dirs::runtime_dir() else {
-        return Err(CommandError(
-            "runtime directory not found (set HUME_RUNTIME to override)".into(),
+        return Err(CommandError::new(
+            "runtime directory not found (set HUME_RUNTIME to override)"
         ));
     };
     let source_path = runtime.join("tutor.txt");
     let source = std::fs::canonicalize(&source_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
-            CommandError(format!(
+            CommandError::new(format!(
                 "tutor.txt not found at {} (set HUME_RUNTIME to override)",
                 source_path.display()
             ))
         } else {
-            CommandError(format!("could not access tutor.txt: {e}"))
+            CommandError::new(format!("could not access tutor.txt: {e}"))
         }
     })?;
 
@@ -292,9 +292,9 @@ pub fn typed_tutor(
     // BufferStore stores on macOS (/private/var/... vs /var/...).
     let tmp_dir = std::env::temp_dir().join(format!("hume-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir)
-        .map_err(|e| CommandError(format!("could not create tutor tmp dir: {e}")))?;
+        .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
     let canonical_tmp = std::fs::canonicalize(&tmp_dir)
-        .map_err(|e| CommandError(format!("could not canonicalize tutor tmp dir: {e}")))?
+        .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?
         .join("tutor.txt");
 
     // If a buffer is already open at the tmp path, switch — no re-copy so that
@@ -307,10 +307,10 @@ pub fn typed_tutor(
     // No live buffer at tmp. Copy fresh source content (overwrites any stale
     // file from a prior `:bd!`), then open the copy.
     std::fs::copy(&source, &canonical_tmp)
-        .map_err(|e| CommandError(format!("could not copy tutor.txt to tmp: {e}")))?;
+        .map_err(|e| CommandError::new(format!("could not copy tutor.txt to tmp: {e}")))?;
     let (bid, _) = ed
         .open_or_dedup(&canonical_tmp)
-        .map_err(|e| CommandError(format!("could not open tutor copy: {e}")))?;
+        .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
     ed.switch_to_buffer_with_jump(bid);
     Ok(())
 }

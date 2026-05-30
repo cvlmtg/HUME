@@ -4,7 +4,7 @@ use super::super::minibuf::MiniBufferEvent;
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
 use editing::error::CommandError;
-use editing::minibuf_history::{HistoryDir, HistoryKind};
+use super::super::minibuf_history::{HistoryDir, HistoryKind};
 
 impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ impl Editor {
             Some(a) if a.contains('%') || a.contains('#') => match expand_command_arg(self, a) {
                 Ok(s) => Some(s),
                 Err(e) => {
-                    self.report(Severity::Error, e.0);
+                    self.report(Severity::Error, e.message().to_owned());
                     return;
                 }
             },
@@ -260,7 +260,7 @@ impl Editor {
         if let Some(tc) = self.registry.get_typed(cmd) {
             let fun = tc.fun;
             if let Err(e) = fun(self, expanded.as_deref(), force) {
-                self.report(Severity::Error, e.0);
+                self.report(Severity::Error, e.message().to_owned());
             }
         } else if let Some(mut mappable) = self.registry.get_mappable(cmd).cloned() {
             // Any mappable command can be invoked from the command line with
@@ -355,18 +355,18 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                 let path = ed
                     .doc()
                     .path()
-                    .ok_or_else(|| CommandError("No file name".into()))?;
+                    .ok_or_else(|| CommandError::new("No file name"))?;
                 out.push_str(&path.display().to_string());
             }
             "#" => {
                 let alt_id = ed
                     .alternate_buffer()
-                    .ok_or_else(|| CommandError("No alternate buffer".into()))?;
+                    .ok_or_else(|| CommandError::new("No alternate buffer"))?;
                 let alt_path = ed
                     .buffers
                     .get(alt_id)
                     .path()
-                    .ok_or_else(|| CommandError("Alternate buffer has no file name".into()))?;
+                    .ok_or_else(|| CommandError::new("Alternate buffer has no file name"))?;
                 out.push_str(&alt_path.display().to_string());
             }
             other => out.push_str(other),

@@ -36,7 +36,7 @@ pub(crate) fn cmd_split_selection_on_newlines(
         let end = sel.end();
         let start_line = buf.char_to_line(start);
         let end_line = buf.char_to_line(end);
-        let forward = sel.anchor <= sel.head;
+        let forward = sel.anchor() <= sel.head();
 
         let first_piece_idx = new_sels.len();
 
@@ -136,7 +136,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
     let new_sels = sels.map_and_merge(|sel| {
         let mut start = sel.start();
         let end = sel.end();
-        let forward = sel.anchor <= sel.head;
+        let forward = sel.anchor() <= sel.head();
 
         // Walk forward from start, skipping whitespace (grapheme boundary steps).
         // `classify_char` is the authoritative whitespace definition for this
@@ -152,7 +152,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
 
         // If we consumed everything, the selection is all whitespace.
         if start > end {
-            return Selection::collapsed(sel.head);
+            return Selection::collapsed(sel.head());
         }
 
         // Walk backward from end, skipping whitespace (grapheme boundary steps).
@@ -239,7 +239,7 @@ mod tests {
         let (buf, sels) = parse_state("foo-[\n]>bar\n");
         let sels_out = cmd_split_selection_on_newlines(&buf, sels, MotionMode::Move);
         assert_eq!(sels_out.len(), 1);
-        assert_eq!(sels_out.primary().head, 3); // still on \n
+        assert_eq!(sels_out.primary().head(), 3); // still on \n
     }
 
     #[test]
@@ -272,14 +272,14 @@ mod tests {
         assert_eq!(sels_out.len(), 3);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // All pieces must be backward (anchor >= head; cursor is anchor == head).
-        assert!(s[0].anchor >= s[0].head, "line 0 should be backward");
+        assert!(s[0].anchor() >= s[0].head(), "line 0 should be backward");
         assert!(
-            s[1].anchor >= s[1].head,
+            s[1].anchor() >= s[1].head(),
             "empty line should be cursor/backward"
         );
-        assert!(s[2].anchor >= s[2].head, "line 2 should be backward");
+        assert!(s[2].anchor() >= s[2].head(), "line 2 should be backward");
         // Empty line: cursor on the lone '\n' at offset 4.
-        assert_eq!(s[1].head, 4);
+        assert_eq!(s[1].head(), 4);
     }
 
     #[test]
@@ -291,8 +291,8 @@ mod tests {
         assert_eq!(sels_out.len(), 2);
         let s: Vec<_> = sels_out.iter_sorted().copied().collect();
         // Both pieces should be backward selections.
-        assert!(s[0].anchor > s[0].head, "line 0 piece should be backward");
-        assert!(s[1].anchor > s[1].head, "line 1 piece should be backward");
+        assert!(s[0].anchor() > s[0].head(), "line 0 piece should be backward");
+        assert!(s[1].anchor() > s[1].head(), "line 1 piece should be backward");
     }
 
     #[test]
@@ -337,7 +337,7 @@ mod tests {
         let sels_out = cmd_trim_selection_whitespace(&buf, sels, MotionMode::Move);
         assert!(sels_out.primary().is_collapsed());
         // Head was at offset 3 (the `|` position in DSL).
-        assert_eq!(sels_out.primary().head, 3);
+        assert_eq!(sels_out.primary().head(), 3);
     }
 
     #[test]
@@ -391,7 +391,7 @@ mod tests {
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
         // Expect 3 selections: (1,2), (3,4), (5,6)
         assert_eq!(result.len(), 3);
-        assert_eq!((result.primary().anchor, result.primary().head), (1, 2));
+        assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
     }
 
     #[test]
@@ -432,7 +432,7 @@ mod tests {
         let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
         assert_eq!(result.len(), 3);
-        assert_eq!((result.primary().anchor, result.primary().head), (1, 2));
+        assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
     }
 
     #[test]
@@ -443,8 +443,8 @@ mod tests {
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
         assert_eq!(result.len(), 1);
         let sel = result.primary();
-        assert_eq!(sel.anchor, 1);
-        assert_eq!(sel.head, 1);
+        assert_eq!(sel.anchor(), 1);
+        assert_eq!(sel.head(), 1);
         assert!(sel.is_collapsed());
     }
 
@@ -458,6 +458,6 @@ mod tests {
         let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
         let result = select_matches_within(&buf, &sels, &regex).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!((result.primary().anchor, result.primary().head), (3, 4));
+        assert_eq!((result.primary().anchor(), result.primary().head()), (3, 4));
     }
 }

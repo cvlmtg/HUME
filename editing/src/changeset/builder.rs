@@ -102,8 +102,8 @@ impl ChangeSetBuilder {
 
     /// Current position in the new document (chars produced so far).
     ///
-    /// This is the key convenience: after emitting an `insert`, `new_pos()`
-    /// tells you exactly where a cursor should land in the result buffer.
+    /// After emitting an `insert`, `new_pos()` tells you exactly where a
+    /// cursor should land in the result buffer.
     pub fn new_pos(&self) -> usize {
         self.new_pos
     }
