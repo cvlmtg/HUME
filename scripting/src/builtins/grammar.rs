@@ -33,7 +33,7 @@ pub(crate) fn grammar_output_path(
     name: String,
 ) -> Result<SteelVal, SteelErr> {
     let filename = format!("{}.{}", name, platform_grammar_ext());
-    let path = super::fs::with_data_grammars_or_subpath(&filename, |p| p.to_path_buf())?;
+    let path = super::sandbox::with_data_grammars_or_subpath(&filename, |p| p.to_path_buf())?;
     path.to_string_lossy()
         .as_ref()
         .into_steelval()
@@ -58,7 +58,7 @@ pub(crate) fn compile_grammar(
     let src_path = PathBuf::from(&src);
     let out_path = PathBuf::from(&out);
 
-    if super::fs::has_dotdot(&src_path) {
+    if super::sandbox::has_dotdot(&src_path) {
         steel::stop!(Generic =>
             "compile-grammar!: src must not contain '..' components: {}", src);
     }
@@ -74,7 +74,7 @@ pub(crate) fn compile_grammar(
             format!("compile-grammar!: cannot resolve src '{src}': {e}"),
         )
     })?;
-    super::fs::with_data_grammars(|sandbox| {
+    super::sandbox::with_data_grammars(|sandbox| {
         if !canonical_src.starts_with(sandbox) {
             Err(SteelErr::new(
                 steel::rerrs::ErrorKind::Generic,
@@ -121,7 +121,7 @@ mod tests {
         let data_dir = tmp.path().join("hume");
         fs::create_dir_all(data_dir.join("plugins")).unwrap();
         fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
-        super::super::fs::init_dirs(Some(data_dir), None);
+        super::super::sandbox::init_dirs(Some(data_dir), None);
     }
 
     // ── grammar-output-path ───────────────────────────────────────────────────
@@ -137,7 +137,7 @@ mod tests {
         let data_dir = tmp.path().join("hume");
         fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
         unsafe { env::set_var("XDG_DATA_HOME", tmp.path()) };
-        super::super::fs::init_dirs(Some(data_dir), None);
+        super::super::sandbox::init_dirs(Some(data_dir), None);
 
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();

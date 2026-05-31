@@ -15,6 +15,7 @@ pub(crate) mod ids;
 pub(crate) mod interrupt;
 pub(crate) mod keymap_bind;
 pub(crate) mod plugins;
+pub(crate) mod sandbox;
 pub(crate) mod settings;
 pub(crate) mod shell;
 pub(crate) mod statusline;

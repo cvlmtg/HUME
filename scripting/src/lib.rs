@@ -66,7 +66,7 @@ pub use attribution::PluginId;
 pub use builtins::ids::SteelBufferId;
 pub use watchdog::EvalWatchdog;
 #[cfg(any(test, feature = "test-util"))]
-pub use builtins::fs::init_dirs;
+pub use builtins::sandbox::init_dirs;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use codegen::{HUME_CTX, cmd_arg_global_name};
@@ -211,7 +211,7 @@ impl ScriptingHost {
         // Initialize the fs builtin directory TLS before the engine registers
         // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
         // from this TLS whenever they are called.
-        builtins::fs::init_dirs(data_dir.clone(), runtime_dir.clone());
+        builtins::sandbox::init_dirs(data_dir.clone(), runtime_dir.clone());
         let mut engine = Engine::new();
         builtins::register_all(&mut engine);
         Self {

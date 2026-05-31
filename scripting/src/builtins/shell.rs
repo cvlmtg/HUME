@@ -41,7 +41,7 @@ pub(crate) fn validate_new_path(
     fn_name: &str,
     kind: SandboxKind,
 ) -> Result<PathBuf, SteelErr> {
-    if super::fs::has_dotdot(dest) {
+    if super::sandbox::has_dotdot(dest) {
         steel::stop!(Generic =>
             "{fn_name}: dest must not contain '..' components: {}", dest.display());
     }
@@ -258,7 +258,7 @@ fn sandbox_write_check(
     kind: SandboxKind,
 ) -> Result<(), SteelErr> {
     match kind {
-        SandboxKind::Plugins => super::fs::with_data_plugins(|sandbox| {
+        SandboxKind::Plugins => super::sandbox::with_data_plugins(|sandbox| {
             if !canonical_path.starts_with(sandbox) {
                 Err(SteelErr::new(
                     steel::rerrs::ErrorKind::Generic,
@@ -270,7 +270,7 @@ fn sandbox_write_check(
                 Ok(())
             }
         })?,
-        SandboxKind::Grammars => super::fs::with_data_grammars(|sandbox| {
+        SandboxKind::Grammars => super::sandbox::with_data_grammars(|sandbox| {
             if !canonical_path.starts_with(sandbox) {
                 Err(SteelErr::new(
                     steel::rerrs::ErrorKind::Generic,
@@ -298,7 +298,7 @@ mod tests {
         let data_dir = tmp.path().join("hume");
         fs::create_dir_all(data_dir.join("plugins")).unwrap();
         fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
-        super::super::fs::init_dirs(Some(data_dir), None);
+        super::super::sandbox::init_dirs(Some(data_dir), None);
     }
 
     #[test]
