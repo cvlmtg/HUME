@@ -137,7 +137,7 @@ pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
     });
 }
 
-pub(crate) fn with_dirs<R>(f: impl FnOnce(&ScriptDirs) -> R) -> R {
+fn with_dirs<R>(f: impl FnOnce(&ScriptDirs) -> R) -> R {
     SCRIPT_DIRS.with(|cell| {
         let borrow = cell.borrow();
         f(borrow
