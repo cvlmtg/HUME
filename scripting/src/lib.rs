@@ -891,6 +891,211 @@ impl ScriptingHost {
     }
 }
 
+// ── Activation state-machine tests ───────────────────────────────────────────
+
+#[cfg(test)]
+mod activation_tests {
+    use std::collections::HashSet;
+    use std::io::Write as _;
+
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::attribution::PluginId;
+    use crate::lazy::PluginState;
+    use crate::null_host::NullHost;
+
+    /// Write a Steel source file into `dir` and return its path.
+    fn write_plugin(dir: &TempDir, name: &str, src: &str) -> std::path::PathBuf {
+        let path = dir.path().join(name);
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(src.as_bytes()).unwrap();
+        path
+    }
+
+    fn plugin_id(name: &str) -> PluginId {
+        PluginId::parse(name).unwrap()
+    }
+
+    fn no_builtins() -> HashSet<String> {
+        HashSet::new()
+    }
+
+    // ── Case 1: Declared → Loaded with a valid command body ──────────────────
+
+    #[test]
+    fn declared_to_loaded_registers_command() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "plugin.scm",
+            r#"(define-command! "test-cmd" "A test command." (lambda () 0))"#,
+        );
+        let id = plugin_id("core:test");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+
+        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+
+        assert_eq!(defs.len(), 1, "expected exactly one SteelCmdDef");
+        assert_eq!(defs[0].name, "test-cmd");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            "plugin must be in Loaded state after successful activation"
+        );
+    }
+
+    // ── Case 2: Syntax error → Failed, Err returned ──────────────────────────
+
+    #[test]
+    fn syntax_error_transitions_to_failed() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(&dir, "bad.scm", "(((invalid syntax");
+        let id = plugin_id("core:bad");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+
+        let result = host.activate_plugin(&id, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "must return Err on syntax error");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            "plugin must be in Failed state after syntax error"
+        );
+    }
+
+    // ── Case 3: Idempotent no-ops for non-Declared states ────────────────────
+
+    #[test]
+    fn already_loaded_is_noop() {
+        let id = plugin_id("core:loaded");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loaded);
+
+        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+
+        assert!(defs.is_empty(), "Loaded plugin must be a no-op");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            "state must remain Loaded"
+        );
+    }
+
+    #[test]
+    fn already_failed_is_noop() {
+        let id = plugin_id("core:failed");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Failed);
+
+        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+
+        assert!(defs.is_empty(), "Failed plugin must be a no-op");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            "state must remain Failed"
+        );
+    }
+
+    #[test]
+    fn absent_plugin_is_noop() {
+        let id = plugin_id("core:absent");
+        let mut host = ScriptingHost::new();
+        // Do not seed anything in lazy_registry.
+
+        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+
+        assert!(defs.is_empty(), "absent plugin must be a no-op");
+        assert!(
+            host.lazy_registry.plugins.get(&id).is_none(),
+            "absent plugin must not appear in registry after no-op"
+        );
+    }
+
+    // ── Case 4: Loading re-entrancy guard → no-op ────────────────────────────
+
+    #[test]
+    fn loading_reentrancy_guard_is_noop() {
+        let id = plugin_id("core:cycling");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+
+        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+
+        assert!(defs.is_empty(), "Loading plugin must be a no-op (re-entrancy guard)");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
+            "state must remain Loading (re-entrancy guard must not overwrite)"
+        );
+    }
+
+    // ── Case 5: Transitive-dep failure rolls parent to Failed ─────────────────
+
+    #[test]
+    fn transitive_dep_failure_rolls_parent_to_failed() {
+        let dir = TempDir::new().unwrap();
+        // Plugin B has a syntax error.
+        let path_b = write_plugin(&dir, "b.scm", "(((bad");
+        // Plugin A's body loads B via the %load-plugin! primitive.
+        // B is already in lazy_registry (seeded below), so %load-plugin! just
+        // pushes "core:b" to pending_plugin_loads — no disk access needed.
+        let path_a = write_plugin(&dir, "a.scm", r#"(%load-plugin! "core:b")"#);
+
+        let id_a = plugin_id("core:a");
+        let id_b = plugin_id("core:b");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry
+            .plugins
+            .insert(id_a.clone(), PluginState::Declared { path: path_a });
+        host.lazy_registry
+            .plugins
+            .insert(id_b.clone(), PluginState::Declared { path: path_b });
+
+        let result = host.activate_plugin(&id_a, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "transitive failure must propagate as Err");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id_a), Some(PluginState::Failed)),
+            "parent plugin A must be Failed when its dep B fails"
+        );
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id_b), Some(PluginState::Failed)),
+            "dep plugin B must itself be Failed"
+        );
+    }
+
+    // ── Case 6: Path containing '"' rejected before any eval ─────────────────
+
+    #[test]
+    fn path_with_quote_char_transitions_to_failed() {
+        let id = plugin_id("core:quoted");
+        let mut host = ScriptingHost::new();
+        host.lazy_registry.plugins.insert(
+            id.clone(),
+            PluginState::Declared {
+                path: std::path::PathBuf::from("/some/path\"with/quote/plugin.scm"),
+            },
+        );
+
+        let result = host.activate_plugin(&id, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "path with '\"' must be rejected");
+        assert!(
+            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            "plugin must be Failed after path-with-quote rejection"
+        );
+    }
+}
+
 // ── Public status enum ────────────────────────────────────────────────────────
 
 /// Payload-free public view of a plugin's lifecycle state.

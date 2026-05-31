@@ -45,3 +45,31 @@ impl EvalWatchdog {
         let _ = self.thread.join();
     }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    use std::time::Duration;
+
+    use super::EvalWatchdog;
+
+    #[test]
+    fn expiry_sets_flag() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let _dog = EvalWatchdog::arm(Arc::clone(&flag), Duration::from_millis(20));
+        // Sleep 10× the budget to rule out timing races on slow CI.
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(flag.load(Ordering::Relaxed), "flag must be set after budget expires");
+    }
+
+    #[test]
+    fn cancel_prevents_flag() {
+        let flag = Arc::new(AtomicBool::new(false));
+        // Use a 30-second budget — the watchdog must not fire before cancel().
+        let dog = EvalWatchdog::arm(Arc::clone(&flag), Duration::from_secs(30));
+        dog.cancel();   // joins the thread; deterministic since cancel() unparks it
+        assert!(!flag.load(Ordering::Relaxed), "flag must remain false after cancel");
+    }
+}

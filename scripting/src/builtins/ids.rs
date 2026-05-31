@@ -40,6 +40,16 @@ impl SteelBufferId {
     }
 }
 
+impl SteelPaneId {
+    /// Convert to a `SteelVal` without returning `Result`.
+    ///
+    /// Mirrors [`SteelBufferId::into_steel_val`] — `IntoSteelVal` for custom
+    /// types is infallible.
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("SteelPaneId into_steelval")
+    }
+}
+
 impl Custom for SteelBufferId {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
         Some(Ok(format!("#<buffer-id {}>", self.0.data().as_ffi())))

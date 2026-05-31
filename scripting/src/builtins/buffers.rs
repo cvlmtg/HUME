@@ -20,17 +20,13 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// `(current-buffer)` → BufferId of the focused buffer at dispatch time.
 pub(crate) fn current_buffer(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-buffer");
-    SteelBufferId(ctx.focused_buffer_id)
-        .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    Ok(SteelBufferId(ctx.focused_buffer_id).into_steel_val())
 }
 
 /// `(current-pane)` → PaneId of the focused pane at dispatch time.
 pub(crate) fn current_pane(ctx: &mut SteelCtx) -> SteelResult {
     require_cmd_ctx!(ctx, "current-pane");
-    SteelPaneId(ctx.focused_pane_id)
-        .into_steelval()
-        .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))
+    Ok(SteelPaneId(ctx.focused_pane_id).into_steel_val())
 }
 
 // ── Enumeration builtins ───────────────────────────────────────────────────────
@@ -55,9 +51,7 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
         .host
         .pane_ids()
         .into_iter()
-        .map(|id| SteelPaneId(id)
-            .into_steelval()
-            .expect("SteelPaneId into_steelval"))
+        .map(|id| SteelPaneId(id).into_steel_val())
         .collect();
     list.into_steelval()
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e.to_string()))

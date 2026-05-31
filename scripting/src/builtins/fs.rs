@@ -1,4 +1,4 @@
-//! Filesystem, directory, and logging builtins for HUME's Steel scripting engine.
+//! Filesystem and directory builtins for HUME's Steel scripting engine.
 //!
 //! **Write-path operations** (`make-dir`, `delete-dir`, `delete-file`) are
 //! sandboxed:
@@ -25,7 +25,6 @@
 //! | `make-dir`      | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
 //! | `delete-dir`    | `string → void`                | Sandboxed write (`<data>/plugins/`|`grammars/`)|
 //! | `delete-file`   | `string → void`                | Sandboxed write to `<data>/grammars/`        |
-//! | `log!`          | `symbol string → void`         | Push to the pending message buffer           |
 
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};
@@ -34,8 +33,6 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::one_string;
-use crate::log::LogLevel as Severity;
-use crate::SteelCtx;
 
 // ── Permanent dirs TLS ────────────────────────────────────────────────────────
 
@@ -286,34 +283,6 @@ fn canonical_ancestor_join(path: &Path) -> Option<PathBuf> {
         result.push(component);
     }
     Some(result)
-}
-
-// ── log! ──────────────────────────────────────────────────────────────────────
-
-/// `(log! severity message)` — push `message` to the pending message buffer.
-///
-/// `severity` must be one of the symbols `'trace`, `'info`, `'warn`, or
-/// `'error`.  Any other value raises a Steel error.
-pub(crate) fn log_msg(
-    ctx: &mut SteelCtx,
-    severity: SteelVal,
-    message: String,
-) -> Result<SteelVal, SteelErr> {
-    let sev_str = match &severity {
-        SteelVal::SymbolV(s) => s.as_str().to_string(),
-        _ => steel::stop!(TypeMismatch =>
-            "log!: severity must be a symbol ('trace 'info 'warn 'error), got {:?}", severity),
-    };
-    let sev = match sev_str.as_str() {
-        "trace" => Severity::Trace,
-        "info" => Severity::Info,
-        "warn" => Severity::Warning,
-        "error" => Severity::Error,
-        other => steel::stop!(Generic =>
-            "log!: unknown severity '{}', expected 'trace, 'info, 'warn, or 'error", other),
-    };
-    ctx.pending_messages.push((sev, message));
-    Ok(SteelVal::Void)
 }
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -788,31 +757,6 @@ mod tests {
             err.to_string().contains(".."),
             "expected .. error, got: {err}"
         );
-    }
-
-    // ── log! ─────────────────────────────────────────────────────────────────
-
-    #[test]
-    fn log_msg_valid_severity() {
-        let mut h = crate::test_support::SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        log_msg(
-            &mut ctx,
-            SteelVal::SymbolV("info".into()),
-            "hello".to_string(),
-        )
-        .unwrap();
-        drop(ctx);
-        assert_eq!(h.pending_messages.len(), 1);
-        assert_eq!(h.pending_messages[0].1, "hello");
-        assert!(matches!(h.pending_messages[0].0, Severity::Info));
-    }
-
-    #[test]
-    fn log_msg_unknown_severity_errors() {
-        let mut h = crate::test_support::SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        assert!(log_msg(&mut ctx, SteelVal::SymbolV("bad".into()), "msg".to_string()).is_err());
     }
 
     // ── path-join ────────────────────────────────────────────────────────────

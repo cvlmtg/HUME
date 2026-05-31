@@ -182,7 +182,7 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "compile-grammar!", grammar::compile_grammar);
 
     // Logging — push messages to the editor message log
-    engine.register_fn_with_ctx(HUME_CTX, "log!", fs::log_msg);
+    engine.register_fn_with_ctx(HUME_CTX, "log!", crate::log::log_msg);
 
     // Opaque ID predicates and equality — context-free; no SteelCtx needed.
     engine.register_fn("buffer-id?", ids::is_buffer_id);
