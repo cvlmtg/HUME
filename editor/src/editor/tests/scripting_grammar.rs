@@ -274,7 +274,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let mut host = ScriptingHost::new();
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }.expect("eval_init");
+    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }.expect("eval_init");
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -524,7 +524,7 @@ fn passive_load_registers_installed_and_call_queues_startup_command() {
     scripting::init_dirs(Some(data_dir.clone()), None);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
     // No grammar names are left in a separate queue — that field is gone.
@@ -660,7 +660,7 @@ fn install_real_json_grammar_e2e() {
     host.set_data_dir(data_dir);
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    let cmds = { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init");
     ed.register_steel_cmds(cmds);
     ed.languages.register_identity("json", &["json"], &[], &[]).unwrap();

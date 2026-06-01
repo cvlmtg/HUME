@@ -82,9 +82,9 @@ impl ScriptingHost {
         &mut self,
         source: String,
         builtin_names: HashSet<String>,
+        budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        let budget_ms = host.steel_init_budget_ms();
 
         // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
         // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
@@ -142,7 +142,7 @@ impl ScriptingHost {
         // live in disjoint globals.  Command lambdas close over their mangled
         // helpers and dispatch correctly via the name-based `CommandRegistry`.
         for id in pending_plugin_loads {
-            all_cmds.extend(self.activate_plugin(&id, host, &builtin_names)?);
+            all_cmds.extend(self.activate_plugin(&id, budget_ms, host, &builtin_names)?);
         }
 
         Ok(all_cmds)
@@ -198,10 +198,10 @@ impl ScriptingHost {
     pub fn activate_plugin(
         &mut self,
         id: &attribution::PluginId,
+        budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        let budget_ms = host.steel_init_budget_ms();
         // Extract path from Declared state; short-circuit all other states.
         let path = match self.lazy_registry.plugins.get(id) {
             Some(PluginState::Declared { path }) => path.clone(),
@@ -283,7 +283,7 @@ impl ScriptingHost {
                 // failure leaves the parent in `Failed` rather than an inconsistent
                 // `Loaded`+no-commands state.
                 for req in requires {
-                    match self.activate_plugin(&req, host, builtin_names) {
+                    match self.activate_plugin(&req, budget_ms, host, builtin_names) {
                         Ok(d) => defs.extend(d),
                         Err(e) => {
                             self.lazy_registry
@@ -327,7 +327,6 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::*;
     use crate::ScriptingHost;
     use crate::attribution::PluginId;
     use crate::lazy::PluginState;
@@ -365,7 +364,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
-        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
         assert_eq!(defs.len(), 1, "expected exactly one SteelCmdDef");
         assert_eq!(defs[0].name, "test-cmd");
@@ -387,7 +386,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
-        let result = host.activate_plugin(&id, &mut NullHost, &no_builtins());
+        let result = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins());
 
         assert!(result.is_err(), "must return Err on syntax error");
         assert!(
@@ -406,7 +405,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Loaded);
 
-        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
         assert!(defs.is_empty(), "Loaded plugin must be a no-op");
         assert!(
@@ -423,7 +422,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Failed);
 
-        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
         assert!(defs.is_empty(), "Failed plugin must be a no-op");
         assert!(
@@ -438,7 +437,7 @@ mod tests {
         let mut host = ScriptingHost::new();
         // Do not seed anything in lazy_registry.
 
-        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
         assert!(defs.is_empty(), "absent plugin must be a no-op");
         assert!(
@@ -457,7 +456,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Loading);
 
-        let defs = host.activate_plugin(&id, &mut NullHost, &no_builtins()).unwrap();
+        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
         assert!(defs.is_empty(), "Loading plugin must be a no-op (re-entrancy guard)");
         assert!(
@@ -488,7 +487,7 @@ mod tests {
             .plugins
             .insert(id_b.clone(), PluginState::Declared { path: path_b });
 
-        let result = host.activate_plugin(&id_a, &mut NullHost, &no_builtins());
+        let result = host.activate_plugin(&id_a, 10_000, &mut NullHost, &no_builtins());
 
         assert!(result.is_err(), "transitive failure must propagate as Err");
         assert!(
@@ -514,7 +513,7 @@ mod tests {
             },
         );
 
-        let result = host.activate_plugin(&id, &mut NullHost, &no_builtins());
+        let result = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins());
 
         assert!(result.is_err(), "path with '\"' must be rejected");
         assert!(

@@ -4,7 +4,7 @@ mod test_harness;
 use test_harness::MockHost;
 use scripting::*;
 use scripting::EvalWatchdog;
-use engine::pipeline::BufferId;
+use engine::pipeline::{BufferId, PaneId};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 fn host() -> ScriptingHost {
@@ -512,7 +512,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 
     let start = std::time::Instant::now();
     let err = h
-        .call_steel_cmd(&steel_proc, None, vec![], &mut mock)
+        .call_steel_cmd(&steel_proc, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -551,7 +551,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h
-        .call_steel_cmd(&steel_proc, None, vec![], &mut mock)
+        .call_steel_cmd(&steel_proc, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -580,7 +580,7 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-try-set", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-try-set", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -620,6 +620,8 @@ fn call_bang_passes_args_to_command() {
             "%hume-cmd-echo-arg",
             None,
             vec![SteelVal::StringV("hello".into())],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap();
@@ -656,6 +658,8 @@ fn call_bang_forwards_multiple_args_to_lambda() {
                 SteelVal::StringV("y".into()),
                 SteelVal::StringV("z".into()),
             ],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap();
@@ -687,6 +691,8 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
             "%hume-cmd-needs-two",
             None,
             vec![SteelVal::StringV("only-one".into())],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap_err();
@@ -712,11 +718,7 @@ fn register_hook_fires_on_buffer_open() {
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
-        .fire_hook(
-            HookId::OnBufferOpen,
-            &[val],
-            { mock.focused_buffer_id = bid; &mut mock },
-        )
+        .fire_hook(HookId::OnBufferOpen, &[val], PaneId::default(), bid, &mut mock)
         .unwrap()
         .cmd_queue;
     assert_eq!(queue, vec![q("move-right")]);
@@ -735,11 +737,7 @@ fn register_hook_fires_on_buffer_close() {
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
-        .fire_hook(
-            HookId::OnBufferClose,
-            &[val],
-            { mock.focused_buffer_id = bid; &mut mock },
-        )
+        .fire_hook(HookId::OnBufferClose, &[val], PaneId::default(), bid, &mut mock)
         .unwrap()
         .cmd_queue;
     assert_eq!(queue, vec![q("move-left")]);
@@ -758,11 +756,7 @@ fn register_hook_fires_on_buffer_save() {
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
-        .fire_hook(
-            HookId::OnBufferSave,
-            &[val],
-            { mock.focused_buffer_id = bid; &mut mock },
-        )
+        .fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock)
         .unwrap()
         .cmd_queue;
     assert_eq!(queue, vec![q("move-right")]);
@@ -787,6 +781,8 @@ fn register_hook_fires_on_mode_change() {
         .fire_hook(
             HookId::OnModeChange,
             &[old_val, new_val],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap()
@@ -800,7 +796,7 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut mock = MockHost::new();
 
     let queue = h
-        .fire_hook(HookId::OnBufferOpen, &[], &mut mock)
+        .fire_hook(HookId::OnBufferOpen, &[], PaneId::default(), BufferId::default(), &mut mock)
         .unwrap()
         .cmd_queue;
     assert!(queue.is_empty());
@@ -822,11 +818,7 @@ fn register_hook_multiple_handlers_all_fire() {
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
     let queue = h
-        .fire_hook(
-            HookId::OnBufferSave,
-            &[val],
-            { mock.focused_buffer_id = bid; &mut mock },
-        )
+        .fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock)
         .unwrap()
         .cmd_queue;
     assert_eq!(queue, vec![q("move-right"), q("move-left")]);
@@ -845,7 +837,7 @@ fn register_hook_errors_in_command_mode() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-cmd", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-bad-cmd", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("can only be called during init"), "got: {err}");
 }
@@ -885,6 +877,8 @@ fn fire_hook_globals_cleared_between_fires() {
         .fire_hook(
             HookId::OnModeChange,
             &[old_val.clone(), new_val],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap()
@@ -897,6 +891,8 @@ fn fire_hook_globals_cleared_between_fires() {
         .fire_hook(
             HookId::OnModeChange,
             &[old_val, new_val2],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap()
@@ -918,7 +914,7 @@ fn set_register_prefix_captured_in_call_queue() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-paste-ring", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -942,7 +938,7 @@ fn set_register_prefix_sticky_across_multiple_calls() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-multi", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -970,7 +966,7 @@ fn set_register_prefix_change_mid_body() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-switch", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -993,7 +989,7 @@ fn set_register_prefix_invalid_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-reg", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-bad-reg", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("invalid register"), "expected register-name error, got: {err}");
 }
@@ -1009,7 +1005,7 @@ fn set_register_prefix_multichar_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-multi", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-bad-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("single-character"), "expected single-char error, got: {err}");
 }
@@ -1023,6 +1019,44 @@ fn set_register_prefix_at_init_errors() {
         .eval_source(r#"(set-register-prefix! "k")"#, &mut mock)
         .unwrap_err();
     assert!(err.contains("not available during init"), "got: {err}");
+}
+
+// ── init-mode guards for buffer lifecycle builtins ────────────────────────
+
+/// `(close-buffer! …)` called from init.scm must raise a Steel error rather
+/// than crashing.  The `require_cmd_ctx!` guard fires before the host method.
+///
+/// Flip: remove `require_cmd_ctx!` from `close_buffer` and the eval returns
+/// Ok (or panics), not Err.
+#[test]
+fn close_buffer_errors_in_init_mode() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    let err = h
+        .eval_source("(close-buffer! (quote ()))", &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("not available during init"),
+        "close-buffer! must raise init-guard error, got: {err}",
+    );
+}
+
+/// `(switch-to-buffer! …)` called from init.scm must raise a Steel error
+/// rather than crashing.  Mirrors `close_buffer_errors_in_init_mode`.
+///
+/// Flip: remove `require_cmd_ctx!` from `switch_to_buffer` and the eval
+/// returns Ok (or panics), not Err.
+#[test]
+fn switch_to_buffer_errors_in_init_mode() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    let err = h
+        .eval_source("(switch-to-buffer! (quote ()))", &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("not available during init"),
+        "switch-to-buffer! must raise init-guard error, got: {err}",
+    );
 }
 
 // ── bind-key-extend! ──────────────────────────────────────────────────────
@@ -1429,7 +1463,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
 
     // Load prelude first, then init.scm — mirroring init_scripting's sequence.
     let prelude_cmds = h
-        .eval_init(&prelude_path, &mut mock, builtin_names.clone())
+        .eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
         .expect("prelude eval_init must succeed");
     assert!(
         prelude_cmds.is_empty(),
@@ -1437,7 +1471,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
         prelude_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
     );
 
-    h.eval_init(&init_path, &mut mock, builtin_names)
+    h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
     use hume::KeymapBindMode as BindMode;
@@ -1513,7 +1547,7 @@ fn eager_load_no_keywords_reaches_loaded_state() {
 
 
     let cmds = h
-        .eval_init(&init_path, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("eager load must succeed");
 
     let id = attribution::PluginId::User {
@@ -1548,7 +1582,7 @@ fn lazy_load_stays_declared_body_not_evaluated() {
 
 
     let cmds = h
-        .eval_init(&init_path, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy load must not error during init");
 
     let id = attribution::PluginId::User {
@@ -1582,7 +1616,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 
 
     let cmds = h
-        .eval_init(&init_path, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("on-command declaration must not error during init");
 
     let id = attribution::PluginId::User {
@@ -1621,7 +1655,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let mut mock = MockHost::new();
 
 
-    h.eval_init(&init_path, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
     let id = attribution::PluginId::User {
@@ -1631,7 +1665,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
 
     // First activation: Declared → Loaded, returns the plugin's command.
     let cmds = h
-        .activate_plugin(&id, &mut mock, &Default::default())
+        .activate_plugin(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin must succeed");
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
@@ -1645,7 +1679,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
 
     // Second activation: already Loaded → idempotent Ok(vec![]).
     let cmds2 = h
-        .activate_plugin(&id, &mut mock, &Default::default())
+        .activate_plugin(&id, 10_000, &mut mock, &Default::default())
         .expect("second activate_plugin must succeed");
     assert!(
         cmds2.is_empty(),
@@ -1668,7 +1702,7 @@ fn eager_plugin_body_error_aborts_init() {
     let mut mock = MockHost::new();
 
 
-    let result = h.eval_init(&init_path, &mut mock, Default::default());
+    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
     assert!(result.is_err(), "init must fail when eager plugin body errors");
 
     let id = attribution::PluginId::User {
@@ -1704,7 +1738,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
     let builtin_names: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
-    h.eval_init(&init_path, &mut mock, builtin_names)
+    h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("builtin collision must NOT abort init");
 
     // Error logged for the dropped trigger.
@@ -1747,7 +1781,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     
     let builtin_names2: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
-    h2.eval_init(&init_path2, &mut mock2, builtin_names2)
+    h2.eval_init(&init_path2, 10_000, &mut mock2, builtin_names2)
         .expect("non-colliding trigger must not error");
     assert!(
         !h2.peek_pending_messages()
@@ -1786,7 +1820,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy-vs-lazy collision must NOT abort init");
 
     // Error logged for pb's duplicate trigger.
@@ -1845,7 +1879,7 @@ fn cmd_owners_pre_seeded_before_activation() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
     // Plugin has NOT been activated yet — body was not evaluated.
@@ -1875,7 +1909,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
     // Trigger is present before activation.
@@ -1888,7 +1922,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     };
-    h.activate_plugin(&id, &mut mock, &Default::default())
+    h.activate_plugin(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin must succeed");
 
     // Trigger is removed after activation.
@@ -1918,7 +1952,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 
 
     let cmds = h
-        .eval_init(&init_path, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("on-language declaration must not error during init");
 
     let id = attribution::PluginId::User {
@@ -1955,7 +1989,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
     assert!(
@@ -1967,7 +2001,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     };
-    h.activate_plugin(&id, &mut mock, &Default::default())
+    h.activate_plugin(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin must succeed");
 
     assert!(
@@ -1995,7 +2029,7 @@ fn load_plugin_force_activates_declared_plugin() {
 
 
     let cmds = h
-        .eval_init(&init_path, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("force-activate must succeed");
 
     let id = attribution::PluginId::User {
@@ -2040,7 +2074,7 @@ fn load_plugin_in_body_absent_dep_errors() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let Err(msg) = h.eval_init(&init_path, &mut mock, Default::default()) else {
+    let Err(msg) = h.eval_init(&init_path, 10_000, &mut mock, Default::default()) else {
         panic!("load-plugin for absent dep inside plugin body must error");
     };
     assert!(
@@ -2075,6 +2109,8 @@ fn arity1_list_command_rejects_false_arg() {
             "%hume-cmd-needs-list",
             None,
             vec![SteelVal::BoolV(false)],
+            mock.focused_pane_id,
+            mock.focused_buffer_id,
             &mut mock,
         )
         .unwrap_err();
@@ -2110,6 +2146,8 @@ fn arity1_list_command_accepts_list_arg() {
         "%hume-cmd-needs-list",
         None,
         vec![list_val],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
         &mut mock,
     );
     assert!(result.is_ok(), "expected Ok for valid list arg, got: {:?}", result.err());
@@ -2134,7 +2172,7 @@ fn load_plugin_runtime_guard_fires() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-try-load", None, vec![], &mut mock)
+        .call_steel_cmd("%hume-cmd-try-load", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(
         err.contains("init/plugin load"),

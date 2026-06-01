@@ -123,14 +123,13 @@ impl Editor {
                             settings: &mut self.settings,
                             keymap: &mut self.keymap,
                             focused_pane_id,
-                            focused_buffer_id,
                             buffers: Some(&mut self.buffers),
                             engine_view: Some(&mut self.engine_view),
                             pane_state: Some(&mut self.pane_state),
                             pane_jumps: Some(&mut self.pane_jumps),
                             languages: Some(&mut self.languages),
                         };
-                        host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, &mut impl_host)
+                        host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
                     };
 
                     // Re-enter the alt-screen unconditionally — on both success and error.

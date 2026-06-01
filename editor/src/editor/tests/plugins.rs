@@ -37,7 +37,7 @@ fn setup_lazy_editor(
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
 
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed in setup_lazy_editor");
 
     let triggers: std::collections::HashMap<_, _> =
@@ -295,7 +295,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     // registry before register_lazy_command_stubs checks for collisions.
     let cmds = {
         let mut ih = make_init_host(&mut s, &mut km);
-        host.eval_init(&init_path, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — collision is caught at stub registration, not here");
     ed.register_steel_cmds(cmds);
@@ -447,7 +447,7 @@ fn event_trigger_one_to_many_activates_all() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -564,7 +564,7 @@ fn load_plugin_loads_bare_declared() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -599,7 +599,7 @@ fn load_plugin_absent_top_level_silently_skips() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("absent top-level load-plugin must not error");
 
     // Plugin was not inserted into lazy_registry (absent on disk).
@@ -649,7 +649,7 @@ fn load_plugin_transitive_in_body_is_lazy() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
@@ -825,7 +825,7 @@ fn language_trigger_one_to_many_activates_all() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -1039,7 +1039,7 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
     let mut s = EditorSettings::default();
     let mut km = Keymap::default();
     let init_path = dir.path().join("init.scm");
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers: std::collections::HashMap<_, _> = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);

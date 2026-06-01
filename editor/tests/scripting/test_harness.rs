@@ -4,6 +4,10 @@
 //! Holds real `EditorSettings` and `Keymap` so tests can assert on
 //! `set-option!` / `bind-key!` side effects directly, without needing a full
 //! editor session.
+//!
+//! Mirrors `editor::testing::MockHost` for lib tests.  Both must implement
+//! the same [`scripting::EditorHost`] trait methods; when the trait changes,
+//! update both.
 
 use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, PaneId};
@@ -12,8 +16,8 @@ use scripting::host::{BindMode, EditorHost};
 
 /// Minimal [`EditorHost`] that uses real `EditorSettings` and `Keymap`.
 ///
-/// Buffer/pane lifecycle methods (`open_buffer`, `close_buffer`, etc.) are not
-/// exercised in init-mode or pure-scripting tests; they return `Err` if called.
+/// Buffer/pane lifecycle methods (`open_buffer`, `close_buffer`, etc.) return
+/// `Err`/`Ok(default)` since integration-test scripts don't exercise them.
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
     pub(crate) keymap: hume::Keymap,
@@ -42,41 +46,22 @@ impl Default for MockHost {
 }
 
 impl EditorHost for MockHost {
-    fn focused_buffer_id(&self) -> BufferId {
-        self.focused_buffer_id
-    }
-    fn focused_pane_id(&self) -> PaneId {
-        self.focused_pane_id
-    }
-    fn buffer_ids(&self) -> Vec<BufferId> {
-        Vec::new()
-    }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        Vec::new()
-    }
-    fn buffer_exists(&self, _id: BufferId) -> bool {
-        false
-    }
-    fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
-        None
-    }
-    fn buffer_display_name(&self, _id: BufferId) -> Option<String> {
-        None
-    }
-    fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> {
-        None
-    }
-    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
-        None
-    }
+    fn buffer_ids(&self) -> Vec<BufferId> { Vec::new() }
+    fn pane_ids(&self) -> Vec<PaneId> { Vec::new() }
+    fn buffer_exists(&self, _id: BufferId) -> bool { false }
+    fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> { None }
+    fn buffer_display_name(&self, _id: BufferId) -> Option<String> { None }
+    fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> { None }
+    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> { None }
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not implemented".into())
     }
-    fn close_buffer(&mut self, _id: BufferId) -> BufferId {
-        self.focused_buffer_id
+    fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
+        Ok(self.focused_buffer_id)
     }
-    fn switch_to_buffer(&mut self, _current: BufferId, target: BufferId) {
+    fn switch_to_buffer(&mut self, _current: BufferId, target: BufferId) -> Result<(), String> {
         self.focused_buffer_id = target;
+        Ok(())
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         use hume::settings::{BufferOverrides, SettingScope, apply_setting};
@@ -143,18 +128,11 @@ impl EditorHost for MockHost {
         self.grammars.insert(name.to_owned());
         Ok(())
     }
-    fn has_grammar(&self, language: &str) -> bool {
-        self.grammars.contains(language)
-    }
+    fn has_grammar(&self, language: &str) -> bool { self.grammars.contains(language) }
     fn is_valid_register_name(&self, ch: char) -> bool {
         hume::ops::register::is_valid_register_name(ch)
     }
-    fn steel_init_budget_ms(&self) -> u64 {
-        self.settings.steel_init_budget_ms as u64
-    }
-    fn steel_command_budget_ms(&self) -> u64 {
-        self.settings.steel_command_budget_ms as u64
-    }
+    fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
 }
 
 /// Map scripting `BindMode` → editor `hume::KeymapBindMode`.
@@ -165,4 +143,3 @@ fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {
         BindMode::Insert => hume::KeymapBindMode::Insert,
     }
 }
-

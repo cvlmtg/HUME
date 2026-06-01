@@ -142,7 +142,9 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult {
     if !ctx.host.buffer_exists(id) {
         steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
     }
-    let new_live = ctx.host.close_buffer(id);
+    let new_live = ctx.host.close_buffer(id).map_err(|e| {
+        SteelErr::new(ErrorKind::Generic, e)
+    })?;
     ctx.live_focused_buffer_id = new_live;
     Ok(SteelVal::Void)
 }
@@ -161,7 +163,9 @@ pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult
         steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
     }
     let current = ctx.live_focused_buffer_id;
-    ctx.host.switch_to_buffer(current, target);
+    ctx.host.switch_to_buffer(current, target).map_err(|e| {
+        SteelErr::new(ErrorKind::Generic, e)
+    })?;
     ctx.live_focused_buffer_id = target;
     Ok(SteelVal::Void)
 }

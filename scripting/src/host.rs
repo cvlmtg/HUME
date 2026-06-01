@@ -33,11 +33,15 @@ pub enum BindMode {
 /// called during init (`is_init = true`), where the corresponding refs would be
 /// `None`.  The init-only methods (`set_global_option`, `configure_statusline`,
 /// `bind_*`/`unbind_key`) are protected by the reverse guard.
+///
+/// # Focus snapshot
+///
+/// The focused buffer/pane ids are passed as explicit constructor arguments to
+/// `call_steel_cmd` and `fire_hook` rather than being queried via this trait.
+/// This keeps the `SteelCtx` snapshot stable: a builtin reading `ctx.focused_*`
+/// always sees the pre-command snapshot, not a live value that may change
+/// mid-eval (e.g. after `switch-to-buffer!`).
 pub trait EditorHost {
-    // ── Focus snapshot ──────────────────────────────────────────────────────
-    fn focused_buffer_id(&self) -> BufferId;
-    fn focused_pane_id(&self) -> PaneId;
-
     // ── Enumeration ─────────────────────────────────────────────────────────
     /// All open buffer ids in open-order.
     fn buffer_ids(&self) -> Vec<BufferId>;
@@ -56,9 +60,11 @@ pub trait EditorHost {
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
-    /// Close `id`.  Returns the new live focused buffer id.
-    fn close_buffer(&mut self, id: BufferId) -> BufferId;
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId);
+    /// Close `id`.  Returns the new live focused buffer id, or `Err` if refs
+    /// are unavailable (should only occur if a guard is misconfigured).
+    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String>;
+    /// Switch the focused pane to `target`, recording a jump entry.
+    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String>;
 
     // ── Settings (init-only; only Global scope from scripts) ─────────────────
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
@@ -101,8 +107,6 @@ pub trait EditorHost {
     fn is_valid_register_name(&self, ch: char) -> bool;
 
     // ── Budget ───────────────────────────────────────────────────────────────
-    /// Steel eval budget in milliseconds for init.scm / plugin loads.
-    fn steel_init_budget_ms(&self) -> u64;
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
 }

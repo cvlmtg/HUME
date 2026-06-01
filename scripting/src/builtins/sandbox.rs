@@ -4,7 +4,7 @@
 //! `canonicalize` call on an untrusted path must hard-fail (return `None` or
 //! propagate `Err`) on any error — never fall back to the unresolved path.
 //!
-//! All four sandbox roots (`data_plugins`, `data_grammars`, `runtime_plugins`) are
+//! All three sandbox roots (`data_plugins`, `data_grammars`, `runtime_plugins`) are
 //! set to `None` when the underlying directory cannot be created or canonicalized.
 //! Sandbox checks against a `None` root fail closed.
 //!

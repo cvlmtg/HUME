@@ -328,7 +328,7 @@ impl ScriptingHost {
         builtin_names: std::collections::HashSet<String>,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<SteelCmdDef>, String> {
-        self.eval_source_raw(source, builtin_names, host)
+        self.eval_source_raw(source, builtin_names, 10_000, host)
     }
 
     // ── Eval machinery ────────────────────────────────────────────────────────
@@ -345,6 +345,7 @@ impl ScriptingHost {
     pub fn eval_init(
         &mut self,
         path: &Path,
+        budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: std::collections::HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
@@ -353,7 +354,7 @@ impl ScriptingHost {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display())),
         };
-        self.eval_source_raw(source, builtin_names, host)
+        self.eval_source_raw(source, builtin_names, budget_ms, host)
     }
 
     /// Invoke a Steel proc by its internal engine name and return the list of
@@ -380,11 +381,11 @@ impl ScriptingHost {
         steel_proc: &str,
         pending_char: Option<char>,
         args: Vec<SteelVal>,
+        focused_pane_id: engine::pipeline::PaneId,
+        focused_buffer_id: engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<SteelCmdResult, String> {
         let budget_ms = host.steel_command_budget_ms();
-        let focused_pane_id = host.focused_pane_id();
-        let focused_buffer_id = host.focused_buffer_id();
 
         // Pre-bind positional args as *hume.ca{i}* globals, then build the
         // invocation string referencing them — mirrors the hook arg pattern.
@@ -460,6 +461,8 @@ impl ScriptingHost {
         &'a mut self,
         hook_id: hooks::HookId,
         args: &[SteelVal],
+        focused_pane_id: engine::pipeline::PaneId,
+        focused_buffer_id: engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<HookResult, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
@@ -469,8 +472,6 @@ impl ScriptingHost {
         }
 
         let budget_ms = host.steel_command_budget_ms();
-        let focused_pane_id = host.focused_pane_id();
-        let focused_buffer_id = host.focused_buffer_id();
 
         // Pre-bind each arg global.
         for (i, arg) in args.iter().enumerate() {
@@ -549,14 +550,14 @@ impl ScriptingHost {
     /// Evaluate a Steel source string directly, without a file.
     ///
     /// Convenience wrapper for testing.  Delegates to `eval_source_raw` with
-    /// empty `builtin_names`, which arms a watchdog using the default 10-second
-    /// budget (harmless for normal tests that complete quickly).
+    /// empty `builtin_names` and the default 10-second init budget (harmless
+    /// for normal tests that complete quickly).
     pub fn eval_source(
         &mut self,
         source: &str,
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
-        self.eval_source_raw(source.to_owned(), Default::default(), host)
+        self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
             .map(|_| ())
     }
 
@@ -569,42 +570,13 @@ impl ScriptingHost {
         budget: std::time::Duration,
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
-        // Temporarily override the init budget so the normal run_steel watchdog
-        // path uses the requested budget.
-        struct BudgetOverrideHost<'a> {
-            inner: &'a mut dyn EditorHost,
-            budget_ms: u64,
-        }
-        impl EditorHost for BudgetOverrideHost<'_> {
-            fn focused_buffer_id(&self) -> engine::pipeline::BufferId { self.inner.focused_buffer_id() }
-            fn focused_pane_id(&self) -> engine::pipeline::PaneId { self.inner.focused_pane_id() }
-            fn buffer_ids(&self) -> Vec<engine::pipeline::BufferId> { self.inner.buffer_ids() }
-            fn pane_ids(&self) -> Vec<engine::pipeline::PaneId> { self.inner.pane_ids() }
-            fn buffer_exists(&self, id: engine::pipeline::BufferId) -> bool { self.inner.buffer_exists(id) }
-            fn buffer_path(&self, id: engine::pipeline::BufferId) -> Option<std::path::PathBuf> { self.inner.buffer_path(id) }
-            fn buffer_display_name(&self, id: engine::pipeline::BufferId) -> Option<String> { self.inner.buffer_display_name(id) }
-            fn buffer_is_dirty(&self, id: engine::pipeline::BufferId) -> Option<bool> { self.inner.buffer_is_dirty(id) }
-            fn buffer_stored_language(&self, id: engine::pipeline::BufferId) -> Option<String> { self.inner.buffer_stored_language(id) }
-            fn open_buffer(&mut self, path: &std::path::Path) -> Result<engine::pipeline::BufferId, String> { self.inner.open_buffer(path) }
-            fn close_buffer(&mut self, id: engine::pipeline::BufferId) -> engine::pipeline::BufferId { self.inner.close_buffer(id) }
-            fn switch_to_buffer(&mut self, current: engine::pipeline::BufferId, target: engine::pipeline::BufferId) { self.inner.switch_to_buffer(current, target) }
-            fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> { self.inner.set_global_option(key, value) }
-            fn configure_statusline(&mut self, left: Vec<String>, center: Vec<String>, right: Vec<String>) -> Result<(), String> { self.inner.configure_statusline(left, center, right) }
-            fn bind_key(&mut self, mode: host::BindMode, keys: &[crossterm::event::KeyEvent], cmd: &str, force_extend: bool) -> Result<(), String> { self.inner.bind_key(mode, keys, cmd, force_extend) }
-            fn bind_wait_char(&mut self, mode: host::BindMode, keys: &[crossterm::event::KeyEvent], cmd: &str) -> Result<(), String> { self.inner.bind_wait_char(mode, keys, cmd) }
-            fn unbind_key(&mut self, mode: host::BindMode, keys: &[crossterm::event::KeyEvent]) -> Result<(), String> { self.inner.unbind_key(mode, keys) }
-            fn attach_grammar(&mut self, name: &str, grammar_path: &std::path::Path, symbol: &str, highlights_path: &std::path::Path) -> Result<(), String> { self.inner.attach_grammar(name, grammar_path, symbol, highlights_path) }
-            fn has_grammar(&self, language: &str) -> bool { self.inner.has_grammar(language) }
-            fn is_valid_register_name(&self, ch: char) -> bool { self.inner.is_valid_register_name(ch) }
-            fn steel_init_budget_ms(&self) -> u64 { self.budget_ms }
-            fn steel_command_budget_ms(&self) -> u64 { self.inner.steel_command_budget_ms() }
-        }
-        let mut override_host = BudgetOverrideHost {
-            inner: host,
-            budget_ms: budget.as_millis() as u64,
-        };
-        self.eval_source_raw(source.to_owned(), Default::default(), &mut override_host)
-            .map(|_| ())
+        self.eval_source_raw(
+            source.to_owned(),
+            Default::default(),
+            budget.as_millis() as u64,
+            host,
+        )
+        .map(|_| ())
     }
 }
 

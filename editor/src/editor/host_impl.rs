@@ -2,8 +2,8 @@
 //! [`EditorHost`] trait.
 //!
 //! Holds the split borrows needed by the scripting layer, plus the editor
-//! context needed by the
-//! init-only methods (settings, keymap).  Two construction sites create this:
+//! context needed by the init-only methods (settings, keymap).  Two construction
+//! sites create this:
 //!
 //! - **Command dispatch** (`mappings/execute.rs`): all optional fields are
 //!   `Some(...)`, populated from the live editor state.
@@ -19,6 +19,7 @@ use engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
 use super::jump_list::JumpList;
+use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;
@@ -31,7 +32,6 @@ pub(crate) struct EditorHostImpl<'a> {
     pub(crate) settings: &'a mut EditorSettings,
     pub(crate) keymap: &'a mut Keymap,
     pub(crate) focused_pane_id: PaneId,
-    pub(crate) focused_buffer_id: BufferId,
     pub(crate) buffers: Option<&'a mut BufferStore>,
     pub(crate) engine_view: Option<&'a mut EngineView>,
     pub(crate) pane_state:
@@ -40,15 +40,15 @@ pub(crate) struct EditorHostImpl<'a> {
     pub(crate) languages: Option<&'a mut LanguageRegistry>,
 }
 
-impl<'a> EditorHost for EditorHostImpl<'a> {
-    // ── Focus snapshot ────────────────────────────────────────────────────────
-    fn focused_buffer_id(&self) -> BufferId {
-        self.focused_buffer_id
+impl<'a> EditorHostImpl<'a> {
+    /// Look up a buffer by id, or `None` if the buffers ref is unavailable
+    /// or the id is stale/unknown.
+    fn buffer(&self, id: BufferId) -> Option<&Buffer> {
+        self.buffers.as_ref()?.try_get(id)
     }
-    fn focused_pane_id(&self) -> PaneId {
-        self.focused_pane_id
-    }
+}
 
+impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.buffers
@@ -65,33 +65,19 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Buffer reads ─────────────────────────────────────────────────────────
     fn buffer_exists(&self, id: BufferId) -> bool {
-        self.buffers
-            .as_ref()
-            .is_some_and(|b| b.try_get(id).is_some())
+        self.buffer(id).is_some()
     }
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.buffers
-            .as_ref()
-            .and_then(|b| b.try_get(id))
-            .and_then(|buf| buf.path().map(Path::to_path_buf))
+        self.buffer(id)?.path().map(Path::to_path_buf)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.buffers
-            .as_ref()
-            .and_then(|b| b.try_get(id))
-            .map(|buf| buf.display_name().to_owned())
+        self.buffer(id).map(|buf| buf.display_name().to_owned())
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.buffers
-            .as_ref()
-            .and_then(|b| b.try_get(id))
-            .map(|buf| buf.is_dirty())
+        self.buffer(id).map(|buf| buf.is_dirty())
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        self.buffers
-            .as_ref()
-            .and_then(|b| b.try_get(id))
-            .and_then(|buf| buf.language.clone())
+        self.buffer(id)?.language.clone()
     }
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
@@ -114,18 +100,26 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .map_err(|e| format!("open-buffer!: {}: {e}", canonical.display()))?;
         Ok(bid)
     }
-    fn close_buffer(&mut self, id: BufferId) -> BufferId {
-        let ev = self.engine_view.as_mut().expect("close_buffer: editor refs unavailable");
-        let bufs = self.buffers.as_mut().expect("close_buffer: editor refs unavailable");
-        let ps = self.pane_state.as_mut().expect("close_buffer: editor refs unavailable");
-        let jumps = self.pane_jumps.as_mut().expect("close_buffer: editor refs unavailable");
-        crate::editor::ops::close_buffer(ev, bufs, ps, jumps, self.focused_pane_id, id)
+    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
+        let ev = self.engine_view.as_mut()
+            .ok_or_else(|| "close-buffer!: editor refs unavailable".to_owned())?;
+        let bufs = self.buffers.as_mut()
+            .ok_or_else(|| "close-buffer!: editor refs unavailable".to_owned())?;
+        let ps = self.pane_state.as_mut()
+            .ok_or_else(|| "close-buffer!: editor refs unavailable".to_owned())?;
+        let jumps = self.pane_jumps.as_mut()
+            .ok_or_else(|| "close-buffer!: editor refs unavailable".to_owned())?;
+        Ok(crate::editor::ops::close_buffer(ev, bufs, ps, jumps, self.focused_pane_id, id))
     }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) {
-        let ev = self.engine_view.as_mut().expect("switch_to_buffer: editor refs unavailable");
-        let bufs = self.buffers.as_mut().expect("switch_to_buffer: editor refs unavailable");
-        let ps = self.pane_state.as_mut().expect("switch_to_buffer: editor refs unavailable");
-        let jumps = self.pane_jumps.as_mut().expect("switch_to_buffer: editor refs unavailable");
+    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
+        let ev = self.engine_view.as_mut()
+            .ok_or_else(|| "switch-to-buffer!: editor refs unavailable".to_owned())?;
+        let bufs = self.buffers.as_mut()
+            .ok_or_else(|| "switch-to-buffer!: editor refs unavailable".to_owned())?;
+        let ps = self.pane_state.as_mut()
+            .ok_or_else(|| "switch-to-buffer!: editor refs unavailable".to_owned())?;
+        let jumps = self.pane_jumps.as_mut()
+            .ok_or_else(|| "switch-to-buffer!: editor refs unavailable".to_owned())?;
         crate::editor::ops::switch_to_buffer_with_jump(
             ev,
             bufs,
@@ -135,6 +129,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             current,
             target,
         );
+        Ok(())
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
@@ -230,16 +225,13 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     // ── Budget ────────────────────────────────────────────────────────────────
-    fn steel_init_budget_ms(&self) -> u64 {
-        self.settings.steel_init_budget_ms as u64
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
     }
 }
 
 /// Map scripting `BindMode` → editor `keymap::BindMode`.
-fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
+pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
     match mode {
         BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         BindMode::Extend => crate::editor::keymap::BindMode::Extend,

@@ -82,14 +82,13 @@ impl Editor {
                 settings: &mut self.settings,
                 keymap: &mut self.keymap,
                 focused_pane_id: pid,
-                focused_buffer_id: bid,
                 buffers: Some(&mut self.buffers),
                 engine_view: Some(&mut self.engine_view),
                 pane_state: Some(&mut self.pane_state),
                 pane_jumps: Some(&mut self.pane_jumps),
                 languages: Some(&mut self.languages),
             };
-            host_scr.fire_hook(hook_id, args, &mut impl_host)
+            host_scr.fire_hook(hook_id, args, pid, bid, &mut impl_host)
         };
         self.flush_script_messages();
         match result {
@@ -160,8 +159,9 @@ impl Editor {
         // Each eval gets a fresh init-mode EditorHostImpl (buffer/pane refs
         // are None; init builtins are guard-protected and never reach them).
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
+            let init_budget = self.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
-            match host.eval_init(&prelude_path, &mut ih, builtin_names.clone()) {
+            match host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
                     "runtime/scheme/prelude.scm must not define commands"
@@ -176,8 +176,9 @@ impl Editor {
         // calls are available when init.scm and plugins run.
         let langs_path = host.runtime_dir().map(|rt| rt.join("scheme/languages.scm"));
         if let Some(langs_path) = langs_path {
+            let init_budget = self.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
-            match host.eval_init(&langs_path, &mut ih, builtin_names.clone()) {
+            match host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
                     "runtime/scheme/languages.scm must not define commands"
@@ -190,8 +191,9 @@ impl Editor {
             self.flush_pending_language_regs(&mut host);
         }
         {
+            let init_budget = self.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
-            match host.eval_init(&init_path, &mut ih, builtin_names) {
+            match host.eval_init(&init_path, init_budget, &mut ih, builtin_names) {
                 Ok(cmds) => self.register_steel_cmds(cmds),
                 Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
             }
@@ -358,12 +360,10 @@ pub(crate) fn make_init_host<'a>(
     settings: &'a mut crate::settings::EditorSettings,
     keymap: &'a mut crate::editor::keymap::Keymap,
 ) -> EditorHostImpl<'a> {
-    use engine::pipeline::BufferId;
     EditorHostImpl {
         settings,
         keymap,
         focused_pane_id: PaneId::default(),
-        focused_buffer_id: BufferId::default(),
         buffers: None,
         engine_view: None,
         pane_state: None,
