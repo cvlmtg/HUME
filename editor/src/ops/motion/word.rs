@@ -2,7 +2,7 @@ use super::MotionMode;
 use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::{CharClass, classify_char, is_WORD_boundary, is_word_boundary};
+use editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ use editing::helpers::{CharClass, classify_char, is_WORD_boundary, is_word_bound
 /// (but not newlines), and lands on the next word/punct start or on a newline.
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
-/// `is_WORD_boundary` for `W`.
+/// `is_long_word_boundary` for `W`.
 pub(super) fn next_word_start(
     buf: &Text,
     head: usize,
@@ -242,7 +242,7 @@ pub(super) fn apply_word_select(
     count: usize,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         let mut current = sel;
         for _ in 0..count {
             match motion(buf, current.head()) {
@@ -268,7 +268,7 @@ pub(super) fn apply_word_select_extend_forward(
     count: usize,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         let mut current = sel;
         // Preserve direction of the original selection through all union steps.
         let forward = current.anchor() <= current.head();
@@ -302,7 +302,7 @@ pub(super) fn apply_word_select_extend_backward(
     count: usize,
     motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         let mut current = sel;
         let forward = current.anchor() <= current.head();
         for _ in 0..count {
@@ -353,10 +353,10 @@ pub(crate) fn cmd_select_next_WORD(
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_WORD_boundary)
+            select_next_word(b, pos, is_long_word_boundary)
         }),
         MotionMode::Extend => apply_word_select_extend_forward(buf, sels, count, |b, pos| {
-            select_next_word(b, pos, is_WORD_boundary)
+            select_next_word(b, pos, is_long_word_boundary)
         }),
     }
 }
@@ -389,10 +389,10 @@ pub(crate) fn cmd_select_prev_WORD(
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_word_select(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_WORD_boundary)
+            select_prev_word(b, pos, is_long_word_boundary)
         }),
         MotionMode::Extend => apply_word_select_extend_backward(buf, sels, count, |b, pos| {
-            select_prev_word(b, pos, is_WORD_boundary)
+            select_prev_word(b, pos, is_long_word_boundary)
         }),
     }
 }

@@ -5,7 +5,7 @@ use crate::ops::motion::{find_char_backward, find_char_forward};
 
 use super::super::{doc_ops, FindChar};
 use super::super::Editor;
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 use crate::ops::motion::FindKind;
 
 // ── Find / till character ─────────────────────────────────────────────────────

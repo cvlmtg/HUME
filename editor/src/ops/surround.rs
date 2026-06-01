@@ -145,7 +145,7 @@ fn select_surround(
         new_primary = 0;
     }
 
-    let result = SelectionSet::from_vec(new_sels, new_primary).merge_overlapping();
+    let result = SelectionSet::from_vec(new_sels, new_primary);
     result.debug_assert_valid(buf);
     result
 }

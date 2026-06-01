@@ -1,6 +1,6 @@
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
+use editing::lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
 use crate::ops::MotionMode;
 
 // ── Vertical copy ─────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -
     }
 
     let desired_primary = primary_copy_idx.unwrap_or(primary_idx);
-    let new_set = SelectionSet::from_vec(all_sels, desired_primary).merge_overlapping();
+    let new_set = SelectionSet::from_vec(all_sels, desired_primary);
     new_set.debug_assert_valid(buf);
     new_set
 }

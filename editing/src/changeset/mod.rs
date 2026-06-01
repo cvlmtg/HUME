@@ -160,7 +160,7 @@ impl ChangeSet {
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
     #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
     }
 
@@ -182,6 +182,14 @@ impl ChangeSet {
     /// The changeset's positions are in **old-document space**. A running
     /// `delta` translates them to the mutated rope's current coordinates,
     /// the same pattern used throughout HUME's multi-selection editing.
+    ///
+    /// # For plugin / external code
+    ///
+    /// If you are assembling a `Transaction` from outside the editor's named
+    /// commands, use [`crate::transaction::Transaction::apply`] instead — it
+    /// also validates the bundled selection against the post-edit buffer,
+    /// returning a clear error rather than silently accepting out-of-bounds
+    /// cursors.
     ///
     /// # Errors
     ///
@@ -311,20 +319,20 @@ impl ChangeSet {
 
     /// Returns `true` if any `Delete` or `Insert` operation in this changeset
     /// overlaps the char range `[line_start, line_end)` of `line` in the
-    /// pre-edit rope.
+    /// pre-edit buffer.
     ///
     /// Used by `SelectionSet::translate_in_place` to decide whether to reset
     /// `horiz` (sticky display column) on non-acting pane selections whose
     /// head resided on the edited line.
     ///
-    /// `rope_pre` must be the buffer text *before* the edit (the same snapshot
+    /// `buf_pre` must be the buffer text *before* the edit (the same snapshot
     /// passed to `translate_in_place`).
-    pub(crate) fn touches_line(&self, rope_pre: &ropey::Rope, line: usize) -> bool {
-        let line_start = rope_pre.line_to_char(line);
-        let line_end = if line + 1 < rope_pre.len_lines() {
-            rope_pre.line_to_char(line + 1)
+    pub(crate) fn touches_line(&self, buf_pre: &crate::text::Text, line: usize) -> bool {
+        let line_start = buf_pre.line_to_char(line);
+        let line_end = if line + 1 < buf_pre.len_lines() {
+            buf_pre.line_to_char(line + 1)
         } else {
-            rope_pre.len_chars()
+            buf_pre.len_chars()
         };
 
         let mut old = 0usize;

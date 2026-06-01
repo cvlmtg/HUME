@@ -5,7 +5,7 @@
 //! the cursor before replacing or deleting it).
 
 use editing::text::Text;
-use editing::helpers::line_end_exclusive;
+use editing::lines::line_end_exclusive;
 
 // ---------------------------------------------------------------------------
 // Bracket pairs

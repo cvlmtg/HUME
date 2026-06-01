@@ -220,9 +220,7 @@ impl History {
     }
 
     /// The revision id of the root (initial document state, before any edit).
-    pub fn root_id() -> RevisionId {
-        RevisionId(0)
-    }
+    pub const ROOT: RevisionId = RevisionId(0);
 
     /// The currently active revision.
     pub fn current_id(&self) -> RevisionId {
@@ -237,9 +235,19 @@ impl History {
         self.revisions[0].forward.selection()
     }
 
-    /// Parent of a revision. `None` for the root.
+    /// Parent of a revision. `None` for the root or for an out-of-bounds id.
+    ///
+    /// Using `.get` instead of direct indexing closes the panic vector that
+    /// would exist if a caller fabricated a `RevisionId` with an arbitrary
+    /// value via [`RevisionId::new`].
     pub fn parent(&self, id: RevisionId) -> Option<RevisionId> {
-        self.revisions[id.0].parent
+        debug_assert!(
+            id.0 < self.revisions.len(),
+            "parent: RevisionId({}) is out of bounds (len={})",
+            id.0,
+            self.revisions.len(),
+        );
+        self.revisions.get(id.0)?.parent
     }
 
     /// Ancestor chain from `id` up to and including the root.

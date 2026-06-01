@@ -9,7 +9,7 @@ use crate::ops::surround::wrap_each_selection;
 use super::super::{doc_ops, register_ops, Severity};
 use super::super::Editor;
 use super::{PASTE_FAMILY_CMDS, SMART_P_LAST_CMDS};
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 

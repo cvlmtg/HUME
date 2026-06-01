@@ -3,7 +3,8 @@ use regex_cursor::engines::meta::Regex;
 use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::{CharClass, classify_char, line_content_end};
+use editing::lines::line_content_end;
+use editing::word::{CharClass, classify_char};
 use crate::ops::search::find_matches_in_range;
 use crate::ops::MotionMode;
 
@@ -133,7 +134,7 @@ pub(crate) fn cmd_trim_selection_whitespace(
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let new_sels = sels.map_and_merge(|sel| {
+    let new_sels = sels.map(|sel| {
         let mut start = sel.start();
         let end = sel.end();
         let forward = sel.anchor() <= sel.head();

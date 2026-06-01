@@ -3,10 +3,8 @@ use super::pair::{find_bracket_pair, find_quote_pair};
 use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::{
-    CharClass, classify_char, is_WORD_boundary, is_word_boundary, line_content_end,
-    line_end_exclusive,
-};
+use editing::lines::{line_content_end, line_end_exclusive};
+use editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_boundary};
 
 // ── Text object framework ──────────────────────────────────────────────────────
 
@@ -28,7 +26,7 @@ pub(crate) fn apply_text_object(
     sels: SelectionSet,
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| match text_object(buf, sel.head()) {
+    let result = sels.map(|sel| match text_object(buf, sel.head()) {
         Some((start, end)) => Selection::new(start, end),
         None => sel,
     });
@@ -53,7 +51,7 @@ pub(crate) fn apply_text_object_extend(
     sels: SelectionSet,
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         let forward = sel.anchor() <= sel.head();
 
         // First try from head (correct for initial extend from a cursor).
@@ -406,7 +404,7 @@ pub(crate) fn cmd_select_word_nearest_on_line(
     sels: SelectionSet,
     mode: MotionMode,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         let line = buf.char_to_line(sel.anchor());
         let line_start = buf.line_to_char(line);
         let line_end_excl = line_end_exclusive(buf, line);
@@ -426,14 +424,14 @@ pub(crate) fn cmd_around_word(buf: &Text, sels: SelectionSet, mode: MotionMode) 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_inner_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        inner_word_impl(b, pos, is_WORD_boundary)
+        inner_word_impl(b, pos, is_long_word_boundary)
     })
 }
 
 #[allow(non_snake_case)]
 pub(crate) fn cmd_around_WORD(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
     apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-        around_word_impl(b, pos, is_WORD_boundary)
+        around_word_impl(b, pos, is_long_word_boundary)
     })
 }
 

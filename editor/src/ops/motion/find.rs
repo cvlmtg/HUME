@@ -2,7 +2,7 @@ use super::{FindKind, MotionMode, apply_motion};
 use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use editing::selection::SelectionSet;
 use editing::text::Text;
-use editing::helpers::line_end_exclusive;
+use editing::lines::line_end_exclusive;
 
 // ── Find/till character motions ───────────────────────────────────────────────
 

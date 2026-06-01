@@ -187,7 +187,7 @@ mod tests {
                             })
                             .collect();
                         // Use index 0 as primary; merge_overlapping adjusts it.
-                        SelectionSet::from_vec(sels, 0).merge_overlapping()
+                        SelectionSet::from_vec(sels, 0)
                     })
                 })
             })

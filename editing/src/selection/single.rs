@@ -165,7 +165,7 @@ impl Selection {
     /// to a negative position.
     #[cfg(test)]
     #[must_use]
-    pub fn shift(self, delta: isize) -> Self {
+    pub(crate) fn shift(self, delta: isize) -> Self {
         // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
         // a usize and returns None on overflow *or* underflow. Compared to the
         // previous `(x as isize + delta) as usize` cast pair, this fails loudly

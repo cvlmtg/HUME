@@ -80,55 +80,44 @@ impl SelectionSet {
         self.selections.iter()
     }
 
-    /// Iterate over all selections in ascending `head` order.
+    /// Return all selections sorted by ascending `head` order.
     ///
-    /// The engine layer (`EngineView::panes`) requires selections sorted by `head`,
-    /// which differs from `start()` when anchor > head (reverse selections).
-    pub fn iter_head_sorted(&self) -> impl Iterator<Item = &Selection> {
+    /// The engine layer (`EngineView::panes`) requires selections sorted by
+    /// `head`, which differs from `start()` when anchor > head (backward
+    /// selections). This function allocates a scratch `Vec` and sorts it —
+    /// the allocation is intentional and visible in the return type.
+    pub fn iter_head_sorted(&self) -> Vec<&Selection> {
         let mut v: Vec<&Selection> = self.selections.iter().collect();
         v.sort_by_key(|s| s.head);
-        v.into_iter()
+        v
     }
 
-    /// Apply `f` to every selection and return a new `SelectionSet`.
+    /// Apply `f` to every selection and return a canonicalized `SelectionSet`.
     ///
-    /// The primary index is preserved. The returned set may violate the
-    /// non-overlapping invariant if `f` produces overlapping results.
+    /// After applying `f` the result is sorted by `start()`, overlapping or
+    /// adjacent selections are merged, and the primary is relocated by content
+    /// (the mapped selection that was previously primary stays primary after
+    /// the merge). The returned set always satisfies all `SelectionSet`
+    /// invariants.
     ///
-    /// Use this when you can guarantee that `f` is order-preserving and cannot
-    /// produce overlapping selections (e.g. `|s| s.shift(delta)`). If you are
-    /// not sure, use [`map_and_merge`](Self::map_and_merge) instead.
-    ///
-    /// **Iteration order:** selections are visited in the same ascending-`start()`
-    /// order as [`iter_sorted`](Self::iter_sorted). Code that zips a pre-computed
-    /// `Vec` with this closure (e.g. per-selection sticky columns) may rely on
-    /// this guarantee.
+    /// **Iteration order:** `f` is called in ascending-`start()` order
+    /// (same as [`iter_sorted`](Self::iter_sorted)).
     #[must_use]
     pub fn map<F>(self, mut f: F) -> Self
     where
         F: FnMut(Selection) -> Selection,
     {
+        // Capture the primary index before consuming self so that
+        // merge_overlapping_in_place picks up the right `primary_before`
+        // (the mapped primary selection at that index, before sorting).
         let primary = self.primary;
         let selections = self.selections.into_iter().map(&mut f).collect();
-        Self {
+        let mut result = Self {
             selections,
             primary,
-        }
-    }
-
-    /// Apply `f` to every selection, then merge any overlapping results.
-    ///
-    /// This is the safe default for motions and any transform where `f` might
-    /// move selections out of order or cause them to overlap (e.g. two cursors
-    /// on the same line both moving to end-of-line land on the same position).
-    ///
-    /// Prefer plain [`map`](Self::map) only when you can prove `f` is
-    /// order-preserving and overlap-free — it avoids the O(n log n) sort.
-    pub fn map_and_merge<F>(self, f: F) -> Self
-    where
-        F: FnMut(Selection) -> Selection,
-    {
-        self.map(f).merge_overlapping()
+        };
+        result.merge_overlapping_in_place();
+        result
     }
 
     /// Replace the selection at `idx` with `new_sel` and return the updated
@@ -149,95 +138,52 @@ impl SelectionSet {
     ///
     /// The primary index is updated to point at the merged selection that
     /// contained the original primary.
+    ///
+    /// This is the consuming form of [`merge_overlapping_in_place`][Self::merge_overlapping_in_place];
+    /// both share one implementation so their merge semantics (including the
+    /// `horiz` reset on merged selections) can never drift apart.
     #[must_use]
     pub fn merge_overlapping(mut self) -> Self {
-        if self.selections.len() <= 1 {
-            return self;
-        }
-
-        let primary_before = self.selections[self.primary];
-
-        // Sort by the start position first.
-        // `sort_by_key` is stable, so equal-start selections keep their
-        // original order — important for picking the primary correctly.
-        self.selections.sort_by_key(|s| s.start());
-
-        // In-place compaction using a read/write cursor pattern.
-        //
-        // Classic technique: `write` marks the last "kept" slot, `read`
-        // advances through the rest. When two adjacent entries overlap we
-        // merge into `selections[write]`; otherwise we bump `write` and
-        // copy the new entry there. At the end, `truncate` drops the
-        // leftover tail. This avoids allocating a second Vec — we reuse
-        // the memory we already own.
-        let mut write = 0;
-        let mut new_primary = 0;
-
-        for read in 1..self.selections.len() {
-            // Copy `sel` out first — Selection is `Copy` (two `usize`
-            // fields), so this is a cheap stack copy, not a heap clone.
-            let sel = self.selections[read];
-
-            // Reborrow `self.selections[write]` mutably so we can extend
-            // it if there's overlap. Rust's borrow checker is happy
-            // because we copied `sel` out above — we're not holding two
-            // references into the same slice simultaneously.
-            let last = &mut self.selections[write];
-
-            if sel.start() <= last.end() {
-                // Overlap or adjacent — extend `last` to cover `sel`.
-                // Head comes from whichever selection reaches furthest —
-                // this preserves the direction of the "dominant" selection.
-                if sel.end() > last.end() {
-                    // If `sel` was a backward selection (head < anchor), keep
-                    // the backward direction on the merged result.
-                    if sel.head <= sel.anchor {
-                        last.head = last.start().min(sel.head);
-                        last.anchor = sel.end();
-                    } else {
-                        last.anchor = last.start();
-                        last.head = sel.end();
-                    }
-                }
-                // Track where the primary ended up.
-                if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
-                    new_primary = write;
-                }
-            } else {
-                // No overlap — finalize the current write slot, then advance.
-                let done = &self.selections[write];
-                if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
-                    new_primary = write;
-                }
-                write += 1;
-                // Move `sel` into the next write slot. Because Selection is
-                // Copy, this is a plain assignment — no heap work.
-                self.selections[write] = sel;
-            }
-        }
-
-        // Check the final write slot for primary.
-        let done = &self.selections[write];
-        if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
-            new_primary = write;
-        }
-
-        // Drop everything after `write`. `truncate` adjusts the Vec's
-        // length without reallocating — the capacity stays the same.
-        self.selections.truncate(write + 1);
-
-        Self {
-            selections: self.selections,
-            primary: new_primary,
-        }
+        self.merge_overlapping_in_place();
+        self
     }
 
-    /// Build a `SelectionSet` directly from a non-empty `Vec<Selection>`,
-    /// with `primary` pointing at the given index.
+    /// Build a `SelectionSet` from a non-empty `Vec<Selection>`, with
+    /// `primary` pointing at the given index.
+    ///
+    /// The input is automatically sorted and merged so the output always
+    /// satisfies the `SelectionSet` invariants (sorted, non-overlapping,
+    /// non-empty). The `primary` is interpreted as an index into the
+    /// *input* vec; after sort+merge, the primary is relocated to the
+    /// compacted slot that contains that selection's range.
     ///
     /// # Panics
     /// Panics if `selections` is empty or `primary >= selections.len()`.
     pub fn from_vec(selections: Vec<Selection>, primary: usize) -> Self {
+        assert!(!selections.is_empty(), "SelectionSet must not be empty");
+        assert!(primary < selections.len(), "primary index out of bounds");
+        let mut result = Self {
+            selections,
+            primary,
+        };
+        result.merge_overlapping_in_place();
+        result
+    }
+
+    /// Build a `SelectionSet` from a raw `Vec<Selection>` **without**
+    /// sorting or merging.
+    ///
+    /// **For tests only.** Use this when a test deliberately needs to construct
+    /// an out-of-order or overlapping set to exercise downstream merge /
+    /// propagation logic. Production code must use [`from_vec`](Self::from_vec).
+    ///
+    /// `#[cfg(test)]` cannot be used here because the function is called from
+    /// cross-crate tests (the `editor` test suite); making it conditionally
+    /// compiled would hide it from those callers. The name makes the intent clear.
+    ///
+    /// # Panics
+    /// Panics if `selections` is empty or `primary >= selections.len()`.
+    pub fn from_vec_unchecked(selections: Vec<Selection>, primary: usize) -> Self {
         assert!(!selections.is_empty(), "SelectionSet must not be empty");
         assert!(primary < selections.len(), "primary index out of bounds");
         Self {
@@ -428,14 +374,14 @@ impl SelectionSet {
     ///   the no-overlap invariant is restored (a deletion spanning multiple
     ///   selections can collapse them).
     ///
-    /// `rope_pre` must be the buffer text **before** the edit — the pre-edit line
+    /// `buf_pre` must be the buffer text **before** the edit — the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
-    pub fn translate_in_place(&mut self, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+    pub fn translate_in_place(&mut self, cs: &ChangeSet, buf_pre: &Text) {
         for sel in &mut self.selections {
-            let pre_line = rope_pre.char_to_line(sel.head);
+            let pre_line = buf_pre.char_to_line(sel.head);
             sel.anchor = cs.map_pos(sel.anchor, Assoc::After);
             sel.head = cs.map_pos(sel.head, Assoc::After);
-            if cs.touches_line(rope_pre, pre_line) {
+            if cs.touches_line(buf_pre, pre_line) {
                 sel.horiz = None;
             }
         }
@@ -507,6 +453,20 @@ mod tests {
     }
 
     #[test]
+    fn merge_consuming_clears_horiz_on_extended_selection() {
+        // Consuming merge_overlapping delegates to merge_overlapping_in_place,
+        // so horiz is cleared on merged selections — same as the in-place path.
+        let a = Selection::with_horiz(0, 5, 42); // horiz latched
+        let b = Selection::with_horiz(3, 8, 99); // horiz latched
+        let set = SelectionSet::from_vec_unchecked(vec![a, b], 0);
+        // The two selections overlap → they merge into one.
+        let merged = set.merge_overlapping();
+        assert_eq!(merged.len(), 1);
+        // The merged selection must have horiz cleared — neither side's column is valid.
+        assert_eq!(merged.primary().horiz, None, "merge must clear horiz");
+    }
+
+    #[test]
     fn merge_idempotent() {
         let set = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(3, 8)], 0)
             .merge_overlapping();
@@ -559,11 +519,12 @@ mod tests {
     }
 
     #[test]
-    fn map_preserves_primary() {
+    fn map_relocates_primary_by_content() {
         let set = SelectionSet::from_vec(
             vec![Selection::collapsed(0), Selection::collapsed(5)],
             1, // primary is the second one
         );
+        // shift(1) is order-preserving; primary should track to its new position.
         let shifted = set.map(|s| s.shift(1));
         assert_eq!(shifted.primary().head, 6); // was 5, shifted by 1
     }
@@ -575,27 +536,27 @@ mod tests {
         assert_eq!(updated.selections[1].head, 10);
     }
 
-    // ── map_and_merge ─────────────────────────────────────────────────────────
+    // ── map (merge semantics) ─────────────────────────────────────────────────
 
     #[test]
-    fn map_and_merge_collapses_to_same_position() {
+    fn map_collapses_to_same_position() {
         // Two cursors at different positions that a motion maps to the same
         // spot — e.g. "go to end of line" when both are on the same line.
         let set = SelectionSet::from_vec(vec![Selection::collapsed(2), Selection::collapsed(7)], 0);
-        let merged = set.map_and_merge(|_| Selection::collapsed(10));
+        let merged = set.map(|_| Selection::collapsed(10));
         assert_eq!(merged.len(), 1);
         assert_eq!(merged.primary().head, 10);
     }
 
     #[test]
-    fn map_and_merge_reorders_reversed_positions() {
+    fn map_reorders_reversed_positions() {
         // A motion that reverses the order: cursor at 2 maps to 8, cursor
         // at 7 maps to 1. After merge the result should be sorted [1, 8].
         let set = SelectionSet::from_vec(
             vec![Selection::collapsed(2), Selection::collapsed(7)],
             1, // primary is the second one (at 7)
         );
-        let merged = set.map_and_merge(|s| {
+        let merged = set.map(|s| {
             if s.head == 2 {
                 Selection::collapsed(8)
             } else {
@@ -776,11 +737,11 @@ mod tests {
     }
 
     #[test]
-    fn map_and_merge_overlapping_ranges() {
+    fn map_overlapping_ranges() {
         // Two non-overlapping selections that a motion causes to overlap.
         let set = SelectionSet::from_vec(vec![Selection::new(0, 3), Selection::new(5, 8)], 0);
-        // map both to the same range.
-        let merged = set.map_and_merge(|_| Selection::new(2, 5));
+        // map both to the same range — merge fires automatically.
+        let merged = set.map(|_| Selection::new(2, 5));
         assert_eq!(merged.len(), 1);
         assert_eq!(merged.primary().start(), 2);
         assert_eq!(merged.primary().end(), 5);

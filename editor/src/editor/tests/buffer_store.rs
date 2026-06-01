@@ -159,7 +159,7 @@ fn p6_bd_force_closes_dirty_buffer() {
 /// or panics when the feature isn't yet wired.
 #[test]
 fn colon_split_vsplit_are_stubs() {
-    use editing::error::CommandError;
+    use crate::editor::error::CommandError;
     for cmd in ["split", "vsplit", "sp", "vsp"] {
         let mut ed = editor_from("-[h]>ello\n");
         let err: CommandError = ed.execute_typed(cmd, None).unwrap_err();

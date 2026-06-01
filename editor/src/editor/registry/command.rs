@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use editing::changeset::ChangeSet;
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 use editing::selection::SelectionSet;
 use editing::text::Text;
 use crate::ops::MotionMode;

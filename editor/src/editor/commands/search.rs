@@ -3,7 +3,7 @@ use std::sync::Arc;
 use editing::grapheme::next_grapheme_boundary;
 use super::super::search_state::SearchPattern;
 use editing::selection::{Selection, SelectionSet};
-use editing::helpers::is_word_boundary;
+use editing::word::is_word_boundary;
 use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{
@@ -13,7 +13,7 @@ use crate::ops::text_object::inner_word_impl;
 
 use super::super::{MiniBuffer, Mode, SearchDirection};
 use super::super::Editor;
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 
 // ── Search ────────────────────────────────────────────────────────────────────
 

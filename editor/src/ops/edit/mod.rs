@@ -2,7 +2,7 @@ use editing::changeset::{ChangeSet, ChangeSetBuilder};
 use editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::line_end_exclusive;
+use editing::lines::line_end_exclusive;
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //
@@ -123,7 +123,7 @@ where
     let new_buf = cs
         .apply(&buf)
         .expect("edit operation produced an invalid changeset — this is a bug");
-    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx).merge_overlapping();
+    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx);
     new_sel_set.debug_assert_valid(&new_buf);
     (new_buf, new_sel_set, cs)
 }

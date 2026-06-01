@@ -132,7 +132,12 @@ fn pane_selections_sorted_by_head_not_start() {
     // A: backward selection, anchor=10, head=3  → start()=3
     // B: forward  selection, anchor=0,  head=8  → start()=0
     // In start() order: [B, A].  In head order: [A, B].
-    let two_sels = SelectionSet::from_vec(
+    //
+    // These selections overlap (A covers 3..10, B covers 0..8), so we must use
+    // from_vec_unchecked — the whole point of the test is to prove that the
+    // engine's iter_head_sorted path handles start()-vs-head-order divergence
+    // even when the SelectionSet hasn't been canonicalized by merge.
+    let two_sels = SelectionSet::from_vec_unchecked(
         vec![
             Selection::new(10, 3), // A — primary
             Selection::new(0, 8),  // B

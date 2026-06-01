@@ -3,7 +3,7 @@ use crossterm::event::KeyEvent;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Mode, Severity};
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 use super::super::minibuf_history::{HistoryDir, HistoryKind};
 
 impl Editor {

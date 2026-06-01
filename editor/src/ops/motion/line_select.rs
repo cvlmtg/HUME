@@ -1,7 +1,7 @@
 use super::MotionMode;
 use editing::selection::{Selection, SelectionSet};
 use editing::text::Text;
-use editing::helpers::line_end_exclusive;
+use editing::lines::line_end_exclusive;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ use editing::helpers::line_end_exclusive;
 /// already ends on a `\n`, accumulates the next line instead. Always produces a
 /// forward selection (anchor=start, head=`\n`).
 pub(crate) fn cmd_select_line(buf: &Text, sels: SelectionSet, mode: MotionMode) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         match mode {
             MotionMode::Move => {
                 let bottom_line = buf.char_to_line(sel.end());
@@ -71,7 +71,7 @@ pub(crate) fn cmd_select_line_backward(
     sels: SelectionSet,
     mode: MotionMode,
 ) -> SelectionSet {
-    let result = sels.map_and_merge(|sel| {
+    let result = sels.map(|sel| {
         match mode {
             MotionMode::Move => {
                 let top_line = buf.char_to_line(sel.start());

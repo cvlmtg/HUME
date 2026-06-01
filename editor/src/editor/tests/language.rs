@@ -1,6 +1,6 @@
 use super::*;
 
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 use scripting::ScriptingHost;
 use crate::testing::MockHost;
 

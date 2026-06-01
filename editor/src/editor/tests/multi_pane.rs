@@ -92,7 +92,6 @@ fn d4b_sticky_col_is_per_selection() {
 
     // "abc\ndef\n" — two lines.
     let text = Text::from("abc\ndef\n");
-    let rope = text.rope().clone();
 
     // Selection on line 1 (char offset 4 = 'd'), horiz = 0.
     let sel = Selection::with_horiz(4, 4, 0);
@@ -100,12 +99,12 @@ fn d4b_sticky_col_is_per_selection() {
 
     // CS that inserts at the start of line 0 only: "abc\n" → "Xabc\n"
     // This touches line 0 but not line 1, so horiz on line-1 head should survive.
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(text.len_chars());
     b.insert("X"); // insert at start
     b.retain_rest();
     let cs = b.finish();
 
-    sels.translate_in_place(&cs, &rope);
+    sels.translate_in_place(&cs, &text);
     // Head moved from 4 to 5 (past the inserted 'X'), horiz preserved.
     assert_eq!(sels.primary().head(), 5, "head mapped past insert");
     assert_eq!(
@@ -120,17 +119,16 @@ fn d4b_sticky_col_is_per_selection() {
     let mut sels2 = SelectionSet::single(sel2);
 
     // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).
-    // Insert at char 5 (start of "def" in new rope); use the original rope for
-    // translate_in_place (rope_pre = before-this-edit rope).
+    // Insert at char 5 (start of "def" in new rope); use the pre-edit Text for
+    // translate_in_place (buf_pre = before-this-edit text).
     let text2 = Text::from("Xabc\ndef\n");
-    let rope2 = text2.rope().clone();
-    let mut b2 = ChangeSetBuilder::new(rope2.len_chars());
+    let mut b2 = ChangeSetBuilder::new(text2.len_chars());
     b2.retain(5); // skip "Xabc\n"
     b2.insert("Y"); // insert at line 1
     b2.retain_rest();
     let cs2 = b2.finish();
 
-    sels2.translate_in_place(&cs2, &rope2);
+    sels2.translate_in_place(&cs2, &text2);
     // Head moved past insert; horiz must be reset because line 1 was touched.
     assert_eq!(
         sels2.primary().horiz(),

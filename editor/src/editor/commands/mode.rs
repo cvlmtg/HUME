@@ -11,7 +11,7 @@ use crate::ops::selection_cmd::cmd_collapse_selection;
 use engine::types::EditorMode;
 use super::super::{doc_ops, MiniBuffer, Mode};
 use super::super::Editor;
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 

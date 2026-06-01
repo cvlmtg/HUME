@@ -23,7 +23,7 @@ pub(crate) fn cmd_collapse_selection(
     sels: SelectionSet,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let new_sels = sels.map_and_merge(|s| Selection::collapsed(s.head()));
+    let new_sels = sels.map(|s| Selection::collapsed(s.head()));
     new_sels.debug_assert_valid(buf);
     new_sels
 }

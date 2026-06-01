@@ -31,7 +31,8 @@
 //! cluster.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `src/ops/`,
-//! `src/auto_pairs.rs`, and `src/core/helpers.rs` for the forbidden patterns.
+//! `src/auto_pairs.rs`, and `editing/src/lines.rs` + `editing/src/word.rs`
+//! for the forbidden patterns.
 //!
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` where
 //! `<reason>` explains why raw arithmetic is safe (e.g. ASCII-only delimiter
@@ -215,8 +216,10 @@ mod tests {
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
         collect_source_rs(&root.join("src/ops"), &mut paths);
         paths.push(root.join("src/auto_pairs.rs"));
-        // helpers.rs lives in the editing crate — scan it from there.
-        paths.push(workspace_root.join("editing/src/helpers.rs"));
+        // lines.rs and word.rs live in the editing crate — scan them from there.
+        // (helpers.rs was split into these two modules.)
+        paths.push(workspace_root.join("editing/src/lines.rs"));
+        paths.push(workspace_root.join("editing/src/word.rs"));
 
         // Forbidden patterns — raw +1/-1 steps on char-position variables.
         // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)

@@ -30,6 +30,7 @@ use crate::settings::EditorSettings;
 use self::keymap::{Keymap, WaitCharPending};
 
 mod buffer_ops;
+pub(crate) mod error;
 pub(crate) mod host_impl;
 mod lifecycle;
 mod parse_worker;
@@ -768,7 +769,7 @@ impl Editor {
         &mut self,
         cmd_with_arg: &str,
         extra_arg: Option<&str>,
-    ) -> Result<(), editing::error::CommandError> {
+    ) -> Result<(), crate::editor::error::CommandError> {
         use crate::editor::Severity;
         let (cmd, force, inline_arg) = mappings::command_mode::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
@@ -780,7 +781,7 @@ impl Editor {
             }
             result
         } else {
-            Err(editing::error::CommandError::new(format!(
+            Err(crate::editor::error::CommandError::new(format!(
                 "unknown command: {cmd}"
             )))
         }

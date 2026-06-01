@@ -212,7 +212,7 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
         // sticky column in sel.horiz so consecutive j/k presses reuse it.
         let cols: &[u16] = target_cols;
         let mut col_iter = cols.iter();
-        sels.map_and_merge(|sel| {
+        sels.map(|sel| {
             let &target_col = col_iter.next().unwrap();
             let mut head = sel.head();
             for _ in 0..count {
@@ -236,7 +236,7 @@ pub(super) fn cmd_visual_move_down(
     ed: &mut Editor,
     count: usize,
     mode: MotionMode,
-) -> Result<(), editing::error::CommandError> {
+) -> Result<(), crate::editor::error::CommandError> {
     apply_visual_vertical(ed, count, true, mode);
     Ok(())
 }
@@ -245,7 +245,7 @@ pub(super) fn cmd_visual_move_up(
     ed: &mut Editor,
     count: usize,
     mode: MotionMode,
-) -> Result<(), editing::error::CommandError> {
+) -> Result<(), crate::editor::error::CommandError> {
     apply_visual_vertical(ed, count, false, mode);
     Ok(())
 }
@@ -305,7 +305,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     ed: &mut Editor,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), editing::error::CommandError> {
+) -> Result<(), crate::editor::error::CommandError> {
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
     if !wrap_mode.is_wrapping() {
@@ -323,7 +323,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 
     doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
         let rope = text.rope();
-        let new_sels = sels.map_and_merge(|sel| {
+        let new_sels = sels.map(|sel| {
             let buf_line = text.char_to_line(sel.anchor());
             let (sub_row, _) =
                 format_row_col(rope, buf_line, sel.anchor(), &wrap_mode, tab_width, &whitespace, scratch);

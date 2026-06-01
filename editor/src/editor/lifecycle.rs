@@ -36,7 +36,7 @@ pub(super) fn write_pane_mirror(
     let primary_head = sels.primary().head();
     pane.selections.clear();
     pane.selections
-        .extend(sels.iter_head_sorted().map(|s| EngineSelection {
+        .extend(sels.iter_head_sorted().into_iter().map(|s| EngineSelection {
             anchor: s.anchor(),
             head: s.head(),
         }));

@@ -28,18 +28,24 @@
 pub mod changeset;
 pub mod error;
 pub mod grapheme;
-pub mod helpers;
 pub mod history;
+pub mod lines;
 pub mod selection;
 pub mod text;
 pub mod transaction;
+pub mod word;
 
 // ── Facade re-exports ─────────────────────────────────────────────────────────
 // Convenience: import the most-used types without spelling the module path.
 
 pub use changeset::{ChangeSet, ChangeSetBuilder, Operation};
-pub use error::{ApplyError, CommandError, TransactionError, ValidationError};
+pub use error::{ApplyError, TransactionError, ValidationError};
+pub use grapheme::{
+    grapheme_col_in_line, grapheme_count, next_grapheme_boundary, prev_grapheme_boundary,
+};
 pub use history::{History, RevisionId};
+pub use lines::{line_content_end, line_end_exclusive, snap_to_grapheme_boundary};
 pub use selection::{Selection, SelectionSet};
 pub use text::{LineEnding, Text};
 pub use transaction::Transaction;
+pub use word::{classify_char, is_long_word_boundary, is_word_boundary, CharClass};

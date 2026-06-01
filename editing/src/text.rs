@@ -142,7 +142,7 @@ impl Text {
     /// Returns `true` if the buffer contains no visible content — i.e., it
     /// holds only the structural trailing newline.
     #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         debug_assert!(
             self.rope.len_chars() > 0,
             "Text invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
@@ -235,7 +235,6 @@ impl Text {
         out
     }
 
-    #[cfg(test)]
     /// Returns a new buffer with `text` inserted at char offset `at`.
     ///
     /// All char offsets at or after `at` in the old buffer are shifted forward
@@ -244,7 +243,8 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `at > self.len_chars()`.
-    pub fn insert(&self, at: usize, text: &str) -> Self {
+    #[cfg(test)]
+    fn insert(&self, at: usize, text: &str) -> Self {
         // Clone is O(log n) due to ropey's structural sharing.
         let mut rope = self.rope.clone();
         rope.insert(at, text);
@@ -254,7 +254,6 @@ impl Text {
         }
     }
 
-    #[cfg(test)]
     /// Returns a new buffer with `range` of chars removed.
     ///
     /// All char offsets at or after `range.end` in the old buffer are shifted
@@ -266,7 +265,8 @@ impl Text {
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or `range.end > self.len_chars()`.
-    pub fn remove(&self, range: Range<usize>) -> Self {
+    #[cfg(test)]
+    fn remove(&self, range: Range<usize>) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(range);
         Self {

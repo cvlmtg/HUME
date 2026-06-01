@@ -1,5 +1,5 @@
 use editing::text::Text;
-use editing::helpers::line_end_exclusive;
+use editing::lines::line_end_exclusive;
 
 // ── Paragraph motion helpers ─────────────────────────────────────────────────
 

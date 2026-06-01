@@ -1,6 +1,6 @@
 use super::super::{ops, Severity};
 use super::super::Editor;
-use editing::error::CommandError;
+use crate::editor::error::CommandError;
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 

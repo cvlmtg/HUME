@@ -814,7 +814,7 @@ mod tests {
         d.apply_edit(|b, s| insert_char(b, s, 'b'));
         d.apply_edit(|b, s| insert_char(b, s, 'c'));
         let initial = "-[h]>ello\n";
-        d.goto_revision(editing::history::History::root_id());
+        d.goto_revision(editing::history::History::ROOT);
         assert_eq!(state(&d), initial);
     }
 

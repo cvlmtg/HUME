@@ -37,12 +37,13 @@ pub(crate) fn apply_doc_edit(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    // O(1) rope snapshot — ropey uses structural sharing.
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
+    let buf_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = buf_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
     pane_state[focused_pane_id][buf_id].selections = new_sels;
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &rope_pre);
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
 }
@@ -64,13 +65,14 @@ pub(crate) fn apply_doc_edit_grouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let buf_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = buf_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
     pbs.selections = new_sels;
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &rope_pre);
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
 }
@@ -91,13 +93,14 @@ pub(crate) fn apply_doc_edit_regrouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let buf_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = buf_pre.rope().clone();
     // Borrow paste_group from pane_state; NLL ends this borrow after the call.
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, propagation_cs) =
         buffers.get_mut(buf_id).apply_edit_regrouped(&mut pbs.paste_group, cmd);
     pane_state[focused_pane_id][buf_id].selections = new_sels;
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &propagation_cs, &rope_pre);
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &propagation_cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &propagation_cs, &rope_pre);
 }
@@ -113,13 +116,14 @@ pub(crate) fn apply_doc_undo(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    // rope_pre is the current (post-edit) text: undo's CS maps post-edit
-    // positions back to pre-edit, so non-acting panes' heads must be
+    // buf_pre/rope_pre are the current (post-edit) text: undo's CS maps
+    // post-edit positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let buf_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).undo() {
         pane_state[focused_pane_id][buf_id].selections = new_sels;
-        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &rope_pre);
+        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
         syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
     }
@@ -136,10 +140,11 @@ pub(crate) fn apply_doc_redo(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let buf_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
         pane_state[focused_pane_id][buf_id].selections = new_sels;
-        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &rope_pre);
+        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
         syntax_glue::record_pending_edits(buffers.get_mut(buf_id), text_gen, &cs, &rope_pre);
     }
@@ -200,22 +205,22 @@ pub(crate) fn commit_edit_group(
 }
 
 /// Propagate `cs` to every pane except `focused_pane_id` that views `buf_id`,
-/// keeping their selections rope-valid after an edit the focused pane performed.
+/// keeping their selections valid after an edit the focused pane performed.
 ///
-/// `rope_pre` must be the buffer text **before** the edit — `translate_in_place`
+/// `buf_pre` must be the buffer text **before** the edit — `translate_in_place`
 /// uses it to identify which line each head was on pre-edit, which governs
 /// whether `Selection.horiz` is reset after the translation.
 ///
 /// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
 /// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`
-/// in `pane_state` must be kept rope-valid between edits, because other
+/// in `pane_state` must be kept valid between edits, because other
 /// mid-event code (e.g. `update_pane_cursor`) reads it.
 pub(crate) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cs: &ChangeSet,
-    rope_pre: &ropey::Rope,
+    buf_pre: &editing::text::Text,
 ) {
     // Collect IDs first; can't iterate and mutate the same SecondaryMap.
     let affected: Vec<PaneId> = pane_state
@@ -225,6 +230,6 @@ pub(crate) fn propagate_cs_to_panes(
         })
         .collect();
     for pid in affected {
-        pane_state[pid][buf_id].selections.translate_in_place(cs, rope_pre);
+        pane_state[pid][buf_id].selections.translate_in_place(cs, buf_pre);
     }
 }
