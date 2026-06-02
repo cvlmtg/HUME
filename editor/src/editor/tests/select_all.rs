@@ -99,17 +99,17 @@ fn star_on_selection_uses_selected_text() {
     assert_eq!(reg(&ed, 's'), vec!["b c"]);
 }
 
-/// `*` on the trailing structural newline selects `\n\n` (the line-ending
-/// newline plus the structural trailing newline treated as one whitespace word).
-/// The degenerate case must not panic and must leave the mode unchanged.
+/// `*` on a `\n` cursor is a noop — no word to search for.
+///
+/// Without the `CharClass::Eol` guard, `inner_word_impl` would expand the
+/// cursor to the adjacent newline run and set a useless newline regex.
 #[test]
-fn star_on_trailing_newline_selects_newlines() {
+fn star_on_trailing_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
+    let before = state(&ed);
     ed.handle_key(key('*'));
     assert_eq!(ed.mode, Mode::Normal);
-    // inner_word_impl on the trailing \n selects the preceding \n as one
-    // whitespace token — locks in the current (degenerate but non-crashing) behavior.
-    assert_eq!(state(&ed), "hello-[\n\n]>");
+    assert_eq!(state(&ed), before);
 }
 
 /// `*` escapes regex metacharacters in the selection.

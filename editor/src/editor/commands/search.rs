@@ -3,7 +3,7 @@ use std::sync::Arc;
 use editing::grapheme::next_grapheme_boundary;
 use super::super::search_state::SearchPattern;
 use editing::selection::{Selection, SelectionSet};
-use editing::word::is_word_boundary;
+use editing::word::{CharClass, classify_char, is_word_boundary};
 use crate::ops::MotionMode;
 use crate::ops::register::SEARCH_REGISTER;
 use crate::ops::search::{
@@ -334,8 +334,14 @@ pub fn cmd_use_selection_as_search(
 
     // If cursor (1-char selection), expand to inner word first.
     let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
+        // Noop on \n — no word to search for (matches Vim/Helix behaviour).
+        // inner_word_impl would otherwise expand the cursor to the adjacent \n
+        // run and set a useless newline regex.
+        if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
+            return Ok(());
+        }
         let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
-            return Ok(()); // cursor on structural newline or similar — nothing to do
+            return Ok(());
         };
         let word_text = buf.slice(start..end + 1).to_string();
         (word_text, Some(Selection::new(start, end)))
