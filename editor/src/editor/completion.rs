@@ -27,7 +27,6 @@ pub(crate) struct Completion {
     /// Text to insert at the span location in the minibuffer input.
     pub replacement: String,
     /// Text shown in the completion popup row.
-    #[allow(dead_code)] // used by the popup renderer (Phase C)
     pub display: String,
 }
 

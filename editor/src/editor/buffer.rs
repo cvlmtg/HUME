@@ -116,7 +116,6 @@ impl Buffer {
     ///
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"
     /// invariant without leaving the editor in an invalid state.
-    #[allow(dead_code)] // used when closing the last buffer in multi-buffer
     pub(crate) fn scratch() -> Self {
         Self::new(Text::empty(), SelectionSet::default())
     }
@@ -407,7 +406,7 @@ impl Buffer {
     }
 
     /// Jump to an arbitrary revision in the undo tree.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn goto_revision(
         &mut self,
         sels: &mut SelectionSet,

@@ -25,9 +25,6 @@ pub(crate) enum Severity {
     /// A failure the user must address (e.g. script error). Logged and shown.
     Error,
     /// Verbose diagnostic detail (e.g. stack trace). Logged only, not shown in statusline.
-    ///
-    /// No callers yet
-    #[allow(dead_code)]
     Trace,
 }
 
