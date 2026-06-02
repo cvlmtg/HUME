@@ -515,6 +515,47 @@ fn i_esc_does_not_step_cursor_back() {
     assert_eq!(state(&ed), "X-[h]>ello\n");
 }
 
+// ── multi-cursor `a` collision (merge edge cases) ─────────────────────────────
+
+/// `a` on two cursors where one sits on the last character and the other on the
+/// trailing `\n`: both collapse to `next(end).min(max)` which is the same char
+/// index (the `\n`). The two coincident results must merge to one cursor.
+///
+/// Regression: without `map` merging after the transform, this leaves two
+/// identical collapsed selections — a `SelectionSet` invariant violation.
+#[test]
+fn a_multi_cursor_clamp_collision_merges_to_one() {
+    // "abc\n": a=0 b=1 c=2 \n=3, max=3.
+    // cursor on c(2): next(2)=3, min(3,3)=3.
+    // cursor on \n(3): next(3)=4, min(4,3)=3.
+    // Both land on 3 → merge → single cursor on \n.
+    let mut ed = editor_from("ab-[c]>-[\n]>");
+    ed.handle_key(key('a'));
+
+    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(state(&ed), "abc-[\n]>");
+}
+
+/// `a Esc` on two adjacent cursors where the step-back brings both to the same
+/// position: they must merge to one cursor rather than leaving a duplicate.
+///
+/// Regression: without `map` merging during `end_insert_session`, two identical
+/// collapsed selections survive — a `SelectionSet` invariant violation.
+#[test]
+fn a_esc_multi_cursor_step_back_collision_merges_to_one() {
+    // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5. Line 1 starts at char 3.
+    // `a`: \n(2)→next=3; c(3)→next=4. Cursors at 3, 4 (distinct).
+    // Esc step-back: head=3 equals line-start(3) → stays 3;
+    //                head=4 > line-start(3) → prev(4)=3. Both → 3.
+    // Merge → single cursor on c.
+    let mut ed = editor_from("ab-[\n]>-[c]>d\n");
+    ed.handle_key(key('a'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(state(&ed), "ab\n-[c]>d\n");
+}
+
 // ── `S` splits selection on newlines ──────────────────────────────────────────
 
 /// `S` must split a multi-line selection into one cursor per line, which is
