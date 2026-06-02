@@ -312,4 +312,137 @@ mod tests {
         assert!(data_dir.join("grammars").is_dir());
         assert!(data_dir.join("grammars/sources").is_dir());
     }
+
+    // ── has_dotdot ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn has_dotdot_detects_bare_parent() {
+        assert!(has_dotdot(Path::new("..")));
+    }
+
+    #[test]
+    fn has_dotdot_detects_mid_path_parent() {
+        assert!(has_dotdot(Path::new("foo/../bar")));
+    }
+
+    #[test]
+    fn has_dotdot_does_not_flag_cur_dir() {
+        // "." is CurDir, not ParentDir — has_dotdot only guards against "..".
+        assert!(!has_dotdot(Path::new(".")));
+        assert!(!has_dotdot(Path::new("foo/./bar")));
+    }
+
+    #[test]
+    fn has_dotdot_clean_path_is_false() {
+        assert!(!has_dotdot(Path::new("foo/bar/baz")));
+    }
+
+    // ── normalize_lexical ─────────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_lexical_removes_cur_dir() {
+        assert_eq!(normalize_lexical(Path::new("a/./b")), PathBuf::from("a/b"));
+    }
+
+    #[test]
+    fn normalize_lexical_pops_parent_dir() {
+        assert_eq!(
+            normalize_lexical(Path::new("a/b/../c")),
+            PathBuf::from("a/c")
+        );
+    }
+
+    #[test]
+    fn normalize_lexical_pop_on_empty_is_safe() {
+        // Leading ".." when the output is empty: pop() on an empty PathBuf is a
+        // no-op, so the ".." is silently discarded and only "a" survives.
+        assert_eq!(normalize_lexical(Path::new("../a")), PathBuf::from("a"));
+    }
+
+    #[test]
+    fn normalize_lexical_normal_path_unchanged() {
+        assert_eq!(
+            normalize_lexical(Path::new("a/b/c")),
+            PathBuf::from("a/b/c")
+        );
+    }
+
+    // ── canonical_ancestor_join ───────────────────────────────────────────────
+
+    #[test]
+    fn canonical_ancestor_join_resolves_existing_parent() {
+        let tmp = TempDir::new().unwrap();
+        // "sub/leaf" does not exist yet; the function must canonicalize tmp
+        // and rejoin the non-existing suffix.
+        let target = tmp.path().join("sub").join("leaf");
+        let result = canonical_ancestor_join(&target).unwrap();
+        let canonical_tmp = std::fs::canonicalize(tmp.path()).unwrap();
+        // Result must be rooted at the canonical tmp dir and end with the
+        // non-existing suffix components.
+        assert!(
+            result.starts_with(&canonical_tmp),
+            "{result:?} must start with {canonical_tmp:?}"
+        );
+        assert_eq!(result, canonical_tmp.join("sub").join("leaf"));
+    }
+
+    #[test]
+    fn canonical_ancestor_join_existing_path_returns_canonical() {
+        let tmp = TempDir::new().unwrap();
+        let result = canonical_ancestor_join(tmp.path()).unwrap();
+        let expected = std::fs::canonicalize(tmp.path()).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    // ── fail-closed sandbox predicates (TLS) ─────────────────────────────────
+    //
+    // Each test calls init_dirs() at the start to reset TLS state for this
+    // thread; tests that need a None root pass (None, None).
+
+    #[test]
+    fn sandbox_predicates_fail_closed_when_dirs_unavailable() {
+        // Simulate HOME/APPDATA unset — all roots become None.
+        init_dirs(None, None);
+        // Every path must be denied; fail-closed is the security invariant.
+        assert!(!is_under_write_sandbox(Path::new("/any/path")));
+        assert!(!is_under_grammars_sandbox(Path::new("/any/path")));
+        assert!(!is_under_read_sandbox(Path::new("/any/path")));
+    }
+
+    #[test]
+    fn with_data_plugins_errs_when_dirs_unavailable() {
+        init_dirs(None, None);
+        assert!(with_data_plugins(|_| ()).is_err());
+    }
+
+    #[test]
+    fn with_data_grammars_errs_when_dirs_unavailable() {
+        init_dirs(None, None);
+        assert!(with_data_grammars(|_| ()).is_err());
+    }
+
+    // ── with_data_grammars_or_subpath segment validation ─────────────────────
+    //
+    // The segment-validation rejects before touching TLS, so these tests work
+    // with an uninitialised root (None, None) without interfering with the TLS
+    // state of other tests.
+
+    #[test]
+    fn grammars_or_subpath_rejects_dotdot() {
+        init_dirs(None, None);
+        assert!(with_data_grammars_or_subpath("..", |_| ()).is_err());
+    }
+
+    #[test]
+    fn grammars_or_subpath_rejects_cur_dir() {
+        init_dirs(None, None);
+        assert!(with_data_grammars_or_subpath(".", |_| ()).is_err());
+    }
+
+    #[test]
+    fn grammars_or_subpath_rejects_nested_path() {
+        // Two normal components ("foo/bar") are not a single segment.
+        init_dirs(None, None);
+        assert!(with_data_grammars_or_subpath("foo/bar", |_| ()).is_err());
+    }
 }

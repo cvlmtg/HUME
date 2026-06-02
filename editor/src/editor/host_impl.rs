@@ -230,6 +230,61 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use engine::pipeline::BufferId;
+    use scripting::host::EditorHost;
+
+    use super::*;
+    use crate::editor::keymap::Keymap;
+    use crate::editor::scripting_setup::make_init_host;
+    use crate::settings::EditorSettings;
+
+    // Build a host with all optional refs set to None — the same shape as the
+    // init-mode host (`make_init_host`). In production, `require_cmd_ctx!` in
+    // the Steel builtins prevents buffer-lifecycle methods from being called
+    // this way. These tests exercise the defensive `Err` branches directly.
+    fn none_host<'a>(settings: &'a mut EditorSettings, keymap: &'a mut Keymap) -> EditorHostImpl<'a> {
+        make_init_host(settings, keymap)
+    }
+
+    #[test]
+    fn close_buffer_errs_when_refs_unavailable() {
+        let mut settings = EditorSettings::default();
+        let mut keymap = Keymap::default();
+        let mut host = none_host(&mut settings, &mut keymap);
+        let err = host.close_buffer(BufferId::default()).unwrap_err();
+        assert!(err.contains("editor refs unavailable"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn switch_to_buffer_errs_when_refs_unavailable() {
+        let mut settings = EditorSettings::default();
+        let mut keymap = Keymap::default();
+        let mut host = none_host(&mut settings, &mut keymap);
+        let err = host
+            .switch_to_buffer(BufferId::default(), BufferId::default())
+            .unwrap_err();
+        assert!(err.contains("editor refs unavailable"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn attach_grammar_errs_when_langs_unavailable() {
+        let mut settings = EditorSettings::default();
+        let mut keymap = Keymap::default();
+        let mut host = none_host(&mut settings, &mut keymap);
+        let err = host
+            .attach_grammar("rust", Path::new("/no"), "rust_language", Path::new("/no"))
+            .unwrap_err();
+        // language registry is None → "unavailable" error fires before path resolution
+        assert!(err.contains("unavailable"), "unexpected message: {err}");
+    }
+}
+
 /// Map scripting `BindMode` → editor `keymap::BindMode`.
 pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
     match mode {

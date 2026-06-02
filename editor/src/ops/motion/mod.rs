@@ -22,14 +22,14 @@ pub(crate) enum FindKind {
 /// semantics (via `mode`) and multi-cursor bookkeeping.
 ///
 /// `count` controls how many times the motion is applied per selection.
-/// The motion is folded `count` times *inside* `map_and_merge` — each
-/// selection independently accumulates N steps before anchor/merge logic
-/// runs. This is semantically "move 3 words" (not "apply 1w to the whole
-/// selection set three times"), which prevents premature merging of
-/// multi-cursor selections between steps.
+/// The motion is folded `count` times *inside* the `map` call — each selection
+/// independently accumulates N steps before anchor/merge logic runs. This is
+/// semantically "move 3 words" (not "apply 1w to the whole selection set three
+/// times"), which prevents premature merging of multi-cursor selections between
+/// steps.
 ///
-/// Uses `map_and_merge` so that selections which converge to the same position
-/// after the motion are automatically merged.
+/// Uses `map` (which always merges) so that selections which converge to the
+/// same position after the motion are automatically merged.
 pub(crate) fn apply_motion(
     buf: &Text,
     sels: SelectionSet,

@@ -15,8 +15,8 @@ use editing::text::Text;
 /// Collapse every selection to a cursor at its `head`.
 ///
 /// `anchor` becomes equal to `head` — the selected range shrinks to a single
-/// character (the cursor position). Uses `map_and_merge` because two
-/// overlapping selections with different heads might collapse to the same
+/// character (the cursor position). Uses `map` (which always merges) because
+/// two overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
 pub(crate) fn cmd_collapse_selection(
     buf: &Text,
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn collapse_two_selections_same_head_merges() {
         // Two selections with different anchors but the same head collapse to
-        // one cursor — map_and_merge must reduce the count.
+        // one cursor — map (which always merges) must reduce the count.
         let buf = editing::text::Text::from("hello\n");
         let sels = editing::selection::SelectionSet::from_vec(
             vec![

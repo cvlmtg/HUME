@@ -482,9 +482,9 @@ fn around_WORD_no_trailing_space_uses_leading() {
 fn around_WORD_end_of_buffer_with_leading_space_uses_WORD_boundary() {
     // B1 regression: the fallback path for "WORD at end of buffer with no
     // trailing space" was calling inner_word_impl with the wrong predicate
-    // (is_word_boundary instead of is_WORD_boundary). This test catches
+    // (is_word_boundary instead of is_long_word_boundary). This test catches
     // that by using a WORD that contains punctuation — `is_word_boundary`
-    // would split "foo.bar" into two words while `is_WORD_boundary` keeps
+    // would split "foo.bar" into two words while `is_long_word_boundary` keeps
     // it as one WORD, so the leading-space extent would differ.
     assert_state!(
         "  -[f]>oo.bar\n",

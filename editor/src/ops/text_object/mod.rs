@@ -19,8 +19,8 @@ use editing::word::{CharClass, classify_char, is_long_word_boundary, is_word_bou
 /// is a no-op. On `Some`, the selection is replaced with a
 /// forward selection anchored at `start` and with head at `end`.
 ///
-/// Uses `map_and_merge` so that multiple cursors landing on the same range
-/// (e.g., both cursors inside the same bracket pair) are automatically merged.
+/// Uses `map` (which always merges) so that multiple cursors landing on the
+/// same range (e.g., both cursors inside the same bracket pair) are merged.
 pub(crate) fn apply_text_object(
     buf: &Text,
     sels: SelectionSet,

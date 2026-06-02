@@ -1570,7 +1570,7 @@ fn select_line_multi_cursor() {
 #[test]
 fn select_line_multi_cursor_same_line_merges() {
     // Two cursors on the same line both produce identical line selections,
-    // which map_and_merge collapses to a single selection.
+    // which `map` (which always merges) collapses to a single selection.
     assert_state!(
         "hell-[o]> -[w]>orld\nfoo\n",
         |(buf, sels)| cmd_select_line(&buf, sels, MotionMode::Move),
@@ -1581,7 +1581,7 @@ fn select_line_multi_cursor_same_line_merges() {
 #[test]
 fn extend_select_line_multi_cursor_merges() {
     // Two adjacent full-line selections each extend to the next line; because the
-    // resulting ranges overlap, map_and_merge unifies them into one selection.
+    // resulting ranges overlap, `map` (which always merges) unifies them into one.
     //
     // sel1 (-[hello world\n]>) end=11 → extends to line 1 → (0,15)
     // sel2 (-[foo\n]>)         end=15 → extends to line 2 → (12,19)
