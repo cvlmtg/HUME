@@ -6,6 +6,11 @@ pub mod ops;
 pub mod settings;
 pub mod ui;
 
+// `extern crate self as hume` lets files that are #[path]-included into both
+// the lib's own test build and external integration-test crates use `hume::`
+// paths uniformly, without conditional `crate::` vs `hume::` branching.
+extern crate self as hume;
+
 // Re-exports for editor/tests/ integration tests.
 pub use editor::keymap::{BindMode as KeymapBindMode, Keymap};
 

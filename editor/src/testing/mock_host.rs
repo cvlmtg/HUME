@@ -1,29 +1,29 @@
-//! [`MockHost`] — a minimal in-memory [`scripting::EditorHost`] implementation
-//! for scripting integration tests in the editor crate.
+//! [`MockHost`] — shared [`scripting::EditorHost`] for lib unit tests and
+//! integration tests.
 //!
 //! Holds real `EditorSettings` and `Keymap` so tests can assert on
-//! `set-option!` / `bind-key!` side effects directly, without needing a full
-//! editor session.
+//! `set-option!` / `bind-key!` side effects directly, without a full editor
+//! session.
 //!
-//! Mirrors `editor::testing::MockHost` for lib tests.  Both must implement
-//! the same [`scripting::EditorHost`] trait methods; when the trait changes,
-//! update both.
+//! Included in two ways:
+//! - `editor/src/testing/mod.rs` → `mod mock_host` for lib unit tests.
+//! - `editor/tests/scripting.rs` → `#[path = "../src/testing/mock_host.rs"]`
+//!   for integration tests.
+//!
+//! Uses `hume::` paths throughout; `extern crate self as hume` in `lib.rs`
+//! makes those resolve correctly in the lib-crate context too.
 
 use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, PaneId};
-
 use scripting::host::{BindMode, EditorHost};
 
-/// Minimal [`EditorHost`] that uses real `EditorSettings` and `Keymap`.
-///
-/// Buffer/pane lifecycle methods (`open_buffer`, `close_buffer`, etc.) return
-/// `Err`/`Ok(default)` since integration-test scripts don't exercise them.
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
     pub(crate) keymap: hume::Keymap,
-    /// Grammar names attached via `(register-grammar! …)` in command mode.
+    /// Grammar names attached via `(register-grammar! …)`.
     pub(crate) grammars: std::collections::HashSet<String>,
     pub(crate) focused_buffer_id: BufferId,
+    #[allow(dead_code)]
     pub(crate) focused_pane_id: PaneId,
 }
 
@@ -54,7 +54,7 @@ impl EditorHost for MockHost {
     fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> { None }
     fn buffer_stored_language(&self, _id: BufferId) -> Option<String> { None }
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
-        Err("MockHost: open_buffer not implemented".into())
+        Err("MockHost: open_buffer not available".into())
     }
     fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
         Ok(self.focused_buffer_id)
@@ -135,7 +135,6 @@ impl EditorHost for MockHost {
     fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
 }
 
-/// Map scripting `BindMode` → editor `hume::KeymapBindMode`.
 fn to_editor_bind_mode(mode: BindMode) -> hume::KeymapBindMode {
     match mode {
         BindMode::Normal => hume::KeymapBindMode::Normal,

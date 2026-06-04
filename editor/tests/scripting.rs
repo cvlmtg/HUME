@@ -1,7 +1,7 @@
-#[path = "scripting/test_harness.rs"]
-mod test_harness;
+#[path = "../src/testing/mock_host.rs"]
+mod mock_host;
 
-use test_harness::MockHost;
+use mock_host::MockHost;
 use scripting::*;
 use scripting::EvalWatchdog;
 use engine::pipeline::{BufferId, PaneId};
