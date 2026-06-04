@@ -22,6 +22,7 @@ pub(crate) struct MockHost {
     pub(crate) keymap: hume::Keymap,
     /// Grammar names attached via `(register-grammar! …)`.
     pub(crate) grammars: std::collections::HashSet<String>,
+    #[allow(dead_code)]
     pub(crate) focused_buffer_id: BufferId,
     #[allow(dead_code)]
     pub(crate) focused_pane_id: PaneId,
@@ -57,11 +58,10 @@ impl EditorHost for MockHost {
         Err("MockHost: open_buffer not available".into())
     }
     fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
-        Ok(self.focused_buffer_id)
+        Err("MockHost: close_buffer not available".into())
     }
-    fn switch_to_buffer(&mut self, _current: BufferId, target: BufferId) -> Result<(), String> {
-        self.focused_buffer_id = target;
-        Ok(())
+    fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
+        Err("MockHost: switch_to_buffer not available".into())
     }
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         use hume::settings::{BufferOverrides, SettingScope, apply_setting};
