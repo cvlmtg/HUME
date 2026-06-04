@@ -1,8 +1,13 @@
-//! [`NullHost`] — a minimal no-op [`EditorHost`] for scripting crate unit tests.
+//! [`NullHost`] — a minimal [`EditorHost`] for scripting crate unit tests.
 //!
-//! Does not depend on any editor types; returns empty / default / error values
-//! for all methods.  Sufficient for tests that only verify scripting guards
-//! (e.g. `is_init` checks) without needing real editor state.
+//! Does not depend on any editor types.  Read methods return empty / default
+//! values; **all mutators return `Err`** — so any test that accidentally drives
+//! a mutating builtin through NullHost fails loudly instead of silently succeeding.
+//!
+//! Suitable only for guard tests (init-guard, activation-state, budget, register
+//! validation) where the host mutators are never reached.  Tests that need working
+//! mutations (bind-key!, set-option!, attach-grammar!, …) must use `MockHost`
+//! in the editor crate.
 
 use std::path::{Path, PathBuf};
 
@@ -30,12 +35,24 @@ impl EditorHost for NullHost {
     fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
-    fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> { Ok(()) }
-    fn configure_statusline(&mut self, _l: Vec<String>, _c: Vec<String>, _r: Vec<String>) -> Result<(), String> { Ok(()) }
-    fn bind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent], _cmd: &str, _fe: bool) -> Result<(), String> { Ok(()) }
-    fn bind_wait_char(&mut self, _mode: BindMode, _keys: &[KeyEvent], _cmd: &str) -> Result<(), String> { Ok(()) }
-    fn unbind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent]) -> Result<(), String> { Ok(()) }
-    fn attach_grammar(&mut self, _name: &str, _gp: &Path, _sym: &str, _hl: &Path) -> Result<(), String> { Ok(()) }
+    fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
+        Err("NullHost: set_global_option not available".into())
+    }
+    fn configure_statusline(&mut self, _l: Vec<String>, _c: Vec<String>, _r: Vec<String>) -> Result<(), String> {
+        Err("NullHost: configure_statusline not available".into())
+    }
+    fn bind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent], _cmd: &str, _fe: bool) -> Result<(), String> {
+        Err("NullHost: bind_key not available".into())
+    }
+    fn bind_wait_char(&mut self, _mode: BindMode, _keys: &[KeyEvent], _cmd: &str) -> Result<(), String> {
+        Err("NullHost: bind_wait_char not available".into())
+    }
+    fn unbind_key(&mut self, _mode: BindMode, _keys: &[KeyEvent]) -> Result<(), String> {
+        Err("NullHost: unbind_key not available".into())
+    }
+    fn attach_grammar(&mut self, _name: &str, _gp: &Path, _sym: &str, _hl: &Path) -> Result<(), String> {
+        Err("NullHost: attach_grammar not available".into())
+    }
     fn has_grammar(&self, _language: &str) -> bool { false }
     fn is_valid_register_name(&self, _ch: char) -> bool { false }
     fn steel_command_budget_ms(&self) -> u64 { 10_000 }
