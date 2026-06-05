@@ -347,11 +347,6 @@ impl Editor {
 // Module-level helpers
 // ---------------------------------------------------------------------------
 
-/// Ordered list of directories to search for theme TOML files.
-///
-/// Config themes (user-defined) are listed before runtime themes (bundled) so
-/// that user overrides shadow built-in ones. Both `ops::load_theme_by_name`
-/// and [`ThemeCompleter`] use this list as the single source of truth.
 /// Build an init-mode `EditorHostImpl` with no buffer/pane refs.
 ///
 /// Init builtins (`set-option!`, `bind-key!`, etc.) are guard-protected —
@@ -383,6 +378,11 @@ pub(crate) fn log_level_to_severity(level: scripting::LogLevel) -> Severity {
     }
 }
 
+/// Ordered list of directories to search for theme TOML files.
+///
+/// Config themes (user-defined) are listed before runtime themes (bundled) so
+/// that user overrides shadow built-in ones. Both `ops::load_theme_by_name`
+/// and [`ThemeCompleter`] use this list as the single source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(cfg) = platform::dirs::config_dir() {

@@ -110,6 +110,9 @@ fn star_on_trailing_newline_is_noop() {
     ed.handle_key(key('*'));
     assert_eq!(ed.mode, Mode::Normal);
     assert_eq!(state(&ed), before);
+    // The cursor/selection check above already catches a regressed guard (it would
+    // move the selection), but pin the register too: a noop must not set a search regex.
+    assert!(reg(&ed, 's').is_empty());
 }
 
 /// `*` escapes regex metacharacters in the selection.

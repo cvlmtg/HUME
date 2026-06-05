@@ -1059,6 +1059,42 @@ fn switch_to_buffer_errors_in_init_mode() {
     );
 }
 
+/// `(buffer-language …)` / `(set-buffer-language! …)` on a stale buffer id must
+/// raise a Steel error, not silently return `#f` or push a no-op. MockHost's
+/// `buffer_exists` returns false unconditionally, so `(current-buffer)` is a
+/// stale handle from the builtins' point of view — exercising the guard path.
+///
+/// Flip: remove the `buffer_exists` guard in either builtin and that eval
+/// returns Ok instead of Err.
+#[test]
+fn language_builtins_error_on_stale_buffer_id() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "q-lang" "" (lambda () (buffer-language (current-buffer))))
+           (define-command! "set-lang" "" (lambda () (set-buffer-language! (current-buffer) "rust")))"#,
+        &mut mock,
+    )
+    .unwrap();
+
+    let err = h
+        .call_steel_cmd("%hume-cmd-q-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("buffer-language: invalid buffer id"),
+        "buffer-language must reject a stale id; got: {err}"
+    );
+
+    let err = h
+        .call_steel_cmd("%hume-cmd-set-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("set-buffer-language!: invalid buffer id"),
+        "set-buffer-language! must reject a stale id; got: {err}"
+    );
+}
+
 // ── bind-key-extend! ──────────────────────────────────────────────────────
 
 #[test]

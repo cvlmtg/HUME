@@ -82,14 +82,11 @@ pub(crate) fn register_grammar(
     }
 
     // Command mode — attach immediately via host and trigger a buffer sweep.
+    // The host (`EditorHostImpl::attach_grammar`) owns the `register-grammar! '<name>':`
+    // prefix; just lift its String error into a SteelErr without re-prefixing.
     ctx.host
         .attach_grammar(&name, &grammar_path, &symbol, &highlights_path)
-        .map_err(|e| {
-            steel::rerrs::SteelErr::new(
-                steel::rerrs::ErrorKind::Generic,
-                format!("register-grammar! '{name}': {e}"),
-            )
-        })?;
+        .map_err(|e| steel::rerrs::SteelErr::new(steel::rerrs::ErrorKind::Generic, e))?;
     ctx.pending_grammar_sweeps.push(name);
     Ok(SteelVal::Void)
 }

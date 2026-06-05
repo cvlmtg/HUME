@@ -69,8 +69,9 @@ pub(crate) fn cmd_split_selection_on_newlines(
 
     // The new primary is the first piece of the original primary.
     let new_primary = piece_start[primary_idx];
-    // Split selections cover disjoint line ranges and can't overlap, so no
-    // merge is needed. `from_vec` preserves the sorted order we built.
+    // Split selections cover disjoint line ranges and can't overlap. `from_vec`
+    // sorts and merges, but the input is already sorted and disjoint, so both
+    // are no-ops here and the primary index is preserved.
     let new_set = SelectionSet::from_vec(new_sels, new_primary);
     new_set.debug_assert_valid(buf);
     new_set

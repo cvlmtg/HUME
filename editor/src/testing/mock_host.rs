@@ -77,7 +77,7 @@ impl EditorHost for MockHost {
         use hume::ui::statusline::{StatusElement, StatusLineConfig};
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
-                .map(|s| s.parse::<StatusElement>().map_err(|e| format!("{section}: {e}")))
+                .map(|s| s.parse::<StatusElement>().map_err(|e| format!("configure-statusline! {section}: {e}")))
                 .collect()
         };
         let left = parse(left, "left")?;

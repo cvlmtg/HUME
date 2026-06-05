@@ -52,7 +52,6 @@ pub fn parse_state(input: &str) -> (Text, SelectionSet) {
                 selections.push(Selection::new(count - 1, *head_offset));
                 state = State::Normal;
             }
-            (_, ']') | (_, '-') | (_, '<') => text.push(ch),
             (_, c) => text.push(c),
         }
     }
