@@ -71,6 +71,10 @@ impl SelectionSet {
     }
 
     /// Number of selections.
+    ///
+    /// A `SelectionSet` is non-empty by invariant (day-one: at least one
+    /// selection always exists), so `is_empty()` is intentionally absent.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.selections.len()
     }

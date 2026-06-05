@@ -441,7 +441,7 @@ mod tests {
 
         assert!(defs.is_empty(), "absent plugin must be a no-op");
         assert!(
-            host.lazy_registry.plugins.get(&id).is_none(),
+            !host.lazy_registry.plugins.contains_key(&id),
             "absent plugin must not appear in registry after no-op"
         );
     }

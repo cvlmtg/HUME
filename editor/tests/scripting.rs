@@ -2041,7 +2041,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
         .expect("activate_plugin must succeed");
 
     assert!(
-        !!h.language_trigger_plugins("rust").is_empty(),
+        h.language_trigger_plugins("rust").is_empty(),
         "trigger must be removed after activation"
     );
 }

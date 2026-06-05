@@ -196,6 +196,15 @@ impl ScriptingHost {
         }
     }
 
+}
+
+impl Default for ScriptingHost {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ScriptingHost {
     // ── Outward API (clean; no direct field access outside this module) ────────
 
     /// Runtime directory for core plugins, themes, and docs.

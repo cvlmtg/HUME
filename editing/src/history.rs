@@ -215,6 +215,11 @@ impl History {
     }
 
     /// Total number of revisions in the tree (including the root).
+    ///
+    /// A `History` always contains at least the root revision, so it is never
+    /// empty — `is_empty()` would be a constant `false` and is intentionally
+    /// absent.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.revisions.len()
     }

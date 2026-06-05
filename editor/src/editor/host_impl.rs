@@ -230,6 +230,15 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 }
 
+/// Map scripting `BindMode` → editor `keymap::BindMode`.
+pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
+    match mode {
+        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
+        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
+        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -282,14 +291,5 @@ mod tests {
             .unwrap_err();
         // language registry is None → "unavailable" error fires before path resolution
         assert!(err.contains("unavailable"), "unexpected message: {err}");
-    }
-}
-
-/// Map scripting `BindMode` → editor `keymap::BindMode`.
-pub(crate) fn to_editor_bind_mode(mode: BindMode) -> crate::editor::keymap::BindMode {
-    match mode {
-        BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        BindMode::Insert => crate::editor::keymap::BindMode::Insert,
     }
 }

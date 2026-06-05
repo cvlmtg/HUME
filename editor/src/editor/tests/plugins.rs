@@ -722,7 +722,7 @@ fn language_trigger_activates_on_set() {
         "plugin must be Declared before first language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty() == false,
+        !ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must be populated before first set"
     );
 
@@ -881,7 +881,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
         "plugin must stay Declared when an unrelated language is set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty() == false,
+        !ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers[\"rust\"] must remain intact after an unrelated set"
     );
 }
