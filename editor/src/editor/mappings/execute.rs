@@ -117,6 +117,8 @@ impl Editor {
 
                     // `scripting` is disjoint from the other fields borrowed
                     // here; Rust NLL splitting allows this simultaneous borrow.
+                    // `registry` is shared-borrowed alongside the exclusive
+                    // borrows of other fields — different fields, NLL allows it.
                     let result = {
                         let host_scr = self.scripting.as_mut().expect("checked above");
                         let mut impl_host = EditorHostImpl {
@@ -128,6 +130,7 @@ impl Editor {
                             pane_state: Some(&mut self.pane_state),
                             pane_jumps: Some(&mut self.pane_jumps),
                             languages: Some(&mut self.languages),
+                            registry: Some(&self.registry),
                         };
                         host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
                     };

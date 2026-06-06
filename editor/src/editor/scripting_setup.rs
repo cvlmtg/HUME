@@ -87,6 +87,7 @@ impl Editor {
                 pane_state: Some(&mut self.pane_state),
                 pane_jumps: Some(&mut self.pane_jumps),
                 languages: Some(&mut self.languages),
+                registry: Some(&self.registry),
             };
             host_scr.fire_hook(hook_id, args, pid, bid, &mut impl_host)
         };
@@ -125,6 +126,15 @@ impl Editor {
         };
         let init_path = config_dir.join("init.scm");
         let mut host = scripting::ScriptingHost::new();
+        // Pre-register every native command name as a callable Steel binding before
+        // any user code sees the engine.  This lets `init.scm` call `(move-left)`
+        // directly without a FreeIdentifier compile error.  Only native commands
+        // (Motion/Selection/Edit/EditorCmd) are registered — plugin commands
+        // (`SteelBacked`/`Lazy`) don't exist yet and use `(call! …)` instead.
+        {
+            let names: Vec<&str> = self.registry.native_mappable_names().collect();
+            host.register_command_names(&names);
+        }
         // Trace the resolved directories so they're visible in `:messages`.
         // A missing runtime dir is a warning because `core:*` plugins need it.
         match host.runtime_dir() {
@@ -364,6 +374,7 @@ pub(crate) fn make_init_host<'a>(
         pane_state: None,
         pane_jumps: None,
         languages: None,
+        registry: None,
     }
 }
 

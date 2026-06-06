@@ -235,6 +235,7 @@ mod scripting_grammar;
 mod search;
 mod select_all;
 mod surround;
+mod sync_dispatch;
 mod tutor;
 mod view_scroll;
 mod visual_move;

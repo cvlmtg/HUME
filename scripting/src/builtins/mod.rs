@@ -168,6 +168,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // %call! is the Rust primitive; the variadic (call! name args…) macro in
     // BOOTSTRAP desugars to (%call! name (list args…)).
     engine.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);
+    // %run-sync! is the sync dispatcher for pre-registered command bindings.
+    // (move-left) desugars to (%run-sync! "move-left") via bootstrap defines.
+    engine.register_fn_with_ctx(HUME_CTX, "%run-sync!", commands::run_command_sync_primitive);
     engine.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
     engine.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     engine.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);
@@ -199,6 +202,9 @@ pub(crate) fn register_all(engine: &mut Engine) {
     engine.register_fn_with_ctx(HUME_CTX, "buffer-path", buffers::buffer_path);
     engine.register_fn_with_ctx(HUME_CTX, "buffer-name", buffers::buffer_name);
     engine.register_fn_with_ctx(HUME_CTX, "buffer-dirty?", buffers::buffer_dirty);
+    // Live cursor/selection reads — reflect synchronous edits in the same eval.
+    engine.register_fn_with_ctx(HUME_CTX, "current-line-number", buffers::current_line_number);
+    engine.register_fn_with_ctx(HUME_CTX, "cursor-char-index", buffers::cursor_char_index);
 
     // Multi-buffer mutating builtins
     engine.register_fn_with_ctx(HUME_CTX, "open-buffer!", buffers::open_buffer);

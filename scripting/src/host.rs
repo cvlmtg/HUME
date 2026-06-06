@@ -109,4 +109,30 @@ pub trait EditorHost {
     // ── Budget ───────────────────────────────────────────────────────────────
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;
+
+    // ── Synchronous command dispatch ─────────────────────────────────────────
+    /// Try to execute a named command synchronously, without deferral.
+    ///
+    /// Engine-independent commands (`Motion`, `Selection`, `Edit`) apply their
+    /// effect immediately: a subsequent read in the same eval sees the new state.
+    /// Commands that require full editor context (`EditorCmd`, `SteelBacked`,
+    /// `Lazy`) cannot run here; the caller should queue them for post-eval dispatch.
+    ///
+    /// Returns `Ok(true)`  — ran synchronously.
+    /// Returns `Ok(false)` — command exists but must be deferred (caller queues).
+    /// Returns `Err(msg)`  — command name is unknown.
+    ///
+    /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
+    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<bool, String>;
+
+    // ── Live cursor/selection reads ──────────────────────────────────────────
+    /// Line number (1-indexed) of the primary cursor in the focused buffer.
+    ///
+    /// Returns `None` when editor refs are unavailable (init mode or stale ids).
+    fn current_line_number(&self) -> Option<usize>;
+
+    /// Char-index of the primary cursor head in the focused buffer.
+    ///
+    /// Returns `None` when editor refs are unavailable.
+    fn cursor_char_index(&self) -> Option<usize>;
 }

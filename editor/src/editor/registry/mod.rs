@@ -173,6 +173,27 @@ impl CommandRegistry {
         self.commands.keys().map(|k| k.as_ref())
     }
 
+    /// Iterate over the names of native mappable commands only:
+    /// `Motion`, `Selection`, `Edit`, and `EditorCmd` variants.
+    ///
+    /// Excludes `SteelBacked`, `Lazy` (plugin commands), and `TypedCommand`
+    /// (`:` command-line only) entries.  Used to pre-register bare command
+    /// bindings in the Steel engine so `(move-left)` etc. compile without a
+    /// `FreeIdentifier` error.
+    pub(crate) fn native_mappable_names(&self) -> impl Iterator<Item = &str> {
+        self.commands.iter().filter_map(|(k, v)| {
+            match v {
+                Command::Mappable(
+                    MappableCommand::Motion { .. }
+                    | MappableCommand::Selection { .. }
+                    | MappableCommand::Edit { .. }
+                    | MappableCommand::EditorCmd { .. },
+                ) => Some(k.as_ref()),
+                _ => None,
+            }
+        })
+    }
+
     /// Iterate over all command names: canonical names and aliases combined.
     ///
     /// May yield duplicate strings only if a name is registered as both a

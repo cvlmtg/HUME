@@ -21,9 +21,12 @@ use slotmap::SecondaryMap;
 use super::jump_list::JumpList;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
+use crate::editor::doc_ops;
 use crate::editor::keymap::Keymap;
 use crate::editor::pane_state::PaneBufferState;
+use crate::editor::registry::{CommandRegistry, MappableCommand};
 use crate::editor::syntax::LanguageRegistry;
+use crate::ops::MotionMode;
 use crate::settings::{BufferOverrides, EditorSettings, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use scripting::host::{BindMode, EditorHost};
@@ -38,6 +41,9 @@ pub(crate) struct EditorHostImpl<'a> {
         Option<&'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>>,
     pub(crate) pane_jumps: Option<&'a mut SecondaryMap<PaneId, JumpList>>,
     pub(crate) languages: Option<&'a mut LanguageRegistry>,
+    /// Read-only command registry for synchronous dispatch via `run_command_sync`.
+    /// `None` during init evals where sync dispatch is unreachable via `require_cmd_ctx!`.
+    pub(crate) registry: Option<&'a CommandRegistry>,
 }
 
 impl<'a> EditorHostImpl<'a> {
@@ -45,6 +51,11 @@ impl<'a> EditorHostImpl<'a> {
     /// or the id is stale/unknown.
     fn buffer(&self, id: BufferId) -> Option<&Buffer> {
         self.buffers.as_ref()?.try_get(id)
+    }
+
+    /// Derive the focused buffer id from the live pane state.
+    fn focused_buffer_id_live(&self) -> Option<BufferId> {
+        Some(self.engine_view.as_ref()?.panes[self.focused_pane_id].buffer_id)
     }
 }
 
@@ -227,6 +238,75 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Budget ────────────────────────────────────────────────────────────────
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
+    }
+
+    // ── Synchronous command dispatch ─────────────────────────────────────────
+    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<bool, String> {
+        let registry = self.registry.ok_or_else(|| {
+            "run-command-sync!: command registry unavailable (init mode)".to_owned()
+        })?;
+        let Some(cmd) = registry.get_mappable(name).cloned() else {
+            return Err(format!("unknown command: {name}"));
+        };
+        // Read focused buffer id from the live pane; borrow ends before any
+        // mutable access to other fields (NLL splits the borrows).
+        let buf_id = {
+            if let Some(ev) = &self.engine_view {
+                ev.panes[self.focused_pane_id].buffer_id
+            } else {
+                return Err("run-command-sync!: editor refs unavailable".to_owned());
+            }
+        };
+        let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
+        match cmd {
+            MappableCommand::Motion { fun, .. } => {
+                let bufs = self.buffers.as_deref()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                let ps = self.pane_state.as_deref_mut()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                doc_ops::apply_doc_motion(bufs, ps, self.focused_pane_id, buf_id,
+                    |b, s| fun(b, s, count, motion_mode));
+                Ok(true)
+            }
+            MappableCommand::Selection { fun, .. } => {
+                let bufs = self.buffers.as_deref()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                let ps = self.pane_state.as_deref_mut()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                doc_ops::apply_doc_motion(bufs, ps, self.focused_pane_id, buf_id,
+                    |b, s| fun(b, s, motion_mode));
+                Ok(true)
+            }
+            MappableCommand::Edit { fun, .. } => {
+                let bufs = self.buffers.as_deref_mut()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                let ps = self.pane_state.as_deref_mut()
+                    .ok_or_else(|| "run-command-sync!: editor refs unavailable".to_owned())?;
+                doc_ops::apply_doc_edit(bufs, ps, self.focused_pane_id, buf_id, fun);
+                Ok(true)
+            }
+            // EditorCmd / SteelBacked / Lazy — caller must queue for post-eval dispatch.
+            _ => Ok(false),
+        }
+    }
+
+    // ── Live cursor/selection reads ──────────────────────────────────────────
+    fn current_line_number(&self) -> Option<usize> {
+        let buf_id = self.focused_buffer_id_live()?;
+        let pbs = self.pane_state.as_ref()?
+            .get(self.focused_pane_id)?
+            .get(buf_id)?;
+        let head = pbs.selections.primary().head();
+        // char_to_line is 0-indexed; add 1 for user-facing 1-indexed result.
+        Some(self.buffers.as_ref()?.get(buf_id).text().rope().char_to_line(head) + 1)
+    }
+
+    fn cursor_char_index(&self) -> Option<usize> {
+        let buf_id = self.focused_buffer_id_live()?;
+        let pbs = self.pane_state.as_ref()?
+            .get(self.focused_pane_id)?
+            .get(buf_id)?;
+        Some(pbs.selections.primary().head())
     }
 }
 

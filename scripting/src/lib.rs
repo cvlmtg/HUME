@@ -207,6 +207,33 @@ impl Default for ScriptingHost {
 impl ScriptingHost {
     // ── Outward API (clean; no direct field access outside this module) ────────
 
+    /// Pre-register native command names as callable Steel bindings.
+    ///
+    /// For each name, evaluates `(define name (lambda () (%run-sync! "name")))`.
+    /// This makes bare `(move-left)`, `(collapse-selection)` etc. callable from
+    /// Steel without requiring `(call! "move-left")`.
+    ///
+    /// Called from `Editor::init_scripting` after `ScriptingHost::new` and
+    /// **before** any `eval_init` call, so that `init.scm` and plugins can use
+    /// bare command names without a `FreeIdentifier` compile error.
+    pub fn register_command_names(&mut self, names: &[&str]) {
+        if names.is_empty() {
+            return;
+        }
+        // Build one compound source string: one define per command.
+        let mut source = String::with_capacity(names.len() * 48);
+        for &name in names {
+            source.push_str("(define ");
+            source.push_str(name);
+            source.push_str(" (lambda () (%run-sync! \"");
+            source.push_str(name);
+            source.push_str("\")))\n");
+        }
+        self.engine
+            .compile_and_run_raw_program(source)
+            .expect("command name pre-registration failed — this is a bug");
+    }
+
     /// Runtime directory for core plugins, themes, and docs.
     pub fn runtime_dir(&self) -> Option<&Path> {
         self.runtime_dir.as_deref()

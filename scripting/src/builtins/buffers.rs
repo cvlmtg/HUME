@@ -206,6 +206,32 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: SteelVal) -> SteelResult 
     }
 }
 
+// ── Live cursor/selection reads ───────────────────────────────────────────────
+
+/// `(current-line-number)` → 1-indexed line number of the primary cursor, or `#f`.
+///
+/// Reads live state — reflects any synchronous edits or motions that ran
+/// earlier in the same Steel eval (e.g. after `(move-left)`).
+pub(crate) fn current_line_number(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "current-line-number");
+    match ctx.host.current_line_number() {
+        Some(n) => Ok(SteelVal::IntV(n as isize)),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
+/// `(cursor-char-index)` → char-index of the primary cursor head, or `#f`.
+///
+/// Reads live state — reflects any synchronous edits or motions that ran
+/// earlier in the same Steel eval.
+pub(crate) fn cursor_char_index(ctx: &mut SteelCtx) -> SteelResult {
+    require_cmd_ctx!(ctx, "cursor-char-index");
+    match ctx.host.cursor_char_index() {
+        Some(n) => Ok(SteelVal::IntV(n as isize)),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(set-buffer-language! bid lang-or-#f)` — deferred; applied before cmd_queue.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,

@@ -168,6 +168,40 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::Steel
     }
 }
 
+/// `(%run-sync! name)`
+///
+/// Attempt to execute the named command synchronously.  Engine-independent
+/// commands (`Motion`, `Selection`, `Edit`) run immediately so their effects
+/// are visible to subsequent Steel code in the same eval (Case B fix).
+/// Commands that require full editor context (`EditorCmd`, `SteelBacked`,
+/// `Lazy`) fall back silently to the deferred `cmd_queue`.
+///
+/// This is the Rust primitive underlying bare `(move-left)` / `(collapse-selection)`
+/// etc., which the engine pre-registers as `(lambda () (%run-sync! "name"))`.
+/// Direct `(call! name)` is still needed for dynamic names or cross-plugin
+/// forward references.
+///
+/// Only valid inside a `SteelBacked` command invocation.
+pub(crate) fn run_command_sync_primitive(
+    ctx: &mut SteelCtx,
+    name: String,
+) -> SteelResult {
+    require_cmd_ctx!(ctx, "%run-sync!");
+    match ctx.host.run_command_sync(&name, 1, false) {
+        Ok(true) => Ok(SteelVal::Void),
+        Ok(false) => {
+            // EditorCmd / SteelBacked / Lazy — transparent deferred fallback.
+            ctx.cmd_queue.push(QueuedCommand {
+                name,
+                args: vec![],
+                register: ctx.current_register_prefix,
+            });
+            Ok(SteelVal::Void)
+        }
+        Err(e) => steel::stop!(Generic => "%run-sync!: {}", e),
+    }
+}
+
 /// `(request-wait-char! cmd-name)`
 ///
 /// Requests that after the current Steel command's queue is fully drained,
