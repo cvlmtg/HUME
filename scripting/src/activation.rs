@@ -38,7 +38,7 @@ use crate::{HostBundle, ScriptingHost};
 /// Used by `eval_source_raw`, `call_steel_cmd`, and `fire_hook` to avoid
 /// repeating the same arm / eval / cancel / reset ceremony in each entry point.
 pub(crate) fn run_steel<'a>(
-    engine: &mut steel::steel_vm::engine::Engine,
+    steel: &mut steel::steel_vm::engine::Engine,
     ctx: &mut SteelCtx<'a>,
     program: String,
     budget_ms: u64,
@@ -47,7 +47,7 @@ pub(crate) fn run_steel<'a>(
         Arc::clone(&ctx.interrupt_flag),
         std::time::Duration::from_millis(budget_ms),
     );
-    let result = engine
+    let result = steel
         .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
         .consume_once(|engine, args| {
             let ctx_val = args
@@ -91,7 +91,7 @@ impl ScriptingHost {
         // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
         let (eval_result, init_cmds, pending_plugin_loads, startup_cmds) = {
             let Self {
-                engine,
+                steel,
                 plugin_stack,
                 cmd_owners,
                 hooks,
@@ -122,7 +122,7 @@ impl ScriptingHost {
                 builtin_names.clone(),
             );
 
-            let result = run_steel(engine, &mut steel_ctx, source, budget_ms);
+            let result = run_steel(steel, &mut steel_ctx, source, budget_ms);
             (
                 result,
                 steel_ctx.pending_steel_cmds,
@@ -164,7 +164,7 @@ impl ScriptingHost {
                 _ => (0, true),
             };
             // Register (or overwrite) the lambda under its internal name.
-            self.engine.register_value(&steel_proc, cmd.proc);
+            self.steel.register_value(&steel_proc, cmd.proc);
             // Record the owner string for `(command-plugin …)` introspection.
             self.cmd_owners
                 .insert(cmd.name.clone(), cmd.current_owner.to_string());
@@ -233,7 +233,7 @@ impl ScriptingHost {
 
         let (plugin_result, plugin_cmds, requires, plugin_startup_cmds) = {
             let Self {
-                engine,
+                steel,
                 plugin_stack,
                 cmd_owners,
                 hooks,
@@ -264,7 +264,7 @@ impl ScriptingHost {
                 builtin_names.clone(),
             );
 
-            let result = run_steel(engine, &mut steel_ctx, require_program, budget_ms);
+            let result = run_steel(steel, &mut steel_ctx, require_program, budget_ms);
             (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)
         };
 

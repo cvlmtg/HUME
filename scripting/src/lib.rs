@@ -95,7 +95,7 @@ use codegen::{build_hook_program, hook_arg_name, hook_proc_name};
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
 ///
-/// Built from a `let Self { engine, plugin_stack, … } = &mut *self` destructure
+/// Built from a `let Self { steel, plugin_stack, … } = &mut *self` destructure
 /// and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
 /// Private to this module.
 pub(crate) struct HostBundle<'a> {
@@ -124,7 +124,8 @@ pub(crate) struct HostBundle<'a> {
 /// Constructed once during `Editor::init_scripting()` and held for the
 /// lifetime of the process.
 pub struct ScriptingHost {
-    engine: Engine,
+    /// The Scheme VM — always called `steel` (never bare "engine", which refers to the `engine/` crate).
+    steel: Engine,
     /// Attribution stack: `stack.last()` is the plugin currently executing.
     /// Empty → top-level `init.scm` → `Owner::User`.
     plugin_stack: PluginStack,
@@ -177,10 +178,10 @@ impl ScriptingHost {
         // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
         // from this TLS whenever they are called.
         builtins::sandbox::init_dirs(data_dir.clone(), runtime_dir.clone());
-        let mut engine = Engine::new();
-        builtins::register_all(&mut engine);
+        let mut steel = Engine::new();
+        builtins::register_all(&mut steel);
         Self {
-            engine,
+            steel,
             plugin_stack: PluginStack::default(),
             cmd_owners: std::collections::HashMap::new(),
             hooks: HookRegistry::default(),
@@ -229,7 +230,7 @@ impl ScriptingHost {
             source.push_str(name);
             source.push_str("\")))\n");
         }
-        self.engine
+        self.steel
             .compile_and_run_raw_program(source)
             .expect("command name pre-registration failed — this is a bug");
     }
@@ -429,7 +430,7 @@ impl ScriptingHost {
             format!("({steel_proc})")
         } else {
             for (i, arg) in args.iter().enumerate() {
-                self.engine.register_value(&cmd_arg_global_name(i), arg.clone());
+                self.steel.register_value(&cmd_arg_global_name(i), arg.clone());
             }
             let arg_refs: Vec<String> = (0..args.len()).map(cmd_arg_global_name).collect();
             format!("({steel_proc} {})", arg_refs.join(" "))
@@ -437,7 +438,7 @@ impl ScriptingHost {
 
         let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
             let Self {
-                engine,
+                steel,
                 plugin_stack,
                 cmd_owners,
                 hooks,
@@ -470,14 +471,14 @@ impl ScriptingHost {
                 pending_char,
             );
 
-            let result = run_steel(engine, &mut steel_ctx, invocation, budget_ms);
+            let result = run_steel(steel, &mut steel_ctx, invocation, budget_ms);
             (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
         // values leaking into later calls.
         for i in 0..args.len() {
-            self.engine.update_value(&cmd_arg_global_name(i), SteelVal::Void);
+            self.steel.update_value(&cmd_arg_global_name(i), SteelVal::Void);
         }
 
         result?;
@@ -511,12 +512,12 @@ impl ScriptingHost {
 
         // Pre-bind each arg global.
         for (i, arg) in args.iter().enumerate() {
-            self.engine.register_value(&hook_arg_name(i), arg.clone());
+            self.steel.register_value(&hook_arg_name(i), arg.clone());
         }
 
         // Pre-bind each handler proc global.
         for (i, proc) in handler_procs.iter().enumerate() {
-            self.engine.register_value(&hook_proc_name(i), proc.clone());
+            self.steel.register_value(&hook_proc_name(i), proc.clone());
         }
 
         // Look up (or build once) the composite invocation program.
@@ -528,7 +529,7 @@ impl ScriptingHost {
 
         let (result, cmd_queue, pending_language_sets, grammar_sweeps) = {
             let Self {
-                engine,
+                steel,
                 plugin_stack,
                 cmd_owners,
                 hooks,
@@ -561,17 +562,17 @@ impl ScriptingHost {
                 None,
             );
 
-            let result = run_steel(engine, &mut steel_ctx, program, budget_ms);
+            let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
             (result, steel_ctx.cmd_queue, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg and proc globals before returning — releases Arc references
         // to closed buffers and prevents stale values leaking into later fires.
         for i in 0..args.len() {
-            self.engine.update_value(&hook_arg_name(i), SteelVal::Void);
+            self.steel.update_value(&hook_arg_name(i), SteelVal::Void);
         }
         for i in 0..handler_procs.len() {
-            self.engine.update_value(&hook_proc_name(i), SteelVal::Void);
+            self.steel.update_value(&hook_proc_name(i), SteelVal::Void);
         }
 
         result?;
