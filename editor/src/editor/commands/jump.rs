@@ -31,7 +31,7 @@ pub fn cmd_jump_backward(
 ) -> Result<SideEffects, CommandError> {
     let pid = state.focused_pane_id;
     let current = current_jump_entry(state, view);
-    let nav = state.pane_jumps[pid]
+    let nav = state.panes.jumps[pid]
         .backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {
@@ -50,7 +50,7 @@ pub fn cmd_jump_forward(
     _mode: MotionMode,
 ) -> Result<SideEffects, CommandError> {
     let pid = state.focused_pane_id;
-    let nav = state.pane_jumps[pid]
+    let nav = state.panes.jumps[pid]
         .forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {

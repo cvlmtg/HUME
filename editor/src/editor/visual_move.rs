@@ -142,10 +142,10 @@ pub(super) fn apply_visual_vertical(
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
         match down {
-            true => doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+            true => doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
                 cmd_move_down(b, s, count, mode)
             }),
-            false => doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+            false => doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
                 cmd_move_up(b, s, count, mode)
             }),
         }
@@ -158,7 +158,7 @@ pub(super) fn apply_visual_vertical(
     let target_cols = &mut state.visual_move_target_cols;
     target_cols.clear();
 
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf_id, |text, sels| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |text, sels| {
         let rope = text.rope();
 
         target_cols.extend(sels.iter_sorted().map(|sel| {
@@ -254,7 +254,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     if !wrap_mode.is_wrapping() {
         let focused = state.focused_pane_id;
         let buf_id = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf_id, |buf, sels| {
+        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |buf, sels| {
             cmd_select_word_nearest_on_line(buf, sels, mode)
         });
         return Ok(SideEffects::none());
@@ -264,7 +264,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let buf_id = focused_buffer_id(state, view);
     let scratch = &mut state.motion_format_scratch;
 
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf_id, |text, sels| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |text, sels| {
         let rope = text.rope();
         let new_sels = sels.map(|sel| {
             let buf_line = text.char_to_line(sel.anchor());

@@ -18,7 +18,7 @@ impl Editor {
             MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
                 let pid = self.state.focused_pane_id;
-                self.state.pane_transient[pid].pre_select_sels = None;
+                self.state.panes.transient[pid].pre_select_sels = None;
                 // Do NOT write to SEARCH_REGISTER or clear search state —
                 // select-within is a selection op, not a search. The previous
                 // search pattern and its highlights should be preserved so that
@@ -43,7 +43,7 @@ impl Editor {
     /// Cancel select mode: restore original selections, return to Normal.
     fn cancel_select(&mut self) {
         let pid = self.state.focused_pane_id;
-        if let Some(sels) = self.state.pane_transient[pid].pre_select_sels.take() {
+        if let Some(sels) = self.state.panes.transient[pid].pre_select_sels.take() {
             self.set_current_selections(sels);
         }
         // Do not clear search state — the previous search should survive a
@@ -69,7 +69,7 @@ impl Editor {
         // Compute matches in a limited scope so the borrow on
         // pre_select_sels is released before we need to restore.
         let pid = self.state.focused_pane_id;
-        let result = self.state.pane_transient[pid]
+        let result = self.state.panes.transient[pid]
             .pre_select_sels
             .as_ref()
             .and_then(|sels| select_matches_within(self.doc().text(), sels, &regex));
@@ -87,8 +87,8 @@ impl Editor {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
-        if let Some(sels) = self.state.pane_transient[pid].pre_select_sels.as_ref() {
-            self.state.pane_state[pid][bid].selections = sels.clone();
+        if let Some(sels) = self.state.panes.transient[pid].pre_select_sels.as_ref() {
+            self.state.panes.state[pid][bid].selections = sels.clone();
         }
     }
 }

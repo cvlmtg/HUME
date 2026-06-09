@@ -304,12 +304,12 @@ fn ls_does_not_pollute_jump_list() {
     let pid = ed.state.focused_pane_id;
 
     // No jump entries for the scratch buffer before :ls.
-    assert!(!ed.state.pane_jumps[pid].entries_for_buffer(scratch_id));
+    assert!(!ed.state.panes.jumps[pid].entries_for_buffer(scratch_id));
 
     ed.execute_typed("ls", None).unwrap();
 
     assert!(
-        !ed.state.pane_jumps[pid].entries_for_buffer(scratch_id),
+        !ed.state.panes.jumps[pid].entries_for_buffer(scratch_id),
         ":ls must not push a jump entry for the departure buffer"
     );
 }

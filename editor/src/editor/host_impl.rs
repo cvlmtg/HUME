@@ -74,7 +74,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         let (bid, _) = crate::editor::ops::open_or_dedup(
             self.view,
             &mut self.state.buffers,
-            &mut self.state.pane_state,
+            &mut self.state.panes.state,
             self.state.focused_pane_id,
             &canonical,
         )
@@ -88,8 +88,8 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Ok(crate::editor::ops::close_buffer(
             self.view,
             &mut self.state.buffers,
-            &mut self.state.pane_state,
-            &mut self.state.pane_jumps,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             id,
         ))
@@ -98,8 +98,8 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         crate::editor::ops::switch_to_buffer_with_jump(
             self.view,
             &self.state.buffers,
-            &mut self.state.pane_state,
-            &mut self.state.pane_jumps,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             current,
             target,
@@ -207,7 +207,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             MappableCommand::Motion { fun, .. } => {
                 doc_ops::apply_doc_motion(
                     &self.state.buffers,
-                    &mut self.state.pane_state,
+                    &mut self.state.panes.state,
                     self.state.focused_pane_id,
                     buf_id,
                     |b, s| fun(b, s, count, motion_mode),
@@ -217,7 +217,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             MappableCommand::Selection { fun, .. } => {
                 doc_ops::apply_doc_motion(
                     &self.state.buffers,
-                    &mut self.state.pane_state,
+                    &mut self.state.panes.state,
                     self.state.focused_pane_id,
                     buf_id,
                     |b, s| fun(b, s, motion_mode),
@@ -227,7 +227,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             MappableCommand::Edit { fun, .. } => {
                 doc_ops::apply_doc_edit(
                     &mut self.state.buffers,
-                    &mut self.state.pane_state,
+                    &mut self.state.panes.state,
                     self.state.focused_pane_id,
                     buf_id,
                     fun,
@@ -252,7 +252,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // ── Live cursor/selection reads ──────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
         let buf_id = self.focused_buffer_id_live()?;
-        let pbs = self.state.pane_state
+        let pbs = self.state.panes.state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;
         let head = pbs.selections.primary().head();
@@ -261,7 +261,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     fn cursor_char_index(&self) -> Option<usize> {
         let buf_id = self.focused_buffer_id_live()?;
-        let pbs = self.state.pane_state
+        let pbs = self.state.panes.state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;
         Some(pbs.selections.primary().head())

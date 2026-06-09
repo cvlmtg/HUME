@@ -57,12 +57,12 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Both panes see Buffer.search_pattern — it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
-    ed.state.pane_state[pid_a][bid].search_cursor = SearchCursor {
+    ed.state.panes.state[pid_a][bid].search_cursor = SearchCursor {
         match_count: Some((1, 3)),
         wrapped: false,
         ..SearchCursor::default()
     };
-    ed.state.pane_state[pid_b][bid].search_cursor = SearchCursor {
+    ed.state.panes.state[pid_b][bid].search_cursor = SearchCursor {
         match_count: Some((2, 3)),
         wrapped: true,
         ..SearchCursor::default()
@@ -70,16 +70,16 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Pane A and pane B see different cursors even though they share the buffer.
     assert_eq!(
-        ed.state.pane_state[pid_a][bid].search_cursor.match_count,
+        ed.state.panes.state[pid_a][bid].search_cursor.match_count,
         Some((1, 3))
     );
-    assert!(!ed.state.pane_state[pid_a][bid].search_cursor.wrapped);
+    assert!(!ed.state.panes.state[pid_a][bid].search_cursor.wrapped);
 
     assert_eq!(
-        ed.state.pane_state[pid_b][bid].search_cursor.match_count,
+        ed.state.panes.state[pid_b][bid].search_cursor.match_count,
         Some((2, 3))
     );
-    assert!(ed.state.pane_state[pid_b][bid].search_cursor.wrapped);
+    assert!(ed.state.panes.state[pid_b][bid].search_cursor.wrapped);
 }
 
 /// D4b — `Selection.horiz` travels with the selection; resets when its line
@@ -149,18 +149,18 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
     assert!(
-        ed.state.pane_state[pid_a][bid].edit_group.is_none(),
+        ed.state.panes.state[pid_a][bid].edit_group.is_none(),
         "no group before i"
     );
     ed.handle_key(key('i'));
     assert!(
-        ed.state.pane_state[pid_a][bid].edit_group.is_some(),
+        ed.state.panes.state[pid_a][bid].edit_group.is_some(),
         "group open after i"
     );
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.pane_state[pid_a][bid].edit_group.is_none(),
+        ed.state.panes.state[pid_a][bid].edit_group.is_none(),
         "group committed on Esc"
     );
 
@@ -169,18 +169,18 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
     assert!(
-        ed.state.pane_state[pid_b][bid].edit_group.is_none(),
+        ed.state.panes.state[pid_b][bid].edit_group.is_none(),
         "pane B starts with no group"
     );
     ed.handle_key(key('i'));
     assert!(
-        ed.state.pane_state[pid_b][bid].edit_group.is_some(),
+        ed.state.panes.state[pid_b][bid].edit_group.is_some(),
         "pane B group opens"
     );
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.pane_state[pid_b][bid].edit_group.is_none(),
+        ed.state.panes.state[pid_b][bid].edit_group.is_none(),
         "pane B group committed"
     );
 
@@ -200,7 +200,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     );
 }
 
-/// D6 — `pane_transient[pid]` snapshots are per-pane and never aliased.
+/// D6 — `panes.transient[pid]` snapshots are per-pane and never aliased.
 #[test]
 fn d6_search_mode_snapshot_is_per_pane() {
     use editing::selection::{Selection, SelectionSet};
@@ -213,12 +213,12 @@ fn d6_search_mode_snapshot_is_per_pane() {
     let sels_a = SelectionSet::single(Selection::collapsed(1));
     let sels_b = SelectionSet::single(Selection::collapsed(3));
 
-    ed.state.pane_transient[pid_a].pre_search_sels = Some(sels_a.clone());
-    ed.state.pane_transient[pid_b].pre_search_sels = Some(sels_b.clone());
+    ed.state.panes.transient[pid_a].pre_search_sels = Some(sels_a.clone());
+    ed.state.panes.transient[pid_b].pre_search_sels = Some(sels_b.clone());
 
     // Pane A snapshot is independent of pane B.
     assert_eq!(
-        ed.state.pane_transient[pid_a]
+        ed.state.panes.transient[pid_a]
             .pre_search_sels
             .as_ref()
             .unwrap()
@@ -228,7 +228,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
         "pane A pre_search_sels head"
     );
     assert_eq!(
-        ed.state.pane_transient[pid_b]
+        ed.state.panes.transient[pid_b]
             .pre_search_sels
             .as_ref()
             .unwrap()
@@ -239,10 +239,10 @@ fn d6_search_mode_snapshot_is_per_pane() {
     );
 
     // Clearing pane A's snapshot does not affect pane B.
-    ed.state.pane_transient[pid_a].pre_search_sels = None;
-    assert!(ed.state.pane_transient[pid_a].pre_search_sels.is_none());
+    ed.state.panes.transient[pid_a].pre_search_sels = None;
+    assert!(ed.state.panes.transient[pid_a].pre_search_sels.is_none());
     assert!(
-        ed.state.pane_transient[pid_b].pre_search_sels.is_some(),
+        ed.state.panes.transient[pid_b].pre_search_sels.is_some(),
         "pane B unaffected"
     );
 }
@@ -416,7 +416,7 @@ fn ensure_is_idempotent() {
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(3)));
 
     // ensure() on an already-seeded entry must not reset to initial_sels.
-    pane_state::ensure(&mut ed.state.pane_state, &ed.state.buffers, pid, bid);
+    pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid, bid);
     assert_eq!(
         ed.current_selections().primary().head(),
         3,
@@ -439,14 +439,14 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     let bid2 = crate::editor::ops::open_buffer(
         &mut ed.view,
         &mut ed.state.buffers,
-        &mut ed.state.pane_state,
+        &mut ed.state.panes.state,
         pid,
         doc2,
     );
 
     // open_buffer already calls ensure internally; a second call is idempotent
     // and returns a state with the initial selections.
-    let state = pane_state::ensure(&mut ed.state.pane_state, &ed.state.buffers, pid, bid2);
+    let state = pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid, bid2);
     assert_eq!(
         state.selections, expected_sels,
         "ensure must seed with buffer's initial_sels on first visit",

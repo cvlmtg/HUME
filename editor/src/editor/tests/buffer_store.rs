@@ -73,7 +73,7 @@ fn p6_replace_buffer_in_place_reseeds() {
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     let focused = ed.state.focused_pane_id;
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, bid, |b, _sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |b, _sels| {
         let head = b.len_chars().saturating_sub(2);
         SelectionSet::single(editing::selection::Selection::collapsed(head))
     });

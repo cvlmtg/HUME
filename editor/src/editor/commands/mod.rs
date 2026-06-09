@@ -88,7 +88,7 @@ impl EditorState {
     /// is committed before undo, motions, or the next `p`/`P`.
     pub(in super) fn commit_paste_session(&mut self) {
         use engine::pipeline::PaneId;
-        let open: Vec<(PaneId, BufferId)> = self.pane_state
+        let open: Vec<(PaneId, BufferId)> = self.panes.state
             .iter()
             .flat_map(|(pid, inner)| {
                 inner.iter()
@@ -97,8 +97,8 @@ impl EditorState {
             })
             .collect();
         for (pid, bid) in open {
-            let post_sels = self.pane_state[pid][bid].selections.clone();
-            let pbs = &mut self.pane_state[pid][bid];
+            let post_sels = self.panes.state[pid][bid].selections.clone();
+            let pbs = &mut self.panes.state[pid][bid];
             self.buffers.get_mut(bid).commit_edit_group(&mut pbs.paste_group, post_sels);
         }
     }
@@ -124,7 +124,7 @@ pub(super) fn focused_buffer_read_only(state: &EditorState, view: &EngineView) -
 /// Focused pane's selections for the current buffer.
 pub(super) fn current_selections<'a>(state: &'a EditorState, view: &EngineView) -> &'a SelectionSet {
     let bid = focused_buffer_id(state, view);
-    &state.pane_state[state.focused_pane_id][bid].selections
+    &state.panes.state[state.focused_pane_id][bid].selections
 }
 
 /// The most-recently-focused buffer other than the current one.
@@ -135,21 +135,21 @@ pub(super) fn alternate_buffer(state: &EditorState, view: &EngineView) -> Option
 /// `true` when the focused (pane, buffer) has an open edit group.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let bid = focused_buffer_id(state, view);
-    state.pane_state[state.focused_pane_id][bid].edit_group.is_some()
+    state.panes.state[state.focused_pane_id][bid].edit_group.is_some()
 }
 
 /// Open a new edit group on the focused (pane, buffer) pair.
 pub(super) fn begin_edit_group_current(state: &mut EditorState, view: &EngineView) {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    doc_ops::begin_edit_group(&state.buffers, &mut state.pane_state, pid, bid);
+    doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, pid, bid);
 }
 
 /// Commit and close the open edit group on the focused (pane, buffer) pair.
 pub(super) fn commit_edit_group_current(state: &mut EditorState, view: &EngineView) {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    doc_ops::commit_edit_group(&mut state.buffers, &mut state.pane_state, pid, bid);
+    doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, pid, bid);
 }
 
 /// Active search pattern on the focused buffer, if any.
@@ -180,7 +180,7 @@ pub(super) fn focused_format_context(
 pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> JumpEntry {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    let sels = state.pane_state[pid][bid].selections.clone();
+    let sels = state.panes.state[pid][bid].selections.clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
@@ -191,22 +191,22 @@ pub(super) fn switch_to_buffer_without_jump(
     target: BufferId,
 ) {
     let pid = state.focused_pane_id;
-    super::ops::switch_pane_to_buffer(view, &state.buffers, &mut state.pane_state, pid, target);
+    super::ops::switch_pane_to_buffer(view, &state.buffers, &mut state.panes.state, pid, target);
 }
 
 /// Replace the focused pane's selections for the current buffer.
 pub(super) fn set_current_selections(state: &mut EditorState, view: &EngineView, sels: SelectionSet) {
     let bid = focused_buffer_id(state, view);
-    state.pane_state[state.focused_pane_id][bid].selections = sels;
+    state.panes.state[state.focused_pane_id][bid].selections = sels;
 }
 
 /// Replace the primary selection in the focused pane (merging overlaps).
 pub(super) fn set_primary_selection(state: &mut EditorState, view: &EngineView, new_sel: editing::selection::Selection) {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    let idx = state.pane_state[pid][bid].selections.primary_index();
-    let sels = std::mem::take(&mut state.pane_state[pid][bid].selections);
-    state.pane_state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
+    let idx = state.panes.state[pid][bid].selections.primary_index();
+    let sels = std::mem::take(&mut state.panes.state[pid][bid].selections);
+    state.panes.state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
 }
 
 /// Enter Insert mode as a repeatable insert action.
@@ -243,7 +243,7 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
         let buf = focused_buffer_id(state, view);
         doc_ops::apply_doc_motion(
             &state.buffers,
-            &mut state.pane_state,
+            &mut state.panes.state,
             focused,
             buf,
             |b, sels| {

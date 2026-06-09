@@ -67,20 +67,20 @@ impl Editor {
                     // Motion functions take (buf, sels, count, mode). count defaults to 1
                     // if the user typed no prefix.
                     doc_ops::apply_doc_motion(
-                        &self.state.buffers, &mut self.state.pane_state, focused, buf,
+                        &self.state.buffers, &mut self.state.panes.state, focused, buf,
                         |b, s| fun(b, s, count, motion_mode),
                     );
                 }
                 MappableCommand::Selection { fun, .. } => {
                     // Selection / text-object functions don't take count.
                     doc_ops::apply_doc_motion(
-                        &self.state.buffers, &mut self.state.pane_state, focused, buf,
+                        &self.state.buffers, &mut self.state.panes.state, focused, buf,
                         |b, s| fun(b, s, motion_mode),
                     );
                 }
                 MappableCommand::Edit { fun, .. } => {
                     doc_ops::apply_doc_edit(
-                        &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
+                        &mut self.state.buffers, &mut self.state.panes.state, focused, buf,
                         fun,
                     );
                 }
@@ -181,7 +181,7 @@ impl Editor {
                 if is_explicit_jump
                     || pre_line.abs_diff(post_line) > self.state.settings.jump_line_threshold
                 {
-                    self.state.pane_jumps[self.state.focused_pane_id].push(JumpEntry::from_pre_motion(
+                    self.state.panes.jumps[self.state.focused_pane_id].push(JumpEntry::from_pre_motion(
                         pre_primary,
                         pre_line,
                         pre_bid,
@@ -252,9 +252,9 @@ impl Editor {
     pub(in super::super) fn set_primary_selection(&mut self, new_sel: Selection) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        let idx = self.state.pane_state[pid][bid].selections.primary_index();
+        let idx = self.state.panes.state[pid][bid].selections.primary_index();
         // mem::take avoids a clone: move out, compute, write back.
-        let sels = std::mem::take(&mut self.state.pane_state[pid][bid].selections);
-        self.state.pane_state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
+        let sels = std::mem::take(&mut self.state.panes.state[pid][bid].selections);
+        self.state.panes.state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
     }
 }

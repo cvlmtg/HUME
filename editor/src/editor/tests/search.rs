@@ -245,7 +245,7 @@ fn select_within_enters_select_mode() {
     ed.handle_key(key('s'));
     assert_eq!(ed.state.mode, Mode::Select);
     assert!(
-        ed.state.pane_transient[ed.state.focused_pane_id]
+        ed.state.panes.transient[ed.state.focused_pane_id]
             .pre_select_sels
             .is_some()
     );
@@ -264,7 +264,7 @@ fn select_within_confirm_replaces_selections() {
 
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
-        ed.state.pane_transient[ed.state.focused_pane_id]
+        ed.state.panes.transient[ed.state.focused_pane_id]
             .pre_select_sels
             .is_none()
     );

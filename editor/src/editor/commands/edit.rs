@@ -26,7 +26,7 @@ pub fn cmd_delete(
     let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.pane_state, focused, buf, delete_selection);
+    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, delete_selection);
     match state.take_register_prefix() {
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
@@ -48,7 +48,7 @@ pub fn cmd_change(
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.pane_state, focused, buf, delete_selection);
+    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, delete_selection);
     match state.take_register_prefix() {
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
@@ -105,15 +105,15 @@ fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
         // Collapse the just-pasted selection so the new paste stacks
         // adjacent to it rather than replacing it.
         let text = state.buffers.get(buf).text();
-        let sels = std::mem::take(&mut state.pane_state[focused][buf].selections);
-        state.pane_state[focused][buf].selections = sels.map(|s| {
+        let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+        state.panes.state[focused][buf].selections = sels.map(|s| {
             if before {
                 Selection::collapsed(s.start())
             } else {
                 Selection::collapsed(s.end_inclusive(text))
             }
         });
-        state.pane_state[focused][buf].paste_before = before;
+        state.panes.state[focused][buf].paste_before = before;
         open_paste_session_and_apply(state, focused, buf, before, &values);
         // Preserve the cycle position — the seeded origin from the first
         // paste in this run remains correct for `[`/`]`.
@@ -129,7 +129,7 @@ fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
         return;
     };
 
-    state.pane_state[focused][buf].paste_before = before;
+    state.panes.state[focused][buf].paste_before = before;
     state.last_paste = Some(values.clone());
     open_paste_session_and_apply(state, focused, buf, before, &values);
     state.kill_ring.seed_cycle(cycle_origin);
@@ -146,12 +146,12 @@ fn open_paste_session_and_apply(
     before: bool,
     values: &[String],
 ) {
-    let pre_sels = state.pane_state[focused][buf].selections.clone();
-    state.buffers.get(buf).begin_edit_group(&mut state.pane_state[focused][buf].paste_group, pre_sels);
+    let pre_sels = state.panes.state[focused][buf].selections.clone();
+    state.buffers.get(buf).begin_edit_group(&mut state.panes.state[focused][buf].paste_group, pre_sels);
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
-        &mut state.pane_state,
+        &mut state.panes.state,
         focused,
         buf,
         |b, s| paste_fn(b, s, values),
@@ -252,11 +252,11 @@ pub fn cmd_paste_before(
 fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    if state.pane_state[focused][buf].paste_group.is_none() {
+    if state.panes.state[focused][buf].paste_group.is_none() {
         return Ok(SideEffects::none());
     }
     // Eagerly convert to owned Vec so the borrow of state.kill_ring ends before
-    // state.buffers and state.pane_state are borrowed mutably below.
+    // state.buffers and state.panes.state are borrowed mutably below.
     let values = if older {
         state.kill_ring.cycle_older()
     } else {
@@ -264,11 +264,11 @@ fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -
     }
     .map(|v| v.to_vec());
     if let Some(values) = values {
-        let before = state.pane_state[focused][buf].paste_before;
+        let before = state.panes.state[focused][buf].paste_before;
         let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
-            &mut state.pane_state,
+            &mut state.panes.state,
             focused,
             buf,
             |b, s| paste_fn(b, s, &values),
@@ -306,7 +306,7 @@ pub fn cmd_undo(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_undo(&mut state.buffers, &mut state.pane_state, focused, buf);
+    doc_ops::apply_doc_undo(&mut state.buffers, &mut state.panes.state, focused, buf);
     Ok(SideEffects::none())
 }
 
@@ -318,7 +318,7 @@ pub fn cmd_redo(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_redo(&mut state.buffers, &mut state.pane_state, focused, buf);
+    doc_ops::apply_doc_redo(&mut state.buffers, &mut state.panes.state, focused, buf);
     Ok(SideEffects::none())
 }
 
@@ -334,7 +334,7 @@ pub fn cmd_replace(
     if let Some(ch) = state.pending_char.take() {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_edit(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
             replace_selections(b, s, ch)
         });
     }
@@ -359,7 +359,7 @@ pub fn cmd_surround_add(
         .unwrap_or((ch, ch));
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         wrap_each_selection(b, s, open, close)
     });
     Ok(SideEffects::none())

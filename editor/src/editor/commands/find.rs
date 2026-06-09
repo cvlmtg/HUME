@@ -24,7 +24,7 @@ fn find_char(
     if let Some(ch) = state.pending_char.take() {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
         state.last_find = Some(FindChar { ch, kind });
@@ -80,7 +80,7 @@ fn repeat_find(
     if let Some(FindChar { ch, kind }) = state.last_find {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
-        doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
     }

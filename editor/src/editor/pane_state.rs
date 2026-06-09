@@ -6,8 +6,10 @@
 //! not four parallel maps.
 //!
 //! [`PaneTransient`] holds per-pane-only transient state (search / select mode
-//! snapshots) that is not keyed by buffer. It lives in
-//! `Editor.pane_transient: SecondaryMap<PaneId, PaneTransient>`.
+//! snapshots) that is not keyed by buffer.
+//!
+//! [`PaneView`] groups the three per-pane maps — `state`, `transient`, `jumps` —
+//! so callers deal with one field on [`super::EditorState`] instead of three.
 //!
 //! [`EditGroup`] is the in-progress insert-session accumulator. It is stored on
 //! [`PaneBufferState`] rather than [`crate::editor::buffer::Buffer`] so that
@@ -126,6 +128,21 @@ pub(crate) struct PaneTransient {
     /// Captured so live-search can extend from the pre-search anchor even
     /// though `mode` is `Search` during the live preview.
     pub search_extend: bool,
+}
+
+// ── PaneView ──────────────────────────────────────────────────────────────────
+
+/// Groups the three per-pane maps that live on [`super::EditorState`].
+///
+/// Bundles `state` (per-(pane,buffer) selections/groups), `transient` (search/select
+/// snapshots), and `jumps` (cursor history) so `EditorState` exposes one field
+/// instead of three. The map types and keying are unchanged; NLL still allows
+/// simultaneous mutable borrows of different fields (e.g. `panes.state` and
+/// `panes.jumps` in `ops::switch_pane_with_jump`).
+pub(crate) struct PaneView {
+    pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
+    pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

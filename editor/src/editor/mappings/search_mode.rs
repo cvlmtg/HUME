@@ -34,10 +34,10 @@ impl Editor {
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 let pid = self.state.focused_pane_id;
-                if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.take() {
+                if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
-                    self.state.pane_jumps[self.state.focused_pane_id].push(entry);
+                    self.state.panes.jumps[self.state.focused_pane_id].push(entry);
                 }
                 // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
@@ -49,7 +49,7 @@ impl Editor {
                 // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
-                search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
+                search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
             }
             MiniBufferEvent::BackspaceOnEmpty => {
                 // Input already empty — user pressed Backspace a second time to dismiss.
@@ -94,11 +94,11 @@ impl Editor {
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
         let pid = self.state.focused_pane_id;
-        if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.take() {
+        if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
         let bid = self.focused_buffer_id();
-        search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
+        search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
         self.state.mode = Mode::Normal;
         self.close_minibuf();
     }
@@ -116,7 +116,7 @@ impl Editor {
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
             let bid = self.focused_buffer_id();
-            search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
+            search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
             return;
         };
 
@@ -126,7 +126,7 @@ impl Editor {
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
         let from_char = {
-            let pt = &self.state.pane_transient[pid];
+            let pt = &self.state.panes.transient[pid];
             match &pt.pre_search_sels {
                 Some(sels) => {
                     let buf = self.doc().text();
@@ -142,10 +142,10 @@ impl Editor {
 
         match find_next_match(self.doc().text(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
-                let anchor = if self.state.pane_transient[pid].search_extend {
+                let anchor = if self.state.panes.transient[pid].search_extend {
                     // Extend from the original anchor.
                     Some(
-                        self.state.pane_transient[pid]
+                        self.state.panes.transient[pid]
                             .pre_search_sels
                             .as_ref()
                             .map(|s| s.primary().anchor())
@@ -176,8 +176,8 @@ impl Editor {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
-        if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.as_ref() {
-            self.state.pane_state[pid][bid].selections = sels.clone();
+        if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.as_ref() {
+            self.state.panes.state[pid][bid].selections = sels.clone();
         }
     }
 }

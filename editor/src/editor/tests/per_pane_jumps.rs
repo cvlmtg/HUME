@@ -99,7 +99,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     let pid = ed.state.focused_pane_id;
     ed.close_buffer(buf1);
     // The jump list for this pane must not contain any file1 entries.
-    let has_buf1_entry = ed.state.pane_jumps[pid].entries_for_buffer(buf1);
+    let has_buf1_entry = ed.state.panes.jumps[pid].entries_for_buffer(buf1);
     assert!(
         !has_buf1_entry,
         "pane_jumps should not contain closed buffer entries"

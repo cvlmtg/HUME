@@ -12,12 +12,15 @@ use engine::pipeline::{LayoutTree, SharedBuffer};
 use engine::pane::Pane;
 #[cfg(test)]
 use search_state::SearchPattern;
+#[cfg(test)]
 use slotmap::SecondaryMap;
 
 use self::registry::CommandRegistry;
 use editing::selection::SelectionSet;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
+use crate::editor::pane_state::PaneView;
+#[cfg(test)]
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
 use crate::ops::motion::FindKind;
 use crate::ops::register::{KillRing, RegisterSet};
@@ -206,12 +209,8 @@ pub(crate) struct EditorState {
     pub(super) search: SearchState,
     /// The single pane focused in the current editing session.
     pub(crate) focused_pane_id: PaneId,
-    /// Per-(pane, buffer) state: selections, search cursor, in-progress edit group.
-    pub(super) pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    /// Per-pane transient state: pre-search and pre-select selection snapshots.
-    pub(super) pane_transient: SecondaryMap<PaneId, PaneTransient>,
-    /// Per-pane navigable history of cursor positions.
-    pub(super) pane_jumps: SecondaryMap<PaneId, self::jump_list::JumpList>,
+    /// Per-pane maps: (pane,buffer) selections/groups, transient mode snapshots, jump history.
+    pub(super) panes: PaneView,
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
     pub(super) history: self::minibuf_history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
@@ -358,13 +357,13 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        &self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()].selections
+        &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].selections
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
         let bid = self.focused_buffer_id();
-        self.state.pane_state[self.state.focused_pane_id][bid].selections = sels;
+        self.state.panes.state[self.state.focused_pane_id][bid].selections = sels;
     }
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
@@ -373,14 +372,14 @@ impl Editor {
     fn begin_edit_group_current(&mut self) {
         let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::begin_edit_group(&self.state.buffers, &mut self.state.pane_state, pane_id, buf_id);
+        doc_ops::begin_edit_group(&self.state.buffers, &mut self.state.panes.state, pane_id, buf_id);
     }
 
     /// Commit and close the open edit group on the focused (pane, buffer) pair.
     fn commit_edit_group_current(&mut self) {
         let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::commit_edit_group(&mut self.state.buffers, &mut self.state.pane_state, pane_id, buf_id);
+        doc_ops::commit_edit_group(&mut self.state.buffers, &mut self.state.panes.state, pane_id, buf_id);
     }
 
     // ── Mode transitions ──────────────────────────────────────────────────────
@@ -444,12 +443,10 @@ impl Editor {
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
 
-        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
+        let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
             SecondaryMap::new();
-        pane_state.insert(pane_id, SecondaryMap::new());
-        pane_state::ensure(&mut pane_state, &buffers, pane_id, buffer_id);
-        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
-        pane_transient.insert(pane_id, PaneTransient::default());
+        pane_buf_state.insert(pane_id, SecondaryMap::new());
+        pane_state::ensure(&mut pane_buf_state, &buffers, pane_id, buffer_id);
 
         Self {
             state: EditorState {
@@ -479,17 +476,14 @@ impl Editor {
                 insert_session: None,
                 explicit_count: false,
                 search: SearchState::default(),
-                pane_jumps: {
-                    let mut m = SecondaryMap::new();
-                    m.insert(
-                        pane_id,
-                        self::jump_list::JumpList::new(jump_list_capacity),
-                    );
-                    m
+                panes: {
+                    let mut jumps = SecondaryMap::new();
+                    jumps.insert(pane_id, self::jump_list::JumpList::new(jump_list_capacity));
+                    let mut transient = SecondaryMap::new();
+                    transient.insert(pane_id, pane_state::PaneTransient::default());
+                    PaneView { state: pane_buf_state, transient, jumps }
                 },
                 history: self::minibuf_history::HistoryStore::new(history_capacity),
-                pane_state,
-                pane_transient,
                 focused_pane_id: pane_id,
                 motion_format_scratch: engine::format::FormatScratch::new(),
                 visual_move_target_cols: Vec::new(),
@@ -532,10 +526,10 @@ impl Editor {
     /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
         let pid = self.view.panes.insert(Pane::new(buffer_id));
-        self.state.pane_state.insert(pid, SecondaryMap::new());
-        pane_state::ensure(&mut self.state.pane_state, &self.state.buffers, pid, buffer_id);
-        self.state.pane_transient.insert(pid, PaneTransient::default());
-        self.state.pane_jumps.insert(
+        self.state.panes.state.insert(pid, SecondaryMap::new());
+        pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, pid, buffer_id);
+        self.state.panes.transient.insert(pid, PaneTransient::default());
+        self.state.panes.jumps.insert(
             pid,
             self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
         );
@@ -553,17 +547,17 @@ impl Editor {
             self.state.mode,
         );
         self.state.focused_pane_id = target;
-        if !self.state.pane_transient.contains_key(target) {
-            self.state.pane_transient.insert(target, PaneTransient::default());
+        if !self.state.panes.transient.contains_key(target) {
+            self.state.panes.transient.insert(target, PaneTransient::default());
         }
-        if !self.state.pane_jumps.contains_key(target) {
-            self.state.pane_jumps.insert(
+        if !self.state.panes.jumps.contains_key(target) {
+            self.state.panes.jumps.insert(
                 target,
                 self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
             );
         }
         let bid = self.focused_buffer_id();
-        pane_state::ensure(&mut self.state.pane_state, &self.state.buffers, target, bid);
+        pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, target, bid);
     }
 
     /// Remove pane `target` and all its per-pane state.
@@ -573,9 +567,9 @@ impl Editor {
     #[allow(dead_code)] // wired in M9+ :split/:close
     pub(crate) fn close_pane(&mut self, target: PaneId) {
         self.view.panes.remove(target);
-        self.state.pane_state.remove(target);
-        self.state.pane_transient.remove(target);
-        self.state.pane_jumps.remove(target);
+        self.state.panes.state.remove(target);
+        self.state.panes.transient.remove(target);
+        self.state.panes.jumps.remove(target);
     }
 
     /// Read-only accessor used by tests to inspect any pane's selections.
@@ -584,7 +578,7 @@ impl Editor {
         pane: PaneId,
         buf: BufferId,
     ) -> Option<&editing::selection::SelectionSet> {
-        self.state.pane_state
+        self.state.panes.state
             .get(pane)
             .and_then(|m| m.get(buf))
             .map(|s| &s.selections)

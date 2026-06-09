@@ -30,7 +30,7 @@ pub fn cmd_insert_before(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     begin_insert_session(state, view);
@@ -45,7 +45,7 @@ pub fn cmd_insert_after(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
@@ -60,7 +60,7 @@ pub fn cmd_insert_at_line_start(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
@@ -75,10 +75,10 @@ pub fn cmd_insert_at_line_end(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_line_end(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
@@ -96,7 +96,7 @@ pub fn cmd_insert_at_selection_start(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     begin_insert_session(state, view);
@@ -117,7 +117,7 @@ pub fn cmd_insert_at_selection_end(
 ) -> Result<SideEffects, CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, sels| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.len_chars() - 1;
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
@@ -141,10 +141,10 @@ pub fn cmd_open_line_below(
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
     Ok(SideEffects::none())
@@ -160,13 +160,13 @@ pub fn cmd_open_line_above(
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_move_left(b, s, 1, MotionMode::Move)
     });
     Ok(SideEffects::none())
@@ -229,7 +229,7 @@ pub fn cmd_collapse_and_exit_extend(
     state.mode = EditorMode::Normal;
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_collapse_selection(b, s, MotionMode::Move)
     });
     Ok(SideEffects::none())

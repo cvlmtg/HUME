@@ -36,8 +36,8 @@ pub fn cmd_search_forward(
     let extend = state.mode == engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
     state.search.direction = SearchDirection::Forward;
-    state.pane_transient[pid].pre_search_sels = Some(pre_sels);
-    state.pane_transient[pid].search_extend = extend;
+    state.panes.transient[pid].pre_search_sels = Some(pre_sels);
+    state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
     let old_mode = state.mode;
     state.mode = Mode::Search;
@@ -61,8 +61,8 @@ pub fn cmd_search_backward(
     let extend = state.mode == engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
     state.search.direction = SearchDirection::Backward;
-    state.pane_transient[pid].pre_search_sels = Some(pre_sels);
-    state.pane_transient[pid].search_extend = extend;
+    state.panes.transient[pid].pre_search_sels = Some(pre_sels);
+    state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
     let old_mode = state.mode;
     state.mode = Mode::Search;
@@ -203,7 +203,7 @@ fn search_jump(
     match last_match {
         Some((start, end_incl)) => {
             let pid = state.focused_pane_id;
-            state.pane_state[pid][bid].search_cursor.wrapped = any_wrapped;
+            state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
             let new_sel = search_sel(start, end_incl, anchor, direction);
             set_primary_selection(state, view, new_sel);
             Ok(SideEffects::none())
@@ -220,7 +220,7 @@ pub fn cmd_clear_search(
     _mode: MotionMode,
 ) -> Result<SideEffects, CommandError> {
     let bid = focused_buffer_id(state, view);
-    super::super::search_ops::clear_buffer_search(&mut state.buffers, &mut state.pane_state, bid);
+    super::super::search_ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
     Ok(SideEffects::none())
 }
 
@@ -287,7 +287,7 @@ pub fn cmd_select_within(
     }
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focused_pane_id;
-    state.pane_transient[pid].pre_select_sels = Some(pre_sels);
+    state.panes.transient[pid].pre_select_sels = Some(pre_sels);
     let old_mode = state.mode;
     state.mode = Mode::Select;
     enqueue_mode_change(state, old_mode, Mode::Select);

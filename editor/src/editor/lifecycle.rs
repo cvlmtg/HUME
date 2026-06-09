@@ -60,7 +60,7 @@ impl Editor {
         use editing::text::Text;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer_store::BufferStore;
-        use crate::editor::pane_state::{PaneBufferState, PaneTransient};
+        use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
         use super::registry::CommandRegistry;
@@ -130,11 +130,9 @@ impl Editor {
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
         per_pane_bufs.insert(buffer_id, crate::editor::pane_state::fresh_from_buf(&doc));
-        let mut pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
+        let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
             SecondaryMap::new();
-        pane_state.insert(pane_id, per_pane_bufs);
-        let mut pane_transient: SecondaryMap<PaneId, PaneTransient> = SecondaryMap::new();
-        pane_transient.insert(pane_id, PaneTransient::default());
+        pane_buf_state.insert(pane_id, per_pane_bufs);
 
         // Bake theme now that all scopes are interned.
         engine_view.theme.bake(&engine_view.registry);
@@ -170,17 +168,14 @@ impl Editor {
                 insert_session: None,
                 explicit_count: false,
                 search: super::search_state::SearchState::default(),
-                pane_jumps: {
-                    let mut m = SecondaryMap::new();
-                    m.insert(
-                        pane_id,
-                        super::jump_list::JumpList::new(jump_list_capacity),
-                    );
-                    m
+                panes: {
+                    let mut jumps = SecondaryMap::new();
+                    jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
+                    let mut transient = SecondaryMap::new();
+                    transient.insert(pane_id, PaneTransient::default());
+                    PaneView { state: pane_buf_state, transient, jumps }
                 },
                 history: super::minibuf_history::HistoryStore::new(history_capacity),
-                pane_state,
-                pane_transient,
                 focused_pane_id: pane_id,
                 motion_format_scratch: engine::format::FormatScratch::new(),
                 visual_move_target_cols: Vec::new(),
@@ -241,7 +236,7 @@ impl Editor {
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.state.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
+                let cursor_char = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
                     .head();
@@ -481,7 +476,7 @@ impl Editor {
         }
 
         // 4. Scroll so the primary cursor stays visible.
-        let cursor_char = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
+        let cursor_char = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
             .selections
             .primary()
             .head();
@@ -533,7 +528,7 @@ impl Editor {
         let state = &mut self.state;
         let view = &mut self.view;
         for (pid, pane) in view.panes.iter_mut() {
-            if let Some(pbs) = state.pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
+            if let Some(pbs) = state.panes.state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
                 write_pane_mirror(pane, &pbs.selections);
             }
         }
@@ -568,7 +563,7 @@ impl Editor {
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
     pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
-        &self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
+        &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
     }
 
     /// Recompute the match list and pane search cursor for the focused buffer,
@@ -576,7 +571,7 @@ impl Editor {
     pub(super) fn sync_search_cache(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        search_ops::sync_search_cache(&mut self.state.buffers, &mut self.state.pane_state, pid, bid);
+        search_ops::sync_search_cache(&mut self.state.buffers, &mut self.state.panes.state, pid, bid);
     }
 
     /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
@@ -627,7 +622,7 @@ impl Editor {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
             if self.state.mode != EditorMode::Insert {
-                let head = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
+                let head = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
                     .head();

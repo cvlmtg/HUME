@@ -71,7 +71,7 @@ impl Editor {
         let bid = ops::open_buffer(
             &mut self.view,
             &mut self.state.buffers,
-            &mut self.state.pane_state,
+            &mut self.state.panes.state,
             self.state.focused_pane_id,
             doc,
         );
@@ -90,8 +90,8 @@ impl Editor {
         ops::close_buffer(
             &mut self.view,
             &mut self.state.buffers,
-            &mut self.state.pane_state,
-            &mut self.state.pane_jumps,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             id,
         );
@@ -108,8 +108,8 @@ impl Editor {
         ops::replace_buffer_in_place(
             &mut self.view,
             &mut self.state.buffers,
-            &mut self.state.pane_state,
-            &mut self.state.pane_jumps,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             id,
             new_doc,
         );
@@ -125,14 +125,14 @@ impl Editor {
         ops::switch_pane_to_buffer(
             &mut self.view,
             &self.state.buffers,
-            &mut self.state.pane_state,
+            &mut self.state.panes.state,
             pid,
             target,
         );
     }
 
     /// Redirect the focused pane to `target`, recording the outgoing position
-    /// in `pane_jumps[focused_pane]`.
+    /// in `panes.jumps[focused_pane]`.
     ///
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
@@ -141,8 +141,8 @@ impl Editor {
         ops::switch_to_buffer_with_jump(
             &mut self.view,
             &self.state.buffers,
-            &mut self.state.pane_state,
-            &mut self.state.pane_jumps,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             self.state.focused_pane_id,
             current,
             target,
@@ -184,7 +184,7 @@ impl Editor {
         let last_content = rope.len_lines().saturating_sub(2); // skip trailing \n line
         let target_line = cursor_line.min(last_content);
         let char_pos = rope.line_to_char(target_line);
-        self.state.pane_state[pid][bid].selections =
+        self.state.panes.state[pid][bid].selections =
             SelectionSet::single(Selection::collapsed(char_pos));
     }
 
