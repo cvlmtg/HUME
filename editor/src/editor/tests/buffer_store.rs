@@ -17,7 +17,7 @@ fn p6_open_buffer_seeds_pane_state() {
     assert_ne!(bid2, initial_bid);
     // pane_state should be seeded for bid2 on the focused pane.
     assert!(
-        ed.selections_for(ed.focused_pane_id, bid2).is_some(),
+        ed.selections_for(ed.state.focused_pane_id, bid2).is_some(),
         "pane_state seeded for new buffer"
     );
 }
@@ -39,7 +39,7 @@ fn p6_close_buffer_redirects_to_mru() {
         "focused pane redirected to alpha after closing beta"
     );
     assert!(
-        ed.buffers.try_get(bid_beta).is_none(),
+        ed.state.buffers.try_get(bid_beta).is_none(),
         "beta slot freed from BufferStore"
     );
 }
@@ -72,8 +72,8 @@ fn p6_replace_buffer_in_place_reseeds() {
     ));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
-    let focused = ed.focused_pane_id;
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, bid, |b, _sels| {
+    let focused = ed.state.focused_pane_id;
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, bid, |b, _sels| {
         let head = b.len_chars().saturating_sub(2);
         SelectionSet::single(editing::selection::Selection::collapsed(head))
     });
@@ -124,7 +124,7 @@ fn p6_bd_closes_focused_buffer() {
         "bd closed second, focused pane moved to first"
     );
     assert!(
-        ed.buffers.try_get(bid_second).is_none(),
+        ed.state.buffers.try_get(bid_second).is_none(),
         "second buffer freed"
     );
 }
@@ -170,12 +170,12 @@ fn colon_split_vsplit_are_stubs() {
         );
         // execute_typed also sets status_msg so the user sees the error.
         assert!(
-            ed.status_msg
+            ed.state.status_msg
                 .as_deref()
                 .unwrap_or("")
                 .contains("not yet implemented"),
             ":{cmd} must set error status: {:?}",
-            ed.status_msg,
+            ed.state.status_msg,
         );
     }
 }
@@ -191,16 +191,16 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     // open_buffer seeds pane_state for the focused pane but doesn't switch the pane view.
     let bid_b = ed.open_buffer(Buffer::new(Text::from("b\n"), SelectionSet::default()));
 
-    let pid_1 = ed.focused_pane_id;
+    let pid_1 = ed.state.focused_pane_id;
     // Second pane also views A.
     let pid_2 = ed.open_pane(bid_a);
 
     assert_eq!(
-        ed.engine_view.panes[pid_1].buffer_id, bid_a,
+        ed.view.panes[pid_1].buffer_id, bid_a,
         "sanity: pid_1 views A"
     );
     assert_eq!(
-        ed.engine_view.panes[pid_2].buffer_id, bid_a,
+        ed.view.panes[pid_2].buffer_id, bid_a,
         "sanity: pid_2 views A"
     );
 
@@ -208,15 +208,15 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     ed.close_buffer(bid_a);
 
     assert_eq!(
-        ed.engine_view.panes[pid_1].buffer_id, bid_b,
+        ed.view.panes[pid_1].buffer_id, bid_b,
         "focused pane redirected to B"
     );
     assert_eq!(
-        ed.engine_view.panes[pid_2].buffer_id, bid_b,
+        ed.view.panes[pid_2].buffer_id, bid_b,
         "non-focused pane redirected to B"
     );
     assert!(
-        ed.buffers.try_get(bid_a).is_none(),
+        ed.state.buffers.try_get(bid_a).is_none(),
         "closed buffer freed from store"
     );
 }
@@ -266,9 +266,9 @@ fn p6_edit_deduplicates_open_file() {
     let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r1.is_ok());
     let bid_first_open = ed.focused_buffer_id();
-    let count_after_first = ed.buffers.len();
+    let count_after_first = ed.state.buffers.len();
     // Switch back to scratch.
-    let scratch_bid = ed.buffers.prev(bid_first_open);
+    let scratch_bid = ed.state.buffers.prev(bid_first_open);
     ed.switch_to_buffer_without_jump(scratch_bid);
     // Open the same file again — should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
@@ -279,7 +279,7 @@ fn p6_edit_deduplicates_open_file() {
         "dedup: switched to existing buffer"
     );
     assert_eq!(
-        ed.buffers.len(),
+        ed.state.buffers.len(),
         count_after_first,
         "no new buffer created on dedup"
     );

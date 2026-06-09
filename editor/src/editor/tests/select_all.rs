@@ -45,7 +45,7 @@ fn select_all_matches_no_search_is_noop() {
 fn select_all_matches_uses_search_register_fallback() {
     use crate::ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.registers
+    ed.state.registers
         .write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
     // No live regex — forces register fallback.
     assert!(ed.search_pattern().is_none());
@@ -79,13 +79,13 @@ fn select_all_matches_via_m_slash_keybind() {
 fn star_on_cursor_expands_to_word() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('*'));
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     // Selection expanded to cover "hello".
     assert_eq!(state(&ed), "-[hello]> world\n");
     // Pattern in search register is the escaped word.
     assert_eq!(reg(&ed, 's'), vec!["hello"]);
     // Search direction set to forward.
-    assert_eq!(ed.search.direction, SearchDirection::Forward);
+    assert_eq!(ed.state.search.direction, SearchDirection::Forward);
     assert!(ed.search_pattern().is_some());
 }
 
@@ -108,7 +108,7 @@ fn star_on_trailing_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
     let before = state(&ed);
     ed.handle_key(key('*'));
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(state(&ed), before);
     // The cursor/selection check above already catches a regressed guard (it would
     // move the selection), but pin the register too: a noop must not set a search regex.

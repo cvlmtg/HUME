@@ -43,7 +43,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 
     // Create a second pane (not the focused one) viewing the same buffer.
     let second_pane = ed.open_pane(buf_id);
-    assert!(ed.engine_view.panes.contains_key(second_pane));
+    assert!(ed.view.panes.contains_key(second_pane));
 
     // Edit in the focused pane (insert 'x' → "xab\n").
     ed.handle_key(key('i'));
@@ -52,7 +52,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 
     // The non-focused pane's engine selections must have been synced by
     // propagate_cs_to_panes — not left empty or stale.
-    let engine_pane = &ed.engine_view.panes[second_pane];
+    let engine_pane = &ed.view.panes[second_pane];
     assert!(
         !engine_pane.selections.is_empty(),
         "non-focused pane engine selections must be synced after edit"

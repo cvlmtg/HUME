@@ -15,7 +15,7 @@ impl Editor {
     /// Change the editor's working directory.
     ///
     /// Canonicalizes `path`, rejects non-directories, then updates both
-    /// `self.cwd` and the process cwd so that relative paths in `:e` and
+    /// `self.state.cwd` and the process cwd so that relative paths in `:e` and
     /// subprocesses resolve consistently.
     pub(super) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
         let canonical = std::fs::canonicalize(path)?;
@@ -26,8 +26,8 @@ impl Editor {
             ));
         }
         std::env::set_current_dir(&canonical)?;
-        self.cwd = canonical;
-        Ok(self.cwd.clone())
+        self.state.cwd = canonical;
+        Ok(self.state.cwd.clone())
     }
 
     // ── Buffer choke-points ───────────────────────────────────────────────────
@@ -38,7 +38,7 @@ impl Editor {
         &mut self,
         canonical: &std::path::Path,
     ) -> std::io::Result<(BufferId, bool)> {
-        if let Some(existing) = self.buffers.find_by_path(canonical) {
+        if let Some(existing) = self.state.buffers.find_by_path(canonical) {
             return Ok((existing, false));
         }
         Ok((self.open_buffer(Buffer::from_file(canonical)?), true))
@@ -69,10 +69,10 @@ impl Editor {
     /// `pane_state`, and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = ops::open_buffer(
-            &mut self.engine_view,
-            &mut self.buffers,
-            &mut self.pane_state,
-            self.focused_pane_id,
+            &mut self.view,
+            &mut self.state.buffers,
+            &mut self.state.pane_state,
+            self.state.focused_pane_id,
             doc,
         );
         self.detect_and_set_language(bid);
@@ -88,11 +88,11 @@ impl Editor {
     /// - Only buffer: replace in-place with a fresh scratch buffer.
     pub(crate) fn close_buffer(&mut self, id: BufferId) {
         ops::close_buffer(
-            &mut self.engine_view,
-            &mut self.buffers,
-            &mut self.pane_state,
-            &mut self.pane_jumps,
-            self.focused_pane_id,
+            &mut self.view,
+            &mut self.state.buffers,
+            &mut self.state.pane_state,
+            &mut self.state.pane_jumps,
+            self.state.focused_pane_id,
             id,
         );
         // Fire with the ID that was closed, not the new current buffer.
@@ -106,10 +106,10 @@ impl Editor {
     /// (enforced by debug_assert — `Buffer::from_file` satisfies this by construction).
     pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
         ops::replace_buffer_in_place(
-            &mut self.engine_view,
-            &mut self.buffers,
-            &mut self.pane_state,
-            &mut self.pane_jumps,
+            &mut self.view,
+            &mut self.state.buffers,
+            &mut self.state.pane_state,
+            &mut self.state.pane_jumps,
             id,
             new_doc,
         );
@@ -121,11 +121,11 @@ impl Editor {
 
     /// Redirect the focused pane to `target` without recording a jump.
     pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         ops::switch_pane_to_buffer(
-            &mut self.engine_view,
-            &self.buffers,
-            &mut self.pane_state,
+            &mut self.view,
+            &self.state.buffers,
+            &mut self.state.pane_state,
             pid,
             target,
         );
@@ -139,11 +139,11 @@ impl Editor {
     pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
         let current = self.focused_buffer_id();
         ops::switch_to_buffer_with_jump(
-            &mut self.engine_view,
-            &self.buffers,
-            &mut self.pane_state,
-            &mut self.pane_jumps,
-            self.focused_pane_id,
+            &mut self.view,
+            &self.state.buffers,
+            &mut self.state.pane_state,
+            &mut self.state.pane_jumps,
+            self.state.focused_pane_id,
             current,
             target,
         );
@@ -165,8 +165,8 @@ impl Editor {
         use editing::text::Text;
 
         let text = Text::from(content);
-        let bid = if let Some(existing) = self.buffers.find_by_label(label) {
-            self.buffers.get_mut(existing).set_view_content(text);
+        let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
+            self.state.buffers.get_mut(existing).set_view_content(text);
             existing
         } else {
             let doc = Buffer::read_only_view(text, label.to_owned());
@@ -179,21 +179,21 @@ impl Editor {
         }
 
         // Position cursor at the requested line (clamped to last content line).
-        let pid = self.focused_pane_id;
-        let rope = self.buffers.get(bid).text().rope();
+        let pid = self.state.focused_pane_id;
+        let rope = self.state.buffers.get(bid).text().rope();
         let last_content = rope.len_lines().saturating_sub(2); // skip trailing \n line
         let target_line = cursor_line.min(last_content);
         let char_pos = rope.line_to_char(target_line);
-        self.pane_state[pid][bid].selections =
+        self.state.pane_state[pid][bid].selections =
             SelectionSet::single(Selection::collapsed(char_pos));
     }
 
     /// Snapshot the focused pane's current cursor as a `JumpEntry`.
     pub(crate) fn current_jump_entry(&self) -> super::jump_list::JumpEntry {
         use super::jump_list::JumpEntry;
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        let sels = self.pane_state[pid][bid].selections.clone();
-        JumpEntry::new(sels, self.buffers.get(bid).text(), bid)
+        let sels = self.state.pane_state[pid][bid].selections.clone();
+        JumpEntry::new(sels, self.state.buffers.get(bid).text(), bid)
     }
 }

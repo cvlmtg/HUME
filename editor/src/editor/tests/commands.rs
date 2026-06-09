@@ -16,7 +16,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 
     // `c` — delete "hell", enter Insert.
     ed.handle_key(key('c'));
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 
     // Type the replacement.
     ed.handle_key(key('h'));
@@ -24,7 +24,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 
     // Exit Insert — commits the group.
     ed.handle_key(key_esc());
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "hio\n");
 
     // One undo should restore the original word entirely.
@@ -47,7 +47,7 @@ fn d_yanks_selection_into_register_before_deleting() {
 
     assert_eq!(ed.doc().text().to_string(), "o\n", "buffer after delete");
     assert_eq!(
-        ed.kill_ring.head(),
+        ed.state.kill_ring.head(),
         Some(["hell".to_string()].as_slice()),
         "kill ring head after delete"
     );
@@ -71,7 +71,7 @@ fn y_populates_register_without_changing_buffer() {
     // AND pushes to the kill ring.
     assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hell"], "clipboard populated");
     assert_eq!(
-        ed.kill_ring.head(),
+        ed.state.kill_ring.head(),
         Some(["hell".to_string()].as_slice()),
         "kill ring head populated"
     );
@@ -87,11 +87,11 @@ fn r_then_char_replaces_every_grapheme_in_selection() {
     let mut ed = editor_from("-[hell]>o\n");
 
     ed.handle_key(key('r'));
-    assert!(ed.wait_char.is_some(), "wait_char set after 'r'");
+    assert!(ed.state.wait_char.is_some(), "wait_char set after 'r'");
 
     ed.handle_key(key('x'));
     assert!(
-        ed.wait_char.is_none(),
+        ed.state.wait_char.is_none(),
         "wait_char cleared after replacement char"
     );
     assert_eq!(state(&ed), "-[xxxx]>o\n");
@@ -104,7 +104,7 @@ fn r_then_esc_cancels_without_side_effects() {
     // Esc resets wait_char (and all other pending state).
     ed.handle_key(key_esc());
 
-    assert!(ed.wait_char.is_none());
+    assert!(ed.state.wait_char.is_none());
     assert_eq!(
         state(&ed),
         "-[hell]>o\n",
@@ -118,11 +118,11 @@ fn r_then_esc_cancels_without_side_effects() {
 fn f_then_esc_cancels_without_side_effects() {
     let mut ed = editor_from("-[h]>ello a\n");
     ed.handle_key(key('f'));
-    assert!(ed.wait_char.is_some(), "wait_char set after 'f'");
+    assert!(ed.state.wait_char.is_some(), "wait_char set after 'f'");
     ed.handle_key(key_esc());
 
-    assert!(ed.wait_char.is_none(), "wait_char cleared after Esc");
-    assert!(ed.pending_char.is_none(), "pending_char not set");
+    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Esc");
+    assert!(ed.state.pending_char.is_none(), "pending_char not set");
     assert_eq!(
         state(&ed),
         "-[h]>ello a\n",
@@ -141,21 +141,21 @@ fn m_i_w_selects_inner_word() {
 
     ed.handle_key(key('m'));
     assert_eq!(
-        ed.pending_keys.len(),
+        ed.state.pending_keys.len(),
         1,
         "pending_keys has 'm' after first press"
     );
 
     ed.handle_key(key('i'));
     assert_eq!(
-        ed.pending_keys.len(),
+        ed.state.pending_keys.len(),
         2,
         "pending_keys has 'm','i' after second press"
     );
 
     ed.handle_key(key('w'));
     assert!(
-        ed.pending_keys.is_empty(),
+        ed.state.pending_keys.is_empty(),
         "pending_keys cleared after dispatch"
     );
     assert_eq!(state(&ed), "-[hello]> world\n");
@@ -173,7 +173,7 @@ fn m_a_unknown_char_falls_through_cleanly() {
     ed.handle_key(key('~'));
 
     assert!(
-        ed.pending_keys.is_empty(),
+        ed.state.pending_keys.is_empty(),
         "pending_keys cleared on NoMatch"
     );
     // Selection and buffer are unchanged.
@@ -187,11 +187,11 @@ fn m_a_unknown_char_falls_through_cleanly() {
 #[test]
 fn e_toggles_extend_mode_and_motions_extend_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    assert_eq!(ed.mode, Mode::Normal, "Normal mode initially");
+    assert_eq!(ed.state.mode, Mode::Normal, "Normal mode initially");
 
     // Toggle extend on.
     ed.handle_key(key('e'));
-    assert_eq!(ed.mode, Mode::Extend, "Extend mode after 'e'");
+    assert_eq!(ed.state.mode, Mode::Extend, "Extend mode after 'e'");
 
     // A motion in extend mode should grow the selection, not move a cursor.
     ed.handle_key(key('l'));
@@ -199,7 +199,7 @@ fn e_toggles_extend_mode_and_motions_extend_selection() {
 
     // Toggle extend off.
     ed.handle_key(key('e'));
-    assert_eq!(ed.mode, Mode::Normal, "Normal mode after second 'e'");
+    assert_eq!(ed.state.mode, Mode::Normal, "Normal mode after second 'e'");
 }
 
 // ── `x` select-line ────────────────────────────────────────────────────────
@@ -372,7 +372,7 @@ fn o_opens_line_below_and_enters_insert() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
     // Cursor should be on the new blank line (the second '\n').
     assert_eq!(state(&ed), "hello\n-[\n]>");
@@ -387,7 +387,7 @@ fn o_on_empty_line_places_cursor_on_new_blank_line() {
     let mut ed = editor_from("AAA\nBBB\n-[\n]>CCC\n");
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "AAA\nBBB\n\n\nCCC\n");
     assert_eq!(state(&ed), "AAA\nBBB\n\n-[\n]>CCC\n");
 }
@@ -399,7 +399,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
     let mut ed = editor_from("foo\n-[b]>ar\n");
     ed.handle_key(key('O'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "foo\n\nbar\n");
     // Cursor on the new blank line between "foo" and "bar".
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
@@ -414,7 +414,7 @@ fn a_enters_insert_after_selection_end() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "h-[e]>llo\n");
 }
 
@@ -425,7 +425,7 @@ fn capital_a_enters_insert_after_end_of_line() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('A'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "hello-[\n]>");
 }
 
@@ -435,7 +435,7 @@ fn capital_i_enters_insert_at_line_start() {
     let mut ed = editor_from("  -[hello]>\n");
     ed.handle_key(key('I'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "  -[h]>ello\n");
 }
 
@@ -447,7 +447,7 @@ fn i_on_wide_selection_collapses_to_start() {
     let mut ed = editor_from("<[hell]-o\n");
     ed.handle_key(key('i'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
@@ -459,7 +459,7 @@ fn a_on_wide_selection_collapses_after_end() {
     let mut ed = editor_from("-[hel]>lo\n");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
@@ -477,7 +477,7 @@ fn a_esc_steps_cursor_back_to_last_typed_char() {
     ed.handle_key(key_esc());
 
     // Cursor must be on 'X', not on 'e' (one past where X was inserted).
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(state(&ed), "h-[X]>ello\n");
 }
 
@@ -497,7 +497,7 @@ fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
 
     // A second `a` must re-enter Insert on the same line, not on 'w'.
     ed.handle_key(key('a'));
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "helloX-[\n]>world\n");
 }
 
@@ -511,7 +511,7 @@ fn i_esc_does_not_step_cursor_back() {
     ed.handle_key(key_esc());
 
     // No step-back: cursor stays on 'h', not on 'X'.
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(state(&ed), "X-[h]>ello\n");
 }
 
@@ -532,7 +532,7 @@ fn a_multi_cursor_clamp_collision_merges_to_one() {
     let mut ed = editor_from("ab-[c]>-[\n]>");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(state(&ed), "abc-[\n]>");
 }
 
@@ -552,7 +552,7 @@ fn a_esc_multi_cursor_step_back_collision_merges_to_one() {
     ed.handle_key(key('a'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(state(&ed), "ab\n-[c]>d\n");
 }
 
@@ -601,14 +601,14 @@ fn plain_comma_still_keeps_primary_selection() {
 #[test]
 fn o_in_extend_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.mode = Mode::Extend;
+    ed.state.mode = Mode::Extend;
 
     ed.handle_key(key('o'));
 
     // anchor and head are swapped — selection is now backward.
     assert_eq!(state(&ed), "<[hell]-o\n");
     // extend mode is still active (flip doesn't exit it).
-    assert_eq!(ed.mode, Mode::Extend);
+    assert_eq!(ed.state.mode, Mode::Extend);
 }
 
 #[test]
@@ -618,7 +618,7 @@ fn o_in_normal_mode_still_opens_line_below() {
 
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
@@ -630,11 +630,11 @@ fn o_in_normal_mode_still_opens_line_below() {
 #[test]
 fn semicolon_collapses_selection_and_resets_extend() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.mode = Mode::Extend;
+    ed.state.mode = Mode::Extend;
 
     ed.handle_key(key(';'));
 
-    assert_eq!(ed.mode, Mode::Normal, "extend cleared by ';'");
+    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by ';'");
     // head of the original selection was 'l' (last char of "hell").
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
@@ -650,7 +650,7 @@ fn o_groups_newline_and_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('o'));
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 
     ed.handle_key(key('w'));
     ed.handle_key(key('o'));
@@ -672,7 +672,7 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
     let mut ed = editor_from("foo\n-[b]>ar\n");
 
     ed.handle_key(key('O'));
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 
     ed.handle_key(key('n'));
     ed.handle_key(key('e'));
@@ -695,7 +695,7 @@ fn i_collapses_selection_to_start() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('i'));
 
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
     // Cursor collapsed to 'h' — nothing deleted.
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
@@ -708,13 +708,13 @@ fn i_groups_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('i'));
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 
     ed.handle_key(key('X'));
     ed.handle_key(key('Y'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "XYhello\n");
 
     // One undo restores the original state completely.
@@ -789,7 +789,7 @@ fn register_prefix_clears_after_one_operation() {
     // The second yank updated the clipboard, not register '5'.
     assert!(!reg(&ed, CLIPBOARD_REGISTER).is_empty(), "clipboard written by bare y");
     // Kill ring head holds the latest bare yank.
-    assert!(ed.kill_ring.head().is_some(), "kill ring head set by bare y");
+    assert!(ed.state.kill_ring.head().is_some(), "kill ring head set by bare y");
     // '5' is unchanged from the first yank.
     assert_eq!(reg(&ed, '5'), &["hell"], "register '5' unchanged");
 }
@@ -806,7 +806,7 @@ fn esc_cancels_register_prefix() {
 
     assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hell"], "clipboard populated");
     assert_eq!(
-        ed.kill_ring.head(),
+        ed.state.kill_ring.head(),
         Some(["hell".to_string()].as_slice()),
         "kill ring head populated"
     );
@@ -832,7 +832,7 @@ fn paste_from_named_register() {
     ed.handle_key(key('w')); // move word → selection on 'w' of "world"
 
     // Seed clipboard with "wrong" to verify "3p doesn't read it.
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
@@ -890,7 +890,7 @@ fn black_hole_register_via_prefix() {
     assert_eq!(state(&ed), "-[hell]>o\n", "buffer unchanged");
     assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
     assert!(
-        ed.registers.read(BLACK_HOLE_REGISTER).is_none(),
+        ed.state.registers.read(BLACK_HOLE_REGISTER).is_none(),
         "black hole register returns None"
     );
 }
@@ -906,7 +906,7 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
 
     let mut ed = editor_from("-[hello]>\n");
     // Simulate a headless environment with no clipboard server.
-    ed.clipboard.force_unavailable();
+    ed.state.clipboard.force_unavailable();
 
     ed.handle_key(key('"'));
     ed.handle_key(key('c'));
@@ -914,7 +914,7 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
 
     // A Warning must have been logged.
     assert!(
-        ed.message_log
+        ed.state.message_log
             .entries()
             .any(|e| e.severity == Severity::Warning),
         "expected a Warning for clipboard unavailable"
@@ -952,7 +952,7 @@ fn kill_ring_register_pastes_ring_head() {
     ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
 
     // Seed clipboard with "wrong" to confirm "kp doesn't read it.
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
@@ -976,7 +976,7 @@ fn kill_ring_register_paste_seeds_cycle() {
     ed.feed_key(key('d')); // ring head = ["second"]
 
     // Manually push an older entry.
-    ed.kill_ring.push(vec!["first".to_string()]);
+    ed.state.kill_ring.push(vec!["first".to_string()]);
     // ring: head = ["first"] (newest push), slot 1 = ["second"]
 
     // "kp: paste ring head ("first"). This should open a paste session
@@ -1012,7 +1012,7 @@ fn kill_ring_register_yank_pushes_ring_only() {
     ed.feed_key(key('y')); // "ky → ring push, no clipboard
 
     assert_eq!(
-        ed.kill_ring.head(),
+        ed.state.kill_ring.head(),
         Some(["hello".to_string()].as_slice()),
         "ring head set by \"ky"
     );
@@ -1033,7 +1033,7 @@ fn kill_ring_register_delete_pushes_ring() {
 
     assert_eq!(ed.doc().text().to_string(), "world\n", "buffer after delete");
     assert_eq!(
-        ed.kill_ring.head(),
+        ed.state.kill_ring.head(),
         Some(["hello".to_string()].as_slice()),
         "ring head set by \"kd"
     );
@@ -1111,7 +1111,7 @@ fn mw_wraps_when_auto_pairs_disabled() {
     // surround-add uses the pairs table only as a lookup; it ignores the
     // auto-pairs-enabled flag. `mw[` must still wrap even when auto-pairs are off.
     let mut ed = editor_from("-[bar]>\n");
-    ed.settings.auto_pairs_enabled = false;
+    ed.state.settings.auto_pairs_enabled = false;
     ed.handle_key(key('m'));
     ed.handle_key(key('w'));
     ed.handle_key(key('['));
@@ -1136,7 +1136,7 @@ fn smart_p_dp_reads_ring() {
     );
     // Clipboard is not written by bare 'd', so the pasted value came from ring.
     assert!(
-        ed.kill_ring.head().is_some(),
+        ed.state.kill_ring.head().is_some(),
         "kill ring still has an entry after paste"
     );
 }
@@ -1150,7 +1150,7 @@ fn smart_p_motion_resets_to_clipboard() {
     // Two-line buffer; cursor on line 0.
     let mut ed = editor_from("-[a]>b\ncd\n");
     // Seed clipboard with something distinct from what 'd' would yank.
-    ed.registers
+    ed.state.registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'a' → ring = ["a"]
     ed.feed_key(key('j')); // move-down → last_command = "move-down" ∉ SMART_P_LAST_CMDS
@@ -1172,13 +1172,13 @@ fn smart_p_after_yank_reads_clipboard() {
 
     // Verify yank did not set last_command to anything in SMART_P_LAST_CMDS.
     assert!(
-        !ed.last_command.as_deref().is_some_and(|c| SMART_P_LAST_CMDS.contains(&c)),
+        !ed.state.last_command.as_deref().is_some_and(|c| SMART_P_LAST_CMDS.contains(&c)),
         "last_command after bare y is not in SMART_P_LAST_CMDS"
     );
 
     // Push a distinct value to ring so ring-head ≠ clipboard.
     // Now: clipboard="hello", ring head="RING".
-    ed.kill_ring.push(vec!["RING".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
 
     // Move right and paste — should read clipboard ("hello"), not ring head ("RING").
     ed.feed_key(key('l'));
@@ -1196,7 +1196,7 @@ fn smart_p_consecutive_paste_stays_in_ring() {
 
     let mut ed = editor_from("-[X]>abc\n");
     // Seed clipboard with something distinct.
-    ed.registers
+    ed.state.registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'X' → ring = ["X"]
     ed.feed_key(key('p')); // first paste → from ring, last_command = "paste-after"
@@ -1217,8 +1217,8 @@ fn xdp_pastes_ring_head_not_clipboard() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[A]>\nB\n");
-    ed.clipboard.force_unavailable();
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.clipboard.force_unavailable();
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
 
     ed.feed_key(key('x')); // select "A\n"
     ed.feed_key(key('d')); // delete → ring = ["A\n"], last_command = "delete"
@@ -1241,8 +1241,8 @@ fn smart_p_survives_idle_replay_drain() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[A]>\nB\n");
-    ed.clipboard.force_unavailable();
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.clipboard.force_unavailable();
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
 
     ed.feed_keys([key('x'), key('d'), key('p')]);
 
@@ -1265,7 +1265,7 @@ fn kill_ring_depth_capped_at_ten() {
         ed.feed_key(key('d')); // delete line → push ring
         // After delete, cursor lands on next line automatically.
     }
-    assert_eq!(ed.kill_ring.len(), 10, "kill ring capped at depth 10");
+    assert_eq!(ed.state.kill_ring.len(), 10, "kill ring capped at depth 10");
 }
 
 /// `"cy` writes clipboard only — no kill-ring push.
@@ -1281,7 +1281,7 @@ fn explicit_cy_writes_clipboard_only() {
 
     assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["hello"], "clipboard written");
     assert!(
-        ed.kill_ring.head().is_none(),
+        ed.state.kill_ring.head().is_none(),
         "kill ring NOT pushed by explicit \"cy"
     );
 }
@@ -1299,7 +1299,7 @@ fn explicit_digit_y_writes_in_memory_only() {
 
     assert_eq!(reg(&ed, '5'), &["hello"], "register '5' written");
     assert!(
-        ed.kill_ring.head().is_none(),
+        ed.state.kill_ring.head().is_none(),
         "kill ring head untouched by explicit \"5y"
     );
 }
@@ -1459,8 +1459,8 @@ fn paste_ring_warm_cycle_replaces_single_char_paste() {
 #[test]
 fn paste_before_cycle_stays_before_charwise() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
-    ed.kill_ring.push(vec!["X".to_string()]); // slot 1 after next push
-    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y, slot 1=X
+    ed.state.kill_ring.push(vec!["X".to_string()]); // slot 1 after next push
+    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y, slot 1=X
 
     // "kP: paste-before ring head ("Y") before cursor 'c'.
     ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('P'));
@@ -1475,8 +1475,8 @@ fn paste_before_cycle_stays_before_charwise() {
 #[test]
 fn paste_after_cycle_stays_after_charwise() {
     let mut ed = editor_from("-[c]>d\n");
-    ed.kill_ring.push(vec!["X".to_string()]);
-    ed.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]
+    ed.state.kill_ring.push(vec!["X".to_string()]);
+    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]
 
     ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('p'));
     assert_eq!(state(&ed), "c-[Y]>d\n", "p pastes after the cursor");
@@ -1490,8 +1490,8 @@ fn paste_after_cycle_stays_after_charwise() {
 #[test]
 fn paste_before_cycle_stays_above_linewise() {
     let mut ed = editor_from("-[B]>\nC\n"); // cursor on 'B', line 0
-    ed.kill_ring.push(vec!["X\n".to_string()]); // slot 1
-    ed.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; head=Y\n
+    ed.state.kill_ring.push(vec!["X\n".to_string()]); // slot 1
+    ed.state.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; head=Y\n
 
     // "kP: linewise paste-before ring head ("Y\n") — inserts above line 0.
     ed.feed_key(key('"')); ed.feed_key(key('k')); ed.feed_key(key('P'));
@@ -1515,9 +1515,9 @@ fn paste_after_cycle_appends_cycled_entry() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
-    ed.clipboard.force_unavailable();
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
-    ed.kill_ring.push(vec!["RING".to_string()]); // ring head = "RING"
+    ed.state.clipboard.force_unavailable();
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]); // ring head = "RING"
 
     // p: last_command=None → clipboard "CLIP"; seed_cycle(None).
     ed.feed_key(key('p'));
@@ -1549,10 +1549,10 @@ fn consecutive_paste_appends_copies() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[ab]>\n");
-    ed.clipboard.force_unavailable();
+    ed.state.clipboard.force_unavailable();
     // Seed clipboard with "CLIP" (distinct from ring) to falsify the assertion:
     // if the second p reads clipboard instead of last_paste, "CLIP" would appear.
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], last_command = "delete"
     ed.feed_key(key('p')); // smart-p reads ring head "ab" (last_command="delete"); last_paste=["ab"]
     ed.feed_key(key('p')); // is_append → appends from last_paste = ["ab"]
@@ -1572,8 +1572,8 @@ fn consecutive_clipboard_paste_appends() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
-    ed.clipboard.force_unavailable(); // headless: reads fall back to in-memory mirror
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
+    ed.state.clipboard.force_unavailable(); // headless: reads fall back to in-memory mirror
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
     // ring is empty — this is the regression case
 
     ed.feed_key(key('p')); // last_command=None → clipboard → pastes "XY"; last_paste=["XY"]
@@ -1593,9 +1593,9 @@ fn consecutive_paste_repeats_last_not_ring_head() {
     use crate::ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
-    ed.clipboard.force_unavailable();
-    ed.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
-    ed.kill_ring.push(vec!["ZZ".to_string()]); // ring has different content
+    ed.state.clipboard.force_unavailable();
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["XY".to_string()]);
+    ed.state.kill_ring.push(vec!["ZZ".to_string()]); // ring has different content
 
     ed.feed_key(key('p')); // clipboard → "XY"; last_paste=["XY"]
     ed.feed_key(key('p')); // append → repeats "XY", not ring head "ZZ"
@@ -1643,8 +1643,8 @@ fn register_prefix_persists_across_motion() {
 #[test]
 fn register_prefix_overrides_append_path() {
     let mut ed = editor_from("-[x]>\n");
-    ed.registers.write_text('5', vec!["REG5".to_string()]);
-    ed.kill_ring.push(vec!["RING".to_string()]);
+    ed.state.registers.write_text('5', vec!["REG5".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
 
     // Delete 'x' so the ring has "x" at head; RING is at slot 1.
     ed.feed_key(key('d'));
@@ -1670,8 +1670,8 @@ fn register_prefix_overrides_append_path() {
 #[test]
 fn register_prefix_consumed_by_paste() {
     let mut ed = editor_from("-[x]>\n");
-    ed.registers.write_text('5', vec!["REG5".to_string()]);
-    ed.kill_ring.push(vec!["RING".to_string()]);
+    ed.state.registers.write_text('5', vec!["REG5".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
 
     // Get into append state via a paste.
     ed.feed_key(key('d'));           // delete x; ring head = "x"
@@ -1688,7 +1688,7 @@ fn register_prefix_consumed_by_paste() {
     ed.feed_key(key('d'));           // delete; should push to kill ring, not register 5
     // Register 5 must still hold "REG5" — if the prefix leaked into 'd', it
     // would be overwritten with the deleted char.
-    let reg5 = ed.registers.read('5').and_then(|r| r.as_text()).map(|v| v.to_vec());
+    let reg5 = ed.state.registers.read('5').and_then(|r| r.as_text()).map(|v| v.to_vec());
     assert_eq!(
         reg5,
         Some(vec!["REG5".to_string()]),
@@ -1731,7 +1731,7 @@ fn load_theme_by_name_fails_gracefully() {
     let ok = ed.load_theme_by_name("no_such_theme_xyz");
     assert!(!ok, "expected false for nonexistent theme");
     // Failure warning ends up in the message log, not as an error result.
-    assert!(ed.message_log.has_unseen(), "expected a warning message");
+    assert!(ed.state.message_log.has_unseen(), "expected a warning message");
 }
 
 // ── Minibuffer arity-rule for Steel commands ──────────────────────────────
@@ -1841,7 +1841,7 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
 
     assert_eq!(state(&ed), before, "arity rule must not dispatch the command");
     assert!(
-        ed.message_log.entries().any(|e| e.text.contains("requires 2 args")),
+        ed.state.message_log.entries().any(|e| e.text.contains("requires 2 args")),
         "arity rule must log a user-facing error"
     );
 }

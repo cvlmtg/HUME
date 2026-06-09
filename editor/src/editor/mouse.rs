@@ -34,7 +34,7 @@ impl Editor {
                 self.mouse_left_drag(mouse.column, mouse.row)
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                self.mouse_drag_anchor = None;
+                self.state.mouse_drag_anchor = None;
             }
             MouseEventKind::ScrollUp => self.mouse_scroll_up(),
             MouseEventKind::ScrollDown => self.mouse_scroll_down(),
@@ -46,14 +46,14 @@ impl Editor {
 
     fn mouse_left_down(&mut self, col: u16, row: u16) {
         // Clicks in the statusline (last terminal row) are ignored.
-        let vp_height = self.engine_view.panes[self.focused_pane_id].viewport.height;
+        let vp_height = self.view.panes[self.state.focused_pane_id].viewport.height;
         if row >= vp_height {
             return;
         }
 
         if let Some(char_off) = self.click_to_char(col, row) {
             // Move to Normal mode on click, regardless of current mode.
-            if self.mode == Mode::Insert {
+            if self.state.mode == Mode::Insert {
                 self.end_insert_session();
                 self.set_mode(Mode::Normal);
             }
@@ -61,11 +61,11 @@ impl Editor {
             let sel = Selection::collapsed(char_off);
             self.set_current_selections(SelectionSet::single(sel));
             // Record anchor for potential drag-select.
-            self.mouse_drag_anchor = Some(char_off);
+            self.state.mouse_drag_anchor = Some(char_off);
             // Clear any pending key sequence so the click is a clean state reset.
-            self.pending_keys.clear();
-            self.count = None;
-            self.status_msg = None;
+            self.state.pending_keys.clear();
+            self.state.count = None;
+            self.state.status_msg = None;
         }
     }
 
@@ -73,11 +73,11 @@ impl Editor {
 
     fn mouse_left_drag(&mut self, col: u16, row: u16) {
         // Drag events are only received when `mouse_select = true` (mode 1002).
-        let Some(anchor) = self.mouse_drag_anchor else {
+        let Some(anchor) = self.state.mouse_drag_anchor else {
             return;
         };
 
-        let vp_height = self.engine_view.panes[self.focused_pane_id].viewport.height;
+        let vp_height = self.view.panes[self.state.focused_pane_id].viewport.height;
         if row >= vp_height {
             return;
         }
@@ -91,23 +91,23 @@ impl Editor {
     // ── Scroll ────────────────────────────────────────────────────────────────
 
     fn mouse_scroll_up(&mut self) {
-        let scroll_lines = self.settings.mouse_scroll_lines;
+        let scroll_lines = self.state.settings.mouse_scroll_lines;
         let vp_before = {
-            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-            let len_lines = self.buffers.get(buf_id).text().len_lines();
-            let tab_width = self.doc().overrides.tab_width(&self.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let rope = self.buffers.get(buf_id).text().rope();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+            let len_lines = self.state.buffers.get(buf_id).text().len_lines();
+            let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+            let rope = self.state.buffers.get(buf_id).text().rope();
             let wrap_mode = {
-                let pane = &self.engine_view.panes[self.focused_pane_id];
+                let pane = &self.view.panes[self.state.focused_pane_id];
                 raw_wrap.resolve(pane.content_width(len_lines))
             };
-            let pane = &mut self.engine_view.panes[self.focused_pane_id];
+            let pane = &mut self.view.panes[self.state.focused_pane_id];
             scroll_viewport_up(
                 &mut pane.viewport,
                 rope,
@@ -115,11 +115,11 @@ impl Editor {
                 tab_width,
                 &whitespace,
                 scroll_lines,
-                &mut self.motion_format_scratch,
+                &mut self.state.motion_format_scratch,
             );
         }
         let vp_after = {
-            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         // Only move cursors if the viewport actually moved (file may already be at top).
@@ -129,23 +129,23 @@ impl Editor {
     }
 
     fn mouse_scroll_down(&mut self) {
-        let scroll_lines = self.settings.mouse_scroll_lines;
+        let scroll_lines = self.state.settings.mouse_scroll_lines;
         let vp_before = {
-            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-            let tab_width = self.doc().overrides.tab_width(&self.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.settings);
-            let rope = self.buffers.get(buf_id).text().rope();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+            let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+            let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+            let rope = self.state.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
             let wrap_mode = {
-                let pane = &self.engine_view.panes[self.focused_pane_id];
+                let pane = &self.view.panes[self.state.focused_pane_id];
                 raw_wrap.resolve(pane.content_width(total_lines))
             };
-            let pane = &mut self.engine_view.panes[self.focused_pane_id];
+            let pane = &mut self.view.panes[self.state.focused_pane_id];
             scroll_viewport_down(
                 &mut pane.viewport,
                 rope,
@@ -154,11 +154,11 @@ impl Editor {
                 &whitespace,
                 total_lines,
                 scroll_lines,
-                &mut self.motion_format_scratch,
+                &mut self.state.motion_format_scratch,
             );
         }
         let vp_after = {
-            let vp = &self.engine_view.panes[self.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
         // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
@@ -172,18 +172,18 @@ impl Editor {
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let buf_id = self.focused_buffer_id();
         let (vp, gutter_w) = {
-            let pane = &self.engine_view.panes[self.focused_pane_id];
+            let pane = &self.view.panes[self.state.focused_pane_id];
             let gw = cursor::gutter_width(
                 pane.providers.gutter_columns(),
-                self.buffers.get(buf_id).text().len_lines(),
+                self.state.buffers.get(buf_id).text().len_lines(),
             );
             (pane.viewport.clone(), gw)
         };
         let content_width = vp.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = self.doc().overrides.wrap_mode(&self.settings).resolve(content_width);
-        let tab_width = self.doc().overrides.tab_width(&self.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.settings);
-        let rope = self.buffers.get(buf_id).text().rope();
+        let wrap_mode = self.doc().overrides.wrap_mode(&self.state.settings).resolve(content_width);
+        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+        let rope = self.state.buffers.get(buf_id).text().rope();
         cursor::screen_to_char_offset(
             col,
             row,
@@ -193,7 +193,7 @@ impl Editor {
             &wrap_mode,
             tab_width,
             &whitespace,
-            &mut self.motion_format_scratch,
+            &mut self.state.motion_format_scratch,
         )
     }
 }

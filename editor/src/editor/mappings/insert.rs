@@ -14,7 +14,7 @@ impl Editor {
         // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
-        let trie_result = self.keymap.insert.walk(&[key]);
+        let trie_result = self.state.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
                 self.execute_keymap_command(cmd.name.clone(), 1, false, vec![]);
@@ -29,39 +29,39 @@ impl Editor {
         // ── Dot-repeat recording ──────────────────────────────────────────────
         // Trie-matched keys (Esc, arrows) returned early above, so everything
         // reaching here is a text-modifying key — safe to record for replay.
-        if let Some(ref mut session) = self.insert_session {
+        if let Some(ref mut session) = self.state.insert_session {
             session.keystrokes.push(key);
         }
 
         // ── Character input ───────────────────────────────────────────────────
-        let focused = self.focused_pane_id;
+        let focused = self.state.focused_pane_id;
         let buf = self.focused_buffer_id();
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
+                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.state.settings);
                 if ap_enabled {
                     if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
                         let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
                             // NLL ends the `ap_pairs` borrow at its last use (the `find` above),
-                            // so `&mut self.pane_state` here does not conflict with it.
+                            // so `&mut self.state.pane_state` here does not conflict with it.
                             doc_ops::apply_doc_motion(
-                                &self.buffers, &mut self.pane_state, focused, buf,
+                                &self.state.buffers, &mut self.state.pane_state, focused, buf,
                                 |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                             );
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
                             // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                             doc_ops::apply_doc_edit_grouped(
-                                &mut self.buffers, &mut self.pane_state, focused, buf,
+                                &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                                 |b, s| insert_pair_close(b, s, open, close),
                             );
                         } else {
                             // Next char is a word char (or symmetric prev is word char):
                             // insert only the typed character.
                             doc_ops::apply_doc_edit_grouped(
-                                &mut self.buffers, &mut self.pane_state, focused, buf,
+                                &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                                 |b, s| insert_char(b, s, ch),
                             );
                         }
@@ -71,18 +71,18 @@ impl Editor {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
                         // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                         doc_ops::apply_doc_motion(
-                            &self.buffers, &mut self.pane_state, focused, buf,
+                            &self.state.buffers, &mut self.state.pane_state, focused, buf,
                             |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
                         );
                     } else {
                         doc_ops::apply_doc_edit_grouped(
-                            &mut self.buffers, &mut self.pane_state, focused, buf,
+                            &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                             |b, s| insert_char(b, s, ch),
                         );
                     }
                 } else {
                     doc_ops::apply_doc_edit_grouped(
-                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                         |b, s| insert_char(b, s, ch),
                     );
                 }
@@ -91,30 +91,30 @@ impl Editor {
             // ── Newline ───────────────────────────────────────────────────────
             KeyCode::Enter => {
                 doc_ops::apply_doc_edit_grouped(
-                    &mut self.buffers, &mut self.pane_state, focused, buf,
+                    &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                     |b, s| insert_char(b, s, '\n'),
                 );
             }
 
             // ── Delete ────────────────────────────────────────────────────────
             KeyCode::Backspace => {
-                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.settings);
+                let (ap_enabled, ap_pairs) = self.doc().overrides.auto_pairs_ref(&self.state.settings);
                 if ap_enabled && self.is_between_pair(ap_pairs) {
                     // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     doc_ops::apply_doc_edit_grouped(
-                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                         delete_pair,
                     );
                 } else {
                     doc_ops::apply_doc_edit_grouped(
-                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                         delete_char_backward,
                     );
                 }
             }
             KeyCode::Delete => {
                 doc_ops::apply_doc_edit_grouped(
-                    &mut self.buffers, &mut self.pane_state, focused, buf,
+                    &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                     delete_char_forward,
                 );
             }

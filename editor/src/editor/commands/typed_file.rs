@@ -17,13 +17,13 @@ pub fn typed_quit(
     // "Real" = has a backing file OR is editable (a writable scratch buffer).
     // Pure read-only view buffers like [messages] are ephemeral — not worth staying for.
     let any_other_real = ed
-        .buffers
+        .state.buffers
         .iter()
         .filter(|(id, _)| *id != current)
         .any(|(_, buf)| buf.path().is_some() || !buf.is_read_only());
 
     if !any_other_real {
-        ed.should_quit = true;
+        ed.state.should_quit = true;
     } else {
         ed.close_buffer(current);
     }
@@ -35,12 +35,12 @@ pub fn typed_quit_all(
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    if !force && ed.buffers.iter().any(|(_, buf)| buf.is_dirty()) {
+    if !force && ed.state.buffers.iter().any(|(_, buf)| buf.is_dirty()) {
         return Err(CommandError::new(
             "Unsaved changes in open buffers (add ! to override)"
         ));
     }
-    ed.should_quit = true;
+    ed.state.should_quit = true;
     Ok(())
 }
 
@@ -61,11 +61,11 @@ pub fn typed_write_quit(
     // (quit even if the write fails).
     match write_file(ed, arg, force) {
         Ok(()) => {
-            ed.should_quit = true;
+            ed.state.should_quit = true;
             Ok(())
         }
         Err(e) if force => {
-            ed.should_quit = true;
+            ed.state.should_quit = true;
             Err(e)
         }
         Err(e) => Err(e),
@@ -78,7 +78,7 @@ pub fn typed_toggle_soft_wrap(
     _force: bool,
 ) -> Result<(), CommandError> {
     use engine::pane::WrapMode;
-    let currently_wrapping = ed.doc().overrides.wrap_mode(&ed.settings).is_wrapping();
+    let currently_wrapping = ed.doc().overrides.wrap_mode(&ed.state.settings).is_wrapping();
     if currently_wrapping {
         ed.doc_mut().overrides.wrap_mode = Some(WrapMode::None);
         // Horizontal offset is now meaningful; scroll stays where it is.
@@ -120,7 +120,7 @@ pub fn typed_set(
             "buffer" => {
                 let new_lang = if value.is_empty() { None } else { Some(value.to_owned()) };
                 if let Some(ref name) = new_lang
-                    && ed.languages.by_name(name).is_none()
+                    && ed.state.languages.by_name(name).is_none()
                 {
                     ed.report(
                         Severity::Warning,
@@ -141,29 +141,29 @@ pub fn typed_set(
             crate::settings::SettingScope::Global,
             key,
             value,
-            &mut ed.settings,
-            &mut ed.buffers.get_mut(bid).overrides,
+            &mut ed.state.settings,
+            &mut ed.state.buffers.get_mut(bid).overrides,
         ),
         "buffer" => crate::settings::apply_setting(
             crate::settings::SettingScope::Text,
             key,
             value,
-            &mut ed.settings,
-            &mut ed.buffers.get_mut(bid).overrides,
+            &mut ed.state.settings,
+            &mut ed.state.buffers.get_mut(bid).overrides,
         ),
         _ => Err(format!(
             "unknown scope '{scope}': expected 'global' or 'buffer'"
         )),
     };
     if result.is_ok() && key == "history-capacity" {
-        ed.history.set_capacity(ed.settings.history_capacity);
+        ed.state.history.set_capacity(ed.state.settings.history_capacity);
     }
-    if result.is_ok() && key == "theme" && scope == "global" && !ed.settings.theme.is_empty() {
+    if result.is_ok() && key == "theme" && scope == "global" && !ed.state.settings.theme.is_empty() {
         ops::load_theme_by_name(
-            &mut ed.engine_view,
-            &mut ed.message_log,
-            &mut ed.status_msg,
-            &ed.settings.theme,
+            &mut ed.view,
+            &mut ed.state.message_log,
+            &mut ed.state.status_msg,
+            &ed.state.settings.theme,
         );
     }
     result.map_err(CommandError::new)
@@ -208,7 +208,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             let p = std::path::Path::new(expanded.as_ref());
             // Resolve relative paths against editor.cwd, not the process cwd,
             // so `:w relpath` is stable regardless of how the process cwd drifts.
-            if p.is_relative() { ed.cwd.join(p) } else { p.to_owned() }
+            if p.is_relative() { ed.state.cwd.join(p) } else { p.to_owned() }
         };
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.

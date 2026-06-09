@@ -27,15 +27,15 @@ pub fn cmd_search_forward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let pre_sels = ed.current_selections().clone();
-    let extend = ed.mode == engine::types::EditorMode::Extend;
-    let pid = ed.focused_pane_id;
-    ed.search.direction = SearchDirection::Forward;
+    let extend = ed.state.mode == engine::types::EditorMode::Extend;
+    let pid = ed.state.focused_pane_id;
+    ed.state.search.direction = SearchDirection::Forward;
     // Capture extend state before mode becomes Search — live search uses it.
-    ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
-    ed.pane_transient[pid].search_extend = extend;
-    ed.history.begin_session_all();
+    ed.state.pane_transient[pid].pre_search_sels = Some(pre_sels);
+    ed.state.pane_transient[pid].search_extend = extend;
+    ed.state.history.begin_session_all();
     ed.set_mode(Mode::Search);
-    ed.minibuf = Some(MiniBuffer {
+    ed.state.minibuf = Some(MiniBuffer {
         prompt: '/',
         input: String::new(),
         cursor: 0,
@@ -50,15 +50,15 @@ pub fn cmd_search_backward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let pre_sels = ed.current_selections().clone();
-    let extend = ed.mode == engine::types::EditorMode::Extend;
-    let pid = ed.focused_pane_id;
-    ed.search.direction = SearchDirection::Backward;
+    let extend = ed.state.mode == engine::types::EditorMode::Extend;
+    let pid = ed.state.focused_pane_id;
+    ed.state.search.direction = SearchDirection::Backward;
     // Capture extend state before mode becomes Search — live search uses it.
-    ed.pane_transient[pid].pre_search_sels = Some(pre_sels);
-    ed.pane_transient[pid].search_extend = extend;
-    ed.history.begin_session_all();
+    ed.state.pane_transient[pid].pre_search_sels = Some(pre_sels);
+    ed.state.pane_transient[pid].search_extend = extend;
+    ed.state.history.begin_session_all();
     ed.set_mode(Mode::Search);
-    ed.minibuf = Some(MiniBuffer {
+    ed.state.minibuf = Some(MiniBuffer {
         prompt: '?',
         input: String::new(),
         cursor: 0,
@@ -97,7 +97,7 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
         return true;
     }
     let pattern = ed
-        .registers
+        .state.registers
         .read(SEARCH_REGISTER)
         .and_then(|r| r.as_text().and_then(|v| v.first()).cloned())
         .unwrap_or_default();
@@ -107,7 +107,7 @@ fn ensure_search_regex(ed: &mut Editor) -> bool {
     match compile_search_regex(&pattern) {
         Some(r) => {
             let bid = ed.focused_buffer_id();
-            ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+            ed.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
                 regex: Arc::new(r),
                 pattern_str: pattern,
             });
@@ -135,7 +135,7 @@ fn search_jump(
 
     let regex = {
         let bid = ed.focused_buffer_id();
-        match ed.buffers.get(bid).search_pattern.as_ref() {
+        match ed.state.buffers.get(bid).search_pattern.as_ref() {
             Some(sp) => Arc::clone(&sp.regex),
             None => return Ok(()),
         }
@@ -171,8 +171,8 @@ fn search_jump(
     let mut any_wrapped = false;
     let bid = ed.focused_buffer_id();
 
-    if !ed.buffers.get(bid).search_matches.matches.is_empty() {
-        let cached_matches = &ed.buffers.get(bid).search_matches.matches;
+    if !ed.state.buffers.get(bid).search_matches.matches.is_empty() {
+        let cached_matches = &ed.state.buffers.get(bid).search_matches.matches;
         for _ in 0..count {
             match find_match_from_cache(cached_matches, from_char, direction) {
                 Some((start, end_incl, wrapped)) => {
@@ -232,7 +232,7 @@ pub fn cmd_clear_search(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = ed.focused_buffer_id();
-    super::super::search_ops::clear_buffer_search(&mut ed.buffers, &mut ed.pane_state, bid);
+    super::super::search_ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.pane_state, bid);
     Ok(())
 }
 
@@ -267,7 +267,7 @@ pub fn cmd_select_all_matches(
         return Ok(());
     }
     let bid = ed.focused_buffer_id();
-    let regex = match ed.buffers.get(bid).search_pattern.as_ref() {
+    let regex = match ed.state.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => Arc::clone(&sp.regex),
         None => return Ok(()),
     };
@@ -306,10 +306,10 @@ pub fn cmd_select_within(
         return Ok(());
     }
     let pre_sels = ed.current_selections().clone();
-    let pid = ed.focused_pane_id;
-    ed.pane_transient[pid].pre_select_sels = Some(pre_sels);
+    let pid = ed.state.focused_pane_id;
+    ed.state.pane_transient[pid].pre_select_sels = Some(pre_sels);
     ed.set_mode(Mode::Select);
-    ed.minibuf = Some(MiniBuffer {
+    ed.state.minibuf = Some(MiniBuffer {
         prompt: '⫽',
         input: String::new(),
         cursor: 0,
@@ -367,11 +367,11 @@ pub fn cmd_use_selection_as_search(
     };
 
     // Store in search register and set as active search.
-    ed.registers
+    ed.state.registers
         .write_text(SEARCH_REGISTER, vec![escaped.clone()]);
-    ed.search.direction = SearchDirection::Forward;
+    ed.state.search.direction = SearchDirection::Forward;
     let bid = ed.focused_buffer_id();
-    ed.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+    ed.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
         regex: Arc::new(regex),
         pattern_str: escaped,
     });

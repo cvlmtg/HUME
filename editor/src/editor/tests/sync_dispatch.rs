@@ -13,17 +13,9 @@ use scripting::host::EditorHost;
 /// in production command dispatch.
 macro_rules! live_host {
     ($ed:ident) => {{
-        let fpid = $ed.focused_pane_id;
         EditorHostImpl {
-            settings:        &mut $ed.settings,
-            keymap:          &mut $ed.keymap,
-            focused_pane_id: fpid,
-            buffers:         Some(&mut $ed.buffers),
-            engine_view:     Some(&mut $ed.engine_view),
-            pane_state:      Some(&mut $ed.pane_state),
-            pane_jumps:      Some(&mut $ed.pane_jumps),
-            languages:       Some(&mut $ed.languages),
-            registry:        Some(&$ed.registry),
+            state: &mut $ed.state,
+            view:  &mut $ed.view,
         }
     }};
 }
@@ -126,7 +118,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
 
     // Pre-register native command names as Steel bindings so `(move-right)` etc.
     // resolve at compile time.
-    let names: Vec<String> = ed.registry.native_mappable_names().map(str::to_owned).collect();
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
     let mut host = ScriptingHost::new();

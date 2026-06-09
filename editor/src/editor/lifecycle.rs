@@ -144,61 +144,63 @@ impl Editor {
         buffers.open(buffer_id, doc);
 
         Ok(Self {
-            buffers,
-            mode: Mode::Normal,
-            pending_keys: Vec::new(),
-            count: None,
-            wait_char: None,
-            pending_char: None,
-            registers: RegisterSet::new(),
-            kill_ring: KillRing::new(),
-            clipboard: clipboard::SystemClipboard::new(),
-            register_prefix: None,
-            last_command: None,
-            last_paste: None,
-            should_quit: false,
-            minibuf: None,
-            completion: None,
-            completion_view,
-            status_msg: None,
-            message_log: MessageLog::new(),
-            settings,
-            registry: CommandRegistry::with_defaults(),
-            keymap: Keymap::default(),
-            last_find: None,
-            kitty_enabled: false,
-            force_full_redraw: false,
-            last_repeatable_action: None,
-            insert_session: None,
-            explicit_count: false,
-            search: super::search_state::SearchState::default(),
-            pane_jumps: {
-                let mut m = SecondaryMap::new();
-                m.insert(
-                    pane_id,
-                    super::jump_list::JumpList::new(jump_list_capacity),
-                );
-                m
+            state: super::EditorState {
+                buffers,
+                mode: Mode::Normal,
+                pending_keys: Vec::new(),
+                count: None,
+                wait_char: None,
+                pending_char: None,
+                registers: RegisterSet::new(),
+                kill_ring: KillRing::new(),
+                clipboard: clipboard::SystemClipboard::new(),
+                register_prefix: None,
+                last_command: None,
+                last_paste: None,
+                should_quit: false,
+                minibuf: None,
+                completion: None,
+                status_msg: None,
+                message_log: MessageLog::new(),
+                settings,
+                registry: CommandRegistry::with_defaults(),
+                keymap: Keymap::default(),
+                last_find: None,
+                force_full_redraw: false,
+                last_repeatable_action: None,
+                insert_session: None,
+                explicit_count: false,
+                search: super::search_state::SearchState::default(),
+                pane_jumps: {
+                    let mut m = SecondaryMap::new();
+                    m.insert(
+                        pane_id,
+                        super::jump_list::JumpList::new(jump_list_capacity),
+                    );
+                    m
+                },
+                history: super::minibuf_history::HistoryStore::new(history_capacity),
+                pane_state,
+                pane_transient,
+                focused_pane_id: pane_id,
+                motion_format_scratch: engine::format::FormatScratch::new(),
+                visual_move_target_cols: Vec::new(),
+                macro_recording: None,
+                macro_pending: None,
+                replay_queue: VecDeque::new(),
+                skip_macro_record: false,
+                is_replaying: false,
+                mouse_drag_anchor: None,
+                languages: crate::editor::syntax::LanguageRegistry::new(),
+                cwd: std::env::current_dir().unwrap_or_default(),
             },
-            history: super::minibuf_history::HistoryStore::new(history_capacity),
-            pane_state,
-            pane_transient,
-            engine_view,
-            focused_pane_id: pane_id,
+            view: engine_view,
             bracket_hl_data,
             search_hl_data,
-            motion_format_scratch: engine::format::FormatScratch::new(),
-            visual_move_target_cols: Vec::new(),
-            macro_recording: None,
-            macro_pending: None,
-            replay_queue: VecDeque::new(),
-            skip_macro_record: false,
-            is_replaying: false,
-            mouse_drag_anchor: None,
+            completion_view,
+            kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
-            languages: crate::editor::syntax::LanguageRegistry::new(),
-            cwd: std::env::current_dir().unwrap_or_default(),
             parse_worker: Box::new(crate::editor::parse_worker::ThreadedParseBackend::new()),
             parse_worker_disconnect_logged: false,
         })
@@ -220,7 +222,7 @@ impl Editor {
         loop {
             // An inline-output command toggled the alt-screen, invalidating ratatui's
             // diff cache; force a full repaint so the editor chrome is restored cleanly.
-            if std::mem::take(&mut self.force_full_redraw) {
+            if std::mem::take(&mut self.state.force_full_redraw) {
                 let _ = term.clear();
             }
 
@@ -231,21 +233,21 @@ impl Editor {
             // ── 2. Render ─────────────────────────────────────────────────────
             // Compute terminal cursor position before the draw closure to avoid
             // split-borrow conflicts: pane borrows and rope borrows must end
-            // before `&mut self.engine_view` is captured by the closure.
-            let cursor_screen = if let Some(mb) = &self.minibuf {
+            // before `&mut self.view` is captured by the closure.
+            let cursor_screen = if let Some(mb) = &self.state.minibuf {
                 // Minibuf active (Command / Search): place the terminal cursor
                 // in the statusline at the minibuf edit position.
                 let statusline_row = size.height.saturating_sub(1);
                 Some((mb.statusline_cursor_col(), statusline_row))
-            } else if self.mode.cursor_is_bar() {
+            } else if self.state.mode.cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+                let cursor_char = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
                     .head();
                 let (pane_settings_cursor, gutter_w) =
                     self.resolve_focused_pane_settings();
-                let vp = self.engine_view.panes[self.focused_pane_id].viewport.clone();
+                let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
                 super::cursor::screen_pos(
                     &vp,
                     self.doc().text().rope(),
@@ -269,11 +271,11 @@ impl Editor {
             // moving `engine_view` into the draw closure.
             let rope: &ropey::Rope = self.doc().text().rope();
             let buffer_id = self.focused_buffer_id();
-            let pane_id = self.focused_pane_id;
+            let pane_id = self.state.focused_pane_id;
             // Resolve mode and display settings once — passed to the engine via
             // closure so the engine never stores editor-domain state on Pane.
             let (pane_settings, _) = self.resolve_focused_pane_settings();
-            let engine_view = &self.engine_view;
+            let engine_view = &self.view;
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
@@ -303,14 +305,14 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = platform::terminal::set_cursor_shape(self.mode.cursor_is_bar());
-            if last_cursor_color_mode != Some(self.mode) {
+            let _ = platform::terminal::set_cursor_shape(self.state.mode.cursor_is_bar());
+            if last_cursor_color_mode != Some(self.state.mode) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.
                 let black =
-                    matches!(self.mode, EditorMode::Command | EditorMode::Search);
+                    matches!(self.state.mode, EditorMode::Command | EditorMode::Search);
                 let _ = platform::terminal::set_cursor_color(black);
-                last_cursor_color_mode = Some(self.mode);
+                last_cursor_color_mode = Some(self.state.mode);
             }
             // Close the synchronized-output envelope: the terminal now atomically
             // paints the complete frame — clear + cells + cursor shape in one shot.
@@ -363,7 +365,7 @@ impl Editor {
                 _ => {}
             }
 
-            if self.should_quit {
+            if self.state.should_quit {
                 break;
             }
 
@@ -378,7 +380,7 @@ impl Editor {
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
             self.sync_search_cache();
-            if self.should_quit {
+            if self.state.should_quit {
                 break;
             }
         }
@@ -396,17 +398,17 @@ impl Editor {
     /// block, and `draw_once`).
     fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
         let len_lines = self.doc().text().len_lines();
-        let pane = &self.engine_view.panes[self.focused_pane_id];
+        let pane = &self.view.panes[self.state.focused_pane_id];
         let gutter_w = super::cursor::gutter_width(
             pane.providers.gutter_columns(),
             len_lines,
         );
-        let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
+        let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
         let content_width = pane.viewport.width.saturating_sub(gutter_w).max(1);
         let wrap_mode = raw_wrap.resolve(content_width);
-        let tab_width = self.doc().overrides.tab_width(&self.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.settings);
-        (PaneRenderSettings { mode: self.mode, wrap_mode, tab_width, whitespace }, gutter_w)
+        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+        (PaneRenderSettings { mode: self.state.mode, wrap_mode, tab_width, whitespace }, gutter_w)
     }
 
     /// Paint one frame immediately — called before `init_scripting` so the
@@ -420,9 +422,9 @@ impl Editor {
 
         let rope = self.doc().text().rope();
         let buffer_id = self.focused_buffer_id();
-        let pane_id = self.focused_pane_id;
+        let pane_id = self.state.focused_pane_id;
         let (pane_settings, _) = self.resolve_focused_pane_settings();
-        let engine_view = &self.engine_view;
+        let engine_view = &self.view;
         let _ = platform::terminal::begin_synchronized_update();
         term.draw(|frame| {
             engine_view.render(
@@ -472,30 +474,30 @@ impl Editor {
 
         // 3. Sync line-number style provider (depends on buffer overrides).
         {
-            let ln_style = self.doc().overrides.line_number_style(&self.settings);
-            self.engine_view.panes[self.focused_pane_id]
+            let ln_style = self.doc().overrides.line_number_style(&self.state.settings);
+            self.view.panes[self.state.focused_pane_id]
                 .providers
                 .sync_line_number_style(ln_style);
         }
 
         // 4. Scroll so the primary cursor stays visible.
-        let cursor_char = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+        let cursor_char = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
             .selections
             .primary()
             .head();
-        let scrolloff = self.settings.scrolloff;
-        let tab_width = self.doc().overrides.tab_width(&self.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.settings);
+        let scrolloff = self.state.settings.scrolloff;
+        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-            let len_lines = self.buffers.get(buf_id).text().len_lines();
-            let rope = self.buffers.get(buf_id).text().rope();
+            let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+            let len_lines = self.state.buffers.get(buf_id).text().len_lines();
+            let rope = self.state.buffers.get(buf_id).text().rope();
             let wrap_mode = {
-                let pane = &self.engine_view.panes[self.focused_pane_id];
+                let pane = &self.view.panes[self.state.focused_pane_id];
                 raw_wrap.resolve(pane.content_width(len_lines))
             };
-            let pane = &mut self.engine_view.panes[self.focused_pane_id];
+            let pane = &mut self.view.panes[self.state.focused_pane_id];
             scroll_into_view(
                 pane,
                 rope,
@@ -528,13 +530,10 @@ impl Editor {
     ///
     /// Called once per frame from `prepare_frame`, before `render()`.
     pub(crate) fn sync_all_pane_mirrors(&mut self) {
-        let Self {
-            pane_state,
-            engine_view,
-            ..
-        } = &mut *self;
-        for (pid, pane) in engine_view.panes.iter_mut() {
-            if let Some(pbs) = pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
+        let state = &mut self.state;
+        let view = &mut self.view;
+        for (pid, pane) in view.panes.iter_mut() {
+            if let Some(pbs) = state.pane_state.get(pid).and_then(|m| m.get(pane.buffer_id)) {
                 write_pane_mirror(pane, &pbs.selections);
             }
         }
@@ -543,18 +542,18 @@ impl Editor {
     // ── Engine accessors ──────────────────────────────────────────────────────
 
     pub(crate) fn viewport(&self) -> &engine::pane::ViewportState {
-        &self.engine_view.panes[self.focused_pane_id].viewport
+        &self.view.panes[self.state.focused_pane_id].viewport
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut engine::pane::ViewportState {
-        &mut self.engine_view.panes[self.focused_pane_id].viewport
+        &mut self.view.panes[self.state.focused_pane_id].viewport
     }
 
     // ── Search accessors ──────────────────────────────────────────────────────
 
     /// Accessor for the focused buffer's active search pattern.
     pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
-        self.buffers
+        self.state.buffers
             .get(self.focused_buffer_id())
             .search_pattern
             .as_ref()
@@ -563,26 +562,26 @@ impl Editor {
     /// Accessor for the focused buffer's match cache.
     #[cfg(test)]
     pub(crate) fn search_matches(&self) -> &SearchMatches {
-        &self.buffers.get(self.focused_buffer_id()).search_matches
+        &self.state.buffers.get(self.focused_buffer_id()).search_matches
     }
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
     pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
-        &self.pane_state[self.focused_pane_id][self.focused_buffer_id()].search_cursor
+        &self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
     }
 
     /// Mutable accessor for the focused pane's search cursor.
     pub(crate) fn current_search_cursor_mut(&mut self) -> &mut SearchCursor {
         let bid = self.focused_buffer_id();
-        &mut self.pane_state[self.focused_pane_id][bid].search_cursor
+        &mut self.state.pane_state[self.state.focused_pane_id][bid].search_cursor
     }
 
     /// Recompute the match list and pane search cursor for the focused buffer,
     /// if stale. No-op when no search is active.
     pub(super) fn sync_search_cache(&mut self) {
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        search_ops::sync_search_cache(&mut self.buffers, &mut self.pane_state, pid, bid);
+        search_ops::sync_search_cache(&mut self.state.buffers, &mut self.state.pane_state, pid, bid);
     }
 
     /// Write per-frame highlight data to the shared `Arc<RwLock<...>>` buffers
@@ -604,12 +603,12 @@ impl Editor {
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
-            if self.mode != EditorMode::Insert {
+            if self.state.mode != EditorMode::Insert {
                 // Matches are sorted by document order. Binary-search to the first
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
                 let matches = &self
-                    .buffers
+                    .state.buffers
                     .get(self.focused_buffer_id())
                     .search_matches
                     .matches;
@@ -632,8 +631,8 @@ impl Editor {
         {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
-            if self.mode != EditorMode::Insert {
-                let head = self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+            if self.state.mode != EditorMode::Insert {
+                let head = self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
                     .head();
@@ -666,7 +665,7 @@ impl Editor {
     pub(super) fn sync_completion_view(&self) {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
-        if self.completion.is_none()
+        if self.state.completion.is_none()
             && self
                 .completion_view
                 .read()
@@ -677,9 +676,9 @@ impl Editor {
         }
         use unicode_width::UnicodeWidthChar as _;
         use unicode_width::UnicodeWidthStr as _;
-        let view = self.completion.as_ref().map(|state| {
+        let view = self.state.completion.as_ref().map(|state| {
             let anchor_col = self
-                .minibuf
+                .state.minibuf
                 .as_ref()
                 .map(|mb| {
                     let pad: u16 = 1;
@@ -693,7 +692,7 @@ impl Editor {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
                 anchor_col,
-                border: self.settings.popup_border,
+                border: self.state.settings.popup_border,
             }
         });
         *self.completion_view.write().expect("RwLock not poisoned") = view;
@@ -706,8 +705,8 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
-        let old = self.mode;
-        self.mode = mode;
+        let old = self.state.mode;
+        self.state.mode = mode;
         if old != mode
             && self
                 .scripting

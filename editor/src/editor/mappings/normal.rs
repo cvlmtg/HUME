@@ -14,15 +14,15 @@ use engine::types::EditorMode;
 /// is enqueued. Count is consumed and cleared. No-op when the register is empty,
 /// unset, or holds text rather than a macro.
 fn enqueue_macro_replay(ed: &mut Editor, reg: char) {
-    let count = ed.count.take().unwrap_or(1);
+    let count = ed.state.count.take().unwrap_or(1);
     if let Some(keys) = ed
-        .registers
+        .state.registers
         .read(reg)
         .and_then(|r| r.as_macro())
         .map(|k| k.to_vec())
     {
         for _ in 0..count {
-            ed.replay_queue.extend(keys.iter().copied());
+            ed.state.replay_queue.extend(keys.iter().copied());
         }
     }
 }
@@ -59,30 +59,30 @@ impl Editor {
         // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
         // holds the command name to dispatch. The next character (any key)
         // becomes the argument — stored in `pending_char` for the command to read.
-        if let Some(wc) = self.wait_char.take() {
+        if let Some(wc) = self.state.wait_char.take() {
             if let KeyCode::Char(ch) = key.code {
-                let count = self.count.take().unwrap_or(1);
-                self.pending_char = Some(ch);
+                let count = self.state.count.take().unwrap_or(1);
+                self.state.pending_char = Some(ch);
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
-                let extend = (self.mode == EditorMode::Extend) || wc.ctrl_extend;
+                let extend = (self.state.mode == EditorMode::Extend) || wc.ctrl_extend;
                 self.execute_keymap_command(wc.cmd_name.clone(), count, extend, vec![]);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
-            self.count = None;
+            self.state.count = None;
             return;
         }
 
         // ── Hard-reset on Esc ─────────────────────────────────────────────────
         if key.code == KeyCode::Esc {
-            self.pending_keys.clear();
-            self.count = None;
-            self.macro_pending = None; // cancel any pending q/Q register-name prompt
-            self.register_prefix = None; // cancel any pending "<reg> state
+            self.state.pending_keys.clear();
+            self.state.count = None;
+            self.state.macro_pending = None; // cancel any pending q/Q register-name prompt
+            self.state.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
-            if self.mode == EditorMode::Extend {
-                self.mode = EditorMode::Normal;
+            if self.state.mode == EditorMode::Extend {
+                self.state.mode = EditorMode::Normal;
             }
             let _ = cmd_clear_search(self, 0, MotionMode::Move);
             return;
@@ -98,23 +98,23 @@ impl Editor {
         //   `qq` → replay from the default register `q` (mirrors `QQ` for recording).
         //   `q<reg>` → replay from the named register (e.g. `q3`).
         //   Any other key → cancel silently (key is swallowed).
-        if let Some(pending) = self.macro_pending.take() {
+        if let Some(pending) = self.state.macro_pending.take() {
             match pending {
                 MacroPending::Record => {
                     // A count prefix before `Q<reg>` has no meaning for recording.
                     // Clear it so it doesn't leak into the first key typed during
                     // the session (which would fire with count N instead of 1).
-                    self.count = None;
+                    self.state.count = None;
                     match key.code {
                         // `QQ` — record into the default register. `Q` is uppercase
                         // so is_valid_macro_register won't catch it; handle explicitly.
                         KeyCode::Char('Q') => {
-                            self.macro_recording = Some((MACRO_REGISTER, Vec::new()));
-                            self.skip_macro_record = true;
+                            self.state.macro_recording = Some((MACRO_REGISTER, Vec::new()));
+                            self.state.skip_macro_record = true;
                         }
                         KeyCode::Char(reg) if is_valid_macro_register(reg) => {
-                            self.macro_recording = Some((reg, Vec::new()));
-                            self.skip_macro_record = true;
+                            self.state.macro_recording = Some((reg, Vec::new()));
+                            self.state.skip_macro_record = true;
                         }
                         // Esc, Ctrl-C, non-Char, or invalid Char — cancel.
                         _ => {}
@@ -140,13 +140,13 @@ impl Editor {
         // After `"`, the next keypress names the register for the upcoming
         // yank/delete/change/paste. Valid names: '0'–'9', 'b' (black hole), 'c'
         // (clipboard). Invalid chars or Esc cancel silently.
-        if let Some(RegisterPrefix::Awaiting) = self.register_prefix {
-            self.register_prefix = None;
+        if let Some(RegisterPrefix::Awaiting) = self.state.register_prefix {
+            self.state.register_prefix = None;
             if let KeyCode::Char(ch) = key.code
                 && key.modifiers == KeyModifiers::NONE
                 && is_valid_register_name(ch)
             {
-                self.register_prefix = Some(RegisterPrefix::Selected(ch));
+                self.state.register_prefix = Some(RegisterPrefix::Selected(ch));
             }
             // Invalid char, modified key, or non-Char key: cancel silently (key is swallowed).
             // Count accumulated before `"` is preserved for the next command.
@@ -159,15 +159,15 @@ impl Editor {
         // `0` without an existing count is the goto-line-start binding, not a digit.
         // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
         // register name, not as a count digit.
-        if self.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
+        if self.state.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
             match key.code {
                 KeyCode::Char(d @ '1'..='9') => {
-                    let n = self.count.unwrap_or(0) * 10 + (d as usize - '0' as usize);
-                    self.count = Some(n);
+                    let n = self.state.count.unwrap_or(0) * 10 + (d as usize - '0' as usize);
+                    self.state.count = Some(n);
                     return;
                 }
-                KeyCode::Char('0') if self.count.is_some() => {
-                    self.count = self.count.map(|c| c * 10);
+                KeyCode::Char('0') if self.state.count.is_some() => {
+                    self.state.count = self.state.count.map(|c| c * 10);
                     return;
                 }
                 _ => {}
@@ -179,26 +179,26 @@ impl Editor {
         // because you do it once; replay uses lowercase because you do it often.
         // Both are suppressed while a replay is in progress to prevent nesting.
         // `"` triggers the register-prefix — the next char names the target register.
-        if self.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
+        if self.state.pending_keys.is_empty() && key.modifiers == KeyModifiers::NONE {
             match key.code {
                 KeyCode::Char('Q') => {
-                    if let Some((reg, keys)) = self.macro_recording.take() {
+                    if let Some((reg, keys)) = self.state.macro_recording.take() {
                         // Always allow stopping an in-progress recording, even if
                         // the user has navigated to a read-only buffer since starting.
-                        self.registers.write_macro(reg, keys);
-                    } else if !self.is_replaying && !self.focused_buffer_read_only() {
-                        self.macro_pending = Some(MacroPending::Record);
+                        self.state.registers.write_macro(reg, keys);
+                    } else if !self.state.is_replaying && !self.focused_buffer_read_only() {
+                        self.state.macro_pending = Some(MacroPending::Record);
                     }
                     // During replay, or on a read-only buffer: silently ignore.
                     return;
                 }
                 KeyCode::Char('q') => {
-                    if !self.is_replaying
-                        && self.macro_recording.is_none()
+                    if !self.state.is_replaying
+                        && self.state.macro_recording.is_none()
                         && !self.focused_buffer_read_only()
                     {
                         // Replay: wait for the register-name key.
-                        self.macro_pending = Some(MacroPending::Replay);
+                        self.state.macro_pending = Some(MacroPending::Replay);
                     }
                     // During recording, replay, or on a read-only buffer: silently ignore.
                     return;
@@ -207,7 +207,7 @@ impl Editor {
                     // Register prefix: `"<reg>` selects the named register for the
                     // upcoming yank/delete/change/paste. Set pending state; the next
                     // keypress will be consumed as the register name.
-                    self.register_prefix = Some(RegisterPrefix::Awaiting);
+                    self.state.register_prefix = Some(RegisterPrefix::Awaiting);
                     return;
                 }
                 _ => {}
@@ -245,24 +245,24 @@ impl Editor {
         // only `Interior` commits the key (so the sequence accumulates correctly
         // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
         // so the normal-trie path below can push it as usual.
-        if self.mode == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
-            let mut seq = self.pending_keys.clone();
+        if self.state.mode == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
+            let mut seq = self.state.pending_keys.clone();
             seq.push(key);
-            match self.keymap.extend.walk(&seq) {
+            match self.state.keymap.extend.walk(&seq) {
                 WalkResult::Leaf(cmd) => {
-                    self.pending_keys.clear();
-                    let count = self.count.take().unwrap_or(1);
-                    self.explicit_count = false;
+                    self.state.pending_keys.clear();
+                    let count = self.state.count.take().unwrap_or(1);
+                    self.state.explicit_count = false;
                     self.execute_keymap_command(cmd.name.clone(), count, false, vec![]);
                     return;
                 }
                 WalkResult::Interior { .. } => {
                     // Mid-sequence — commit the key and wait for more.
-                    self.pending_keys.push(key);
+                    self.state.pending_keys.push(key);
                     return;
                 }
                 WalkResult::WaitChar(wc) => {
-                    self.wait_char = Some(wc);
+                    self.state.wait_char = Some(wc);
                     return;
                 }
                 WalkResult::NoMatch => {
@@ -306,29 +306,29 @@ impl Editor {
         // binding. If found, reuse that result directly (no second walk).
         // If NoMatch, strip CONTROL and re-walk only on kitty terminals.
         let (result, ctrl_extend) =
-            if key.modifiers.contains(KeyModifiers::CONTROL) && self.pending_keys.is_empty() {
-                match self.keymap.normal.walk(&[key]) {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && self.state.pending_keys.is_empty() {
+                match self.state.keymap.normal.walk(&[key]) {
                     WalkResult::NoMatch if self.kitty_enabled => {
                         // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
                         // resolved command is extendable — prevents e.g. Ctrl+u running
                         // "undo" (not a motion) as a one-shot extend.
                         let bare = KeyEvent::new(key.code, KeyModifiers::NONE);
-                        self.pending_keys.push(bare);
-                        let result = self.keymap.normal.walk(&self.pending_keys);
+                        self.state.pending_keys.push(bare);
+                        let result = self.state.keymap.normal.walk(&self.state.pending_keys);
                         let is_extendable = match &result {
                             WalkResult::Leaf(c) => self
-                                .registry
+                                .state.registry
                                 .get_mappable(c.name.as_ref())
                                 .is_some_and(|r| r.is_extendable()),
                             WalkResult::WaitChar(wc) => self
-                                .registry
+                                .state.registry
                                 .get_mappable(wc.cmd_name.as_ref())
                                 .is_some_and(|r| r.is_extendable()),
                             _ => false,
                         };
                         if !is_extendable {
-                            self.pending_keys.clear();
-                            self.count = None;
+                            self.state.pending_keys.clear();
+                            self.state.count = None;
                             return;
                         }
                         (result, true)
@@ -348,14 +348,14 @@ impl Editor {
                             _ => false,
                         };
                         if matches!(matched, WalkResult::Interior { .. }) {
-                            self.pending_keys.push(key);
+                            self.state.pending_keys.push(key);
                         }
                         (matched, ctrl_extend)
                     }
                 }
             } else {
-                self.pending_keys.push(key);
-                (self.keymap.normal.walk(&self.pending_keys), false)
+                self.state.pending_keys.push(key);
+                (self.state.keymap.normal.walk(&self.state.pending_keys), false)
             };
 
         // ── Stage 3: Final extend merge ───────────────────────────────────────
@@ -363,30 +363,30 @@ impl Editor {
         // Both inputs are now available: sticky extend from editor mode, and
         // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
         // `extend` is passed as a parameter — no mode transition occurs.
-        let extend = (self.mode == EditorMode::Extend) || ctrl_extend;
+        let extend = (self.state.mode == EditorMode::Extend) || ctrl_extend;
 
         match result {
             WalkResult::Leaf(cmd) => {
-                self.pending_keys.clear();
-                let raw_count = self.count.take();
-                self.explicit_count = raw_count.is_some();
+                self.state.pending_keys.clear();
+                let raw_count = self.state.count.take();
+                self.state.explicit_count = raw_count.is_some();
                 let count = raw_count.unwrap_or(1);
                 self.execute_keymap_command(cmd.name.clone(), count, extend, vec![]);
-                self.explicit_count = false;
+                self.state.explicit_count = false;
             }
             WalkResult::WaitChar(mut wc) => {
-                self.pending_keys.clear();
+                self.state.pending_keys.clear();
                 // Carry ctrl_extend into WaitCharPending so extend resolution
                 // happens at char-consumption time.
                 wc.ctrl_extend = ctrl_extend;
-                self.wait_char = Some(wc);
+                self.state.wait_char = Some(wc);
             }
             WalkResult::Interior { .. } => {
                 // More keys needed. pending_keys stays populated.
             }
             WalkResult::NoMatch => {
-                self.pending_keys.clear();
-                self.count = None;
+                self.state.pending_keys.clear();
+                self.state.count = None;
             }
         }
     }

@@ -22,7 +22,7 @@ fn write_preserves_permissions() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -64,7 +64,7 @@ fn write_follows_symlink() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -122,7 +122,7 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     // On POSIX rename succeeds without triggering the chmod-retry path, so the
     // message has no "(forced)" suffix.
-    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     // Permissions must be preserved at 0o444.
     let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;
@@ -138,9 +138,9 @@ fn colon_wq_bang_force_writes_and_quits() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 // ── insert-at-selection-start / insert-at-selection-end ──────────────────────
@@ -151,7 +151,7 @@ fn insert_at_selection_start_forward() {
     let mut ed = editor_from("foo -[bar]> baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 }
 
 /// `i` with a backward selection also collapses to the start (lower index).
@@ -160,7 +160,7 @@ fn insert_at_selection_start_backward() {
     let mut ed = editor_from("foo <[bar]- baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 }
 
 /// `i` with a collapsed cursor just enters insert at the same position.
@@ -169,7 +169,7 @@ fn insert_at_selection_start_collapsed() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 }
 
 // ── :e on already-open buffers ────────────────────────────────────────────────
@@ -228,11 +228,11 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
         ":e <deleted-path> must switch to the open buffer"
     );
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
-        ed.status_msg.as_deref()
+        ed.state.status_msg.as_deref()
     );
 }
 
@@ -299,7 +299,7 @@ fn open_extra_files_opens_all_paths() {
 
     ed.open_extra_files(std::slice::from_ref(&canonical2));
 
-    assert_eq!(ed.buffers.len(), 2, "both files must be open");
+    assert_eq!(ed.state.buffers.len(), 2, "both files must be open");
     assert_eq!(
         ed.focused_buffer_id(),
         first_id,
@@ -311,7 +311,7 @@ fn open_extra_files_opens_all_paths() {
         "current buffer must still be the first file"
     );
     assert!(
-        ed.buffers.find_by_path(&canonical2).is_some(),
+        ed.state.buffers.find_by_path(&canonical2).is_some(),
         "second file must be present in the buffer store"
     );
 }
@@ -327,7 +327,7 @@ fn open_extra_files_deduplicates() {
     // Pass the same path twice — must still result in exactly one buffer.
     ed.open_extra_files(&[canonical.clone(), canonical]);
 
-    assert_eq!(ed.buffers.len(), 1, "duplicate paths must not open new buffers");
+    assert_eq!(ed.state.buffers.len(), 1, "duplicate paths must not open new buffers");
 }
 
 #[test]
@@ -342,9 +342,9 @@ fn open_extra_files_nonexistent_logs_warning() {
 
     ed.open_extra_files(&[nonexistent]);
 
-    assert_eq!(ed.buffers.len(), 1, "failed open must not add a buffer");
+    assert_eq!(ed.state.buffers.len(), 1, "failed open must not add a buffer");
     assert!(
-        ed.message_log.entries().any(|e| {
+        ed.state.message_log.entries().any(|e| {
             e.severity == crate::editor::message_log::Severity::Warning
                 && e.text.contains("hume_test_nonexistent_xyz_404.txt")
         }),

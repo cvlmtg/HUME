@@ -106,7 +106,7 @@ pub fn typed_pwd(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    ed.report(Severity::Info, platform::path::shorten_home(&ed.cwd));
+    ed.report(Severity::Info, platform::path::shorten_home(&ed.state.cwd));
     Ok(())
 }
 
@@ -159,19 +159,19 @@ pub fn typed_buffer(
 /// reachable after their backing file has been deleted.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
     if let Ok(canonical) = std::fs::canonicalize(arg)
-        && let Some(bid) = ed.buffers.find_by_path(&canonical)
+        && let Some(bid) = ed.state.buffers.find_by_path(&canonical)
     {
         return Some(bid);
     }
     let abs = std::path::absolute(arg).ok()?;
-    ed.buffers.find_by_path(&abs)
+    ed.state.buffers.find_by_path(&abs)
 }
 
 /// Emit a warning if `bid`'s backing file no longer exists on disk.
 fn warn_if_file_gone(ed: &mut Editor, bid: BufferId) {
     // Check while holding the borrow; capture only the display string so the
     // borrow is released before the &mut ed.report() call below.
-    let display = ed.buffers.get(bid).path().and_then(|p| {
+    let display = ed.state.buffers.get(bid).path().and_then(|p| {
         match std::fs::metadata(p) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 Some(p.display().to_string())
@@ -208,7 +208,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .checked_sub(1)
             .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")))?;
         return ed
-            .buffers
+            .state.buffers
             .iter()
             .nth(idx)
             .map(|(id, _)| id)
@@ -224,7 +224,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
     // 3. Exact display-name match.
     let exact: Vec<BufferId> = ed
-        .buffers
+        .state.buffers
         .iter()
         .filter(|(_, buf)| buf.display_name() == arg)
         .map(|(id, _)| id)
@@ -232,7 +232,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     match exact.len() {
         1 => return Ok(exact[0]),
         n if n > 1 => {
-            let labels: Vec<String> = exact.iter().map(|&id| label(ed.buffers.get(id))).collect();
+            let labels: Vec<String> = exact.iter().map(|&id| label(ed.state.buffers.get(id))).collect();
             return Err(CommandError::new(format!(
                 "ambiguous buffer name '{arg}': {}",
                 labels.join(", ")
@@ -243,7 +243,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
     // 4. Unique basename-prefix match.
     let prefix_matches: Vec<BufferId> = ed
-        .buffers
+        .state.buffers
         .iter()
         .filter(|(_, buf)| buf.display_name().starts_with(arg))
         .map(|(id, _)| id)
@@ -254,7 +254,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         _ => {
             let labels: Vec<String> = prefix_matches
                 .iter()
-                .map(|&id| label(ed.buffers.get(id)))
+                .map(|&id| label(ed.state.buffers.get(id)))
                 .collect();
             Err(CommandError::new(format!(
                 "ambiguous prefix '{arg}': {}",
@@ -270,7 +270,7 @@ pub fn typed_bnext(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let target = ed.buffers.next(ed.focused_buffer_id());
+    let target = ed.state.buffers.next(ed.focused_buffer_id());
     if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);
     }
@@ -283,7 +283,7 @@ pub fn typed_bprev(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let target = ed.buffers.prev(ed.focused_buffer_id());
+    let target = ed.state.buffers.prev(ed.focused_buffer_id());
     if target != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(target);
     }

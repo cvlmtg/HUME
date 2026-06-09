@@ -55,7 +55,7 @@ impl Editor {
     /// Call once per command at entry — calling twice returns `None` on the
     /// second call because the pending state is cleared by `take()`.
     pub(super) fn take_register_prefix(&mut self) -> Option<char> {
-        match self.register_prefix.take() {
+        match self.state.register_prefix.take() {
             Some(RegisterPrefix::Selected(c)) => Some(c),
             _ => None,
         }
@@ -66,7 +66,7 @@ impl Editor {
     /// On clipboard failure logs a warning; always mirrors to in-memory 'c' so
     /// reads work even when the clipboard server is unavailable.
     pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
-        if let Some(w) = register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values) {
+        if let Some(w) = register_ops::write_register(&mut self.state.registers, &mut self.state.clipboard, name, values) {
             self.report(Severity::Warning, w);
         }
     }

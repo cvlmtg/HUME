@@ -11,7 +11,7 @@ use pretty_assertions::assert_eq;
 /// Return the pane's primary cursor as an absolute char offset — the engine's
 /// representation after Phase 2 unified the selection types.
 fn pane_head(ed: &Editor) -> usize {
-    ed.engine_view.panes[ed.focused_pane_id].selections[0].head
+    ed.view.panes[ed.state.focused_pane_id].selections[0].head
 }
 
 /// After `c` (change): the selection is deleted and Insert mode entered.
@@ -21,7 +21,7 @@ fn pane_selections_synced_after_change_command() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('c'));
     // `c` enters Insert; buffer is now "o\n" with cursor at char 0.
-    assert_eq!(ed.mode, Mode::Insert);
+    assert_eq!(ed.state.mode, Mode::Insert);
 
     // Simulate the per-frame sync that happens in the run loop.
     ed.sync_all_pane_mirrors();
@@ -97,7 +97,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     ed.sync_all_pane_mirrors();
 
     // Selections are passed in sorted document order; primary_idx identifies the primary.
-    let pane = &ed.engine_view.panes[ed.focused_pane_id];
+    let pane = &ed.view.panes[ed.state.focused_pane_id];
     assert_eq!(
         pane.selections[0].head, 0,
         "pane.selections[0] is the earliest in document order (char 0, 'a')"
@@ -148,7 +148,7 @@ fn pane_selections_sorted_by_head_not_start() {
 
     ed.sync_all_pane_mirrors();
 
-    let pane = &ed.engine_view.panes[ed.focused_pane_id];
+    let pane = &ed.view.panes[ed.state.focused_pane_id];
     // After sort-by-head: [A(head=3), B(head=8)]
     assert_eq!(pane.selections[0].head, 3, "first in head order is A");
     assert_eq!(pane.selections[1].head, 8, "second in head order is B");

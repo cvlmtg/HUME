@@ -14,10 +14,10 @@ impl Editor {
             .scripting
             .as_ref()
             .map_or(0, |h| h.pending_startup_commands_len());
-        let init_budget = self.settings.steel_init_budget_ms as u64;
+        let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
             let Some(host) = self.scripting.as_mut() else { return };
-            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.activate_plugin(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
         match result {
@@ -84,11 +84,11 @@ impl Editor {
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
         let unresolved = matches!(
-            self.registry.get_mappable(name),
+            self.state.registry.get_mappable(name),
             Some(MappableCommand::Lazy { .. }) | None
         );
         if unresolved {
-            self.registry.unregister(name);
+            self.state.registry.unregister(name);
             false
         } else {
             true

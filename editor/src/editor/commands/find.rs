@@ -11,7 +11,7 @@ use crate::ops::motion::FindKind;
 // ── Find / till character ─────────────────────────────────────────────────────
 //
 // All eight find/till commands read the character argument from
-// `ed.pending_char`, which was stored by the WaitChar consumption path.
+// `ed.state.pending_char`, which was stored by the WaitChar consumption path.
 
 /// Shared implementation for the eight find/till commands.
 fn find_char(
@@ -21,13 +21,13 @@ fn find_char(
     kind: FindKind,
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
-    if let Some(ch) = ed.pending_char.take() {
-        let focused = ed.focused_pane_id;
+    if let Some(ch) = ed.state.pending_char.take() {
+        let focused = ed.state.focused_pane_id;
         let buf = ed.focused_buffer_id();
-        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
-        ed.last_find = Some(FindChar { ch, kind });
+        ed.state.last_find = Some(FindChar { ch, kind });
     }
 }
 
@@ -73,10 +73,10 @@ fn repeat_find(
     mode: MotionMode,
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
-    if let Some(FindChar { ch, kind }) = ed.last_find {
-        let focused = ed.focused_pane_id;
+    if let Some(FindChar { ch, kind }) = ed.state.last_find {
+        let focused = ed.state.focused_pane_id;
         let buf = ed.focused_buffer_id();
-        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+        doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
     }

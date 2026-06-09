@@ -23,7 +23,7 @@ impl Editor {
         extend: bool,
         steel_args: Vec<steel::rvals::SteelVal>,
     ) {
-        let Some(reg_cmd) = self.registry.get_mappable(name.as_ref()).cloned() else {
+        let Some(reg_cmd) = self.state.registry.get_mappable(name.as_ref()).cloned() else {
             self.report(Severity::Warning, format!("unknown command: {name}"));
             return;
         };
@@ -36,7 +36,7 @@ impl Editor {
             }
 
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
-            let char_arg = self.pending_char;
+            let char_arg = self.state.pending_char;
 
             // ── Jump list: capture pre-command state ─────────────────────────
             // Motions, explicit jump commands, and vertical visual-line EditorCmds
@@ -60,27 +60,27 @@ impl Editor {
                 MotionMode::Move
             };
 
-            let focused = self.focused_pane_id;
+            let focused = self.state.focused_pane_id;
             let buf = self.focused_buffer_id();
             match reg_cmd {
                 MappableCommand::Motion { fun, .. } => {
                     // Motion functions take (buf, sels, count, mode). count defaults to 1
                     // if the user typed no prefix.
                     doc_ops::apply_doc_motion(
-                        &self.buffers, &mut self.pane_state, focused, buf,
+                        &self.state.buffers, &mut self.state.pane_state, focused, buf,
                         |b, s| fun(b, s, count, motion_mode),
                     );
                 }
                 MappableCommand::Selection { fun, .. } => {
                     // Selection / text-object functions don't take count.
                     doc_ops::apply_doc_motion(
-                        &self.buffers, &mut self.pane_state, focused, buf,
+                        &self.state.buffers, &mut self.state.pane_state, focused, buf,
                         |b, s| fun(b, s, motion_mode),
                     );
                 }
                 MappableCommand::Edit { fun, .. } => {
                     doc_ops::apply_doc_edit(
-                        &mut self.buffers, &mut self.pane_state, focused, buf,
+                        &mut self.state.buffers, &mut self.state.pane_state, focused, buf,
                         fun,
                     );
                 }
@@ -102,12 +102,12 @@ impl Editor {
                     if self.scripting.is_none() {
                         return;
                     }
-                    let focused_pane_id = self.focused_pane_id;
+                    let focused_pane_id = self.state.focused_pane_id;
                     let focused_buffer_id = self.focused_buffer_id();
 
                     if inline_output {
                         let kitty = self.kitty_enabled;
-                        let mouse = self.settings.mouse_enabled;
+                        let mouse = self.state.settings.mouse_enabled;
                         if let Err(e) = platform::terminal::enter_inline_output(kitty, mouse) {
                             self.report(Severity::Error, format!("inline-output enter failed: {e}"));
                             return;
@@ -122,15 +122,8 @@ impl Editor {
                     let result = {
                         let host_scr = self.scripting.as_mut().expect("checked above");
                         let mut impl_host = EditorHostImpl {
-                            settings: &mut self.settings,
-                            keymap: &mut self.keymap,
-                            focused_pane_id,
-                            buffers: Some(&mut self.buffers),
-                            engine_view: Some(&mut self.engine_view),
-                            pane_state: Some(&mut self.pane_state),
-                            pane_jumps: Some(&mut self.pane_jumps),
-                            languages: Some(&mut self.languages),
-                            registry: Some(&self.registry),
+                            state: &mut self.state,
+                            view: &mut self.view,
                         };
                         host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
                     };
@@ -140,10 +133,10 @@ impl Editor {
                         platform::terminal::print_return_prompt();
                         platform::terminal::wait_for_keypress();
                         let kitty = self.kitty_enabled;
-                        let mouse = self.settings.mouse_enabled;
-                        let mouse_select = self.settings.mouse_select;
+                        let mouse = self.state.settings.mouse_enabled;
+                        let mouse_select = self.state.settings.mouse_select;
                         let _ = platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
-                        self.force_full_redraw = true;
+                        self.state.force_full_redraw = true;
                     }
 
                     let (queue, wait_char_cmd, lang_sets, grammar_sweeps) = match result {
@@ -162,7 +155,7 @@ impl Editor {
                     }
                     self.drain_command_queue(queue, count, extend);
                     if let Some(wc) = wait_char_cmd {
-                        self.wait_char = Some(WaitCharPending {
+                        self.state.wait_char = Some(WaitCharPending {
                             cmd_name: wc.into(),
                             ctrl_extend: false,
                         });
@@ -177,9 +170,9 @@ impl Editor {
                     .text()
                     .char_to_line(self.current_selections().primary().head());
                 if is_explicit_jump
-                    || pre_line.abs_diff(post_line) > self.settings.jump_line_threshold
+                    || pre_line.abs_diff(post_line) > self.state.settings.jump_line_threshold
                 {
-                    self.pane_jumps[self.focused_pane_id].push(JumpEntry::from_pre_motion(
+                    self.state.pane_jumps[self.state.focused_pane_id].push(JumpEntry::from_pre_motion(
                         pre_primary,
                         pre_line,
                         pre_bid,
@@ -192,7 +185,7 @@ impl Editor {
             // During replay `cmd_repeat` restores `last_repeatable_action` after the fact,
             // so any transient overwrite here is harmless.
             if reg_cmd.is_repeatable() {
-                self.last_repeatable_action = Some(RepeatableAction {
+                self.state.last_repeatable_action = Some(RepeatableAction {
                     command: name.clone(),
                     count,
                     char_arg,
@@ -206,14 +199,14 @@ impl Editor {
             // should paste the deleted line, not the clipboard). The post-replay
             // reset to "macro-replay" in drain_replay_queue handles the
             // after-macro case.
-            self.last_command = Some(name);
+            self.state.last_command = Some(name);
         }
     }
 
     /// Dispatch every command in `queue`, re-arming the register prefix before
     /// each entry that was captured with one.
     ///
-    /// Entries whose `register` is `None` leave `self.register_prefix` untouched
+    /// Entries whose `register` is `None` leave `self.state.register_prefix` untouched
     /// (a user-typed `"5` prefix flows into the first non-prefixed command, matching
     /// interactive behavior).  When at least one entry carried a register, the prefix
     /// is cleared after the queue finishes so it does not bleed into the next
@@ -227,13 +220,13 @@ impl Editor {
         let mut armed_any = false;
         for qc in queue {
             if let Some(r) = qc.register {
-                self.register_prefix = Some(RegisterPrefix::Selected(r));
+                self.state.register_prefix = Some(RegisterPrefix::Selected(r));
                 armed_any = true;
             }
             self.execute_keymap_command(qc.name.into(), count, extend, qc.args);
         }
         if armed_any {
-            self.register_prefix = None;
+            self.state.register_prefix = None;
         }
     }
 
@@ -244,11 +237,11 @@ impl Editor {
     /// If the new selection overlaps an existing secondary, both are merged
     /// into one — so the total selection count may decrease.
     pub(in super::super) fn set_primary_selection(&mut self, new_sel: Selection) {
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        let idx = self.pane_state[pid][bid].selections.primary_index();
+        let idx = self.state.pane_state[pid][bid].selections.primary_index();
         // mem::take avoids a clone: move out, compute, write back.
-        let sels = std::mem::take(&mut self.pane_state[pid][bid].selections);
-        self.pane_state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
+        let sels = std::mem::take(&mut self.state.pane_state[pid][bid].selections);
+        self.state.pane_state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
     }
 }

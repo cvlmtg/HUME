@@ -20,9 +20,9 @@ pub fn cmd_insert_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     ed.begin_insert_session();
@@ -34,9 +34,9 @@ pub fn cmd_insert_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -48,9 +48,9 @@ pub fn cmd_insert_at_line_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -62,12 +62,12 @@ pub fn cmd_insert_at_line_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_end(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     ed.begin_insert_session();
@@ -82,9 +82,9 @@ pub fn cmd_insert_at_selection_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |_b, sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     ed.begin_insert_session();
@@ -102,9 +102,9 @@ pub fn cmd_insert_at_selection_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.len_chars() - 1;
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
@@ -124,13 +124,13 @@ pub fn cmd_open_line_below(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
     Ok(())
@@ -142,16 +142,16 @@ pub fn cmd_open_line_above(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
     ed.begin_insert_session();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_move_left(b, s, 1, MotionMode::Move)
     });
     Ok(())
@@ -162,9 +162,9 @@ pub fn cmd_command_mode(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.history.begin_session_all();
+    ed.state.history.begin_session_all();
     ed.set_mode(Mode::Command);
-    ed.minibuf = Some(MiniBuffer {
+    ed.state.minibuf = Some(MiniBuffer {
         prompt: ':',
         input: String::new(),
         cursor: 0,
@@ -188,7 +188,7 @@ pub fn cmd_toggle_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.mode = if ed.mode == EditorMode::Extend {
+    ed.state.mode = if ed.state.mode == EditorMode::Extend {
         EditorMode::Normal
     } else {
         EditorMode::Extend
@@ -205,10 +205,10 @@ pub fn cmd_collapse_and_exit_extend(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
-    ed.mode = EditorMode::Normal;
-    let focused = ed.focused_pane_id;
+    ed.state.mode = EditorMode::Normal;
+    let focused = ed.state.focused_pane_id;
     let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
         cmd_collapse_selection(b, s, MotionMode::Move)
     });
     Ok(())
@@ -226,19 +226,19 @@ pub fn cmd_repeat(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let Some(action) = ed.last_repeatable_action.take() else {
+    let Some(action) = ed.state.last_repeatable_action.take() else {
         return Ok(());
     };
 
     // Prefer an explicit user count; fall back to the count from the original action.
-    let effective_count = if ed.explicit_count {
+    let effective_count = if ed.state.explicit_count {
         count
     } else {
         action.count
     };
 
     // Restore the char arg so wait-char commands (replace, find/till) work.
-    ed.pending_char = action.char_arg;
+    ed.state.pending_char = action.char_arg;
 
     // Pre-open the edit group before re-executing. This is the replay signal:
     // `begin_insert_session` checks `is_group_open()` and suppresses both the
@@ -266,7 +266,7 @@ pub fn cmd_repeat(
     // - For non-insert commands: the group is empty (no `apply_edit_grouped`
     //   calls), so `commit_edit_group` is a no-op and the command's own
     //   `apply_edit` revision stands alone in history.
-    if ed.mode == EditorMode::Insert {
+    if ed.state.mode == EditorMode::Insert {
         ed.end_insert_session();
     } else {
         ed.commit_edit_group_current();
@@ -276,6 +276,6 @@ pub fn cmd_repeat(
     // `execute_keymap_command` may have overwritten `last_repeatable_action` during
     // replay; this final assignment ensures the stored action is always the
     // one the user actually performed.
-    ed.last_repeatable_action = Some(action);
+    ed.state.last_repeatable_action = Some(action);
     Ok(())
 }

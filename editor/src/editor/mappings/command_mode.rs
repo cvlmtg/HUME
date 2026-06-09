@@ -10,7 +10,7 @@ impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────
 
     pub(super) fn handle_command(&mut self, key: KeyEvent) {
-        let event = match self.minibuf.as_mut() {
+        let event = match self.state.minibuf.as_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
@@ -31,19 +31,19 @@ impl Editor {
                 // we just dismiss the popup and restart completion for the
                 // directory's children.
                 if self
-                    .completion
+                    .state.completion
                     .as_ref()
                     .and_then(|s| s.candidates.get(s.selected))
                     .is_some_and(|c| c.replacement.ends_with('/'))
                 {
-                    self.completion = None;
+                    self.state.completion = None;
                     self.complete_minibuf(false);
                     return;
                 }
                 // Record before dispatch so failed/unknown commands are recallable.
-                if let Some(mb) = self.minibuf.as_ref() {
+                if let Some(mb) = self.state.minibuf.as_ref() {
                     let raw = mb.input.clone();
-                    self.history.get_mut(HistoryKind::Command).push(raw);
+                    self.state.history.get_mut(HistoryKind::Command).push(raw);
                 }
                 self.execute_command();
                 self.set_mode(Mode::Normal);
@@ -62,8 +62,8 @@ impl Editor {
             MiniBufferEvent::EmptiedByBackspace
             | MiniBufferEvent::Edited
             | MiniBufferEvent::CursorMoved => {
-                self.completion = None;
-                self.history
+                self.state.completion = None;
+                self.state.history
                     .get_mut(HistoryKind::Command)
                     .demote_to_scratch();
             }
@@ -71,11 +71,11 @@ impl Editor {
                 self.complete_minibuf(reverse);
             }
             MiniBufferEvent::HistoryPrev => {
-                self.completion = None;
+                self.state.completion = None;
                 self.recall_history(HistoryKind::Command, HistoryDir::Prev);
             }
             MiniBufferEvent::HistoryNext => {
-                self.completion = None;
+                self.state.completion = None;
                 self.recall_history(HistoryKind::Command, HistoryDir::Next);
             }
             MiniBufferEvent::Ignored => {}
@@ -84,9 +84,9 @@ impl Editor {
 
     /// Close the minibuffer and clear any active completion session.
     pub(super) fn close_minibuf(&mut self) {
-        self.minibuf = None;
-        self.completion = None;
-        self.history.begin_session_all();
+        self.state.minibuf = None;
+        self.state.completion = None;
+        self.state.history.begin_session_all();
     }
 
     /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
@@ -94,16 +94,16 @@ impl Editor {
     /// minibuffer or when the ring has nowhere to go.
     pub(super) fn recall_history(&mut self, kind: HistoryKind, dir: HistoryDir) {
         let current = self
-            .minibuf
+            .state.minibuf
             .as_ref()
             .map(|m| m.input.as_str())
             .unwrap_or("");
         let text = match dir {
-            HistoryDir::Prev => self.history.get_mut(kind).prev(current),
-            HistoryDir::Next => self.history.get_mut(kind).next(),
+            HistoryDir::Prev => self.state.history.get_mut(kind).prev(current),
+            HistoryDir::Next => self.state.history.get_mut(kind).next(),
         };
         if let Some(text) = text
-            && let Some(mb) = self.minibuf.as_mut()
+            && let Some(mb) = self.state.minibuf.as_mut()
         {
             mb.input = text;
             mb.cursor = mb.input.len();
@@ -121,7 +121,7 @@ impl Editor {
     /// forward (or backward when `reverse`) and apply the new candidate.
     fn complete_minibuf(&mut self, reverse: bool) {
         // If completion is already open, cycle to the next candidate.
-        if let Some(ref mut state) = self.completion {
+        if let Some(ref mut state) = self.state.completion {
             let n = state.candidates.len();
             // current_span() reflects what's currently in the input (based on the
             // previously-selected candidate), so it must be read before advancing
@@ -133,7 +133,7 @@ impl Editor {
                 (state.selected + 1) % n
             };
             let replacement = state.candidates[state.selected].replacement.clone();
-            if let Some(mb) = &mut self.minibuf {
+            if let Some(mb) = &mut self.state.minibuf {
                 mb.input.replace_range(span.clone(), &replacement);
                 mb.cursor = span.start + replacement.len();
             }
@@ -145,21 +145,21 @@ impl Editor {
             return;
         }
 
-        // First Tab: extract input context without holding &mut self.minibuf.
-        let (input, cursor) = match &self.minibuf {
+        // First Tab: extract input context without holding &mut self.state.minibuf.
+        let (input, cursor) = match &self.state.minibuf {
             Some(mb) => (mb.input.clone(), mb.cursor),
             None => return,
         };
 
         // Only complete command-mode minibuffers.
-        if self.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') {
+        if self.state.minibuf.as_ref().map(|mb| mb.prompt) != Some(':') {
             return;
         }
 
         let ctx = crate::editor::completion::CompletionCtx {
-            registry: &self.registry,
-            buffers: &self.buffers,
-            cwd: &self.cwd,
+            registry: &self.state.registry,
+            buffers: &self.state.buffers,
+            cwd: &self.state.cwd,
         };
 
         // Dispatch to the right completer based on command + input shape.
@@ -183,7 +183,7 @@ impl Editor {
                 Some((cmd_raw, _)) => {
                     // Resolve alias → canonical name.
                     let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-                    let canonical = self.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
+                    let canonical = self.state.registry.get_typed(cmd).map(|tc| tc.name.as_ref());
                     match canonical {
                         Some("edit" | "write" | "write-quit") => {
                             PathCompleter { dirs_only: false }.complete(&input, cursor, &ctx)
@@ -211,7 +211,7 @@ impl Editor {
         if candidates.len() == 1 {
             // Single match: apply silently without opening a popup.
             let replacement = candidates.remove(0).replacement;
-            if let Some(mb) = &mut self.minibuf {
+            if let Some(mb) = &mut self.state.minibuf {
                 mb.input.replace_range(span_start..cursor, &replacement);
                 mb.cursor = span_start + replacement.len();
             }
@@ -220,11 +220,11 @@ impl Editor {
 
         // Two or more: open popup with the first candidate selected.
         let replacement = candidates[0].replacement.clone();
-        if let Some(mb) = &mut self.minibuf {
+        if let Some(mb) = &mut self.state.minibuf {
             mb.input.replace_range(span_start..cursor, &replacement);
             mb.cursor = span_start + replacement.len();
         }
-        self.completion = Some(CompletionState {
+        self.state.completion = Some(CompletionState {
             candidates,
             selected: 0,
             span_start,
@@ -236,7 +236,7 @@ impl Editor {
     /// Called just before the mini-buffer is cleared and mode returns to Normal.
     fn execute_command(&mut self) {
         let input = self
-            .minibuf
+            .state.minibuf
             .as_ref()
             .map(|m| m.input.trim().to_owned())
             .unwrap_or_default();
@@ -257,12 +257,12 @@ impl Editor {
             None => None,
         };
 
-        if let Some(tc) = self.registry.get_typed(cmd) {
+        if let Some(tc) = self.state.registry.get_typed(cmd) {
             let fun = tc.fun;
             if let Err(e) = fun(self, expanded.as_deref(), force) {
                 self.report(Severity::Error, e.message().to_owned());
             }
-        } else if let Some(mut mappable) = self.registry.get_mappable(cmd).cloned() {
+        } else if let Some(mut mappable) = self.state.registry.get_mappable(cmd).cloned() {
             // Any mappable command can be invoked from the command line with
             // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
             // all work without needing typed-command wrappers.
@@ -275,7 +275,7 @@ impl Editor {
                     self.report(Severity::Warning, format!("Unknown command: {cmd}"));
                     return;
                 }
-                match self.registry.get_mappable(cmd).cloned() {
+                match self.state.registry.get_mappable(cmd).cloned() {
                     Some(m) => mappable = m,
                     None => {
                         self.report(Severity::Warning, format!("Unknown command: {cmd}"));
@@ -363,7 +363,7 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                     .alternate_buffer()
                     .ok_or_else(|| CommandError::new("No alternate buffer"))?;
                 let alt_path = ed
-                    .buffers
+                    .state.buffers
                     .get(alt_id)
                     .path()
                     .ok_or_else(|| CommandError::new("Alternate buffer has no file name"))?;

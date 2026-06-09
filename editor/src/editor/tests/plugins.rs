@@ -2,8 +2,6 @@ use super::*;
 use crate::editor::registry::MappableCommand;
 use crate::editor::scripting_setup::make_init_host;
 use scripting::{PluginStatus, ScriptingHost, hooks::HookId};
-use crate::settings::EditorSettings;
-use crate::editor::keymap::Keymap;
 
 // ── Phase 1 lazy plugin loading — editor-level tests ─────────────────────────
 //
@@ -34,10 +32,7 @@ fn setup_lazy_editor(
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed in setup_lazy_editor");
 
     let triggers: std::collections::HashMap<_, _> =
@@ -59,9 +54,9 @@ fn lazy_stub_present_after_init() {
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
         "Lazy stub must be present after init; got: {:?}",
-        ed.registry.get_mappable("bar").map(|c| c.name())
+        ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
 }
 
@@ -86,9 +81,9 @@ fn first_dispatch_activates_plugin_and_runs() {
     assert_ne!(state(&ed), before, "dispatching lazy 'bar' must move the cursor");
     // Stub must be replaced by a real SteelBacked command.
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
         "stub must be replaced by SteelBacked after first dispatch; got: {:?}",
-        ed.registry.get_mappable("bar").map(|c| c.name())
+        ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
 }
 
@@ -107,7 +102,7 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     // Stub must be present before dispatch.
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
         "Lazy stub must be present before dispatch"
     );
 
@@ -115,9 +110,9 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     // Stub must have been removed by the loop guard.
     assert!(
-        ed.registry.get_mappable("bar").is_none(),
+        ed.state.registry.get_mappable("bar").is_none(),
         "stub must be removed when body never defines the command; got: {:?}",
-        ed.registry.get_mappable("bar").map(|c| c.name())
+        ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
 }
 
@@ -136,7 +131,7 @@ fn body_error_removes_stub_and_marks_failed() {
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
         "stub must be present before dispatch"
     );
 
@@ -144,7 +139,7 @@ fn body_error_removes_stub_and_marks_failed() {
 
     // Stub removed.
     assert!(
-        ed.registry.get_mappable("bar").is_none(),
+        ed.state.registry.get_mappable("bar").is_none(),
         "stub must be removed after body error"
     );
     // Plugin state is Failed.
@@ -170,19 +165,19 @@ fn unregister_dynamic_commands_clears_lazy_stubs() {
     );
 
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::Lazy { .. })),
         "Lazy stub must be present before unregister"
     );
 
-    ed.registry.unregister_dynamic_commands();
+    ed.state.registry.unregister_dynamic_commands();
 
     assert!(
-        ed.registry.get_mappable("bar").is_none(),
+        ed.state.registry.get_mappable("bar").is_none(),
         "Lazy stub must be removed by unregister_dynamic_commands"
     );
     // Built-in commands are untouched.
     assert!(
-        ed.registry.get_mappable("move-right").is_some(),
+        ed.state.registry.get_mappable("move-right").is_some(),
         "move-right must survive unregister_dynamic_commands"
     );
 }
@@ -218,7 +213,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
         "plugin must be Loaded after first dispatch with arg"
     );
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
         "stub must be replaced by SteelBacked after first dispatch with arg"
     );
 }
@@ -239,16 +234,16 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
     // the key lands in the editor's actual keymap.
-    ed.keymap.bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
+    ed.state.keymap.bind_user_with_extend(BindMode::Normal, &[key('z')], "bar".into(), false);
     let before = state(&ed);
 
     ed.handle_key(key('z'));
 
     assert_ne!(state(&ed), before, "pressing 'z' must activate 'bar' and move the cursor");
     assert!(
-        matches!(ed.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
         "stub must be replaced by SteelBacked after key-triggered activation; got: {:?}",
-        ed.registry.get_mappable("bar").map(|c| c.name())
+        ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
 }
 
@@ -288,13 +283,10 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-
     // Mirror real init_scripting order so the eager command reaches the
     // registry before register_lazy_command_stubs checks for collisions.
     let cmds = {
-        let mut ih = make_init_host(&mut s, &mut km);
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — collision is caught at stub registration, not here");
@@ -306,19 +298,19 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 
     // Eager command survives as SteelBacked — lazy stub never shadowed it.
     assert!(
-        matches!(ed.registry.get_mappable("foo"), Some(MappableCommand::SteelBacked { .. })),
+        matches!(ed.state.registry.get_mappable("foo"), Some(MappableCommand::SteelBacked { .. })),
         "eager 'foo' must survive as SteelBacked; got: {:?}",
-        ed.registry.get_mappable("foo").map(|c| c.name())
+        ed.state.registry.get_mappable("foo").map(|c| c.name())
     );
     // An Error was logged for the rejected lazy stub.
     assert!(
-        ed.message_log
+        ed.state.message_log
             .entries()
             .any(|e| e.severity == Severity::Error
                 && e.text.contains("foo")
                 && e.text.contains("conflicts")),
         "expected an Error about the lazy/eager 'foo' collision; messages: {:?}",
-        ed.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
+        ed.state.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
     );
 }
 
@@ -444,10 +436,7 @@ fn event_trigger_one_to_many_activates_all() {
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -509,11 +498,11 @@ fn event_plugin_failure_marks_failed_no_retry() {
         "event_triggers must be cleared even after failure"
     );
     assert!(
-        ed.message_log.entries().any(|e| e.severity == Severity::Error),
+        ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
         "Severity::Error must be logged after body failure"
     );
 
-    let msg_count = ed.message_log.entries().count();
+    let msg_count = ed.state.message_log.entries().count();
     ed.fire_hook_buffer_save(bid);  // second fire — no retry
 
     assert!(
@@ -524,7 +513,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
         "plugin must remain Failed after second fire (no retry)"
     );
     assert_eq!(
-        ed.message_log.entries().count(),
+        ed.state.message_log.entries().count(),
         msg_count,
         "no new error must be logged on second fire (no retry)"
     );
@@ -562,9 +551,8 @@ fn load_plugin_loads_bare_declared() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    let mut ed = editor_from("-[a]>b\n");
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -597,9 +585,8 @@ fn load_plugin_absent_top_level_silently_skips() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    let mut ed = editor_from("-[a]>b\n");
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("absent top-level load-plugin must not error");
 
     // Plugin was not inserted into lazy_registry (absent on disk).
@@ -646,10 +633,7 @@ fn load_plugin_transitive_in_body_is_lazy() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
@@ -822,10 +806,7 @@ fn language_trigger_one_to_many_activates_all() {
 
     let mut ed = editor_from("-[a]>b c d\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     ed.scripting = Some(host);
 
@@ -904,11 +885,11 @@ fn command_trigger_logs_trace_on_activation() {
     );
 
     assert!(
-        !ed.message_log
+        !ed.state.message_log
             .entries()
             .any(|e| e.severity == Severity::Trace && e.text.contains("command trigger")),
         "no activation Trace before dispatch; messages: {:?}",
-        ed.message_log
+        ed.state.message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -917,13 +898,13 @@ fn command_trigger_logs_trace_on_activation() {
     type_cmd(&mut ed, ":bar");
 
     assert!(
-        ed.message_log.entries().any(|e| {
+        ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Trace
                 && e.text.contains("bar")
                 && e.text.contains("command trigger")
         }),
         "expected Trace entry naming command trigger 'bar' after dispatch; messages: {:?}",
-        ed.message_log
+        ed.state.message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -979,11 +960,11 @@ fn keymap_lint_warns_on_unknown_command() {
     );
 
     assert!(
-        ed.message_log.entries().any(|e| {
+        ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Warning && e.text.contains("bogus-unknown-cmd")
         }),
         "expected Warning about unknown command 'bogus-unknown-cmd'; messages: {:?}",
-        ed.message_log
+        ed.state.message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
@@ -1035,11 +1016,8 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    let mut s = EditorSettings::default();
-    let mut km = Keymap::default();
-    let init_path = dir.path().join("init.scm");
-    { let mut ih = make_init_host(&mut s, &mut km); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    host.set_data_dir(dir.path().to_path_buf());    let init_path = dir.path().join("init.scm");
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers: std::collections::HashMap<_, _> = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
@@ -1059,12 +1037,12 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
     );
     // Parent's own "bar" command must NOT be registered.
     assert!(
-        ed.registry.get_mappable("bar").is_none(),
+        ed.state.registry.get_mappable("bar").is_none(),
         "parent command must not be registered after transitive dep failure"
     );
     // Error must have been logged.
     assert!(
-        ed.message_log.entries().any(|e| e.severity == Severity::Error),
+        ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
         "error must be logged for transitive dep failure"
     );
 }
@@ -1088,17 +1066,17 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
     // The built-in "move-right" must survive — not replaced by SteelBacked.
     assert!(
-        !matches!(ed.registry.get_mappable("move-right"), Some(MappableCommand::SteelBacked { .. })),
+        !matches!(ed.state.registry.get_mappable("move-right"), Some(MappableCommand::SteelBacked { .. })),
         "built-in move-right must not be replaced by Steel; got: {:?}",
-        ed.registry.get_mappable("move-right").map(|c| c.name())
+        ed.state.registry.get_mappable("move-right").map(|c| c.name())
     );
     // A Severity::Error must have been logged about the conflict.
     assert!(
-        ed.message_log.entries().any(|e| {
+        ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Error && e.text.contains("move-right")
         }),
         "collision must produce an Error; messages: {:?}",
-        ed.message_log.entries().map(|e| format!("{:?}: {}", e.severity, e.text)).collect::<Vec<_>>()
+        ed.state.message_log.entries().map(|e| format!("{:?}: {}", e.severity, e.text)).collect::<Vec<_>>()
     );
 }
 
@@ -1145,11 +1123,11 @@ fn keymap_lint_silent_for_known_command() {
     );
 
     assert!(
-        !ed.message_log.entries().any(|e| {
+        !ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Warning && e.text.contains("move-down")
         }),
         "must not warn about known command 'move-down'; messages: {:?}",
-        ed.message_log
+        ed.state.message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()

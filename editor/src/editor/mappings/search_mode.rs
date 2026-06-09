@@ -14,7 +14,7 @@ impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────
 
     pub(super) fn handle_search(&mut self, key: KeyEvent) {
-        let event = match self.minibuf.as_mut() {
+        let event = match self.state.minibuf.as_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
@@ -23,21 +23,21 @@ impl Editor {
             MiniBufferEvent::Confirm(pattern) => {
                 // Record into the correct search ring before closing the minibuf.
                 let kind = self
-                    .minibuf
+                    .state.minibuf
                     .as_ref()
                     .and_then(|m| HistoryStore::kind_for_prompt(m.prompt));
                 if let Some(k) = kind {
-                    self.history.get_mut(k).push(pattern.clone());
+                    self.state.history.get_mut(k).push(pattern.clone());
                 }
                 // Persist pattern in 's' register for future n/N.
-                self.registers.write_text(crate::ops::register::SEARCH_REGISTER, vec![pattern]);
+                self.state.registers.write_text(crate::ops::register::SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
-                let pid = self.focused_pane_id;
-                if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
+                let pid = self.state.focused_pane_id;
+                if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
-                    self.pane_jumps[self.focused_pane_id].push(entry);
+                    self.state.pane_jumps[self.state.focused_pane_id].push(entry);
                 }
                 // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.
@@ -49,7 +49,7 @@ impl Editor {
                 // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
                 self.restore_search_snapshot();
                 let bid = self.focused_buffer_id();
-                search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
+                search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
             }
             MiniBufferEvent::BackspaceOnEmpty => {
                 // Input already empty — user pressed Backspace a second time to dismiss.
@@ -57,16 +57,16 @@ impl Editor {
             }
             MiniBufferEvent::Edited => {
                 if let Some(k) = self
-                    .minibuf
+                    .state.minibuf
                     .as_ref()
                     .and_then(|m| HistoryStore::kind_for_prompt(m.prompt))
                 {
-                    self.history.get_mut(k).demote_to_scratch();
+                    self.state.history.get_mut(k).demote_to_scratch();
                 }
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryPrev => {
-                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else {
+                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt) else {
                     return;
                 };
                 let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
@@ -76,7 +76,7 @@ impl Editor {
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryNext => {
-                let Some(prompt) = self.minibuf.as_ref().map(|m| m.prompt) else {
+                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt) else {
                     return;
                 };
                 let Some(kind) = HistoryStore::kind_for_prompt(prompt) else {
@@ -93,13 +93,13 @@ impl Editor {
 
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
-        let pid = self.focused_pane_id;
-        if let Some(sels) = self.pane_transient[pid].pre_search_sels.take() {
+        let pid = self.state.focused_pane_id;
+        if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
         let bid = self.focused_buffer_id();
-        search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
-        self.mode = Mode::Normal;
+        search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
+        self.state.mode = Mode::Normal;
         self.close_minibuf();
     }
 
@@ -108,7 +108,7 @@ impl Editor {
     ///
     /// Called on every keystroke while in Search mode.
     fn update_live_search(&mut self) {
-        let pattern = match self.minibuf.as_ref() {
+        let pattern = match self.state.minibuf.as_ref() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,
         };
@@ -116,17 +116,17 @@ impl Editor {
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — clear pattern so highlights disappear.
             let bid = self.focused_buffer_id();
-            search_ops::clear_buffer_search(&mut self.buffers, &mut self.pane_state, bid);
+            search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.pane_state, bid);
             return;
         };
 
-        let direction = self.search.direction;
-        let pid = self.focused_pane_id;
+        let direction = self.state.search.direction;
+        let pid = self.state.focused_pane_id;
 
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
         let from_char = {
-            let pt = &self.pane_transient[pid];
+            let pt = &self.state.pane_transient[pid];
             match &pt.pre_search_sels {
                 Some(sels) => {
                     let buf = self.doc().text();
@@ -142,10 +142,10 @@ impl Editor {
 
         match find_next_match(self.doc().text(), &regex, from_char, direction) {
             Some((start, end_incl, _wrapped)) => {
-                let anchor = if self.pane_transient[pid].search_extend {
+                let anchor = if self.state.pane_transient[pid].search_extend {
                     // Extend from the original anchor.
                     Some(
-                        self.pane_transient[pid]
+                        self.state.pane_transient[pid]
                             .pre_search_sels
                             .as_ref()
                             .map(|s| s.primary().anchor())
@@ -163,7 +163,7 @@ impl Editor {
         }
 
         let bid = self.focused_buffer_id();
-        self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+        self.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
             regex: Arc::new(regex),
             pattern_str: pattern,
         });
@@ -173,11 +173,11 @@ impl Editor {
 
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
-        if let Some(sels) = self.pane_transient[pid].pre_search_sels.as_ref() {
-            self.pane_state[pid][bid].selections = sels.clone();
+        if let Some(sels) = self.state.pane_transient[pid].pre_search_sels.as_ref() {
+            self.state.pane_state[pid][bid].selections = sels.clone();
         }
     }
 }

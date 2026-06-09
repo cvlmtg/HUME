@@ -402,7 +402,7 @@ impl Editor {
     /// All write paths (detection at open, `:set buffer language=`, Steel API) go
     /// through this function.
     pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<String>) {
-        if self.buffers.get(bid).language == new_lang {
+        if self.state.buffers.get(bid).language == new_lang {
             return;
         }
         let lang_val = match new_lang.as_deref() {
@@ -413,7 +413,7 @@ impl Editor {
         // can borrow the name after the write — a plugin reading buffer-language
         // during its own activation then sees the new value.
         let activate_name = new_lang.clone();
-        self.buffers.get_mut(bid).language = new_lang;
+        self.state.buffers.get_mut(bid).language = new_lang;
         // Activate language-triggered plugins after the write so handlers are
         // registered in time for the OnLanguageSet fire below.
         if let Some(name) = activate_name.as_deref() {
@@ -427,10 +427,10 @@ impl Editor {
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {
         let detected = {
-            let buf = self.buffers.get(bid);
+            let buf = self.state.buffers.get(bid);
             let path = buf.path().map(|p| p.to_path_buf());
             let first_line = buf.first_line();
-            detect_language(path.as_deref(), first_line.as_deref(), &self.languages)
+            detect_language(path.as_deref(), first_line.as_deref(), &self.state.languages)
         };
         self.set_buffer_language(bid, detected);
     }
@@ -453,25 +453,25 @@ impl Editor {
                     for g in &globs {
                         match globset::Glob::new(g) {
                             Ok(_) => valid_globs.push(g.as_str()),
-                            Err(e) => self.message_log.push(
+                            Err(e) => self.state.message_log.push(
                                 super::Severity::Warning,
                                 format!("define-language! '{}': invalid glob '{}': {}", name, g, e),
                             ),
                         }
                     }
-                    self.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
+                    self.state.languages.register_identity_no_rebuild(&name, &exts, &valid_globs, &shebangs_ref);
                     any_identity = true;
                 }
                 PendingLanguageReg::Grammar { name, grammar_path, symbol, highlights_path } => {
-                    match self.languages.attach_grammar(
+                    match self.state.languages.attach_grammar(
                         &name,
                         &grammar_path,
                         &symbol,
                         &highlights_path,
-                        &mut self.engine_view.registry,
+                        &mut self.view.registry,
                     ) {
                         Ok(_) => grammar_sweeps.push(name),
-                        Err(e) => self.message_log.push(
+                        Err(e) => self.state.message_log.push(
                             super::Severity::Warning,
                             format!("register-grammar! '{}': {}", name, e),
                         ),
@@ -479,14 +479,14 @@ impl Editor {
                 }
             }
         }
-        if any_identity && let Err(e) = self.languages.rebuild_glob_set() {
-            self.message_log.push(
+        if any_identity && let Err(e) = self.state.languages.rebuild_glob_set() {
+            self.state.message_log.push(
                 super::Severity::Warning,
                 format!("define-language!: glob set build failed: {e}"),
             );
         }
         if !grammar_sweeps.is_empty() {
-            self.engine_view.theme.bake(&self.engine_view.registry);
+            self.view.theme.bake(&self.view.registry);
             self.sweep_buffers_for_grammars(grammar_sweeps);
         }
     }

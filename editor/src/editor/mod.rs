@@ -157,241 +157,118 @@ pub(super) struct FindChar {
 // as an unqualified alias.
 pub(crate) use engine::types::EditorMode as Mode;
 
-// ── Editor ────────────────────────────────────────────────────────────────────
+// ── EditorState ───────────────────────────────────────────────────────────────
+//
+// All command-mutable editor data. Separated from `Editor` so the Steel VM
+// (`scripting.steel`) and editor data are sibling borrows that never alias —
+// enabling EditorCmd to dispatch synchronously from within a Steel eval.
 
-pub(crate) struct Editor {
+pub(crate) struct EditorState {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state. Mode is the single source of truth for whether extend is active.
     pub(crate) mode: Mode,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
-    ///
-    /// Empty when at the trie root. Re-walked from the root on each new keypress.
-    /// Cleared on Esc, on a successful command dispatch, or on NoMatch.
     pub(super) pending_keys: Vec<KeyEvent>,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
-    ///
-    /// `None` until the user starts typing digits. Defaults to `1` at dispatch.
     pub(super) count: Option<usize>,
     /// Pending wait-char state for a f/t/F/T/r binding.
-    ///
-    /// When `Some`, the next character keypress is consumed as an argument,
-    /// stored in `pending_char`, and the named command is dispatched.
-    /// Cleared immediately after use.
     pub(super) wait_char: Option<WaitCharPending>,
     /// Character argument for the current parameterized command (find/till/replace).
-    ///
-    /// Set just before dispatching a wait-char command; consumed (`.take()`) by
-    /// `dispatch_editor_cmd`. Always `None` between commands.
     pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
     /// Kill ring — bounded history of yanked / deleted text.
-    ///
-    /// Bare `y`/`c`/`d` push here; `[`/`]` cycle through it; `"<digit>p` reads
-    /// slot N. Depth = 10, matching named digit registers `"0`–`"9`.
     pub(super) kill_ring: KillRing,
     /// Wrapper around the OS clipboard (`arboard`).
-    ///
-    /// `None` handle when the clipboard server is unreachable (headless CI/SSH).
-    /// Must not be placed in the Steel context — `arboard::Clipboard` is not Send.
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
-    ///
-    /// `None` = idle. `Some(Awaiting)` = `"` pressed, next char is the register name.
-    /// `Some(Selected(c))` = register armed for the next yank/delete/change/paste.
-    /// Consumed by `take_register_prefix()`; cleared on Esc or invalid input.
     pub(super) register_prefix: Option<RegisterPrefix>,
-    /// Name of the most recently dispatched command. Updated by every command
-    /// in `execute_keymap_command`, including commands run inside a macro replay.
-    /// Holds the sentinel `"macro-replay"` immediately after a replay finishes
-    /// so that a bare `p` typed after a macro reads the clipboard — see
-    /// `drain_replay_queue`.
-    ///
-    /// The Smart-p heuristic reads this to decide whether bare `p` should read
-    /// the kill ring head or the system clipboard.
+    /// Name of the most recently dispatched command.
     pub(super) last_command: Option<Cow<'static, str>>,
-    /// Values of the most recent paste. A consecutive `p`/`P` (append) re-pastes
-    /// these verbatim, independent of kill-ring / clipboard state. Set by every
-    /// successful paste (fresh or cycle-update); read only when `last_command` is
-    /// a paste-family command.
+    /// Values of the most recent paste.
     pub(super) last_paste: Option<Vec<String>>,
     pub(super) should_quit: bool,
-    /// Active when the user is typing a command (`:`) or, later, a search (`/`).
-    /// `None` when the mini-buffer is not visible.
+    /// Active when the user is typing a command (`:`) or a search (`/`).
     pub(crate) minibuf: Option<MiniBuffer>,
     /// Active completion session while a popup is showing.
-    /// Cleared whenever the minibuffer closes or the user edits the input with
-    /// any key other than Tab / Shift-Tab.
     pub(crate) completion: Option<completion::CompletionState>,
-    /// Shared completion-popup view: written by `prepare_frame`, read by the
-    /// `CompletionOverlay` provider during render.
-    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
-    /// Transient one-line message shown in the statusline after an action
-    /// (e.g. "Written 42 lines", "Error: no file name"). Cleared on the next keypress.
+    /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
-    /// Persistent log of warnings, errors, and trace entries accumulated during
-    /// the session. Reviewed via `:messages`.
+    /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
     /// All editor settings — global defaults and per-buffer-overridable values.
-    ///
-    /// This is the single source of truth for every configurable setting.
-    /// Per-buffer overrides live on [`Buffer::overrides`]; resolution happens
-    /// at read time via [`crate::settings::BufferOverrides`] accessor methods.
     pub(crate) settings: EditorSettings,
     /// Registry of all mappable commands (motions, selections, edits).
-    ///
-    /// Keyed by name; looked up by `execute_keymap_command` at dispatch time.
     pub(super) registry: CommandRegistry,
     /// The trie-based keymap for each mode.
-    ///
-    /// Built once at startup from [`Keymap::default`]. Extended by the Steel
-    /// config layer to support user overrides.
     pub(super) keymap: Keymap,
-    /// The character and kind (inclusive/exclusive) from the last find/till motion.
-    ///
-    /// Used by `repeat-find-forward` / `repeat-find-backward`.
-    /// `None` until the user performs a find/till motion.
+    /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<FindChar>,
-
-    // ── Search ────────────────────────────────────────────────────────────────
     pub(super) search: SearchState,
-
-    // ── Per-pane state ─────────────────────────────────────────────────────────
+    /// The single pane focused in the current editing session.
+    pub(crate) focused_pane_id: PaneId,
     /// Per-(pane, buffer) state: selections, search cursor, in-progress edit group.
-    ///
-    /// Keyed first by `PaneId`, then by `BufferId`. The inner map holds exactly
-    /// one entry per buffer that this pane has ever focused. Seeded in `open()`.
     pub(super) pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     /// Per-pane transient state: pre-search and pre-select selection snapshots.
     pub(super) pane_transient: SecondaryMap<PaneId, PaneTransient>,
+    /// Per-pane navigable history of cursor positions.
+    pub(super) pane_jumps: SecondaryMap<PaneId, self::jump_list::JumpList>,
+    /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
+    pub(super) history: self::minibuf_history::HistoryStore,
+    /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
+    pub(crate) force_full_redraw: bool,
+    /// Reusable scratch buffer for format operations in visual-line movement.
+    pub(super) motion_format_scratch: engine::format::FormatScratch,
+    /// Reusable sticky-column buffer for visual j/k movement.
+    pub(super) visual_move_target_cols: Vec<u16>,
+    /// The last repeatable editing action, available for replay via `.`.
+    pub(super) last_repeatable_action: Option<RepeatableAction>,
+    /// Active insert session, present between begin/end_insert_session.
+    pub(super) insert_session: Option<InsertSession>,
+    /// Whether the user explicitly typed a count prefix before the current command.
+    pub(super) explicit_count: bool,
+    /// Active macro recording session.
+    pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
+    /// Pending two-keystroke macro command.
+    pub(super) macro_pending: Option<MacroPending>,
+    /// Queue of keys to replay before reading the next terminal event.
+    pub(super) replay_queue: VecDeque<KeyEvent>,
+    /// Single-frame flag: skip recording the current key.
+    pub(super) skip_macro_record: bool,
+    /// `true` while draining the replay queue.
+    pub(super) is_replaying: bool,
+    /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
+    pub(super) mouse_drag_anchor: Option<usize>,
+    /// Registry of configured language identities.
+    pub(super) languages: syntax::LanguageRegistry,
+    /// Current working directory. Set at startup; updated by `:cd`.
+    pub(super) cwd: PathBuf,
+}
 
-    // ── Engine rendering state ────────────────────────────────────────────────
-    /// The engine's rendering state: layout, panes, buffers, theme.
-    pub(crate) engine_view: EngineView,
-    /// The single pane created in `open()`.
-    pub(crate) focused_pane_id: PaneId,
+// ── Editor ────────────────────────────────────────────────────────────────────
+
+pub(crate) struct Editor {
+    /// All command-mutable editor data. Disjoint from `scripting` so Steel evals
+    /// can borrow `state` and `scripting.steel` simultaneously without aliasing.
+    pub(crate) state: EditorState,
+    /// Engine rendering state: layout, panes, buffers, theme.
+    pub(crate) view: EngineView,
     /// Shared bracket match highlight data: `(line_idx, byte_start, byte_end)`.
-    /// Written by `update_highlight_providers()` each frame; read by the provider.
     pub(crate) bracket_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
     /// Shared search match highlight data: same shape as `bracket_hl_data`.
     pub(crate) search_hl_data: Arc<RwLock<Vec<(usize, usize, usize)>>>,
-
-    // ── Jump list ────────────────────────────────────────────────────────────
-    /// Per-pane navigable history of cursor positions before large movements.
-    /// `jump-backward` (Ctrl+O) / `jump-forward` (Ctrl+I) traverse each pane's list.
-    pub(super) pane_jumps: SecondaryMap<PaneId, self::jump_list::JumpList>,
-
-    // ── Minibuffer history ───────────────────────────────────────────────────
-    /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
-    /// Recalled via Up/Down while the minibuffer is open.
-    pub(super) history: self::minibuf_history::HistoryStore,
+    /// Shared completion-popup view: written by `prepare_frame`, read by provider.
+    pub(crate) completion_view: Arc<RwLock<Option<crate::ui::completion_overlay::CompletionView>>>,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
-    ///
-    /// When `true`, the terminal sends CSI-u sequences that disambiguate
-    /// Ctrl+h from Backspace, Ctrl+j from Enter, etc. — unlocking Ctrl+motion
-    /// one-shot extend shortcuts. Set by the caller after [`Editor::open`].
     pub(crate) kitty_enabled: bool,
-    /// Set by the inline-output dispatch arm after `leave_inline_output` to
-    /// trigger a full ratatui repaint, clearing its diff cache after the
-    /// alt-screen toggle invalidated the terminal's previous contents.
-    pub(crate) force_full_redraw: bool,
-
-    // ── Visual-line movement ──────────────────────────────────────────────────
-    /// Reusable scratch buffer for format operations in visual-line movement.
-    ///
-    /// Allocated once and reused every j/k press to avoid per-keypress
-    /// heap allocation.
-    pub(super) motion_format_scratch: engine::format::FormatScratch,
-    /// Reusable sticky-column buffer for visual j/k movement.
-    /// One `u16` entry per active selection; cleared and refilled each press.
-    pub(super) visual_move_target_cols: Vec<u16>,
-
-    // ── Dot-repeat fields ─────────────────────────────────────────────────────
-    /// The last repeatable editing action, available for replay via `.`.
-    /// `None` until the user performs a repeatable command.
-    pub(super) last_repeatable_action: Option<RepeatableAction>,
-    /// Active insert session, present between [`begin_insert_session`] and
-    /// [`end_insert_session`]. Keystroke recording for dot-repeat lives here.
-    /// `None` at all other times — including during replay, where the replay
-    /// path pre-opens the edit group to suppress session creation.
-    pub(super) insert_session: Option<InsertSession>,
-    /// Whether the user explicitly typed a count prefix before the current command.
-    ///
-    /// Set in `handle_normal` when `self.count` is `Some` before being consumed.
-    /// Read by `cmd_repeat` to decide whether to use the new count or reuse the
-    /// original action's count. Cleared after every dispatch.
-    pub(super) explicit_count: bool,
-
-    // ── Keyboard macro fields ─────────────────────────────────────────────────
-    /// Active macro recording session.
-    ///
-    /// `Some((register, keys))` while recording is in progress; `None` otherwise.
-    /// The register name was supplied after the initial `q` keypress.
-    pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
-
-    /// Pending two-keystroke macro command.
-    ///
-    /// Set when `q` or `Q` is pressed; the next keypress is consumed as the
-    /// register name. Cleared (and cancelled) on Esc or invalid input.
-    pub(super) macro_pending: Option<MacroPending>,
-
-    /// Queue of keys to replay before reading the next terminal event.
-    ///
-    /// Populated by the `q<reg>` replay path; drained by the main event loop
-    /// one key at a time at the same stack depth as normal input. This avoids
-    /// recursion for long macros and allows `should_quit` to be checked between
-    /// replayed keys.
-    pub(super) replay_queue: VecDeque<KeyEvent>,
-
-    /// Single-frame flag: skip recording the current key.
-    ///
-    /// Set by the stop-recording `Q` intercept so that the stop key itself is
-    /// not appended to the macro buffer. Checked and cleared unconditionally at
-    /// the end of every `handle_key` call.
-    pub(super) skip_macro_record: bool,
-
-    /// `true` while draining the replay queue; suppresses nested `Q` recording.
-    pub(super) is_replaying: bool,
-
-    // ── Mouse ─────────────────────────────────────────────────────────────────
-    /// Anchor char offset set on `MouseButton::Left` down when `mouse_select`
-    /// is enabled. Cleared on mouse up.
-    pub(super) mouse_drag_anchor: Option<usize>,
-
-    // ── Scripting ────────────────────────────────────────────────────────────
     /// The embedded Steel scripting host.
-    ///
-    /// `None` until [`Editor::init_scripting`] is called (immediately after
-    /// `open()` returns, before the event loop starts). `Some` for the rest
-    /// of the editor's lifetime.
     pub(super) scripting: Option<scripting::ScriptingHost>,
-    /// Snapshot of Rust-builtin command names taken at the end of
-    /// `init_scripting`.  Stable across reloads (built-ins never change at
-    /// runtime).  Stored as a field so dispatch-time activation can borrow it
-    /// disjointly from `&mut self.scripting` / `settings` / `keymap`.
+    /// Snapshot of Rust-builtin command names taken at end of `init_scripting`.
     pub(super) builtin_cmd_names: std::collections::HashSet<String>,
-    /// Registry of configured language identities.
-    /// Reset at the start of each `init_scripting` call so `:reload-config`
-    /// gets a fresh set of registrations from `languages.scm`.
-    pub(super) languages: syntax::LanguageRegistry,
-
-    // ── Working directory ─────────────────────────────────────────────────────
-    /// Current working directory.
-    ///
-    /// Set at startup; updated by `:cd`. Avoids a `getcwd` syscall every frame.
-    pub(super) cwd: PathBuf,
-
-    // ── Tree-sitter parse worker ──────────────────────────────────────────────
     /// Parse backend: threaded in production, synchronous-inline in tests.
-    ///
-    /// `reparse_stale_buffers` drains completed results and posts new requests
-    /// each frame.  Tests use `InlineParseBackend` (via `for_testing`) which
-    /// completes parses inside `post` — no blocking helpers needed.
     parse_worker: Box<dyn parse_worker::ParseBackend>,
-    /// Whether the one-shot "parse worker disconnected" message has already been
-    /// pushed to the message log.  Lives here, not on the backend trait, because
-    /// it is UI dedup state, not execution-backend state.
+    /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
 }
 
@@ -403,7 +280,7 @@ impl std::fmt::Debug for Editor {
             f,
             "Editor(buf={:?}, mode={:?})",
             self.doc().text().to_string(),
-            self.mode
+            self.state.mode
         )
     }
 }
@@ -413,28 +290,28 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.engine_view.panes[self.focused_pane_id].buffer_id
+        self.view.panes[self.state.focused_pane_id].buffer_id
     }
 
     /// Shared reference to the focused buffer.
     pub(crate) fn doc(&self) -> &Buffer {
-        self.buffers.get(self.focused_buffer_id())
+        self.state.buffers.get(self.focused_buffer_id())
     }
 
     /// The most-recently-focused buffer other than the current one, or `None`
     /// when only one buffer is open. Derives from `BufferStore.mru` (SSOT).
     pub(crate) fn alternate_buffer(&self) -> Option<BufferId> {
-        self.buffers.mru_excluding(self.focused_buffer_id())
+        self.state.buffers.mru_excluding(self.focused_buffer_id())
     }
 
     /// Mutable reference to the focused buffer.
     ///
     /// Uses a split borrow — `buffers` and other fields on `Editor` are
-    /// disjoint, so you can hold this reference while reading e.g. `self.settings`.
+    /// disjoint, so you can hold this reference while reading e.g. `self.state.settings`.
     /// Do NOT keep this reference live across a call that also borrows `self`.
     pub(crate) fn doc_mut(&mut self) -> &mut Buffer {
         let bid = self.focused_buffer_id();
-        self.buffers.get_mut(bid)
+        self.state.buffers.get_mut(bid)
     }
 
     /// `true` when the focused buffer rejects user edits.
@@ -447,10 +324,10 @@ impl Editor {
     /// sentinel substituted via `pane.content_width(...)` — safe to hand to
     /// engine code. `wrap_mode.is_wrapping()` matches the unresolved value.
     pub(super) fn focused_format_context(&self) -> (WrapMode, u8, WhitespaceConfig) {
-        let raw_wrap = self.doc().overrides.wrap_mode(&self.settings);
-        let tab_width = self.doc().overrides.tab_width(&self.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.settings);
-        let pane = &self.engine_view.panes[self.focused_pane_id];
+        let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
+        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
+        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
+        let pane = &self.view.panes[self.state.focused_pane_id];
         let wrap_mode = raw_wrap.resolve(pane.content_width(self.doc().text().len_lines()));
         (wrap_mode, tab_width, whitespace)
     }
@@ -459,35 +336,35 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        &self.pane_state[self.focused_pane_id][self.focused_buffer_id()].selections
+        &self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()].selections
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
         let bid = self.focused_buffer_id();
-        self.pane_state[self.focused_pane_id][bid].selections = sels;
+        self.state.pane_state[self.state.focused_pane_id][bid].selections = sels;
     }
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
 
     fn is_group_open_current(&self) -> bool {
-        self.pane_state[self.focused_pane_id][self.focused_buffer_id()]
+        self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
             .edit_group
             .is_some()
     }
 
     /// Open a new edit group on the focused (pane, buffer) pair.
     fn begin_edit_group_current(&mut self) {
-        let pane_id = self.focused_pane_id;
+        let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::begin_edit_group(&self.buffers, &mut self.pane_state, pane_id, buf_id);
+        doc_ops::begin_edit_group(&self.state.buffers, &mut self.state.pane_state, pane_id, buf_id);
     }
 
     /// Commit and close the open edit group on the focused (pane, buffer) pair.
     fn commit_edit_group_current(&mut self) {
-        let pane_id = self.focused_pane_id;
+        let pane_id = self.state.focused_pane_id;
         let buf_id = self.focused_buffer_id();
-        doc_ops::commit_edit_group(&mut self.buffers, &mut self.pane_state, pane_id, buf_id);
+        doc_ops::commit_edit_group(&mut self.state.buffers, &mut self.state.pane_state, pane_id, buf_id);
     }
 
     // ── Mode transitions ──────────────────────────────────────────────────────
@@ -509,18 +386,18 @@ impl Editor {
         }
         if !self.is_group_open_current() {
             self.begin_edit_group_current();
-            self.insert_session = Some(InsertSession {
+            self.state.insert_session = Some(InsertSession {
                 keystrokes: Vec::new(),
                 step_back_on_exit: false,
             });
         }
-        self.mode = Mode::Insert;
+        self.state.mode = Mode::Insert;
     }
 
     /// Mark the active insert session as append-style so the cursor steps back
     /// one grapheme on exit (see [`end_insert_session`]).
     pub(super) fn mark_insert_step_back(&mut self) {
-        if let Some(s) = self.insert_session.as_mut() {
+        if let Some(s) = self.state.insert_session.as_mut() {
             s.step_back_on_exit = true;
         }
     }
@@ -536,17 +413,17 @@ impl Editor {
     /// `a` again re-enters Insert at the same position rather than advancing forward.
     /// The step is clamped to the current line start so it never crosses a `\n`.
     pub(super) fn end_insert_session(&mut self) {
-        let step_back = self.insert_session.as_ref().is_some_and(|s| s.step_back_on_exit);
+        let step_back = self.state.insert_session.as_ref().is_some_and(|s| s.step_back_on_exit);
         self.commit_edit_group_current();
         if let (Some(session), Some(action)) =
-            (self.insert_session.take(), self.last_repeatable_action.as_mut())
+            (self.state.insert_session.take(), self.state.last_repeatable_action.as_mut())
         {
             action.insert_keys = session.keystrokes;
         }
         if step_back {
-            let focused = self.focused_pane_id;
+            let focused = self.state.focused_pane_id;
             let buf = self.focused_buffer_id();
-            doc_ops::apply_doc_motion(&self.buffers, &mut self.pane_state, focused, buf, |b, sels| {
+            doc_ops::apply_doc_motion(&self.state.buffers, &mut self.state.pane_state, focused, buf, |b, sels| {
                 sels.map(|sel| {
                     let head = sel.head();
                     let line_start = b.line_to_char(b.char_to_line(head));
@@ -560,7 +437,7 @@ impl Editor {
             });
         }
         // Engine pane is synced by `prepare_frame` each frame.
-        self.mode = EditorMode::Normal;
+        self.state.mode = EditorMode::Normal;
     }
 
     /// Drain the macro replay queue, executing each key in order.
@@ -572,23 +449,23 @@ impl Editor {
     ///
     /// Saves and restores `last_repeatable_action` so replay does not corrupt dot-repeat.
     pub(crate) fn drain_replay_queue(&mut self) {
-        if self.replay_queue.is_empty() {
+        if self.state.replay_queue.is_empty() {
             return;
         }
-        let saved_action = self.last_repeatable_action.take();
-        self.is_replaying = true;
-        while let Some(key) = self.replay_queue.pop_front() {
+        let saved_action = self.state.last_repeatable_action.take();
+        self.state.is_replaying = true;
+        while let Some(key) = self.state.replay_queue.pop_front() {
             self.handle_key(key);
-            if self.should_quit {
+            if self.state.should_quit {
                 break;
             }
         }
-        self.is_replaying = false;
+        self.state.is_replaying = false;
         // After replay, reset Smart-p to clipboard mode so a bare `p` typed
         // immediately after a macro reads the clipboard rather than whatever
         // delete/change happened to be the last command inside the macro.
-        self.last_command = Some(Cow::Borrowed("macro-replay"));
-        self.last_repeatable_action = saved_action;
+        self.state.last_command = Some(Cow::Borrowed("macro-replay"));
+        self.state.last_repeatable_action = saved_action;
     }
 
 }
@@ -626,61 +503,63 @@ impl Editor {
         pane_transient.insert(pane_id, PaneTransient::default());
 
         Self {
-            buffers,
-            mode: Mode::Normal,
-            pending_keys: Vec::new(),
-            count: None,
-            wait_char: None,
-            pending_char: None,
-            registers: RegisterSet::new(),
-            kill_ring: KillRing::new(),
-            clipboard: clipboard::SystemClipboard::new_unavailable(),
-            register_prefix: None,
-            last_command: None,
-            last_paste: None,
-            should_quit: false,
-            minibuf: None,
-            completion: None,
-            completion_view: Arc::new(RwLock::new(None)),
-            status_msg: None,
-            message_log: MessageLog::new(),
-            settings,
-            registry: registry::CommandRegistry::with_defaults(),
-            keymap: keymap::Keymap::default(),
-            last_find: None,
-            kitty_enabled: false,
-            force_full_redraw: false,
-            last_repeatable_action: None,
-            insert_session: None,
-            explicit_count: false,
-            search: SearchState::default(),
-            pane_jumps: {
-                let mut m = SecondaryMap::new();
-                m.insert(
-                    pane_id,
-                    self::jump_list::JumpList::new(jump_list_capacity),
-                );
-                m
+            state: EditorState {
+                buffers,
+                mode: Mode::Normal,
+                pending_keys: Vec::new(),
+                count: None,
+                wait_char: None,
+                pending_char: None,
+                registers: RegisterSet::new(),
+                kill_ring: KillRing::new(),
+                clipboard: clipboard::SystemClipboard::new_unavailable(),
+                register_prefix: None,
+                last_command: None,
+                last_paste: None,
+                should_quit: false,
+                minibuf: None,
+                completion: None,
+                status_msg: None,
+                message_log: MessageLog::new(),
+                settings,
+                registry: registry::CommandRegistry::with_defaults(),
+                keymap: keymap::Keymap::default(),
+                last_find: None,
+                force_full_redraw: false,
+                last_repeatable_action: None,
+                insert_session: None,
+                explicit_count: false,
+                search: SearchState::default(),
+                pane_jumps: {
+                    let mut m = SecondaryMap::new();
+                    m.insert(
+                        pane_id,
+                        self::jump_list::JumpList::new(jump_list_capacity),
+                    );
+                    m
+                },
+                history: self::minibuf_history::HistoryStore::new(history_capacity),
+                pane_state,
+                pane_transient,
+                focused_pane_id: pane_id,
+                motion_format_scratch: engine::format::FormatScratch::new(),
+                visual_move_target_cols: Vec::new(),
+                macro_recording: None,
+                macro_pending: None,
+                replay_queue: VecDeque::new(),
+                skip_macro_record: false,
+                is_replaying: false,
+                mouse_drag_anchor: None,
+                languages: syntax::LanguageRegistry::new(),
+                cwd: std::env::temp_dir(),
             },
-            history: self::minibuf_history::HistoryStore::new(history_capacity),
-            pane_state,
-            pane_transient,
-            engine_view,
-            focused_pane_id: pane_id,
+            view: engine_view,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),
             search_hl_data: Arc::new(RwLock::new(Vec::new())),
-            motion_format_scratch: engine::format::FormatScratch::new(),
-            visual_move_target_cols: Vec::new(),
-            macro_recording: None,
-            macro_pending: None,
-            replay_queue: VecDeque::new(),
-            skip_macro_record: false,
-            is_replaying: false,
-            mouse_drag_anchor: None,
+            completion_view: Arc::new(RwLock::new(None)),
+            kitty_enabled: false,
             scripting: None,
             builtin_cmd_names: std::collections::HashSet::new(),
-            languages: syntax::LanguageRegistry::new(),
-            cwd: std::env::temp_dir(),
             parse_worker: Box::new(parse_worker::InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
         }
@@ -689,7 +568,7 @@ impl Editor {
     pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
         if let Ok(regex) = regex_cursor::engines::meta::Regex::new(pattern) {
             let bid = self.focused_buffer_id();
-            self.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+            self.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
                 regex: Arc::new(regex),
                 pattern_str: pattern.to_string(),
             });
@@ -702,13 +581,13 @@ impl Editor {
 
     /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its id.
     pub(crate) fn open_pane(&mut self, buffer_id: BufferId) -> PaneId {
-        let pid = self.engine_view.panes.insert(Pane::new(buffer_id));
-        self.pane_state.insert(pid, SecondaryMap::new());
-        pane_state::ensure(&mut self.pane_state, &self.buffers, pid, buffer_id);
-        self.pane_transient.insert(pid, PaneTransient::default());
-        self.pane_jumps.insert(
+        let pid = self.view.panes.insert(Pane::new(buffer_id));
+        self.state.pane_state.insert(pid, SecondaryMap::new());
+        pane_state::ensure(&mut self.state.pane_state, &self.state.buffers, pid, buffer_id);
+        self.state.pane_transient.insert(pid, PaneTransient::default());
+        self.state.pane_jumps.insert(
             pid,
-            self::jump_list::JumpList::new(self.settings.jump_list_capacity),
+            self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
         );
         pid
     }
@@ -719,22 +598,22 @@ impl Editor {
     /// bound in Normal mode; mode-changing commands must not switch panes.
     pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
         debug_assert!(
-            self.mode == Mode::Normal,
+            self.state.mode == Mode::Normal,
             "focus-switch must only happen in Normal mode, got {:?}",
-            self.mode,
+            self.state.mode,
         );
-        self.focused_pane_id = target;
-        if !self.pane_transient.contains_key(target) {
-            self.pane_transient.insert(target, PaneTransient::default());
+        self.state.focused_pane_id = target;
+        if !self.state.pane_transient.contains_key(target) {
+            self.state.pane_transient.insert(target, PaneTransient::default());
         }
-        if !self.pane_jumps.contains_key(target) {
-            self.pane_jumps.insert(
+        if !self.state.pane_jumps.contains_key(target) {
+            self.state.pane_jumps.insert(
                 target,
-                self::jump_list::JumpList::new(self.settings.jump_list_capacity),
+                self::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
             );
         }
         let bid = self.focused_buffer_id();
-        pane_state::ensure(&mut self.pane_state, &self.buffers, target, bid);
+        pane_state::ensure(&mut self.state.pane_state, &self.state.buffers, target, bid);
     }
 
     /// Remove pane `target` and all its per-pane state.
@@ -743,10 +622,10 @@ impl Editor {
     /// away before calling this if `target` is the focused pane.
     #[allow(dead_code)] // wired in M9+ :split/:close
     pub(crate) fn close_pane(&mut self, target: PaneId) {
-        self.engine_view.panes.remove(target);
-        self.pane_state.remove(target);
-        self.pane_transient.remove(target);
-        self.pane_jumps.remove(target);
+        self.view.panes.remove(target);
+        self.state.pane_state.remove(target);
+        self.state.pane_transient.remove(target);
+        self.state.pane_jumps.remove(target);
     }
 
     /// Read-only accessor used by tests to inspect any pane's selections.
@@ -755,7 +634,7 @@ impl Editor {
         pane: PaneId,
         buf: BufferId,
     ) -> Option<&editing::selection::SelectionSet> {
-        self.pane_state
+        self.state.pane_state
             .get(pane)
             .and_then(|m| m.get(buf))
             .map(|s| &s.selections)
@@ -773,7 +652,7 @@ impl Editor {
         use crate::editor::Severity;
         let (cmd, force, inline_arg) = mappings::command_mode::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
-        if let Some(tc) = self.registry.get_typed(cmd) {
+        if let Some(tc) = self.state.registry.get_typed(cmd) {
             let fun = tc.fun;
             let result = fun(self, arg, force);
             if let Err(ref e) = result {

@@ -50,15 +50,15 @@ fn tutor_is_idempotent() {
     write_stub_tutor(guard.runtime.path());
 
     let mut ed = editor_from("-[h]>ello\n");
-    let count_before = ed.buffers.iter().count();
+    let count_before = ed.state.buffers.iter().count();
 
     ed.execute_typed("tutor", None).unwrap();
     let bid_first = ed.focused_buffer_id();
-    let count_after_first = ed.buffers.iter().count();
+    let count_after_first = ed.state.buffers.iter().count();
 
     ed.execute_typed("tutor", None).unwrap();
     let bid_second = ed.focused_buffer_id();
-    let count_after_second = ed.buffers.iter().count();
+    let count_after_second = ed.state.buffers.iter().count();
 
     assert_eq!(
         count_after_first,
@@ -114,7 +114,7 @@ fn tutor_after_save_as_opens_fresh() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
     let bid_first = ed.focused_buffer_id();
-    let count_after_first = ed.buffers.iter().count();
+    let count_after_first = ed.state.buffers.iter().count();
 
     // Simulate save-as: change the tutor buffer's path to a different location.
     let elsewhere = guard.tmp.path().join("elsewhere.txt");
@@ -131,7 +131,7 @@ fn tutor_after_save_as_opens_fresh() {
         ":tutor after save-as must open a new buffer at the canonical tmp path"
     );
     assert_eq!(
-        ed.buffers.iter().count(),
+        ed.state.buffers.iter().count(),
         count_after_first + 1,
         "a second tutor buffer must have been opened"
     );
@@ -180,7 +180,7 @@ fn tutor_missing_file_returns_error() {
     let _guard = HumeRuntimeGuard::new();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let count_before = ed.buffers.iter().count();
+    let count_before = ed.state.buffers.iter().count();
 
     let result = ed.execute_typed("tutor", None);
 
@@ -194,7 +194,7 @@ fn tutor_missing_file_returns_error() {
         "error message must mention 'tutor.txt not found', got: {msg:?}"
     );
     assert_eq!(
-        ed.buffers.iter().count(),
+        ed.state.buffers.iter().count(),
         count_before,
         "no new buffer must be created when tutor.txt is missing"
     );

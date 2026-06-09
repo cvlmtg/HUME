@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use engine::pipeline::{BufferId, PaneId};
+use engine::pipeline::BufferId;
 
 use scripting::SteelBufferId;
 use scripting::{HookResult, SteelCmdDef, hooks::HookId};
@@ -19,14 +19,14 @@ impl Editor {
     pub(crate) fn report(&mut self, severity: Severity, text: String) {
         match severity {
             Severity::Info => {
-                self.status_msg = Some(text);
+                self.state.status_msg = Some(text);
             }
             Severity::Warning | Severity::Error => {
-                self.message_log.push(severity, text.clone());
-                self.status_msg = Some(text);
+                self.state.message_log.push(severity, text.clone());
+                self.state.status_msg = Some(text);
             }
             Severity::Trace => {
-                self.message_log.push(severity, text);
+                self.state.message_log.push(severity, text);
             }
         }
     }
@@ -71,7 +71,7 @@ impl Editor {
         {
             return;
         }
-        let pid = self.focused_pane_id;
+        let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         // `scripting` is a distinct field from `settings`, `keymap`, `buffers`,
         // `engine_view`, `pane_state`, `pane_jumps`, and `languages`, so Rust
@@ -79,15 +79,8 @@ impl Editor {
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
             let mut impl_host = EditorHostImpl {
-                settings: &mut self.settings,
-                keymap: &mut self.keymap,
-                focused_pane_id: pid,
-                buffers: Some(&mut self.buffers),
-                engine_view: Some(&mut self.engine_view),
-                pane_state: Some(&mut self.pane_state),
-                pane_jumps: Some(&mut self.pane_jumps),
-                languages: Some(&mut self.languages),
-                registry: Some(&self.registry),
+                state: &mut self.state,
+                view: &mut self.view,
             };
             host_scr.fire_hook(hook_id, args, pid, bid, &mut impl_host)
         };
@@ -132,7 +125,7 @@ impl Editor {
         // (Motion/Selection/Edit/EditorCmd) are registered — plugin commands
         // (`SteelBacked`/`Lazy`) don't exist yet and use `(call! …)` instead.
         {
-            let names: Vec<&str> = self.registry.native_mappable_names().collect();
+            let names: Vec<&str> = self.state.registry.native_mappable_names().collect();
             host.register_command_names(&names);
         }
         // Trace the resolved directories so they're visible in `:messages`.
@@ -156,11 +149,11 @@ impl Editor {
         // editor's lifetime.  Stored on Editor so dispatch-time activation can
         // borrow it disjointly from &mut self.scripting / settings / keymap.
         let builtin_names: std::collections::HashSet<String> =
-            self.registry.names().map(String::from).collect();
+            self.state.registry.names().map(String::from).collect();
         self.builtin_cmd_names = builtin_names.clone();
         // Reset the language registry so `:reload-config` gets a fresh set
         // of registrations from languages.scm rather than accumulating duplicates.
-        self.languages = crate::editor::syntax::LanguageRegistry::new();
+        self.state.languages = crate::editor::syntax::LanguageRegistry::new();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Missing prelude is a silent no-op (optional sugar); a prelude that
@@ -169,8 +162,8 @@ impl Editor {
         // Each eval gets a fresh init-mode EditorHostImpl (buffer/pane refs
         // are None; init builtins are guard-protected and never reach them).
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
-            let init_budget = self.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            let init_budget = self.state.settings.steel_init_budget_ms as u64;
+            let mut ih = make_init_host(&mut self.state, &mut self.view);
             match host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
@@ -186,8 +179,8 @@ impl Editor {
         // calls are available when init.scm and plugins run.
         let langs_path = host.runtime_dir().map(|rt| rt.join("scheme/languages.scm"));
         if let Some(langs_path) = langs_path {
-            let init_budget = self.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            let init_budget = self.state.settings.steel_init_budget_ms as u64;
+            let mut ih = make_init_host(&mut self.state, &mut self.view);
             match host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone()) {
                 Ok(cmds) => debug_assert!(
                     cmds.is_empty(),
@@ -201,8 +194,8 @@ impl Editor {
             self.flush_pending_language_regs(&mut host);
         }
         {
-            let init_budget = self.settings.steel_init_budget_ms as u64;
-            let mut ih = make_init_host(&mut self.settings, &mut self.keymap);
+            let init_budget = self.state.settings.steel_init_budget_ms as u64;
+            let mut ih = make_init_host(&mut self.state, &mut self.view);
             match host.eval_init(&init_path, init_budget, &mut ih, builtin_names) {
                 Ok(cmds) => self.register_steel_cmds(cmds),
                 Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
@@ -218,7 +211,7 @@ impl Editor {
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
         // Pick up any (set-option! "history-capacity" N) calls from init.scm.
-        self.history.set_capacity(self.settings.history_capacity);
+        self.state.history.set_capacity(self.state.settings.history_capacity);
         // Flush any `(log! …)` messages produced during init.scm evaluation.
         for (level, text) in host.take_pending_messages() {
             self.report(log_level_to_severity(level), text);
@@ -229,11 +222,11 @@ impl Editor {
         // Built-in keymaps only reference registered built-ins, so any warnings
         // here come from user bind-key! calls to typos / undeclared commands.
         {
-            let mut names = self.keymap.all_command_names();
+            let mut names = self.state.keymap.all_command_names();
             names.sort_unstable();
             names.dedup();
             for name in &names {
-                if !self.registry.contains(name) {
+                if !self.state.registry.contains(name) {
                     self.report(
                         Severity::Warning,
                         format!("key bound to unknown command '{name}' — typo, or missing from #:on-command?"),
@@ -242,17 +235,17 @@ impl Editor {
             }
         }
         // Load theme set by (set-option! 'theme "…") in init.scm.
-        if !self.settings.theme.is_empty() {
+        if !self.state.settings.theme.is_empty() {
             ops::load_theme_by_name(
-                &mut self.engine_view,
-                &mut self.message_log,
-                &mut self.status_msg,
-                &self.settings.theme,
+                &mut self.view,
+                &mut self.state.message_log,
+                &mut self.state.status_msg,
+                &self.state.settings.theme,
             );
         }
         // Re-detect language for buffers opened before init_scripting ran
         // (the initial buffer is opened in lib.rs before init_scripting is called).
-        let open_bids: Vec<_> = self.buffers.iter().map(|(id, _)| id).collect();
+        let open_bids: Vec<_> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for bid in open_bids {
             self.detect_and_set_language(bid);
         }
@@ -285,9 +278,9 @@ impl Editor {
     #[cfg(test)]
     pub(crate) fn load_theme_by_name(&mut self, name: &str) -> bool {
         ops::load_theme_by_name(
-            &mut self.engine_view,
-            &mut self.message_log,
-            &mut self.status_msg,
+            &mut self.view,
+            &mut self.state.message_log,
+            &mut self.state.status_msg,
             name,
         )
     }
@@ -303,9 +296,9 @@ impl Editor {
     pub(super) fn register_steel_cmds(&mut self, defs: impl IntoIterator<Item = SteelCmdDef>) {
         use super::registry::MappableCommand;
         for def in defs {
-            match self.registry.get_mappable(&def.name) {
+            match self.state.registry.get_mappable(&def.name) {
                 Some(MappableCommand::Lazy { .. }) | None => {
-                    self.registry.register(MappableCommand::SteelBacked {
+                    self.state.registry.register(MappableCommand::SteelBacked {
                         name: def.name.into(),
                         doc: def.doc.into(),
                         steel_proc: def.steel_proc,
@@ -338,13 +331,13 @@ impl Editor {
         triggers: &std::collections::HashMap<String, scripting::attribution::PluginId>,
     ) {
         for (name, plugin) in triggers {
-            if self.registry.contains(name) {
+            if self.state.registry.contains(name) {
                 self.report(
                     Severity::Error,
                     format!("lazy command '{name}' conflicts with an existing command"),
                 );
             } else {
-                self.registry.register(super::registry::MappableCommand::Lazy {
+                self.state.registry.register(super::registry::MappableCommand::Lazy {
                     name: name.clone().into(),
                     plugin: plugin.clone(),
                 });
@@ -357,25 +350,12 @@ impl Editor {
 // Module-level helpers
 // ---------------------------------------------------------------------------
 
-/// Build an init-mode `EditorHostImpl` with no buffer/pane refs.
-///
-/// Init builtins (`set-option!`, `bind-key!`, etc.) are guard-protected —
-/// they never access buffer/pane data.
+/// Build an `EditorHostImpl` from disjoint borrows of the editor's state and view.
 pub(crate) fn make_init_host<'a>(
-    settings: &'a mut crate::settings::EditorSettings,
-    keymap: &'a mut crate::editor::keymap::Keymap,
+    state: &'a mut super::EditorState,
+    view: &'a mut engine::pipeline::EngineView,
 ) -> EditorHostImpl<'a> {
-    EditorHostImpl {
-        settings,
-        keymap,
-        focused_pane_id: PaneId::default(),
-        buffers: None,
-        engine_view: None,
-        pane_state: None,
-        pane_jumps: None,
-        languages: None,
-        registry: None,
-    }
+    EditorHostImpl { state, view }
 }
 
 /// Map scripting `LogLevel` → editor `Severity`.

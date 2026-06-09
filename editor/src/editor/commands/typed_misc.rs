@@ -14,12 +14,12 @@ pub fn typed_messages(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let content = ed.message_log.format_for_display();
+    let content = ed.state.message_log.format_for_display();
     if content.is_empty() {
         ed.report(Severity::Info, "No messages".to_string());
         return Ok(());
     }
-    ed.message_log.mark_all_seen();
+    ed.state.message_log.mark_all_seen();
     // open_read_only_view clamps cursor_line to the last content line — pass
     // usize::MAX so it always positions at the bottom (most recent entry).
     ed.open_read_only_view("[messages]", &content, usize::MAX);
@@ -44,14 +44,14 @@ pub fn typed_list_buffers(
     // The [buffers] view buffer (if it already exists from a prior :ls) must not
     // appear in its own listing. All other buffers — including [messages] and
     // [plugin-status] — are listed normally.
-    let buffers_view_id = ed.buffers.find_by_label("[buffers]");
+    let buffers_view_id = ed.state.buffers.find_by_label("[buffers]");
     // `row` counts emitted rows (1-based, offset by the header at rope line 0).
     // Tracked independently from the slotmap iteration index because [buffers]
     // may be skipped without a row being emitted.
     let mut row: usize = 0;
     let mut current_rope_line: usize = 1;
 
-    for (id, buf) in ed.buffers.iter() {
+    for (id, buf) in ed.state.buffers.iter() {
         if buffers_view_id == Some(id) {
             continue;
         }
@@ -126,7 +126,7 @@ pub fn typed_reload_config(
     _force: bool,
 ) -> Result<(), CommandError> {
     ed.scripting = None;
-    ed.registry.unregister_dynamic_commands();
+    ed.state.registry.unregister_dynamic_commands();
     ed.init_scripting();
     ed.report(Severity::Info, "Config reloaded".to_string());
     Ok(())
@@ -160,22 +160,22 @@ pub fn typed_theme(
     _force: bool,
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
-        let current: &str = if ed.settings.theme.is_empty() {
+        let current: &str = if ed.state.settings.theme.is_empty() {
             super::DEFAULT_THEME_LABEL
         } else {
-            &ed.settings.theme
+            &ed.state.settings.theme
         };
-        // NLL: `current` borrow of ed.settings.theme ends inside format!(), before report().
+        // NLL: `current` borrow of ed.state.settings.theme ends inside format!(), before report().
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
     if ops::load_theme_by_name(
-        &mut ed.engine_view,
-        &mut ed.message_log,
-        &mut ed.status_msg,
+        &mut ed.view,
+        &mut ed.state.message_log,
+        &mut ed.state.status_msg,
         name,
     ) {
-        ed.settings.theme = name.to_owned();
+        ed.state.settings.theme = name.to_owned();
     }
     Ok(())
 }
@@ -219,11 +219,11 @@ pub fn typed_theme_debug(
         }
     }
 
-    let theme = &ed.engine_view.theme;
-    let name = if ed.settings.theme.is_empty() {
+    let theme = &ed.view.theme;
+    let name = if ed.state.settings.theme.is_empty() {
         super::DEFAULT_THEME_LABEL
     } else {
-        &ed.settings.theme
+        &ed.state.settings.theme
     };
 
     let scopes = [
@@ -299,7 +299,7 @@ pub fn typed_tutor(
 
     // If a buffer is already open at the tmp path, switch — no re-copy so that
     // unsaved in-memory edits are preserved.
-    if let Some(bid) = ed.buffers.find_by_path(&canonical_tmp) {
+    if let Some(bid) = ed.state.buffers.find_by_path(&canonical_tmp) {
         ed.switch_to_buffer_with_jump(bid);
         return Ok(());
     }

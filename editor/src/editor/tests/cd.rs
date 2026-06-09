@@ -14,7 +14,7 @@ fn set_cwd_updates_editor_and_process_cwd() {
 
     ed.set_cwd(&canonical).unwrap();
 
-    assert_eq!(ed.cwd, canonical, "editor.cwd must match the target dir");
+    assert_eq!(ed.state.cwd, canonical, "editor.cwd must match the target dir");
     assert_eq!(
         std::env::current_dir().unwrap(),
         canonical,
@@ -30,12 +30,12 @@ fn set_cwd_rejects_non_directory() {
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    let before_editor = ed.cwd.clone();
+    let before_editor = ed.state.cwd.clone();
 
     let err = ed.set_cwd(&canonical).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
     // cwd must be unchanged on failure
-    assert_eq!(ed.cwd, before_editor, "editor.cwd must not change on error");
+    assert_eq!(ed.state.cwd, before_editor, "editor.cwd must not change on error");
     assert_eq!(
         std::env::current_dir().unwrap(),
         before,
@@ -68,7 +68,7 @@ fn typed_cd_absolute_path() {
     ed.execute_typed("cd", Some(canonical.to_str().unwrap()))
         .unwrap();
 
-    assert_eq!(ed.cwd, canonical);
+    assert_eq!(ed.state.cwd, canonical);
     assert_eq!(std::env::current_dir().unwrap(), canonical);
 }
 
@@ -91,7 +91,7 @@ fn typed_cd_relative_path() {
     ed.execute_typed("cd", Some("subdir")).unwrap();
 
     assert_eq!(
-        ed.cwd, canonical_child,
+        ed.state.cwd, canonical_child,
         "relative :cd must resolve against editor.cwd"
     );
     assert_eq!(std::env::current_dir().unwrap(), canonical_child);
@@ -107,7 +107,7 @@ fn typed_cd_no_arg_goes_home() {
 
     ed.execute_typed("cd", None).unwrap();
 
-    assert_eq!(ed.cwd, canonical_home, ":cd with no arg must go to $HOME");
+    assert_eq!(ed.state.cwd, canonical_home, ":cd with no arg must go to $HOME");
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn typed_cd_tilde_expands_to_home() {
 
     ed.execute_typed("cd", Some("~")).unwrap();
 
-    assert_eq!(ed.cwd, canonical_home, ":cd ~ must expand to $HOME");
+    assert_eq!(ed.state.cwd, canonical_home, ":cd ~ must expand to $HOME");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn typed_cd_error_on_nonexistent() {
     let _guard = CwdGuard::new();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    let before_editor = ed.cwd.clone();
+    let before_editor = ed.state.cwd.clone();
 
     let err = ed
         .execute_typed("cd", Some("/definitely/not/a/real/path/xyz123"))
@@ -139,7 +139,7 @@ fn typed_cd_error_on_nonexistent() {
         "path must appear in error message, got: {err}"
     );
     assert_eq!(
-        ed.cwd, before_editor,
+        ed.state.cwd, before_editor,
         "editor.cwd must be unchanged on error"
     );
     assert_eq!(
@@ -157,7 +157,7 @@ fn typed_cd_error_on_file_path() {
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    let before_editor = ed.cwd.clone();
+    let before_editor = ed.state.cwd.clone();
 
     let err = ed
         .execute_typed("cd", Some(canonical.to_str().unwrap()))
@@ -167,7 +167,7 @@ fn typed_cd_error_on_file_path() {
         "expected not-a-directory, got: {err}"
     );
     assert_eq!(
-        ed.cwd, before_editor,
+        ed.state.cwd, before_editor,
         "editor.cwd must be unchanged on file target"
     );
     assert_eq!(
@@ -188,7 +188,7 @@ fn typed_cd_alias_works() {
     // Both the canonical name and the `cd` alias must work.
     ed.execute_typed("change-directory", Some(canonical.to_str().unwrap()))
         .unwrap();
-    assert_eq!(ed.cwd, canonical);
+    assert_eq!(ed.state.cwd, canonical);
 }
 
 // ── :cd then :e uses new cwd ──────────────────────────────────────────────────
@@ -235,7 +235,7 @@ fn typed_pwd_reports_current_directory() {
     ed.execute_typed("pwd", None).unwrap();
 
     let msg = ed
-        .status_msg
+        .state.status_msg
         .as_deref()
         .expect(":pwd must report a message");
     let expected = platform::path::shorten_home(&canonical);
@@ -254,7 +254,7 @@ fn typed_pwd_long_alias_works() {
     ed.execute_typed("print-working-directory", None).unwrap();
 
     let msg = ed
-        .status_msg
+        .state.status_msg
         .as_deref()
         .expect(":print-working-directory must report a message");
     let expected = platform::path::shorten_home(&canonical);

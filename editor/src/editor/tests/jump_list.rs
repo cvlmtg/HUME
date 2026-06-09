@@ -109,7 +109,7 @@ fn search_confirm_records_jump() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(
         ed.doc()
             .text()

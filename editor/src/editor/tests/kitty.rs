@@ -71,12 +71,12 @@ fn ctrl_p_w_is_pane_focus_next_stub() {
     ed.handle_key(key('w'));
     assert_eq!(state(&ed), "-[h]>ello world\n", "stub must not move cursor");
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .contains("not yet implemented"),
         "stub must report not-yet-implemented: {:?}",
-        ed.status_msg,
+        ed.state.status_msg,
     );
 }
 
@@ -96,12 +96,12 @@ fn ctrl_p_directional_stubs_report_not_implemented() {
             "Ctrl+p {second_key}: stub must not move cursor",
         );
         assert!(
-            ed.status_msg
+            ed.state.status_msg
                 .as_deref()
                 .unwrap_or("")
                 .contains("not yet implemented"),
             "Ctrl+p {second_key}: stub must report not-yet-implemented: {:?}",
-            ed.status_msg,
+            ed.state.status_msg,
         );
     }
 }

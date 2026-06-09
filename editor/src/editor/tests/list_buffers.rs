@@ -207,7 +207,7 @@ fn messages_reuses_existing_view_buffer() {
     ed.execute_typed("messages", None).unwrap();
     // Switch back to the scratch buffer so the second :messages performs a real switch.
     let scratch_id = ed
-        .buffers
+        .state.buffers
         .iter()
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
@@ -218,7 +218,7 @@ fn messages_reuses_existing_view_buffer() {
 
     // Count buffers with the [messages] label — must be exactly 1.
     let count = ed
-        .buffers
+        .state.buffers
         .iter()
         .filter(|(_, buf)| buf.label.as_deref() == Some("[messages]"))
         .count();
@@ -251,7 +251,7 @@ fn view_buffer_blocks_insert_mode() {
 
     ed.handle_key(key('i'));
     assert_ne!(
-        ed.mode,
+        ed.state.mode,
         Mode::Insert,
         "i must not enter Insert mode on a read-only buffer"
     );
@@ -272,7 +272,7 @@ fn ls_does_not_list_itself_on_second_call() {
 
     // Switch back to the scratch buffer so the second :ls triggers a real switch.
     let scratch_id = ed
-        .buffers
+        .state.buffers
         .iter()
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
@@ -301,15 +301,15 @@ fn ls_does_not_list_itself_on_second_call() {
 fn ls_does_not_pollute_jump_list() {
     let mut ed = editor_from("-[h]>ello\n");
     let scratch_id = ed.focused_buffer_id(); // the buffer we switch away from
-    let pid = ed.focused_pane_id;
+    let pid = ed.state.focused_pane_id;
 
     // No jump entries for the scratch buffer before :ls.
-    assert!(!ed.pane_jumps[pid].entries_for_buffer(scratch_id));
+    assert!(!ed.state.pane_jumps[pid].entries_for_buffer(scratch_id));
 
     ed.execute_typed("ls", None).unwrap();
 
     assert!(
-        !ed.pane_jumps[pid].entries_for_buffer(scratch_id),
+        !ed.state.pane_jumps[pid].entries_for_buffer(scratch_id),
         ":ls must not push a jump entry for the departure buffer"
     );
 }
@@ -377,7 +377,7 @@ fn view_buffer_blocks_paste() {
         "p must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.status_msg.as_deref(),
+        ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         "p must report 'Buffer is read-only'"
     );
@@ -390,7 +390,7 @@ fn view_buffer_blocks_paste() {
         "P must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.status_msg.as_deref(),
+        ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         "P must report 'Buffer is read-only'"
     );
@@ -410,7 +410,7 @@ fn view_buffer_blocks_write() {
 
     ed.execute_typed("w", None).unwrap_err();
     assert_eq!(
-        ed.status_msg.as_deref(),
+        ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         ":w on a read-only view must report 'Buffer is read-only'"
     );

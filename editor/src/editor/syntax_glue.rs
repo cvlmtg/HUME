@@ -114,11 +114,11 @@ impl Editor {
     pub(super) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         // Clear existing syntax state unconditionally.
         {
-            let sbuf = &mut self.engine_view.buffers[bid];
+            let sbuf = &mut self.view.buffers[bid];
             sbuf.syntax = None;
             sbuf.tree = None;
         }
-        self.buffers.get_mut(bid).syntax = None;
+        self.state.buffers.get_mut(bid).syntax = None;
         // Must clear before posting the fresh request: is_in_flight() matches on
         // text_gen alone, so a stale entry (different Arc<LanguageConfig> after a
         // grammar swap via sweep_buffers_for_grammars) would short-circuit the
@@ -126,17 +126,17 @@ impl Editor {
         self.parse_worker.remove_in_flight(bid);
 
         // Resolve language → grammar bundle.
-        let lang_name = match self.buffers.get(bid).language.clone() {
+        let lang_name = match self.state.buffers.get(bid).language.clone() {
             Some(n) => n,
             None => return,
         };
-        let lang_config = match self.languages.by_name(&lang_name) {
+        let lang_config = match self.state.languages.by_name(&lang_name) {
             Some(c) if c.grammar.is_some() => Arc::clone(c),
             _ => return,
         };
 
         // Size gate.
-        if self.buffers.get(bid).text().len_bytes() > self.settings.syntax_highlight_max_bytes {
+        if self.state.buffers.get(bid).text().len_bytes() > self.state.settings.syntax_highlight_max_bytes {
             return;
         }
 
@@ -150,22 +150,22 @@ impl Editor {
                 .query,
         );
         let highlighter =
-            TreeSitterHighlighter::from_shared_query(query, &mut self.engine_view.registry);
+            TreeSitterHighlighter::from_shared_query(query, &mut self.view.registry);
 
-        let text_gen = self.buffers.get(bid).text_gen;
+        let text_gen = self.state.buffers.get(bid).text_gen;
 
         // Write engine state: tree stays None until the backend responds.
         {
-            let sbuf = &mut self.engine_view.buffers[bid];
+            let sbuf = &mut self.view.buffers[bid];
             sbuf.tree = None;
             sbuf.syntax = Some(Arc::new(highlighter));
         }
-        self.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
+        self.state.buffers.get_mut(bid).syntax = Some(BufferSyntax::new(Arc::clone(&lang_config)));
 
         // Empty buffers need no parse — mark up to date so reparse_stale_buffers
         // skips them until the first edit arrives.
-        if self.buffers.get(bid).text().len_bytes() == 0 {
-            self.buffers.get_mut(bid).syntax.as_mut()
+        if self.state.buffers.get(bid).text().len_bytes() == 0 {
+            self.state.buffers.get_mut(bid).syntax.as_mut()
                 .expect("syntax just set above")
                 .parsed_gen = text_gen;
             return;
@@ -178,7 +178,7 @@ impl Editor {
         // the run loop (lifecycle.rs) makes the flash imperceptible interactively.
         // Tests: InlineParseBackend completes the parse inside post() — a single
         // reparse_stale_buffers call drains and installs the result.
-        let text = self.buffers.get(bid).text().clone();
+        let text = self.state.buffers.get(bid).text().clone();
         self.parse_worker.post(ParseRequest { bid, text_gen, lang: lang_config, text, old_tree: None });
     }
 
@@ -207,12 +207,12 @@ impl Editor {
         // Also covers slot reuse: BufferId is a generational slotmap key, so a
         // closed-then-reopened slot has a bumped version and the stale bid fails
         // here — it can never reach, let alone clobber, the new buffer.
-        if self.buffers.try_get(bid).is_none() {
+        if self.state.buffers.try_get(bid).is_none() {
             return;
         }
 
         // Discard if syntax was detached while the request was in flight.
-        let Some(buf_syntax) = self.buffers.get(bid).syntax.as_ref() else {
+        let Some(buf_syntax) = self.state.buffers.get(bid).syntax.as_ref() else {
             return;
         };
 
@@ -222,7 +222,7 @@ impl Editor {
         }
 
         // Discard if the text moved on since this request was submitted.
-        if text_gen != self.buffers.get(bid).text_gen {
+        if text_gen != self.state.buffers.get(bid).text_gen {
             return;
         }
 
@@ -231,13 +231,13 @@ impl Editor {
                 // Write tree and its source bytes together so they are always
                 // consistent with each other at render time.
                 {
-                    let sbuf = &mut self.engine_view.buffers[bid];
+                    let sbuf = &mut self.view.buffers[bid];
                     sbuf.tree = Some(tree);
                     sbuf.tree_source = source_bytes;
                 }
                 // Drain pending edits baked into the installed tree, and
                 // advance tree_gen to match the newly installed precise tree.
-                if let Some(syn) = self.buffers.get_mut(bid).syntax.as_mut() {
+                if let Some(syn) = self.state.buffers.get_mut(bid).syntax.as_mut() {
                     syn.pending_edits.retain(|(g, _)| *g > text_gen);
                     syn.tree_gen = text_gen;
                 }
@@ -250,7 +250,7 @@ impl Editor {
             }
         }
 
-        self.buffers.get_mut(bid).syntax.as_mut()
+        self.state.buffers.get_mut(bid).syntax.as_mut()
             .expect("syntax.is_some() guaranteed: checked above before install")
             .parsed_gen = text_gen;
     }
@@ -281,26 +281,26 @@ impl Editor {
         // Deduplicated set of visible BufferIds.
         let mut seen = std::collections::HashSet::new();
         let visible: Vec<BufferId> = self
-            .engine_view
+            .view
             .panes
             .values()
             .map(|p| p.buffer_id)
             .filter(|bid| seen.insert(*bid))
             .collect();
 
-        let max_bytes = self.settings.syntax_highlight_max_bytes;
+        let max_bytes = self.state.settings.syntax_highlight_max_bytes;
 
         for bid in visible {
-            let buf = self.buffers.get(bid);
+            let buf = self.state.buffers.get(bid);
             let text_gen = buf.text_gen;
             let byte_len = buf.text().len_bytes();
 
             // Detach if grown past cap.
             if buf.syntax.is_some() && byte_len > max_bytes {
-                let sbuf = &mut self.engine_view.buffers[bid];
+                let sbuf = &mut self.view.buffers[bid];
                 sbuf.syntax = None;
                 sbuf.tree = None;
-                self.buffers.get_mut(bid).syntax = None;
+                self.state.buffers.get_mut(bid).syntax = None;
                 self.parse_worker.remove_in_flight(bid);
                 continue;
             }
@@ -310,8 +310,8 @@ impl Editor {
             // syntax detached by the growth branch above.
             if buf.syntax.is_none() {
                 if byte_len <= max_bytes
-                    && self.buffers.get(bid).language.as_deref()
-                        .and_then(|l| self.languages.by_name(l))
+                    && self.state.buffers.get(bid).language.as_deref()
+                        .and_then(|l| self.state.languages.by_name(l))
                         .is_some_and(|c| c.grammar.is_some())
                 {
                     self.setup_buffer_syntax(bid);
@@ -341,12 +341,12 @@ impl Editor {
             // When no tree exists yet (initial open, first edit before first
             // parse completes): skips silently; tree_gen stays at 0.
             {
-                let buf_syntax = self.buffers.get(bid).syntax.as_ref()
+                let buf_syntax = self.state.buffers.get(bid).syntax.as_ref()
                     .expect("syntax is_some guaranteed above");
                 let pending = &buf_syntax.pending_edits;
                 let tree_gen = buf_syntax.tree_gen;
                 let has_pending = !pending.is_empty();
-                let has_tree = self.engine_view.buffers[bid].tree.is_some();
+                let has_tree = self.view.buffers[bid].tree.is_some();
 
                 if has_pending && has_tree {
                     let chain_ok = pending[0].0 == tree_gen + 1
@@ -356,16 +356,16 @@ impl Editor {
                         // Collect before taking mutable borrows.
                         let edits: Vec<_> = pending.iter().map(|(_, e)| *e).collect();
                         let new_source: Vec<u8> =
-                            self.buffers.get(bid).text().rope().bytes().collect();
+                            self.state.buffers.get(bid).text().rope().bytes().collect();
                         {
-                            let sbuf = &mut self.engine_view.buffers[bid];
+                            let sbuf = &mut self.view.buffers[bid];
                             let tree = sbuf.tree.as_mut().expect("has_tree checked above");
                             for edit in &edits {
                                 tree.edit(edit);
                             }
                             sbuf.tree_source = new_source;
                         }
-                        let syn = self.buffers.get_mut(bid).syntax.as_mut()
+                        let syn = self.state.buffers.get_mut(bid).syntax.as_mut()
                             .expect("syntax is_some guaranteed above");
                         syn.tree_gen = text_gen;
                         syn.pending_edits.clear();
@@ -379,7 +379,7 @@ impl Editor {
                             pending.first().map(|(g, _)| *g),
                             pending.last().map(|(g, _)| *g),
                         );
-                        self.buffers.get_mut(bid).syntax.as_mut()
+                        self.state.buffers.get_mut(bid).syntax.as_mut()
                             .expect("syntax is_some guaranteed above")
                             .pending_edits.clear();
                     }
@@ -397,19 +397,19 @@ impl Editor {
             // existed), so clone it directly.  Falls back to None (full reparse)
             // when no tree exists yet or the chain was broken.
             let old_tree: Option<tree_sitter::Tree> = {
-                let tree_gen = self.buffers.get(bid).syntax.as_ref()
+                let tree_gen = self.state.buffers.get(bid).syntax.as_ref()
                     .expect("syntax is_some guaranteed above")
                     .tree_gen;
                 if tree_gen == text_gen {
-                    self.engine_view.buffers[bid].tree.clone()
+                    self.view.buffers[bid].tree.clone()
                 } else {
                     None
                 }
             };
 
-            let text = self.buffers.get(bid).text().clone();
+            let text = self.state.buffers.get(bid).text().clone();
             let lang = Arc::clone(
-                &self.buffers.get(bid).syntax
+                &self.state.buffers.get(bid).syntax
                     .as_ref()
                     .expect("syntax is_some guaranteed above")
                     .lang,
@@ -421,7 +421,7 @@ impl Editor {
     fn surface_parse_worker_disconnect(&mut self) {
         if !self.parse_worker_disconnect_logged {
             use super::Severity;
-            self.message_log.push(
+            self.state.message_log.push(
                 Severity::Error,
                 "parse worker disconnected — syntax highlighting suspended".to_owned(),
             );
@@ -436,7 +436,7 @@ impl Editor {
             return;
         }
         let bids: Vec<BufferId> = self
-            .buffers
+            .state.buffers
             .iter()
             .filter(|(_, buf)| {
                 buf.language

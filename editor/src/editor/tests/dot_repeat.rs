@@ -116,13 +116,13 @@ fn dot_without_count_uses_original() {
 
     // `d` (count ignored by the command, but stored as 1 in last_repeatable_action).
     ed.feed_key(key('d'));
-    assert_eq!(ed.last_repeatable_action.as_ref().unwrap().count, 1);
+    assert_eq!(ed.state.last_repeatable_action.as_ref().unwrap().count, 1);
 
     // Move to "world", hit `.` without a count.
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
     // last_repeatable_action.count should still be 1 after replay.
-    assert_eq!(ed.last_repeatable_action.as_ref().unwrap().count, 1);
+    assert_eq!(ed.state.last_repeatable_action.as_ref().unwrap().count, 1);
     // The delete should have happened.
     assert!(!ed.doc().text().to_string().contains("world"));
 }
@@ -212,7 +212,7 @@ fn dot_after_find_is_noop() {
     let state_after_find = state(&ed);
 
     // `.` should have nothing recorded and leave state unchanged.
-    assert!(ed.last_repeatable_action.is_none());
+    assert!(ed.state.last_repeatable_action.is_none());
     ed.feed_key(key('.'));
     assert_eq!(state(&ed), state_after_find);
 }

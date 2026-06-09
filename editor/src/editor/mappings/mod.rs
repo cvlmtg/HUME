@@ -16,9 +16,9 @@ impl Editor {
 
     pub(crate) fn handle_key(&mut self, key: KeyEvent) {
         // Any keypress dismisses the previous transient status message.
-        self.status_msg = None;
+        self.state.status_msg = None;
 
-        match self.mode {
+        match self.state.mode {
             Mode::Normal | Mode::Extend => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
             Mode::Command => self.handle_command(key),
@@ -29,12 +29,12 @@ impl Editor {
         // ── Macro recording ───────────────────────────────────────────────────
         // Runs after all mode handlers so Insert, Command, and Search keys
         // are captured. `skip_macro_record` excludes the stop `Q` itself.
-        if let Some((_, ref mut keys)) = self.macro_recording
-            && !self.skip_macro_record
+        if let Some((_, ref mut keys)) = self.state.macro_recording
+            && !self.state.skip_macro_record
         {
             keys.push(key);
         }
-        self.skip_macro_record = false;
+        self.state.skip_macro_record = false;
     }
 }
 

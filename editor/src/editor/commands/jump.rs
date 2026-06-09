@@ -11,7 +11,7 @@ pub fn cmd_quit(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    ed.should_quit = true;
+    ed.state.should_quit = true;
     Ok(())
 }
 
@@ -22,9 +22,9 @@ pub fn cmd_jump_backward(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = ed.focused_pane_id;
+    let pid = ed.state.focused_pane_id;
     let current = ed.current_jump_entry();
-    let nav = ed.pane_jumps[pid]
+    let nav = ed.state.pane_jumps[pid]
         .backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {
@@ -41,8 +41,8 @@ pub fn cmd_jump_forward(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = ed.focused_pane_id;
-    let nav = ed.pane_jumps[pid]
+    let pid = ed.state.focused_pane_id;
+    let nav = ed.state.pane_jumps[pid]
         .forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
     if let Some((target_buf, sels)) = nav {

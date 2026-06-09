@@ -174,26 +174,26 @@ fn apply_visual_vertical(ed: &mut Editor, count: usize, down: bool, mode: Motion
     if !wrap_mode.is_wrapping() {
         // No wrapping — fall back to buffer-line movement.
         // Selection.horiz is None on collapsed/new selections by default, so no explicit clear needed.
-        let focused = ed.focused_pane_id;
+        let focused = ed.state.focused_pane_id;
         let buf = ed.focused_buffer_id();
         match down {
-            true => doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            true => doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
                 cmd_move_down(b, s, count, mode)
             }),
-            false => doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf, |b, s| {
+            false => doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
                 cmd_move_up(b, s, count, mode)
             }),
         }
         return;
     }
 
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf_id = ed.focused_buffer_id();
-    let scratch = &mut ed.motion_format_scratch;
-    let target_cols = &mut ed.visual_move_target_cols;
+    let scratch = &mut ed.state.motion_format_scratch;
+    let target_cols = &mut ed.state.visual_move_target_cols;
     target_cols.clear();
 
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf_id, |text, sels| {
         let rope = text.rope();
 
         // Pass 1: resolve each selection's sticky display column from sel.horiz,
@@ -309,19 +309,19 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
 
     if !wrap_mode.is_wrapping() {
-        let focused = ed.focused_pane_id;
+        let focused = ed.state.focused_pane_id;
         let buf_id = ed.focused_buffer_id();
-        doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |buf, sels| {
+        doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf_id, |buf, sels| {
             cmd_select_word_nearest_on_line(buf, sels, mode)
         });
         return Ok(());
     }
 
-    let focused = ed.focused_pane_id;
+    let focused = ed.state.focused_pane_id;
     let buf_id = ed.focused_buffer_id();
-    let scratch = &mut ed.motion_format_scratch;
+    let scratch = &mut ed.state.motion_format_scratch;
 
-    doc_ops::apply_doc_motion(&ed.buffers, &mut ed.pane_state, focused, buf_id, |text, sels| {
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf_id, |text, sels| {
         let rope = text.rope();
         let new_sels = sels.map(|sel| {
             let buf_line = text.char_to_line(sel.anchor());

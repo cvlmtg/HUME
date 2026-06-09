@@ -81,7 +81,7 @@ fn auto_pairs_no_false_skip() {
 #[test]
 fn auto_pairs_disabled() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.settings.auto_pairs_enabled = false;
+    ed.state.settings.auto_pairs_enabled = false;
     ed.handle_key(key('i'));
     ed.handle_key(key('('));
     assert_eq!(state(&ed), "(-[h]>ello\n");
@@ -208,7 +208,7 @@ fn normal_wrap_multi_line_selection() {
 #[test]
 fn normal_wrap_disabled_when_auto_pairs_off() {
     let mut ed = editor_from("foo -[bar]> baz\n");
-    ed.settings.auto_pairs_enabled = false;
+    ed.state.settings.auto_pairs_enabled = false;
     ed.handle_key(key('"'));
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }

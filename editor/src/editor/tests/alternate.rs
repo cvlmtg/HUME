@@ -89,7 +89,7 @@ fn ctrl_6_warns_when_no_alternate() {
         "no buffer change with no alternate"
     );
     let msg = ed
-        .status_msg
+        .state.status_msg
         .as_deref()
         .expect("warning should be reported");
     assert!(
@@ -109,7 +109,7 @@ fn colon_e_hash_opens_alternate() {
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     let id_a = ed.focused_buffer_id();
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
-    let buf_count = ed.buffers.len();
+    let buf_count = ed.state.buffers.len();
 
     type_cmd(&mut ed, ":e #");
     assert_eq!(
@@ -118,7 +118,7 @@ fn colon_e_hash_opens_alternate() {
         ":e # must switch to alternate"
     );
     assert_eq!(
-        ed.buffers.len(),
+        ed.state.buffers.len(),
         buf_count,
         ":e # must not open a duplicate"
     );
@@ -128,7 +128,7 @@ fn colon_e_hash_opens_alternate() {
 fn colon_e_hash_errors_with_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":e #");
-    let msg = ed.status_msg.as_deref().expect("error should be reported");
+    let msg = ed.state.status_msg.as_deref().expect("error should be reported");
     assert!(
         msg.contains("No alternate buffer"),
         "unexpected status: {msg:?}"
@@ -142,7 +142,7 @@ fn colon_e_percent_is_noop_reload() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
     let id_before = ed.focused_buffer_id();
-    let count_before = ed.buffers.len();
+    let count_before = ed.state.buffers.len();
 
     type_cmd(&mut ed, ":e %");
     assert_eq!(
@@ -150,14 +150,14 @@ fn colon_e_percent_is_noop_reload() {
         id_before,
         ":e % stays on same buffer"
     );
-    assert_eq!(ed.buffers.len(), count_before, ":e % does not duplicate");
+    assert_eq!(ed.state.buffers.len(), count_before, ":e % does not duplicate");
 }
 
 #[test]
 fn colon_e_percent_errors_with_no_path() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":e %");
-    let msg = ed.status_msg.as_deref().expect("error should be reported");
+    let msg = ed.state.status_msg.as_deref().expect("error should be reported");
     assert!(msg.contains("No file name"), "unexpected status: {msg:?}");
 }
 

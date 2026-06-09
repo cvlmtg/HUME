@@ -7,10 +7,10 @@ use pretty_assertions::assert_eq;
 fn colon_enters_command_mode() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    assert_eq!(ed.mode, Mode::Command);
-    assert!(ed.minibuf.is_some());
-    assert_eq!(ed.minibuf.as_ref().unwrap().prompt, ':');
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.mode, Mode::Command);
+    assert!(ed.state.minibuf.is_some());
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, ':');
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
 }
 
 #[test]
@@ -19,9 +19,9 @@ fn esc_cancels_command_mode() {
     ed.handle_key(key(':'));
     ed.handle_key(key('q'));
     ed.handle_key(key_esc());
-    assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.minibuf.is_none());
-    assert!(!ed.should_quit);
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(ed.state.minibuf.is_none());
+    assert!(!ed.state.should_quit);
 }
 
 #[test]
@@ -29,8 +29,8 @@ fn backspace_on_empty_input_cancels() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.minibuf.is_none());
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(ed.state.minibuf.is_none());
 }
 
 #[test]
@@ -40,12 +40,12 @@ fn backspace_clearing_last_char_keeps_minibuf_open() {
     ed.handle_key(key('l'));
     ed.handle_key(key_backspace());
     // First Backspace clears the single char but leaves the minibuffer open.
-    assert_eq!(ed.mode, Mode::Command);
-    assert_eq!(ed.minibuf.as_ref().expect("minibuf still open").input, "");
+    assert_eq!(ed.state.mode, Mode::Command);
+    assert_eq!(ed.state.minibuf.as_ref().expect("minibuf still open").input, "");
     // Second Backspace (cursor already at 0) dismisses.
     ed.handle_key(key_backspace());
-    assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.minibuf.is_none());
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(ed.state.minibuf.is_none());
 }
 
 #[test]
@@ -59,11 +59,11 @@ fn backspace_at_cursor_start_with_nonempty_input_is_noop() {
     for _ in 0..5 {
         ed.handle_key(key_left());
     }
-    assert_eq!(ed.minibuf.as_ref().unwrap().cursor, 0);
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().cursor, 0);
     // Backspace at start of non-empty input must be a no-op.
     ed.handle_key(key_backspace());
-    assert_eq!(ed.mode, Mode::Command, "minibuf must stay open");
-    let mb = ed.minibuf.as_ref().expect("minibuf must still be present");
+    assert_eq!(ed.state.mode, Mode::Command, "minibuf must stay open");
+    let mb = ed.state.minibuf.as_ref().expect("minibuf must still be present");
     assert_eq!(mb.input, "hello", "input must be unchanged");
     assert_eq!(mb.cursor, 0, "cursor must remain at start");
 }
@@ -75,7 +75,7 @@ fn backspace_removes_last_char() {
     ed.handle_key(key('w'));
     ed.handle_key(key('q'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "w");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "w");
 }
 
 #[test]
@@ -84,9 +84,9 @@ fn colon_q_enter_quits() {
     ed.handle_key(key(':'));
     ed.handle_key(key('q'));
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
-    assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.minibuf.is_none());
+    assert!(ed.state.should_quit);
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(ed.state.minibuf.is_none());
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn colon_quit_enter_quits() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 #[test]
@@ -106,9 +106,9 @@ fn colon_w_no_path_sets_error() {
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
-    assert!(!ed.should_quit);
-    assert_eq!(ed.mode, Mode::Normal);
-    assert_eq!(ed.status_msg.as_deref(), Some("no file name"));
+    assert!(!ed.state.should_quit);
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no file name"));
 }
 
 #[test]
@@ -119,9 +119,9 @@ fn colon_w_writes_file() {
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.mode, Mode::Normal);
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -138,7 +138,7 @@ fn colon_wq_writes_and_quits() {
     }
     ed.handle_key(key_enter());
 
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
 }
 
@@ -149,8 +149,8 @@ fn colon_unknown_sets_error() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.status_msg.as_deref(), Some("Unknown command: nonsense"));
-    assert!(!ed.should_quit);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("Unknown command: nonsense"));
+    assert!(!ed.state.should_quit);
 }
 
 #[test]
@@ -160,10 +160,10 @@ fn status_msg_cleared_on_next_keypress() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.status_msg.is_some());
+    assert!(ed.state.status_msg.is_some());
     // Any keypress clears it.
     ed.handle_key(key('l'));
-    assert!(ed.status_msg.is_none());
+    assert!(ed.state.status_msg.is_none());
 }
 
 // ── Dirty-buffer tracking and :q guard ───────────────────────────────────────
@@ -211,9 +211,9 @@ fn colon_q_on_dirty_buffer_refuses() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(!ed.should_quit);
+    assert!(!ed.state.should_quit);
     assert_eq!(
-        ed.status_msg.as_deref(),
+        ed.state.status_msg.as_deref(),
         Some("Unsaved changes (add ! to override)")
     );
 }
@@ -230,7 +230,7 @@ fn colon_q_bang_on_dirty_buffer_quits() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn colon_q_on_clean_buffer_quits() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 // ── :q multi-buffer behavior ──────────────────────────────────────────────────
@@ -259,13 +259,13 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.should_quit, ":q must not exit when a real buffer remains");
+    assert!(!ed.state.should_quit, ":q must not exit when a real buffer remains");
     assert_eq!(
         ed.focused_buffer_id(),
         file_buf,
         ":q must switch focus back to the file buffer"
     );
-    assert_eq!(ed.buffers.len(), 1, "view buffer must be removed");
+    assert_eq!(ed.state.buffers.len(), 1, "view buffer must be removed");
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn colon_q_real_buffer_with_editable_scratch_switches_not_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.should_quit, ":q must not exit when an editable scratch buffer remains");
+    assert!(!ed.state.should_quit, ":q must not exit when an editable scratch buffer remains");
     assert_eq!(ed.focused_buffer_id(), scratch_id, "must switch to the scratch buffer");
 }
 
@@ -304,13 +304,13 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.should_quit, ":q must not exit when another file buffer remains");
+    assert!(!ed.state.should_quit, ":q must not exit when another file buffer remains");
     assert_eq!(
         ed.focused_buffer_id(),
         first_buf,
         ":q must switch to the MRU other buffer"
     );
-    assert_eq!(ed.buffers.len(), 1, "closed buffer must be removed");
+    assert_eq!(ed.state.buffers.len(), 1, "closed buffer must be removed");
 }
 
 #[test]
@@ -326,7 +326,7 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
     type_cmd(&mut ed, ":q");
 
     assert!(
-        ed.should_quit,
+        ed.state.should_quit,
         ":q must exit when the only remaining buffer is a view buffer"
     );
 }
@@ -352,13 +352,13 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
 
     type_cmd(&mut ed, ":q!");
 
-    assert!(!ed.should_quit, ":q! must not quit when another real buffer remains");
+    assert!(!ed.state.should_quit, ":q! must not quit when another real buffer remains");
     assert_eq!(
         ed.focused_buffer_id(),
         scratch_id,
         ":q! must switch focus to the remaining real buffer"
     );
-    assert_eq!(ed.buffers.len(), 1, "dirty buffer must be removed");
+    assert_eq!(ed.state.buffers.len(), 1, "dirty buffer must be removed");
 }
 
 // ── :qa quit-all behavior ─────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
 fn colon_qa_quits_single_clean_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":qa");
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 #[test]
@@ -380,13 +380,13 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 
     type_cmd(&mut ed, ":qa");
 
-    assert!(ed.should_quit, ":qa must quit with multiple clean buffers");
+    assert!(ed.state.should_quit, ":qa must quit with multiple clean buffers");
 }
 
 #[test]
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     // :qa must check ALL buffers, not just the focused one.
-    // Validity: swap `ed.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
+    // Validity: swap `ed.state.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
     // this test fails — the dirty background buffer would be silently ignored.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
@@ -414,9 +414,9 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
 
     type_cmd(&mut ed, ":qa");
 
-    assert!(!ed.should_quit, ":qa must be refused when any buffer is dirty");
+    assert!(!ed.state.should_quit, ":qa must be refused when any buffer is dirty");
     assert_eq!(
-        ed.status_msg.as_deref(),
+        ed.state.status_msg.as_deref(),
         Some("Unsaved changes in open buffers (add ! to override)"),
     );
 }
@@ -432,7 +432,7 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 
     type_cmd(&mut ed, ":qa!");
 
-    assert!(ed.should_quit, ":qa! must quit despite dirty buffer");
+    assert!(ed.state.should_quit, ":qa! must quit despite dirty buffer");
 }
 
 #[test]
@@ -449,7 +449,7 @@ fn colon_w_path_creates_new_file() {
     ed.handle_key(key_enter());
 
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -485,7 +485,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     }
     ed.handle_key(key_enter());
     assert!(
-        ed.status_msg
+        ed.state.status_msg
             .as_deref()
             .unwrap_or("")
             .starts_with("Written")
@@ -506,7 +506,7 @@ fn colon_wq_path_saves_to_new_file_and_quits() {
     }
     ed.handle_key(key_enter());
 
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
     assert!(new_path.exists());
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
 }
@@ -518,9 +518,9 @@ fn colon_w_bang_writes_writable_file() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
-    assert!(!ed.should_quit);
+    assert!(!ed.state.should_quit);
 }
 
 #[test]
@@ -531,7 +531,7 @@ fn colon_wq_bang_quits_even_if_write_fails() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
+    assert!(ed.state.should_quit);
 }
 
 // ── Command history ───────────────────────────────────────────────────────────
@@ -549,7 +549,7 @@ fn submit(ed: &mut Editor, cmd: &str) {
 fn open_and_up(ed: &mut Editor) -> String {
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    ed.minibuf
+    ed.state.minibuf
         .as_ref()
         .map(|m| m.input.clone())
         .unwrap_or_default()
@@ -569,9 +569,9 @@ fn second_up_recalls_older() {
     submit(&mut ed, "q");
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "q");
     ed.handle_key(key_up());
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     // Cancel to leave normal mode.
     ed.handle_key(key_esc());
 }
@@ -585,7 +585,7 @@ fn down_walks_forward() {
     ed.handle_key(key_up()); // "q"
     ed.handle_key(key_up()); // "messages"
     ed.handle_key(key_down()); // back to "q"
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "q");
     ed.handle_key(key_esc());
 }
 
@@ -599,8 +599,8 @@ fn down_past_newest_restores_scratch() {
     } // in-progress "foo"
     ed.handle_key(key_up()); // stash "foo", show "messages"
     ed.handle_key(key_down()); // past newest → restore "foo"
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo");
-    assert_eq!(ed.minibuf.as_ref().unwrap().cursor, 3);
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().cursor, 3);
     ed.handle_key(key_esc());
 }
 
@@ -613,7 +613,7 @@ fn down_without_prior_up_is_noop() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_down()); // not navigating — no-op
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo");
     ed.handle_key(key_esc());
 }
 
@@ -622,7 +622,7 @@ fn empty_history_up_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // empty history — input unchanged
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
     ed.handle_key(key_esc());
 }
 
@@ -633,7 +633,7 @@ fn at_oldest_up_is_noop() {
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // lands on "messages"
     ed.handle_key(key_up()); // already at oldest — no change
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
 
@@ -644,9 +644,9 @@ fn consecutive_duplicate_not_recorded() {
     submit(&mut ed, "messages"); // duplicate — should be skipped
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // should land on "messages"
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     ed.handle_key(key_up()); // at oldest — no older entry
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
 
@@ -666,7 +666,7 @@ fn empty_confirm_not_recorded() {
     ed.handle_key(key_enter()); // ConfirmEmpty
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // no entry to recall — input stays empty
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
     ed.handle_key(key_esc());
 }
 
@@ -680,10 +680,10 @@ fn edit_after_up_demotes_scratch() {
     ed.handle_key(key('x'));
     // Up should now re-stash "messagesx" and jump to newest entry.
     ed.handle_key(key_up());
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
     // Down should restore the stashed "messagesx".
     ed.handle_key(key_down());
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "messagesx");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesx");
     ed.handle_key(key_esc());
 }
 
@@ -709,7 +709,7 @@ fn history_up_clears_completion_popup() {
     // Completion may or may not be Some depending on candidates, but pressing
     // Up must clear it regardless.
     ed.handle_key(key_up());
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
     ed.handle_key(key_esc());
 }
 
@@ -719,7 +719,7 @@ fn cursor_is_at_end_after_recall() {
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    let mb = ed.minibuf.as_ref().unwrap();
+    let mb = ed.state.minibuf.as_ref().unwrap();
     assert_eq!(mb.cursor, mb.input.len());
     ed.handle_key(key_esc());
 }
@@ -801,11 +801,11 @@ fn colon_enter_empty_silently_dismisses() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_enter());
-    assert_eq!(ed.mode, Mode::Normal, "must return to Normal mode");
-    assert!(ed.minibuf.is_none(), "minibuf must be closed");
+    assert_eq!(ed.state.mode, Mode::Normal, "must return to Normal mode");
+    assert!(ed.state.minibuf.is_none(), "minibuf must be closed");
     assert!(
-        ed.status_msg.is_none(),
+        ed.state.status_msg.is_none(),
         "must not show 'Unknown command', got: {:?}",
-        ed.status_msg
+        ed.state.status_msg
     );
 }

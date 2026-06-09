@@ -15,7 +15,7 @@ fn d1_selections_are_pane_owned() {
 
     let mut ed = editor_from("-[h]>ello world\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
 
     let pid_b = ed.open_pane(bid);
 
@@ -52,17 +52,17 @@ fn d4a_search_pattern_is_per_buffer() {
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Both panes see Buffer.search_pattern — it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
-    ed.pane_state[pid_a][bid].search_cursor = SearchCursor {
+    ed.state.pane_state[pid_a][bid].search_cursor = SearchCursor {
         match_count: Some((1, 3)),
         wrapped: false,
         ..SearchCursor::default()
     };
-    ed.pane_state[pid_b][bid].search_cursor = SearchCursor {
+    ed.state.pane_state[pid_b][bid].search_cursor = SearchCursor {
         match_count: Some((2, 3)),
         wrapped: true,
         ..SearchCursor::default()
@@ -70,16 +70,16 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Pane A and pane B see different cursors even though they share the buffer.
     assert_eq!(
-        ed.pane_state[pid_a][bid].search_cursor.match_count,
+        ed.state.pane_state[pid_a][bid].search_cursor.match_count,
         Some((1, 3))
     );
-    assert!(!ed.pane_state[pid_a][bid].search_cursor.wrapped);
+    assert!(!ed.state.pane_state[pid_a][bid].search_cursor.wrapped);
 
     assert_eq!(
-        ed.pane_state[pid_b][bid].search_cursor.match_count,
+        ed.state.pane_state[pid_b][bid].search_cursor.match_count,
         Some((2, 3))
     );
-    assert!(ed.pane_state[pid_b][bid].search_cursor.wrapped);
+    assert!(ed.state.pane_state[pid_b][bid].search_cursor.wrapped);
 }
 
 /// D4b — `Selection.horiz` travels with the selection; resets when its line
@@ -143,24 +143,24 @@ fn d4b_sticky_col_is_per_selection() {
 fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
     assert!(
-        ed.pane_state[pid_a][bid].edit_group.is_none(),
+        ed.state.pane_state[pid_a][bid].edit_group.is_none(),
         "no group before i"
     );
     ed.handle_key(key('i'));
     assert!(
-        ed.pane_state[pid_a][bid].edit_group.is_some(),
+        ed.state.pane_state[pid_a][bid].edit_group.is_some(),
         "group open after i"
     );
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
     assert!(
-        ed.pane_state[pid_a][bid].edit_group.is_none(),
+        ed.state.pane_state[pid_a][bid].edit_group.is_none(),
         "group committed on Esc"
     );
 
@@ -169,18 +169,18 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
     assert!(
-        ed.pane_state[pid_b][bid].edit_group.is_none(),
+        ed.state.pane_state[pid_b][bid].edit_group.is_none(),
         "pane B starts with no group"
     );
     ed.handle_key(key('i'));
     assert!(
-        ed.pane_state[pid_b][bid].edit_group.is_some(),
+        ed.state.pane_state[pid_b][bid].edit_group.is_some(),
         "pane B group opens"
     );
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
     assert!(
-        ed.pane_state[pid_b][bid].edit_group.is_none(),
+        ed.state.pane_state[pid_b][bid].edit_group.is_none(),
         "pane B group committed"
     );
 
@@ -207,18 +207,18 @@ fn d6_search_mode_snapshot_is_per_pane() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     let sels_a = SelectionSet::single(Selection::collapsed(1));
     let sels_b = SelectionSet::single(Selection::collapsed(3));
 
-    ed.pane_transient[pid_a].pre_search_sels = Some(sels_a.clone());
-    ed.pane_transient[pid_b].pre_search_sels = Some(sels_b.clone());
+    ed.state.pane_transient[pid_a].pre_search_sels = Some(sels_a.clone());
+    ed.state.pane_transient[pid_b].pre_search_sels = Some(sels_b.clone());
 
     // Pane A snapshot is independent of pane B.
     assert_eq!(
-        ed.pane_transient[pid_a]
+        ed.state.pane_transient[pid_a]
             .pre_search_sels
             .as_ref()
             .unwrap()
@@ -228,7 +228,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
         "pane A pre_search_sels head"
     );
     assert_eq!(
-        ed.pane_transient[pid_b]
+        ed.state.pane_transient[pid_b]
             .pre_search_sels
             .as_ref()
             .unwrap()
@@ -239,10 +239,10 @@ fn d6_search_mode_snapshot_is_per_pane() {
     );
 
     // Clearing pane A's snapshot does not affect pane B.
-    ed.pane_transient[pid_a].pre_search_sels = None;
-    assert!(ed.pane_transient[pid_a].pre_search_sels.is_none());
+    ed.state.pane_transient[pid_a].pre_search_sels = None;
+    assert!(ed.state.pane_transient[pid_a].pre_search_sels.is_none());
     assert!(
-        ed.pane_transient[pid_b].pre_search_sels.is_some(),
+        ed.state.pane_transient[pid_b].pre_search_sels.is_some(),
         "pane B unaffected"
     );
 }
@@ -257,7 +257,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Position pane B's cursor at char 9 ('j').
@@ -286,7 +286,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Position pane B at char 9.
@@ -322,7 +322,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     // "abcde\n" — 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
@@ -368,7 +368,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     // "abcdefghij\n" — cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.focused_pane_id;
+    let pid_a = ed.state.focused_pane_id;
     let pid_b = ed.open_pane(bid);
 
     // Position pane B's cursor at char 5 ('f').
@@ -392,7 +392,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     ed.sync_all_pane_mirrors();
 
     // Engine mirror for pane B must now reflect the translated position.
-    let mirror_head = ed.engine_view.panes[pid_b].selections[0].head;
+    let mirror_head = ed.view.panes[pid_b].selections[0].head;
     assert_eq!(
         mirror_head, 4,
         "pane B engine mirror head reflects translated position"
@@ -409,14 +409,14 @@ fn ensure_is_idempotent() {
     use crate::editor::pane_state;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.focused_pane_id;
+    let pid = ed.state.focused_pane_id;
     let bid = ed.focused_buffer_id();
 
     // Move the cursor away from its initial position.
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(3)));
 
     // ensure() on an already-seeded entry must not reset to initial_sels.
-    pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid);
+    pane_state::ensure(&mut ed.state.pane_state, &ed.state.buffers, pid, bid);
     assert_eq!(
         ed.current_selections().primary().head(),
         3,
@@ -431,22 +431,22 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     use crate::editor::pane_state;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.focused_pane_id;
+    let pid = ed.state.focused_pane_id;
 
     // Open a second buffer; the focused pane has never viewed it.
     let doc2 = Buffer::scratch();
     let expected_sels = doc2.initial_sels();
     let bid2 = crate::editor::ops::open_buffer(
-        &mut ed.engine_view,
-        &mut ed.buffers,
-        &mut ed.pane_state,
+        &mut ed.view,
+        &mut ed.state.buffers,
+        &mut ed.state.pane_state,
         pid,
         doc2,
     );
 
     // open_buffer already calls ensure internally; a second call is idempotent
     // and returns a state with the initial selections.
-    let state = pane_state::ensure(&mut ed.pane_state, &ed.buffers, pid, bid2);
+    let state = pane_state::ensure(&mut ed.state.pane_state, &ed.state.buffers, pid, bid2);
     assert_eq!(
         state.selections, expected_sels,
         "ensure must seed with buffer's initial_sels on first visit",

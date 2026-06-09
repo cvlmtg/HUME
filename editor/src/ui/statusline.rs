@@ -45,7 +45,7 @@ pub enum StatusElement {
     FileName,
     /// Current working directory, with the home prefix replaced by `~`.
     ///
-    /// Read from `editor.cwd`, which is cached at startup and updated by `:cd`.
+    /// Read from `editor.state.cwd`, which is cached at startup and updated by `:cd`.
     /// Renders empty when the working directory path is unavailable.
     Cwd,
     /// Cursor position as `"line:col"` (both 1-based, col = grapheme index).
@@ -70,7 +70,7 @@ pub enum StatusElement {
     SearchMatches,
     /// The mini-buffer input field: prompt character followed by typed text.
     ///
-    /// Rendered only when `editor.minibuf` is `Some`. Produces the prompt
+    /// Rendered only when `editor.state.minibuf` is `Some`. Produces the prompt
     /// character followed by the input text. The block cursor within the
     /// input is applied as a post-render patch in [`render_statusline`].
     MiniBuf,
@@ -252,7 +252,7 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let colors = EditorColors::from_theme(theme);
         let y = area.y;
 
-        if editor.minibuf.is_none() {
+        if editor.state.minibuf.is_none() {
             // A fresh status_msg (set this frame) takes priority. Falling back
             // to the log summary keeps unseen-message context visible between
             // keypresses, without adding a separate status row.
@@ -260,10 +260,10 @@ impl engine::providers::StatuslineProvider for HumeStatusline<'_> {
             // Evaluate summary_text lazily to avoid allocating a String every
             // frame when there is nothing to show.
             let summary;
-            let display_msg: Option<&str> = if let Some(ref msg) = editor.status_msg {
+            let display_msg: Option<&str> = if let Some(ref msg) = editor.state.status_msg {
                 Some(msg.as_str())
             } else {
-                summary = editor.message_log.summary_text();
+                summary = editor.state.message_log.summary_text();
                 summary.as_deref()
             };
 
@@ -289,13 +289,13 @@ fn render_statusline(
     area: Rect,
     y: u16,
 ) {
-    let config = &editor.settings.statusline;
+    let config = &editor.state.settings.statusline;
 
     let (left_elems, center_elems, right_elems): (
         &[StatusElement],
         &[StatusElement],
         &[StatusElement],
-    ) = if editor.minibuf.is_some() {
+    ) = if editor.state.minibuf.is_some() {
         (MINIBUF_LEFT, &[], &config.right)
     } else {
         (&config.left, &config.center, &config.right)
@@ -342,7 +342,7 @@ fn render_element(
 ) -> (Cow<'static, str>, Style) {
     match seg {
         StatusElement::Mode => {
-            let (label, style) = match editor.mode {
+            let (label, style) = match editor.state.mode {
                 EditorMode::Normal => ("NOR", colors.status_normal),
                 EditorMode::Extend => ("EXT", colors.status_extend),
                 EditorMode::Insert => ("INS", colors.status_insert),
@@ -382,7 +382,7 @@ fn render_element(
             };
             (Cow::Borrowed(label), colors.statusline)
         }
-        StatusElement::Cwd => (Cow::Owned(shorten_home(&editor.cwd)), colors.statusline),
+        StatusElement::Cwd => (Cow::Owned(shorten_home(&editor.state.cwd)), colors.statusline),
         StatusElement::SearchMatches => {
             if let Some((current, total)) = editor.current_search_cursor().match_count {
                 if total == 0 {
@@ -403,7 +403,7 @@ fn render_element(
             }
         }
         StatusElement::MiniBuf => {
-            if let Some(mb) = &editor.minibuf {
+            if let Some(mb) = &editor.state.minibuf {
                 let mut text = String::with_capacity(2 + mb.input.len());
                 text.push(mb.prompt);
                 text.push_str(&mb.input);
@@ -413,7 +413,7 @@ fn render_element(
             }
         }
         StatusElement::MacroRecording => {
-            if let Some((reg, _)) = &editor.macro_recording {
+            if let Some((reg, _)) = &editor.state.macro_recording {
                 (
                     Cow::Owned(format!("[recording @{reg}]")),
                     colors.status_insert,
@@ -569,7 +569,7 @@ mod tests {
     fn macro_recording_element_active_renders_label() {
         // While recording into register 'q', MacroRecording renders "[recording @q]".
         let mut ed = test_editor();
-        ed.macro_recording = Some(('q', vec![]));
+        ed.state.macro_recording = Some(('q', vec![]));
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
         assert_eq!(text.as_ref(), "[recording @q]");
@@ -579,7 +579,7 @@ mod tests {
     fn macro_recording_element_named_register() {
         // Same but for a named register '3'.
         let mut ed = test_editor();
-        ed.macro_recording = Some(('3', vec![]));
+        ed.state.macro_recording = Some(('3', vec![]));
         let colors = crate::ui::theme::EditorColors::default();
         let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
         assert_eq!(text.as_ref(), "[recording @3]");

@@ -81,7 +81,7 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {
-    ed.registers
+    ed.state.registers
         .read(name)
         .and_then(|r| r.as_text())
         .unwrap_or_default()
@@ -96,7 +96,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let sels = SelectionSet::single(editing::selection::Selection::collapsed(pos));
     let doc = Buffer::new(buf, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.mode = Mode::Normal;
+    ed.state.mode = Mode::Normal;
     ed
 }
 

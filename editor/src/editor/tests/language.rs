@@ -16,10 +16,10 @@ fn attach_host(ed: &mut Editor, src: &str) {
     ed.scripting = Some(host);
 }
 
-/// Register rust-only identities into `ed.languages` directly (no Scheme eval).
+/// Register rust-only identities into `ed.state.languages` directly (no Scheme eval).
 fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
-    ed.languages.register_identity_no_rebuild(name, exts, &[], &[]);
-    ed.languages.rebuild_glob_set().expect("rebuild ok");
+    ed.state.languages.register_identity_no_rebuild(name, exts, &[], &[]);
+    ed.state.languages.rebuild_glob_set().expect("rebuild ok");
 }
 
 // ── Buffer.language round-trip ────────────────────────────────────────────────
@@ -30,9 +30,9 @@ fn set_buffer_language_writes_language_field() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
-    assert_eq!(ed.buffers.get(bid).language.as_deref(), Some("rust"));
+    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("rust"));
     // Flip: wrong language must not match.
-    assert_ne!(ed.buffers.get(bid).language.as_deref(), Some("python"));
+    assert_ne!(ed.state.buffers.get(bid).language.as_deref(), Some("python"));
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn set_buffer_language_to_none_clears_language() {
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     ed.set_buffer_language(bid, None);
-    assert!(ed.buffers.get(bid).language.is_none());
+    assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
 #[test]
@@ -53,12 +53,12 @@ fn set_buffer_language_no_op_when_unchanged() {
     let bid = ed.focused_buffer_id();
     // Start with no language — setting to None must not panic.
     ed.set_buffer_language(bid, None);
-    assert!(ed.buffers.get(bid).language.is_none());
+    assert!(ed.state.buffers.get(bid).language.is_none());
     // Now set a language and repeat — second set must short-circuit without panic.
     ed.scripting = Some(ScriptingHost::new());
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     ed.set_buffer_language(bid, Some("rust".to_owned())); // no-op, no double-fire
-    assert_eq!(ed.buffers.get(bid).language.as_deref(), Some("rust"));
+    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("rust"));
 }
 
 // ── detect_and_set_language ───────────────────────────────────────────────────
@@ -69,12 +69,12 @@ fn detect_and_set_language_matches_extension() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     // Give the buffer a .rs path so detection can match it.
-    ed.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    ed.state.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid);
-    assert_eq!(ed.buffers.get(bid).language.as_deref(), Some("rust"));
+    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("rust"));
     // Flip: the language must not be absent after detection of a registered ext.
-    assert!(ed.buffers.get(bid).language.is_some());
+    assert!(ed.state.buffers.get(bid).language.is_some());
 }
 
 #[test]
@@ -83,9 +83,9 @@ fn detect_and_set_language_no_match_leaves_none() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     // Buffer has no path — no detection possible.
-    assert!(ed.buffers.get(bid).path().is_none());
+    assert!(ed.state.buffers.get(bid).path().is_none());
     ed.detect_and_set_language(bid);
-    assert!(ed.buffers.get(bid).language.is_none());
+    assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
 // ── :set buffer language= intercept ──────────────────────────────────────────
@@ -111,7 +111,7 @@ fn typed_set_language_buffer_scope_sets_language() {
     register_rust(&mut ed, "rust", &["rs"]);
     let bid = ed.focused_buffer_id();
     run_cmd(&mut ed, "buffer language=rust").expect(":set buffer language=rust failed");
-    assert_eq!(ed.buffers.get(bid).language.as_deref(), Some("rust"));
+    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("rust"));
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn typed_set_language_empty_value_clears_language() {
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".to_owned()));
     run_cmd(&mut ed, "buffer language=").expect(":set buffer language= failed");
-    assert!(ed.buffers.get(bid).language.is_none());
+    assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn typed_set_language_unknown_warns_but_sets() {
     // "unknown-lang" is not registered — should warn but still set.
     let result = run_cmd(&mut ed, "buffer language=unknown-lang");
     assert!(result.is_ok(), "unknown language must not error, got: {result:?}");
-    assert_eq!(ed.buffers.get(bid).language.as_deref(), Some("unknown-lang"));
+    assert_eq!(ed.state.buffers.get(bid).language.as_deref(), Some("unknown-lang"));
 }
 
 // ── OnLanguageSet hook fires ──────────────────────────────────────────────────
@@ -173,15 +173,15 @@ fn invalid_glob_in_define_language_warns_and_skips() {
     ];
     ed.apply_pending_language_regs(regs);
     // Valid glob must be registered; extension lookup must work.
-    assert!(ed.languages.by_extension("xyz").is_some(), "extension must register despite bad glob");
+    assert!(ed.state.languages.by_extension("xyz").is_some(), "extension must register despite bad glob");
     // At least one warning must mention the bad pattern.
-    let has_warning = ed.message_log.entries().any(|e| {
+    let has_warning = ed.state.message_log.entries().any(|e| {
         e.text.contains("[invalid-glob") || e.text.contains("invalid-glob")
     });
     assert!(
         has_warning,
         "invalid glob must produce a warning; log: {:?}",
-        ed.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
+        ed.state.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
     );
 }
 

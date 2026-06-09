@@ -57,7 +57,7 @@ fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
     let cursor_char = ed.current_selections().primary().head();
     let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
     let rope = ed.doc().text().rope().clone();
-    let pane = &mut ed.engine_view.panes[ed.focused_pane_id];
+    let pane = &mut ed.view.panes[ed.state.focused_pane_id];
     super::super::scroll::scroll_cursor_to_row(
         &mut pane.viewport,
         &rope,
@@ -65,7 +65,7 @@ fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
         &wrap_mode,
         tab_width,
         &whitespace,
-        &mut ed.motion_format_scratch,
+        &mut ed.state.motion_format_scratch,
         target_row,
     );
 }

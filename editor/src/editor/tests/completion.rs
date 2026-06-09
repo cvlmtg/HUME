@@ -14,7 +14,7 @@ fn key_shift_tab() -> KeyEvent {
 
 /// Drain the minibuf input for assertions.
 fn minibuf_input(ed: &Editor) -> &str {
-    ed.minibuf
+    ed.state.minibuf
         .as_ref()
         .map(|mb| mb.input.as_str())
         .unwrap_or("")
@@ -34,7 +34,7 @@ fn tab_on_command_prefix_single_match_completes_silently() {
 
     assert_eq!(minibuf_input(&ed), "reload-config");
     // Single-match: no popup state.
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn tab_no_match_is_noop() {
     ed.handle_key(key_tab());
 
     assert_eq!(minibuf_input(&ed), "zzz");
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -59,8 +59,8 @@ fn tab_multiple_matches_opens_popup_with_first_candidate() {
     ed.handle_key(key_tab());
 
     // Completion state must be open.
-    assert!(ed.completion.is_some(), "popup should be open");
-    let state = ed.completion.as_ref().unwrap();
+    assert!(ed.state.completion.is_some(), "popup should be open");
+    let state = ed.state.completion.as_ref().unwrap();
     assert_eq!(state.selected, 0);
     assert!(state.candidates.len() >= 2);
     // Input shows the first candidate.
@@ -76,7 +76,7 @@ fn second_tab_cycles_to_next_candidate() {
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
 
-    let state = ed.completion.as_ref().unwrap();
+    let state = ed.state.completion.as_ref().unwrap();
     assert_eq!(state.selected, 1);
     let second = state.candidates[1].replacement.clone();
     assert_eq!(minibuf_input(&ed), second);
@@ -94,7 +94,7 @@ fn shift_tab_cycles_backward() {
     // Shift-Tab back to candidate 0.
     ed.handle_key(key_shift_tab());
 
-    let state = ed.completion.as_ref().unwrap();
+    let state = ed.state.completion.as_ref().unwrap();
     assert_eq!(state.selected, 0);
 }
 
@@ -105,12 +105,12 @@ fn tab_wraps_at_end() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab());
 
-    let n = ed.completion.as_ref().unwrap().candidates.len();
+    let n = ed.state.completion.as_ref().unwrap().candidates.len();
     // Tab n times to wrap back to 0.
     for _ in 0..n {
         ed.handle_key(key_tab());
     }
-    assert_eq!(ed.completion.as_ref().unwrap().selected, 0);
+    assert_eq!(ed.state.completion.as_ref().unwrap().selected, 0);
 }
 
 #[test]
@@ -120,9 +120,9 @@ fn typing_char_dismisses_popup() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab()); // open popup
 
-    assert!(ed.completion.is_some());
+    assert!(ed.state.completion.is_some());
     ed.handle_key(key('r')); // type a char → dismiss
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -137,9 +137,9 @@ fn enter_mid_completion_executes_selected_candidate() {
 
     // Now input = "quit". Enter should quit.
     ed.handle_key(key_enter());
-    assert!(ed.should_quit);
-    assert!(ed.completion.is_none());
-    assert!(ed.minibuf.is_none());
+    assert!(ed.state.should_quit);
+    assert!(ed.state.completion.is_none());
+    assert!(ed.state.minibuf.is_none());
 }
 
 #[test]
@@ -150,9 +150,9 @@ fn esc_dismisses_minibuf_and_clears_completion() {
     ed.handle_key(key_tab()); // open popup
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.mode, Mode::Normal);
-    assert!(ed.minibuf.is_none());
-    assert!(ed.completion.is_none());
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert!(ed.state.minibuf.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn shift_tab_with_no_popup_is_noop() {
 
     // Nothing should have changed: input stays "wri", no popup.
     assert_eq!(minibuf_input(&ed), "wri");
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn tab_in_search_mode_is_noop() {
 
     // Input unchanged; no completion.
     assert_eq!(minibuf_input(&ed), "e");
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 // ── Path completion ───────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ fn tab_on_edit_arg_completes_path() {
     // Single match → silent completion, no popup.
     let expected = format!("e {}/hello.txt", dir.path().display());
     assert_eq!(minibuf_input(&ed), expected);
-    assert!(ed.completion.is_none());
+    assert!(ed.state.completion.is_none());
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
         "cd must complete to the directory"
     );
     assert!(
-        ed.completion.is_none(),
+        ed.state.completion.is_none(),
         ":cd completion must exclude files, leaving a single dir match"
     );
 }
@@ -276,7 +276,7 @@ fn enter_on_directory_candidate_restarts_completion() {
     }
     ed.handle_key(key_tab()); // opens popup; "alpha/" selected first (alphabetical).
 
-    let state = ed.completion.as_ref().expect("popup should be open");
+    let state = ed.state.completion.as_ref().expect("popup should be open");
     let first = state.candidates[0].replacement.clone();
     assert!(
         first.ends_with('/'),
@@ -287,7 +287,7 @@ fn enter_on_directory_candidate_restarts_completion() {
 
     // Minibuf stays open — Enter on a dir must not execute the command.
     assert!(
-        ed.minibuf.is_some(),
+        ed.state.minibuf.is_some(),
         "Enter on dir candidate must keep minibuf open"
     );
     // Input now contains the selected directory.
@@ -298,7 +298,7 @@ fn enter_on_directory_candidate_restarts_completion() {
     );
     // Completion re-triggered with the directory's children.
     let restarted = ed
-        .completion
+        .state.completion
         .as_ref()
         .expect("completion should restart for dir children");
     assert_eq!(
@@ -341,7 +341,7 @@ fn ctrl_w_at_start_is_noop_and_keeps_minibuf_open() {
     assert_eq!(minibuf_input(&ed), "");
     // Unlike Backspace on empty input (which cancels), Ctrl-W is a no-op.
     assert!(
-        ed.minibuf.is_some(),
+        ed.state.minibuf.is_some(),
         "Ctrl-W on empty input must not close the minibuf"
     );
 }
@@ -374,11 +374,11 @@ fn ctrl_w_dismisses_open_completion_popup() {
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     ed.handle_key(key_tab()); // opens popup for "w"-prefixed commands
-    assert!(ed.completion.is_some(), "sanity: popup should be open");
+    assert!(ed.state.completion.is_some(), "sanity: popup should be open");
 
     ed.handle_key(key_ctrl('w'));
     // Edited event clears completion; Ctrl-W consumed the word ("w"-based candidate).
-    assert!(ed.completion.is_none(), "Ctrl-W must dismiss the popup");
+    assert!(ed.state.completion.is_none(), "Ctrl-W must dismiss the popup");
 }
 
 #[test]
@@ -386,19 +386,19 @@ fn ctrl_w_works_in_search_minibuf() {
     // Ctrl-W in a `/` search prompt deletes the last word without cancelling.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
-    assert_eq!(ed.mode, Mode::Search);
+    assert_eq!(ed.state.mode, Mode::Search);
     for ch in "foo bar".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo bar");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo bar");
     ed.handle_key(key_ctrl('w'));
-    assert_eq!(ed.minibuf.as_ref().unwrap().input, "foo ");
+    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo ");
     // Search minibuf must still be open.
     assert!(
-        ed.minibuf.is_some(),
+        ed.state.minibuf.is_some(),
         "Ctrl-W must not close the search minibuf"
     );
-    assert_eq!(ed.mode, Mode::Search);
+    assert_eq!(ed.state.mode, Mode::Search);
     ed.handle_key(key_esc());
 }
 
@@ -409,9 +409,9 @@ fn ctrl_w_at_start_of_search_minibuf_is_noop() {
     // Nothing typed yet — Ctrl-W on empty input is a no-op.
     ed.handle_key(key_ctrl('w'));
     assert!(
-        ed.minibuf.is_some(),
+        ed.state.minibuf.is_some(),
         "Ctrl-W on empty search input must not close the minibuf"
     );
-    assert_eq!(ed.mode, Mode::Search);
+    assert_eq!(ed.state.mode, Mode::Search);
     ed.handle_key(key_esc());
 }
