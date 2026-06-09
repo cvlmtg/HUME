@@ -195,6 +195,17 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
+    fn command_is_native(&self, name: &str) -> Result<bool, String> {
+        match self.state.registry.get_mappable(name) {
+            None => Err(format!("unknown command: {name}")),
+            Some(MappableCommand::Motion { .. })
+            | Some(MappableCommand::Selection { .. })
+            | Some(MappableCommand::Edit { .. })
+            | Some(MappableCommand::EditorCmd { .. }) => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
     fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<bool, String> {
         let Some(cmd) = self.state.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
@@ -286,7 +297,6 @@ mod tests {
     use engine::pipeline::BufferId;
     use scripting::host::EditorHost;
 
-    use super::*;
     use crate::editor::scripting_setup::make_init_host;
     use crate::editor::Editor;
 

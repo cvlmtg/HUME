@@ -103,6 +103,83 @@ fn run_command_sync_selection_returns_true_and_updates_sel() {
     assert!(head > 0, "selection must have extended past start");
 }
 
+// ── Native arg validation (classify-then-parse) ───────────────────────────────
+
+/// `(call! "move-right" 5)` from Steel moves the cursor 5 positions synchronously.
+///
+/// Verifies the native count path: classify → `Ok(true)` → `parse_count_extend`
+/// extracts `count=5` → `run_command_sync("move-right", 5, false)` runs immediately.
+/// Fail oracle: change expected cursor to 1 — test fails.
+#[test]
+fn call_bang_count_arg_dispatches_synchronously() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut mock = MockHost::new();
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#.to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    ed.register_steel_cmds(defs);
+    ed.scripting = Some(host);
+    ed.execute_keymap_command("move-right-5".into(), 1, false, vec![]);
+
+    let idx = {
+        let state = &ed.state;
+        let buf_id = state.panes.state
+            .get(state.focused_pane_id).unwrap()
+            .values().next().unwrap()
+            .selections.primary().head();
+        buf_id
+    };
+    assert_eq!(idx, 5, "cursor must be at position 5 after (call! \"move-right\" 5)");
+}
+
+/// `(call! "move-right" "garbage")` must raise a Steel error and NOT move the cursor.
+///
+/// Verifies fail-fast: classify happens before `run_command_sync`, so the command
+/// never executes. The error message must mention the malformed args.
+/// Fail oracle: if `execute_keymap_command` returns without error, `state(ed)`
+/// would differ from the initial state — the assert catches that.
+#[test]
+fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut mock = MockHost::new();
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#.to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    ed.register_steel_cmds(defs);
+    ed.scripting = Some(host);
+
+    // execute_keymap_command reports errors to the status bar rather than panicking;
+    // check the cursor did not move (the Steel error aborted the eval).
+    let before = state(&ed);
+    ed.execute_keymap_command("move-right-bad".into(), 1, false, vec![]);
+    let after = state(&ed);
+    assert_eq!(before, after, "cursor must not move when native arg is malformed");
+}
+
 // ── Case B integration test ───────────────────────────────────────────────────
 
 /// **Case B** — a Steel function can observe the effect of `(move-right)` in

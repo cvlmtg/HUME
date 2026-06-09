@@ -111,6 +111,16 @@ pub trait EditorHost {
     fn steel_command_budget_ms(&self) -> u64;
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
+    /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
+    /// `Motion`, `Selection`, `Edit`, or `EditorCmd` — whose only valid `call!`
+    /// args are `count` and `extend`. Returns `Ok(false)` for Steel-defined
+    /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
+    /// Returns `Err(msg)` if the name is unknown.
+    ///
+    /// Read-only: never executes the command. Hosts without a registry (test
+    /// stubs) return `Ok(false)` to treat all commands as Steel/forward-raw.
+    fn command_is_native(&self, name: &str) -> Result<bool, String>;
+
     /// Try to execute a named command synchronously, without deferral.
     ///
     /// Engine-independent commands (`Motion`, `Selection`, `Edit`) apply their

@@ -219,12 +219,13 @@ impl ScriptingHost {
 
     /// Pre-register native command names as callable Steel bindings.
     ///
-    /// For each name, evaluates `(define name (lambda () (%call! "name" (list))))`.
+    /// For each name, evaluates `(define name (lambda () (call! "name")))`.
     /// This makes bare `(move-left)`, `(collapse-selection)` etc. callable from
     /// Steel without requiring `(call! "move-left")`.
     ///
-    /// `%call!` tries synchronous dispatch first (Motion/Selection/Edit/EditorCmd
-    /// State variants), falling back to the deferred queue for Legacy/SteelBacked/Lazy.
+    /// Uses the public `call!` macro (not the `%call!` primitive directly) so
+    /// the `call!`→`%call!` desugaring stays in one place and the `%`-prefix
+    /// private-primitive convention is respected.
     ///
     /// Called from `Editor::init_scripting` after `ScriptingHost::new` and
     /// **before** any `eval_init` call, so that `init.scm` and plugins can use
@@ -234,13 +235,13 @@ impl ScriptingHost {
             return;
         }
         // Build one compound source string: one define per command.
-        let mut source = String::with_capacity(names.len() * 56);
+        let mut source = String::with_capacity(names.len() * 48);
         for &name in names {
             source.push_str("(define ");
             source.push_str(name);
-            source.push_str(" (lambda () (%call! \"");
+            source.push_str(" (lambda () (call! \"");
             source.push_str(name);
-            source.push_str("\" (list))))\n");
+            source.push_str("\")))\n");
         }
         self.steel
             .compile_and_run_raw_program(source)

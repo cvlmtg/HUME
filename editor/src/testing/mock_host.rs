@@ -133,6 +133,10 @@ impl EditorHost for MockHost {
         hume::ops::register::is_valid_register_name(ch)
     }
     fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
+    fn command_is_native(&self, _name: &str) -> Result<bool, String> {
+        // No registry — treat every command as Steel/forward-raw.
+        Ok(false)
+    }
     fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<bool, String> {
         // MockHost has no command registry; always defer to the queue.
         Ok(false)

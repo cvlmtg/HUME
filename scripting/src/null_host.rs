@@ -56,6 +56,10 @@ impl EditorHost for NullHost {
     fn has_grammar(&self, _language: &str) -> bool { false }
     fn is_valid_register_name(&self, _ch: char) -> bool { false }
     fn steel_command_budget_ms(&self) -> u64 { 10_000 }
+    fn command_is_native(&self, _name: &str) -> Result<bool, String> {
+        // No registry — treat every command as Steel/forward-raw.
+        Ok(false)
+    }
     fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<bool, String> {
         Ok(false)
     }
