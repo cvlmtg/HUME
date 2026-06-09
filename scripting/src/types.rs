@@ -20,7 +20,7 @@ pub struct PendingSteelCmd {
     pub inline_output: bool,
 }
 
-/// A Steel command that has been fully registered in the engine and is ready
+/// A Steel command that has been fully registered in the Steel engine and is ready
 /// to be inserted into the `CommandRegistry`.
 ///
 /// Returned by [`super::ScriptingHost::eval_init`] and

@@ -32,7 +32,7 @@ use crate::{HostBundle, ScriptingHost};
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
 
-/// Arm the watchdog, run `program` inside `engine` with `ctx` visible as
+/// Arm the watchdog, run `program` inside `steel` with `ctx` visible as
 /// `*hume.ctx*`, then cancel the watchdog and reset the interrupt flag.
 ///
 /// Used by `eval_source_raw`, `call_steel_cmd`, and `fire_hook` to avoid
@@ -49,14 +49,14 @@ pub(crate) fn run_steel<'a>(
     );
     let result = steel
         .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
-        .consume_once(|engine, args| {
+        .consume_once(|steel, args| {
             let ctx_val = args
                 .into_iter()
                 .next()
                 .expect("with_mut_reference yields one arg");
-            engine.update_value(HUME_CTX, ctx_val);
-            let res = engine.compile_and_run_raw_program(program);
-            engine.update_value(HUME_CTX, SteelVal::Void);
+            steel.update_value(HUME_CTX, ctx_val);
+            let res = steel.compile_and_run_raw_program(program);
+            steel.update_value(HUME_CTX, SteelVal::Void);
             res
         })
         .map(|_| ())
@@ -73,7 +73,7 @@ impl ScriptingHost {
     ///
     /// Evaluates `source` (init.scm) then, for each plugin queued by
     /// `(load-plugin …)` or `(declare-plugin …)` + explicit `(load-plugin …)`,
-    /// submits `(require "<abs-path>")` on the same engine.  Each plugin is its
+    /// submits `(require "<abs-path>")` on the same Steel engine.  Each plugin is its
     /// own Steel module, so private helpers with the same name in different
     /// plugins are mangled to distinct globals and never collide.  Commands are
     /// drained between plugins so that a later plugin can bind keys to commands
@@ -143,7 +143,7 @@ impl ScriptingHost {
     }
 
     /// Process `PendingSteelCmd`s collected during an eval:
-    /// register each lambda in the engine's global namespace and record the
+    /// register each lambda in the Steel engine's global namespace and record the
     /// owner in `cmd_owners`.  Returns the `SteelCmdDef`s for the caller to
     /// register in the `CommandRegistry`.
     pub(crate) fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {

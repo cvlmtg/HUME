@@ -181,7 +181,7 @@ impl ScriptingHost {
     pub fn new() -> Self {
         let data_dir = platform::dirs::data_dir();
         let runtime_dir = platform::dirs::runtime_dir();
-        // Initialize the fs builtin directory TLS before the engine registers
+        // Initialize the fs builtin directory TLS before the Steel engine registers
         // builtins — the `data-dir` / `runtime-dir` / sandbox functions read
         // from this TLS whenever they are called.
         builtins::sandbox::init_dirs(data_dir.clone(), runtime_dir.clone());
@@ -406,7 +406,7 @@ impl ScriptingHost {
         self.eval_source_raw(source, builtin_names, budget_ms, host)
     }
 
-    /// Invoke a Steel proc by its internal engine name and return the list of
+    /// Invoke a Steel proc by its internal name and return the list of
     /// commands it queued via `(call! …)`, plus an optional WaitChar
     /// command name requested via `(request-wait-char! …)`.
     ///
@@ -498,7 +498,7 @@ impl ScriptingHost {
     /// (`current-buffer`, `call!`, etc.).  Returns the combined `cmd_queue`
     /// from all handlers, or an empty vec if no handlers are registered.
     ///
-    /// Returns immediately (no engine call, no watchdog) if no handlers are
+    /// Returns immediately (no Steel engine call, no watchdog) if no handlers are
     /// registered for `hook_id`.
     pub fn fire_hook<'a>(
         &'a mut self,

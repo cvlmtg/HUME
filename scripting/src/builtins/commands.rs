@@ -24,7 +24,7 @@
 //!
 //! Steel lambdas registered via `define-command!` are intentionally **not**
 //! exposed as bare Scheme identifiers (they live under a private mangled
-//! name in the engine namespace).  This keeps the call site symmetric with
+//! name in the Steel engine namespace).  This keeps the call site symmetric with
 //! built-ins (which are Rust `MappableCommand` variants and have no Scheme
 //! binding), and ensures every invocation goes through the registry path
 //! that owns command attribution, watchdog protection, and dispatch parity
