@@ -7,29 +7,20 @@ use editing::text::Text;
 use engine::pipeline::EngineView;
 use crate::ops::MotionMode;
 
-/// Function pointer variant for an [`EditorCmd`] handler.
+/// Function pointer for an [`EditorCmd`] handler.
 ///
-/// - `State` — can run with just `(&mut EditorState, &mut EngineView)`;
-///   dispatched synchronously from Steel via `run_command_sync`.
-/// - `Legacy` — requires `&mut Editor` (e.g. recursive dispatch via
-///   `execute_keymap_command`); deferred from Steel, always synchronous
-///   from the keypress path.
+/// All handlers share one shape: `(&mut EditorState, &mut EngineView, usize, MotionMode)`.
+/// Handlers that need no viewport access bind the view parameter as `_view`.
+/// This single shape is synchronous, Steel-eval-safe (no `&mut Editor` needed),
+/// and reachable from both the keypress path and `run_command_sync`.
 ///
 /// [`EditorCmd`]: MappableCommand::EditorCmd
-#[derive(Clone, Copy)]
-pub(crate) enum EditorCmdFun {
-    State(
-        fn(
-            &mut super::super::EditorState,
-            &mut EngineView,
-            usize,
-            MotionMode,
-        ) -> Result<(), CommandError>,
-    ),
-    Legacy(
-        fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>,
-    ),
-}
+pub(crate) type EditorCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
@@ -98,7 +89,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: EditorCmdFun,
+        fun: EditorCmdFn,
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.

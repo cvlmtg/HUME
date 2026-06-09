@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 
-use crate::editor::error::CommandError;
-use crate::ops::MotionMode;
 use crate::ops::edit::{delete_char_backward, delete_char_forward, delete_selection};
 use crate::ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
@@ -27,7 +25,7 @@ use crate::ops::text_object::{
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
 };
 
-use super::{CommandRegistry, EditorCmdFun, MappableCommand, TypedCommand};
+use super::{CommandRegistry, EditorCmdFn, MappableCommand, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {
@@ -84,7 +82,7 @@ impl CommandRegistry {
         struct EditorCmdBuilder {
             name: &'static str,
             doc: &'static str,
-            fun: EditorCmdFun,
+            fun: EditorCmdFn,
             repeatable: bool,
             jump: bool,
             visual_move: bool,
@@ -119,13 +117,10 @@ impl CommandRegistry {
                 });
             }
         }
-        // Construct a builder for a State-variant EditorCmd (sync-dispatchable from Steel).
-        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::EditorState, &mut engine::pipeline::EngineView, usize, MotionMode) -> Result<(), CommandError>| {
-            EditorCmdBuilder { name, doc, fun: EditorCmdFun::State(fun), repeatable: false, jump: false, visual_move: false, extendable: false }
-        };
-        // Construct a builder for a Legacy-variant EditorCmd (requires &mut Editor).
-        let ecmd_legacy = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>| {
-            EditorCmdBuilder { name, doc, fun: EditorCmdFun::Legacy(fun), repeatable: false, jump: false, visual_move: false, extendable: false }
+        // Construct a builder for an EditorCmd. All handlers share one shape:
+        // fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>.
+        let ecmd = |name: &'static str, doc: &'static str, fun: EditorCmdFn| {
+            EditorCmdBuilder { name, doc, fun, repeatable: false, jump: false, visual_move: false, extendable: false }
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -716,8 +711,9 @@ impl CommandRegistry {
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
-        // Uses Legacy variant: cmd_repeat calls execute_keymap_command + handle_insert.
-        ecmd_legacy(
+        // The handler sets EditorState::pending_repeat; drain_pending_repeat does
+        // the actual replay with &mut Editor after handle_key returns (D7-safe).
+        ecmd(
             "repeat-last-action",
             "Repeat the last editing action.",
             cmd_repeat,

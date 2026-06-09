@@ -182,6 +182,7 @@ impl Editor {
                 macro_recording: None,
                 macro_pending: None,
                 replay_queue: VecDeque::new(),
+                pending_repeat: None,
                 skip_macro_record: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,

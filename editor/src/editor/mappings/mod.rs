@@ -36,6 +36,11 @@ impl Editor {
         }
         self.state.skip_macro_record = false;
 
+        // Replay a pending dot-repeat action, if cmd_repeat set one.
+        // Runs after macro recording so the `.` key itself is captured,
+        // but the replayed command executes as a fresh dispatch with &mut Editor.
+        self.drain_pending_repeat();
+
         // Drain any hooks enqueued by mode handlers (mode changes, `:write`, etc.)
         // that did not go through execute_keymap_command's own drain call.
         self.drain_hooks();

@@ -37,7 +37,7 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(crate) use command::{EditorCmdFun, MappableCommand, TypedCommand};
+pub(crate) use command::{EditorCmdFn, MappableCommand, TypedCommand};
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
@@ -515,7 +515,8 @@ mod tests {
         let before = reg.len();
 
         fn dummy_fn(
-            _ed: &mut Editor,
+            _state: &mut crate::editor::EditorState,
+            _view: &mut engine::pipeline::EngineView,
             _count: usize,
             _mode: crate::ops::MotionMode,
         ) -> Result<(), crate::editor::error::CommandError> {
@@ -524,7 +525,7 @@ mod tests {
         let cmd = MappableCommand::EditorCmd {
             name: Cow::Owned("steel-test-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel command for testing."),
-            fun: super::command::EditorCmdFun::Legacy(dummy_fn),
+            fun: dummy_fn,
             repeatable: false,
             jump: false,
             visual_move: false,
@@ -611,7 +612,8 @@ mod tests {
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
         fn noop(
-            _ed: &mut super::super::Editor,
+            _state: &mut crate::editor::EditorState,
+            _view: &mut engine::pipeline::EngineView,
             _count: usize,
             _mode: crate::ops::MotionMode,
         ) -> Result<(), crate::editor::error::CommandError> {
@@ -620,7 +622,7 @@ mod tests {
         reg.register(MappableCommand::EditorCmd {
             name: Cow::Owned("%hume-cmd-decoy".to_string()),
             doc: Cow::Borrowed("doc"),
-            fun: super::command::EditorCmdFun::Legacy(noop),
+            fun: noop,
             repeatable: false,
             jump: false,
             visual_move: false,

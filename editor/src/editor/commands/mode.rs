@@ -11,8 +11,7 @@ use crate::ops::motion::{
 };
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
-use super::super::{doc_ops, EditorState, MiniBuffer, Mode};
-use super::super::Editor;
+use super::super::{doc_ops, EditorState, MiniBuffer, Mode, PendingRepeat};
 use crate::editor::error::CommandError;
 use super::{
     begin_insert_session, end_insert_session, enqueue_mode_change,
@@ -242,63 +241,24 @@ pub fn cmd_collapse_and_exit_extend(
 /// overrides the original; otherwise the original count is reused. This mirrors
 /// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
 ///
-/// Kept as `Legacy` variant: it calls `execute_keymap_command` and
-/// `handle_insert`, which require `&mut Editor`.
+/// The handler only enqueues a `PendingRepeat` marker; the actual replay
+/// (edit-group bracketing, re-dispatch, insert-key replay) runs in
+/// `drain_pending_repeat` at the tail of `handle_key`, where `&mut Editor`
+/// is available for `execute_keymap_command` and `handle_insert`. This satisfies
+/// the D7 invariant: no EditorCmd handler takes `&mut Editor`.
 pub fn cmd_repeat(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    _view: &mut EngineView,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let Some(action) = ed.state.last_repeatable_action.take() else {
+    // Peek without taking — drain_pending_repeat owns the take so it can
+    // restore the action after replay.
+    let Some(orig_count) = state.last_repeatable_action.as_ref().map(|a| a.count) else {
         return Ok(());
     };
-
     // Prefer an explicit user count; fall back to the count from the original action.
-    let effective_count = if ed.state.explicit_count {
-        count
-    } else {
-        action.count
-    };
-
-    // Restore the char arg so wait-char commands (replace, find/till) work.
-    ed.state.pending_char = action.char_arg;
-
-    // Pre-open the edit group before re-executing. This is the replay signal:
-    // `begin_insert_session` checks `is_group_open()` and suppresses both the
-    // redundant `begin_edit_group` call and keystroke recording when the group
-    // is already open. For non-insert commands the group stays empty and the
-    // commit below is a no-op.
-    ed.begin_edit_group_current();
-
-    // Re-execute the original command through the normal dispatch path.
-    // extend=false because the replayed command was already resolved to its
-    // final form (the resolved name is what gets stored in RepeatableAction).
-    // Clone the name while `action` is locally owned (moved out via `.take()`).
-    ed.execute_keymap_command(action.command.clone(), effective_count, false, vec![]);
-
-    // Feed recorded insert keystrokes through the normal insert handler.
-    // `KeyEvent` is `Copy`, so iterate by reference and dereference each key.
-    for key in &action.insert_keys {
-        ed.handle_insert(*key);
-    }
-
-    // Close the insert session / edit group:
-    // - For insert commands: `end_insert_session` commits the group (delete +
-    //   typed text as one undo step). `insert_session` is `None` here (replay
-    //   suppressed it), so no keystrokes are moved into `last_repeatable_action`.
-    // - For non-insert commands: the group is empty (no `apply_edit_grouped`
-    //   calls), so `commit_edit_group` is a no-op and the command's own
-    //   `apply_edit` revision stands alone in history.
-    if ed.state.mode == EditorMode::Insert {
-        ed.end_insert_session();
-    } else {
-        ed.commit_edit_group_current();
-    }
-
-    // Restore the original action so `.` can be pressed again.
-    // `execute_keymap_command` may have overwritten `last_repeatable_action` during
-    // replay; this final assignment ensures the stored action is always the
-    // one the user actually performed.
-    ed.state.last_repeatable_action = Some(action);
+    let effective = if state.explicit_count { count } else { orig_count };
+    state.pending_repeat = Some(PendingRepeat { count: effective });
     Ok(())
 }

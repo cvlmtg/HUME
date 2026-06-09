@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use super::super::commands::RING_CYCLE_CMDS;
 use super::super::keymap::WaitCharPending;
-use super::super::registry::{EditorCmdFun, MappableCommand};
+use super::super::registry::MappableCommand;
 use super::super::{doc_ops, Editor, RegisterPrefix, RepeatableAction, Severity};
 use super::super::jump_list::JumpEntry;
 use editing::selection::Selection;
@@ -85,17 +85,8 @@ impl Editor {
                     );
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
-                    match fun {
-                        EditorCmdFun::State(f) => {
-                            if let Err(e) = f(&mut self.state, &mut self.view, count, motion_mode) {
-                                self.report(Severity::Error, e.message().to_owned());
-                            }
-                        }
-                        EditorCmdFun::Legacy(f) => {
-                            if let Err(e) = f(self, count, motion_mode) {
-                                self.report(Severity::Error, e.message().to_owned());
-                            }
-                        }
+                    if let Err(e) = fun(&mut self.state, &mut self.view, count, motion_mode) {
+                        self.report(Severity::Error, e.message().to_owned());
                     }
                 }
                 MappableCommand::Lazy { ref plugin, .. } => {

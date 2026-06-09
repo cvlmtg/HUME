@@ -41,10 +41,12 @@ fn run_command_sync_motion_returns_true_and_moves_cursor() {
     assert_eq!(after, 1, "cursor must be at 1 after sync move-right");
 }
 
-/// `State` EditorCmds (e.g. `undo`) run synchronously and return `Ok(true)`.
-/// `Legacy` EditorCmds (e.g. `repeat-last-action`) cannot run sync and return `Ok(false)`.
+/// All `EditorCmd` handlers share the State shape and run synchronously via
+/// `run_command_sync`, returning `Ok(true)`. `repeat-last-action` enqueues a
+/// `PendingRepeat` marker as a pure State handler; the actual replay runs in
+/// `drain_pending_repeat` at the tail of `handle_key`.
 #[test]
-fn run_command_sync_editor_cmd_returns_false() {
+fn run_command_sync_editor_cmd_returns_true() {
     let mut ed = editor_from("-[a]>bc\n");
     let mut host = live_host!(ed);
     // `undo` is a State EditorCmd — runs synchronously; must return true.
@@ -52,10 +54,11 @@ fn run_command_sync_editor_cmd_returns_false() {
         .expect("run_command_sync must not error for undo");
     assert!(ran, "State EditorCmd must return true (ran sync)");
 
-    // `repeat-last-action` is a Legacy EditorCmd — defers to the queue; must return false.
-    let ran_legacy = host.run_command_sync("repeat-last-action", 1, false)
+    // `repeat-last-action` is also a State EditorCmd now — sets pending_repeat and
+    // returns true (no action to repeat, so pending_repeat stays None, but it ran sync).
+    let ran_repeat = host.run_command_sync("repeat-last-action", 1, false)
         .expect("run_command_sync must not error for repeat-last-action");
-    assert!(!ran_legacy, "Legacy EditorCmd must return false (defer to queue)");
+    assert!(ran_repeat, "repeat-last-action must return true (State EditorCmd, runs sync)");
 }
 
 /// `run_command_sync` for an unknown name must return `Err`.

@@ -16,7 +16,7 @@ use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::doc_ops;
-use crate::editor::registry::{EditorCmdFun, MappableCommand};
+use crate::editor::registry::MappableCommand;
 use crate::ops::MotionMode;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
@@ -245,16 +245,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 );
                 Ok(true)
             }
-            MappableCommand::EditorCmd { fun, .. } => match fun {
-                EditorCmdFun::State(f) => {
-                    if let Err(e) = f(&mut self.state, &mut self.view, count, motion_mode) {
-                        self.state.report(crate::editor::Severity::Error, e.message().to_owned());
-                    }
-                    Ok(true)
+            MappableCommand::EditorCmd { fun, .. } => {
+                if let Err(e) = fun(&mut self.state, &mut self.view, count, motion_mode) {
+                    self.state.report(crate::editor::Severity::Error, e.message().to_owned());
                 }
-                // Legacy handlers require &mut Editor — defer to post-eval queue.
-                EditorCmdFun::Legacy(_) => Ok(false),
-            },
+                Ok(true)
+            }
             // SteelBacked / Lazy — caller must queue for post-eval dispatch.
             _ => Ok(false),
         }

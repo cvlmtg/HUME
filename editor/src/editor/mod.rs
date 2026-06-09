@@ -110,6 +110,20 @@ pub(super) struct RepeatableAction {
     pub insert_keys: Vec<KeyEvent>,
 }
 
+// ── Deferred dot-repeat ───────────────────────────────────────────────────────
+
+/// Deferred dot-repeat job, set by `cmd_repeat` and consumed by
+/// `drain_pending_repeat` at the end of the enclosing `handle_key` call.
+///
+/// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
+/// lets `cmd_repeat` satisfy the D7 invariant while still reaching
+/// `execute_keymap_command` and `handle_insert` for the actual replay.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PendingRepeat {
+    /// Effective replay count — explicit-count override already applied.
+    pub(super) count: usize,
+}
+
 // ── Macro recording state ─────────────────────────────────────────────────────
 
 /// Pending state for the two-keystroke `q<reg>` / `Q<reg>` sequences.
@@ -219,6 +233,9 @@ pub(crate) struct EditorState {
     pub(super) visual_move_target_cols: Vec<u16>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
+    /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
+    /// `drain_pending_repeat` at the tail of `handle_key`.
+    pub(super) pending_repeat: Option<PendingRepeat>,
     /// Active insert session, present between begin/end_insert_session.
     pub(super) insert_session: Option<InsertSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
@@ -414,6 +431,57 @@ impl Editor {
         self.state.last_repeatable_action = saved_action;
     }
 
+    /// Replay the pending dot-repeat action, if any.
+    ///
+    /// Called at the tail of every `handle_key` so the replay runs with
+    /// `&mut Editor` — outside any Steel eval and able to re-enter the VM if
+    /// the recorded command is (or becomes) SteelBacked.
+    ///
+    /// The heavy work (edit-group bracketing, re-dispatch, insert-key replay)
+    /// lives here rather than in `cmd_repeat` so that handler can be a pure
+    /// `fn(&mut EditorState, &mut EngineView)` satisfying the D7 invariant.
+    fn drain_pending_repeat(&mut self) {
+        let Some(PendingRepeat { count }) = self.state.pending_repeat.take() else {
+            return;
+        };
+        let Some(action) = self.state.last_repeatable_action.take() else {
+            return;
+        };
+
+        // Restore the char arg so wait-char commands (replace, find/till) work.
+        self.state.pending_char = action.char_arg;
+
+        // Pre-open the edit group — the "replay signal" used by begin_insert_session
+        // to suppress both the redundant begin_edit_group call and keystroke recording
+        // (insert_session is only created when no group is open).
+        self.begin_edit_group_current();
+
+        // Re-dispatch through the full keymap dispatcher: any command kind —
+        // including future SteelBacked repeatable commands — fires correctly here.
+        self.execute_keymap_command(action.command.clone(), count, false, vec![]);
+
+        // Feed recorded insert keystrokes through the insert handler.
+        for key in &action.insert_keys {
+            self.handle_insert(*key);
+        }
+
+        // Close the edit group: insert commands → end_insert_session commits it;
+        // non-insert commands → the group is empty and commit is a no-op.
+        if self.state.mode == Mode::Insert {
+            self.end_insert_session();
+        } else {
+            self.commit_edit_group_current();
+        }
+
+        // Restore the action so `.` can be pressed again. execute_keymap_command
+        // may have overwritten last_repeatable_action during replay; this
+        // assignment ensures the stored action is always the one the user performed.
+        self.state.last_repeatable_action = Some(action);
+        // Re-stamp last_command: the outer dispatcher saw "repeat-last-action",
+        // which would wrongly suppress clipboard paste for smart-p (p after c/d).
+        self.state.last_command = Some(Cow::Borrowed("repeat-last-action"));
+    }
+
 }
 
 // ── Test constructors ─────────────────────────────────────────────────────────
@@ -471,6 +539,7 @@ impl Editor {
                 last_find: None,
                 force_full_redraw: false,
                 last_repeatable_action: None,
+                pending_repeat: None,
                 insert_session: None,
                 explicit_count: false,
                 search: SearchState::default(),
