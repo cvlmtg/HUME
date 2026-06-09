@@ -219,9 +219,12 @@ impl ScriptingHost {
 
     /// Pre-register native command names as callable Steel bindings.
     ///
-    /// For each name, evaluates `(define name (lambda () (%run-sync! "name")))`.
+    /// For each name, evaluates `(define name (lambda () (%call! "name" (list))))`.
     /// This makes bare `(move-left)`, `(collapse-selection)` etc. callable from
     /// Steel without requiring `(call! "move-left")`.
+    ///
+    /// `%call!` tries synchronous dispatch first (Motion/Selection/Edit/EditorCmd
+    /// State variants), falling back to the deferred queue for Legacy/SteelBacked/Lazy.
     ///
     /// Called from `Editor::init_scripting` after `ScriptingHost::new` and
     /// **before** any `eval_init` call, so that `init.scm` and plugins can use
@@ -231,13 +234,13 @@ impl ScriptingHost {
             return;
         }
         // Build one compound source string: one define per command.
-        let mut source = String::with_capacity(names.len() * 48);
+        let mut source = String::with_capacity(names.len() * 56);
         for &name in names {
             source.push_str("(define ");
             source.push_str(name);
-            source.push_str(" (lambda () (%run-sync! \"");
+            source.push_str(" (lambda () (%call! \"");
             source.push_str(name);
-            source.push_str("\")))\n");
+            source.push_str("\" (list))))\n");
         }
         self.steel
             .compile_and_run_raw_program(source)

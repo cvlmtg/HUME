@@ -168,9 +168,6 @@ pub(crate) fn register_all(engine: &mut Engine) {
     // %call! is the Rust primitive; the variadic (call! name args…) macro in
     // BOOTSTRAP desugars to (%call! name (list args…)).
     engine.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);
-    // %run-sync! is the sync dispatcher for pre-registered command bindings.
-    // (move-left) desugars to (%run-sync! "move-left") via bootstrap defines.
-    engine.register_fn_with_ctx(HUME_CTX, "%run-sync!", commands::run_command_sync_primitive);
     engine.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
     engine.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     engine.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);

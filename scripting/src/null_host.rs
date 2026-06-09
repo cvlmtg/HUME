@@ -57,7 +57,7 @@ impl EditorHost for NullHost {
     fn is_valid_register_name(&self, _ch: char) -> bool { false }
     fn steel_command_budget_ms(&self) -> u64 { 10_000 }
     fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<bool, String> {
-        Err("NullHost: run_command_sync not available".into())
+        Ok(false)
     }
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }

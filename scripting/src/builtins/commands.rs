@@ -146,18 +146,63 @@ fn define_command_inner(
 /// The BOOTSTRAP macro `(call! name args…)` desugars to `(%call! name (list args…))`,
 /// so this function always receives `(name, args-list)`.
 ///
-/// Queues `(name, args_vec)` into `ctx.cmd_queue`.  In init mode, the host drains
-/// `cmd_queue` into `ScriptingHost::pending_startup_commands` after each eval, so
-/// `Editor::run_startup_commands` picks them up after all plugins activate.  In
-/// command mode, `cmd_queue` is returned in `SteelCmdResult` for immediate dispatch.
+/// Arg/count/extend mapping (applied to the args list):
+/// - `()` → `count=1, extend=false`
+/// - `(n)` → `count=n, extend=false`
+/// - `(n #t)` / `(n #f)` → `count=n, extend=bool`
+/// - other prefix → `count=1, extend=false`, all args forwarded as Steel args
+///
+/// During init evaluation the command is always queued (sync dispatch requires a
+/// live `EditorHostImpl`).  During command execution, synchronous dispatch is
+/// attempted first via `ctx.host.run_command_sync`; commands that cannot run
+/// synchronously (`SteelBacked`, `Lazy`, `Legacy` `EditorCmd`) fall back to the
+/// deferred `cmd_queue`.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
     args: SteelVal,
 ) -> SteelResult {
     let args_vec = steel_list_to_vec(args)?;
-    ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
-    Ok(SteelVal::Void)
+
+    // Init mode: always queue; sync dispatch requires a live EditorHostImpl.
+    if ctx.is_init {
+        ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
+        return Ok(SteelVal::Void);
+    }
+
+    let (count, extend, steel_args) = parse_call_args(&args_vec);
+
+    match ctx.host.run_command_sync(&name, count, extend) {
+        Ok(true) => Ok(SteelVal::Void),
+        Ok(false) => {
+            // SteelBacked / Lazy / Legacy EditorCmd — defer to post-eval queue.
+            ctx.cmd_queue.push(QueuedCommand {
+                name,
+                args: steel_args.to_vec(),
+                register: ctx.current_register_prefix,
+            });
+            Ok(SteelVal::Void)
+        }
+        Err(e) => steel::stop!(Generic => "%call!: {}", e),
+    }
+}
+
+/// Parse the leading args of a `%call!` invocation into `(count, extend, remaining_steel_args)`.
+///
+/// Leading integer → count; following bool → extend; everything else (or nothing)
+/// is returned as steel args for SteelBacked command dispatch.
+fn parse_call_args(args: &[SteelVal]) -> (usize, bool, &[SteelVal]) {
+    match args {
+        [] => (1, false, &[]),
+        [SteelVal::IntV(n), rest @ ..] => {
+            let count = (*n).max(1) as usize;
+            match rest {
+                [SteelVal::BoolV(ext), rest2 @ ..] => (count, *ext, rest2),
+                _ => (count, false, rest),
+            }
+        }
+        other => (1, false, other),
+    }
 }
 
 fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::SteelErr> {
@@ -165,40 +210,6 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::Steel
         SteelVal::ListV(list) => Ok(list.into_iter().collect()),
         other => steel::stop!(TypeMismatch =>
             "%call!: second arg must be a list, got {:?}", other),
-    }
-}
-
-/// `(%run-sync! name)`
-///
-/// Attempt to execute the named command synchronously.  Engine-independent
-/// commands (`Motion`, `Selection`, `Edit`) run immediately so their effects
-/// are visible to subsequent Steel code in the same eval (Case B fix).
-/// Commands that require full editor context (`EditorCmd`, `SteelBacked`,
-/// `Lazy`) fall back silently to the deferred `cmd_queue`.
-///
-/// This is the Rust primitive underlying bare `(move-left)` / `(collapse-selection)`
-/// etc., which the engine pre-registers as `(lambda () (%run-sync! "name"))`.
-/// Direct `(call! name)` is still needed for dynamic names or cross-plugin
-/// forward references.
-///
-/// Only valid inside a `SteelBacked` command invocation.
-pub(crate) fn run_command_sync_primitive(
-    ctx: &mut SteelCtx,
-    name: String,
-) -> SteelResult {
-    require_cmd_ctx!(ctx, "%run-sync!");
-    match ctx.host.run_command_sync(&name, 1, false) {
-        Ok(true) => Ok(SteelVal::Void),
-        Ok(false) => {
-            // EditorCmd / SteelBacked / Lazy — transparent deferred fallback.
-            ctx.cmd_queue.push(QueuedCommand {
-                name,
-                args: vec![],
-                register: ctx.current_register_prefix,
-            });
-            Ok(SteelVal::Void)
-        }
-        Err(e) => steel::stop!(Generic => "%run-sync!: {}", e),
     }
 }
 
@@ -309,7 +320,19 @@ mod tests {
     }
 
     #[test]
-    fn call_bang_with_no_args_queues_empty_vec() {
+    fn call_bang_queues_multiple_names() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
+        call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
+        let names: Vec<&str> = ctx.cmd_queue.iter().map(|qc| qc.name.as_str()).collect();
+        assert_eq!(names, vec!["move-right", "move-left"]);
+    }
+
+    /// In command mode (not init), `%call!` with no args falls back to queue because
+    /// `NullHost::run_command_sync` returns `Ok(false)`.
+    #[test]
+    fn call_bang_command_mode_defers_when_host_returns_false() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
@@ -319,8 +342,28 @@ mod tests {
         );
     }
 
+    /// Count arg is parsed and forwarded to `run_command_sync`; on `Ok(false)`,
+    /// the queued entry carries stripped-count steel_args (empty here).
     #[test]
-    fn call_bang_with_args_queues_name_and_args() {
+    fn call_bang_count_arg_defers_with_empty_steel_args() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        call_command_primitive(
+            &mut ctx,
+            "move-right".to_string(),
+            make_list(vec![SteelVal::IntV(5)]),
+        ).unwrap();
+        // NullHost deferred; steel_args is empty after stripping the count.
+        assert_eq!(
+            ctx.cmd_queue,
+            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }]
+        );
+    }
+
+    /// Non-count-shaped args (e.g. a string) are left in steel_args and forwarded
+    /// through the queue for SteelBacked commands that consume them.
+    #[test]
+    fn call_bang_string_arg_forwarded_as_steel_args() {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         let arg = SteelVal::StringV("hello".into());
@@ -329,16 +372,6 @@ mod tests {
             ctx.cmd_queue,
             vec![QueuedCommand { name: "echo".to_string(), args: vec![arg], register: None }]
         );
-    }
-
-    #[test]
-    fn call_bang_queues_multiple_names() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
-        call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
-        let names: Vec<&str> = ctx.cmd_queue.iter().map(|qc| qc.name.as_str()).collect();
-        assert_eq!(names, vec!["move-right", "move-left"]);
     }
 
     #[test]
