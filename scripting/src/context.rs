@@ -8,12 +8,10 @@ use steel::gc::unsafe_erased_pointers::CustomReference;
 use engine::pipeline::{BufferId, PaneId};
 
 use super::attribution::PluginStack;
-use super::hooks::HookRegistry;
 use super::host::EditorHost;
-use super::lazy::LazyRegistry;
 use super::log::LogLevel;
 use super::types::{PendingLanguageReg, PendingLanguageSets, PendingSteelCmd, QueuedCommand};
-use super::HostBundle;
+use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
 /// or command call via Steel's `with_mut_reference` API.
@@ -39,17 +37,9 @@ pub(crate) struct SteelCtx<'a> {
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: &'a mut PluginStack,
-    /// Command-owner index; read by `(command-plugin …)`, written by
-    /// [`super::ScriptingHost::process_pending_cmds`].
-    pub(crate) cmd_owners: &'a mut std::collections::HashMap<String, String>,
-    /// Hook registry; `(register-hook! …)` writes directly.
-    pub(crate) hooks: &'a mut HookRegistry,
-    /// Lazy plugin registry; `%declare-plugin!` writes directly.
-    pub(crate) lazy_registry: &'a mut LazyRegistry,
-    /// All plugin names ever passed to `(load-plugin …)` or `(declare-plugin …)`,
-    /// including absent ones.  Borrows the persistent host list so that
-    /// `(declared-plugins)` returns the full init-time declaration set at command time.
-    pub(crate) declared_plugins: &'a mut Vec<String>,
+    /// The four persistent registries: cmd_owners, hooks, lazy_registry,
+    /// declared_plugins. Borrowed as a unit, disjoint from `steel`.
+    pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
     pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,
     /// Language identity registrations queued by `(define-language! …)` during init.
@@ -117,14 +107,11 @@ impl<'a> SteelCtx<'a> {
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,
-            cmd_owners: host_bundle.cmd_owners,
-            hooks: host_bundle.hooks,
-            lazy_registry: host_bundle.lazy_registry,
+            registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             pending_language_regs: host_bundle.pending_language_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
-            declared_plugins: host_bundle.declared_plugins,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names,
             pending_steel_cmds: Vec::new(),
@@ -158,14 +145,11 @@ impl<'a> SteelCtx<'a> {
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,
-            cmd_owners: host_bundle.cmd_owners,
-            hooks: host_bundle.hooks,
-            lazy_registry: host_bundle.lazy_registry,
+            registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             pending_language_regs: host_bundle.pending_language_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
-            declared_plugins: host_bundle.declared_plugins,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
             pending_steel_cmds: Vec::new(),

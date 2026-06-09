@@ -230,6 +230,7 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let owner = ctx
+        .registries
         .cmd_owners
         .get(&name)
         .cloned()
@@ -388,7 +389,8 @@ mod tests {
     #[test]
     fn command_plugin_known_returns_owner() {
         let mut h = SteelCtxTestHarness::new();
-        h.cmd_owners
+        h.registries
+            .cmd_owners
             .insert("my-cmd".to_string(), "core:plum".to_string());
         let mut ctx = h.ctx();
         let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();

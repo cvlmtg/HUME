@@ -55,11 +55,12 @@ pub(crate) fn declare_plugin(
 
     // PLUM compat: declared_plugins always records every declared plugin.
     if !ctx
+        .registries
         .declared_plugins
         .iter()
         .any(|d| d.eq_ignore_ascii_case(&name))
     {
-        ctx.declared_plugins.push(name.clone());
+        ctx.registries.declared_plugins.push(name.clone());
     }
 
     let on_cmd = list_to_strings(on_command, "on-command")?;
@@ -89,7 +90,7 @@ pub(crate) fn declare_plugin(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: command '{cmd}' conflicts with a built-in; trigger ignored"),
             );
-        } else if ctx.lazy_registry.command_triggers.contains_key(&cmd) {
+        } else if ctx.registries.lazy_registry.command_triggers.contains_key(&cmd) {
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; trigger ignored"),
@@ -106,10 +107,10 @@ pub(crate) fn declare_plugin(
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
     // the plugin body is evaluated (before activation).
     for cmd in &on_cmd {
-        ctx.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
+        ctx.registries.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
     }
 
-    ctx.lazy_registry
+    ctx.registries.lazy_registry
         .declare(plugin_id, path, on_cmd, on_evt, on_lang);
 
     Ok(SteelVal::Void)
@@ -186,19 +187,20 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
 
     // PLUM compat: record name regardless of disk presence.
     if !ctx
+        .registries
         .declared_plugins
         .iter()
         .any(|d| d.eq_ignore_ascii_case(&name))
     {
-        ctx.declared_plugins.push(name.clone());
+        ctx.registries.declared_plugins.push(name.clone());
     }
 
-    if !ctx.lazy_registry.plugins.contains_key(&id) {
+    if !ctx.registries.lazy_registry.plugins.contains_key(&id) {
         let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
             .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
         match path {
             Some(p) => {
-                ctx.lazy_registry
+                ctx.registries.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Declared { path: p });
             }
@@ -225,6 +227,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
 /// until their body has been evaluated.
 pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
     let vals: Vec<SteelVal> = ctx
+        .registries
         .lazy_registry
         .plugins
         .iter()
@@ -239,6 +242,7 @@ pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
 /// (non-`core:*`) plugin names.  Used by PLUM to know what to install.
 pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
     let vals: Vec<SteelVal> = ctx
+        .registries
         .declared_plugins
         .iter()
         .filter(|name| !name.to_ascii_lowercase().starts_with("core:"))

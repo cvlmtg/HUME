@@ -91,19 +91,35 @@ use lazy::{LazyRegistry, PluginState};
 
 use codegen::{build_hook_program, hook_arg_name, hook_proc_name};
 
+// ── ScriptingRegistries ───────────────────────────────────────────────────────
+
+/// The four persistent registry fields bundled as a unit so they can be
+/// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
+/// Steel VM (`steel`) and the rest of `ScriptingHost`.
+pub(crate) struct ScriptingRegistries {
+    /// Command-to-owner index: maps each Steel-registered command name to a
+    /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
+    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
+    /// Persistent hook registry: handlers registered by `(register-hook! …)`.
+    pub(crate) hooks: HookRegistry,
+    /// Lazy plugin registry: populated by `%declare-plugin!` during init;
+    /// trigger maps consulted by command dispatch, event firing, and language-set.
+    pub(crate) lazy_registry: LazyRegistry,
+    /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
+    /// including plugins absent on disk.
+    pub(crate) declared_plugins: Vec<String>,
+}
+
 // ── HostBundle ────────────────────────────────────────────────────────────────
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
 ///
-/// Built from a `let Self { steel, plugin_stack, … } = &mut *self` destructure
-/// and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
+/// Built from a `let Self { steel, registries, plugin_stack, … } = &mut *self`
+/// destructure and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
 /// Private to this module.
 pub(crate) struct HostBundle<'a> {
+    pub(crate) registries: &'a mut ScriptingRegistries,
     plugin_stack: &'a mut PluginStack,
-    cmd_owners: &'a mut std::collections::HashMap<String, String>,
-    hooks: &'a mut HookRegistry,
-    lazy_registry: &'a mut LazyRegistry,
-    declared_plugins: &'a mut Vec<String>,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     pending_language_regs: &'a mut Vec<PendingLanguageReg>,
     data_dir: Option<&'a std::path::Path>,
@@ -126,22 +142,13 @@ pub(crate) struct HostBundle<'a> {
 pub struct ScriptingHost {
     /// The Scheme VM — always called `steel` (never bare "engine", which refers to the `engine/` crate).
     steel: Engine,
+    /// The four persistent registries borrowed as a unit into `SteelCtx`,
+    /// disjoint from `steel` so the VM and command/hook state can be borrowed
+    /// simultaneously (NLL field-split).
+    pub(crate) registries: ScriptingRegistries,
     /// Attribution stack: `stack.last()` is the plugin currently executing.
     /// Empty → top-level `init.scm` → `Owner::User`.
     plugin_stack: PluginStack,
-    /// Command-to-owner index: maps each Steel-registered command name to a
-    /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
-    /// Populated by `process_pending_cmds`; queried by `(command-plugin name)`.
-    cmd_owners: std::collections::HashMap<String, String>,
-    /// Persistent hook registry: handlers registered by `(register-hook! …)`.
-    hooks: HookRegistry,
-    /// Lazy plugin registry: populated by `%declare-plugin!` during init;
-    /// trigger maps consulted by command dispatch, event firing, and language-set.
-    lazy_registry: LazyRegistry,
-    /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
-    /// including plugins absent on disk.  Persists across evals so that
-    /// `(declared-plugins)` returns the full init-time list at command time (PLUM).
-    declared_plugins: Vec<String>,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor via `take_pending_messages()`.
     pending_messages: Vec<(LogLevel, String)>,
@@ -182,11 +189,13 @@ impl ScriptingHost {
         builtins::register_all(&mut steel);
         Self {
             steel,
+            registries: ScriptingRegistries {
+                cmd_owners: std::collections::HashMap::new(),
+                hooks: HookRegistry::default(),
+                lazy_registry: LazyRegistry::default(),
+                declared_plugins: Vec::new(),
+            },
             plugin_stack: PluginStack::default(),
-            cmd_owners: std::collections::HashMap::new(),
-            hooks: HookRegistry::default(),
-            lazy_registry: LazyRegistry::default(),
-            declared_plugins: Vec::new(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
             pending_startup_commands: Vec::new(),
@@ -275,19 +284,19 @@ impl ScriptingHost {
 
     /// Returns `true` if no handlers are registered for `hook_id`.
     pub fn has_hook_handlers(&self, hook_id: hooks::HookId) -> bool {
-        !self.hooks.is_empty_for(hook_id)
+        !self.registries.hooks.is_empty_for(hook_id)
     }
 
     /// A snapshot of the command triggers declared during init.
     pub fn command_triggers(
         &self,
     ) -> std::collections::HashMap<String, attribution::PluginId> {
-        self.lazy_registry.command_triggers.clone()
+        self.registries.lazy_registry.command_triggers.clone()
     }
 
     /// Plugin ids that should be activated when `hook_id` fires.
     pub fn event_trigger_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
-        self.lazy_registry
+        self.registries.lazy_registry
             .event_triggers
             .get(&hook_id)
             .cloned()
@@ -296,7 +305,7 @@ impl ScriptingHost {
 
     /// Plugin ids that should be activated when `language` is set on a buffer.
     pub fn language_trigger_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
-        self.lazy_registry
+        self.registries.lazy_registry
             .language_triggers
             .get(language)
             .cloned()
@@ -305,7 +314,7 @@ impl ScriptingHost {
 
     /// Status of a plugin in the lazy registry.
     pub fn plugin_status(&self, id: &attribution::PluginId) -> Option<PluginStatus> {
-        self.lazy_registry.plugins.get(id).map(|state| match state {
+        self.registries.lazy_registry.plugins.get(id).map(|state| match state {
             PluginState::Declared { .. } => PluginStatus::Declared,
             PluginState::Loading => PluginStatus::Loading,
             PluginState::Loaded => PluginStatus::Loaded,
@@ -316,7 +325,7 @@ impl ScriptingHost {
     /// Returns `true` if any plugin in the registry has transitioned to `Loaded`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn has_any_loaded_plugin(&self) -> bool {
-        self.lazy_registry
+        self.registries.lazy_registry
             .plugins
             .values()
             .any(|s| matches!(s, PluginState::Loaded))
@@ -325,12 +334,12 @@ impl ScriptingHost {
     /// All plugin names ever passed to `(load-plugin …)` or `(declare-plugin …)`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn declared_plugins(&self) -> &[String] {
-        &self.declared_plugins
+        &self.registries.declared_plugins
     }
 
     /// Format a human-readable plugin status table for `:plugin-status`.
     pub fn lazy_status_string(&self) -> String {
-        self.lazy_registry.format_status()
+        self.registries.lazy_registry.format_status()
     }
 
     /// Peek at pending messages without draining.  Only for test assertions.
@@ -355,7 +364,7 @@ impl ScriptingHost {
 
     #[cfg(any(test, feature = "test-util"))]
     pub fn cmd_owners_for_test(&self) -> &std::collections::HashMap<String, String> {
-        &self.cmd_owners
+        &self.registries.cmd_owners
     }
 
     #[cfg(any(test, feature = "test-util"))]
@@ -439,11 +448,8 @@ impl ScriptingHost {
         let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
             let Self {
                 steel,
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir,
@@ -455,11 +461,8 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_command(
                 host,
                 HostBundle {
+                    registries,
                     plugin_stack,
-                    cmd_owners,
-                    hooks,
-                    lazy_registry,
-                    declared_plugins,
                     pending_messages,
                     pending_language_regs,
                     data_dir: data_dir.as_deref(),
@@ -503,7 +506,7 @@ impl ScriptingHost {
         host: &'a mut dyn EditorHost,
     ) -> Result<HookResult, String> {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> = self.hooks.handlers_for(hook_id).to_vec();
+        let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
             return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![], grammar_sweeps: vec![] });
         }
@@ -530,11 +533,8 @@ impl ScriptingHost {
         let (result, cmd_queue, pending_language_sets, grammar_sweeps) = {
             let Self {
                 steel,
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir,
@@ -546,11 +546,8 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_command(
                 host,
                 HostBundle {
+                    registries,
                     plugin_stack,
-                    cmd_owners,
-                    hooks,
-                    lazy_registry,
-                    declared_plugins,
                     pending_messages,
                     pending_language_regs,
                     data_dir: data_dir.as_deref(),

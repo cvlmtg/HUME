@@ -92,11 +92,8 @@ impl ScriptingHost {
         let (eval_result, init_cmds, pending_plugin_loads, startup_cmds) = {
             let Self {
                 steel,
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir,
@@ -108,11 +105,8 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_init(
                 host,
                 HostBundle {
+                    registries,
                     plugin_stack,
-                    cmd_owners,
-                    hooks,
-                    lazy_registry,
-                    declared_plugins,
                     pending_messages,
                     pending_language_regs,
                     data_dir: data_dir.as_deref(),
@@ -166,7 +160,7 @@ impl ScriptingHost {
             // Register (or overwrite) the lambda under its internal name.
             self.steel.register_value(&steel_proc, cmd.proc);
             // Record the owner string for `(command-plugin …)` introspection.
-            self.cmd_owners
+            self.registries.cmd_owners
                 .insert(cmd.name.clone(), cmd.current_owner.to_string());
             defs.push(SteelCmdDef {
                 name: cmd.name,
@@ -183,7 +177,7 @@ impl ScriptingHost {
 
     /// Evaluate a plugin body by requiring its file into the Steel engine.
     ///
-    /// The plugin must be in the `Declared` state in `self.lazy_registry`;
+    /// The plugin must be in the `Declared` state in `self.registries.lazy_registry`;
     /// other states short-circuit:
     /// - `Loaded` / `Failed` — no-op (idempotent; `Failed` never retries).
     /// - `Loading` — no-op (re-entrancy guard: trigger cycle A→B→A skips).
@@ -203,7 +197,7 @@ impl ScriptingHost {
         builtin_names: &HashSet<String>,
     ) -> Result<Vec<SteelCmdDef>, String> {
         // Extract path from Declared state; short-circuit all other states.
-        let path = match self.lazy_registry.plugins.get(id) {
+        let path = match self.registries.lazy_registry.plugins.get(id) {
             Some(PluginState::Declared { path }) => path.clone(),
             Some(PluginState::Loaded | PluginState::Failed | PluginState::Loading) | None => {
                 return Ok(vec![]);
@@ -212,7 +206,7 @@ impl ScriptingHost {
 
         let abs_str = path.to_string_lossy();
         if abs_str.contains('"') {
-            self.lazy_registry
+            self.registries.lazy_registry
                 .plugins
                 .insert(id.clone(), PluginState::Failed);
             return Err(format!(
@@ -224,7 +218,7 @@ impl ScriptingHost {
 
         // Mark Loading before the eval so re-entrant activation of the same
         // plugin (via a trigger cycle) sees Loading and returns Ok(vec![]).
-        self.lazy_registry
+        self.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loading);
 
@@ -234,11 +228,8 @@ impl ScriptingHost {
         let (plugin_result, plugin_cmds, requires, plugin_startup_cmds) = {
             let Self {
                 steel,
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir,
@@ -250,11 +241,8 @@ impl ScriptingHost {
             let mut steel_ctx = SteelCtx::new_init(
                 host,
                 HostBundle {
+                    registries,
                     plugin_stack,
-                    cmd_owners,
-                    hooks,
-                    lazy_registry,
-                    declared_plugins,
                     pending_messages,
                     pending_language_regs,
                     data_dir: data_dir.as_deref(),
@@ -286,15 +274,15 @@ impl ScriptingHost {
                     match self.activate_plugin(&req, budget_ms, host, builtin_names) {
                         Ok(d) => defs.extend(d),
                         Err(e) => {
-                            self.lazy_registry
+                            self.registries.lazy_registry
                                 .plugins
                                 .insert(id.clone(), PluginState::Failed);
-                            self.lazy_registry.drop_triggers_for(id);
+                            self.registries.lazy_registry.drop_triggers_for(id);
                             return Err(format!("loading plugin '{id}': transitive dep failed: {e}"));
                         }
                     }
                 }
-                self.lazy_registry
+                self.registries.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
                 // Drop all trigger-map entries — the real SteelBacked commands
@@ -302,16 +290,16 @@ impl ScriptingHost {
                 // stub is overwritten by register_steel_cmds.  Trigger names the
                 // body did NOT define are cleaned up by activate_lazy_plugin's
                 // loop guard.
-                self.lazy_registry.drop_triggers_for(id);
+                self.registries.lazy_registry.drop_triggers_for(id);
                 Ok(defs)
             }
             Err(e) => {
-                self.lazy_registry
+                self.registries.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Failed);
                 // Drop trigger-map entries on failure so a spent trigger never
                 // re-fires for a non-retrying plugin.
-                self.lazy_registry.drop_triggers_for(id);
+                self.registries.lazy_registry.drop_triggers_for(id);
                 Err(format!("loading plugin '{id}': {e}"))
             }
         }
@@ -360,7 +348,7 @@ mod tests {
         );
         let id = plugin_id("core:test");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
@@ -369,7 +357,7 @@ mod tests {
         assert_eq!(defs.len(), 1, "expected exactly one SteelCmdDef");
         assert_eq!(defs[0].name, "test-cmd");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
             "plugin must be in Loaded state after successful activation"
         );
     }
@@ -382,7 +370,7 @@ mod tests {
         let path = write_plugin(&dir, "bad.scm", "(((invalid syntax");
         let id = plugin_id("core:bad");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
@@ -390,7 +378,7 @@ mod tests {
 
         assert!(result.is_err(), "must return Err on syntax error");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
             "plugin must be in Failed state after syntax error"
         );
     }
@@ -401,7 +389,7 @@ mod tests {
     fn already_loaded_is_noop() {
         let id = plugin_id("core:loaded");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loaded);
 
@@ -409,7 +397,7 @@ mod tests {
 
         assert!(defs.is_empty(), "Loaded plugin must be a no-op");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
             "state must remain Loaded"
         );
     }
@@ -418,7 +406,7 @@ mod tests {
     fn already_failed_is_noop() {
         let id = plugin_id("core:failed");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Failed);
 
@@ -426,7 +414,7 @@ mod tests {
 
         assert!(defs.is_empty(), "Failed plugin must be a no-op");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
             "state must remain Failed"
         );
     }
@@ -441,7 +429,7 @@ mod tests {
 
         assert!(defs.is_empty(), "absent plugin must be a no-op");
         assert!(
-            !host.lazy_registry.plugins.contains_key(&id),
+            !host.registries.lazy_registry.plugins.contains_key(&id),
             "absent plugin must not appear in registry after no-op"
         );
     }
@@ -452,7 +440,7 @@ mod tests {
     fn loading_reentrancy_guard_is_noop() {
         let id = plugin_id("core:cycling");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loading);
 
@@ -460,7 +448,7 @@ mod tests {
 
         assert!(defs.is_empty(), "Loading plugin must be a no-op (re-entrancy guard)");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
             "state must remain Loading (re-entrancy guard must not overwrite)"
         );
     }
@@ -480,10 +468,10 @@ mod tests {
         let id_a = plugin_id("core:a");
         let id_b = plugin_id("core:b");
         let mut host = ScriptingHost::new();
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id_a.clone(), PluginState::Declared { path: path_a });
-        host.lazy_registry
+        host.registries.lazy_registry
             .plugins
             .insert(id_b.clone(), PluginState::Declared { path: path_b });
 
@@ -491,11 +479,11 @@ mod tests {
 
         assert!(result.is_err(), "transitive failure must propagate as Err");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id_a), Some(PluginState::Failed)),
+            matches!(host.registries.lazy_registry.plugins.get(&id_a), Some(PluginState::Failed)),
             "parent plugin A must be Failed when its dep B fails"
         );
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id_b), Some(PluginState::Failed)),
+            matches!(host.registries.lazy_registry.plugins.get(&id_b), Some(PluginState::Failed)),
             "dep plugin B must itself be Failed"
         );
     }
@@ -506,7 +494,7 @@ mod tests {
     fn path_with_quote_char_transitions_to_failed() {
         let id = plugin_id("core:quoted");
         let mut host = ScriptingHost::new();
-        host.lazy_registry.plugins.insert(
+        host.registries.lazy_registry.plugins.insert(
             id.clone(),
             PluginState::Declared {
                 path: std::path::PathBuf::from("/some/path\"with/quote/plugin.scm"),
@@ -517,7 +505,7 @@ mod tests {
 
         assert!(result.is_err(), "path with '\"' must be rejected");
         assert!(
-            matches!(host.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
             "plugin must be Failed after path-with-quote rejection"
         );
     }

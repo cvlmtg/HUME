@@ -10,12 +10,10 @@ use engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginStack;
 use crate::context::SteelCtx;
-use crate::hooks::HookRegistry;
-use crate::lazy::LazyRegistry;
 use crate::log::LogLevel;
 use crate::null_host::NullHost;
 use crate::types::PendingLanguageReg;
-use crate::HostBundle;
+use crate::{HostBundle, ScriptingRegistries};
 
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
 ///
@@ -25,10 +23,7 @@ use crate::HostBundle;
 pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
     pub(crate) plugin_stack: PluginStack,
-    pub(crate) cmd_owners: std::collections::HashMap<String, String>,
-    pub(crate) hooks: HookRegistry,
-    pub(crate) lazy_registry: LazyRegistry,
-    pub(crate) declared_plugins: Vec<String>,
+    pub(crate) registries: ScriptingRegistries,
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
     pub(crate) pending_language_regs: Vec<PendingLanguageReg>,
     pub(crate) data_dir: Option<PathBuf>,
@@ -41,10 +36,12 @@ impl SteelCtxTestHarness {
         Self {
             host: NullHost,
             plugin_stack: PluginStack::default(),
-            cmd_owners: std::collections::HashMap::new(),
-            hooks: HookRegistry::default(),
-            lazy_registry: LazyRegistry::default(),
-            declared_plugins: Vec::new(),
+            registries: ScriptingRegistries {
+                cmd_owners: std::collections::HashMap::new(),
+                hooks: Default::default(),
+                lazy_registry: Default::default(),
+                declared_plugins: Vec::new(),
+            },
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
             data_dir: None,
@@ -58,10 +55,7 @@ impl SteelCtxTestHarness {
         let Self {
             host,
             plugin_stack,
-            cmd_owners,
-            hooks,
-            lazy_registry,
-            declared_plugins,
+            registries,
             pending_messages,
             pending_language_regs,
             data_dir,
@@ -71,11 +65,8 @@ impl SteelCtxTestHarness {
         SteelCtx::new_init(
             host,
             HostBundle {
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir: data_dir.as_deref(),
@@ -91,10 +82,7 @@ impl SteelCtxTestHarness {
         let Self {
             host,
             plugin_stack,
-            cmd_owners,
-            hooks,
-            lazy_registry,
-            declared_plugins,
+            registries,
             pending_messages,
             pending_language_regs,
             data_dir,
@@ -104,11 +92,8 @@ impl SteelCtxTestHarness {
         SteelCtx::new_command(
             host,
             HostBundle {
+                registries,
                 plugin_stack,
-                cmd_owners,
-                hooks,
-                lazy_registry,
-                declared_plugins,
                 pending_messages,
                 pending_language_regs,
                 data_dir: data_dir.as_deref(),
