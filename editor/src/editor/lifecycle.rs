@@ -11,9 +11,8 @@ use engine::pipeline::{
 use engine::types::EditorMode;
 
 use super::search_state::SearchCursor;
-use super::search_state::SearchPattern;
 #[cfg(test)]
-use super::search_state::SearchMatches;
+use super::search_state::{SearchMatches, SearchPattern};
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
 use platform::terminal::Term;
@@ -193,6 +192,7 @@ impl Editor {
                 mouse_drag_anchor: None,
                 languages: crate::editor::syntax::LanguageRegistry::new(),
                 cwd: std::env::current_dir().unwrap_or_default(),
+                pending_hooks: Vec::new(),
             },
             view: engine_view,
             bracket_hl_data,
@@ -551,7 +551,8 @@ impl Editor {
 
     // ── Search accessors ──────────────────────────────────────────────────────
 
-    /// Accessor for the focused buffer's active search pattern.
+    /// Accessor for the focused buffer's active search pattern (used in tests).
+    #[cfg(test)]
     pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
         self.state.buffers
             .get(self.focused_buffer_id())
@@ -568,12 +569,6 @@ impl Editor {
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
     pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
         &self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
-    }
-
-    /// Mutable accessor for the focused pane's search cursor.
-    pub(crate) fn current_search_cursor_mut(&mut self) -> &mut SearchCursor {
-        let bid = self.focused_buffer_id();
-        &mut self.state.pane_state[self.state.focused_pane_id][bid].search_cursor
     }
 
     /// Recompute the match list and pane search cursor for the focused buffer,

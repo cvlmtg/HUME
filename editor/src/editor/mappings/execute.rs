@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use super::super::commands::RING_CYCLE_CMDS;
 use super::super::keymap::WaitCharPending;
-use super::super::registry::MappableCommand;
+use super::super::registry::{EditorCmdFun, MappableCommand};
 use super::super::{doc_ops, Editor, RegisterPrefix, RepeatableAction, Severity};
 use super::super::jump_list::JumpEntry;
 use editing::selection::Selection;
@@ -32,7 +32,7 @@ impl Editor {
             // `[`/`]` cycles fold into a single undo step. Must happen before
             // the actual dispatch so that `undo` sees a committed revision.
             if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
-                self.commit_paste_session();
+                self.state.commit_paste_session();
             }
 
             // Snapshot pending_char before dispatch — commands consume it via `.take()`.
@@ -85,8 +85,17 @@ impl Editor {
                     );
                 }
                 MappableCommand::EditorCmd { fun, .. } => {
-                    if let Err(e) = fun(self, count, motion_mode) {
-                        self.report(Severity::Error, e.message().to_owned());
+                    match fun {
+                        EditorCmdFun::State(f) => {
+                            if let Err(e) = f(&mut self.state, &mut self.view, count, motion_mode) {
+                                self.report(Severity::Error, e.message().to_owned());
+                            }
+                        }
+                        EditorCmdFun::Legacy(f) => {
+                            if let Err(e) = f(self, count, motion_mode) {
+                                self.report(Severity::Error, e.message().to_owned());
+                            }
+                        }
                     }
                 }
                 MappableCommand::Lazy { ref plugin, .. } => {
@@ -192,6 +201,10 @@ impl Editor {
                     insert_keys: Vec::new(),
                 });
             }
+
+            // Drain any hooks queued during command execution (mode changes, etc.).
+            // Called here so hooks always fire after the full command, never inline.
+            self.drain_hooks();
 
             // Update last_command AFTER dispatch so do_paste reads the *previous*
             // command, not the paste command itself. Updated during macro replay

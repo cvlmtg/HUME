@@ -26,6 +26,7 @@ fn hook_cmd_queue_is_dispatched() {
     let bid = ed.focused_buffer_id();
     let val = SteelBufferId::new(bid).into_steel_val();
     ed.fire_hook_silent(HookId::OnBufferOpen, &[val]);
+    ed.drain_hooks();
 
     assert_ne!(
         state(&ed),

@@ -35,6 +35,10 @@ impl Editor {
             keys.push(key);
         }
         self.state.skip_macro_record = false;
+
+        // Drain any hooks enqueued by mode handlers (mode changes, `:write`, etc.)
+        // that did not go through execute_keymap_command's own drain call.
+        self.drain_hooks();
     }
 }
 

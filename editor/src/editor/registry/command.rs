@@ -2,9 +2,35 @@ use std::borrow::Cow;
 
 use editing::changeset::ChangeSet;
 use crate::editor::error::CommandError;
+use crate::editor::SideEffects;
 use editing::selection::SelectionSet;
 use editing::text::Text;
+use engine::pipeline::EngineView;
 use crate::ops::MotionMode;
+
+/// Function pointer variant for an [`EditorCmd`] handler.
+///
+/// - `State` — can run with just `(&mut EditorState, &mut EngineView)`;
+///   dispatched synchronously from Steel via `run_command_sync`.
+/// - `Legacy` — requires `&mut Editor` (e.g. recursive dispatch via
+///   `execute_keymap_command`); deferred from Steel, always synchronous
+///   from the keypress path.
+///
+/// [`EditorCmd`]: MappableCommand::EditorCmd
+#[derive(Clone, Copy)]
+pub(crate) enum EditorCmdFun {
+    State(
+        fn(
+            &mut super::super::EditorState,
+            &mut EngineView,
+            usize,
+            MotionMode,
+        ) -> Result<SideEffects, CommandError>,
+    ),
+    Legacy(
+        fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>,
+    ),
+}
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
@@ -73,7 +99,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>,
+        fun: EditorCmdFun,
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.

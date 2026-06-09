@@ -1,8 +1,11 @@
+use engine::pipeline::EngineView;
 use crate::ops::MotionMode;
 
 use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
-use super::super::Editor;
+use super::super::EditorState;
 use crate::editor::error::CommandError;
+use crate::editor::SideEffects;
+use super::{current_selections, focused_format_context, viewport};
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //
@@ -11,53 +14,49 @@ use crate::editor::error::CommandError;
 // through the registry to avoid a runtime string lookup.
 
 pub fn cmd_page_down(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    let count = ed.viewport().height as usize;
-    cmd_visual_move_down(ed, count, mode)
+) -> Result<SideEffects, CommandError> {
+    let count = viewport(state, view).height as usize;
+    cmd_visual_move_down(state, view, count, mode)
 }
 pub fn cmd_page_up(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    let count = ed.viewport().height as usize;
-    cmd_visual_move_up(ed, count, mode)
+) -> Result<SideEffects, CommandError> {
+    let count = viewport(state, view).height as usize;
+    cmd_visual_move_up(state, view, count, mode)
 }
 pub fn cmd_half_page_down(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    let count = (ed.viewport().height as usize / 2).max(1);
-    cmd_visual_move_down(ed, count, mode)
+) -> Result<SideEffects, CommandError> {
+    let count = (viewport(state, view).height as usize / 2).max(1);
+    cmd_visual_move_down(state, view, count, mode)
 }
 pub fn cmd_half_page_up(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    let count = (ed.viewport().height as usize / 2).max(1);
-    cmd_visual_move_up(ed, count, mode)
+) -> Result<SideEffects, CommandError> {
+    let count = (viewport(state, view).height as usize / 2).max(1);
+    cmd_visual_move_up(state, view, count, mode)
 }
 
 // ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────
-//
-// These commands scroll the viewport so the primary selection head lands at a
-// chosen display row. Cursor position is unchanged — only `viewport.top_line`
-// (and `top_row_offset` in wrap mode) move. On the next frame
-// `scroll_into_view` in `prepare_frame` re-applies `scrolloff`: `zz` lands
-// inside `[margin, height - margin)` and survives untouched, while `zt`/`zb`
-// target row 0 / `height-1` and get trimmed inward by `margin` rows. The
-// trim is vim's "smart scrolloff" behaviour and is intentional.
 
-fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
-    let cursor_char = ed.current_selections().primary().head();
-    let (wrap_mode, tab_width, whitespace) = ed.focused_format_context();
-    let rope = ed.doc().text().rope().clone();
-    let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target_row: usize) {
+    let cursor_char = current_selections(state, view).primary().head();
+    let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
+    let rope = state.buffers.get(view.panes[state.focused_pane_id].buffer_id).text().rope().clone();
+    let pane = &mut view.panes[state.focused_pane_id];
     super::super::scroll::scroll_cursor_to_row(
         &mut pane.viewport,
         &rope,
@@ -65,36 +64,39 @@ fn cmd_view_scroll_to_row(ed: &mut Editor, target_row: usize) {
         &wrap_mode,
         tab_width,
         &whitespace,
-        &mut ed.state.motion_format_scratch,
+        &mut state.motion_format_scratch,
         target_row,
     );
 }
 
 pub fn cmd_view_center(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let target = (ed.viewport().height as usize) / 2;
-    cmd_view_scroll_to_row(ed, target);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    let target = (viewport(state, view).height as usize) / 2;
+    cmd_view_scroll_to_row(state, view, target);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_view_top(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    cmd_view_scroll_to_row(ed, 0);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    cmd_view_scroll_to_row(state, view, 0);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_view_bottom(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let target = (ed.viewport().height as usize).saturating_sub(1);
-    cmd_view_scroll_to_row(ed, target);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    let target = (viewport(state, view).height as usize).saturating_sub(1);
+    cmd_view_scroll_to_row(state, view, target);
+    Ok(SideEffects::none())
 }

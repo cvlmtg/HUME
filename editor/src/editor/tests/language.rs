@@ -148,6 +148,7 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
     let bid = ed.focused_buffer_id();
     let before = state(&ed);
     ed.set_buffer_language(bid, Some("rust".to_owned()));
+    ed.drain_hooks();
     // move-right from hook must have moved the cursor.
     assert_ne!(state(&ed), before, "on-language-set hook must have fired");
 }

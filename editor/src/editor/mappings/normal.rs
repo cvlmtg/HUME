@@ -84,7 +84,7 @@ impl Editor {
             if self.state.mode == EditorMode::Extend {
                 self.state.mode = EditorMode::Normal;
             }
-            let _ = cmd_clear_search(self, 0, MotionMode::Move);
+            let _ = cmd_clear_search(&mut self.state, &mut self.view, 0, MotionMode::Move);
             return;
         }
 

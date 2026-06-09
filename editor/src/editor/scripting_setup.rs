@@ -17,18 +17,7 @@ impl Editor {
     /// - `Error`   → push to `message_log` AND set `status_msg`
     /// - `Trace`   → push to `message_log` only (not shown in statusline)
     pub(crate) fn report(&mut self, severity: Severity, text: String) {
-        match severity {
-            Severity::Info => {
-                self.state.status_msg = Some(text);
-            }
-            Severity::Warning | Severity::Error => {
-                self.state.message_log.push(severity, text.clone());
-                self.state.status_msg = Some(text);
-            }
-            Severity::Trace => {
-                self.state.message_log.push(severity, text);
-            }
-        }
+        self.state.report(severity, text);
     }
 
     /// Drain any pending `(log! …)` messages from the scripting host and
@@ -56,46 +45,59 @@ impl Editor {
 
     /// Fire all Steel handlers for `hook_id`, passing `args` to each.
     ///
-    /// No-ops immediately if no scripting host is present or if no handlers
-    /// are registered for the hook.  Commands queued by `(call! …)` inside
-    /// hook bodies are dispatched after all handlers return.  Errors from
-    /// handlers are reported as `Severity::Error`.
+    /// Enqueue `hook_id` to fire after the current command returns.
+    ///
+    /// The unified hook-firing path: all hook scheduling goes through
+    /// `state.pending_hooks`; `Editor::drain_hooks` does the actual Steel eval.
+    /// This prevents re-entrant Steel calls during command execution and gives
+    /// a single drain point for both the keypress and sync-Steel paths.
     pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
-        // Activate any lazy event-triggered plugins before checking for handlers,
-        // so their register-hook! calls run before the early-exit guard below.
-        self.activate_lazy_event_plugins(hook_id);
-        if self
-            .scripting
-            .as_ref()
-            .is_none_or(|h| !h.has_hook_handlers(hook_id))
-        {
-            return;
-        }
-        let pid = self.state.focused_pane_id;
-        let bid = self.focused_buffer_id();
-        // `scripting` is a distinct field from `settings`, `keymap`, `buffers`,
-        // `engine_view`, `pane_state`, `pane_jumps`, and `languages`, so Rust
-        // allows simultaneous `&mut` borrows of them through NLL splitting.
-        let result = {
-            let host_scr = self.scripting.as_mut().expect("checked above");
-            let mut impl_host = EditorHostImpl {
-                state: &mut self.state,
-                view: &mut self.view,
-            };
-            host_scr.fire_hook(hook_id, args, pid, bid, &mut impl_host)
-        };
-        self.flush_script_messages();
-        match result {
-            Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps }) => {
-                for (bid, lang) in pending_language_sets {
-                    self.set_buffer_language(bid, lang);
+        self.state.pending_hooks.push((hook_id, args.to_vec()));
+    }
+
+    /// Fire every hook in `state.pending_hooks`, draining the queue.
+    ///
+    /// Called by `execute_keymap_command` after each command and by the
+    /// Steel sync-dispatch path after `call_steel_cmd` returns. Inner hook
+    /// handlers may themselves enqueue more hooks; the outer loop handles that.
+    pub(crate) fn drain_hooks(&mut self) {
+        while !self.state.pending_hooks.is_empty() {
+            let hooks = std::mem::take(&mut self.state.pending_hooks);
+            for (hook_id, args) in hooks {
+                // Activate lazy event plugins first so their register-hook! calls
+                // land before the has_hook_handlers check below.
+                self.activate_lazy_event_plugins(hook_id);
+                if self
+                    .scripting
+                    .as_ref()
+                    .is_none_or(|h| !h.has_hook_handlers(hook_id))
+                {
+                    continue;
                 }
-                if !grammar_sweeps.is_empty() {
-                    self.sweep_buffers_for_grammars(grammar_sweeps);
+                let pid = self.state.focused_pane_id;
+                let bid = self.focused_buffer_id();
+                let result = {
+                    let host_scr = self.scripting.as_mut().expect("checked above");
+                    let mut impl_host = EditorHostImpl {
+                        state: &mut self.state,
+                        view: &mut self.view,
+                    };
+                    host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
+                };
+                self.flush_script_messages();
+                match result {
+                    Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps }) => {
+                        for (bid, lang) in pending_language_sets {
+                            self.set_buffer_language(bid, lang);
+                        }
+                        if !grammar_sweeps.is_empty() {
+                            self.sweep_buffers_for_grammars(grammar_sweeps);
+                        }
+                        self.drain_command_queue(cmd_queue, 1, false);
+                    }
+                    Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
                 }
-                self.drain_command_queue(cmd_queue, 1, false);
             }
-            Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
         }
     }
 

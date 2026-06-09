@@ -348,6 +348,7 @@ fn event_trigger_activates_on_first_fire() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     ed.fire_hook_buffer_save(bid);
+    ed.drain_hooks();
 
     assert_ne!(state(&ed), before, "hook handler must run and move the cursor on first fire");
     assert!(
@@ -382,6 +383,7 @@ fn event_trigger_idempotent_on_second_fire() {
     let bid = ed.focused_buffer_id();
 
     ed.fire_hook_buffer_save(bid);  // first fire — activates
+    ed.drain_hooks();
     assert!(
         ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be empty after first fire"
@@ -389,6 +391,7 @@ fn event_trigger_idempotent_on_second_fire() {
 
     let after_first = state(&ed);
     ed.fire_hook_buffer_save(bid);  // second fire — handler runs, no re-activation
+    ed.drain_hooks();
 
     assert_ne!(state(&ed), after_first, "handler must run again on second fire");
     assert!(
@@ -444,6 +447,7 @@ fn event_trigger_one_to_many_activates_all() {
     let id_b = PluginId::User { user: "user".to_string(), repo: "tp2".to_string() };
     let bid = ed.focused_buffer_id();
     ed.fire_hook_buffer_save(bid);
+    ed.drain_hooks();
 
     assert!(
         matches!(
@@ -485,6 +489,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     let bid = ed.focused_buffer_id();
 
     ed.fire_hook_buffer_save(bid);  // first fire — activates → body fails
+    ed.drain_hooks();
 
     assert!(
         matches!(
@@ -504,6 +509,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     let msg_count = ed.state.message_log.entries().count();
     ed.fire_hook_buffer_save(bid);  // second fire — no retry
+    ed.drain_hooks();
 
     assert!(
         matches!(
@@ -713,6 +719,7 @@ fn language_trigger_activates_on_set() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some("rust".into()));
+    ed.drain_hooks();
 
     assert_ne!(state(&ed), before, "on-language-set handler must run and move cursor on first set");
     assert!(
@@ -747,6 +754,7 @@ fn language_trigger_idempotent_on_round_trip() {
     let bid = ed.focused_buffer_id();
 
     ed.set_buffer_language(bid, Some("rust".into()));  // first set — activates
+    ed.drain_hooks();
     assert!(
         ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
         "language_triggers must be empty after first set"
@@ -754,7 +762,9 @@ fn language_trigger_idempotent_on_round_trip() {
 
     let after_first = state(&ed);
     ed.set_buffer_language(bid, Some("toml".into()));  // round-trip out
+    ed.drain_hooks();
     ed.set_buffer_language(bid, Some("rust".into()));  // round-trip back — handler runs, no re-activation
+    ed.drain_hooks();
 
     assert_ne!(state(&ed), after_first, "handler must run again on second rust set");
     assert!(

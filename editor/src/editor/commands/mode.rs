@@ -1,5 +1,8 @@
 use editing::grapheme::next_grapheme_boundary;
 use editing::selection::Selection;
+use engine::pipeline::EngineView;
+use engine::types::EditorMode;
+
 use crate::ops::MotionMode;
 use crate::ops::edit::insert_char;
 use crate::ops::motion::{
@@ -8,87 +11,96 @@ use crate::ops::motion::{
 };
 use crate::ops::selection_cmd::cmd_collapse_selection;
 
-use engine::types::EditorMode;
-use super::super::{doc_ops, MiniBuffer, Mode};
+use super::super::{doc_ops, EditorState, MiniBuffer, Mode};
 use super::super::Editor;
 use crate::editor::error::CommandError;
+use crate::editor::SideEffects;
+use super::{
+    begin_insert_session, end_insert_session, enqueue_mode_change,
+    focused_buffer_id,
+};
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
 pub fn cmd_insert_before(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |_b, sels| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
-    ed.begin_insert_session();
-    Ok(())
+    begin_insert_session(state, view);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_insert_after(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
-    ed.begin_insert_session();
-    Ok(())
+    begin_insert_session(state, view);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_insert_at_line_start(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
-    ed.begin_insert_session();
-    Ok(())
+    begin_insert_session(state, view);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_insert_at_line_end(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_end(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
-    ed.begin_insert_session();
-    ed.mark_insert_step_back();
-    Ok(())
+    begin_insert_session(state, view);
+    state.mark_insert_step_back();
+    Ok(SideEffects::none())
 }
 
 /// Enter insert mode at the start of each selection (min of anchor and head).
 /// For a collapsed cursor this is identical to `i`.
 pub fn cmd_insert_at_selection_start(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |_b, sels| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
-    ed.begin_insert_session();
-    Ok(())
+    begin_insert_session(state, view);
+    Ok(SideEffects::none())
 }
 
 /// Enter insert mode after the end of each selection (one past max of anchor and head).
@@ -98,20 +110,21 @@ pub fn cmd_insert_at_selection_start(
 /// pressing `a` again re-enters Insert at the same spot rather than advancing forward.
 /// Clamps to `len_chars() - 1` so `a` on the buffer-final `\n` stays in bounds.
 pub fn cmd_insert_at_selection_end(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, sels| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.len_chars() - 1;
         sels.map(|sel| Selection::collapsed(next_grapheme_boundary(b, sel.end()).min(max)))
     });
-    ed.begin_insert_session();
-    ed.mark_insert_step_back();
-    Ok(())
+    begin_insert_session(state, view);
+    state.mark_insert_step_back();
+    Ok(SideEffects::none())
 }
 
 /// Open a new line below the cursor and enter insert mode.
@@ -120,98 +133,106 @@ pub fn cmd_insert_at_selection_end(
 /// everything typed before Esc form one undo step — the same pattern as
 /// `cmd_change`.
 pub fn cmd_open_line_below(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    ed.begin_insert_session();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    begin_insert_session(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    Ok(())
+    Ok(SideEffects::none())
 }
 
 /// Open a new line above the cursor and enter insert mode.
 pub fn cmd_open_line_above(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    ed.begin_insert_session();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+) -> Result<SideEffects, CommandError> {
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    begin_insert_session(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
-    doc_ops::apply_doc_edit_grouped(&mut ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_move_left(b, s, 1, MotionMode::Move)
     });
-    Ok(())
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_command_mode(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    ed.state.history.begin_session_all();
-    ed.set_mode(Mode::Command);
-    ed.state.minibuf = Some(MiniBuffer {
+) -> Result<SideEffects, CommandError> {
+    let old_mode = state.mode;
+    state.history.begin_session_all();
+    state.mode = Mode::Command;
+    state.minibuf = Some(MiniBuffer {
         prompt: ':',
         input: String::new(),
         cursor: 0,
     });
-    Ok(())
+    enqueue_mode_change(state, old_mode, Mode::Command);
+    Ok(SideEffects::none())
 }
 
 pub fn cmd_exit_insert(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    ed.end_insert_session();
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    end_insert_session(state, view);
+    Ok(SideEffects::none())
 }
 
 // ── Extend mode ───────────────────────────────────────────────────────────────
 
 pub fn cmd_toggle_extend(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
-    ed.state.mode = if ed.state.mode == EditorMode::Extend {
+) -> Result<SideEffects, CommandError> {
+    state.mode = if state.mode == EditorMode::Extend {
         EditorMode::Normal
     } else {
         EditorMode::Extend
     };
-    Ok(())
+    Ok(SideEffects::none())
 }
 
 /// Collapse each selection to its cursor AND exit extend mode.
 ///
 /// Collapsing is a "done selecting" signal, so extend mode is always cleared.
 pub fn cmd_collapse_and_exit_extend(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<SideEffects, CommandError> {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
-    ed.state.mode = EditorMode::Normal;
-    let focused = ed.state.focused_pane_id;
-    let buf = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    state.mode = EditorMode::Normal;
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
         cmd_collapse_selection(b, s, MotionMode::Move)
     });
-    Ok(())
+    Ok(SideEffects::none())
 }
 
 // ── Dot repeat ───────────────────────────────────────────────────────────────
@@ -221,6 +242,9 @@ pub fn cmd_collapse_and_exit_extend(
 /// Count semantics: if the user typed an explicit count before `.`, that count
 /// overrides the original; otherwise the original count is reused. This mirrors
 /// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
+///
+/// Kept as `Legacy` variant: it calls `execute_keymap_command` and
+/// `handle_insert`, which require `&mut Editor`.
 pub fn cmd_repeat(
     ed: &mut Editor,
     count: usize,

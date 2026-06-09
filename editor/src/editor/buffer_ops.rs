@@ -188,12 +188,4 @@ impl Editor {
             SelectionSet::single(Selection::collapsed(char_pos));
     }
 
-    /// Snapshot the focused pane's current cursor as a `JumpEntry`.
-    pub(crate) fn current_jump_entry(&self) -> super::jump_list::JumpEntry {
-        use super::jump_list::JumpEntry;
-        let pid = self.state.focused_pane_id;
-        let bid = self.focused_buffer_id();
-        let sels = self.state.pane_state[pid][bid].selections.clone();
-        JumpEntry::new(sels, self.state.buffers.get(bid).text(), bid)
-    }
 }

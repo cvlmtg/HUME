@@ -5,7 +5,6 @@ use std::sync::{Arc, RwLock};
 
 use crossterm::event::KeyEvent;
 
-use engine::pane::{WhitespaceConfig, WrapMode};
 use engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
 use engine::pipeline::{LayoutTree, SharedBuffer};
@@ -13,13 +12,10 @@ use engine::pipeline::{LayoutTree, SharedBuffer};
 use engine::pane::Pane;
 #[cfg(test)]
 use search_state::SearchPattern;
-use engine::types::EditorMode;
-
 use slotmap::SecondaryMap;
 
 use self::registry::CommandRegistry;
-use editing::grapheme::prev_grapheme_boundary;
-use editing::selection::{Selection, SelectionSet};
+use editing::selection::SelectionSet;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient};
@@ -35,6 +31,7 @@ pub(crate) mod host_impl;
 mod lifecycle;
 mod parse_worker;
 mod scripting_setup;
+mod side_effects;
 
 pub(crate) mod buffer;
 pub(crate) mod buffer_store;
@@ -64,6 +61,7 @@ mod syntax_glue;
 mod visual_move;
 
 pub(crate) use search_state::{SearchDirection, SearchState};
+pub(crate) use side_effects::SideEffects;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;
@@ -244,6 +242,43 @@ pub(crate) struct EditorState {
     pub(super) languages: syntax::LanguageRegistry,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
+    /// Hooks enqueued during command dispatch, drained by `Editor::drain_hooks`
+    /// after each command. The unified firing path — `fire_hook_silent` pushes
+    /// here; no hook fires inline during command execution.
+    pub(super) pending_hooks: Vec<(scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+}
+
+impl EditorState {
+    // ── Status messages ───────────────────────────────────────────────────────
+
+    /// Record a status message / warning / error on this state.
+    ///
+    /// Called by EditorCmd handlers that only have `&mut EditorState` access.
+    /// The `Editor::report` method delegates here.
+    pub(super) fn report(&mut self, severity: Severity, text: String) {
+        match severity {
+            Severity::Info => {
+                self.status_msg = Some(text);
+            }
+            Severity::Warning | Severity::Error => {
+                self.message_log.push(severity, text.clone());
+                self.status_msg = Some(text);
+            }
+            Severity::Trace => {
+                self.message_log.push(severity, text);
+            }
+        }
+    }
+
+    // ── Insert session ────────────────────────────────────────────────────────
+
+    /// Mark the active insert session as append-style so the cursor steps back
+    /// one grapheme on exit.
+    pub(super) fn mark_insert_step_back(&mut self) {
+        if let Some(s) = self.insert_session.as_mut() {
+            s.step_back_on_exit = true;
+        }
+    }
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -319,19 +354,6 @@ impl Editor {
         self.doc().is_read_only()
     }
 
-    /// Resolved formatting context for the focused doc and pane:
-    /// `(wrap_mode, tab_width, whitespace)`. The wrap_mode has its `width: 0`
-    /// sentinel substituted via `pane.content_width(...)` — safe to hand to
-    /// engine code. `wrap_mode.is_wrapping()` matches the unresolved value.
-    pub(super) fn focused_format_context(&self) -> (WrapMode, u8, WhitespaceConfig) {
-        let raw_wrap = self.doc().overrides.wrap_mode(&self.state.settings);
-        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-        let pane = &self.view.panes[self.state.focused_pane_id];
-        let wrap_mode = raw_wrap.resolve(pane.content_width(self.doc().text().len_lines()));
-        (wrap_mode, tab_width, whitespace)
-    }
-
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
     /// The focused pane's selections for the current buffer.
@@ -346,12 +368,6 @@ impl Editor {
     }
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
-
-    fn is_group_open_current(&self) -> bool {
-        self.state.pane_state[self.state.focused_pane_id][self.focused_buffer_id()]
-            .edit_group
-            .is_some()
-    }
 
     /// Open a new edit group on the focused (pane, buffer) pair.
     fn begin_edit_group_current(&mut self) {
@@ -369,75 +385,8 @@ impl Editor {
 
     // ── Mode transitions ──────────────────────────────────────────────────────
 
-    /// Enter Insert mode as a repeatable insert action.
-    ///
-    /// Opens a new undo edit group and starts keystroke recording for
-    /// dot-repeat, then sets the mode to Insert.
-    ///
-    /// **Replay signal**: if an edit group is already open when this is called,
-    /// recording is suppressed but the mode change still happens. The replay
-    /// path in [`cmd_repeat`] pre-opens the group before re-executing the
-    /// original command, so that the re-executed command's call here becomes a
-    /// no-op for undo/repeat purposes — only the cursor motion takes effect.
-    pub(super) fn begin_insert_session(&mut self) {
-        if self.focused_buffer_read_only() {
-            self.report(Severity::Info, "Buffer is read-only".to_string());
-            return;
-        }
-        if !self.is_group_open_current() {
-            self.begin_edit_group_current();
-            self.state.insert_session = Some(InsertSession {
-                keystrokes: Vec::new(),
-                step_back_on_exit: false,
-            });
-        }
-        self.state.mode = Mode::Insert;
-    }
-
-    /// Mark the active insert session as append-style so the cursor steps back
-    /// one grapheme on exit (see [`end_insert_session`]).
-    pub(super) fn mark_insert_step_back(&mut self) {
-        if let Some(s) = self.state.insert_session.as_mut() {
-            s.step_back_on_exit = true;
-        }
-    }
-
-    /// Exit Insert mode and finalise the undo/repeat state.
-    ///
-    /// Commits the open edit group (creating one undo step for the whole
-    /// insert session) and moves the recorded keystrokes into `last_repeatable_action`
-    /// for dot-repeat, then sets the mode to Normal.
-    ///
-    /// When the session was started with `mark_insert_step_back` (i.e. entered via
-    /// `a` or `A`), each selection head steps back one grapheme so that pressing
-    /// `a` again re-enters Insert at the same position rather than advancing forward.
-    /// The step is clamped to the current line start so it never crosses a `\n`.
     pub(super) fn end_insert_session(&mut self) {
-        let step_back = self.state.insert_session.as_ref().is_some_and(|s| s.step_back_on_exit);
-        self.commit_edit_group_current();
-        if let (Some(session), Some(action)) =
-            (self.state.insert_session.take(), self.state.last_repeatable_action.as_mut())
-        {
-            action.insert_keys = session.keystrokes;
-        }
-        if step_back {
-            let focused = self.state.focused_pane_id;
-            let buf = self.focused_buffer_id();
-            doc_ops::apply_doc_motion(&self.state.buffers, &mut self.state.pane_state, focused, buf, |b, sels| {
-                sels.map(|sel| {
-                    let head = sel.head();
-                    let line_start = b.line_to_char(b.char_to_line(head));
-                    let new_head = if head > line_start {
-                        prev_grapheme_boundary(b, head)
-                    } else {
-                        head
-                    };
-                    Selection::collapsed(new_head)
-                })
-            });
-        }
-        // Engine pane is synced by `prepare_frame` each frame.
-        self.state.mode = EditorMode::Normal;
+        commands::end_insert_session(&mut self.state, &self.view);
     }
 
     /// Drain the macro replay queue, executing each key in order.
@@ -552,6 +501,7 @@ impl Editor {
                 mouse_drag_anchor: None,
                 languages: syntax::LanguageRegistry::new(),
                 cwd: std::env::temp_dir(),
+                pending_hooks: Vec::new(),
             },
             view: engine_view,
             bracket_hl_data: Arc::new(RwLock::new(Vec::new())),

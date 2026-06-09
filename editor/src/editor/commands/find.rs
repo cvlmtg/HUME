@@ -1,101 +1,106 @@
 use editing::selection::SelectionSet;
 use editing::text::Text;
+use engine::pipeline::EngineView;
 use crate::ops::MotionMode;
 use crate::ops::motion::{find_char_backward, find_char_forward};
 
-use super::super::{doc_ops, FindChar};
-use super::super::Editor;
+use super::super::{doc_ops, FindChar, EditorState};
 use crate::editor::error::CommandError;
+use crate::editor::SideEffects;
 use crate::ops::motion::FindKind;
 
-// ── Find / till character ─────────────────────────────────────────────────────
-//
-// All eight find/till commands read the character argument from
-// `ed.state.pending_char`, which was stored by the WaitChar consumption path.
+use super::focused_buffer_id;
 
-/// Shared implementation for the eight find/till commands.
+// ── Find / till character ─────────────────────────────────────────────────────
+
 fn find_char(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
     kind: FindKind,
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
-    if let Some(ch) = ed.state.pending_char.take() {
-        let focused = ed.state.focused_pane_id;
-        let buf = ed.focused_buffer_id();
-        doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    if let Some(ch) = state.pending_char.take() {
+        let focused = state.focused_pane_id;
+        let buf = focused_buffer_id(state, view);
+        doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
-        ed.state.last_find = Some(FindChar { ch, kind });
+        state.last_find = Some(FindChar { ch, kind });
     }
 }
 
 pub fn cmd_find_forward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    find_char(ed, count, mode, FindKind::Inclusive, find_char_forward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    find_char(state, view, count, mode, FindKind::Inclusive, find_char_forward);
+    Ok(SideEffects::none())
 }
 pub fn cmd_find_backward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    find_char(ed, count, mode, FindKind::Inclusive, find_char_backward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    find_char(state, view, count, mode, FindKind::Inclusive, find_char_backward);
+    Ok(SideEffects::none())
 }
 pub fn cmd_till_forward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    find_char(ed, count, mode, FindKind::Exclusive, find_char_forward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    find_char(state, view, count, mode, FindKind::Exclusive, find_char_forward);
+    Ok(SideEffects::none())
 }
 pub fn cmd_till_backward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    find_char(ed, count, mode, FindKind::Exclusive, find_char_backward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    find_char(state, view, count, mode, FindKind::Exclusive, find_char_backward);
+    Ok(SideEffects::none())
 }
 
 // ── Repeat find ───────────────────────────────────────────────────────────────
 
-/// Shared implementation for the four repeat-find commands.
 fn repeat_find(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
     find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
 ) {
-    if let Some(FindChar { ch, kind }) = ed.state.last_find {
-        let focused = ed.state.focused_pane_id;
-        let buf = ed.focused_buffer_id();
-        doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.pane_state, focused, buf, |b, s| {
+    if let Some(FindChar { ch, kind }) = state.last_find {
+        let focused = state.focused_pane_id;
+        let buf = focused_buffer_id(state, view);
+        doc_ops::apply_doc_motion(&state.buffers, &mut state.pane_state, focused, buf, |b, s| {
             find_fn(b, s, mode, count, ch, kind)
         });
     }
 }
 
 pub fn cmd_repeat_find_forward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    repeat_find(ed, count, mode, find_char_forward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    repeat_find(state, view, count, mode, find_char_forward);
+    Ok(SideEffects::none())
 }
 pub fn cmd_repeat_find_backward(
-    ed: &mut Editor,
+    state: &mut EditorState,
+    view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<(), CommandError> {
-    repeat_find(ed, count, mode, find_char_backward);
-    Ok(())
+) -> Result<SideEffects, CommandError> {
+    repeat_find(state, view, count, mode, find_char_backward);
+    Ok(SideEffects::none())
 }
-

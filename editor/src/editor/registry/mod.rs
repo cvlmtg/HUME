@@ -37,7 +37,7 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(crate) use command::{MappableCommand, TypedCommand};
+pub(crate) use command::{EditorCmdFun, MappableCommand, TypedCommand};
 
 // ── CommandRegistry ───────────────────────────────────────────────────────────
 
@@ -524,7 +524,7 @@ mod tests {
         let cmd = MappableCommand::EditorCmd {
             name: Cow::Owned("steel-test-cmd".to_string()),
             doc: Cow::Borrowed("A dummy Steel command for testing."),
-            fun: dummy_fn,
+            fun: super::command::EditorCmdFun::Legacy(dummy_fn),
             repeatable: false,
             jump: false,
             visual_move: false,
@@ -620,7 +620,7 @@ mod tests {
         reg.register(MappableCommand::EditorCmd {
             name: Cow::Owned("%hume-cmd-decoy".to_string()),
             doc: Cow::Borrowed("doc"),
-            fun: noop,
+            fun: super::command::EditorCmdFun::Legacy(noop),
             repeatable: false,
             jump: false,
             visual_move: false,

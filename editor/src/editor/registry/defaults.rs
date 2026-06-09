@@ -27,7 +27,7 @@ use crate::ops::text_object::{
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
 };
 
-use super::{CommandRegistry, MappableCommand, TypedCommand};
+use super::{CommandRegistry, EditorCmdFun, MappableCommand, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {
@@ -84,7 +84,7 @@ impl CommandRegistry {
         struct EditorCmdBuilder {
             name: &'static str,
             doc: &'static str,
-            fun: fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>,
+            fun: EditorCmdFun,
             repeatable: bool,
             jump: bool,
             visual_move: bool,
@@ -119,9 +119,13 @@ impl CommandRegistry {
                 });
             }
         }
-        // Construct a builder with all flags false.
-        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>| {
-            EditorCmdBuilder { name, doc, fun, repeatable: false, jump: false, visual_move: false, extendable: false }
+        // Construct a builder for a State-variant EditorCmd (sync-dispatchable from Steel).
+        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::EditorState, &mut engine::pipeline::EngineView, usize, MotionMode) -> Result<super::super::SideEffects, CommandError>| {
+            EditorCmdBuilder { name, doc, fun: EditorCmdFun::State(fun), repeatable: false, jump: false, visual_move: false, extendable: false }
+        };
+        // Construct a builder for a Legacy-variant EditorCmd (requires &mut Editor).
+        let ecmd_legacy = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>| {
+            EditorCmdBuilder { name, doc, fun: EditorCmdFun::Legacy(fun), repeatable: false, jump: false, visual_move: false, extendable: false }
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -712,7 +716,8 @@ impl CommandRegistry {
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
-        ecmd(
+        // Uses Legacy variant: cmd_repeat calls execute_keymap_command + handle_insert.
+        ecmd_legacy(
             "repeat-last-action",
             "Repeat the last editing action.",
             cmd_repeat,
