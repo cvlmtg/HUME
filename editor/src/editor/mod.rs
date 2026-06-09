@@ -34,7 +34,6 @@ pub(crate) mod host_impl;
 mod lifecycle;
 mod parse_worker;
 mod scripting_setup;
-mod side_effects;
 
 pub(crate) mod buffer;
 pub(crate) mod buffer_store;
@@ -64,7 +63,6 @@ mod syntax_glue;
 mod visual_move;
 
 pub(crate) use search_state::{SearchDirection, SearchState};
-pub(crate) use side_effects::SideEffects;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;

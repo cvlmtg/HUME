@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use editing::changeset::ChangeSet;
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use editing::selection::SelectionSet;
 use editing::text::Text;
 use engine::pipeline::EngineView;
@@ -25,7 +24,7 @@ pub(crate) enum EditorCmdFun {
             &mut EngineView,
             usize,
             MotionMode,
-        ) -> Result<SideEffects, CommandError>,
+        ) -> Result<(), CommandError>,
     ),
     Legacy(
         fn(&mut super::super::Editor, usize, MotionMode) -> Result<(), CommandError>,

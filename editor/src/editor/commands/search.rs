@@ -14,7 +14,6 @@ use crate::ops::text_object::inner_word_impl;
 
 use super::super::{MiniBuffer, Mode, SearchDirection, EditorState};
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use super::{
     current_selections, doc, enqueue_mode_change, focused_buffer_id,
     search_pattern, set_current_selections, set_primary_selection,
@@ -31,7 +30,7 @@ pub fn cmd_search_forward(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
     let extend = state.mode == engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
@@ -47,7 +46,7 @@ pub fn cmd_search_forward(
         input: String::new(),
         cursor: 0,
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Enter backward search mode.
@@ -56,7 +55,7 @@ pub fn cmd_search_backward(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
     let extend = state.mode == engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
@@ -72,7 +71,7 @@ pub fn cmd_search_backward(
         input: String::new(),
         cursor: 0,
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Build the primary selection after a search match.
@@ -127,15 +126,15 @@ fn search_jump(
     count: usize,
     direction: SearchDirection,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     if !ensure_search_regex(state, view) {
-        return Ok(SideEffects::none());
+        return Ok(());
     }
 
     let bid = focused_buffer_id(state, view);
     let regex = match state.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => Arc::clone(&sp.regex),
-        None => return Ok(SideEffects::none()),
+        None => return Ok(()),
     };
 
     let (mut from_char, anchor) = {
@@ -206,7 +205,7 @@ fn search_jump(
             state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
             let new_sel = search_sel(start, end_incl, anchor, direction);
             set_primary_selection(state, view, new_sel);
-            Ok(SideEffects::none())
+            Ok(())
         }
         None => Err(CommandError::new("no match")),
     }
@@ -218,10 +217,10 @@ pub fn cmd_clear_search(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let bid = focused_buffer_id(state, view);
     super::super::search_ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_search_next(
@@ -229,7 +228,7 @@ pub fn cmd_search_next(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     search_jump(state, view, count, SearchDirection::Forward, mode)
 }
 pub fn cmd_search_prev(
@@ -237,7 +236,7 @@ pub fn cmd_search_prev(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     search_jump(state, view, count, SearchDirection::Backward, mode)
 }
 
@@ -248,14 +247,14 @@ pub fn cmd_select_all_matches(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     if !ensure_search_regex(state, view) {
-        return Ok(SideEffects::none());
+        return Ok(());
     }
     let bid = focused_buffer_id(state, view);
     let regex = match state.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => Arc::clone(&sp.regex),
-        None => return Ok(SideEffects::none()),
+        None => return Ok(()),
     };
 
     let matches = find_all_matches(doc(state, view).text(), &regex);
@@ -268,7 +267,7 @@ pub fn cmd_select_all_matches(
         .map(|(s, e)| Selection::new(s, e))
         .collect();
     set_current_selections(state, view, SelectionSet::from_vec(sels, 0));
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Select within (s) ────────────────────────────────────────────────────────
@@ -278,12 +277,12 @@ pub fn cmd_select_within(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     if current_selections(state, view)
         .iter_sorted()
         .all(Selection::is_collapsed)
     {
-        return Ok(SideEffects::none());
+        return Ok(());
     }
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focused_pane_id;
@@ -296,7 +295,7 @@ pub fn cmd_select_within(
         input: String::new(),
         cursor: 0,
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Use selection as search (*) ──────────────────────────────────────────────
@@ -306,16 +305,16 @@ pub fn cmd_use_selection_as_search(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let buf = doc(state, view).text();
     let primary = current_selections(state, view).primary();
 
     let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
         if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
-            return Ok(SideEffects::none());
+            return Ok(());
         }
         let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
-            return Ok(SideEffects::none());
+            return Ok(());
         };
         let word_text = buf.slice(start..end + 1).to_string();
         (word_text, Some(Selection::new(start, end)))
@@ -327,7 +326,7 @@ pub fn cmd_use_selection_as_search(
     };
 
     if text.is_empty() {
-        return Ok(SideEffects::none());
+        return Ok(());
     }
 
     if let Some(sel) = new_sel {
@@ -336,7 +335,7 @@ pub fn cmd_use_selection_as_search(
 
     let escaped = escape_regex(&text);
     let Some(regex) = compile_search_regex(&escaped) else {
-        return Ok(SideEffects::none());
+        return Ok(());
     };
 
     state.registers.write_text(SEARCH_REGISTER, vec![escaped.clone()]);
@@ -346,5 +345,5 @@ pub fn cmd_use_selection_as_search(
         regex: Arc::new(regex),
         pattern_str: escaped,
     });
-    Ok(SideEffects::none())
+    Ok(())
 }

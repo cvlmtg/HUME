@@ -3,7 +3,6 @@ use crate::ops::MotionMode;
 
 use super::super::{EditorState, Severity};
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use super::{
     alternate_buffer, current_jump_entry, focused_buffer_id,
     set_current_selections, switch_to_buffer_without_jump,
@@ -16,9 +15,9 @@ pub fn cmd_quit(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     state.should_quit = true;
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -28,7 +27,7 @@ pub fn cmd_jump_backward(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let pid = state.focused_pane_id;
     let current = current_jump_entry(state, view);
     let nav = state.panes.jumps[pid]
@@ -40,7 +39,7 @@ pub fn cmd_jump_backward(
         }
         set_current_selections(state, view, sels);
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_jump_forward(
@@ -48,7 +47,7 @@ pub fn cmd_jump_forward(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let pid = state.focused_pane_id;
     let nav = state.panes.jumps[pid]
         .forward()
@@ -59,7 +58,7 @@ pub fn cmd_jump_forward(
         }
         set_current_selections(state, view, sels);
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Alternate buffer ─────────────────────────────────────────────────────────
@@ -76,12 +75,12 @@ pub fn cmd_goto_alternate_file(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     match alternate_buffer(state, view) {
         Some(id) => switch_to_buffer_without_jump(state, view, id),
         None => state.report(Severity::Warning, "No alternate buffer".to_string()),
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Pane focus stubs (M9+) ────────────────────────────────────────────────────
@@ -91,7 +90,7 @@ pub fn cmd_pane_focus_next(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }
 
@@ -100,7 +99,7 @@ pub fn cmd_pane_focus_left(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }
 
@@ -109,7 +108,7 @@ pub fn cmd_pane_focus_right(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }
 
@@ -118,7 +117,7 @@ pub fn cmd_pane_focus_up(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }
 
@@ -127,6 +126,6 @@ pub fn cmd_pane_focus_down(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     Err(CommandError::new(":split not yet implemented"))
 }

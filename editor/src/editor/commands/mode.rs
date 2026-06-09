@@ -14,7 +14,6 @@ use crate::ops::selection_cmd::cmd_collapse_selection;
 use super::super::{doc_ops, EditorState, MiniBuffer, Mode};
 use super::super::Editor;
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use super::{
     begin_insert_session, end_insert_session, enqueue_mode_change,
     focused_buffer_id,
@@ -27,14 +26,14 @@ pub fn cmd_insert_before(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     begin_insert_session(state, view);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_insert_after(
@@ -42,14 +41,14 @@ pub fn cmd_insert_after(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_insert_at_line_start(
@@ -57,14 +56,14 @@ pub fn cmd_insert_at_line_start(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_insert_at_line_end(
@@ -72,7 +71,7 @@ pub fn cmd_insert_at_line_end(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
@@ -83,7 +82,7 @@ pub fn cmd_insert_at_line_end(
     });
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Enter insert mode at the start of each selection (min of anchor and head).
@@ -93,14 +92,14 @@ pub fn cmd_insert_at_selection_start(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     begin_insert_session(state, view);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Enter insert mode after the end of each selection (one past max of anchor and head).
@@ -114,7 +113,7 @@ pub fn cmd_insert_at_selection_end(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, sels| {
@@ -124,7 +123,7 @@ pub fn cmd_insert_at_selection_end(
     });
     begin_insert_session(state, view);
     state.mark_insert_step_back();
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Open a new line below the cursor and enter insert mode.
@@ -137,7 +136,7 @@ pub fn cmd_open_line_below(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
@@ -147,7 +146,7 @@ pub fn cmd_open_line_below(
     doc_ops::apply_doc_edit_grouped(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         insert_char(b, s, '\n')
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Open a new line above the cursor and enter insert mode.
@@ -156,7 +155,7 @@ pub fn cmd_open_line_above(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
@@ -169,7 +168,7 @@ pub fn cmd_open_line_above(
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_move_left(b, s, 1, MotionMode::Move)
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_command_mode(
@@ -177,7 +176,7 @@ pub fn cmd_command_mode(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let old_mode = state.mode;
     state.history.begin_session_all();
     state.mode = Mode::Command;
@@ -187,7 +186,7 @@ pub fn cmd_command_mode(
         cursor: 0,
     });
     enqueue_mode_change(state, old_mode, Mode::Command);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_exit_insert(
@@ -195,9 +194,9 @@ pub fn cmd_exit_insert(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     end_insert_session(state, view);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Extend mode ───────────────────────────────────────────────────────────────
@@ -207,13 +206,13 @@ pub fn cmd_toggle_extend(
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     state.mode = if state.mode == EditorMode::Extend {
         EditorMode::Normal
     } else {
         EditorMode::Extend
     };
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Collapse each selection to its cursor AND exit extend mode.
@@ -224,7 +223,7 @@ pub fn cmd_collapse_and_exit_extend(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
     state.mode = EditorMode::Normal;
     let focused = state.focused_pane_id;
@@ -232,7 +231,7 @@ pub fn cmd_collapse_and_exit_extend(
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_collapse_selection(b, s, MotionMode::Move)
     });
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Dot repeat ───────────────────────────────────────────────────────────────

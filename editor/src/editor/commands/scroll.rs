@@ -4,7 +4,6 @@ use crate::ops::MotionMode;
 use super::super::visual_move::{cmd_visual_move_down, cmd_visual_move_up};
 use super::super::EditorState;
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use super::{current_selections, focused_format_context, viewport};
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -18,7 +17,7 @@ pub fn cmd_page_down(
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
     cmd_visual_move_down(state, view, count, mode)
 }
@@ -27,7 +26,7 @@ pub fn cmd_page_up(
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
     cmd_visual_move_up(state, view, count, mode)
 }
@@ -36,7 +35,7 @@ pub fn cmd_half_page_down(
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
     cmd_visual_move_down(state, view, count, mode)
 }
@@ -45,7 +44,7 @@ pub fn cmd_half_page_up(
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
     cmd_visual_move_up(state, view, count, mode)
 }
@@ -74,10 +73,10 @@ pub fn cmd_view_center(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let target = (viewport(state, view).height as usize) / 2;
     cmd_view_scroll_to_row(state, view, target);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_view_top(
@@ -85,9 +84,9 @@ pub fn cmd_view_top(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     cmd_view_scroll_to_row(state, view, 0);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_view_bottom(
@@ -95,8 +94,8 @@ pub fn cmd_view_bottom(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let target = (viewport(state, view).height as usize).saturating_sub(1);
     cmd_view_scroll_to_row(state, view, target);
-    Ok(SideEffects::none())
+    Ok(())
 }

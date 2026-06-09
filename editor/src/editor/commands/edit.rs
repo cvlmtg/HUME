@@ -9,7 +9,6 @@ use crate::ops::surround::wrap_each_selection;
 use super::super::{doc_ops, register_ops, EditorState, Severity};
 use super::{PASTE_FAMILY_CMDS, SMART_P_LAST_CMDS, focused_buffer_id, begin_insert_session};
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 
@@ -22,7 +21,7 @@ pub fn cmd_delete(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
@@ -31,7 +30,7 @@ pub fn cmd_delete(
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Yank, delete, then enter insert mode — all in one undo group.
@@ -43,7 +42,7 @@ pub fn cmd_change(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
@@ -53,7 +52,7 @@ pub fn cmd_change(
         None | Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Yank selections without deleting.
@@ -65,7 +64,7 @@ pub fn cmd_yank(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let yanked = yank_selections(super::doc(state, view).text(), super::current_selections(state, view));
     match state.take_register_prefix() {
         None => {
@@ -76,7 +75,7 @@ pub fn cmd_yank(
         Some(KILL_RING_REGISTER) => state.kill_ring.push(yanked),
         Some(reg) => state.write_register(reg, yanked),
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Core paste implementation: open/extend a paste session and apply.
@@ -229,9 +228,9 @@ pub fn cmd_paste_after(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     do_paste(state, view, false);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Paste before the selection.
@@ -240,20 +239,20 @@ pub fn cmd_paste_before(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     do_paste(state, view, true);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Shared implementation for `[` and `]`: advance/retreat the kill-ring cycle
 /// cursor and re-paste from the session snapshot.
 ///
 /// Noop when no paste session is open or when the cycle is already at a boundary.
-fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -> Result<SideEffects, CommandError> {
+fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     if state.panes.state[focused][buf].paste_group.is_none() {
-        return Ok(SideEffects::none());
+        return Ok(());
     }
     // Eagerly convert to owned Vec so the borrow of state.kill_ring ends before
     // state.buffers and state.panes.state are borrowed mutably below.
@@ -275,7 +274,7 @@ fn do_paste_cycle(state: &mut EditorState, view: &mut EngineView, older: bool) -
         );
         state.last_paste = Some(values);
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Cycle the kill ring one step older and re-paste from the session snapshot.
@@ -284,7 +283,7 @@ pub fn cmd_paste_ring_older(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     do_paste_cycle(state, view, true)
 }
 
@@ -294,7 +293,7 @@ pub fn cmd_paste_ring_newer(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     do_paste_cycle(state, view, false)
 }
 
@@ -303,11 +302,11 @@ pub fn cmd_undo(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_undo(&mut state.buffers, &mut state.panes.state, focused, buf);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub fn cmd_redo(
@@ -315,11 +314,11 @@ pub fn cmd_redo(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_redo(&mut state.buffers, &mut state.panes.state, focused, buf);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Replace / surround ────────────────────────────────────────────────────────
@@ -330,7 +329,7 @@ pub fn cmd_replace(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     if let Some(ch) = state.pending_char.take() {
         let focused = state.focused_pane_id;
         let buf = focused_buffer_id(state, view);
@@ -338,7 +337,7 @@ pub fn cmd_replace(
             replace_selections(b, s, ch)
         });
     }
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 /// Wrap every selection with a pair determined by the next typed character.
@@ -347,9 +346,9 @@ pub fn cmd_surround_add(
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let Some(ch) = state.pending_char.take() else {
-        return Ok(SideEffects::none());
+        return Ok(());
     };
     let (_ap_enabled, ap_pairs) = super::doc(state, view).overrides.auto_pairs_ref(&state.settings);
     let (open, close) = ap_pairs
@@ -362,5 +361,5 @@ pub fn cmd_surround_add(
     doc_ops::apply_doc_edit(&mut state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         wrap_each_selection(b, s, open, close)
     });
-    Ok(SideEffects::none())
+    Ok(())
 }

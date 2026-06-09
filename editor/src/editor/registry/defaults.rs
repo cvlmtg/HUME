@@ -120,7 +120,7 @@ impl CommandRegistry {
             }
         }
         // Construct a builder for a State-variant EditorCmd (sync-dispatchable from Steel).
-        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::EditorState, &mut engine::pipeline::EngineView, usize, MotionMode) -> Result<super::super::SideEffects, CommandError>| {
+        let ecmd = |name: &'static str, doc: &'static str, fun: fn(&mut super::super::EditorState, &mut engine::pipeline::EngineView, usize, MotionMode) -> Result<(), CommandError>| {
             EditorCmdBuilder { name, doc, fun: EditorCmdFun::State(fun), repeatable: false, jump: false, visual_move: false, extendable: false }
         };
         // Construct a builder for a Legacy-variant EditorCmd (requires &mut Editor).

@@ -6,7 +6,6 @@ use crate::ops::motion::{find_char_backward, find_char_forward};
 
 use super::super::{doc_ops, FindChar, EditorState};
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use crate::ops::motion::FindKind;
 
 use super::focused_buffer_id;
@@ -36,36 +35,36 @@ pub fn cmd_find_forward(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     find_char(state, view, count, mode, FindKind::Inclusive, find_char_forward);
-    Ok(SideEffects::none())
+    Ok(())
 }
 pub fn cmd_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     find_char(state, view, count, mode, FindKind::Inclusive, find_char_backward);
-    Ok(SideEffects::none())
+    Ok(())
 }
 pub fn cmd_till_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     find_char(state, view, count, mode, FindKind::Exclusive, find_char_forward);
-    Ok(SideEffects::none())
+    Ok(())
 }
 pub fn cmd_till_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     find_char(state, view, count, mode, FindKind::Exclusive, find_char_backward);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 // ── Repeat find ───────────────────────────────────────────────────────────────
@@ -91,16 +90,16 @@ pub fn cmd_repeat_find_forward(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     repeat_find(state, view, count, mode, find_char_forward);
-    Ok(SideEffects::none())
+    Ok(())
 }
 pub fn cmd_repeat_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     repeat_find(state, view, count, mode, find_char_backward);
-    Ok(SideEffects::none())
+    Ok(())
 }

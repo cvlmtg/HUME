@@ -19,7 +19,6 @@ use engine::types::CellContent;
 
 use super::{doc_ops, EditorState};
 use crate::editor::error::CommandError;
-use crate::editor::SideEffects;
 use super::commands::{focused_buffer_id, focused_format_context};
 
 // ---------------------------------------------------------------------------
@@ -198,9 +197,9 @@ pub(super) fn cmd_visual_move_down(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     apply_visual_vertical(state, view, count, true, mode);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 pub(super) fn cmd_visual_move_up(
@@ -208,9 +207,9 @@ pub(super) fn cmd_visual_move_up(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     apply_visual_vertical(state, view, count, false, mode);
-    Ok(SideEffects::none())
+    Ok(())
 }
 
 fn sub_row_char_bounds(
@@ -248,7 +247,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
-) -> Result<SideEffects, CommandError> {
+) -> Result<(), CommandError> {
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
 
     if !wrap_mode.is_wrapping() {
@@ -257,7 +256,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |buf, sels| {
             cmd_select_word_nearest_on_line(buf, sels, mode)
         });
-        return Ok(SideEffects::none());
+        return Ok(());
     }
 
     let focused = state.focused_pane_id;
@@ -289,5 +288,5 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         new_sels
     });
 
-    Ok(SideEffects::none())
+    Ok(())
 }
