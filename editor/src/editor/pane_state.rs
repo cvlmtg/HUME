@@ -52,7 +52,7 @@ pub(crate) struct EditGroup {
 
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
-/// Stored in `Editor.pane_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
+/// Stored in `EditorState.panes.state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
 /// Default initialisation is used at every seed site — callers override
 /// `selections` with `buffer.initial_sels()` when seeding for the first time.
 #[derive(Default)]

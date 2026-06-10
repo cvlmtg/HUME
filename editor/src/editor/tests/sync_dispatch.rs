@@ -40,22 +40,41 @@ fn run_command_sync_motion_moves_cursor() {
     assert_eq!(after, 1, "cursor must be at 1 after sync move-right");
 }
 
-/// All `EditorCmd` handlers share the State shape and run synchronously via
-/// `run_command_sync`. `repeat-last-action` enqueues a `PendingRepeat` marker as
-/// a pure State handler; the actual replay runs in `drain_pending_repeat` at the
-/// tail of `handle_key`.
+/// `run_command_sync` for an `EditorCmd` (the fourth native variant) must apply
+/// its effect immediately — not queue it.
+///
+/// Fail oracle: return `Ok(())` from `run_command_sync` without calling
+/// `dispatch_native` → `undo` never reverts the deletion → assertion fails.
 #[test]
 fn run_command_sync_editor_cmd_runs_sync() {
+    // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
+    // create an undoable revision, then undo via run_command_sync.
     let mut ed = editor_from("-[a]>bc\n");
-    let mut host = live_host!(ed);
-    // `undo` is a State EditorCmd — runs synchronously.
-    host.run_command_sync("undo", 1, false, None)
-        .expect("run_command_sync must not error for undo");
+    ed.execute_keymap_command("delete".into(), 1, false, vec![]);
+    // Buffer is now "bc\n"; cursor should be at 0.
+    assert_eq!(
+        live_host!(ed).cursor_char_index(),
+        Some(0),
+        "pre-condition: cursor at 0 after delete"
+    );
 
-    // `repeat-last-action` is also a State EditorCmd — sets pending_repeat
-    // (no action to repeat, so pending_repeat stays None, but it ran sync).
-    host.run_command_sync("repeat-last-action", 1, false, None)
-        .expect("run_command_sync must not error for repeat-last-action");
+    {
+        let mut host = live_host!(ed);
+        host.run_command_sync("undo", 1, false, None)
+            .expect("run_command_sync must not error for undo");
+    }
+
+    // After undo the deleted 'a' must be restored and cursor back at 0 on "abc\n".
+    let buf_text: String = ed.doc().text().rope().to_string();
+    assert_eq!(
+        buf_text, "abc\n",
+        "undo via run_command_sync must restore the deleted character"
+    );
+    assert_eq!(
+        live_host!(ed).cursor_char_index(),
+        Some(0),
+        "cursor must be at 0 after undo"
+    );
 }
 
 /// `run_command_sync` for an unknown name must return `Err`.
@@ -67,22 +86,39 @@ fn run_command_sync_unknown_name_errors() {
     assert!(result.is_err(), "unknown command must return Err");
 }
 
-/// `cursor_char_index` must reflect the live cursor position (not a frozen snapshot).
+/// `cursor_char_index` must reflect the live cursor position — after a sync move
+/// the index updates, not a frozen pre-move snapshot.
+///
+/// A stub that always returned 0 would pass the pre-move check but fail after
+/// the move, so liveness is genuinely tested.
 #[test]
 fn cursor_char_index_reads_live_position() {
-    // "-[a]>bc\n" — cursor at position 0.
     let mut ed = editor_from("-[a]>bc\n");
-    let idx = live_host!(ed).cursor_char_index().expect("cursor_char_index");
-    assert_eq!(idx, 0);
+    let before = live_host!(ed).cursor_char_index().expect("cursor_char_index before");
+    assert_eq!(before, 0, "cursor starts at 0");
+
+    { live_host!(ed).run_command_sync("move-right", 1, false, None).unwrap(); }
+
+    let after = live_host!(ed).cursor_char_index().expect("cursor_char_index after");
+    assert_eq!(after, 1, "cursor_char_index must reflect the sync move");
 }
 
-/// `current_line_number` must return 1 for a single-line buffer with cursor at start.
+/// `current_line_number` must reflect a live position change across lines.
+///
+/// A stub always returning 1 would pass a single-line check; the move to a
+/// second line proves liveness.
 #[test]
 fn current_line_number_reads_live_position() {
-    // "-[a]>bc\n" — cursor on line 1 (1-indexed).
-    let mut ed = editor_from("-[a]>bc\n");
-    let line = live_host!(ed).current_line_number().expect("current_line_number");
-    assert_eq!(line, 1);
+    // Two-line buffer: "ab\ncd\n"; cursor on line 1.
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    let before = live_host!(ed).current_line_number().expect("line before");
+    assert_eq!(before, 1, "cursor starts on line 1");
+
+    // move-down crosses to line 2.
+    { live_host!(ed).run_command_sync("move-down", 1, false, None).unwrap(); }
+
+    let after = live_host!(ed).current_line_number().expect("line after");
+    assert_eq!(after, 2, "current_line_number must reflect the sync move to line 2");
 }
 
 /// `run_command_sync` for a `Selection` command must immediately update the
@@ -97,9 +133,9 @@ fn run_command_sync_selection_updates_sel() {
         host.run_command_sync("select-line", 1, false, None)
             .expect("run_command_sync must not error for select-line");
     }
-    // select-line covers the full line "abc\n"; head ends on 'c' at position 2.
+    // select-line covers the full line "abc\n" (inclusive); head lands on '\n' at position 3.
     let head = live_host!(ed).cursor_char_index().expect("cursor_char_index after sel");
-    assert!(head > 0, "selection must have extended past start");
+    assert_eq!(head, 3, "select-line head must be at position 3 ('\\n' — inclusive selection)");
 }
 
 // ── Native arg validation (classify-then-parse) ───────────────────────────────
@@ -430,10 +466,10 @@ fn steel_call_native_respects_register_prefix() {
 }
 
 /// **Finding 2 — last_command (smart-p)**: after `(call! "delete")` from Steel,
-/// pressing `p` must paste from the kill ring (not the clipboard).
+/// `last_command` must be `"delete"` so a subsequent `p` reads the kill ring.
 ///
 /// Fail oracle: comment out `state.last_command = Some(name)` in `dispatch_native`
-/// → last_command stays stale and `p` reads the clipboard instead.
+/// → last_command stays stale (prior command) instead of "delete".
 #[test]
 fn steel_call_delete_sets_last_command_for_smart_p() {
     // Buffer: "foo bar\n", cursor on "foo".
@@ -464,6 +500,49 @@ fn steel_call_delete_sets_last_command_for_smart_p() {
     assert_eq!(
         ed.state.last_command.as_deref(), Some("delete"),
         "last_command must be 'delete' after Steel (call! \"delete\")"
+    );
+}
+
+/// **Regression: no-dispatch SteelBacked must stamp its own name, not stay stale.**
+///
+/// A SteelBacked command that runs no inner native command must overwrite
+/// `last_command` with its own name. If it does not, a prior "delete" (in
+/// `SMART_P_LAST_CMDS`) stays as `last_command` and a subsequent `p` wrongly
+/// pastes from the kill ring instead of the clipboard.
+///
+/// Fail oracle: remove the pre-stamp `self.state.last_command = Some(name.clone())`
+/// from `execute_keymap_command` → last_command stays "delete" → test fails.
+#[test]
+fn steel_no_dispatch_cmd_stamps_own_name() {
+    let mut ed = editor_from("-[f]>oo bar\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut mock = MockHost::new();
+    // "noop-cmd" dispatches no inner native — no (call! …) anywhere.
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "noop-cmd" "" (lambda () (+ 1 0)))"#.to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    ed.register_steel_cmds(defs);
+    ed.scripting = Some(host);
+
+    // First: run a kill command to set last_command = "delete".
+    ed.execute_keymap_command("delete".into(), 1, false, vec![]);
+    assert_eq!(ed.state.last_command.as_deref(), Some("delete"), "pre-condition");
+
+    // Now run the no-dispatch Steel command — must overwrite last_command.
+    ed.execute_keymap_command("noop-cmd".into(), 1, false, vec![]);
+    assert_eq!(
+        ed.state.last_command.as_deref(), Some("noop-cmd"),
+        "last_command must be 'noop-cmd' after a no-dispatch SteelBacked command"
     );
 }
 

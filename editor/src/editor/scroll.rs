@@ -479,9 +479,8 @@ mod tests {
     // `cmd_view_top` calls `scroll_cursor_to_row(target=0)`. That alone places
     // the cursor at display row 0. `prepare_frame` then runs the standard
     // `ensure_cursor_visible` with `scrolloff` and trims the cursor inward —
-    // vim's "smart scrolloff" semantics. The doc-comment on the zz/zt/zb block
-    // documents this; this test pins the behaviour so a future change to
-    // either function can't silently break the contract.
+    // vim's "smart scrolloff" semantics. This test pins the behaviour so a future
+    // change to either function can't silently break the contract.
 
     #[test]
     fn zt_then_scrolloff_trims_cursor_inward() {

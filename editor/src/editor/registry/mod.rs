@@ -121,12 +121,7 @@ impl CommandRegistry {
     /// also be cleared so re-declared trigger names do not collide.
     pub(crate) fn unregister_dynamic_commands(&mut self) {
         self.commands.retain(|_, cmd| {
-            !matches!(
-                cmd,
-                Command::Mappable(
-                    MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }
-                )
-            )
+            !matches!(cmd, Command::Mappable(mc) if !mc.is_native())
         });
     }
 

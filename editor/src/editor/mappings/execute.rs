@@ -18,8 +18,9 @@ impl Editor {
     /// Native commands (`Motion`/`Selection`/`Edit`/`EditorCmd`) delegate to
     /// `commands::dispatch_native`, which is the single source of truth for all
     /// native-dispatch bookkeeping (paste session, jump list, dot-repeat,
-    /// last_command).  Non-native commands (SteelBacked, Lazy) are handled
-    /// inline and set `last_command` to the outer command name afterward.
+    /// last_command).  Non-native commands (SteelBacked, Lazy) pre-stamp
+    /// `last_command` to the outer command name; any inner native dispatch via
+    /// `dispatch_native` / `drain_command_queue` overrides it with the inner name.
     pub(in super::super) fn execute_keymap_command(
         &mut self,
         name: Cow<'static, str>,
@@ -46,6 +47,13 @@ impl Editor {
             if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
                 self.state.commit_paste_session();
             }
+
+            // Pre-stamp last_command with the outer name so that a SteelBacked
+            // command that dispatches no inner native leaves a fresh name rather
+            // than a stale one from the previous command. If any inner native runs
+            // via dispatch_native / drain_command_queue it overrides this with the
+            // inner command's name — preserving smart-p for Steel-wrapped kill cmds.
+            self.state.last_command = Some(name.clone());
 
             match reg_cmd {
                 MappableCommand::Lazy { ref plugin, .. } => {
@@ -123,11 +131,6 @@ impl Editor {
                 _ => unreachable!("non-native variants exhausted above"),
             }
 
-            // last_command is intentionally NOT set here: the inner native
-            // calls via dispatch_native / drain_command_queue already stamped
-            // the authoritative command name (e.g. "delete" after (call! "delete")).
-            // An outer SteelBacked name would never match KILL_CMDS / PASTE_CMDS
-            // and would break smart-p for Steel-wrapped kill commands.
         }
 
         // Drain any hooks queued during command execution (mode changes, etc.).
@@ -194,11 +197,6 @@ impl Editor {
     /// If the new selection overlaps an existing secondary, both are merged
     /// into one — so the total selection count may decrease.
     pub(in super::super) fn set_primary_selection(&mut self, new_sel: Selection) {
-        let pid = self.state.focused_pane_id;
-        let bid = self.focused_buffer_id();
-        let idx = self.state.panes.state[pid][bid].selections.primary_index();
-        // mem::take avoids a clone: move out, compute, write back.
-        let sels = std::mem::take(&mut self.state.panes.state[pid][bid].selections);
-        self.state.panes.state[pid][bid].selections = sels.replace(idx, new_sel).merge_overlapping();
+        commands::set_primary_selection(&mut self.state, &self.view, new_sel);
     }
 }

@@ -190,6 +190,10 @@ pub(crate) fn call_command_primitive(
 
             if ctx.cmd_queue.is_empty() {
                 // No deferred command ahead — run synchronously (Model A, Case B).
+                // Note: source order is guaranteed only within cmd_queue; side-effect
+                // queues (pending_language_sets, grammar_sweeps, plugin_loads) are
+                // drained after the full eval and remain unordered relative to this
+                // sync call.
                 ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
                     .map(|()| SteelVal::Void)
                     .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))
@@ -208,8 +212,8 @@ pub(crate) fn call_command_primitive(
 /// Valid shapes: `[]` → `(1, false)`; `[n]` → `(n, false)`; `[n, bool]` → `(n, bool)`.
 /// All other shapes (e.g. a leading string, extra args) return `Err`.
 ///
-/// Exposed `pub(crate)` so the editor crate can reuse it when draining a deferred
-/// native command whose count was stored in `QueuedCommand.args`.
+/// Re-exported from the crate root so the editor crate can reuse it when
+/// draining a deferred native command whose count was stored in `QueuedCommand.args`.
 pub fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), String> {
     match args {
         [] => Ok((1, false)),
@@ -428,6 +432,54 @@ mod tests {
         ctx.pending_char = Some('(');
         let result = pending_char(&mut ctx).unwrap();
         assert_eq!(result, SteelVal::StringV("(".into()));
+    }
+
+    // ── parse_count_extend direct tests ──────────────────────────────────────
+
+    #[test]
+    fn parse_count_extend_empty_gives_defaults() {
+        assert_eq!(parse_count_extend(&[]).unwrap(), (1, false));
+    }
+
+    #[test]
+    fn parse_count_extend_count_only() {
+        assert_eq!(parse_count_extend(&[SteelVal::IntV(5)]).unwrap(), (5, false));
+    }
+
+    #[test]
+    fn parse_count_extend_count_and_extend() {
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(3), SteelVal::BoolV(true)]).unwrap(),
+            (3, true)
+        );
+    }
+
+    /// Negative counts clamp to 1 — `(*n).max(1) as usize`.
+    #[test]
+    fn parse_count_extend_negative_clamps_to_one() {
+        assert_eq!(parse_count_extend(&[SteelVal::IntV(-7)]).unwrap(), (1, false));
+        assert_eq!(
+            parse_count_extend(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
+            (1, false)
+        );
+    }
+
+    /// Zero also clamps to 1 (max(0, 1) = 1).
+    #[test]
+    fn parse_count_extend_zero_clamps_to_one() {
+        assert_eq!(parse_count_extend(&[SteelVal::IntV(0)]).unwrap(), (1, false));
+    }
+
+    #[test]
+    fn parse_count_extend_string_arg_is_err() {
+        let bad = &[SteelVal::StringV("garbage".into())];
+        assert!(parse_count_extend(bad).is_err());
+    }
+
+    #[test]
+    fn parse_count_extend_extra_arg_is_err() {
+        let bad = &[SteelVal::IntV(1), SteelVal::BoolV(false), SteelVal::IntV(0)];
+        assert!(parse_count_extend(bad).is_err());
     }
 
     #[test]

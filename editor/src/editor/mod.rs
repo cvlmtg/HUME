@@ -77,11 +77,11 @@ pub(crate) use message_log::Severity;
 /// State for an active insert session (entered via a repeatable command).
 ///
 /// Tracks keystrokes for dot-repeat recording. Created by
-/// [`Editor::begin_insert_session`] and consumed by [`Editor::end_insert_session`].
+/// `begin_insert_session` and consumed by [`Editor::end_insert_session`].
 ///
 /// `None` on the editor when there is no active session — including during
 /// replay, where the replay path pre-opens the edit group to signal
-/// [`begin_insert_session`] that recording should be suppressed.
+/// `begin_insert_session` that recording should be suppressed.
 pub(super) struct InsertSession {
     keystrokes: Vec<KeyEvent>,
     /// Step cursor back one grapheme on exit (set for `a` / `A` entry).
@@ -377,8 +377,7 @@ impl Editor {
 
     /// Replace the focused pane's selections for the current buffer.
     pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
-        let bid = self.focused_buffer_id();
-        self.state.panes.state[self.state.focused_pane_id][bid].selections = sels;
+        commands::set_current_selections(&mut self.state, &self.view, sels);
     }
 
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────

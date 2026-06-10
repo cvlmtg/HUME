@@ -25,6 +25,13 @@ use super::commands::{focused_buffer_id, focused_format_context};
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// Find the char offset of the grapheme in `target_sub_row` closest to
+/// `target_col` display columns.
+///
+/// Prefers real content graphemes over the end-of-line sentinel (the `Empty`
+/// grapheme emitted at the `\n` position). The sentinel is only used as a
+/// fallback for empty lines where it is the only grapheme in the row.
+/// Virtual fill cells (`char_offset == usize::MAX`) are always skipped.
 fn find_char_at_display_col(
     scratch: &FormatScratch,
     target_sub_row: usize,
@@ -35,14 +42,15 @@ fn find_char_at_display_col(
     };
     let graphemes = &scratch.graphemes[row.graphemes.clone()];
 
+    // First pass: real content graphemes only (skip Empty sentinel and virtual cells).
     let mut best: Option<(u16, usize)> = None;
     for g in graphemes {
         if g.char_offset == usize::MAX {
             continue;
-        }
+        } // virtual/fill cell
         if matches!(g.content, CellContent::Empty) {
             continue;
-        }
+        } // eol sentinel
         let dist = target_col.abs_diff(g.col);
         match best {
             None => best = Some((dist, g.char_offset)),
@@ -51,6 +59,7 @@ fn find_char_at_display_col(
         }
     }
 
+    // Fallback: include Empty sentinel (empty lines where it is the only grapheme).
     if best.is_none() {
         for g in graphemes {
             if g.char_offset == usize::MAX {
@@ -89,6 +98,7 @@ fn visual_move_down_one(
             return head;
         }
         let line_start = rope.line_to_char(next_line);
+        // Guard against the phantom trailing line (structural trailing \n).
         if line_start >= rope.len_chars() {
             return head;
         }
@@ -160,6 +170,8 @@ pub(super) fn apply_visual_vertical(
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf_id, |text, sels| {
         let rope = text.rope();
 
+        // Pass 1: resolve each selection's sticky display column from sel.horiz,
+        // computing it fresh on the first j/k press (when horiz is None).
         target_cols.extend(sels.iter_sorted().map(|sel| {
             if let Some(col) = sel.horiz() {
                 col as u16
@@ -170,6 +182,8 @@ pub(super) fn apply_visual_vertical(
             }
         }));
 
+        // Pass 2: move each selection by `count` display rows, preserving the
+        // sticky column in sel.horiz so consecutive j/k presses reuse it.
         let cols: &[u16] = target_cols;
         let mut col_iter = cols.iter();
         sels.map(|sel| {
@@ -225,6 +239,7 @@ fn sub_row_char_bounds(
         .map(|g| g.char_offset)
         .min()?;
 
+    // HUME buffers always end with '\n', so buf_line + 1 is always a valid line index.
     let next_buf_line_start = rope.line_to_char(buf_line + 1);
 
     let char_end_excl = scratch
@@ -242,6 +257,16 @@ fn sub_row_char_bounds(
     Some((char_start, char_end_excl))
 }
 
+/// Wrap-aware variant of `select-word-nearest-on-line`.
+///
+/// When wrap is active, scopes the nearest-word search to the head's current
+/// visual sub-row rather than the full buffer line. This prevents the search
+/// from finding words that live on an adjacent visual row when the head lands
+/// on leading whitespace near a wrap boundary — the failure mode that causes
+/// `j`/`k` bindings to oscillate in place.
+///
+/// Falls back to `cmd_select_word_nearest_on_line` (buffer-line bounds) when
+/// wrap is off, producing identical behaviour.
 pub(super) fn cmd_visual_select_word_nearest_on_line(
     state: &mut EditorState,
     view: &mut EngineView,

@@ -75,6 +75,10 @@ pub fn cmd_search_backward(
 }
 
 /// Build the primary selection after a search match.
+///
+/// `anchor = Some(a)` — extend mode: keep the caller's anchor, move head to
+/// the match edge that faces the search direction.
+/// `anchor = None` — move mode: cover the matched text exactly.
 pub fn search_sel(
     start: usize,
     end_incl: usize,
@@ -120,6 +124,11 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
 }
 
 /// Shared body for `search-next` / `search-prev` / extend variants.
+///
+/// Reads the cached `search_regex` (compiled during the search session), or
+/// recompiles from the `'s'` register if the cache is empty. Repeats `count`
+/// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
+/// selection depending on `extend`.
 fn search_jump(
     state: &mut EditorState,
     view: &EngineView,
@@ -137,10 +146,12 @@ fn search_jump(
         None => return Ok(()),
     };
 
+    // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
         let buf = doc(state, view).text();
         let primary = current_selections(state, view).primary();
         let from = match direction {
+            // Step past the current match so we don't re-find it on the first jump.
             SearchDirection::Forward => next_grapheme_boundary(buf, primary.end_inclusive(buf)),
             SearchDirection::Backward => primary.start(),
         };
@@ -158,6 +169,9 @@ fn search_jump(
     let mut last_match: Option<(usize, usize)> = None;
     let mut any_wrapped = false;
 
+    // When the match cache is populated we binary-search it (O(log M) per
+    // jump). When it is empty — e.g. the very first `n` after startup before
+    // the cache is warmed — we fall back to the O(buffer) regex-scan path.
     if !state.buffers.get(bid).search_matches.matches.is_empty() {
         let cached_matches = &state.buffers.get(bid).search_matches.matches;
         for _ in 0..count {
@@ -309,7 +323,11 @@ pub fn cmd_use_selection_as_search(
     let buf = doc(state, view).text();
     let primary = current_selections(state, view).primary();
 
+    // If cursor (1-char selection), expand to inner word first.
     let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
+        // Noop on \n — no word to search for (matches Vim/Helix behaviour).
+        // inner_word_impl would otherwise expand the cursor to the adjacent \n
+        // run and set a useless newline regex.
         if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
             return Ok(());
         }
