@@ -15,9 +15,7 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use engine::pipeline::{BufferId, EngineView, PaneId};
 
-use crate::editor::doc_ops;
 use crate::editor::registry::MappableCommand;
-use crate::ops::MotionMode;
 use crate::settings::{BufferOverrides, SettingScope, apply_setting};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use scripting::host::{BindMode, EditorHost};
@@ -203,57 +201,39 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             .ok_or_else(|| format!("unknown command: {name}"))
     }
 
-    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<(), String> {
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: usize,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String> {
         let Some(cmd) = self.state.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
-        // Read focused buffer id from the live pane; the shared borrow ends at
-        // the semicolon (NLL), before any mutable access to other fields.
-        let buf_id = self.view.panes[self.state.focused_pane_id].buffer_id;
-        let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
-        match cmd {
-            MappableCommand::Motion { fun, .. } => {
-                doc_ops::apply_doc_motion(
-                    &self.state.buffers,
-                    &mut self.state.panes.state,
-                    self.state.focused_pane_id,
-                    buf_id,
-                    |b, s| fun(b, s, count, motion_mode),
-                );
-                Ok(())
-            }
-            MappableCommand::Selection { fun, .. } => {
-                doc_ops::apply_doc_motion(
-                    &self.state.buffers,
-                    &mut self.state.panes.state,
-                    self.state.focused_pane_id,
-                    buf_id,
-                    |b, s| fun(b, s, motion_mode),
-                );
-                Ok(())
-            }
-            MappableCommand::Edit { fun, .. } => {
-                doc_ops::apply_doc_edit(
-                    &mut self.state.buffers,
-                    &mut self.state.panes.state,
-                    self.state.focused_pane_id,
-                    buf_id,
-                    fun,
-                );
-                Ok(())
-            }
-            MappableCommand::EditorCmd { fun, .. } => {
-                if let Err(e) = fun(&mut self.state, &mut self.view, count, motion_mode) {
-                    self.state.report(crate::editor::Severity::Error, e.message().to_owned());
-                }
-                Ok(())
-            }
-            // Non-native commands must be queued for Steel dispatch, never run here;
-            // the %call! gate (command_is_native) guarantees we never reach this.
-            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                unreachable!("run_command_sync called on non-native command '{name}'; classify with command_is_native first")
-            }
+        // Arm the register prefix so register-aware commands (yank, delete,
+        // paste-after, …) route to the right destination. Mirrors what
+        // drain_command_queue does for each QueuedCommand that carries a register.
+        if let Some(r) = register {
+            self.state.register_prefix = Some(crate::editor::RegisterPrefix::Selected(r));
         }
+        // Delegate to the shared funnel — all bookkeeping (paste session, jump
+        // list, dot-repeat, last_command) lives there so the sync path is
+        // identical to the keypress path.
+        crate::editor::commands::dispatch_native(
+            self.state,
+            self.view,
+            cmd,
+            std::borrow::Cow::Owned(name.to_owned()),
+            count,
+            extend,
+        );
+        // Clear the prefix when we armed it, so it does not bleed into the
+        // next interactive command — mirrors drain_command_queue's cleanup.
+        if register.is_some() {
+            self.state.register_prefix = None;
+        }
+        Ok(())
     }
 
     // ── Live cursor/selection reads ──────────────────────────────────────────

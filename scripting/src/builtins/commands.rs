@@ -153,10 +153,12 @@ fn define_command_inner(
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): arg contract is
 ///   count/extend only — `[]`, `[n]`, or `[n bool]`. Any other shape is
 ///   rejected via `steel::stop!` before executing the command (fail-fast).
-///   All four native variants run synchronously via `run_command_sync`.
+///   When no Steel-defined command is ahead in the queue, runs synchronously
+///   via `run_command_sync`; otherwise defers to preserve source order.
 /// - **Steel-defined** (`SteelBacked`/`Lazy`): all args forwarded raw to the
 ///   deferred queue unchanged — no count stripping, no validation.
-/// - **Unknown**: single `steel::stop!` error site (classified before dispatch).
+/// - **Unknown**: deferred to the queue; `execute_keymap_command` logs a warning
+///   at drain time and continues — no mid-body abort.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -170,12 +172,10 @@ pub(crate) fn call_command_primitive(
         return Ok(SteelVal::Void);
     }
 
-    // Classify before any dispatch — fail-fast; never execute a native command
-    // and then error on bad args.
     match ctx.host.command_is_native(&name) {
-        Err(e) => steel::stop!(Generic => "%call!: {}", e),
-        Ok(false) => {
-            // Steel-defined (SteelBacked / Lazy) — forward all args raw.
+        // Unknown or Steel-defined — defer. Unknown names produce a warning at drain
+        // (execute_keymap_command) while the rest of the body continues unaffected.
+        Err(_) | Ok(false) => {
             ctx.cmd_queue.push(QueuedCommand {
                 name,
                 args: args_vec,
@@ -184,11 +184,21 @@ pub(crate) fn call_command_primitive(
             Ok(SteelVal::Void)
         }
         Ok(true) => {
-            // Native command — validate and strip count/extend before dispatch.
-            let (count, extend) = parse_count_extend(&args_vec)?;
-            ctx.host.run_command_sync(&name, count, extend)
-                .map(|()| SteelVal::Void)
-                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))
+            // Native — validate count/extend first (fail-fast on malformed args).
+            let (count, extend) = parse_count_extend(&args_vec)
+                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))?;
+
+            if ctx.cmd_queue.is_empty() {
+                // No deferred command ahead — run synchronously (Model A, Case B).
+                ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
+                    .map(|()| SteelVal::Void)
+                    .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))
+            } else {
+                // A Steel-defined command is already queued — defer this native too
+                // so the body executes in source order.
+                ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
+                Ok(SteelVal::Void)
+            }
         }
     }
 }
@@ -196,14 +206,18 @@ pub(crate) fn call_command_primitive(
 /// Parse count/extend from a native command's args list.
 ///
 /// Valid shapes: `[]` → `(1, false)`; `[n]` → `(n, false)`; `[n, bool]` → `(n, bool)`.
-/// All other shapes (e.g. a leading string, extra args) are rejected via `steel::stop!`.
-fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), SteelErr> {
+/// All other shapes (e.g. a leading string, extra args) return `Err`.
+///
+/// Exposed `pub(crate)` so the editor crate can reuse it when draining a deferred
+/// native command whose count was stored in `QueuedCommand.args`.
+pub fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), String> {
     match args {
         [] => Ok((1, false)),
         [SteelVal::IntV(n)] => Ok(((*n).max(1) as usize, false)),
         [SteelVal::IntV(n), SteelVal::BoolV(ext)] => Ok(((*n).max(1) as usize, *ext)),
-        _ => steel::stop!(Generic =>
-            "%call!: native command args must be [], [count], or [count extend]; got {:?}", args),
+        _ => Err(format!(
+            "native command args must be [], [count], or [count extend]; got {:?}", args
+        )),
     }
 }
 

@@ -128,11 +128,21 @@ pub trait EditorHost {
     /// state. Caller must have verified `name` is native via `command_is_native`
     /// before calling — passing a non-native name triggers `unreachable!`.
     ///
+    /// `register` arms `state.register_prefix` before dispatch so register-aware
+    /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
+    /// destination. Pass `None` when no explicit register was set.
+    ///
     /// Returns `Ok(())` — ran.
     /// Returns `Err(msg)` — name is unknown.
     ///
     /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
-    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<(), String>;
+    fn run_command_sync(
+        &mut self,
+        name: &str,
+        count: usize,
+        extend: bool,
+        register: Option<char>,
+    ) -> Result<(), String>;
 
     // ── Live cursor/selection reads ──────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.

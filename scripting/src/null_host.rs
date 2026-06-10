@@ -60,7 +60,7 @@ impl EditorHost for NullHost {
         // No registry — treat every command as Steel/forward-raw.
         Ok(false)
     }
-    fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<(), String> {
+    fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool, _register: Option<char>) -> Result<(), String> {
         Err("stub host has no native command registry".into())
     }
     fn current_line_number(&self) -> Option<usize> { None }

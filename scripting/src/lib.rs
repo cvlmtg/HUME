@@ -63,6 +63,7 @@ pub use log::LogLevel;
 pub use types::{
     HookResult, PendingLanguageReg, QueuedCommand, SteelCmdDef, SteelCmdResult,
 };
+pub use builtins::commands::parse_count_extend;
 pub use attribution::PluginId;
 pub use builtins::ids::SteelBufferId;
 pub use watchdog::EvalWatchdog;

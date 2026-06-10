@@ -14,15 +14,19 @@
 /// Display label used when no named theme is active (the compiled-in default).
 pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
+use std::borrow::Cow;
+
 use engine::pipeline::{BufferId, EngineView};
 use editing::selection::SelectionSet;
 
 use super::{register_ops, Severity};
-use super::{EditorState, InsertSession, Mode, RegisterPrefix};
+use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction};
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
+use super::registry::MappableCommand;
 use super::search_state::SearchPattern;
+use crate::ops::MotionMode;
 
 // ── Kill-ring command name sets ───────────────────────────────────────────────
 // Three sets, kept adjacent so they're maintained together:
@@ -102,6 +106,115 @@ impl EditorState {
             self.buffers.get_mut(bid).commit_edit_group(&mut pbs.paste_group, post_sels);
         }
     }
+}
+
+// ── Native command dispatch funnel ────────────────────────────────────────────
+
+/// Execute a native command (`Motion`/`Selection`/`Edit`/`EditorCmd`) with all
+/// the post-dispatch bookkeeping that used to live only in `execute_keymap_command`.
+///
+/// This is the **single** dispatch funnel for native commands. Both the
+/// interactive keypress path (`execute_keymap_command`) and the Steel sync path
+/// (`run_command_sync`) delegate here so bookkeeping never diverges:
+///
+/// - Paste session committed before dispatch (except ring-cycle commands).
+/// - Jump-list: pre/post snapshot for all motions and explicit jump commands.
+/// - Dot-repeat: `last_repeatable_action` updated for repeatable commands.
+/// - Smart-p: `last_command` updated unconditionally.
+///
+/// Register-prefix is **not** armed here — the caller is responsible (`run_command_sync`
+/// arms `state.register_prefix` before calling; the keypress path relies on the
+/// normal prefix-key path). Commands consume the prefix via `take_register_prefix`.
+///
+/// `cmd` must be a native variant (`Motion`/`Selection`/`Edit`/`EditorCmd`); passing
+/// `SteelBacked` or `Lazy` triggers `unreachable!`.
+pub(super) fn dispatch_native(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    cmd: MappableCommand,
+    name: Cow<'static, str>,
+    count: usize,
+    extend: bool,
+) {
+    let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
+
+    // Capture classifier bools BEFORE the by-value match consumes `cmd`.
+    let is_jump      = cmd.is_jump();
+    let is_visual    = cmd.is_visual_move();
+    let is_motion    = matches!(cmd, MappableCommand::Motion { .. });
+    let is_repeatable = cmd.is_repeatable();
+
+    // Commit any open paste session before non-cycle dispatch so all `[`/`]`
+    // cycles fold into a single undo step. Must happen before the actual dispatch
+    // so that `undo` sees a committed revision.
+    if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
+        state.commit_paste_session();
+    }
+
+    // Snapshot pending_char before dispatch — commands consume it via `.take()`.
+    let char_arg = state.pending_char;
+
+    // Jump list: pre-command snapshot for motions and explicit jump commands.
+    let pre_jump = (is_jump || is_visual || is_motion).then(|| {
+        let bid = focused_buffer_id(state, view);
+        let primary = current_selections(state, view).primary();
+        (primary, doc(state, view).text().char_to_line(primary.head()), bid)
+    });
+
+    let buf     = focused_buffer_id(state, view);
+    let focused = state.focused_pane_id;
+    match cmd {
+        MappableCommand::Motion { fun, .. } => {
+            doc_ops::apply_doc_motion(
+                &state.buffers, &mut state.panes.state, focused, buf,
+                |b, s| fun(b, s, count, motion_mode),
+            );
+        }
+        MappableCommand::Selection { fun, .. } => {
+            doc_ops::apply_doc_motion(
+                &state.buffers, &mut state.panes.state, focused, buf,
+                |b, s| fun(b, s, motion_mode),
+            );
+        }
+        MappableCommand::Edit { fun, .. } => {
+            doc_ops::apply_doc_edit(
+                &mut state.buffers, &mut state.panes.state, focused, buf, fun,
+            );
+        }
+        MappableCommand::EditorCmd { fun, .. } => {
+            if let Err(e) = fun(state, view, count, motion_mode) {
+                state.report(Severity::Error, e.message().to_owned());
+            }
+        }
+        MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+            unreachable!("dispatch_native called on non-native command '{name}'");
+        }
+    }
+
+    // Jump list: record if this was a large enough jump / explicit jump command.
+    if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
+        let post_line = doc(state, view)
+            .text()
+            .char_to_line(current_selections(state, view).primary().head());
+        if is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold {
+            state.panes.jumps[state.focused_pane_id]
+                .push(JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid));
+        }
+    }
+
+    // Dot-repeat: record repeatable commands for `.` replay.
+    if is_repeatable {
+        state.last_repeatable_action = Some(RepeatableAction {
+            command: name.clone(),
+            count,
+            char_arg,
+            insert_keys: Vec::new(),
+        });
+    }
+
+    // Smart-p: update last_command so `p`/`P` knows whether to read the
+    // kill ring (after delete/change) or the clipboard.
+    state.last_command = Some(name);
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
