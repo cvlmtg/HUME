@@ -181,16 +181,9 @@ impl CommandRegistry {
     /// bindings in the Steel engine so `(move-left)` etc. compile without a
     /// `FreeIdentifier` error.
     pub(crate) fn native_mappable_names(&self) -> impl Iterator<Item = &str> {
-        self.commands.iter().filter_map(|(k, v)| {
-            match v {
-                Command::Mappable(
-                    MappableCommand::Motion { .. }
-                    | MappableCommand::Selection { .. }
-                    | MappableCommand::Edit { .. }
-                    | MappableCommand::EditorCmd { .. },
-                ) => Some(k.as_ref()),
-                _ => None,
-            }
+        self.commands.iter().filter_map(|(k, v)| match v {
+            Command::Mappable(cmd) if cmd.is_native() => Some(k.as_ref()),
+            _ => None,
         })
     }
 

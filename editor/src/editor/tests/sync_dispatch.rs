@@ -310,3 +310,74 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
         "Steel (call! \"repeat-last-action\") must replay the delete via handle_key drain"
     );
 }
+
+// ── Agreement test ────────────────────────────────────────────────────────────
+
+/// All three native-classification sites must agree for every registered command:
+/// `MappableCommand::is_native()`, `command_is_native()`, and the
+/// `native_mappable_names()` set must all return the same true/false answer.
+///
+/// The independent oracle is a hand-written exhaustive match (no `_`) inside
+/// this test, re-stating the four-variant native set from first principles.
+/// If any of the three sites diverges from the oracle, this test fails.
+///
+/// Fail oracle: flip one variant to `false` in the oracle closure — the test
+/// fails for every registered command of that variant type, proving all three
+/// sites are actually checked.
+#[test]
+fn classification_sites_all_agree() {
+    use std::collections::HashSet;
+    use crate::editor::registry::MappableCommand;
+
+    let mut ed = editor_from("-[a]>\n");
+
+    // Independent oracle: exhaustive match, no `_`.
+    // A new MappableCommand variant is a compile error here too.
+    let oracle = |cmd: &MappableCommand| -> bool {
+        match cmd {
+            MappableCommand::Motion { .. }
+            | MappableCommand::Selection { .. }
+            | MappableCommand::Edit { .. }
+            | MappableCommand::EditorCmd { .. } => true,
+            MappableCommand::SteelBacked { .. }
+            | MappableCommand::Lazy { .. } => false,
+        }
+    };
+
+    // Phase 1: collect (name, is_native(), oracle()) while holding an immutable
+    // registry borrow. Separating phases avoids borrow conflicts with `live_host!`.
+    let triples: Vec<(String, bool, bool)> = ed.state.registry.names()
+        .filter_map(|name| {
+            ed.state.registry
+                .get_mappable(name)
+                .map(|cmd| (name.to_owned(), cmd.is_native(), oracle(cmd)))
+        })
+        .collect();
+
+    assert!(!triples.is_empty(), "registry must have at least one mappable command");
+
+    let native_names: HashSet<String> =
+        ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+
+    // Phase 2: is_native() vs oracle, native_mappable_names() vs oracle.
+    for (name, is_nat, expected) in &triples {
+        assert_eq!(
+            *is_nat, *expected,
+            "is_native() disagrees with oracle for '{name}'"
+        );
+        assert_eq!(
+            native_names.contains(name.as_str()), *expected,
+            "native_mappable_names() membership disagrees with oracle for '{name}'"
+        );
+    }
+
+    // Phase 3: command_is_native() via the live host. Registry borrow is gone.
+    for (name, _, expected) in &triples {
+        let host = live_host!(ed);
+        assert_eq!(
+            host.command_is_native(name).expect("must be registered"),
+            *expected,
+            "command_is_native() disagrees with oracle for '{name}'"
+        );
+    }
+}

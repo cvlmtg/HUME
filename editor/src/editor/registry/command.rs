@@ -209,6 +209,24 @@ impl MappableCommand {
         }
     }
 
+    /// Returns `true` if this command executes synchronously in Rust
+    /// (`Motion`/`Selection`/`Edit`/`EditorCmd`) rather than through the Steel
+    /// dispatch queue (`SteelBacked`/`Lazy`).
+    ///
+    /// Single source of truth for native-vs-scripted classification: the `%call!`
+    /// sync-dispatch gate, `run_command_sync`, and bare-binding registration all
+    /// derive from this. The match is intentionally exhaustive (no `_`) so a new
+    /// variant forces a decision here at compile time.
+    pub(crate) fn is_native(&self) -> bool {
+        match self {
+            Self::Motion { .. }
+            | Self::Selection { .. }
+            | Self::Edit { .. }
+            | Self::EditorCmd { .. } => true,
+            Self::SteelBacked { .. } | Self::Lazy { .. } => false,
+        }
+    }
+
     /// Returns `true` if this command has extend semantics and can be triggered
     /// as a one-shot extend via Ctrl+key.
     ///

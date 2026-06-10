@@ -196,14 +196,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Synchronous command dispatch ─────────────────────────────────────────
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        match self.state.registry.get_mappable(name) {
-            None => Err(format!("unknown command: {name}")),
-            Some(MappableCommand::Motion { .. })
-            | Some(MappableCommand::Selection { .. })
-            | Some(MappableCommand::Edit { .. })
-            | Some(MappableCommand::EditorCmd { .. }) => Ok(true),
-            _ => Ok(false),
-        }
+        self.state
+            .registry
+            .get_mappable(name)
+            .map(MappableCommand::is_native)
+            .ok_or_else(|| format!("unknown command: {name}"))
     }
 
     fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<(), String> {
@@ -251,8 +248,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 }
                 Ok(())
             }
-            // Caller must classify with command_is_native before calling run_command_sync.
-            _ => unreachable!("run_command_sync called on non-native command '{name}'; classify with command_is_native first"),
+            // Non-native commands must be queued for Steel dispatch, never run here;
+            // the %call! gate (command_is_native) guarantees we never reach this.
+            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+                unreachable!("run_command_sync called on non-native command '{name}'; classify with command_is_native first")
+            }
         }
     }
 
