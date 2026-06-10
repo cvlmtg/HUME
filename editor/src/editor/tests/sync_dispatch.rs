@@ -867,3 +867,98 @@ fn mouse_click_drains_hooks_immediately() {
     // Mode must be Normal (the click exited Insert).
     assert_eq!(ed.state.mode, crate::editor::Mode::Normal);
 }
+
+// ── Dual-path parity tests ────────────────────────────────────────────────────
+//
+// The original regression: `run_command_sync` executed native commands naked —
+// cursor moved correctly but the bookkeeping cluster (jump list, last_command,
+// dot-repeat, paste-session commit) was silently dropped.  These tests assert
+// that dispatching the same native command via the keypress path AND via a Steel
+// `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
+//
+// Each test documents a fail oracle: which single line in `dispatch_native`
+// (commands/mod.rs) to revert to confirm the assertion breaks on that field.
+
+/// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
+/// `(call! "delete")` must produce the same `last_command` and `last_repeatable`.
+///
+/// Fail oracle (last_command): comment out `state.last_command = Some(name)` at
+///   commands/mod.rs:221 → snap_steel.last_command is None; assertion fails.
+/// Fail oracle (last_repeatable): comment out the `if is_repeatable { … }` block
+///   at commands/mod.rs:210–217 → snap_steel.last_repeatable is None; assertion fails.
+#[test]
+fn parity_delete_bookkeeping_keypress_vs_steel() {
+    // Path A — keypress.
+    let mut ed_key = editor_from("-[f]>oo\n");
+    let before_key = snapshot_bookkeeping(&ed_key);
+    ed_key.execute_keymap_command("delete".into(), 1, false, vec![]);
+    let snap_key = snapshot_bookkeeping(&ed_key);
+
+    // Path B — Steel (call! "delete").
+    let mut ed_steel = editor_from("-[f]>oo\n");
+    let names: Vec<String> = ed_steel.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut mock = MockHost::new();
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+    ed_steel.register_steel_cmds(defs);
+    ed_steel.scripting = Some(host);
+    let before_steel = snapshot_bookkeeping(&ed_steel);
+    ed_steel.execute_keymap_command("steel-delete".into(), 1, false, vec![]);
+    let snap_steel = snapshot_bookkeeping(&ed_steel);
+
+    // Pre-conditions: both editors start from identical bookkeeping state.
+    assert_eq!(before_key, before_steel, "pre-condition: both editors must start identical");
+
+    // Both paths must produce the same funnel-owned bookkeeping.
+    assert_eq!(
+        snap_key, snap_steel,
+        "keypress vs Steel dispatch of 'delete' must leave identical bookkeeping"
+    );
+}
+
+/// **Parity: explicit jump command** — `goto-last-line` dispatched via keypress vs
+/// via Steel `(call! "goto-last-line")` must push the same number of jump entries.
+///
+/// Fail oracle (jump_len): comment out the `pre_jump` / jump-list push block
+///   at commands/mod.rs:157–207 → snap_steel.jump_len stays 0; assertion fails.
+#[test]
+fn parity_jump_bookkeeping_keypress_vs_steel() {
+    let content = "-[l]>ine1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n";
+
+    // Path A — keypress.
+    let mut ed_key = editor_from(content);
+    ed_key.execute_keymap_command("goto-last-line".into(), 1, false, vec![]);
+    let snap_key = snapshot_bookkeeping(&ed_key);
+
+    // Path B — Steel (call! "goto-last-line").
+    let mut ed_steel = editor_from(content);
+    let names: Vec<String> = ed_steel.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut mock = MockHost::new();
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#.to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+    ed_steel.register_steel_cmds(defs);
+    ed_steel.scripting = Some(host);
+    ed_steel.execute_keymap_command("steel-goto-end".into(), 1, false, vec![]);
+    let snap_steel = snapshot_bookkeeping(&ed_steel);
+
+    assert_eq!(
+        snap_key, snap_steel,
+        "keypress vs Steel dispatch of 'goto-last-line' must leave identical jump bookkeeping"
+    );
+}

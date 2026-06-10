@@ -208,6 +208,47 @@ impl Editor {
     }
 }
 
+// ── Bookkeeping snapshot ──────────────────────────────────────────────────────
+
+/// Captures the entire funnel-owned side-effect cluster in one shot so a test
+/// can assert all bookkeeping in one `assert_eq!` without missing a field.
+///
+/// Scope: the four effects that `dispatch_native` is exclusively responsible for
+/// (commands/mod.rs:147–221).  Register routing (caller-armed) and handle_key-tail
+/// concerns (drain_pending_repeat, hooks, search-cache) are intentionally excluded —
+/// the former is seeding-dependent, the latter has dedicated tests.
+#[derive(Debug, PartialEq)]
+pub(super) struct BookkeepingSnapshot {
+    /// `ed.state.last_command` — name stamped by `dispatch_native` for smart-p.
+    pub last_command: Option<String>,
+    /// `ed.state.last_repeatable_action` — (command, count) if set.
+    pub last_repeatable: Option<(String, usize)>,
+    /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
+    pub jump_len: usize,
+    /// Whether any (pane, buffer) pair has an open paste session (`paste_group.is_some()`).
+    pub paste_session_open: bool,
+}
+
+/// Capture the current bookkeeping state of an editor.
+///
+/// Call once before dispatch and once after; `assert_eq!` the two snapshots on
+/// a path-parity test or diff them for targeted assertions.
+pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
+    let pane_id = ed.state.focused_pane_id;
+    BookkeepingSnapshot {
+        last_command: ed.state.last_command.as_deref().map(str::to_owned),
+        last_repeatable: ed.state.last_repeatable_action.as_ref().map(|a| {
+            (a.command.to_string(), a.count)
+        }),
+        // JumpList::len() is cfg(test)-only; safe to call here.
+        jump_len: ed.state.panes.jumps[pane_id].len(),
+        paste_session_open: ed.state.panes.state
+            .iter()
+            .flat_map(|(_, inner)| inner.iter())
+            .any(|(_, pbs)| pbs.paste_group.is_some()),
+    }
+}
+
 mod alternate;
 mod auto_pairs;
 mod buffer;

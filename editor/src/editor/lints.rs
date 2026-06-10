@@ -37,6 +37,26 @@
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` where
 //! `<reason>` explains why raw arithmetic is safe (e.g. ASCII-only delimiter
 //! scanning, grapheme-boundary-aligned exclusive-to-inclusive conversion).
+//!
+//! # Single native-dispatch funnel
+//!
+//! All native command variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) must
+//! be executed **exclusively** through `commands::dispatch_native`
+//! (`src/editor/commands/mod.rs`).  That function is the single place that
+//! performs all post-dispatch bookkeeping: paste-session commit, jump-list update,
+//! dot-repeat recording, and `last_command` stamping.
+//!
+//! The original regression: a second dispatch path copied only the bare `match`
+//! arms and none of the bookkeeping.  Commands ran correctly but silently dropped
+//! the whole side-effect cluster.
+//!
+//! `single_native_dispatch_funnel` scans the editor crate for any line that
+//! binds the `fun` field of a native `MappableCommand` variant for execution.
+//! Only `src/editor/commands/mod.rs` is allowed to do that.
+//!
+//! **Opt-out**: annotate a line with `// single-funnel-exempt: <reason>`.  Use
+//! only when a deliberate second dispatch path is introduced with its own
+//! equivalent bookkeeping (which should be exceedingly rare).
 
 #[cfg(test)]
 mod tests {
@@ -330,6 +350,122 @@ mod tests {
             violations.is_empty(),
             "\nRaw char-level stepping detected in motion/selection code.\n\
              Use next_grapheme_boundary(buf, pos) or prev_grapheme_boundary(buf, pos) instead.\n\
+             Violations:\n{}\n",
+            violations.join("\n")
+        );
+    }
+
+    // ── Single native-dispatch funnel discipline ──────────────────────────────
+
+    /// Forbid any site outside `commands/mod.rs` from binding the `fun` field of
+    /// a native `MappableCommand` variant (`Motion { fun`, `Selection { fun`,
+    /// `Edit { fun`, `EditorCmd { fun`).
+    ///
+    /// These patterns mean "I am reaching into a native variant to call its
+    /// function pointer."  Only `dispatch_native` in `commands/mod.rs` is
+    /// allowed to do that — it is the single funnel that carries all
+    /// post-dispatch bookkeeping.  A second naked match would silently drop
+    /// the bookkeeping cluster (jump list, last_command, dot-repeat, paste
+    /// session) exactly as happened in the original regression.
+    ///
+    /// Opt-out: annotate the line with `// single-funnel-exempt: <reason>`.
+    ///
+    /// Fail oracle: paste
+    ///   `MappableCommand::Motion { fun, .. } => fun(t, s, 1, m),`
+    /// into `host_impl.rs` — this test must fail naming that line.
+    #[test]
+    fn single_native_dispatch_funnel() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let root = std::path::Path::new(&manifest);
+
+        // The patterns that indicate "binding fun from a native MappableCommand variant".
+        // Matches both `MappableCommand::Motion { fun` and `Self::Motion { fun` etc.
+        let forbidden_patterns: &[&str] = &[
+            "Motion { fun",
+            "Selection { fun",
+            "Edit { fun",
+            "EditorCmd { fun",
+        ];
+
+        // Only this file is the single legal executor of native commands.
+        let allowed_file = "src/editor/commands/mod.rs";
+
+        let mut violations: Vec<String> = Vec::new();
+
+        let src_root = root.join("src");
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        collect_source_rs(&src_root, &mut paths);
+
+        for path in &paths {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            // The allowed file may contain these patterns — it IS the funnel.
+            if rel == allowed_file {
+                continue;
+            }
+
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+            let mut in_test_block = false;
+            let mut brace_depth: i64 = 0;
+            let mut test_entry_depth: i64 = 0;
+            let mut saw_cfg_test = false;
+
+            for (lineno, line) in src.lines().enumerate() {
+                let trimmed = line.trim();
+
+                if trimmed == "#[cfg(test)]" {
+                    saw_cfg_test = true;
+                }
+                if saw_cfg_test && trimmed.starts_with("mod tests") {
+                    in_test_block = true;
+                    test_entry_depth = brace_depth;
+                    saw_cfg_test = false;
+                }
+
+                let opens  = line.chars().filter(|&c| c == '{').count() as i64;
+                let closes = line.chars().filter(|&c| c == '}').count() as i64;
+                brace_depth += opens - closes;
+                if in_test_block && brace_depth <= test_entry_depth {
+                    in_test_block = false;
+                }
+
+                if in_test_block { continue; }
+
+                if trimmed.starts_with("//") { continue; }
+
+                if line.contains("// single-funnel-exempt:") { continue; }
+
+                let code = match line.find("//") {
+                    Some(idx) => &line[..idx],
+                    None => line,
+                };
+
+                for pattern in forbidden_patterns {
+                    if code.contains(pattern) {
+                        violations.push(format!(
+                            "  {rel}:{} — `{pattern}` outside dispatch funnel: {trimmed}",
+                            lineno + 1,
+                        ));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "\nNative-command `fun` binding found outside `dispatch_native` in `commands/mod.rs`.\n\
+             Only that function may destructure and call native MappableCommand variants.\n\
+             All bookkeeping (jump list, last_command, dot-repeat, paste session) lives\n\
+             there — a second dispatch path silently drops the entire cluster.\n\
+             Annotate with `// single-funnel-exempt: <reason>` only if a deliberate\n\
+             second path is introduced with equivalent bookkeeping.\n\
              Violations:\n{}\n",
             violations.join("\n")
         );
