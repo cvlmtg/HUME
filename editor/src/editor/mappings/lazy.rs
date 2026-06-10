@@ -97,8 +97,8 @@ impl Editor {
 
     /// Activate every still-`Declared` lazy plugin registered for `hook_id`.
     ///
-    /// Called at the top of `fire_hook_silent` before the early-exit so that a
-    /// plugin's `register-hook!` handlers are installed before the hook fires.
+    /// Called by `drain_hooks` for each queued hook, before the handler check,
+    /// so a plugin's `register-hook!` handlers are installed before the hook fires.
     pub(in super::super) fn activate_lazy_event_plugins(
         &mut self,
         hook_id: scripting::hooks::HookId,

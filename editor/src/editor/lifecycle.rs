@@ -16,8 +16,6 @@ use super::search_state::{SearchMatches, SearchPattern};
 use crate::editor::search_ops;
 use crate::ops::pair::find_bracket_pair;
 use platform::terminal::Term;
-use scripting::hooks::HookId;
-use steel::rvals::IntoSteelVal as _;
 
 use super::{Editor, Mode};
 
@@ -692,26 +690,17 @@ impl Editor {
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     ///
+    /// Enqueues `OnModeChange` through the unified `pending_hooks` channel
+    /// (same path as the `EditorCmd` handlers); `drain_hooks` fires it after
+    /// the current dispatch completes.
+    ///
     /// For Insert mode entry and exit use [`begin_insert_session`] and
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
         let old = self.state.mode;
         self.state.mode = mode;
-        if old != mode
-            && self
-                .scripting
-                .as_ref()
-                .is_some_and(|h| h.has_hook_handlers(HookId::OnModeChange))
-        {
-            let old_val = mode_name(old)
-                .into_steelval()
-                .expect("mode str into_steelval");
-            let new_val = mode_name(mode)
-                .into_steelval()
-                .expect("mode str into_steelval");
-            self.fire_hook_silent(HookId::OnModeChange, &[old_val, new_val]);
-        }
+        super::commands::enqueue_mode_change(&mut self.state, old, mode);
     }
 }
 
@@ -755,18 +744,6 @@ pub(super) fn scroll_into_view(
         whitespace,
         scratch,
     );
-}
-
-/// Map an `EditorMode` to the Steel-facing string name used in hook arguments.
-pub(super) fn mode_name(m: EditorMode) -> &'static str {
-    match m {
-        EditorMode::Normal => "normal",
-        EditorMode::Insert => "insert",
-        EditorMode::Extend => "extend",
-        EditorMode::Command => "command",
-        EditorMode::Search => "search",
-        EditorMode::Select => "select",
-    }
 }
 
 /// Convert a char-offset position to a line-relative byte offset.

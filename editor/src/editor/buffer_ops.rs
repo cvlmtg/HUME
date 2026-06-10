@@ -66,7 +66,7 @@ impl Editor {
     }
 
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
-    /// `pane_state`, and return the allocated `BufferId`.
+    /// per-buffer state (`state.panes.state`), and return the allocated `BufferId`.
     pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = ops::open_buffer(
             &mut self.view,

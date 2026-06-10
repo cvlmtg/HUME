@@ -32,11 +32,6 @@ impl<'a> EditorHostImpl<'a> {
     fn buffer(&self, id: BufferId) -> Option<&crate::editor::buffer::Buffer> {
         self.state.buffers.try_get(id)
     }
-
-    /// Derive the focused buffer id from the live pane state.
-    fn focused_buffer_id_live(&self) -> Option<BufferId> {
-        Some(self.view.panes[self.state.focused_pane_id].buffer_id)
-    }
 }
 
 impl<'a> EditorHost for EditorHostImpl<'a> {
@@ -238,7 +233,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 
     // ── Live cursor/selection reads ──────────────────────────────────────────
     fn current_line_number(&self) -> Option<usize> {
-        let buf_id = self.focused_buffer_id_live()?;
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
         let pbs = self.state.panes.state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;
@@ -247,7 +242,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 
     fn cursor_char_index(&self) -> Option<usize> {
-        let buf_id = self.focused_buffer_id_live()?;
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
         let pbs = self.state.panes.state
             .get(self.state.focused_pane_id)?
             .get(buf_id)?;

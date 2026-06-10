@@ -28,7 +28,7 @@ use crate::host::EditorHost;
 use crate::lazy::PluginState;
 use crate::types::{PendingSteelCmd, SteelCmdDef};
 use crate::watchdog::EvalWatchdog;
-use crate::{HostBundle, ScriptingHost};
+use crate::ScriptingHost;
 
 // ── run_steel ──────────────────────────────────��──────────────────────────────
 
@@ -90,31 +90,8 @@ impl ScriptingHost {
         // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
         // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
         let (eval_result, init_cmds, pending_plugin_loads, startup_cmds) = {
-            let Self {
-                steel,
-                registries,
-                plugin_stack,
-                pending_messages,
-                pending_language_regs,
-                data_dir,
-                runtime_dir,
-                interrupt_flag,
-                ..
-            } = &mut *self;
-
-            let mut steel_ctx = SteelCtx::new_init(
-                host,
-                HostBundle {
-                    registries,
-                    plugin_stack,
-                    pending_messages,
-                    pending_language_regs,
-                    data_dir: data_dir.as_deref(),
-                    runtime_dir: runtime_dir.as_deref(),
-                    interrupt_flag: Arc::clone(interrupt_flag),
-                },
-                builtin_names.clone(),
-            );
+            let (steel, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
 
             let result = run_steel(steel, &mut steel_ctx, source, budget_ms);
             (
@@ -226,31 +203,8 @@ impl ScriptingHost {
         self.plugin_stack.push(id.clone());
 
         let (plugin_result, plugin_cmds, requires, plugin_startup_cmds) = {
-            let Self {
-                steel,
-                registries,
-                plugin_stack,
-                pending_messages,
-                pending_language_regs,
-                data_dir,
-                runtime_dir,
-                interrupt_flag,
-                ..
-            } = &mut *self;
-
-            let mut steel_ctx = SteelCtx::new_init(
-                host,
-                HostBundle {
-                    registries,
-                    plugin_stack,
-                    pending_messages,
-                    pending_language_regs,
-                    data_dir: data_dir.as_deref(),
-                    runtime_dir: runtime_dir.as_deref(),
-                    interrupt_flag: Arc::clone(interrupt_flag),
-                },
-                builtin_names.clone(),
-            );
+            let (steel, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
 
             let result = run_steel(steel, &mut steel_ctx, require_program, budget_ms);
             (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)

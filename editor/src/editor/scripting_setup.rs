@@ -161,8 +161,9 @@ impl Editor {
         // Missing prelude is a silent no-op (optional sugar); a prelude that
         // exists but fails to parse/eval is an error reported separately.
         //
-        // Each eval gets a fresh init-mode EditorHostImpl (buffer/pane refs
-        // are None; init builtins are guard-protected and never reach them).
+        // Each eval gets a fresh EditorHostImpl over `state` + `view`; the
+        // `require_cmd_ctx!` guard keeps command-mode builtins unreachable
+        // during init evals.
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);

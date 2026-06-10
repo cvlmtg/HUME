@@ -221,8 +221,10 @@ impl Editor {
 pub(super) struct BookkeepingSnapshot {
     /// `ed.state.last_command` — name stamped by `dispatch_native` for smart-p.
     pub last_command: Option<String>,
-    /// `ed.state.last_repeatable_action` — (command, count) if set.
-    pub last_repeatable: Option<(String, usize)>,
+    /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.
+    /// `insert_keys` is excluded: it is always empty at dispatch time and only
+    /// filled later by `end_insert_session` (a handle_key-tail concern).
+    pub last_repeatable: Option<(String, usize, Option<char>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,
     /// Whether any (pane, buffer) pair has an open paste session (`paste_group.is_some()`).
@@ -238,7 +240,7 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     BookkeepingSnapshot {
         last_command: ed.state.last_command.as_deref().map(str::to_owned),
         last_repeatable: ed.state.last_repeatable_action.as_ref().map(|a| {
-            (a.command.to_string(), a.count)
+            (a.command.to_string(), a.count, a.char_arg)
         }),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),

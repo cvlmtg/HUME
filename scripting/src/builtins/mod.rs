@@ -30,7 +30,8 @@ use super::HUME_CTX;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-/// Return `Err` if we're inside an init eval (editor refs are None).
+/// Return `Err` if we're inside an init eval (buffer/pane builtins are
+/// command-mode only).
 macro_rules! require_cmd_ctx {
     ($ctx:expr, $name:literal) => {
         if $ctx.is_init {

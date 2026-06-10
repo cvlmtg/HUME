@@ -26,10 +26,10 @@
 //! 1. **Motion** — pure `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
 //! 2. **Selection** — pure `fn(&Text, SelectionSet, MotionMode) -> SelectionSet`
 //! 3. **Edit** — pure `fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet)`
-//! 4. **EditorCmd** — `fn(&mut Editor, usize, MotionMode)` for composite/side-effectful
-//!    operations (mode changes, registers, undo groups, parameterized motions).
-//!    Implemented in `editor/commands.rs`; stored and dispatched as a
-//!    function pointer exactly like the other variants.
+//! 4. **EditorCmd** — `fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>`
+//!    for composite/side-effectful operations (mode changes, registers, undo
+//!    groups, parameterized motions). Implemented in `editor/commands/`; stored
+//!    and dispatched as a function pointer exactly like the other variants.
 
 use std::collections::HashMap;
 use std::borrow::Cow;

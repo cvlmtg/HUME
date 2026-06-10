@@ -30,9 +30,9 @@ pub enum BindMode {
 /// Methods that operate on buffers/panes (`open_buffer`, `close_buffer`,
 /// `switch_to_buffer`, buffer reads/enumeration) are only reachable in command
 /// mode: the `require_cmd_ctx!` guard in each builtin prevents them from being
-/// called during init (`is_init = true`), where the corresponding refs would be
-/// `None`.  The init-only methods (`set_global_option`, `configure_statusline`,
-/// `bind_*`/`unbind_key`) are protected by the reverse guard.
+/// called during init (`is_init = true`).  The init-only methods
+/// (`set_global_option`, `configure_statusline`, `bind_*`/`unbind_key`) are
+/// protected by the reverse guard.
 ///
 /// # Focus snapshot
 ///
@@ -60,8 +60,8 @@ pub trait EditorHost {
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
-    /// Close `id`.  Returns the new live focused buffer id, or `Err` if refs
-    /// are unavailable (should only occur if a guard is misconfigured).
+    /// Close `id`.  Returns the new live focused buffer id, or `Err` when `id`
+    /// does not name an open buffer.
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String>;
     /// Switch the focused pane to `target`, recording a jump entry.
     fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String>;
@@ -149,11 +149,12 @@ pub trait EditorHost {
     // ── Live cursor/selection reads ──────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.
     ///
-    /// Returns `None` when editor refs are unavailable (init mode or stale ids).
+    /// Returns `None` when the focused (pane, buffer) has no seeded pane state
+    /// (stale or never-focused ids).
     fn current_line_number(&self) -> Option<usize>;
 
     /// Char-index of the primary cursor head in the focused buffer.
     ///
-    /// Returns `None` when editor refs are unavailable.
+    /// Returns `None` under the same conditions as [`Self::current_line_number`].
     fn cursor_char_index(&self) -> Option<usize>;
 }

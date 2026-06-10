@@ -115,9 +115,8 @@ pub(crate) struct ScriptingRegistries {
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
 ///
-/// Built from a `let Self { steel, registries, plugin_stack, … } = &mut *self`
-/// destructure and passed to [`SteelCtx::new_init`] or [`SteelCtx::new_command`].
-/// Private to this module.
+/// Built by [`ScriptingHost::steel_and_bundle`] and passed to
+/// [`SteelCtx::new_init`] or [`SteelCtx::new_command`]. Private to this module.
 pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     plugin_stack: &'a mut PluginStack,
@@ -212,6 +211,40 @@ impl ScriptingHost {
 impl Default for ScriptingHost {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ScriptingHost {
+    /// Split `self` into the Steel engine and the [`HostBundle`] of persistent
+    /// borrows needed to build a [`SteelCtx`].
+    ///
+    /// The returned borrows are disjoint fields of `self` (NLL field-split), so
+    /// the VM can be run while the bundle is lent to the eval context. Shared
+    /// by `eval_source_raw`, `activate_plugin`, `call_steel_cmd`, and `fire_hook`.
+    pub(crate) fn steel_and_bundle(&mut self) -> (&mut Engine, HostBundle<'_>) {
+        let Self {
+            steel,
+            registries,
+            plugin_stack,
+            pending_messages,
+            pending_language_regs,
+            data_dir,
+            runtime_dir,
+            interrupt_flag,
+            ..
+        } = self;
+        (
+            steel,
+            HostBundle {
+                registries,
+                plugin_stack,
+                pending_messages,
+                pending_language_regs,
+                data_dir: data_dir.as_deref(),
+                runtime_dir: runtime_dir.as_deref(),
+                interrupt_flag: Arc::clone(interrupt_flag),
+            },
+        )
     }
 }
 
@@ -451,29 +484,10 @@ impl ScriptingHost {
         };
 
         let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
-            let Self {
-                steel,
-                registries,
-                plugin_stack,
-                pending_messages,
-                pending_language_regs,
-                data_dir,
-                runtime_dir,
-                interrupt_flag,
-                ..
-            } = &mut *self;
-
+            let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
-                HostBundle {
-                    registries,
-                    plugin_stack,
-                    pending_messages,
-                    pending_language_regs,
-                    data_dir: data_dir.as_deref(),
-                    runtime_dir: runtime_dir.as_deref(),
-                    interrupt_flag: Arc::clone(interrupt_flag),
-                },
+                bundle,
                 focused_pane_id,
                 focused_buffer_id,
                 pending_char,
@@ -536,29 +550,10 @@ impl ScriptingHost {
             .clone();
 
         let (result, cmd_queue, pending_language_sets, grammar_sweeps) = {
-            let Self {
-                steel,
-                registries,
-                plugin_stack,
-                pending_messages,
-                pending_language_regs,
-                data_dir,
-                runtime_dir,
-                interrupt_flag,
-                ..
-            } = &mut *self;
-
+            let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
-                HostBundle {
-                    registries,
-                    plugin_stack,
-                    pending_messages,
-                    pending_language_regs,
-                    data_dir: data_dir.as_deref(),
-                    runtime_dir: runtime_dir.as_deref(),
-                    interrupt_flag: Arc::clone(interrupt_flag),
-                },
+                bundle,
                 focused_pane_id,
                 focused_buffer_id,
                 None,

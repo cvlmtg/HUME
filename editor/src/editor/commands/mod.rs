@@ -1,8 +1,9 @@
 //! Editor-level command functions.
 //!
-//! Each function in this module is a command that requires `&mut Editor`
-//! context — composite operations involving mode changes, registers, undo
-//! groups, or parameterized motions (find/till/replace).
+//! Each function in this module is a command operating on
+//! `&mut EditorState` + `&mut EngineView` (the D7 handler shape) — composite
+//! operations involving mode changes, registers, undo groups, or
+//! parameterized motions (find/till/replace).
 //!
 //! They are registered in [`super::registry`] and called via function pointer
 //! from `execute_keymap_command`, exactly like the pure `cmd_*` functions in
@@ -90,7 +91,7 @@ impl EditorState {
     /// Records exactly one history revision for the entire paste + all cycles.
     /// Called by `execute.rs` before any non-`[`/`]` dispatch so the session
     /// is committed before undo, motions, or the next `p`/`P`.
-    pub(in super) fn commit_paste_session(&mut self) {
+    pub(super) fn commit_paste_session(&mut self) {
         use engine::pipeline::PaneId;
         let open: Vec<(PaneId, BufferId)> = self.panes.state
             .iter()
