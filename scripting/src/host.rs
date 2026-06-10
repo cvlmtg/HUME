@@ -121,19 +121,18 @@ pub trait EditorHost {
     /// stubs) return `Ok(false)` to treat all commands as Steel/forward-raw.
     fn command_is_native(&self, name: &str) -> Result<bool, String>;
 
-    /// Try to execute a named command synchronously, without deferral.
+    /// Execute a named native command synchronously.
     ///
-    /// Engine-independent commands (`Motion`, `Selection`, `Edit`) apply their
-    /// effect immediately: a subsequent read in the same eval sees the new state.
-    /// Commands that require full editor context (`EditorCmd`, `SteelBacked`,
-    /// `Lazy`) cannot run here; the caller should queue them for post-eval dispatch.
+    /// All four native variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) apply
+    /// their effect immediately; a subsequent read in the same eval sees the new
+    /// state. Caller must have verified `name` is native via `command_is_native`
+    /// before calling — passing a non-native name triggers `unreachable!`.
     ///
-    /// Returns `Ok(true)`  — ran synchronously.
-    /// Returns `Ok(false)` — command exists but must be deferred (caller queues).
-    /// Returns `Err(msg)`  — command name is unknown.
+    /// Returns `Ok(())` — ran.
+    /// Returns `Err(msg)` — name is unknown.
     ///
     /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
-    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<bool, String>;
+    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<(), String>;
 
     // ── Live cursor/selection reads ──────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.

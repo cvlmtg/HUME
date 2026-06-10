@@ -510,7 +510,6 @@ mod tests {
 
     #[test]
     fn runtime_register_and_lookup() {
-        use crate::editor::Editor;
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
 

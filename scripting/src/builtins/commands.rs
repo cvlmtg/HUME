@@ -153,8 +153,7 @@ fn define_command_inner(
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): arg contract is
 ///   count/extend only — `[]`, `[n]`, or `[n bool]`. Any other shape is
 ///   rejected via `steel::stop!` before executing the command (fail-fast).
-///   Synchronous dispatch runs via `run_command_sync`; legacy `EditorCmd`s that
-///   can't run sync are deferred with **empty** args.
+///   All four native variants run synchronously via `run_command_sync`.
 /// - **Steel-defined** (`SteelBacked`/`Lazy`): all args forwarded raw to the
 ///   deferred queue unchanged — no count stripping, no validation.
 /// - **Unknown**: single `steel::stop!` error site (classified before dispatch).
@@ -187,19 +186,9 @@ pub(crate) fn call_command_primitive(
         Ok(true) => {
             // Native command — validate and strip count/extend before dispatch.
             let (count, extend) = parse_count_extend(&args_vec)?;
-            match ctx.host.run_command_sync(&name, count, extend) {
-                Ok(true) => Ok(SteelVal::Void),
-                Ok(false) => {
-                    // Legacy EditorCmd: requires &mut Editor — defer with empty args.
-                    ctx.cmd_queue.push(QueuedCommand {
-                        name,
-                        args: vec![],
-                        register: ctx.current_register_prefix,
-                    });
-                    Ok(SteelVal::Void)
-                }
-                Err(e) => steel::stop!(Generic => "%call!: {}", e),
-            }
+            ctx.host.run_command_sync(&name, count, extend)
+                .map(|()| SteelVal::Void)
+                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))
         }
     }
 }

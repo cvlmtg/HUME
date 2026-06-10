@@ -137,9 +137,10 @@ impl EditorHost for MockHost {
         // No registry — treat every command as Steel/forward-raw.
         Ok(false)
     }
-    fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<bool, String> {
-        // MockHost has no command registry; always defer to the queue.
-        Ok(false)
+    fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool) -> Result<(), String> {
+        // MockHost has no command registry; command_is_native always returns Ok(false),
+        // so this is never called in practice.
+        Err("MockHost has no native command registry".into())
     }
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }

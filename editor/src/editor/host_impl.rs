@@ -206,7 +206,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
     }
 
-    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<bool, String> {
+    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool) -> Result<(), String> {
         let Some(cmd) = self.state.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
@@ -223,7 +223,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                     buf_id,
                     |b, s| fun(b, s, count, motion_mode),
                 );
-                Ok(true)
+                Ok(())
             }
             MappableCommand::Selection { fun, .. } => {
                 doc_ops::apply_doc_motion(
@@ -233,7 +233,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                     buf_id,
                     |b, s| fun(b, s, motion_mode),
                 );
-                Ok(true)
+                Ok(())
             }
             MappableCommand::Edit { fun, .. } => {
                 doc_ops::apply_doc_edit(
@@ -243,16 +243,16 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                     buf_id,
                     fun,
                 );
-                Ok(true)
+                Ok(())
             }
             MappableCommand::EditorCmd { fun, .. } => {
                 if let Err(e) = fun(&mut self.state, &mut self.view, count, motion_mode) {
                     self.state.report(crate::editor::Severity::Error, e.message().to_owned());
                 }
-                Ok(true)
+                Ok(())
             }
-            // SteelBacked / Lazy — caller must queue for post-eval dispatch.
-            _ => Ok(false),
+            // Caller must classify with command_is_native before calling run_command_sync.
+            _ => unreachable!("run_command_sync called on non-native command '{name}'; classify with command_is_native first"),
         }
     }
 

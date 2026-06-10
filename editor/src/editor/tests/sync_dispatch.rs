@@ -20,10 +20,10 @@ macro_rules! live_host {
     }};
 }
 
-/// `run_command_sync` for a `Motion` command must return `Ok(true)` and
-/// immediately update the cursor position — no queue involved.
+/// `run_command_sync` for a `Motion` command must immediately update the cursor
+/// position — no queue involved.
 #[test]
-fn run_command_sync_motion_returns_true_and_moves_cursor() {
+fn run_command_sync_motion_moves_cursor() {
     // "-[a]>bc\n" — cursor at position 0.
     let mut ed = editor_from("-[a]>bc\n");
     let before = live_host!(ed).cursor_char_index().expect("cursor_char_index before");
@@ -31,9 +31,8 @@ fn run_command_sync_motion_returns_true_and_moves_cursor() {
     {
         let mut host = live_host!(ed);
         // move-right is a Motion — must dispatch synchronously.
-        let ran = host.run_command_sync("move-right", 1, false)
+        host.run_command_sync("move-right", 1, false)
             .expect("run_command_sync must not error for move-right");
-        assert!(ran, "Motion command must return true (ran sync)");
     }
 
     let after = live_host!(ed).cursor_char_index().expect("cursor_char_index after");
@@ -42,23 +41,21 @@ fn run_command_sync_motion_returns_true_and_moves_cursor() {
 }
 
 /// All `EditorCmd` handlers share the State shape and run synchronously via
-/// `run_command_sync`, returning `Ok(true)`. `repeat-last-action` enqueues a
-/// `PendingRepeat` marker as a pure State handler; the actual replay runs in
-/// `drain_pending_repeat` at the tail of `handle_key`.
+/// `run_command_sync`. `repeat-last-action` enqueues a `PendingRepeat` marker as
+/// a pure State handler; the actual replay runs in `drain_pending_repeat` at the
+/// tail of `handle_key`.
 #[test]
-fn run_command_sync_editor_cmd_returns_true() {
+fn run_command_sync_editor_cmd_runs_sync() {
     let mut ed = editor_from("-[a]>bc\n");
     let mut host = live_host!(ed);
-    // `undo` is a State EditorCmd — runs synchronously; must return true.
-    let ran = host.run_command_sync("undo", 1, false)
+    // `undo` is a State EditorCmd — runs synchronously.
+    host.run_command_sync("undo", 1, false)
         .expect("run_command_sync must not error for undo");
-    assert!(ran, "State EditorCmd must return true (ran sync)");
 
-    // `repeat-last-action` is also a State EditorCmd now — sets pending_repeat and
-    // returns true (no action to repeat, so pending_repeat stays None, but it ran sync).
-    let ran_repeat = host.run_command_sync("repeat-last-action", 1, false)
+    // `repeat-last-action` is also a State EditorCmd — sets pending_repeat
+    // (no action to repeat, so pending_repeat stays None, but it ran sync).
+    host.run_command_sync("repeat-last-action", 1, false)
         .expect("run_command_sync must not error for repeat-last-action");
-    assert!(ran_repeat, "repeat-last-action must return true (State EditorCmd, runs sync)");
 }
 
 /// `run_command_sync` for an unknown name must return `Err`.
@@ -88,18 +85,17 @@ fn current_line_number_reads_live_position() {
     assert_eq!(line, 1);
 }
 
-/// `run_command_sync` for a `Selection` command (e.g. `extend-line-end`) must
-/// return `Ok(true)` and immediately update the selection.
+/// `run_command_sync` for a `Selection` command must immediately update the
+/// selection.
 #[test]
-fn run_command_sync_selection_returns_true_and_updates_sel() {
+fn run_command_sync_selection_updates_sel() {
     // "-[a]>bc\n" — cursor at 0, single-char selection covering 'a'.
     let mut ed = editor_from("-[a]>bc\n");
     {
         let mut host = live_host!(ed);
         // select-line is a Selection command.
-        let ran = host.run_command_sync("select-line", 1, false)
+        host.run_command_sync("select-line", 1, false)
             .expect("run_command_sync must not error for select-line");
-        assert!(ran, "Selection command must return true (ran sync)");
     }
     // select-line covers the full line "abc\n"; head ends on 'c' at position 2.
     let head = live_host!(ed).cursor_char_index().expect("cursor_char_index after sel");
