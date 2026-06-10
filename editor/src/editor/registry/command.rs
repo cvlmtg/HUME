@@ -75,9 +75,9 @@ pub(crate) enum MappableCommand {
         /// for internal primitives like `delete-char-backward`.
         repeatable: bool,
     },
-    /// Editor-level command requiring `&mut Editor` context.
+    /// Editor-level command operating on `EditorState` + `EngineView`.
     ///
-    /// Signature: `fn(&mut Editor, usize, MotionMode) -> Result<(), CommandError>`
+    /// Signature: `fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>`
     ///
     /// Covers composite operations: mode changes, register access, undo group
     /// management, and parameterized motions (find/till/replace). Returns `Err`
