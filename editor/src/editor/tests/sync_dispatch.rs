@@ -237,3 +237,80 @@ fn case_b_sync_cursor_read_reflects_motion() {
         "sync dispatch: (cursor-char-index) must reflect (move-right) effect within same eval"
     );
 }
+
+// ── Steel deferred dot-repeat ────────────────────────────────────────────────
+
+/// A Steel command that calls `(call! "repeat-last-action")` must actually replay
+/// the last editing action when its key is pressed.
+///
+/// `(call! "repeat-last-action")` is a sync EditorCmd dispatch: it calls
+/// `run_command_sync("repeat-last-action")`, which runs `cmd_repeat` and sets
+/// `state.pending_repeat`. The replay then fires in `drain_pending_repeat` at the
+/// tail of the enclosing `handle_key` call — NOT during the Steel eval.
+///
+/// The test drives the key through `feed_key` so the full `handle_key` tail
+/// (including `drain_pending_repeat`) executes before we inspect the buffer.
+///
+/// Fail oracle: if `drain_pending_repeat` were not called at `handle_key`'s tail,
+/// `pending_repeat` would be set but never consumed, and the buffer would be
+/// unchanged after pressing the Steel key.
+#[test]
+fn steel_call_repeat_last_action_drains_via_handle_key() {
+    use crate::editor::keymap::{BindMode};
+    use crossterm::event::KeyCode;
+
+    let mut ed = editor_from("-[foo]> bar\n");
+
+    // Register command names so `(call! "repeat-last-action")` resolves.
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut mock = MockHost::new();
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
+                 (lambda () (call! "repeat-last-action")))"#
+                .to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    ed.register_steel_cmds(defs);
+    ed.scripting = Some(host);
+
+    // Bind the Steel command to an unoccupied key (F2) in Normal mode.
+    let f2 = crossterm::event::KeyEvent::new(KeyCode::F(2), crossterm::event::KeyModifiers::NONE);
+    ed.state.keymap.bind_user_with_extend(
+        BindMode::Normal,
+        &[f2],
+        "steel-dot-repeat".into(),
+        false,
+    );
+
+    // Establish last_repeatable_action="delete" via a real keypress.
+    ed.feed_key(key('d')); // delete "foo"; buffer = " bar\n"
+    assert_eq!(
+        ed.doc().text().to_string(), " bar\n",
+        "setup: 'foo' must be deleted"
+    );
+    assert!(
+        ed.state.last_repeatable_action.is_some(),
+        "setup: last_repeatable_action must be set"
+    );
+
+    // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action")`,
+    // setting pending_repeat during eval; handle_key tail drains it, deleting "bar".
+    ed.feed_key(key('w'));
+    ed.feed_key(f2);
+
+    // "foo" was deleted by the initial `d` (leaving " bar\n"); "bar" was deleted by
+    // the Steel repeat — leaving only the original space before "bar".
+    assert_eq!(
+        ed.doc().text().to_string(), " \n",
+        "Steel (call! \"repeat-last-action\") must replay the delete via handle_key drain"
+    );
+}

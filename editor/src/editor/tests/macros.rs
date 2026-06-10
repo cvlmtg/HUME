@@ -747,6 +747,55 @@ fn macro_with_two_pastes_does_not_panic() {
     );
 }
 
+/// `.` inside a macro replay fires `drain_pending_repeat` within the replay loop.
+///
+/// `drain_replay_queue` clears `last_repeatable_action` before the loop (to prevent
+/// the macro's edits from corrupting the user's stored dot-repeat). This means `.`
+/// inside a macro can only repeat an edit that occurred earlier in the SAME macro,
+/// not any pre-macro action.
+///
+/// Macro `['d', '.']` reproduces this: the inner `d` stamps `last_repeatable_action`
+/// inside the loop, then `.` reads it and fires `drain_pending_repeat` at the tail
+/// of the inner `handle_key` call — within `drain_replay_queue`'s loop, not after.
+///
+/// Fail oracle: if `drain_pending_repeat` were called only AFTER the replay loop
+/// (not inside it), the `.` would set `pending_repeat` during the last iteration
+/// but it would not drain until outside, leaving buffer with only one `d` applied.
+#[test]
+fn dot_inside_macro_replay_fires_drain() {
+    // Four chars so deletes leave visible residue.
+    let mut ed = editor_from("-[a]>bcde\n");
+
+    // Record a macro ["d", "."] — d deletes, then . repeats the delete.
+    // seed directly to avoid mutating the buffer during the recording phase.
+    ed.state.registers.write_macro('q', vec![key('d'), key('.')]);
+
+    // Replay: qq + drain.
+    // drain_replay_queue:
+    //   1. saves last_repeatable_action (None at this point)
+    //   2. handle_key('d') → deletes 'a', stamps last_repeatable_action="delete"
+    //   3. handle_key('.') → cmd_repeat sees the in-loop action, sets pending_repeat;
+    //      drain_pending_repeat fires at THIS handle_key's tail (inside the loop),
+    //      replaying delete on 'b'.
+    //   4. restores last_repeatable_action = None
+    ed.handle_key(key('q'));
+    ed.handle_key(key('q'));
+    ed.drain_replay_queue();
+
+    // Both deletes must have fired ('a' by d, 'b' by the in-loop drain of '.').
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf, "cde\n",
+        "dot inside macro replay must fire drain within loop; got: {buf:?}"
+    );
+
+    // drain_replay_queue restores the pre-replay last_repeatable_action (None here).
+    assert!(
+        ed.state.last_repeatable_action.is_none(),
+        "last_repeatable_action must be restored to pre-replay value after drain"
+    );
+}
+
 // ── Macro guard on read-only buffers ─────────────────────────────────────────
 
 /// `q` on a read-only view buffer must not arm macro_pending.

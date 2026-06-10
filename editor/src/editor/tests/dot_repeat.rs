@@ -74,33 +74,43 @@ fn dot_repeats_replace() {
     assert_eq!(ed.doc().text().to_string(), "xx xx\n");
 }
 
-/// When `.` is given an explicit count, that count overrides the one stored in
-/// the action.
+/// When `.` is given an explicit count, the stored `last_repeatable_action.count`
+/// must not be corrupted — the explicit count is used for the replay but is NOT
+/// written back into the stored action.
+///
+/// The original count must survive so that a subsequent plain `.` can still
+/// reproduce the original repetition count.
+///
+/// Fail oracle: if `drain_pending_repeat` wrote `PendingRepeat.count` back into
+/// `last_repeatable_action.count`, the final `assert_eq!` would fail.
 #[test]
-fn dot_with_explicit_count_overrides() {
-    // Select one word and delete it.
-    let mut ed = editor_from("-[a]> b c d e\n");
-    ed.feed_key(key('d')); // delete "a" → " b c d e"
+fn explicit_count_on_dot_does_not_corrupt_stored_count() {
+    let mut ed = editor_from("-[foo]> bar\n");
 
-    // Select "b", repeat with count=3 → should apply delete 3 times somehow.
-    // Actually count on `d` itself is a repetition of `d`; here we test that
-    // the stored count=1 is replaced by the explicit count=2.
-    // Two-digit test: press `2` then `.` to apply 2 copies of the delete.
-    // Re-select "b":
-    ed.feed_key(key('w')); // select "b"
-    ed.feed_key(key('d')); // delete "b" (now last_repeatable_action.count=1)
+    ed.feed_key(key('d')); // delete "foo"; stored count=1
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().count,
+        1,
+        "setup: stored count must be 1"
+    );
 
-    // Select "c":
-    ed.feed_key(key('w')); // select "c"
-    // Press `2.` — explicit count 2 overrides stored count 1.
-    // Since `d` doesn't loop on count, this effectively runs `d` with count=2,
-    // but `d` ignores count entirely (_count). The key point is `explicit_count`
-    // is set and the stored count (1) is NOT used — the passed count (2) is.
-    // We verify last_repeatable_action.count is reset to the stored 1 after replay.
-    ed.feed_key(key('2'));
+    ed.feed_key(key('w')); // move to "bar"
+    // Press `3.` — explicit count 3 is used for the replay but must NOT be
+    // written back into last_repeatable_action (drain restores the original action).
+    ed.feed_key(key('3'));
     ed.feed_key(key('.'));
-    // Just verify it doesn't panic and the buffer changed.
-    assert!(!ed.doc().text().to_string().contains('c'));
+
+    // Replay must have happened (bar deleted).
+    assert!(
+        !ed.doc().text().to_string().contains("bar"),
+        "bar must be deleted by the repeated command"
+    );
+    // Stored count must still be 1 — the explicit-count replay must not corrupt it.
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().count,
+        1,
+        "stored count must survive explicit-count replay unchanged"
+    );
 }
 
 /// When `.` is pressed without a count, the original action's count is reused.
@@ -215,4 +225,34 @@ fn dot_after_find_is_noop() {
     assert!(ed.state.last_repeatable_action.is_none());
     ed.feed_key(key('.'));
     assert_eq!(state(&ed), state_after_find);
+}
+
+/// After `.`, `last_command` must be re-stamped to `"repeat-last-action"`, NOT
+/// to the name of the replayed command (`"delete"`, `"change"`, …).
+///
+/// `drain_pending_repeat` (`mod.rs:482`) does this re-stamp so that smart-p
+/// (`SMART_P_LAST_CMDS = ["change","delete"]`) correctly routes a bare `p`/`P`
+/// to the clipboard rather than the kill-ring after a dot-repeat.
+///
+/// Fail oracle: commenting the re-stamp at `drain_pending_repeat`'s last line
+/// makes this test fail (last_command would be "delete" after the inner replay).
+#[test]
+fn dot_restamps_last_command() {
+    let mut ed = editor_from("-[foo]> bar\n");
+
+    ed.feed_key(key('d')); // delete "foo"; last_command = "delete"
+    assert_eq!(
+        ed.state.last_command.as_deref(),
+        Some("delete"),
+        "setup: last_command must be 'delete' after d"
+    );
+
+    ed.feed_key(key('w')); // move to "bar"
+    ed.feed_key(key('.')); // repeat; drain_pending_repeat fires and re-stamps
+
+    assert_eq!(
+        ed.state.last_command.as_deref(),
+        Some("repeat-last-action"),
+        "drain_pending_repeat must re-stamp last_command to 'repeat-last-action'"
+    );
 }
