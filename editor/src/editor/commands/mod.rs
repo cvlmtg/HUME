@@ -182,6 +182,10 @@ pub(super) fn dispatch_native(
             );
         }
         MappableCommand::EditorCmd { fun, .. } => {
+            // EditorCmd errors are surfaced to the user, NOT propagated to the caller.
+            // Intentional: keeps the Steel sync path (`run_command_sync`) identical to
+            // the keypress path, where a failed EditorCmd reports and dispatch completes.
+            // Do not "fix" this into a `Result` return — it would be a semantic change.
             if let Err(e) = fun(state, view, count, motion_mode) {
                 state.report(Severity::Error, e.message().to_owned());
             }
