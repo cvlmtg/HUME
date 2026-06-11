@@ -36,10 +36,9 @@ pub(crate) struct LanguageConfig {
 
 /// Per-buffer syntax attachment state.
 ///
-/// The `tree_sitter::Parser` no longer lives here — it lives on the parse
-/// worker thread.  This struct tracks the grammar identity (for keepalive and
-/// grammar-swap detection via `Arc::ptr_eq`) and the most recently installed
-/// tree generation.
+/// The `tree_sitter::Parser` lives on the parse worker thread.  This struct
+/// tracks the grammar identity (for keepalive and grammar-swap detection via
+/// `Arc::ptr_eq`) and the most recently installed tree generation.
 pub(crate) struct BufferSyntax {
     /// Keepalive: holds the Arc so the dlopen'd grammar is not unloaded while
     /// this buffer is syntax-attached.

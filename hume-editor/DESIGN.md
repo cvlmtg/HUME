@@ -16,7 +16,7 @@ impossible without deferral:
    the script's context.
 
 2. **Borrow aliasing.** The `Engine` used to live *inside* `Editor`
-   (`Editor → scripting → engine`). Running the VM required carving
+   (`Editor → scripting → hume-engine`). Running the VM required carving
    `&mut engine` out of the editor, which meant the editor could only be lent
    to the script as disjoint slices — never as a whole `&mut Editor`.
    `EditorCmd` handlers take `&mut Editor`, so they could not run inside an
@@ -31,7 +31,7 @@ descendant of the editor — and this design removes it.
 Move editor state out of the `Editor` god-struct into a sibling subtree, so
 the Steel VM and the editor data become **cousins that never alias**:
 
-- **Before**: `Editor → scripting → engine`, with buffers/panes/etc. as flat
+- **Before**: `Editor → scripting → hume-engine`, with buffers/panes/etc. as flat
   fields on `Editor` next to `scripting`. Running the VM required
   field-splitting the whole `Editor`.
 - **After**: `Editor → { scripting → steel ; state: EditorState ; view: EngineView }`.
@@ -53,7 +53,7 @@ Editor                         // thin app shell: lifecycle + three subtrees
 ├── state: EditorState         // document/command state — everything a command
 │                              //   can mutate (see D2 for full field partition)
 └── view: EngineView           // render/view state: full-fat panes, layout tree,
-                               //   theme (engine/ crate type, see D3)
+                               //   theme (hume-engine/ crate type, see D3)
 ```
 
 ### `EditorState` — complete field partition
@@ -195,11 +195,11 @@ bare `(move-left)` resolves to `(call! "move-left")` with no args (count=1, Norm
 
 Two unrelated things are called "engine" in HUME:
 
-- the **`engine/` workspace crate** (rendering pipeline, pane geometry), and
+- the **`hume-engine/` workspace crate** (rendering pipeline, pane geometry), and
 - the **Steel `Engine`** struct (the Scheme VM).
 
 Rule:
-- **Bare "engine" = the `engine/` crate. Always.**
+- **Bare "engine" = the `hume-engine/` crate. Always.**
 - The Scheme VM is always **"Steel engine"** in prose and **`steel`** (or
   `SteelEngine`) as the field/type — never a bare `engine` field.
 - Code comments and docs must not use bare "engine" for the VM.
@@ -220,7 +220,7 @@ app-lifecycle plumbing that no command touches.
 
 Pane data is split across three locations, each with a clear owner:
 
-- The **`engine/` crate defines the full-fat `Pane` type** (`engine/src/pane.rs`):
+- The **`hume-engine/` crate defines the full-fat `Pane` type** (`hume-engine/src/pane.rs`):
   `buffer_id`, `viewport`, `saved_scrolls`, `selections`, `primary_idx`, `providers`.
   Instances live in `Editor.view: EngineView` via `EngineView.panes: SlotMap<PaneId, Pane>`.
   Layout geometry lives on `EngineView.layout: LayoutTree`, not on `Pane`.
@@ -255,9 +255,9 @@ the `handle_key` tail, startup, and `handle_mouse`.
 
 ### D6 — `EditorHost` trait: kept, re-backed by two coarse borrows
 
-The `EditorHost` trait (defined in the `scripting/` crate) is kept for two reasons:
+The `EditorHost` trait (defined in the `hume-scripting/` crate) is kept for two reasons:
 
-1. The crate cycle (`editor → scripting → {engine, platform}`) is a hard wall.
+1. The crate cycle (`hume-editor → hume-scripting → {hume-engine, hume-platform}`) is a hard wall.
    Dissolving the trait would require moving `EditorState` into a crate below
    `scripting`, re-layering most of the editor.
 2. The trait preserves mockable scripting tests (`NullHost`, `MockHost`) and a
@@ -281,7 +281,7 @@ are two fields of `ScriptingHost`, borrowed disjointly by `steel_and_bundle`.
 fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>
 ```
 
-Alias: `EditorCmdFn` type alias in `editor/src/editor/registry/command.rs`.
+Alias: `EditorCmdFn` type alias in `hume-editor/src/editor/registry/command.rs`.
 
 Handlers needing no viewport access bind the view parameter as `_view`. All handlers
 are synchronous and Steel-eval-safe. `run_command_sync` dispatches them, reports

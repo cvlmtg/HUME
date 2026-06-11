@@ -36,8 +36,8 @@ pub struct SharedBuffer {
     ///
     /// Written together with `tree` in `install_parse_done` so they are always
     /// consistent with each other: `tree_source` reflects exactly the bytes
-    /// that produced `tree`. Passed to the highlighter via `SourceContext.source`
-    /// at render time; the highlighter no longer stores its own source copy.
+    /// that produced `tree`. Passed to the highlighter at render time via
+    /// `SourceContext.source`.
     pub tree_source: Vec<u8>,
     /// Tree-sitter highlight provider for this buffer's language, if configured.
     ///

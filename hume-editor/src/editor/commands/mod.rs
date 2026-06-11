@@ -111,8 +111,7 @@ impl EditorState {
 
 // ── Native command dispatch funnel ────────────────────────────────────────────
 
-/// Execute a native command (`Motion`/`Selection`/`Edit`/`EditorCmd`) with all
-/// the post-dispatch bookkeeping that used to live only in `execute_keymap_command`.
+/// Execute a native command (`Motion`/`Selection`/`Edit`/`EditorCmd`).
 ///
 /// This is the **single** dispatch funnel for native commands. Both the
 /// interactive keypress path (`execute_keymap_command`) and the Steel sync path

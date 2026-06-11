@@ -386,10 +386,9 @@ impl Editor {
 
     /// Resolve the focused pane's render settings and gutter width.
     ///
-    /// Returns `(PaneRenderSettings, gutter_w)`.  Centralises the three places
-    /// in the render loop that previously each rebuilt wrap_mode / tab_width /
-    /// whitespace independently (the cursor-screen block, the pane_settings
-    /// block, and `draw_once`).
+    /// Returns `(PaneRenderSettings, gutter_w)` for the focused pane.
+    /// Single source of truth for wrap_mode / tab_width / whitespace settings
+    /// across all render paths.
     fn resolve_focused_pane_settings(&self) -> (PaneRenderSettings, u16) {
         let len_lines = self.doc().text().len_lines();
         let pane = &self.view.panes[self.state.focused_pane_id];
