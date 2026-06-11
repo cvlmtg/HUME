@@ -1,44 +1,35 @@
-> **STATUS: IMPLEMENTED** — The architecture described here shipped with the sync-dispatch
-> + editor-state redesign (complete 2026-06-10, 2067 tests). Preserved as a design reference.
-
 # HUME Editor — Command Dispatch & State Architecture
 
 ## Why this exists
 
 Dispatching a command from Steel requires two things to be true simultaneously:
 the Steel VM must be running (borrowing `&mut steel`), and the editor must be
-reachable for the handler to mutate it. Two structural blockers made this
-impossible without deferral:
+reachable for the handler to mutate it. Two structural constraints shape the
+dispatch model:
 
 1. **Re-entrancy.** While a script runs, the Steel `Engine` is borrowed `&mut`
-   as the executor. Anything that must call Steel again (SteelBacked bodies,
-   Lazy plugin activation) cannot — the engine is busy and unreachable from
-   the script's context.
+   as the executor. A fresh eval (`compile_and_run_raw_program`) cannot start
+   while that borrow is held — so Lazy plugin activation defers. Applying an
+   already-registered engine-global closure is a funcall on the running call
+   stack, not a fresh eval; activated plugin commands are not blocked.
 
-2. **Borrow aliasing.** The `Engine` used to live *inside* `Editor`
-   (`Editor → scripting → hume-engine`). Running the VM required carving
-   `&mut engine` out of the editor, which meant the editor could only be lent
-   to the script as disjoint slices — never as a whole `&mut Editor`.
-   `EditorCmd` handlers take `&mut Editor`, so they could not run inside an
-   eval.
-
-Blocker #1 is intrinsic: work that needs Steel *must* run after the current
-eval. **Blocker #2 was an accident of structure** — the engine being a
-descendant of the editor — and this design removes it.
+2. **Borrow aliasing.** The `Engine` sits as a sibling of `EditorState` and
+   `EngineView` under the outer `Editor` shell
+   (`Editor → { scripting → steel ; state: EditorState ; view: EngineView }`).
+   This makes `&mut steel`, `&mut state`, and `&mut view` provably disjoint,
+   so any sync handler receiving `(&mut EditorState, &mut EngineView)` can run
+   safely inside an eval without aliasing the running VM.
 
 ## The core move
 
-Move editor state out of the `Editor` god-struct into a sibling subtree, so
-the Steel VM and the editor data become **cousins that never alias**:
+Editor state lives in a sibling subtree so the Steel VM and editor data are
+**cousins that never alias**:
 
-- **Before**: `Editor → scripting → hume-engine`, with buffers/panes/etc. as flat
-  fields on `Editor` next to `scripting`. Running the VM required
-  field-splitting the whole `Editor`.
-- **After**: `Editor → { scripting → steel ; state: EditorState ; view: EngineView }`.
-  The Steel engine sits under `scripting`; command-mutable document/mode data
-  sits under `state`; render/view state (full-fat panes, layout, theme) sits
-  under `view`. `&mut state`, `&mut view`, and `&mut steel` are all provably
-  disjoint.
+`Editor → { scripting → steel ; state: EditorState ; view: EngineView }`.
+The Steel engine sits under `scripting`; command-mutable document/mode data
+sits under `state`; render/view state (full-fat panes, layout, theme) sits
+under `view`. `&mut state`, `&mut view`, and `&mut steel` are all provably
+disjoint.
 
 ## Ownership tree
 
@@ -154,27 +145,32 @@ while the bundle is live.
 
 ## Dispatch invariant
 
-> **Defer a command iff it needs the Steel engine.**
+> **Defer a command iff it needs to re-enter the engine with a fresh eval.**
 
-| Command kind | Needs Steel? | Dispatch |
-|---|---|---|
-| Motion / Selection / Edit | no | **sync** |
-| EditorCmd | no | **sync** |
-| EditorCmd that fires a hook | command: no | command **sync**; handler pushes to `EditorState::pending_hooks`; `drain_hooks` fires after command body (semantic defer — see D5) |
-| TypedCommand (`:` commands) | no | **sync** — but stays on `fn(&mut Editor, …)`, not Steel-dispatchable (see D7) |
-| SteelBacked | yes | **defer** |
-| Lazy | yes (loads Steel) | **defer** |
+Activated plugin commands apply their closure inline on the running call stack — no
+fresh eval, no deferral. The routing lives in Steel (`%dispatch-command`).
 
-### `call!` — the sole dispatch primitive
+| Command kind | Dispatch |
+|---|---|
+| Motion / Selection / Edit | **sync** |
+| EditorCmd | **sync** |
+| EditorCmd that fires a hook | command **sync**; handler pushes to `EditorState::pending_hooks`; `drain_hooks` fires after command body (semantic defer — see D5) |
+| TypedCommand (`:` commands) | **sync** — but stays on `fn(&mut Editor, …)`, not Steel-dispatchable (see D7) |
+| SteelBacked (activated plugin) | **sync** — `%dispatch-command` applies the closure inline via `(apply proc args)` |
+| Lazy | **defer** — needs a fresh eval to activate |
 
-`call!` (`%call!`) is the sole dispatch primitive. It runs sync when the command
-kind does not need Steel, defers when it does.
+### `call!` → `%dispatch-command` routing
 
-**Sync path conditions (both must hold):**
-1. `command_is_native` returns `Ok(true)` for the name.
-2. `cmd_queue.is_empty()` — no Steel-defined command is already queued. When a
-   Steel command is ahead in the queue, native commands are deferred too, to
-   preserve source order.
+`call!` is the sole dispatch primitive. It desugars to
+`(%dispatch-command name (list args…))`, which routes by command kind:
+
+- **`%lookup-plugin-proc` returns a closure** (activated plugin command): `(apply proc args)` —
+  the closure runs inline on the Steel call stack, synchronous with the caller. Buffer state
+  read after the call reflects its effects immediately.
+- **`%lookup-plugin-proc` returns `#f`** (native, lazy, or unknown): `%call-native!` —
+  native commands run synchronously via `run_command_sync`; lazy/unknown commands are queued.
+
+`%call!` is retained as an alias for `%call-native!` for tooling compatibility.
 
 **Arg → count/extend mapping for native commands:**
 
@@ -185,7 +181,7 @@ kind does not need Steel, defers when it does.
 | `(call! "name" n #t)` | `n` (clamped to ≥ 1) | `true` |
 | any other shape | `steel::stop!` | — |
 
-For SteelBacked/Lazy (deferred), args flow through the queue unchanged.
+For lazy/unknown (queued), args flow through unchanged.
 `register_command_names` emits `(define name (lambda () (call! "name")))` wrappers —
 bare `(move-left)` resolves to `(call! "move-left")` with no args (count=1, Normal).
 
@@ -237,9 +233,10 @@ separate arguments — two disjoint borrows, both routed through `EditorHostImpl
 
 ### D4 — Engine-requiring work defers by design, not limitation
 
-`SteelBacked` and `Lazy` commands remain queued and run after the eval. This is
-correct: they need to re-enter Steel, which is only safe once the current eval
-releases the `&mut steel` borrow.
+`Lazy` plugin activation and hook dispatch defer because they need a fresh eval —
+a new `compile_and_run_raw_program` call that cannot start while `&mut steel` is
+held by the current eval. `SteelBacked` commands with an activated closure dispatch
+inline (see Dispatch invariant); those without one (e.g. mid-activation) queue.
 
 ### D5 — Hooks always defer (semantic decision, LOCKED)
 
@@ -265,13 +262,13 @@ The `EditorHost` trait (defined in the `hume-scripting/` crate) is kept for two 
    internals.
 
 `EditorHostImpl` holds exactly two coarse borrows (`state: &mut EditorState`,
-`view: &mut EngineView`) instead of the previous 9 heterogeneous ad-hoc field slices.
-These back the same trait interface — callers (builtins) see no change.
+`view: &mut EngineView`). These back the trait interface — callers (builtins) see no
+change.
 
 `ScriptingRegistries` bundles the four persistent registry fields (`cmd_owners`,
-`hooks`, `lazy_registry`, `declared_plugins`) that were previously flat on
-`ScriptingHost`. This makes the NLL field-split clean: `steel` vs. `registries`
-are two fields of `ScriptingHost`, borrowed disjointly by `steel_and_bundle`.
+`hooks`, `lazy_registry`, `declared_plugins`) as one field of `ScriptingHost`.
+The NLL field-split is clean: `steel` vs. `registries` are two disjoint fields,
+borrowed separately by `steel_and_bundle`.
 
 ### D7 — EditorCmd handler shape; TypedCommand exception
 
@@ -303,10 +300,3 @@ stays on `fn(&mut Editor, …)`**, for three reasons:
 The Phase-8 correctness gate (`rg 'fn cmd_.*&mut Editor[^S]'`) is scoped to `cmd_*`
 handlers. `typed_*` retaining `&mut Editor` is the ratified exception.
 
-## Helix convergence
-
-`EditorState` ≈ `helix-view::Editor`; outer `Editor` ≈ Helix `Application`; Steel
-dispatch via `with_mut_reference` is structurally identical to Helix's scripting
-approach. One delta: Helix's scripting crate sits *above* `helix-view` so it can name
-`Editor` directly — no trait needed. HUME's crate cycle inverts that dependency, which
-is why `EditorHost` is kept (D6).
