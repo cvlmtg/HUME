@@ -85,6 +85,11 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 /// `eval_init` and activates each entry via `(require "<abs-path>")`, giving
 /// every plugin its own Steel module namespace so same-named private helpers
 /// cannot collide.
+///
+/// `%dispatch-command` implements the in-Steel routing that makes plugin commands
+/// synchronous: if the name is an activated plugin command (`%lookup-plugin-proc`
+/// returns its closure), apply it directly in Steel; otherwise fall through to
+/// `%call-native!` for native/lazy/unknown handling.
 const BOOTSTRAP: &str = r#"
 ; declare-plugin — lazy registration; triggers forwarded to %declare-plugin!.
 ; No triggers ⇒ bare-lazy: body runs only on an explicit (load-plugin name).
@@ -96,13 +101,24 @@ const BOOTSTRAP: &str = r#"
 ; load-plugin — eager; loads now (declares first if unknown). No triggers.
 (define (load-plugin name) (%load-plugin! name))
 
-; Variadic call! macro — desugars to the fixed-arity-2 %call! primitive.
+; %dispatch-command — routes by command type:
+;   activated plugin command → apply closure inline (stays in Steel, synchronous);
+;   native / lazy / unknown   → %call-native! (Rust leaf, sync for native).
+; %lookup-plugin-proc returns the closure or #f (also #f during init mode so
+; startup (call! …) always defers to %call-native! → queue).
+(define (%dispatch-command name args)
+  (let ((proc (%lookup-plugin-proc name)))
+    (if proc
+        (apply proc args)
+        (%call-native! name args))))
+
+; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
 ; context, including test harnesses that do not load the full prelude.
 (define-syntax call!
   (syntax-rules ()
     ((_ name args ...)
-     (%call! name (list args ...)))))
+     (%dispatch-command name (list args ...)))))
 "#;
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -166,9 +182,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "define-command-inline-output!",
         commands::define_command_inline_output,
     );
-    // %call! is the Rust primitive; the variadic (call! name args…) macro in
-    // BOOTSTRAP desugars to (%call! name (list args…)).
+    // %call-native! is the Rust leaf for native/lazy/unknown dispatch; the variadic
+    // (call! name args…) macro desugars to (%dispatch-command …) which routes
+    // activated plugin commands inline in Steel and falls back here for everything else.
+    // %call! is kept as an alias for any tooling that references the old primitive name.
+    steel.register_fn_with_ctx(HUME_CTX, "%call-native!", commands::call_command_primitive);
     steel.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);
+    // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
+    // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
+    steel.register_fn_with_ctx(HUME_CTX, "%lookup-plugin-proc", commands::lookup_plugin_proc);
     steel.register_fn_with_ctx(HUME_CTX, "request-wait-char!", commands::request_wait_char);
     steel.register_fn_with_ctx(HUME_CTX, "pending-char", commands::pending_char);
     steel.register_fn_with_ctx(HUME_CTX, "command-plugin", commands::command_plugin);

@@ -691,8 +691,15 @@ fn steel_call_paste_then_motion_commits_paste_session() {
 /// **Finding 7 — source order**: a Steel body `(call! my-steel-cmd) (call! "delete")`
 /// must execute the Steel command first, then the delete — not reversed.
 ///
-/// Fail oracle: remove the `cmd_queue.is_empty()` guard in `call_command_primitive`
-/// → `delete` runs before `my-steel-cmd`.
+/// Under the in-Steel dispatch model: `steel-move-right` is applied inline as a Steel
+/// funcall (no Rust queue); `delete` is a native and runs synchronously via
+/// `%call-native!`. Source order is preserved by the call stack.
+///
+/// Fail oracle: if `%dispatch-command` forwarded plugin commands to `%call-native!`
+/// instead of applying them inline, both would queue and drain post-eval — the order
+/// dependency would be removed and the test would become order-independent (both
+/// deleting 'a' or 'b' depending on residual state), but still "a\n" by accident.
+/// More reliable: flip the expected assertion to "b\n" and confirm it fails.
 #[test]
 fn steel_call_source_order_native_after_steel() {
     // Buffer "ab\n", cursor on 'a'. The Steel command moves right; delete then
@@ -731,11 +738,15 @@ fn steel_call_source_order_native_after_steel() {
     );
 }
 
-/// **Finding 7 — deferred native count**: a native command deferred for ordering
-/// must use its own count, not the outer `count` from `drain_command_queue`.
+/// **Finding 7 — native count preserved across plugin→native chain**: a native
+/// command that follows a plugin command in the same body must use its own count.
 ///
-/// Fail oracle: remove the per-entry `parse_count_extend` in `drain_command_queue`
-/// and always use the outer count → cursor moves 1 instead of 3.
+/// Under the in-Steel dispatch model: `noop-steel` is applied inline (no effect);
+/// `(call! "move-down" 3)` dispatches via `%call-native!` → `parse_count_extend`
+/// extracts `count=3` → `run_command_sync("move-down", 3, false)` → lands on line 4.
+///
+/// Fail oracle: replace `(call! "move-down" 3)` with `(call! "move-down" 1)` →
+/// cursor lands on line 2 instead of 4; the count-preservation assertion fails.
 #[test]
 fn steel_deferred_native_uses_own_count() {
     // Buffer with at least 5 lines; cursor starts at line 1.
@@ -748,8 +759,7 @@ fn steel_deferred_native_uses_own_count() {
     host.register_command_names(&name_refs);
 
     let mut mock = MockHost::new();
-    // The body queues a Steel-defined cmd first (forces native to defer),
-    // then (call! "move-down" 3).
+    // noop-steel executes inline (plugin); move-down 3 runs sync via %call-native!.
     let defs = host
         .eval_source_returning_defs(
             r#"(define-command! "noop-steel" "" (lambda () #t))
@@ -770,7 +780,7 @@ fn steel_deferred_native_uses_own_count() {
     let host = live_host!(ed);
     let line = host.current_line_number().expect("current_line_number");
     // Started on line 1, moved down 3 → should be on line 4.
-    assert_eq!(line, 4, "deferred native must use its own count=3; got line {line}");
+    assert_eq!(line, 4, "native count=3 must be preserved in plugin→native chain; got line {line}");
 }
 
 /// **Finding 8 — unknown warns, no abort**: a body with an unknown command between
@@ -960,5 +970,111 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     assert_eq!(
         snap_key, snap_steel,
         "keypress vs Steel dispatch of 'goto-last-line' must leave identical jump bookkeeping"
+    );
+}
+
+// ── In-Steel plugin dispatch (core goal) ─────────────────────────────────────
+//
+// These tests verify the new synchronous dispatch model: plugin commands are
+// applied directly on the Steel call stack via (apply proc args), not deferred
+// to a post-eval queue. A state read after (call! plugin-cmd) within the SAME
+// body reflects the plugin's side-effects immediately.
+
+/// **Core goal**: a plugin command that calls another plugin command can observe
+/// the inner command's effect via a state read in the same body.
+///
+/// Under the old deferral model: `(call! inner-move)` queued both the plugin and
+/// any subsequent native, so `(cursor-char-index)` read BEFORE the queue drained
+/// → saw cursor=0, the `(when …)` branch never fired → cursor ended at 1.
+///
+/// Under in-Steel dispatch: `inner-move` is applied inline (plugin funcall in the
+/// VM), cursor=1 by the time `(cursor-char-index)` is evaluated → branch fires →
+/// second move-right → cursor=2.
+///
+/// Discriminant: cursor=2 means inline; cursor=1 means deferred.
+///
+/// Fail oracle: comment out the `if proc { apply proc args }` branch in
+/// `%dispatch-command` so all commands fall through to `%call-native!` — the
+/// plugin command queues, cursor stays 0 during eval, branch does not fire → 1.
+#[test]
+fn plugin_calls_plugin_cursor_read_is_live() {
+    // "-[a]>bc\n", cursor at position 0.
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut mock = MockHost::new();
+    // inner-move: plugin command that wraps a single move-right.
+    // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
+    //   moves right again if cursor advanced past 0.
+    let defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "inner-move" ""
+                 (lambda () (call! "move-right")))
+               (define-command! "outer-cmd" ""
+                 (lambda ()
+                   (call! "inner-move")
+                   (when (> (cursor-char-index) 0)
+                     (call! "move-right"))))"#
+                .to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    ed.register_steel_cmds(defs);
+    ed.scripting = Some(host);
+    ed.execute_keymap_command("outer-cmd".into(), 1, false, vec![]);
+
+    let idx = live_host!(ed).cursor_char_index().expect("cursor_char_index after outer-cmd");
+    // Inline: inner-move ran synchronously (cursor=1 during eval), branch fired → cursor=2.
+    // Deferred: inner-move queued (cursor=0 during eval), branch skipped → cursor=1.
+    assert_eq!(
+        idx, 2,
+        "plugin→plugin inline dispatch: cursor must be 2 (branch fired on live read); \
+         got {idx} — likely deferral regression"
+    );
+}
+
+/// Plugin commands registered via `define-command!` are entered into
+/// `ScriptingHost.registries.command_table` by `process_pending_cmds`.
+///
+/// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
+/// a command inline in Steel. This test confirms the table is populated after
+/// `eval_source_returning_defs` — the precondition for all in-Steel dispatch tests.
+///
+/// Fail oracle: remove the `command_table.insert(…)` line in `process_pending_cmds`
+/// → `command_table` is empty → `%lookup-plugin-proc` always returns `#f` →
+/// `plugin_calls_plugin_cursor_read_is_live` regresses to cursor=1.
+#[test]
+fn command_table_populated_after_define_command() {
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    let _defs = host
+        .eval_source_returning_defs(
+            r#"(define-command! "ping" "" (lambda () #t))
+               (define-command! "pong" "" (lambda () #t))"#
+                .to_owned(),
+            Default::default(),
+            &mut mock,
+        )
+        .expect("define-command! must succeed");
+
+    let table = host.command_table_for_test();
+    assert!(
+        table.contains_key("ping"),
+        "'ping' must be in command_table after define-command!"
+    );
+    assert!(
+        table.contains_key("pong"),
+        "'pong' must be in command_table after define-command!"
+    );
+    // Native command names must NOT appear in command_table — only plugin commands.
+    assert!(
+        !table.contains_key("move-right"),
+        "'move-right' (native) must not appear in command_table"
     );
 }

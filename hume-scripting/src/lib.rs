@@ -109,6 +109,13 @@ pub(crate) struct ScriptingRegistries {
     /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
     /// including plugins absent on disk.
     pub(crate) declared_plugins: Vec<String>,
+    /// In-Steel dispatch table: maps activated plugin command name to its Steel
+    /// closure for synchronous inline application by `%dispatch-command`.
+    ///
+    /// Populated by `process_pending_cmds` alongside `%hume-cmd-<name>` globals.
+    /// Consulted by `%lookup-plugin-proc` during command-mode evals; returns `#f`
+    /// during init mode (commands deferred to `pending_startup_commands`).
+    pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -194,6 +201,7 @@ impl ScriptingHost {
                 hooks: HookRegistry::default(),
                 lazy_registry: LazyRegistry::default(),
                 declared_plugins: Vec::new(),
+                command_table: std::collections::HashMap::new(),
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -403,6 +411,16 @@ impl ScriptingHost {
     #[cfg(any(test, feature = "test-util"))]
     pub fn cmd_owners_for_test(&self) -> &std::collections::HashMap<String, String> {
         &self.registries.cmd_owners
+    }
+
+    /// Read-only view of the in-Steel plugin dispatch table.
+    ///
+    /// Maps activated plugin command name → its Steel closure. Used in tests to
+    /// assert `process_pending_cmds` populated the table correctly — which is the
+    /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn command_table_for_test(&self) -> &std::collections::HashMap<String, steel::rvals::SteelVal> {
+        &self.registries.command_table
     }
 
     #[cfg(any(test, feature = "test-util"))]

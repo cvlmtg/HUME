@@ -134,8 +134,14 @@ impl ScriptingHost {
                 // dispatcher never rejects them on arity grounds.
                 _ => (0, true),
             };
+            // Clone before register_value takes ownership — the command_table
+            // keeps a second handle to the same closure for in-Steel dispatch.
+            let proc_for_table = cmd.proc.clone();
             // Register (or overwrite) the lambda under its internal name.
             self.steel.register_value(&steel_proc, cmd.proc);
+            // Register in the in-Steel dispatch table so `%dispatch-command`
+            // can apply the closure directly without a Rust round-trip.
+            self.registries.command_table.insert(cmd.name.clone(), proc_for_table);
             // Record the owner string for `(command-plugin …)` introspection.
             self.registries.cmd_owners
                 .insert(cmd.name.clone(), cmd.current_owner.to_string());

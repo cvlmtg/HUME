@@ -1,16 +1,25 @@
 //! `(define-command! name doc proc)`, `(call! name args…)`, and
 //! `(request-wait-char! cmd)` builtins.
 //!
-//! Steel commands are defined as lambdas and composed via `call!`, a BOOTSTRAP
-//! macro that desugars `(call! name a b…)` to `(%call! name (list a b…))`.
-//! The `%call!` Rust primitive queues `(name, args)` for dispatch after the
-//! Steel proc returns.  The actual execution happens in
-//! [`crate::ScriptingHost::call_steel_cmd`], which drains the
-//! queue through the normal `execute_keymap_command` path.
+//! ## Dispatch model
+//!
+//! `(call! name args…)` expands (via the BOOTSTRAP macro) to
+//! `(%dispatch-command name (list args…))`, a Steel function that routes:
+//!
+//! - **Activated plugin commands** (in `command_table`): applied directly as an
+//!   ordinary Steel funcall via `(apply proc args)` — never leaving the VM.
+//!   State reads after the call see its effects immediately.
+//! - **Native / lazy / unknown**: forwarded to `%call-native!`, the Rust leaf
+//!   builtin.  Native commands run **synchronously** (no queue-is-empty guard);
+//!   lazy commands are queued for post-eval activation; unknowns are queued and
+//!   produce a warning at drain time.
+//!
+//! During init mode (`is_init = true`) `%lookup-plugin-proc` always returns `#f`,
+//! so every `(call! …)` defers to `%call-native!` → queue, preserving the
+//! existing `pending_startup_commands` semantics.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
-//! queue is drained, the editor enters WaitChar mode for the named command.
-//! This enables multi-step compositions like `mr` + old_char + new_char.
+//! current eval finishes, the editor enters WaitChar mode for the named command.
 //!
 //! ## Invocation contract
 //!
@@ -21,14 +30,6 @@
 //! (call! "collapse-selection")        ; built-in, no args
 //! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
 //! ```
-//!
-//! Steel lambdas registered via `define-command!` are intentionally **not**
-//! exposed as bare Scheme identifiers (they live under a private mangled
-//! name in the Steel engine namespace).  This keeps the call site symmetric with
-//! built-ins (which are Rust `MappableCommand` variants and have no Scheme
-//! binding), and ensures every invocation goes through the registry path
-//! that owns command attribution, watchdog protection, and dispatch parity
-//! with `:cmd` and `bind-key!`.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -141,24 +142,23 @@ fn define_command_inner(
     Ok(SteelVal::Void)
 }
 
-/// `%call!` — fixed-arity-2 Rust primitive underlying the `(call! name args…)` macro.
+/// `%call-native!` — Rust leaf for native/lazy/unknown commands.
 ///
-/// The BOOTSTRAP macro `(call! name args…)` desugars to `(%call! name (list args…))`,
-/// so this function always receives `(name, args-list)`.
+/// Called by the Steel `%dispatch-command` function when a name is NOT found
+/// in the plugin `command_table` (i.e. not an activated plugin command).
 ///
-/// **Init mode**: always queues with the full args list; sync dispatch requires a
-/// live `EditorHostImpl`.
+/// **Init mode**: always queues — deferred to `pending_startup_commands`.
 ///
-/// **Command mode**: classifies first (`command_is_native`), then branches:
-/// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): arg contract is
-///   count/extend only — `[]`, `[n]`, or `[n bool]`. Any other shape is
-///   rejected via `steel::stop!` before executing the command (fail-fast).
-///   When no Steel-defined command is ahead in the queue, runs synchronously
-///   via `run_command_sync`; otherwise defers to preserve source order.
-/// - **Steel-defined** (`SteelBacked`/`Lazy`): all args forwarded raw to the
-///   deferred queue unchanged — no count stripping, no validation.
-/// - **Unknown**: deferred to the queue; `execute_keymap_command` logs a warning
-///   at drain time and continues — no mid-body abort.
+/// **Command mode**:
+/// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): validates
+///   count/extend args (fail-fast), then runs **synchronously** via
+///   `run_command_sync`. No queue-is-empty guard — execution order is
+///   preserved by the Steel call stack, not a deferred queue.
+/// - **Lazy** (unactivated plugin) / **Unknown**: queued; lazy entries
+///   trigger plugin activation at drain; unknown names produce a warning.
+///
+/// Also registered as `%call!` for backward compatibility with any tooling
+/// that references the old primitive name directly.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -173,8 +173,17 @@ pub(crate) fn call_command_primitive(
     }
 
     match ctx.host.command_is_native(&name) {
-        // Unknown or Steel-defined — defer. Unknown names produce a warning at drain
-        // (execute_keymap_command) while the rest of the body continues unaffected.
+        Ok(true) => {
+            // Native — validate count/extend first (fail-fast on malformed args).
+            let (count, extend) = parse_count_extend(&args_vec)
+                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call-native!: {e}")))?;
+            // Run synchronously — order is preserved by the Steel call stack.
+            ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
+                .map(|()| SteelVal::Void)
+                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call-native!: {e}")))
+        }
+        // Lazy (unactivated plugin) or unknown — defer. Unknown names produce a
+        // warning at drain (execute_keymap_command); lazy names trigger activation.
         Err(_) | Ok(false) => {
             ctx.cmd_queue.push(QueuedCommand {
                 name,
@@ -183,27 +192,22 @@ pub(crate) fn call_command_primitive(
             });
             Ok(SteelVal::Void)
         }
-        Ok(true) => {
-            // Native — validate count/extend first (fail-fast on malformed args).
-            let (count, extend) = parse_count_extend(&args_vec)
-                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))?;
+    }
+}
 
-            if ctx.cmd_queue.is_empty() {
-                // No deferred command ahead — run synchronously (Model A, Case B).
-                // Note: source order is guaranteed only within cmd_queue; side-effect
-                // queues (pending_language_sets, grammar_sweeps, plugin_loads) are
-                // drained after the full eval and remain unordered relative to this
-                // sync call.
-                ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
-                    .map(|()| SteelVal::Void)
-                    .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call!: {e}")))
-            } else {
-                // A Steel-defined command is already queued — defer this native too
-                // so the body executes in source order.
-                ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
-                Ok(SteelVal::Void)
-            }
-        }
+/// `%lookup-plugin-proc` — return the Steel closure for an activated plugin
+/// command, or `#f` if the name is not in the `command_table`.
+///
+/// Returns `#f` unconditionally during init mode so that `%dispatch-command`
+/// falls through to `%call-native!` → queue, preserving `pending_startup_commands`
+/// semantics — plugin commands must not be applied inline before init completes.
+pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    if ctx.is_init {
+        return Ok(SteelVal::BoolV(false));
+    }
+    match ctx.registries.command_table.get(&name) {
+        Some(val) => Ok(val.clone()),
+        None => Ok(SteelVal::BoolV(false)),
     }
 }
 
@@ -293,11 +297,6 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
 /// Valid register names: `0`–`9`, `k` (kill-ring head), `c` (clipboard),
 /// `b` (black hole).  Any other name raises a Steel error immediately (fail
 /// fast at command-body time, not at dispatch time).
-///
-/// **Queue-ordering note**: `(call! …)` runs *after* the proc returns;
-/// `set-register-prefix!` only *routes* the register into each queued
-/// command.  You cannot read a command's register side-effect back within
-/// the same body — use a Steel `let` binding for that.
 ///
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
