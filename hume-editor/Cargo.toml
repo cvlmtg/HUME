@@ -1,0 +1,32 @@
+[package]
+name = "hume-editor"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "hume"
+path = "src/main.rs"
+
+[dependencies]
+hume-engine = { path = "../hume-engine" }
+hume-platform = { path = "../hume-platform" }
+hume-scripting = { path = "../hume-scripting" }
+hume-editing = { path = "../hume-editing" }
+globset = "0.4"
+tree-sitter = "0.26.8"
+slotmap = "1"
+steel-core = "0.8.2"
+ropey.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
+ratatui.workspace = true
+crossterm = "0.29"
+regex-cursor = "0.1.5"
+arboard = "3"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+proptest = "1.11.0"
+insta = "1.47"
+tempfile = "3"
+hume-scripting = { path = "../hume-scripting", features = ["test-util"] }

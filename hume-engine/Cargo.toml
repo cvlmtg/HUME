@@ -1,0 +1,21 @@
+[package]
+name = "hume-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ropey.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
+ratatui.workspace = true
+bitflags = "2"
+slotmap = "1"
+tree-sitter = "0.26.8"
+tree-sitter-language = "0.1"
+libloading = "0.8"
+streaming-iterator = "0.1"
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+[dev-dependencies]
+tempfile = "3"
+ropey.workspace = true

@@ -10,7 +10,7 @@ layout="$2"
 
 root="$(git rev-parse --show-toplevel)"
 version="$(cargo metadata --format-version 1 --no-deps \
-    --manifest-path "$root/editor/Cargo.toml" \
+    --manifest-path "$root/hume-editor/Cargo.toml" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
 sha="$(git rev-parse --short HEAD)"
 name="hume-${version}-${sha}-${target}"

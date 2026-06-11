@@ -48,7 +48,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release --locked -p hume --target ${{ matrix.target }}
+        run: cargo build --release --locked -p hume-editor --target ${{ matrix.target }}
 
       - name: Stage archive
         shell: bash
