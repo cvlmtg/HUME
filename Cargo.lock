@@ -605,16 +605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "editing"
-version = "0.1.0"
-dependencies = [
- "pretty_assertions",
- "proptest",
- "ropey",
- "unicode-segmentation",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -625,24 +615,6 @@ name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
-
-[[package]]
-name = "engine"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.11.0",
- "libloading",
- "ratatui",
- "ropey",
- "slotmap",
- "streaming-iterator",
- "tempfile",
- "toml",
- "tree-sitter",
- "tree-sitter-language",
- "unicode-segmentation",
- "unicode-width 0.2.0",
-]
 
 [[package]]
 name = "env_home"
@@ -979,28 +951,80 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
-name = "hume"
+name = "hume-editing"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "ropey",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "hume-editor"
 version = "0.1.0"
 dependencies = [
  "arboard",
  "crossterm",
- "editing",
- "engine",
  "globset",
+ "hume-editing",
+ "hume-engine",
+ "hume-platform",
+ "hume-scripting",
  "insta",
- "platform",
  "pretty_assertions",
  "proptest",
  "ratatui",
  "regex-cursor",
  "ropey",
- "scripting",
  "slotmap",
  "steel-core",
  "tempfile",
  "tree-sitter",
  "unicode-segmentation",
  "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "hume-engine"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.11.0",
+ "libloading",
+ "ratatui",
+ "ropey",
+ "slotmap",
+ "streaming-iterator",
+ "tempfile",
+ "toml",
+ "tree-sitter",
+ "tree-sitter-language",
+ "unicode-segmentation",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "hume-platform"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "ctrlc",
+ "nix 0.31.2",
+ "ratatui",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hume-scripting"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "hume-engine",
+ "hume-platform",
+ "slotmap",
+ "steel-core",
+ "tempfile",
 ]
 
 [[package]]
@@ -1771,18 +1795,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "platform"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "ctrlc",
- "nix 0.31.2",
- "ratatui",
- "tempfile",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2208,18 +2220,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scripting"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "engine",
- "platform",
- "slotmap",
- "steel-core",
- "tempfile",
-]
 
 [[package]]
 name = "semver"
