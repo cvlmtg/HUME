@@ -80,17 +80,24 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 
 /// Scheme bootstrap evaluated once during Steel engine init.
 ///
-/// Defines `load-plugin` (eager) and `declare-plugin` (lazy) in terms of the
-/// Rust builtins registered below.  Rust drains `pending_plugin_loads` after
-/// `eval_init` and activates each entry via `(require "<abs-path>")`, giving
-/// every plugin its own Steel module namespace so same-named private helpers
-/// cannot collide.
+/// Defines `load-plugin`, `declare-plugin`, and the inline activation machinery
+/// (`%activate-plugin-inline`, `%dispatch-command`) in terms of the Rust builtins
+/// registered below and Steel's `eval-string` (imported from `steel/meta`).
 ///
-/// `%dispatch-command` implements the in-Steel routing that makes plugin commands
-/// synchronous: if the name is an activated plugin command (`%lookup-plugin-proc`
-/// returns its closure), apply it directly in Steel; otherwise fall through to
-/// `%call-native!` for native/lazy/unknown handling.
+/// Inline activation: `%activate-plugin-inline` drives the mid-eval plugin load.
+/// `%begin-lazy-activation` (Rust) transitions the plugin to `Loading` and returns
+/// the `(require "<abs>")` string.  `eval-string` runs that require inside the live
+/// VM (same module pipeline as the engine API, but VM-aware — no `&mut Engine`
+/// needed).  `%finish-lazy-activation` (Rust) finalises the state.  `with-handler`
+/// from the stdlib guarantees the `Failed` transition on any body exception.
+///
+/// `%dispatch-command` routes by command type:
+///   - activated plugin command → `command_table` lookup → apply closure inline;
+///   - lazy trigger command     → activate inline, then retry;
+///   - native / unknown         → `%call-native!` (Rust, sync for native).
 const BOOTSTRAP: &str = r#"
+(require-builtin steel/meta as hm.)
+
 ; declare-plugin — lazy registration; triggers forwarded to %declare-plugin!.
 ; No triggers ⇒ bare-lazy: body runs only on an explicit (load-plugin name).
 (define (declare-plugin name #:on-command  [on-command  '()]
@@ -98,19 +105,39 @@ const BOOTSTRAP: &str = r#"
                              #:on-language [on-language '()])
   (%declare-plugin! name on-command on-event on-language))
 
-; load-plugin — eager; loads now (declares first if unknown). No triggers.
-(define (load-plugin name) (%load-plugin! name))
+; load-plugin — eager init-context activation; delegates to the shared
+; inline-activation helper after declaring/resolving the plugin.
+; Valid only during init.scm / :reload-config (enforced by %load-plugin!).
+(define (load-plugin name)
+  (%load-plugin! name)
+  (%activate-plugin-inline name))
+
+; %activate-plugin-inline — shared activation helper used by both load-plugin
+; and %dispatch-command's lazy-miss path.
+; %begin-lazy-activation returns the (require "…") string for Declared plugins,
+; or #f for Loading/Loaded/Failed/absent (cycle guard + idempotency).
+(define (%activate-plugin-inline id)
+  (let ((prog (%begin-lazy-activation id)))
+    (when prog
+      (with-handler
+        (lambda (e) (%finish-lazy-activation id #f) (raise-error e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation id #t))))))
 
 ; %dispatch-command — routes by command type:
 ;   activated plugin command → apply closure inline (stays in Steel, synchronous);
-;   native / lazy / unknown   → %call-native! (Rust leaf, sync for native).
-; %lookup-plugin-proc returns the closure or #f (also #f during init mode so
-; startup (call! …) always defers to %call-native! → queue).
+;   lazy trigger miss         → activate inline, retry, then fall through to native;
+;   native / unknown          → %call-native! (Rust leaf, sync for native).
 (define (%dispatch-command name args)
   (let ((proc (%lookup-plugin-proc name)))
     (if proc
         (apply proc args)
-        (%call-native! name args))))
+        (let ((owner (%lazy-command-owner name)))
+          (if owner
+              (begin
+                (%activate-plugin-inline owner)
+                (let ((proc2 (%lookup-plugin-proc name)))
+                  (if proc2 (apply proc2 args) (%call-native! name args))))
+              (%call-native! name args))))))
 
 ; Variadic call! macro — desugars to %dispatch-command.
 ; Defined here (not only in prelude.scm) so it is available in every Steel engine
@@ -166,6 +193,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_fn_with_ctx(HUME_CTX, "loaded-plugins", plugins::loaded_plugins);
     steel.register_fn_with_ctx(HUME_CTX, "declared-plugins", plugins::declared_plugins);
     steel.register_fn_with_ctx(HUME_CTX, "%load-plugin!", plugins::load_plugin);
+
+    // Inline activation primitives — called from the %activate-plugin-inline
+    // Scheme helper to drive mid-eval plugin loading without &mut Engine.
+    steel.register_fn_with_ctx(HUME_CTX, "%begin-lazy-activation", plugins::begin_lazy_activation);
+    steel.register_fn_with_ctx(HUME_CTX, "%finish-lazy-activation", plugins::finish_lazy_activation);
+    steel.register_fn_with_ctx(HUME_CTX, "%lazy-command-owner", plugins::lazy_command_owner);
 
     // Hook registration — init-only
     steel.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);

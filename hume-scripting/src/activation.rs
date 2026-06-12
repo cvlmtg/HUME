@@ -461,4 +461,112 @@ mod tests {
             "plugin must be Failed after path-with-quote rejection"
         );
     }
+
+    // ── Stage B: eval-string plumbing ─────────────────────────────────────────
+
+    /// A `define-command!` issued via `eval-string` inside a `run_steel` session
+    /// registers the command in `command_table` — proving that the nested eval-string
+    /// sees the same `ctx.registries` as the outer eval.
+    ///
+    /// Verification: commenting out the `eval-string` call makes the assert fail.
+    #[test]
+    fn eval_string_nested_registers_command_in_command_table() {
+        let mut host = ScriptingHost::new();
+        // Eval a snippet that eval-strings a define-command! — the outer eval is
+        // init mode, so is_init=true allows define-command!.
+        let program = r#"
+(hm.eval-string "(define-command! \"inner-cmd\" \"doc\" (lambda () 0))")
+"#;
+        host.eval_source(program, &mut NullHost).unwrap();
+        assert!(
+            host.registries.command_table.contains_key("inner-cmd"),
+            "command defined via eval-string must appear in command_table"
+        );
+    }
+
+    /// `%begin-lazy-activation` on a `Declared` plugin transitions to `Loading`,
+    /// increments `activation_depth`, and returns the require-string.
+    #[test]
+    fn begin_lazy_activation_declared_returns_require_string() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(&dir, "p.scm", r#"(define-command! "p-cmd" "doc" (lambda () 0))"#);
+        let id = plugin_id("core:p");
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path: path.clone() });
+
+        let program = r#"(define result (%begin-lazy-activation "core:p"))"#;
+        host.eval_source(program, &mut NullHost).unwrap();
+
+        // Plugin must be in Loading state.
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
+            "Declared plugin must be Loading after %begin-lazy-activation"
+        );
+        // activation_depth must be incremented.
+        assert_eq!(host.registries.activation_depth, 1, "activation_depth must be 1");
+    }
+
+    /// `%begin-lazy-activation` on a `Loading` plugin returns `#f` (cycle guard).
+    #[test]
+    fn begin_lazy_activation_loading_returns_false() {
+        let id = plugin_id("core:cycling");
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+
+        // The result `#f` means the (when prog ...) in %activate-plugin-inline
+        // does nothing — activation is a no-op.
+        let program = r#"
+(define result (%begin-lazy-activation "core:cycling"))
+(when result (error "cycle guard must return #f!"))
+"#;
+        host.eval_source(program, &mut NullHost).unwrap();
+        // State must remain Loading.
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
+            "state must remain Loading (cycle guard)"
+        );
+    }
+
+    /// `%finish-lazy-activation` with success=true transitions to `Loaded`.
+    #[test]
+    fn finish_lazy_activation_success_transitions_to_loaded() {
+        let id = plugin_id("core:finishing");
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+        host.registries.activation_depth = 1;
+
+        let program = r#"(%finish-lazy-activation "core:finishing" #t)"#;
+        host.eval_source(program, &mut NullHost).unwrap();
+
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            "plugin must be Loaded after successful finish"
+        );
+        assert_eq!(host.registries.activation_depth, 0, "activation_depth must return to 0");
+    }
+
+    /// `%finish-lazy-activation` with success=false transitions to `Failed`.
+    #[test]
+    fn finish_lazy_activation_failure_transitions_to_failed() {
+        let id = plugin_id("core:failing");
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+        host.registries.activation_depth = 1;
+
+        let program = r#"(%finish-lazy-activation "core:failing" #f)"#;
+        host.eval_source(program, &mut NullHost).unwrap();
+
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            "plugin must be Failed after failed finish"
+        );
+    }
 }

@@ -112,10 +112,14 @@ pub(crate) struct ScriptingRegistries {
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
     /// closure for synchronous inline application by `%dispatch-command`.
     ///
-    /// Populated by `process_pending_cmds` alongside `%hume-cmd-<name>` globals.
-    /// Consulted by `%lookup-plugin-proc` during command-mode evals; returns `#f`
-    /// during init mode (commands deferred to `pending_startup_commands`).
+    /// Populated by `process_pending_cmds`. Consulted by `%lookup-plugin-proc`
+    /// during command-mode evals; returns `#f` during init mode (commands are
+    /// processed after each eval boundary, not during).
     pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
+    /// Nesting depth of inline plugin activations currently in progress.
+    /// Incremented by `%begin-lazy-activation`, decremented by
+    /// `%finish-lazy-activation`. Used for diagnostics / cap enforcement.
+    pub(crate) activation_depth: usize,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -202,6 +206,7 @@ impl ScriptingHost {
                 lazy_registry: LazyRegistry::default(),
                 declared_plugins: Vec::new(),
                 command_table: std::collections::HashMap::new(),
+                activation_depth: 0,
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),

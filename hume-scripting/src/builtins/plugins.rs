@@ -221,6 +221,76 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
+/// `(%begin-lazy-activation id-str)` — Rust primitive for inline activation.
+///
+/// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
+/// `(hm.eval-string require-string)`.  If the plugin is `Declared`, transitions
+/// to `Loading`, pushes `plugin_stack`, increments `activation_depth`, and
+/// returns the `(require "<abs>")` string.  Returns `#f` for the cycle/idempotency
+/// guard (Loading/Loaded/Failed/absent) so `%activate-plugin-inline` becomes a
+/// no-op without error.
+pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> SteelResult {
+    let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
+
+    let path = match ctx.registries.lazy_registry.plugins.get(&id) {
+        Some(PluginState::Declared { path }) => path.clone(),
+        Some(PluginState::Loading | PluginState::Loaded | PluginState::Failed) | None => {
+            return Ok(SteelVal::BoolV(false));
+        }
+    };
+
+    let abs_str = path.to_string_lossy();
+    if abs_str.contains('"') {
+        ctx.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Failed);
+        steel::stop!(Generic =>
+            "plugin path contains '\"' — cannot embed in require: {}", path.display());
+    }
+    let require_program = format!("(require \"{abs_str}\")");
+
+    ctx.registries.lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Loading);
+    ctx.plugin_stack.push(id);
+    ctx.registries.activation_depth += 1;
+
+    Ok(SteelVal::StringV(require_program.into()))
+}
+
+/// `(%finish-lazy-activation id-str success?)` — Rust primitive for inline activation.
+///
+/// Called from `%activate-plugin-inline` after `(hm.eval-string …)` completes
+/// (or fails).  Pops `plugin_stack`, decrements `activation_depth`, and
+/// transitions the plugin to `Loaded` (success) or `Failed` (failure).
+/// `drop_triggers_for` runs on both paths so expired trigger entries are cleaned up.
+pub(crate) fn finish_lazy_activation(
+    ctx: &mut SteelCtx,
+    id_str: String,
+    success: bool,
+) -> SteelResult {
+    let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
+
+    ctx.plugin_stack.pop();
+    ctx.registries.activation_depth = ctx.registries.activation_depth.saturating_sub(1);
+
+    let new_state = if success { PluginState::Loaded } else { PluginState::Failed };
+    ctx.registries.lazy_registry.plugins.insert(id.clone(), new_state);
+    ctx.registries.lazy_registry.drop_triggers_for(&id);
+
+    Ok(SteelVal::Void)
+}
+
+/// `(%lazy-command-owner name)` — return the owning plugin's id string if `name`
+/// is a registered command trigger, or `#f` if not.  Used by `%dispatch-command`
+/// to decide whether a `command_table` miss should trigger inline activation.
+pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    match ctx.registries.lazy_registry.command_triggers.get(&name) {
+        Some(id) => Ok(SteelVal::StringV(id.to_string().into())),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(loaded-plugins)` — return a Steel list of plugin names in `Loaded` state.
 ///
 /// Derived from `LazyRegistry` so lazy plugins correctly read as not-yet-loaded
