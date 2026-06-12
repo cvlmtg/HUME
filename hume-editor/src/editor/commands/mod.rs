@@ -384,6 +384,16 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
         state.report(Severity::Info, "Buffer is read-only".to_string());
         return;
     }
+    // Guard is load-bearing for dot-repeat replay: `drain_pending_repeat` opens
+    // an edit group before re-dispatching the command, so a group already being
+    // open here means "we are replaying" → skip session creation and re-type from
+    // `insert_keys` instead of recording fresh. Do NOT weaken this into a separate
+    // flag without also fixing the replay signal.
+    //
+    // The implied assumption — that no Steel body can reach `begin_insert_session`
+    // with a group already open outside of replay — holds because Steel has no
+    // transaction / begin-edit-group builtin, and none should ever be added:
+    // fine-grained undo grouping belongs to native commands, not scripts.
     if !is_group_open_current(state, view) {
         begin_edit_group_current(state, view);
         state.insert_session = Some(InsertSession {
