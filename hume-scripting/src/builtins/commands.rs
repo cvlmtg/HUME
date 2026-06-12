@@ -198,7 +198,7 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// All other shapes (e.g. a leading string, extra args) return `Err`.
 ///
 /// Re-exported from the crate root so the editor crate can reuse it when
-/// draining a deferred native command whose count was stored in `QueuedCommand.args`.
+/// parsing the count/extend args passed to a native command from Steel.
 pub fn parse_count_extend(args: &[SteelVal]) -> Result<(usize, bool), String> {
     match args {
         [] => Ok((1, false)),

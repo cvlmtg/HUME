@@ -62,7 +62,7 @@ pub(crate) struct SteelCtx<'a> {
     /// WaitChar command requested by `(request-wait-char! …)`.
     pub(crate) wait_char_request: Option<String>,
     /// `set-buffer-language!` calls deferred during this eval; drained by the
-    /// consumer (mappings.rs / fire_hook_silent) before cmd_queue dispatch.
+    /// consumer (mappings.rs / fire_hook_silent) after the eval returns.
     pub(crate) pending_language_sets: PendingLanguageSets,
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,

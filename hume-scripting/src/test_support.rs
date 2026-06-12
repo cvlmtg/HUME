@@ -19,7 +19,7 @@ use crate::{HostBundle, ScriptingRegistries};
 ///
 /// Uses [`NullHost`] — sufficient for tests that only need to check that
 /// scripting guards (`is_init`, `require_cmd_ctx!`, etc.) fire correctly,
-/// or that `cmd_queue` accumulates correctly, without real editor state.
+/// without real editor state.
 pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
     pub(crate) plugin_stack: PluginStack,

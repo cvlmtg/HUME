@@ -401,7 +401,7 @@ impl ScriptingHost {
     /// Read-only view of the in-Steel plugin dispatch table.
     ///
     /// Maps activated plugin command name → its Steel closure. Used in tests to
-    /// assert `process_pending_cmds` populated the table correctly — which is the
+    /// assert inline `define-command!` populated the table correctly — which is the
     /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn command_table_for_test(&self) -> &std::collections::HashMap<String, steel::rvals::SteelVal> {
@@ -459,8 +459,8 @@ impl ScriptingHost {
     /// caller (editor dispatch) constructs the args by wrapping already-resolved
     /// Rust values via `IntoSteelVal` and passing them straight in. Introducing
     /// an intermediate arg type would add conversion with no practical benefit:
-    /// the editor crate already depends on `steel-core` for `QueuedCommand`
-    /// and `SteelBufferId`. Encapsulating Steel on this side of the API is not
+    /// the editor crate already depends on `steel-core` for `SteelBufferId`.
+    /// Encapsulating Steel on this side of the API is not
     /// cost-free; the trade-off is accepted intentionally.
     pub fn call_steel_cmd<'a>(
         &'a mut self,

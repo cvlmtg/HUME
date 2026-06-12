@@ -232,7 +232,7 @@ pub(crate) fn cursor_char_index(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
-/// `(set-buffer-language! bid lang-or-#f)` — deferred; applied before cmd_queue.
+/// `(set-buffer-language! bid lang-or-#f)` — deferred; applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,
     bid: SteelVal,

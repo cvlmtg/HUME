@@ -459,7 +459,7 @@ fn grammar_swap_clears_stale_in_flight() {
 }
 
 // ---------------------------------------------------------------------------
-// Startup command queue: (call! …) at init defers to pending_startup_commands
+// Startup (call! …) during init
 // ---------------------------------------------------------------------------
 
 /// Passive grammar registration: an init that registers installed grammars

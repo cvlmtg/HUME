@@ -50,8 +50,8 @@ impl Editor {
             // Pre-stamp last_command with the outer name so that a SteelBacked
             // command that dispatches no inner native leaves a fresh name rather
             // than a stale one from the previous command. If any inner native runs
-            // via dispatch_native / drain_command_queue it overrides this with the
-            // inner command's name — preserving smart-p for Steel-wrapped kill cmds.
+            // via dispatch_native it overrides this with the inner command's name —
+            // preserving smart-p for Steel-wrapped kill cmds.
             self.state.last_command = Some(name.clone());
 
             match reg_cmd {

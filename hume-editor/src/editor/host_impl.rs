@@ -244,7 +244,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             extend,
         );
         // Clear the prefix when we armed it, so it does not bleed into the
-        // next interactive command — mirrors drain_command_queue's cleanup.
+        // next interactive command.
         if register.is_some() {
             self.state.register_prefix = None;
         }

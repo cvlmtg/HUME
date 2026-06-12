@@ -56,11 +56,11 @@ fn startup_hooks_require_explicit_drain() {
     );
 }
 
-// ── Hook cmd_queue routing ────────────────────────────────────────────────────
+// ── Hook (call! …) dispatch ───────────────────────────────────────────────────
 
-/// `fire_hook_silent` must dispatch commands queued by `(call! …)` inside hook bodies.
+/// `fire_hook_silent` must dispatch commands called by `(call! …)` inside hook bodies.
 #[test]
-fn hook_cmd_queue_is_dispatched() {
+fn hook_call_is_dispatched() {
     use hume_scripting::ScriptingHost;
     use hume_scripting::SteelBufferId;
     use hume_scripting::hooks::HookId;

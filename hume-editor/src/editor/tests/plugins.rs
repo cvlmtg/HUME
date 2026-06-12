@@ -529,7 +529,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
 /// `(declare-plugin "name")` then `(load-plugin "name")` in `init.scm`
 /// force-activates the bare-lazy plugin at init time.
 ///
-/// Flip: without `load-plugin` pushing to `pending_plugin_loads`, the plugin
+/// Flip: without `load-plugin` activating inline, the plugin
 /// would remain `Declared` after init.
 #[test]
 #[cfg(not(windows))]
