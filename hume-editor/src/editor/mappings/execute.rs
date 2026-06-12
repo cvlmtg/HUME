@@ -41,6 +41,26 @@ impl Editor {
             // via `.take()`, and `call_steel_cmd` passes it as `pending_char`.
             let char_arg = self.state.pending_char;
 
+            // Snapshot the selection recipe built by the user's *prior* native
+            // selection commands (e.g. a `w` before this command). We take it
+            // now, before the body runs, so inner `(call! "insert-before")` or
+            // any other inner dispatch that clears/overwrites `selection_recipe`
+            // does not destroy the pre-body extent.
+            //
+            // Correctness: `drain_pending_repeat` replays the recipe AND
+            // re-dispatches the whole Steel body, so any selection the body
+            // builds internally via `call!` is rebuilt automatically during
+            // replay — including it in the recorded recipe would double-apply
+            // it. The pre-body snapshot is therefore the right semantics, not
+            // just a workaround.
+            //
+            // We take unconditionally: for Lazy commands, repeatability is
+            // unknown until the post-eval re-query (Lazy::is_repeatable() is
+            // always false). If the command turns out non-repeatable the
+            // snapshot is dropped and we clear the live recipe in the `else`
+            // branch below, which is the same outcome as today.
+            let recipe_snapshot = std::mem::take(&mut self.state.selection_recipe);
+
             // Commit any open paste session before Steel eval; same invariant as
             // the native path (ring-cycle commands bypass this).
             if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
@@ -167,8 +187,9 @@ impl Editor {
         // last_repeatable_action to the inner command name. We unconditionally
         // overwrite it here so the outer Steel command wins the repeat slot.
         if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
-            // Snapshot the recipe built by any preceding native selection commands.
-            let recipe = std::mem::take(&mut self.state.selection_recipe);
+            // Use the pre-body recipe snapshot (taken before the Steel eval so
+            // inner dispatches can't clobber the user's prior selection extent).
+            let recipe = recipe_snapshot;
             self.state.last_repeatable_action = Some(super::super::RepeatableAction {
                 command: name.clone(),
                 count,

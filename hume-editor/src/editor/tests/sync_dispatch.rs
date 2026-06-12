@@ -339,6 +339,223 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     );
 }
 
+// ── Steel insert-mode dot-repeat ─────────────────────────────────────────────
+
+/// Helper: register all native command names into a fresh ScriptingHost, eval a
+/// Steel snippet, attach the host to the editor, and bind the named Steel command
+/// to F2 in Normal mode.
+fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::KeyCode;
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
+        .eval_source_returning_defs(snippet.to_owned(), Default::default(), &mut init_host)
+        .expect("Steel snippet must compile and evaluate without error");
+
+    ed.scripting = Some(host);
+
+    let f2 = crossterm::event::KeyEvent::new(KeyCode::F(2), crossterm::event::KeyModifiers::NONE);
+    ed.state.keymap.bind_user_with_extend(
+        BindMode::Normal, &[f2], std::borrow::Cow::Owned(cmd_name.to_owned()), false,
+    );
+}
+
+/// A Steel repeatable command that calls `(call! "insert-before")` must record
+/// typed text in `insert_keys` and replay it on `.`.
+///
+/// Fail oracle:
+/// - If `end_insert_session` did NOT back-fill `insert_keys` for Steel actions,
+///   `insert_keys` would be empty → `.` inserts nothing → final buffer differs.
+/// - If the Gap A fix were reverted (empty recipe), `.` would still insert but
+///   only at the raw cursor position instead of the recipe-re-established one.
+///   This test uses an empty prior recipe so it cannot distinguish that; Test 2
+///   proves Gap A independently.
+#[test]
+fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[x]>\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command-repeatable! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before")))"#,
+        "steel-ins",
+    );
+
+    // F2 → enters Insert at selection start.
+    ed.feed_key(f2);
+    // Type 'a', 'b'.
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc()); // back to Normal; buffer is "abx"
+    assert_eq!(ed.doc().text().to_string(), "abx\n", "setup: 'ab' must be inserted before 'x'");
+
+    // White-box: insert_keys must be back-filled.
+    {
+        let action = ed.state.last_repeatable_action.as_ref()
+            .expect("last_repeatable_action must be set after steel-ins");
+        assert_eq!(action.command.as_ref(), "steel-ins", "action must be attributed to steel-ins");
+        assert_eq!(
+            action.insert_keys.len(), 2,
+            "insert_keys must contain both typed chars ('a' and 'b')"
+        );
+    }
+
+    // Move selection to 'x' and replay with `.`.
+    ed.feed_key(key('w')); // select 'x' (collapsed → non-collapsed word)
+    ed.feed_key(key('.')); // replay: enter insert before 'x', retype "ab"
+
+    // After replay: "ab" is inserted again before the 'x' that was at pos 0,
+    // giving "ababx\n".
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ababx\n",
+        "`.` must re-enter insert and retype 'ab' before the selection"
+    );
+}
+
+/// A prior native selection command (`w`) builds the `selection_recipe`. A Steel
+/// repeatable command that enters insert via `(call! "insert-before")` must NOT
+/// clobber that recipe — the pre-body snapshot must survive the inner dispatch.
+///
+/// Fail oracle (Gap A): without the pre-body snapshot in `execute.rs`,
+/// `insert-before`'s inner dispatch calls into `dispatch_native`, which does
+/// `mem::take(selection_recipe)` on the repeatable-edit branch, leaving the recipe
+/// empty. The white-box assertion `selection_recipe.len() == 1` catches this:
+/// it passes with the fix, fails without it.
+#[test]
+fn steel_repeatable_insert_preserves_prior_selection_recipe() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    // "w" from 'f' in "foo bar\n" selects "bar" (skips current word, selects next).
+    let mut ed = editor_from("-[f]>oo bar\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command-repeatable! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before")))"#,
+        "steel-ins",
+    );
+
+    // `w` establishes a real (non-collapsed) selection → recipe non-empty.
+    ed.feed_key(key('w'));
+    assert_eq!(ed.state.selection_recipe.len(), 1, "pre-condition: w must push a recipe step");
+
+    // F2 → steel-ins → insert 'X' before "bar".
+    ed.feed_key(f2);
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    // `w` selected "bar" (pos 4-6); insert-before put 'X' at pos 4 → "foo Xbar\n".
+    assert_eq!(ed.doc().text().to_string(), "foo Xbar\n");
+
+    // White-box (primary proof): recipe must survive the inner `insert-before` dispatch.
+    //
+    // Without the Gap A fix in execute.rs the inner dispatch does mem::take on
+    // selection_recipe (repeatable-edit branch), leaving it empty → len == 0 → FAILS.
+    // With the fix, the snapshot was taken before the body ran → len == 1 → PASSES.
+    let action = ed.state.last_repeatable_action.as_ref()
+        .expect("last_repeatable_action must be set after steel-ins");
+    assert_eq!(
+        action.selection_recipe.len(), 1,
+        "selection_recipe must not be clobbered by the inner (call! \"insert-before\")"
+    );
+    assert!(!action.selection_recipe[0].extend, "w step must be a Move (establish)");
+}
+
+/// After `.` replays a Steel insert action, a single `u` must undo the entire
+/// replayed edit as one step — proving `drain_pending_repeat`'s edit-group
+/// bracketing still works correctly for the Steel insert path.
+///
+/// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but uses a Steel command.
+#[test]
+fn steel_repeatable_insert_dot_repeat_single_undo() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[x]>y\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command-repeatable! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before")))"#,
+        "steel-ins",
+    );
+
+    // F2, type "AB", Esc → "ABxy"
+    ed.feed_key(f2);
+    ed.feed_key(key('A'));
+    ed.feed_key(key('B'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "ABxy\n");
+
+    // `w` from 'x' (pos 2 in "ABxy\n") selects "xy" (pos 2-3, to end of word).
+    // `.` replay: no recipe, insert-before at the selection start (pos 2), retype "AB".
+    ed.feed_key(key('w'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ABABxy\n");
+
+    // One undo must revert the entire replay.
+    ed.feed_key(key('u'));
+    assert_eq!(ed.doc().text().to_string(), "ABxy\n", "one undo must revert the full replay");
+}
+
+/// The `change` command (`c`) opens its undo group *through* `begin_insert_session`
+/// (the only code path that opens a group). A Steel command that wraps `change`
+/// via `(call! "change")` must therefore still create an InsertSession and record
+/// `insert_keys` correctly — the edit-then-insert group-guard case is NOT
+/// triggered here because `change` never leaves a bare edit group open without a
+/// session.
+///
+/// This test guards that the one reachable edit-before-insert path remains safe.
+#[test]
+fn steel_repeatable_change_via_call_records_insert_keys() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[foo]> bar\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command-repeatable! "steel-chg" "change selection"
+             (lambda () (call! "change")))"#,
+        "steel-chg",
+    );
+
+    // F2 (steel-chg = change), type "hi", Esc.
+    ed.feed_key(f2);
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc()); // "hi bar\n"
+    assert_eq!(ed.doc().text().to_string(), "hi bar\n");
+
+    // White-box: insert_keys must be back-filled.
+    {
+        let action = ed.state.last_repeatable_action.as_ref()
+            .expect("last_repeatable_action must be set after steel-chg");
+        assert_eq!(action.command.as_ref(), "steel-chg");
+        assert_eq!(action.insert_keys.len(), 2, "insert_keys must have 'h' and 'i'");
+    }
+
+    // Move to "bar" and replay: change "bar", retype "hi".
+    ed.feed_key(key('w'));
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hi hi\n",
+        "`.` must change the next selection and retype 'hi'"
+    );
+}
+
 // ── Agreement test ────────────────────────────────────────────────────────────
 
 /// All three native-classification sites must agree for every registered command:
