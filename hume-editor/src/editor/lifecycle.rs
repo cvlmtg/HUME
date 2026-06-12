@@ -163,6 +163,7 @@ impl Editor {
                 last_find: None,
                 force_full_redraw: false,
                 last_repeatable_action: None,
+                selection_recipe: Vec::new(),
                 insert_session: None,
                 explicit_count: false,
                 search: super::search_state::SearchState::default(),

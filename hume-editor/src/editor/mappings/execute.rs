@@ -167,12 +167,19 @@ impl Editor {
         // last_repeatable_action to the inner command name. We unconditionally
         // overwrite it here so the outer Steel command wins the repeat slot.
         if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
+            // Snapshot the recipe built by any preceding native selection commands.
+            let recipe = std::mem::take(&mut self.state.selection_recipe);
             self.state.last_repeatable_action = Some(super::super::RepeatableAction {
                 command: name.clone(),
                 count,
                 char_arg,
                 insert_keys: Vec::new(),
+                selection_recipe: recipe,
             });
+        } else {
+            // Non-repeatable Steel command: can't record its selection effect,
+            // so a stale recipe must not leak into the next edit.
+            self.state.selection_recipe.clear();
         }
         }
 

@@ -210,6 +210,206 @@ fn dot_repeats_paste_after() {
     );
 }
 
+// ── Selection-recipe dot-repeat tests ────────────────────────────────────────
+
+/// `x d` (select-line, delete) records recipe `[select-line F]`. Pressing `.`
+/// on the next line re-selects the whole line and deletes it.
+///
+/// Independent oracle: three-line buffer, first `x d` leaves two lines, second
+/// `x d` leaves one line — derived by hand, not from the implementation.
+///
+/// Regression: if the recipe replay is absent, `.` would delete only the char
+/// the cursor happened to be on (collapsed selection), not the whole line.
+#[test]
+fn dot_repeats_select_line_delete() {
+    // Three lines; cursor on 'a'.
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
+
+    ed.feed_key(key('x')); // select-line → "aaa\n" selected
+    ed.feed_key(key('d')); // delete "aaa\n" → "bbb\nccc\n", cursor on 'b'
+    assert_eq!(ed.doc().text().to_string(), "bbb\nccc\n");
+
+    // The recipe must be [select-line] (not empty).
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        1,
+        "recipe must contain select-line step"
+    );
+
+    // `.` replays: re-select current line ("bbb\n"), delete it.
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ccc\n",
+        "`.` must re-select the current line and delete it"
+    );
+}
+
+/// `x Ctrl+x d` selects two lines (one establish + one extend) and deletes them.
+/// `.` replays the full two-step recipe, deleting the next two lines.
+///
+/// Independent oracle: four-line buffer: first `x Ctrl+x d` leaves two lines;
+/// second replay deletes both → one structural line remains.
+#[test]
+fn dot_repeats_extend_select_delete() {
+    // Four lines; cursor on 'a'.
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\nddd\n");
+
+    ed.feed_key(key('x'));          // select "aaa\n"
+    ed.feed_key(key_ctrl('x'));     // extend to "aaa\nbbb\n"
+    ed.feed_key(key('d'));          // delete → "ccc\nddd\n", cursor on 'c'
+    assert_eq!(ed.doc().text().to_string(), "ccc\nddd\n");
+
+    // Recipe must be [select-line F, select-line T] (establish + one extend).
+    let recipe = &ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe;
+    assert_eq!(recipe.len(), 2, "recipe must have 2 steps");
+    assert!(!recipe[0].extend, "first step must be Move (establish)");
+    assert!(recipe[1].extend,  "second step must be Extend");
+
+    // `.` replays: x (select "ccc\n") + Ctrl+x (extend to "ccc\nddd\n") + d.
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n",
+        "`.` must re-select two lines and delete them"
+    );
+}
+
+/// Navigation (`j` = move-down) before `x d` must NOT appear in the recipe.
+/// Only the `x` (establish) step is recorded; `.` does NOT move down first.
+///
+/// Independent oracle: four-line buffer; `j x d` deletes line 1 ("bbb\n"),
+/// leaving "aaa\nccc\nddd\n". `.` must re-select line 1 ("ccc\n") and delete
+/// it, giving "aaa\nddd\n". If `j` were in the recipe, `.` would instead move
+/// down from "ccc" to "ddd" first, deleting "ddd\n" and leaving "aaa\nccc\n".
+///
+/// Fail oracle: if the `is_collapsed()` guard were removed, `j` (a Motion in
+/// Move mode) would always enter the recipe as a first step, making `.` move
+/// down before deleting, producing "aaa\nccc\n" instead of "aaa\nddd\n".
+#[test]
+fn dot_repeat_navigation_not_in_recipe() {
+    // Four lines so that the last-line structural-'\n' protection does not
+    // interfere with any of the delete operations below.
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\nddd\n");
+
+    ed.feed_key(key('j')); // move-down: collapsed cursor on 'b', recipe cleared
+    ed.feed_key(key('x')); // select-line "bbb\n": recipe = [select-line F]
+    ed.feed_key(key('d')); // delete "bbb\n" → "aaa\nccc\nddd\n", cursor on 'c'
+    assert_eq!(ed.doc().text().to_string(), "aaa\nccc\nddd\n");
+
+    // Recipe must have exactly one step (x only — j must have been cleared).
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        1,
+        "navigation (j) must not appear in the selection recipe"
+    );
+
+    // `.` replays x (selects current line "ccc\n") + d (deletes it).
+    // If j were in the recipe, `.` would move down to "ddd\n" first and delete
+    // that, leaving "aaa\nccc\n" — the oracle below distinguishes the two cases.
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "aaa\nddd\n",
+        "`.` must re-select and delete the current line, NOT move down first"
+    );
+}
+
+/// `j d` (navigate then delete a collapsed single-char selection) records an
+/// empty recipe. `.` replays just the delete on whatever the current selection is
+/// — backward-compatible behavior, identical to before this change.
+#[test]
+fn dot_repeat_collapsed_cursor_empty_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
+
+    ed.feed_key(key('j')); // move-down: collapsed on 'b', recipe cleared
+    ed.feed_key(key('d')); // delete 'b' (1-char selection), recipe = []
+    assert_eq!(ed.doc().text().to_string(), "aaa\nbb\nccc\n");
+
+    // Recipe must be empty.
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().unwrap().selection_recipe.len(),
+        0,
+        "empty recipe for plain single-char delete"
+    );
+
+    // `.` repeats just the delete (no line reselection).
+    ed.feed_key(key('.'));
+    // Oracle: second 'b' deleted → "aaa\nb\nccc\n"
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "aaa\nb\nccc\n",
+        "`.` must delete the current 1-char selection, not reselect a whole line"
+    );
+}
+
+/// `x c <text> Esc` records recipe=[select-line F] + insert_keys=[...]. `.` on
+/// another line re-selects the full line, runs change, and retypes the text.
+///
+/// Independent oracle: three-line buffer; `x c z Esc` on line 0 deletes
+/// "aaa\n" and inserts 'z' before the remaining content → "zbbb\nccc\n".
+/// Then `.` on line 1 re-selects "ccc\n" via the recipe, runs change (deletes
+/// "ccc", leaving the structural '\n'), inserts 'z' → "zbbb\nz\n".
+///
+/// Fail oracle: without the recipe, `.` would run change on the collapsed
+/// 1-char cursor at 'c', deleting only 'c' and inserting 'z' → "zbbb\nzcc\n".
+#[test]
+fn dot_repeats_change_reselects_line() {
+    // Three lines; the structural-'\n' protection only affects the last content
+    // line (here "ccc\n"), which is fine — the test still proves full-line reselect.
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
+
+    ed.feed_key(key('x')); // select "aaa\n"
+    ed.feed_key(key('c')); // change: delete "aaa\n" → "bbb\nccc\n", cursor at 'b'; enter Insert
+    ed.feed_key(key('z')); // type 'z' → "zbbb\nccc\n"
+    ed.feed_key(key_esc()); // back to Normal
+    assert_eq!(ed.doc().text().to_string(), "zbbb\nccc\n");
+
+    // Recipe must be [select-line F]; insert_keys must be ['z'].
+    {
+        let action = ed.state.last_repeatable_action.as_ref().unwrap();
+        assert_eq!(action.selection_recipe.len(), 1, "recipe must have select-line step");
+        assert_eq!(action.insert_keys.len(), 1, "insert_keys must capture typed chars");
+    }
+
+    // Move to 'c' and press `.`.
+    ed.feed_key(key('j')); // move-down to 'c' (line 1)
+    ed.feed_key(key('.'));  // re-select "ccc\n" via recipe, change, retype 'z'
+
+    // Oracle: recipe re-selects "ccc\n", change deletes "ccc" (structural '\n' stays),
+    // inserts 'z' → "zbbb\nz\n". Without recipe, only 'c' would be deleted → "zbbb\nzcc\n".
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "zbbb\nz\n",
+        "`.` must re-select the full line, change it, and replay insert_keys"
+    );
+}
+
+/// `undo` must clear the selection-recipe buffer so a stale `select-line` does
+/// not leak into the next edit's recipe.
+///
+/// Fail oracle: drop the `else { state.selection_recipe.clear() }` branch for
+/// non-repeatable EditorCmds → `selection_recipe` is not cleared by `undo` →
+/// the assert will see len=1 instead of 0.
+#[test]
+fn undo_clears_selection_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\n");
+
+    // Establish a recipe via `x`.
+    ed.feed_key(key('x'));
+    assert_eq!(
+        ed.state.selection_recipe.len(), 1,
+        "setup: x must establish a 1-step recipe"
+    );
+
+    // `u` (undo) is a non-repeatable EditorCmd → must clear the recipe.
+    ed.feed_key(key('u'));
+    assert_eq!(
+        ed.state.selection_recipe.len(), 0,
+        "undo must clear the selection recipe buffer"
+    );
+}
+
 /// `f`/`t` are NOT repeatable (they have `=`/`-` for that). Pressing `.`
 /// after a find/till motion should be a no-op.
 #[test]

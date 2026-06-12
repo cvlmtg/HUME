@@ -21,7 +21,7 @@ use hume_engine::pipeline::{BufferId, EngineView};
 use hume_editing::selection::SelectionSet;
 
 use super::{register_ops, Severity};
-use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction};
+use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
@@ -139,10 +139,18 @@ pub(super) fn dispatch_native(
     let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
 
     // Capture classifier bools BEFORE the by-value match consumes `cmd`.
-    let is_jump      = cmd.is_jump();
-    let is_visual    = cmd.is_visual_move();
-    let is_motion    = matches!(cmd, MappableCommand::Motion { .. });
+    let is_jump       = cmd.is_jump();
+    let is_visual     = cmd.is_visual_move();
+    let is_motion     = matches!(cmd, MappableCommand::Motion { .. });
     let is_repeatable = cmd.is_repeatable();
+    // Motion and Selection commands are potential selection-builders. EditorCmd,
+    // Edit, Steel, etc. are NOT — gating on variant prevents undo/redo (which are
+    // non-repeatable EditorCmds that can leave a non-collapsed selection) from
+    // polluting the recipe buffer.
+    let is_sel_builder = matches!(
+        cmd,
+        MappableCommand::Motion { .. } | MappableCommand::Selection { .. }
+    );
 
     // Commit any open paste session before non-cycle dispatch so all `[`/`]`
     // cycles fold into a single undo step. Must happen before the actual dispatch
@@ -206,14 +214,54 @@ pub(super) fn dispatch_native(
         }
     }
 
-    // Dot-repeat: record repeatable commands for `.` replay.
+    // Dot-repeat: record repeatable commands and maintain the selection recipe.
+    //
+    // The recipe buffer (`state.selection_recipe`) tracks how the current selection
+    // was built: Motion/Selection commands append/reset it; a repeatable edit
+    // snapshots it (via mem::take) into `RepeatableAction::selection_recipe` so
+    // `.` can re-establish the same extent before replaying the edit.
+    //
+    // Accumulation rule (variant-gated to exclude undo/redo/mode-changes):
+    //   repeatable edit/paste  → snapshot + clear
+    //   sel-builder, Extend    → append (grew the selection)
+    //   sel-builder, Move, non-collapsed → reset (fresh real selection)
+    //   sel-builder, Move, collapsed     → clear (plain navigation)
+    //   everything else        → clear
     if is_repeatable {
+        let recipe = std::mem::take(&mut state.selection_recipe);
         state.last_repeatable_action = Some(RepeatableAction {
             command: name.clone(),
             count,
             char_arg,
             insert_keys: Vec::new(),
+            selection_recipe: recipe,
         });
+    } else if is_sel_builder {
+        if extend {
+            // Grew the existing selection — append this step.
+            state.selection_recipe.push(SelectionStep {
+                command: name.clone(),
+                count,
+                char_arg,
+                extend: true,
+            });
+        } else if !current_selections(state, view).primary().is_collapsed() {
+            // Move-mode established a real (non-collapsed) selection: start fresh.
+            state.selection_recipe.clear();
+            state.selection_recipe.push(SelectionStep {
+                command: name.clone(),
+                count,
+                char_arg,
+                extend: false,
+            });
+        } else {
+            // Plain navigation — collapsed cursor, nothing to rebuild.
+            state.selection_recipe.clear();
+        }
+    } else {
+        // Non-repeatable EditorCmd (undo, redo, mode-changes, …): not a
+        // selection-builder; any in-progress recipe is now stale.
+        state.selection_recipe.clear();
     }
 
     // Smart-p: update last_command so `p`/`P` knows whether to read the

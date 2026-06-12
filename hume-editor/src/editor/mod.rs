@@ -88,6 +88,24 @@ pub(super) struct InsertSession {
     step_back_on_exit: bool,
 }
 
+/// One selection-building step in a dot-repeat recipe.
+///
+/// Recorded by `dispatch_native` as Motion/Selection commands run, so that
+/// `drain_pending_repeat` can replay them before the edit, rebuilding the
+/// extent the edit originally acted on.
+#[derive(Debug, Clone)]
+pub(super) struct SelectionStep {
+    /// Command name (e.g. `"select-line"`, `"select-next-word"`, `"find-char"`).
+    pub command: Cow<'static, str>,
+    /// Count prefix originally used.
+    pub count: usize,
+    /// Char argument for wait-char selection commands (`f`/`t`); else `None`.
+    pub char_arg: Option<char>,
+    /// `true` if this step ran in Extend mode (grew the existing selection).
+    /// The first step in a recipe is always `false` (a fresh Move-mode establish).
+    pub extend: bool,
+}
+
 /// A recorded editing action that can be replayed by `.`.
 ///
 /// Stores the recipe to re-execute a command rather than the raw changeset —
@@ -108,6 +126,12 @@ pub(super) struct RepeatableAction {
     /// Populated by the insert-mode recording path when the command transitions
     /// to Insert mode. Empty for non-insert actions like `delete` or `paste-after`.
     pub insert_keys: Vec<KeyEvent>,
+    /// Selection-building recipe to replay BEFORE the edit.
+    ///
+    /// Invariant: `[]` (edit acted on pre-existing selection, backward-compatible)
+    /// or `[one Move-mode establish, then zero+ Extend appends]`. Rebuilt from
+    /// `EditorState::selection_recipe` each time a repeatable command is recorded.
+    pub selection_recipe: Vec<SelectionStep>,
 }
 
 // ── Deferred dot-repeat ───────────────────────────────────────────────────────
@@ -233,6 +257,14 @@ pub(crate) struct EditorState {
     pub(super) visual_move_target_cols: Vec<u16>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
+    /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
+    ///
+    /// Tracks how the current selection was built: Motion/Selection commands
+    /// append or reset this buffer; repeatable edits snapshot it into
+    /// `RepeatableAction::selection_recipe` (via `mem::take`) and clear it.
+    /// Non-selection commands clear it. Invariant: `[]` or
+    /// `[Move-establish, Extend*]`.
+    pub(super) selection_recipe: Vec<SelectionStep>,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `drain_pending_repeat` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
@@ -447,16 +479,27 @@ impl Editor {
             return;
         };
 
-        // Restore the char arg so wait-char commands (replace, find/till) work.
-        self.state.pending_char = action.char_arg;
-
         // Pre-open the edit group — the "replay signal" used by begin_insert_session
         // to suppress both the redundant begin_edit_group call and keystroke recording
         // (insert_session is only created when no group is open).
         self.begin_edit_group_current();
 
+        // Rebuild the selection extent the edit originally acted on. Selection
+        // commands don't mutate the doc, so running them inside the edit-group
+        // bracket is inert. Each step carries its own char arg and extend flag.
+        for step in &action.selection_recipe {
+            self.state.pending_char = step.char_arg;
+            self.execute_keymap_command(
+                step.command.clone(), step.count, step.extend, vec![],
+            );
+        }
+
+        // Restore the edit's own char arg (recipe steps may have overwritten
+        // pending_char) so wait-char edits (replace, find/till) still work.
+        self.state.pending_char = action.char_arg;
+
         // Re-dispatch through the full keymap dispatcher: any command kind —
-        // including future SteelBacked repeatable commands — fires correctly here.
+        // including SteelBacked repeatable commands — fires correctly here.
         self.execute_keymap_command(action.command.clone(), count, false, vec![]);
 
         // Feed recorded insert keystrokes through the insert handler.
@@ -538,6 +581,7 @@ impl Editor {
                 last_find: None,
                 force_full_redraw: false,
                 last_repeatable_action: None,
+                selection_recipe: Vec::new(),
                 pending_repeat: None,
                 insert_session: None,
                 explicit_count: false,
