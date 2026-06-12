@@ -472,6 +472,7 @@ mod tests {
             arity: 0,
             is_variadic: false,
             inline_output: false,
+            repeatable: false,
         };
         let cmd_f = MappableCommand::SteelBacked {
             name: "y".into(),
@@ -480,6 +481,7 @@ mod tests {
             arity: 0,
             is_variadic: false,
             inline_output: false,
+            repeatable: false,
         };
         assert!(cmd_t.is_extendable());
         assert!(!cmd_f.is_extendable());
@@ -583,6 +585,7 @@ mod tests {
             arity: 0,
             is_variadic: false,
             inline_output: false,
+            repeatable: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
@@ -591,6 +594,7 @@ mod tests {
             arity: 0,
             is_variadic: false,
             inline_output: false,
+            repeatable: false,
         });
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
@@ -631,6 +635,7 @@ mod tests {
             arity: 0,
             is_variadic: false,
             inline_output: false,
+            repeatable: false,
         });
         reg.register(MappableCommand::Lazy {
             name: Cow::Owned("lazy-cmd".to_string()),

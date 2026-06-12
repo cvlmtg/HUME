@@ -58,7 +58,7 @@ pub(crate) fn define_command(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command!", name, doc, proc, false, false)
+    define_command_inner(ctx, "define-command!", name, doc, proc, false, false, false)
 }
 
 /// `(define-command-extend! name doc proc)`
@@ -79,7 +79,7 @@ pub(crate) fn define_command_extend(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command-extend!", name, doc, proc, true, false)
+    define_command_inner(ctx, "define-command-extend!", name, doc, proc, true, false, false)
 }
 
 /// `(define-command-inline-output! name doc proc)`
@@ -96,7 +96,24 @@ pub(crate) fn define_command_inline_output(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command-inline-output!", name, doc, proc, false, true)
+    define_command_inner(ctx, "define-command-inline-output!", name, doc, proc, false, true, false)
+}
+
+/// `(define-command-repeatable! name doc proc)`
+///
+/// Like `(define-command! …)` but opts the command into dot-repeat (`.`).
+/// Use only for self-contained buffer edits that make sense to repeat at a new
+/// cursor position.  Non-edit commands (toggles, pickers, jumps, formatters)
+/// should use plain `(define-command! …)` — they must not hijack `.`.
+///
+/// Same error conditions as `(define-command! …)`.
+pub(crate) fn define_command_repeatable(
+    ctx: &mut SteelCtx,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+) -> SteelResult {
+    define_command_inner(ctx, "define-command-repeatable!", name, doc, proc, false, false, true)
 }
 
 fn define_command_inner(
@@ -107,6 +124,7 @@ fn define_command_inner(
     proc: SteelVal,
     extendable: bool,
     inline_output: bool,
+    repeatable: bool,
 ) -> SteelResult {
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
@@ -136,7 +154,7 @@ fn define_command_inner(
     ctx.registries.cmd_owners.insert(name.clone(), current_owner.to_string());
     // Register inline in the editor's CommandRegistry so subsequent keypresses
     // find SteelBacked entries immediately — no post-eval second pass.
-    ctx.host.register_command(SteelCmdDef { name, doc, extendable, arity, is_variadic, inline_output })
+    ctx.host.register_command(SteelCmdDef { name, doc, extendable, arity, is_variadic, inline_output, repeatable })
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)
 }

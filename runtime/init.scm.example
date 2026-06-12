@@ -83,6 +83,10 @@
 ;;   live to the terminal.  After the command finishes, press any key to return
 ;;   to the editor.  Use this for any command that shells out with output you
 ;;   want to read (e.g. plum install, cargo fmt).
+;; (define-command-repeatable! name doc-string (lambda () body...))
+;;   Same as define-command!, but opts the command into dot-repeat (`.`).
+;;   Use only for self-contained buffer edits that make sense to repeat at a
+;;   new cursor position.  Avoid for toggles, pickers, or navigation commands.
 ;;
 ;; The command becomes available as ":name" in the command bar.
 ;; Use (call! "other-command") or (call! "cmd" arg1 arg2…) to invoke any

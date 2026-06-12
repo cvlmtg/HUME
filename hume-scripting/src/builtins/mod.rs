@@ -215,6 +215,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         "define-command-inline-output!",
         commands::define_command_inline_output,
     );
+    steel.register_fn_with_ctx(
+        HUME_CTX,
+        "define-command-repeatable!",
+        commands::define_command_repeatable,
+    );
     // %call-native! is the Rust leaf for native/lazy/unknown dispatch; the variadic
     // (call! name args…) macro desugars to (%dispatch-command …) which routes
     // activated plugin commands inline in Steel and falls back here for everything else.

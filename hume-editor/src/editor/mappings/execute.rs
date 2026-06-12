@@ -155,6 +155,25 @@ impl Editor {
                 _ => unreachable!("non-native variants exhausted above"),
             }
 
+        // Dot-repeat: record opt-in Steel commands on the success path.
+        //
+        // Re-query the registry because a Lazy first-hit was replaced by its
+        // SteelBacked entry during %activate-plugin-inline above — `reg_cmd`
+        // (from the pre-dispatch lookup) still holds the Lazy variant. One
+        // extra HashMap get is negligible next to a Scheme eval.
+        //
+        // Placed *after* call_steel_cmd returns: if the Steel wrapper internally
+        // dispatched a native command via (call!), that inner dispatch set
+        // last_repeatable_action to the inner command name. We unconditionally
+        // overwrite it here so the outer Steel command wins the repeat slot.
+        if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
+            self.state.last_repeatable_action = Some(super::super::RepeatableAction {
+                command: name.clone(),
+                count,
+                char_arg,
+                insert_keys: Vec::new(),
+            });
+        }
         }
 
         // Drain any hooks queued during command execution (mode changes, etc.).

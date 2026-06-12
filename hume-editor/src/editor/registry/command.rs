@@ -110,8 +110,7 @@ pub(crate) enum MappableCommand {
     /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
     /// routes through `%dispatch-command` → `command_table` → `(apply proc args)`.
     ///
-    /// Not repeatable, not jump, not visual-line — these can be added as
-    /// optional flags once the use-cases emerge.
+    /// Dot-repeat opt-in via `repeatable`.  Not jump, not visual-line.
     SteelBacked {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
@@ -127,6 +126,11 @@ pub(crate) enum MappableCommand {
         /// `true` if dispatch should bracket the call with an alt-screen exit
         /// so subprocess output streams live to the terminal.
         inline_output: bool,
+        /// `true` if pressing `.` should repeat this command.
+        ///
+        /// Opt in via `(define-command-repeatable! …)`.  Non-edit commands
+        /// must leave this `false` to avoid clobbering the user's repeat target.
+        repeatable: bool,
     },
     /// A placeholder for a lazy plugin command that has not yet been loaded.
     ///
@@ -168,14 +172,15 @@ impl MappableCommand {
     /// Returns `true` if this command should be recorded for `.` repeat.
     ///
     /// Motions and selections are never repeatable — they don't mutate the
-    /// buffer. Edit and EditorCmd commands opt in explicitly at registration.
+    /// buffer.  Edit, EditorCmd, and SteelBacked commands opt in explicitly
+    /// at registration.  Lazy stubs are never repeatable — they become
+    /// `SteelBacked` on first dispatch, after which the flag is read correctly.
     pub(crate) fn is_repeatable(&self) -> bool {
         match self {
-            Self::Motion { .. }
-            | Self::Selection { .. }
-            | Self::SteelBacked { .. }
-            | Self::Lazy { .. } => false,
-            Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
+            Self::Motion { .. } | Self::Selection { .. } | Self::Lazy { .. } => false,
+            Self::Edit { repeatable, .. }
+            | Self::EditorCmd { repeatable, .. }
+            | Self::SteelBacked { repeatable, .. } => *repeatable,
         }
     }
 

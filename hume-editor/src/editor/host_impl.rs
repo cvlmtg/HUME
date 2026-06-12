@@ -188,6 +188,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                     arity: def.arity,
                     is_variadic: def.is_variadic,
                     inline_output: def.inline_output,
+                    repeatable: def.repeatable,
                 });
                 Ok(())
             }
