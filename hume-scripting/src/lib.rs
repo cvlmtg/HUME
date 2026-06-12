@@ -508,7 +508,7 @@ impl ScriptingHost {
             format!("(%dispatch-command \"{name}\" (list {}))", arg_refs.join(" "))
         };
 
-        let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
+        let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps, registered_cmds) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -519,7 +519,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(steel, &mut steel_ctx, invocation, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
+            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps, steel_ctx.registered_cmds)
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
@@ -529,7 +529,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps })
+        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps, registered_cmds })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.

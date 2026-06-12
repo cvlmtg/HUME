@@ -18,7 +18,7 @@ impl Editor {
         let result = {
             let Some(host) = self.scripting.as_mut() else { return };
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            host.activate_plugin(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
+            host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
         match result {
             Ok(cmds) => self.register_steel_cmds(cmds),

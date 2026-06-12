@@ -56,14 +56,42 @@ impl Editor {
             self.state.last_command = Some(name.clone());
 
             match reg_cmd {
-                MappableCommand::Lazy { ref plugin, .. } => {
-                    let plugin = plugin.clone();
-                    if self.activate_lazy_plugin(&plugin, name.as_ref()) {
-                        self.execute_keymap_command(name, count, extend, steel_args);
-                    } else {
-                        self.report(Severity::Warning, format!("unknown command: {name}"));
+                MappableCommand::Lazy { .. } => {
+                    if self.scripting.is_none() {
+                        return;
                     }
-                    return;
+                    let focused_pane_id = self.state.focused_pane_id;
+                    let focused_buffer_id = self.focused_buffer_id();
+                    let result = {
+                        let host_scr = self.scripting.as_mut().expect("checked above");
+                        let mut impl_host = EditorHostImpl {
+                            state: &mut self.state,
+                            view: &mut self.view,
+                        };
+                        host_scr.call_steel_cmd(name.as_ref(), char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
+                    };
+                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps, reg_cmds) = match result {
+                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps, r.registered_cmds),
+                        Err(e) => {
+                            self.report(Severity::Error, e);
+                            return;
+                        }
+                    };
+                    self.register_steel_cmds(reg_cmds);
+                    self.flush_script_messages();
+                    for (bid, lang) in lang_sets {
+                        self.set_buffer_language(bid, lang);
+                    }
+                    if !grammar_sweeps.is_empty() {
+                        self.sweep_buffers_for_grammars(grammar_sweeps);
+                    }
+                    self.drain_command_queue(queue, count, extend);
+                    if let Some(wc) = wait_char_cmd {
+                        self.state.wait_char = Some(WaitCharPending {
+                            cmd_name: wc.into(),
+                            ctrl_extend: false,
+                        });
+                    }
                 }
                 MappableCommand::SteelBacked { ref name, inline_output, .. } => {
                     if self.scripting.is_none() {
@@ -106,13 +134,14 @@ impl Editor {
                         self.state.force_full_redraw = true;
                     }
 
-                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps) = match result {
-                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
+                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps, reg_cmds) = match result {
+                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps, r.registered_cmds),
                         Err(e) => {
                             self.report(Severity::Error, e);
                             return;
                         }
                     };
+                    self.register_steel_cmds(reg_cmds);
                     self.flush_script_messages();
                     for (bid, lang) in lang_sets {
                         self.set_buffer_language(bid, lang);

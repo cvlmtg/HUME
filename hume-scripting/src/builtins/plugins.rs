@@ -215,9 +215,6 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
         }
     }
 
-    if !ctx.pending_plugin_loads.contains(&id) {
-        ctx.pending_plugin_loads.push(id);
-    }
     Ok(SteelVal::Void)
 }
 

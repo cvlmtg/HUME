@@ -49,11 +49,6 @@ pub(crate) struct SteelCtx<'a> {
     /// Where core plugins, themes, and docs live.
     pub(crate) runtime_dir: Option<&'a std::path::Path>,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
-    /// Plugins queued for activation at the end of this eval (init.scm or plugin
-    /// body).  Populated by `%load-plugin!` (eager) or by force-activating a
-    /// declared plugin; drained by `eval_source_raw` (init.scm) and by
-    /// `activate_plugin` (plugin body).
-    pub(crate) pending_plugin_loads: Vec<super::attribution::PluginId>,
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
@@ -115,7 +110,6 @@ impl<'a> SteelCtx<'a> {
             pending_language_regs: host_bundle.pending_language_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
-            pending_plugin_loads: Vec::new(),
             builtin_cmd_names,
             registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,
@@ -153,7 +147,6 @@ impl<'a> SteelCtx<'a> {
             pending_language_regs: host_bundle.pending_language_regs,
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
-            pending_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
             registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,

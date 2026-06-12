@@ -3,17 +3,23 @@
 //! ## Activation state machine
 //!
 //! ```text
-//! Declared ──── activate_plugin ────► Loading ──┬──► Loaded
-//!                                               └──► Failed
+//! Declared ──── %activate-plugin-inline ────► Loading ──┬──► Loaded
+//!                                                        └──► Failed
 //!
-//! Loaded / Failed / Loading / absent  ──► Ok(vec![])  (no-op)
+//! Loaded / Failed / Loading / absent  ──► no-op (#f guard in %begin-lazy-activation)
 //! ```
 //!
-//! `eval_source_raw` drives `init.scm` evaluation and then calls
-//! `activate_plugin` for every `(load-plugin …)` call discovered inside the
-//! source.  `activate_plugin` is also the lazy-activation entry point invoked
-//! by the editor when a command trigger, event trigger, or language trigger
-//! fires at runtime.
+//! All plugin activation is synchronous/inline:
+//! - `load-plugin` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`
+//!   (declare/record) then `%activate-plugin-inline` (inline body eval via `hm.eval-string`).
+//! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
+//!   `command_table` miss, then retries.
+//! - Event/language triggers: `activate_plugin_inline` (Rust) bounces into
+//!   `(%activate-plugin-inline id)` via `run_steel`, using its own watchdog.
+//!
+//! `activate_plugin` is retained for direct-activation tests; it is the Rust
+//! equivalent of the Scheme `%activate-plugin-inline` helper and will be removed
+//! in Stage E.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -71,13 +77,12 @@ pub(crate) fn run_steel<'a>(
 impl ScriptingHost {
     /// Core eval machinery used by [`ScriptingHost::eval_init`].
     ///
-    /// Evaluates `source` (init.scm) then, for each plugin queued by
-    /// `(load-plugin …)` or `(declare-plugin …)` + explicit `(load-plugin …)`,
-    /// submits `(require "<abs-path>")` on the same Steel engine.  Each plugin is its
-    /// own Steel module, so private helpers with the same name in different
-    /// plugins are mangled to distinct globals and never collide.  Commands are
-    /// drained between plugins so that a later plugin can bind keys to commands
-    /// defined by an earlier one.
+    /// Evaluates `source` (init.scm) synchronously.  Any `(load-plugin …)` calls
+    /// inside the source activate their plugin bodies inline via the BOOTSTRAP
+    /// `%activate-plugin-inline` helper (which uses `hm.eval-string` — VM-aware,
+    /// no `&mut Engine` borrow).  Commands defined by any activated plugin are
+    /// accumulated in `steel_ctx.registered_cmds` and returned to the caller for
+    /// insertion into `CommandRegistry`.
     pub(crate) fn eval_source_raw(
         &mut self,
         source: String,
@@ -85,40 +90,17 @@ impl ScriptingHost {
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<SteelCmdDef>, String> {
-
-        // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
-        // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
-        // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
-        let (eval_result, init_defs, pending_plugin_loads, startup_cmds) = {
+        let (eval_result, init_defs, startup_cmds) = {
             let (steel, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
+            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
 
             let result = run_steel(steel, &mut steel_ctx, source, budget_ms);
-            (
-                result,
-                steel_ctx.registered_cmds,
-                steel_ctx.pending_plugin_loads,
-                steel_ctx.cmd_queue,
-            )
+            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
         };
 
         self.pending_startup_commands.extend(startup_cmds);
         eval_result?;
-
-        // command_table and cmd_owners are already populated inline by define_command_inner;
-        // init_defs carries the SteelCmdDefs for the editor to register in CommandRegistry.
-        let mut all_cmds = init_defs;
-
-        // Step 2: activate each queued plugin via the shared activate_plugin path.
-        // Steel's module system mangles the plugin's private bindings
-        // (e.g. `##mm<id>~helper`), so same-named helpers in different plugins
-        // live in disjoint globals.  Command lambdas close over their mangled
-        // helpers and dispatch correctly via the name-based `CommandRegistry`.
-        for id in pending_plugin_loads {
-            all_cmds.extend(self.activate_plugin(&id, budget_ms, host, &builtin_names)?);
-        }
-
-        Ok(all_cmds)
+        Ok(init_defs)
     }
 
     /// Evaluate a plugin body by requiring its file into the Steel engine.
@@ -171,14 +153,14 @@ impl ScriptingHost {
         // Attribution: push before the require eval, pop after.
         self.plugin_stack.push(id.clone());
 
-        let (plugin_result, plugin_defs, requires, plugin_startup_cmds) = {
+        let (plugin_result, plugin_defs, plugin_startup_cmds) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
 
             let result = run_steel(steel, &mut steel_ctx, require_program, budget_ms);
             // command_table and cmd_owners are already populated inline by define_command_inner;
             // registered_cmds carries the SteelCmdDefs for the editor's CommandRegistry.
-            (result, steel_ctx.registered_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)
+            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
         };
 
         self.pending_startup_commands.extend(plugin_startup_cmds);
@@ -187,36 +169,13 @@ impl ScriptingHost {
 
         match plugin_result {
             Ok(()) => {
-                // Build parent defs while the parent is still `Loading` — the
-                // cycle guard at the top of activate_plugin short-circuits any
-                // re-entrant call for the same id.
-                let mut defs = plugin_defs;
-                // Drain transitive `(load-plugin …)` calls made by the body.
-                // Activate them before finalising the parent so that a transitive
-                // failure leaves the parent in `Failed` rather than an inconsistent
-                // `Loaded`+no-commands state.
-                for req in requires {
-                    match self.activate_plugin(&req, budget_ms, host, builtin_names) {
-                        Ok(d) => defs.extend(d),
-                        Err(e) => {
-                            self.registries.lazy_registry
-                                .plugins
-                                .insert(id.clone(), PluginState::Failed);
-                            self.registries.lazy_registry.drop_triggers_for(id);
-                            return Err(format!("loading plugin '{id}': transitive dep failed: {e}"));
-                        }
-                    }
-                }
                 self.registries.lazy_registry
                     .plugins
                     .insert(id.clone(), PluginState::Loaded);
-                // Drop all trigger-map entries — the real SteelBacked commands
-                // are registered by the caller after this returns, and any Lazy
-                // stub is overwritten by register_steel_cmds.  Trigger names the
-                // body did NOT define are cleaned up by activate_lazy_plugin's
-                // loop guard.
+                // Drop trigger-map entries — the real SteelBacked commands are
+                // registered by the caller after this returns.
                 self.registries.lazy_registry.drop_triggers_for(id);
-                Ok(defs)
+                Ok(plugin_defs)
             }
             Err(e) => {
                 self.registries.lazy_registry
@@ -228,6 +187,34 @@ impl ScriptingHost {
                 Err(format!("loading plugin '{id}': {e}"))
             }
         }
+    }
+
+    /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel`.
+    ///
+    /// Used by event- and language-trigger paths (`activate_and_register`) that
+    /// fire outside any running eval — they need their own watchdog.  The plugin
+    /// body runs inside `hm.eval-string` which is VM-aware (no `&mut Engine`),
+    /// sharing the same `ctx.registries` as any outer eval.
+    ///
+    /// Returns the `SteelCmdDef`s produced by `define-command!` calls inside the
+    /// plugin body.  The caller is responsible for passing them to `register_steel_cmds`.
+    pub fn activate_plugin_inline(
+        &mut self,
+        id: &attribution::PluginId,
+        budget_ms: u64,
+        host: &mut dyn EditorHost,
+        builtin_names: &HashSet<String>,
+    ) -> Result<Vec<SteelCmdDef>, String> {
+        let program = format!(r#"(%activate-plugin-inline "{id}")"#);
+        let (plugin_result, plugin_defs, plugin_startup_cmds) = {
+            let (steel, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
+            let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
+            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
+        };
+        self.pending_startup_commands.extend(plugin_startup_cmds);
+        plugin_result?;
+        Ok(plugin_defs)
     }
 }
 
@@ -378,42 +365,7 @@ mod tests {
         );
     }
 
-    // ── Case 5: Transitive-dep failure rolls parent to Failed ─────────────────
-
-    #[test]
-    fn transitive_dep_failure_rolls_parent_to_failed() {
-        let dir = TempDir::new().unwrap();
-        // Plugin B has a syntax error.
-        let path_b = write_plugin(&dir, "b.scm", "(((bad");
-        // Plugin A's body loads B via the %load-plugin! primitive.
-        // B is already in lazy_registry (seeded below), so %load-plugin! just
-        // pushes "core:b" to pending_plugin_loads — no disk access needed.
-        let path_a = write_plugin(&dir, "a.scm", r#"(%load-plugin! "core:b")"#);
-
-        let id_a = plugin_id("core:a");
-        let id_b = plugin_id("core:b");
-        let mut host = ScriptingHost::new();
-        host.registries.lazy_registry
-            .plugins
-            .insert(id_a.clone(), PluginState::Declared { path: path_a });
-        host.registries.lazy_registry
-            .plugins
-            .insert(id_b.clone(), PluginState::Declared { path: path_b });
-
-        let result = host.activate_plugin(&id_a, 10_000, &mut NullHost, &no_builtins());
-
-        assert!(result.is_err(), "transitive failure must propagate as Err");
-        assert!(
-            matches!(host.registries.lazy_registry.plugins.get(&id_a), Some(PluginState::Failed)),
-            "parent plugin A must be Failed when its dep B fails"
-        );
-        assert!(
-            matches!(host.registries.lazy_registry.plugins.get(&id_b), Some(PluginState::Failed)),
-            "dep plugin B must itself be Failed"
-        );
-    }
-
-    // ── Case 6: Path containing '"' rejected before any eval ─────────────────
+    // ── Case 5: Path containing '"' rejected before any eval ─────────────────
 
     #[test]
     fn path_with_quote_char_transitions_to_failed() {

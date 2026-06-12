@@ -8,6 +8,7 @@ use hume_engine::pipeline::BufferId;
 /// Returned by [`super::ScriptingHost::eval_init`] and
 /// [`super::ScriptingHost::activate_plugin`]; the editor layer registers
 /// the commands after a successful eval.
+#[derive(Debug)]
 pub struct SteelCmdDef {
     pub name: String,
     pub doc: String,
@@ -66,6 +67,10 @@ pub struct SteelCmdResult {
     /// Language names for which `(register-grammar! …)` just attached a grammar;
     /// drained by the executor into `sweep_buffers_for_grammars`.
     pub grammar_sweeps: Vec<String>,
+    /// Commands newly registered by inline plugin activation during this dispatch
+    /// (lazy-miss path in `%dispatch-command`).  The caller passes these to
+    /// `register_steel_cmds` so subsequent keypresses find `SteelBacked` entries.
+    pub registered_cmds: Vec<SteelCmdDef>,
 }
 
 /// Result returned by [`super::ScriptingHost::fire_hook`].
