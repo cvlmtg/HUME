@@ -16,10 +16,6 @@
 //!   `command_table` miss, then retries.
 //! - Event/language triggers: `activate_plugin_inline` (Rust) bounces into
 //!   `(%activate-plugin-inline id)` via `run_steel`, using its own watchdog.
-//!
-//! `activate_plugin` is retained for direct-activation tests; it is the Rust
-//! equivalent of the Scheme `%activate-plugin-inline` helper and will be removed
-//! in Stage E.
 
 use std::collections::HashSet;
 use std::sync::Arc;

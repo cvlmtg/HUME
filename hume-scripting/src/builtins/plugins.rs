@@ -218,6 +218,13 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
+/// Maximum nesting depth for concurrent inline plugin activations.
+///
+/// A depth of 16 is unreachable in practice (plugins rarely chain more than
+/// 2–3 levels deep) but stops a misconfigured cycle that slipped past the
+/// `Loading` guard from recursing until the stack overflows.
+const MAX_ACTIVATION_DEPTH: usize = 16;
+
 /// `(%begin-lazy-activation id-str)` — Rust primitive for inline activation.
 ///
 /// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
@@ -235,6 +242,14 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
             return Ok(SteelVal::BoolV(false));
         }
     };
+
+    if ctx.registries.activation_depth >= MAX_ACTIVATION_DEPTH {
+        ctx.registries.lazy_registry.plugins.insert(id.clone(), PluginState::Failed);
+        steel::stop!(Generic =>
+            "%begin-lazy-activation: activation depth limit ({}) exceeded — \
+             check for circular load-plugin chains; '{}' marked Failed",
+            MAX_ACTIVATION_DEPTH, id_str);
+    }
 
     let abs_str = path.to_string_lossy();
     if abs_str.contains('"') {
@@ -261,6 +276,12 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// (or fails).  Pops `plugin_stack`, decrements `activation_depth`, and
 /// transitions the plugin to `Loaded` (success) or `Failed` (failure).
 /// `drop_triggers_for` runs on both paths so expired trigger entries are cleaned up.
+///
+/// **Partial-failure note**: Steel's `eval-string` (used by
+/// `%activate-plugin-inline`) has no transactional semantics.  Any `define`
+/// that completed before the error stays in the VM's symbol table even when we
+/// transition to `Failed`.  These orphaned globals are harmless but visible;
+/// `command_table` is the authoritative dispatch table for HUME commands.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,

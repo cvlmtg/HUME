@@ -67,10 +67,14 @@ pub(crate) struct SteelCtx<'a> {
     /// Pending char from a WaitChar keymap node.
     pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
-    /// `true` during `eval_source_raw` (init.scm / plugin load);
-    /// `false` during `call_steel_cmd` (command dispatch).
-    /// Builtins that mutate config (`set-option!`, `bind-key!`, etc.) check
-    /// this and raise a Steel error when called from command bodies.
+    /// `true` during `eval_source_raw` (init.scm); `false` during
+    /// `call_steel_cmd` (command dispatch) and `activate_plugin_inline`
+    /// (runtime-triggered plugin bodies, which use `SteelCtx::new_activation`).
+    ///
+    /// Config builtins (`set-option!`, `bind-key!`, etc.) gate on
+    /// `!is_init && plugin_stack.is_empty()`: permitted during plugin
+    /// activation (plugin_stack non-empty) even when `is_init` is `false`,
+    /// but blocked from plain command bodies (plugin_stack empty, is_init false).
     pub(crate) is_init: bool,
     // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,

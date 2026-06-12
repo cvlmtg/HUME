@@ -8,25 +8,28 @@
 //! strictly worse than a direct function call.
 //!
 //! ## Plugin loading pipeline
-//! - `(load-plugin name)` — **eager**. Resolves path, queues, body evaluated via
-//!   `(require "<abs>")` during init. Self-declares: works on a never-declared
-//!   plugin (no prior `declare-plugin` needed).
+//! - `(load-plugin name)` — **inline**. Valid only during init.scm (or
+//!   `:reload-config`); calling it from a command/hook body is a hard error.
+//!   Resolves the path, records the plugin, then activates it inline via
+//!   `%activate-plugin-inline` (body evaluated via `hm.eval-string` inside the
+//!   running VM — no `&mut Engine` borrow needed).  Self-declares: no prior
+//!   `declare-plugin` needed.
 //! - `(declare-plugin name #:on-command #:on-event #:on-language)` — **lazy**.
 //!   Records a `Declared` state + trigger maps in `LazyRegistry`; body is NOT run.
 //! - Triggers (command / event / language) are one-shot: the first one to fire
-//!   calls `activate_plugin` (body via `(require)`), flips state to `Loaded`, and
-//!   drops that plugin's entries from all trigger maps so it never refires.
-//! - A **bare** `(declare-plugin name)` (no triggers) stays `Declared` forever
-//!   until something explicitly `(load-plugin name)`s it (e.g. a dependent plugin).
+//!   calls `%activate-plugin-inline` (body via `(require)`), flips state to
+//!   `Loaded`, and drops that plugin's entries from all trigger maps.
+//! - A **bare** `(declare-plugin name)` (no triggers) stays `Declared` until an
+//!   init.scm `(load-plugin name)` activates it, or a `(call! "cmd")` lazy-miss
+//!   auto-activates it at runtime.
 //! - Activation states: `Declared → Loading → Loaded | Failed`. `Loading` guards
-//!   re-entrant trigger cycles (A→B→A); `Failed` does not retry until `:reload-config`.
+//!   re-entrant cycles (A→B→A); `Failed` does not retry until `:reload-config`.
 //! - PLUM (`core:plum`) reads `(declared-plugins)` (non-`core:` only) to install
 //!   third-party plugins. Both `load-plugin` and `declare-plugin` record the name
 //!   in `declared_plugins` (persistent on `ScriptingHost`). The point of a top-level
-//!   bare declare is the fresh-machine chicken-and-egg: a dep `(load-plugin)`'d only
-//!   inside another plugin's body hard-errors when absent, so it is never recorded
-//!   for PLUM to install. Declaring it at init top-level records it up front; PLUM
-//!   installs it, then the in-body load succeeds.
+//!   bare declare is the fresh-machine chicken-and-egg: if a dep were only declared
+//!   inside another plugin's body it would never be visible to PLUM. Declaring it
+//!   at init top-level records it up front so PLUM can install it.
 //!
 //! ## Modules
 //! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).

@@ -16,8 +16,8 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// Only `Global` scope is supported from scripts. Use `:set buffer …` from the
 /// command line to override a setting for the active buffer.
 ///
-/// Only valid during `init.scm` or plugin load (`is_init = true`); raises a
-/// Steel error if called from a command body.
+/// Valid during `init.scm` or any plugin activation (init or runtime); raises
+/// a Steel error if called from a plain command body.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
