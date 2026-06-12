@@ -22,7 +22,7 @@ use std::sync::atomic::Ordering;
 use steel::rvals::SteelVal;
 
 use crate::attribution;
-use crate::codegen::{HUME_CTX, cmd_proc_name};
+use crate::codegen::HUME_CTX;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
@@ -126,29 +126,21 @@ impl ScriptingHost {
     pub(crate) fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {
         let mut defs = Vec::new();
         for cmd in pending {
-            let steel_proc = cmd_proc_name(&cmd.name);
-            // Introspect arity before register_value takes ownership of cmd.proc.
             let (arity, is_variadic) = match &cmd.proc {
                 SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
                 // FuncV/MutFunc are opaque native fns; treat as variadic so the
                 // dispatcher never rejects them on arity grounds.
                 _ => (0, true),
             };
-            // Clone before register_value takes ownership — the command_table
-            // keeps a second handle to the same closure for in-Steel dispatch.
-            let proc_for_table = cmd.proc.clone();
-            // Register (or overwrite) the lambda under its internal name.
-            self.steel.register_value(&steel_proc, cmd.proc);
             // Register in the in-Steel dispatch table so `%dispatch-command`
             // can apply the closure directly without a Rust round-trip.
-            self.registries.command_table.insert(cmd.name.clone(), proc_for_table);
+            self.registries.command_table.insert(cmd.name.clone(), cmd.proc);
             // Record the owner string for `(command-plugin …)` introspection.
             self.registries.cmd_owners
                 .insert(cmd.name.clone(), cmd.current_owner.to_string());
             defs.push(SteelCmdDef {
                 name: cmd.name,
                 doc: cmd.doc,
-                steel_proc,
                 extendable: cmd.extendable,
                 arity,
                 is_variadic,

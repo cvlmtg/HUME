@@ -107,10 +107,8 @@ pub(crate) enum MappableCommand {
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
-    /// `steel_proc` is the name under which the lambda is registered in the
-    /// Steel engine's global namespace (e.g. `"%hume-cmd-my-command"`).
     /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
-    /// evaluates `(steel_proc)` and drains the resulting `steel_ctx.cmd_queue`.
+    /// routes through `%dispatch-command` → `command_table` → `(apply proc args)`.
     ///
     /// Not repeatable, not jump, not visual-line — these can be added as
     /// optional flags once the use-cases emerge.
@@ -119,8 +117,6 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        /// Name of the lambda in Steel's global namespace.
-        steel_proc: String,
         /// If `true`, this command participates in sticky-Ctrl one-shot extend
         /// (strip-Ctrl fallback).  Set via `(define-command-extend! …)`.
         extendable: bool,

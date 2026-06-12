@@ -1757,7 +1757,6 @@ fn setup_arity_test(
     ed.register_steel_cmds(vec![SteelCmdDef {
         name: name.to_string(),
         doc: String::new(),
-        steel_proc: format!("%hume-cmd-{name}"),
         extendable: false,
         arity,
         is_variadic,
@@ -1824,7 +1823,6 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
     ed.register_steel_cmds(vec![SteelCmdDef {
         name: "needs-two".to_string(),
         doc: String::new(),
-        steel_proc: "%hume-cmd-needs-two".to_string(),
         extendable: false,
         arity: 2,
         is_variadic: false,

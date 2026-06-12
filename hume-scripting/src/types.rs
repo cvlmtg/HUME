@@ -29,10 +29,6 @@ pub struct PendingSteelCmd {
 pub struct SteelCmdDef {
     pub name: String,
     pub doc: String,
-    /// Name under which the lambda is bound in Steel's global namespace
-    /// (e.g. `"%hume-cmd-my-command"`).  Used by `ScriptingHost::call_steel_cmd`
-    /// at dispatch time.
-    pub steel_proc: String,
     pub extendable: bool,
     /// Number of required positional parameters the lambda accepts.
     /// Introspected once at `define-command!` time from the closure's arity.

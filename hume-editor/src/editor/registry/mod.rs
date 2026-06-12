@@ -468,7 +468,6 @@ mod tests {
         let cmd_t = MappableCommand::SteelBacked {
             name: "x".into(),
             doc: "".into(),
-            steel_proc: "%hume-cmd-x".to_string(),
             extendable: true,
             arity: 0,
             is_variadic: false,
@@ -477,7 +476,6 @@ mod tests {
         let cmd_f = MappableCommand::SteelBacked {
             name: "y".into(),
             doc: "".into(),
-            steel_proc: "%hume-cmd-y".to_string(),
             extendable: false,
             arity: 0,
             is_variadic: false,
@@ -581,7 +579,6 @@ mod tests {
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("my-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
-            steel_proc: "%hume-cmd-my-steel-cmd".to_string(),
             extendable: false,
             arity: 0,
             is_variadic: false,
@@ -590,7 +587,6 @@ mod tests {
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
-            steel_proc: "%hume-cmd-another-steel-cmd".to_string(),
             extendable: false,
             arity: 0,
             is_variadic: false,
@@ -631,7 +627,6 @@ mod tests {
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-a".to_string()),
             doc: Cow::Borrowed("doc"),
-            steel_proc: "%hume-cmd-plugin-cmd-a".to_string(),
             extendable: false,
             arity: 0,
             is_variadic: false,

@@ -1,10 +1,5 @@
 pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 
-/// Internal Steel global name for the lambda of a Steel-backed command.
-pub(super) fn cmd_proc_name(name: &str) -> String {
-    format!("%hume-cmd-{name}")
-}
-
 /// Internal Steel global name for the i-th argument bound during a hook fire.
 pub(super) fn hook_arg_name(i: usize) -> String {
     format!("*hume.ha{i}*")

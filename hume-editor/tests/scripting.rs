@@ -508,14 +508,14 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
         &mut mock,
     )
     .unwrap();
-    let steel_proc = "%hume-cmd-spin".to_string();
+    let cmd_name = "spin".to_string();
 
     // Use a tight command budget.
     mock.settings.steel_command_budget_ms = 50;
 
     let start = std::time::Instant::now();
     let err = h
-        .call_steel_cmd(&steel_proc, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(&cmd_name, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -548,13 +548,13 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
         &mut mock,
     )
     .unwrap();
-    let steel_proc = "%hume-cmd-looper".to_string();
+    let cmd_name = "looper".to_string();
 
     assert_eq!(mock.settings.tab_width, 4, "precondition");
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h
-        .call_steel_cmd(&steel_proc, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd(&cmd_name, None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -583,7 +583,7 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-try-set", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("try-set", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
 
     assert!(
@@ -620,7 +620,7 @@ fn call_bang_passes_args_to_command() {
 
     let result = h
         .call_steel_cmd(
-            "%hume-cmd-echo-arg",
+            "echo-arg",
             None,
             vec![SteelVal::StringV("hello".into())],
             mock.focused_pane_id,
@@ -654,7 +654,7 @@ fn call_bang_forwards_multiple_args_to_lambda() {
 
     let result = h
         .call_steel_cmd(
-            "%hume-cmd-route-three",
+            "route-three",
             None,
             vec![
                 SteelVal::StringV("x".into()),
@@ -691,7 +691,7 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
 
     let err = h
         .call_steel_cmd(
-            "%hume-cmd-needs-two",
+            "needs-two",
             None,
             vec![SteelVal::StringV("only-one".into())],
             mock.focused_pane_id,
@@ -840,7 +840,7 @@ fn register_hook_errors_in_command_mode() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-cmd", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("bad-cmd", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("can only be called during init"), "got: {err}");
 }
@@ -917,7 +917,7 @@ fn set_register_prefix_captured_in_call_queue() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -941,7 +941,7 @@ fn set_register_prefix_sticky_across_multiple_calls() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -969,7 +969,7 @@ fn set_register_prefix_change_mid_body() {
     )
     .unwrap();
     let result = h
-        .call_steel_cmd("%hume-cmd-switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
     assert_eq!(
         result.cmd_queue,
@@ -992,7 +992,7 @@ fn set_register_prefix_invalid_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-reg", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("bad-reg", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("invalid register"), "expected register-name error, got: {err}");
 }
@@ -1008,7 +1008,7 @@ fn set_register_prefix_multichar_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("%hume-cmd-bad-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("bad-multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(err.contains("single-character"), "expected single-char error, got: {err}");
 }
@@ -1082,7 +1082,7 @@ fn language_builtins_error_on_stale_buffer_id() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-q-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("q-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(
         err.contains("buffer-language: invalid buffer id"),
@@ -1090,7 +1090,7 @@ fn language_builtins_error_on_stale_buffer_id() {
     );
 
     let err = h
-        .call_steel_cmd("%hume-cmd-set-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("set-lang", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(
         err.contains("set-buffer-language!: invalid buffer id"),
@@ -2145,7 +2145,7 @@ fn arity1_list_command_rejects_false_arg() {
     .unwrap();
     let err = h
         .call_steel_cmd(
-            "%hume-cmd-needs-list",
+            "needs-list",
             None,
             vec![SteelVal::BoolV(false)],
             mock.focused_pane_id,
@@ -2182,7 +2182,7 @@ fn arity1_list_command_accepts_list_arg() {
     let items: Vec<SteelVal> = vec!["rust".into_steelval().unwrap()];
     let list_val = items.into_steelval().unwrap();
     let result = h.call_steel_cmd(
-        "%hume-cmd-needs-list",
+        "needs-list",
         None,
         vec![list_val],
         mock.focused_pane_id,
@@ -2211,7 +2211,7 @@ fn load_plugin_runtime_guard_fires() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("%hume-cmd-try-load", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+        .call_steel_cmd("try-load", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(
         err.contains("init/plugin load"),

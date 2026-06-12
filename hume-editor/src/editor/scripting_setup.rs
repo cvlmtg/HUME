@@ -304,7 +304,6 @@ impl Editor {
                     self.state.registry.register(MappableCommand::SteelBacked {
                         name: def.name.into(),
                         doc: def.doc.into(),
-                        steel_proc: def.steel_proc,
                         extendable: def.extendable,
                         arity: def.arity,
                         is_variadic: def.is_variadic,

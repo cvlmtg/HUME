@@ -65,7 +65,7 @@ impl Editor {
                     }
                     return;
                 }
-                MappableCommand::SteelBacked { ref steel_proc, ref name, inline_output, .. } => {
+                MappableCommand::SteelBacked { ref name, inline_output, .. } => {
                     if self.scripting.is_none() {
                         return;
                     }
@@ -92,7 +92,7 @@ impl Editor {
                             state: &mut self.state,
                             view: &mut self.view,
                         };
-                        host_scr.call_steel_cmd(steel_proc, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
+                        host_scr.call_steel_cmd(name, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
                     };
 
                     // Re-enter the alt-screen unconditionally — on both success and error.

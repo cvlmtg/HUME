@@ -480,7 +480,7 @@ impl ScriptingHost {
     /// cost-free; the trade-off is accepted intentionally.
     pub fn call_steel_cmd<'a>(
         &'a mut self,
-        steel_proc: &str,
+        name: &str,
         pending_char: Option<char>,
         args: Vec<SteelVal>,
         focused_pane_id: hume_engine::pipeline::PaneId,
@@ -491,14 +491,16 @@ impl ScriptingHost {
 
         // Pre-bind positional args as *hume.ca{i}* globals, then build the
         // invocation string referencing them — mirrors the hook arg pattern.
+        // Keypress dispatch routes through %dispatch-command so Lazy-miss
+        // auto-activation and command_table lookup use the same path as call!.
         let invocation = if args.is_empty() {
-            format!("({steel_proc})")
+            format!("(%dispatch-command \"{name}\" (list))")
         } else {
             for (i, arg) in args.iter().enumerate() {
                 self.steel.register_value(&cmd_arg_global_name(i), arg.clone());
             }
             let arg_refs: Vec<String> = (0..args.len()).map(cmd_arg_global_name).collect();
-            format!("({steel_proc} {})", arg_refs.join(" "))
+            format!("(%dispatch-command \"{name}\" (list {}))", arg_refs.join(" "))
         };
 
         let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps) = {
