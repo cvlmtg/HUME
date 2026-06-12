@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
+use crate::types::SteelCmdDef;
+
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///
 /// Defined here (scripting layer) so builtins do not depend on the editor's
@@ -145,6 +147,15 @@ pub trait EditorHost {
         extend: bool,
         register: Option<char>,
     ) -> Result<(), String>;
+
+    // ── Command registration (init-only) ────────────────────────────────────
+    /// Register a Steel command in the editor's `CommandRegistry`.
+    ///
+    /// Called inline from `define-command!` during init or plugin load.
+    /// Overwrites a `Lazy` stub for the same name (expected path: a lazy plugin
+    /// body's `define-command!` replaces the stub it was triggered by).
+    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
+    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
 
     // ── Live cursor/selection reads ──────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.

@@ -1040,13 +1040,13 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 }
 
 /// Plugin commands registered via `define-command!` are entered into
-/// `ScriptingHost.registries.command_table` by `process_pending_cmds`.
+/// `ScriptingHost.registries.command_table` inline during eval (by `define_command_inner`).
 ///
 /// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
 /// a command inline in Steel. This test confirms the table is populated after
 /// `eval_source_returning_defs` — the precondition for all in-Steel dispatch tests.
 ///
-/// Fail oracle: remove the `command_table.insert(…)` line in `process_pending_cmds`
+/// Fail oracle: remove the `command_table.insert(…)` line in `define_command_inner`
 /// → `command_table` is empty → `%lookup-plugin-proc` always returns `#f` →
 /// `plugin_calls_plugin_cursor_read_is_live` regresses to cursor=1.
 #[test]

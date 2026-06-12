@@ -142,6 +142,10 @@ impl EditorHost for MockHost {
         // so this is never called in practice.
         Err("MockHost has no native command registry".into())
     }
+    fn register_command(&mut self, _def: hume_scripting::SteelCmdDef) -> Result<(), String> {
+        // MockHost has no command registry; init tests verify via command_table directly.
+        Ok(())
+    }
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }
 }

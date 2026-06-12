@@ -15,6 +15,7 @@ use crossterm::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::host::{BindMode, EditorHost};
+use crate::types::SteelCmdDef;
 
 pub(crate) struct NullHost;
 
@@ -63,6 +64,7 @@ impl EditorHost for NullHost {
     fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool, _register: Option<char>) -> Result<(), String> {
         Err("stub host has no native command registry".into())
     }
+    fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> { Ok(()) }
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }
 }

@@ -177,6 +177,27 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         self.state.languages.has_grammar(language)
     }
 
+    // ── Command registration (init-only) ────────────────────────────────────
+    fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
+        match self.state.registry.get_mappable(&def.name) {
+            Some(MappableCommand::Lazy { .. }) | None => {
+                self.state.registry.register(MappableCommand::SteelBacked {
+                    name: def.name.into(),
+                    doc: def.doc.into(),
+                    extendable: def.extendable,
+                    arity: def.arity,
+                    is_variadic: def.is_variadic,
+                    inline_output: def.inline_output,
+                });
+                Ok(())
+            }
+            Some(_) => Err(format!(
+                "define-command!: '{}' conflicts with existing command",
+                def.name
+            )),
+        }
+    }
+
     // ── Register validation ───────────────────────────────────────────────────
     fn is_valid_register_name(&self, ch: char) -> bool {
         crate::ops::register::is_valid_register_name(ch)

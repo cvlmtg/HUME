@@ -36,8 +36,7 @@ use steel::rvals::SteelVal;
 
 use super::require_cmd_ctx;
 use crate::attribution::Owner;
-use crate::types::QueuedCommand;
-use crate::types::PendingSteelCmd;
+use crate::types::{QueuedCommand, SteelCmdDef};
 use crate::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -111,7 +110,7 @@ fn define_command_inner(
     extendable: bool,
     inline_output: bool,
 ) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "{}: only valid during init.scm or plugin load, not from a Steel command body",
             builtin_name);
@@ -126,19 +125,23 @@ fn define_command_inner(
             "{}: '{}' conflicts with a built-in command and cannot be redefined",
             builtin_name, name);
     }
-    if ctx.pending_steel_cmds.iter().any(|c| c.name == name) {
+    if ctx.registries.command_table.contains_key(&name) {
         steel::stop!(Generic =>
             "{}: '{}' is already defined in this eval session", builtin_name, name);
     }
+    let (arity, is_variadic) = match &proc {
+        SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
+        _ => (0, true),
+    };
     let current_owner = ctx.plugin_stack.current_owner();
-    ctx.pending_steel_cmds.push(PendingSteelCmd {
-        name,
-        doc,
-        proc,
-        current_owner,
-        extendable,
-        inline_output,
-    });
+    ctx.registries.command_table.insert(name.clone(), proc);
+    ctx.registries.cmd_owners.insert(name.clone(), current_owner.to_string());
+    // Collect the def for the caller (eval_source_raw / activate_plugin) to
+    // register in the editor's CommandRegistry after the eval succeeds.
+    // Doing this inline (not post-eval) lets later call! within the same eval
+    // find the proc in command_table, while keeping the editor registry in sync
+    // only on a clean completion (preserves transitive-dep-failure rollback).
+    ctx.registered_cmds.push(SteelCmdDef { name, doc, extendable, arity, is_variadic, inline_output });
     Ok(SteelVal::Void)
 }
 

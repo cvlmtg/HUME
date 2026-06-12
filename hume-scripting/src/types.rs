@@ -2,24 +2,6 @@ use steel::rvals::SteelVal;
 
 use hume_engine::pipeline::BufferId;
 
-use super::attribution;
-/// A `(define-command! …)` call captured during `eval_init`, to be processed
-/// after the eval completes.
-pub struct PendingSteelCmd {
-    pub name: String,
-    pub doc: String,
-    /// The Steel lambda, captured at `define-command!` call time.
-    pub proc: SteelVal,
-    /// Attribution owner at call time — stored in `cmd_owners` for `(command-plugin …)`.
-    pub(crate) current_owner: attribution::Owner,
-    /// Whether this command participates in sticky-Ctrl extend.
-    /// Set by `(define-command-extend! …)`.
-    pub extendable: bool,
-    /// Whether dispatch brackets the call with an alt-screen exit for live
-    /// subprocess output. Set by `(define-command-inline-output! …)`.
-    pub inline_output: bool,
-}
-
 /// A Steel command that has been fully registered in the Steel engine and is ready
 /// to be inserted into the `CommandRegistry`.
 ///

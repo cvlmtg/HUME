@@ -10,7 +10,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::{PendingLanguageReg, PendingLanguageSets, PendingSteelCmd, QueuedCommand};
+use super::types::{PendingLanguageReg, PendingLanguageSets, QueuedCommand, SteelCmdDef};
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -57,8 +57,11 @@ pub(crate) struct SteelCtx<'a> {
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
-    /// `(define-command! …)` calls accumulated during this eval.
-    pub(crate) pending_steel_cmds: Vec<PendingSteelCmd>,
+    /// Commands fully registered inline (command_table + cmd_owners) during this
+    /// eval; callers use this list to register in the editor's `CommandRegistry`
+    /// after a successful eval.  Populated by `define_command_inner` in place of
+    /// the old `pending_steel_cmds` flow.
+    pub(crate) registered_cmds: Vec<SteelCmdDef>,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
     // ── Queued commands and input state ──────────────────────────────────────
@@ -114,7 +117,7 @@ impl<'a> SteelCtx<'a> {
             runtime_dir: host_bundle.runtime_dir,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names,
-            pending_steel_cmds: Vec::new(),
+            registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,
             cmd_queue: Vec::new(),
             current_register_prefix: None,
@@ -152,7 +155,7 @@ impl<'a> SteelCtx<'a> {
             runtime_dir: host_bundle.runtime_dir,
             pending_plugin_loads: Vec::new(),
             builtin_cmd_names: std::collections::HashSet::new(),
-            pending_steel_cmds: Vec::new(),
+            registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,
             cmd_queue: Vec::new(),
             current_register_prefix: None,

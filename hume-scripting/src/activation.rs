@@ -26,7 +26,7 @@ use crate::codegen::HUME_CTX;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
-use crate::types::{PendingSteelCmd, SteelCmdDef};
+use crate::types::SteelCmdDef;
 use crate::watchdog::EvalWatchdog;
 use crate::ScriptingHost;
 
@@ -89,14 +89,14 @@ impl ScriptingHost {
         // Step 1: eval init.scm.  Collect plugin IDs queued for activation from
         // `pending_plugin_loads` — populated by `%load-plugin!` (eager) and by
         // `%declare-plugin!` + `%load-plugin!` (force-activate after bare-declare).
-        let (eval_result, init_cmds, pending_plugin_loads, startup_cmds) = {
+        let (eval_result, init_defs, pending_plugin_loads, startup_cmds) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
 
             let result = run_steel(steel, &mut steel_ctx, source, budget_ms);
             (
                 result,
-                steel_ctx.pending_steel_cmds,
+                steel_ctx.registered_cmds,
                 steel_ctx.pending_plugin_loads,
                 steel_ctx.cmd_queue,
             )
@@ -105,7 +105,9 @@ impl ScriptingHost {
         self.pending_startup_commands.extend(startup_cmds);
         eval_result?;
 
-        let mut all_cmds = self.process_pending_cmds(init_cmds);
+        // command_table and cmd_owners are already populated inline by define_command_inner;
+        // init_defs carries the SteelCmdDefs for the editor to register in CommandRegistry.
+        let mut all_cmds = init_defs;
 
         // Step 2: activate each queued plugin via the shared activate_plugin path.
         // Steel's module system mangles the plugin's private bindings
@@ -117,37 +119,6 @@ impl ScriptingHost {
         }
 
         Ok(all_cmds)
-    }
-
-    /// Process `PendingSteelCmd`s collected during an eval:
-    /// register each lambda in the Steel engine's global namespace and record the
-    /// owner in `cmd_owners`.  Returns the `SteelCmdDef`s for the caller to
-    /// register in the `CommandRegistry`.
-    pub(crate) fn process_pending_cmds(&mut self, pending: Vec<PendingSteelCmd>) -> Vec<SteelCmdDef> {
-        let mut defs = Vec::new();
-        for cmd in pending {
-            let (arity, is_variadic) = match &cmd.proc {
-                SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
-                // FuncV/MutFunc are opaque native fns; treat as variadic so the
-                // dispatcher never rejects them on arity grounds.
-                _ => (0, true),
-            };
-            // Register in the in-Steel dispatch table so `%dispatch-command`
-            // can apply the closure directly without a Rust round-trip.
-            self.registries.command_table.insert(cmd.name.clone(), cmd.proc);
-            // Record the owner string for `(command-plugin …)` introspection.
-            self.registries.cmd_owners
-                .insert(cmd.name.clone(), cmd.current_owner.to_string());
-            defs.push(SteelCmdDef {
-                name: cmd.name,
-                doc: cmd.doc,
-                extendable: cmd.extendable,
-                arity,
-                is_variadic,
-                inline_output: cmd.inline_output,
-            });
-        }
-        defs
     }
 
     /// Evaluate a plugin body by requiring its file into the Steel engine.
@@ -200,12 +171,14 @@ impl ScriptingHost {
         // Attribution: push before the require eval, pop after.
         self.plugin_stack.push(id.clone());
 
-        let (plugin_result, plugin_cmds, requires, plugin_startup_cmds) = {
+        let (plugin_result, plugin_defs, requires, plugin_startup_cmds) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
 
             let result = run_steel(steel, &mut steel_ctx, require_program, budget_ms);
-            (result, steel_ctx.pending_steel_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)
+            // command_table and cmd_owners are already populated inline by define_command_inner;
+            // registered_cmds carries the SteelCmdDefs for the editor's CommandRegistry.
+            (result, steel_ctx.registered_cmds, steel_ctx.pending_plugin_loads, steel_ctx.cmd_queue)
         };
 
         self.pending_startup_commands.extend(plugin_startup_cmds);
@@ -217,7 +190,7 @@ impl ScriptingHost {
                 // Build parent defs while the parent is still `Loading` — the
                 // cycle guard at the top of activate_plugin short-circuits any
                 // re-entrant call for the same id.
-                let mut defs = self.process_pending_cmds(plugin_cmds);
+                let mut defs = plugin_defs;
                 // Drain transitive `(load-plugin …)` calls made by the body.
                 // Activate them before finalising the parent so that a transitive
                 // failure leaves the parent in `Failed` rather than an inconsistent
