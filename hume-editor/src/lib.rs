@@ -56,8 +56,6 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     editor.init_scripting();
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
-    // Drain any commands queued by (call! …) in init.scm or plugin load.
-    editor.run_startup_commands();
     // Drain hooks queued during init (OnBufferOpen, OnLanguageSet, etc.) before
     // entering the event loop. fire_hook_silent only enqueues; without an explicit
     // drain here they would silently defer to the first keypress.

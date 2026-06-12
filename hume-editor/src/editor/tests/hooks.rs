@@ -2,18 +2,15 @@ use super::*;
 
 // ── Startup hook drain ────────────────────────────────────────────────────────
 
-/// `fire_hook_silent` only enqueues; hooks must be drained explicitly before
-/// the event loop or they silently defer to the first keypress.
+/// `fire_hook_silent` only enqueues; hooks must be drained explicitly via
+/// `drain_hooks()` before the event loop or they silently defer.
 ///
 /// This covers the `lib.rs::run()` path: `init_scripting` + `open_extra_files`
-/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks; `run_startup_commands` does NOT
-/// drain them; the explicit `drain_hooks()` after it is what fires them.
+/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks; the explicit `drain_hooks()`
+/// after startup is what fires them.
 ///
-/// Fail oracle: remove `editor.drain_hooks()` from `lib.rs::run()` after
-/// `run_startup_commands()` — in production startup hooks silently defer. This
-/// test catches the missing-drain regression by verifying `run_startup_commands`
-/// alone leaves pending hooks undrained, and only a subsequent `drain_hooks()`
-/// executes them.
+/// Fail oracle: remove `editor.drain_hooks()` from `lib.rs::run()` — hooks
+/// silently defer. This test catches the missing-drain regression.
 #[test]
 fn startup_hooks_require_explicit_drain() {
     use hume_scripting::ScriptingHost;
@@ -38,16 +35,15 @@ fn startup_hooks_require_explicit_drain() {
     let val = SteelBufferId::new(bid).into_steel_val();
     ed.fire_hook_silent(HookId::OnBufferOpen, &[val]);
 
-    // run_startup_commands drains the command queue — NOT pending_hooks.
-    ed.run_startup_commands();
+    // Hook is enqueued but has not fired yet.
     assert!(
         !ed.state.pending_hooks.is_empty(),
-        "pending_hooks must still be queued after run_startup_commands — drain_hooks not called yet"
+        "pending_hooks must be queued after fire_hook_silent — drain_hooks not called yet"
     );
 
     let before = state(&ed);
 
-    // drain_hooks is the required follow-up (as in lib.rs::run() after this fix).
+    // drain_hooks fires the enqueued hooks.
     ed.drain_hooks();
     assert!(
         ed.state.pending_hooks.is_empty(),

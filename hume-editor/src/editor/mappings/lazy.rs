@@ -5,35 +5,19 @@ use hume_scripting::PluginStatus;
 impl Editor {
     // ── Command execution ─────────────────────────────────────────────────────
 
-    /// Shared core: activate `plugin`, register returned commands (or report the
-    /// error), leaving messages unflushed.  Called by both the command-stub path
-    /// and the event-trigger path so neither duplicates the activate→register→
-    /// report triple.
+    /// Shared core: activate `plugin` inline (or report the error), leaving
+    /// messages unflushed.  Called by both the command-stub path and the
+    /// event-trigger path.
     pub(super) fn activate_and_register(&mut self, plugin: &hume_scripting::attribution::PluginId) {
-        let startup_base = self
-            .scripting
-            .as_ref()
-            .map_or(0, |h| h.pending_startup_commands_len());
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
             let Some(host) = self.scripting.as_mut() else { return };
             let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
-        match result {
-            Ok(cmds) => self.register_steel_cmds(cmds),
-            Err(e) => {
-                self.report(Severity::Error, e);
-                return;
-            }
+        if let Err(e) = result {
+            self.report(Severity::Error, e);
         }
-        let queued = match self.scripting.as_mut() {
-            Some(h) if h.pending_startup_commands_len() > startup_base => {
-                h.split_off_startup_commands(startup_base)
-            }
-            _ => return,
-        };
-        self.drain_command_queue(queued, 1, false);
     }
 
     /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned

@@ -1738,30 +1738,35 @@ fn load_theme_by_name_fails_gracefully() {
 
 /// Wire up a Steel command and return the editor + scripting host ready for use.
 ///
-/// `eval_source` processes the lambda into the scripting engine, but discards the
-/// `SteelCmdDef` (returning `()`).  We must call `register_steel_cmds` separately
-/// to make the command reachable via `:name` in the minibuffer.
+/// Uses `EditorHostImpl` so `define-command!` registers the command directly
+/// into the editor's `CommandRegistry` inline — no separate `register_steel_cmds`
+/// needed.  The `arity` / `is_variadic` override re-registers with explicit
+/// values (useful when the test arity differs from what Steel infers).
 fn setup_arity_test(
     src: &str,
     name: &str,
     arity: u16,
     is_variadic: bool,
 ) -> Editor {
-    use hume_scripting::{ScriptingHost, SteelCmdDef};
-    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+    use crate::editor::scripting_setup::make_init_host;
+    use crate::editor::registry::MappableCommand;
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    let mut mock = MockHost::new();
-    host.eval_source(src, &mut mock).unwrap();
-    ed.register_steel_cmds(vec![SteelCmdDef {
-        name: name.to_string(),
-        doc: String::new(),
+    {
+        let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(src, &mut init_host).unwrap();
+    }
+    // Override arity/is_variadic so minibuffer dispatch uses the test-supplied values.
+    ed.state.registry.register(MappableCommand::SteelBacked {
+        name: name.to_owned().into(),
+        doc: std::borrow::Cow::Borrowed(""),
         extendable: false,
         arity,
         is_variadic,
         inline_output: false,
-    }]);
+    });
     ed.scripting = Some(host);
     ed
 }
@@ -1817,17 +1822,17 @@ fn minibuffer_arity_rule_passes_false_when_no_arg() {
 /// The command needs no real lambda — the early return fires before call_steel_cmd.
 #[test]
 fn minibuffer_arity_rule_errors_on_arity_2() {
-    use hume_scripting::SteelCmdDef;
+    use crate::editor::registry::MappableCommand;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.register_steel_cmds(vec![SteelCmdDef {
-        name: "needs-two".to_string(),
-        doc: String::new(),
+    ed.state.registry.register(MappableCommand::SteelBacked {
+        name: "needs-two".to_owned().into(),
+        doc: std::borrow::Cow::Borrowed(""),
         extendable: false,
         arity: 2,
         is_variadic: false,
         inline_output: false,
-    }]);
+    });
 
     let before = state(&ed);
     // `:needs-two<Enter>` — arity-2 command, minibuffer can only supply 1 arg.

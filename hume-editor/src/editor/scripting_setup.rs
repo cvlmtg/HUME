@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use hume_engine::pipeline::BufferId;
 
 use hume_scripting::SteelBufferId;
-use hume_scripting::{HookResult, SteelCmdDef, hooks::HookId};
+use hume_scripting::{HookResult, hooks::HookId};
 
 use super::{Editor, Severity, host_impl::EditorHostImpl, ops};
 
@@ -86,14 +86,13 @@ impl Editor {
                 };
                 self.flush_script_messages();
                 match result {
-                    Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps }) => {
+                    Ok(HookResult { pending_language_sets, grammar_sweeps }) => {
                         for (bid, lang) in pending_language_sets {
                             self.set_buffer_language(bid, lang);
                         }
                         if !grammar_sweeps.is_empty() {
                             self.sweep_buffers_for_grammars(grammar_sweeps);
                         }
-                        self.drain_command_queue(cmd_queue, 1, false);
                     }
                     Err(e) => self.report(Severity::Error, format!("hook error: {e}")),
                 }
@@ -167,15 +166,8 @@ impl Editor {
         if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            match host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone()) {
-                Ok(cmds) => debug_assert!(
-                    cmds.is_empty(),
-                    "runtime/scheme/prelude.scm must not define commands"
-                ),
-                Err(msg) => self.report(
-                    Severity::Error,
-                    format!("runtime/scheme/prelude.scm: {msg}"),
-                ),
+            if let Err(msg) = host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone()) {
+                self.report(Severity::Error, format!("runtime/scheme/prelude.scm: {msg}"));
             }
         }
         // Load languages.scm between prelude and init.scm so (define-language! …)
@@ -184,24 +176,16 @@ impl Editor {
         if let Some(langs_path) = langs_path {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            match host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone()) {
-                Ok(cmds) => debug_assert!(
-                    cmds.is_empty(),
-                    "runtime/scheme/languages.scm must not define commands"
-                ),
-                Err(msg) => self.report(
-                    Severity::Error,
-                    format!("runtime/scheme/languages.scm: {msg}"),
-                ),
+            if let Err(msg) = host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone()) {
+                self.report(Severity::Error, format!("runtime/scheme/languages.scm: {msg}"));
             }
             self.flush_pending_language_regs(&mut host);
         }
         {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let mut ih = make_init_host(&mut self.state, &mut self.view);
-            match host.eval_init(&init_path, init_budget, &mut ih, builtin_names) {
-                Ok(cmds) => self.register_steel_cmds(cmds),
-                Err(msg) => self.report(Severity::Error, format!("init.scm: {msg}")),
+            if let Err(msg) = host.eval_init(&init_path, init_budget, &mut ih, builtin_names) {
+                self.report(Severity::Error, format!("init.scm: {msg}"));
             }
         }
         // Register lazy-command stubs for every #:on-command trigger declared
@@ -254,26 +238,6 @@ impl Editor {
         }
     }
 
-    // ── Startup command drain ─────────────────────────────────────────────────
-
-    /// Drain commands queued by `(call! …)` in init.scm or plugin load bodies.
-    ///
-    /// Called from `lib.rs` after `init_scripting` and `open_extra_files`.
-    /// No-op when nothing is pending (common case).  Commands with
-    /// `inline_output` get the alt-screen bracket automatically via the normal
-    /// `execute_keymap_command` / `SteelBacked` dispatch path.
-    pub(crate) fn run_startup_commands(&mut self) {
-        let cmds = self
-            .scripting
-            .as_mut()
-            .map(|s| s.take_startup_commands())
-            .unwrap_or_default();
-        if cmds.is_empty() {
-            return;
-        }
-        self.drain_command_queue(cmds, 1, false);
-    }
-
     // ── Theme loading ─────────────────────────────────────────────────────────
 
     /// Test-only wrapper: splits the three disjoint `Editor` fields so tests can
@@ -286,41 +250,6 @@ impl Editor {
             &mut self.state.status_msg,
             name,
         )
-    }
-
-    // ── Scripting helpers ─────────────────────────────────────────────────────
-
-    /// Register each `SteelCmdDef` in the command registry, reporting
-    /// conflicts as errors.  Used after both init and plugin-reload evals.
-    ///
-    /// A `Lazy` stub for the same name is silently overwritten — this is the
-    /// expected path when a lazy plugin's body is evaluated and its
-    /// `define-command!` replaces the stub it was triggered by.
-    pub(super) fn register_steel_cmds(&mut self, defs: impl IntoIterator<Item = SteelCmdDef>) {
-        use super::registry::MappableCommand;
-        for def in defs {
-            match self.state.registry.get_mappable(&def.name) {
-                Some(MappableCommand::Lazy { .. }) | None => {
-                    self.state.registry.register(MappableCommand::SteelBacked {
-                        name: def.name.into(),
-                        doc: def.doc.into(),
-                        extendable: def.extendable,
-                        arity: def.arity,
-                        is_variadic: def.is_variadic,
-                        inline_output: def.inline_output,
-                    });
-                }
-                Some(_) => {
-                    self.report(
-                        Severity::Error,
-                        format!(
-                            "define-command!: '{}' conflicts with existing command",
-                            def.name
-                        ),
-                    );
-                }
-            }
-        }
     }
 
     /// Register a `Lazy` stub for each command trigger from the init manifest.

@@ -31,8 +31,6 @@ use crate::attribution;
 use crate::codegen::HUME_CTX;
 use crate::context::SteelCtx;
 use crate::host::EditorHost;
-use crate::lazy::PluginState;
-use crate::types::SteelCmdDef;
 use crate::watchdog::EvalWatchdog;
 use crate::ScriptingHost;
 
@@ -72,153 +70,50 @@ pub(crate) fn run_steel<'a>(
     result
 }
 
-// ── ScriptingHost — activation impl ─────────���─────────────────────────────���──
+// ── ScriptingHost — activation impl ──────────────────────────────────────────
 
 impl ScriptingHost {
     /// Core eval machinery used by [`ScriptingHost::eval_init`].
     ///
-    /// Evaluates `source` (init.scm) synchronously.  Any `(load-plugin …)` calls
+    /// Evaluates `source` (init.scm) synchronously.  `(load-plugin …)` calls
     /// inside the source activate their plugin bodies inline via the BOOTSTRAP
-    /// `%activate-plugin-inline` helper (which uses `hm.eval-string` — VM-aware,
-    /// no `&mut Engine` borrow).  Commands defined by any activated plugin are
-    /// accumulated in `steel_ctx.registered_cmds` and returned to the caller for
-    /// insertion into `CommandRegistry`.
+    /// `%activate-plugin-inline` helper (VM-aware `hm.eval-string`, no
+    /// `&mut Engine` borrow).  `(define-command! …)` calls register commands
+    /// directly into the editor's `CommandRegistry` via `host.register_command`.
     pub(crate) fn eval_source_raw(
         &mut self,
         source: String,
         builtin_names: HashSet<String>,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-    ) -> Result<Vec<SteelCmdDef>, String> {
-        let (eval_result, init_defs, startup_cmds) = {
-            let (steel, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
-
-            let result = run_steel(steel, &mut steel_ctx, source, budget_ms);
-            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
-        };
-
-        self.pending_startup_commands.extend(startup_cmds);
-        eval_result?;
-        Ok(init_defs)
-    }
-
-    /// Evaluate a plugin body by requiring its file into the Steel engine.
-    ///
-    /// The plugin must be in the `Declared` state in `self.registries.lazy_registry`;
-    /// other states short-circuit:
-    /// - `Loaded` / `Failed` — no-op (idempotent; `Failed` never retries).
-    /// - `Loading` — no-op (re-entrancy guard: trigger cycle A→B→A skips).
-    /// - Not present — no-op (plugin was absent on disk at declaration time).
-    ///
-    /// On success the state transitions to `Loaded` and the returned
-    /// [`SteelCmdDef`]s are ready for insertion into the `CommandRegistry`.
-    /// On error the state transitions to `Failed` and an `Err` is returned;
-    /// eager callers (init path) propagate it to abort `eval_source_raw`, while
-    /// lazy callers (dispatch path) catch it and push a soft error
-    /// message instead.
-    pub fn activate_plugin(
-        &mut self,
-        id: &attribution::PluginId,
-        budget_ms: u64,
-        host: &mut dyn EditorHost,
-        builtin_names: &HashSet<String>,
-    ) -> Result<Vec<SteelCmdDef>, String> {
-        // Extract path from Declared state; short-circuit all other states.
-        let path = match self.registries.lazy_registry.plugins.get(id) {
-            Some(PluginState::Declared { path }) => path.clone(),
-            Some(PluginState::Loaded | PluginState::Failed | PluginState::Loading) | None => {
-                return Ok(vec![]);
-            }
-        };
-
-        let abs_str = path.to_string_lossy();
-        if abs_str.contains('"') {
-            self.registries.lazy_registry
-                .plugins
-                .insert(id.clone(), PluginState::Failed);
-            return Err(format!(
-                "plugin path contains '\"' — cannot embed in require: {}",
-                path.display()
-            ));
-        }
-        let require_program = format!("(require \"{abs_str}\")");
-
-        // Mark Loading before the eval so re-entrant activation of the same
-        // plugin (via a trigger cycle) sees Loading and returns Ok(vec![]).
-        self.registries.lazy_registry
-            .plugins
-            .insert(id.clone(), PluginState::Loading);
-
-        // Attribution: push before the require eval, pop after.
-        self.plugin_stack.push(id.clone());
-
-        let (plugin_result, plugin_defs, plugin_startup_cmds) = {
-            let (steel, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
-
-            let result = run_steel(steel, &mut steel_ctx, require_program, budget_ms);
-            // command_table and cmd_owners are already populated inline by define_command_inner;
-            // registered_cmds carries the SteelCmdDefs for the editor's CommandRegistry.
-            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
-        };
-
-        self.pending_startup_commands.extend(plugin_startup_cmds);
-
-        self.plugin_stack.pop();
-
-        match plugin_result {
-            Ok(()) => {
-                self.registries.lazy_registry
-                    .plugins
-                    .insert(id.clone(), PluginState::Loaded);
-                // Drop trigger-map entries — the real SteelBacked commands are
-                // registered by the caller after this returns.
-                self.registries.lazy_registry.drop_triggers_for(id);
-                Ok(plugin_defs)
-            }
-            Err(e) => {
-                self.registries.lazy_registry
-                    .plugins
-                    .insert(id.clone(), PluginState::Failed);
-                // Drop trigger-map entries on failure so a spent trigger never
-                // re-fires for a non-retrying plugin.
-                self.registries.lazy_registry.drop_triggers_for(id);
-                Err(format!("loading plugin '{id}': {e}"))
-            }
-        }
+    ) -> Result<(), String> {
+        let (steel, bundle) = self.steel_and_bundle();
+        let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names);
+        run_steel(steel, &mut steel_ctx, source, budget_ms)
     }
 
     /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel`.
     ///
     /// Used by event- and language-trigger paths (`activate_and_register`) that
-    /// fire outside any running eval — they need their own watchdog.  The plugin
-    /// body runs inside `hm.eval-string` which is VM-aware (no `&mut Engine`),
-    /// sharing the same `ctx.registries` as any outer eval.
-    ///
-    /// Returns the `SteelCmdDef`s produced by `define-command!` calls inside the
-    /// plugin body.  The caller is responsible for passing them to `register_steel_cmds`.
+    /// fire outside any running eval and need their own watchdog.  The plugin body
+    /// runs inside `hm.eval-string` (VM-aware, no `&mut Engine` borrow), sharing
+    /// the same `ctx.registries` as any concurrent eval.  `define-command!` calls
+    /// inside the body register directly into `host.register_command` inline.
     pub fn activate_plugin_inline(
         &mut self,
         id: &attribution::PluginId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &HashSet<String>,
-    ) -> Result<Vec<SteelCmdDef>, String> {
+    ) -> Result<(), String> {
         let program = format!(r#"(%activate-plugin-inline "{id}")"#);
-        let (plugin_result, plugin_defs, plugin_startup_cmds) = {
-            let (steel, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_init(host, bundle, builtin_names.clone());
-            let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
-            (result, steel_ctx.registered_cmds, steel_ctx.cmd_queue)
-        };
-        self.pending_startup_commands.extend(plugin_startup_cmds);
-        plugin_result?;
-        Ok(plugin_defs)
+        let (steel, bundle) = self.steel_and_bundle();
+        let mut steel_ctx = SteelCtx::new_activation(host, bundle, builtin_names.clone());
+        run_steel(steel, &mut steel_ctx, program, budget_ms)
     }
 }
 
-// ── Tests ─────���───────────────────────────────────────────────────────────────
+// ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -264,17 +159,19 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
-        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
+        host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
-        assert_eq!(defs.len(), 1, "expected exactly one SteelCmdDef");
-        assert_eq!(defs[0].name, "test-cmd");
+        assert!(
+            host.registries.command_table.contains_key("test-cmd"),
+            "command must be in command_table after activation"
+        );
         assert!(
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
             "plugin must be in Loaded state after successful activation"
         );
     }
 
-    // ── Case 2: Syntax error → Failed, Err returned ────��─────────────────────
+    // ── Case 2: Syntax error → Failed, Err returned ──────────────────────────
 
     #[test]
     fn syntax_error_transitions_to_failed() {
@@ -286,7 +183,7 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
 
-        let result = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins());
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
         assert!(result.is_err(), "must return Err on syntax error");
         assert!(
@@ -305,9 +202,8 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Loaded);
 
-        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
+        host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
-        assert!(defs.is_empty(), "Loaded plugin must be a no-op");
         assert!(
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
             "state must remain Loaded"
@@ -322,9 +218,8 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Failed);
 
-        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
+        host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
-        assert!(defs.is_empty(), "Failed plugin must be a no-op");
         assert!(
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
             "state must remain Failed"
@@ -335,18 +230,16 @@ mod tests {
     fn absent_plugin_is_noop() {
         let id = plugin_id("core:absent");
         let mut host = ScriptingHost::new();
-        // Do not seed anything in lazy_registry.
 
-        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
+        host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
-        assert!(defs.is_empty(), "absent plugin must be a no-op");
         assert!(
             !host.registries.lazy_registry.plugins.contains_key(&id),
             "absent plugin must not appear in registry after no-op"
         );
     }
 
-    // ── Case 4: Loading re-entrancy guard → no-op ────────────────���───────────
+    // ── Case 4: Loading re-entrancy guard → no-op ────────────────────────────
 
     #[test]
     fn loading_reentrancy_guard_is_noop() {
@@ -356,9 +249,8 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Loading);
 
-        let defs = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
+        host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins()).unwrap();
 
-        assert!(defs.is_empty(), "Loading plugin must be a no-op (re-entrancy guard)");
         assert!(
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
             "state must remain Loading (re-entrancy guard must not overwrite)"
@@ -378,7 +270,7 @@ mod tests {
             },
         );
 
-        let result = host.activate_plugin(&id, 10_000, &mut NullHost, &no_builtins());
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
         assert!(result.is_err(), "path with '\"' must be rejected");
         assert!(

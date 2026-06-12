@@ -66,7 +66,7 @@ pub(crate) fn configure_statusline(
     center: SteelVal,
     right: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "configure-statusline!: only valid during init.scm or plugin load, not from a Steel command body");
     }

@@ -61,7 +61,7 @@ pub use hooks::HookId;
 pub use host::{BindMode, EditorHost};
 pub use log::LogLevel;
 pub use types::{
-    HookResult, PendingLanguageReg, QueuedCommand, SteelCmdDef, SteelCmdResult,
+    HookResult, PendingLanguageReg, SteelCmdDef, SteelCmdResult,
 };
 pub use builtins::commands::parse_count_extend;
 pub use attribution::PluginId;
@@ -112,9 +112,8 @@ pub(crate) struct ScriptingRegistries {
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
     /// closure for synchronous inline application by `%dispatch-command`.
     ///
-    /// Populated by `process_pending_cmds`. Consulted by `%lookup-plugin-proc`
-    /// during command-mode evals; returns `#f` during init mode (commands are
-    /// processed after each eval boundary, not during).
+    /// Populated by `define_command_inner` inline during init or plugin activation.
+    /// Consulted by `%lookup-plugin-proc` in both init and command mode.
     pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
     /// Nesting depth of inline plugin activations currently in progress.
     /// Incremented by `%begin-lazy-activation`, decremented by
@@ -166,9 +165,6 @@ pub struct ScriptingHost {
     /// Language identity registrations queued by `(define-language! …)`.
     /// Drained by `Editor::flush_pending_language_regs` after each `eval_init` boundary.
     pending_language_regs: Vec<PendingLanguageReg>,
-    /// Commands queued by `(call! …)` during init (init.scm or plugin load).
-    /// Drained by `Editor::run_startup_commands` after all plugins activate.
-    pending_startup_commands: Vec<QueuedCommand>,
     /// `$XDG_DATA_HOME/hume/` — where PLUM installs user/third-party plugins.
     data_dir: Option<PathBuf>,
     /// The runtime directory (core plugins, themes, docs), or `None` if absent.
@@ -211,7 +207,6 @@ impl ScriptingHost {
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
             pending_language_regs: Vec::new(),
-            pending_startup_commands: Vec::new(),
             data_dir,
             runtime_dir,
             interrupt_flag: Arc::new(AtomicBool::new(false)),
@@ -315,24 +310,6 @@ impl ScriptingHost {
         std::mem::take(&mut self.pending_language_regs)
     }
 
-    /// Drain all startup commands queued during init / plugin activation.
-    pub fn take_startup_commands(&mut self) -> Vec<QueuedCommand> {
-        std::mem::take(&mut self.pending_startup_commands)
-    }
-
-    /// Number of startup commands currently queued.
-    pub fn pending_startup_commands_len(&self) -> usize {
-        self.pending_startup_commands.len()
-    }
-
-    /// Drain and return only the startup commands added since index `base`.
-    ///
-    /// Used by `activate_and_register` (lazy dispatch) which needs to diff the
-    /// command list before and after a single plugin activation.
-    pub fn split_off_startup_commands(&mut self, base: usize) -> Vec<QueuedCommand> {
-        self.pending_startup_commands.split_off(base)
-    }
-
     /// Returns `true` if no handlers are registered for `hook_id`.
     pub fn has_hook_handlers(&self, hook_id: hooks::HookId) -> bool {
         !self.registries.hooks.is_empty_for(hook_id)
@@ -434,7 +411,7 @@ impl ScriptingHost {
         source: String,
         builtin_names: std::collections::HashSet<String>,
         host: &mut dyn EditorHost,
-    ) -> Result<Vec<SteelCmdDef>, String> {
+    ) -> Result<(), String> {
         self.eval_source_raw(source, builtin_names, 10_000, host)
     }
 
@@ -443,10 +420,9 @@ impl ScriptingHost {
     /// Evaluate `init.scm` at `path`, giving builtins access to editor state
     /// (settings, keymap) via `host` for the duration of the call.
     ///
-    /// - Returns `Ok(defs)` if the file does not exist (empty defs, missing
-    ///   config is normal) or if eval succeeds.  `defs` is the list of Steel
-    ///   commands defined during eval; the caller registers them in the
-    ///   `CommandRegistry`.
+    /// - Returns `Ok(())` if the file does not exist (missing config is normal)
+    ///   or if eval succeeds.  Commands defined during eval are registered into
+    ///   the `CommandRegistry` inline via `host.register_command`.
     /// - Returns `Err(message)` if the file exists but fails to parse or
     ///   evaluate.  The caller is responsible for surfacing the error.
     pub fn eval_init(
@@ -455,10 +431,10 @@ impl ScriptingHost {
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: std::collections::HashSet<String>,
-    ) -> Result<Vec<SteelCmdDef>, String> {
+    ) -> Result<(), String> {
         let source = match hume_platform::fs::read_to_string(path) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(format!("reading {}: {e}", path.display())),
         };
         self.eval_source_raw(source, builtin_names, budget_ms, host)
@@ -508,7 +484,7 @@ impl ScriptingHost {
             format!("(%dispatch-command \"{name}\" (list {}))", arg_refs.join(" "))
         };
 
-        let (result, cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps, registered_cmds) = {
+        let (result, wait_char_request, pending_language_sets, grammar_sweeps) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -519,7 +495,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(steel, &mut steel_ctx, invocation, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps, steel_ctx.registered_cmds)
+            (result, steel_ctx.wait_char_request, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg globals — releases any Arc references and prevents stale
@@ -529,15 +505,14 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(SteelCmdResult { cmd_queue, wait_char_request, pending_language_sets, grammar_sweeps, registered_cmds })
+        Ok(SteelCmdResult { wait_char_request, pending_language_sets, grammar_sweeps })
     }
 
     /// Fire all registered handlers for `hook_id`, passing `args` to each.
     ///
     /// Handlers are called in registration order inside a single
     /// `with_mut_reference` session so they have full access to HUME builtins
-    /// (`current-buffer`, `call!`, etc.).  Returns the combined `cmd_queue`
-    /// from all handlers, or an empty vec if no handlers are registered.
+    /// (`current-buffer`, `call!`, etc.).
     ///
     /// Returns immediately (no Steel engine call, no watchdog) if no handlers are
     /// registered for `hook_id`.
@@ -552,7 +527,7 @@ impl ScriptingHost {
         // Collect handler procs before borrowing self mutably for the SteelCtx.
         let handler_procs: Vec<SteelVal> = self.registries.hooks.handlers_for(hook_id).to_vec();
         if handler_procs.is_empty() {
-            return Ok(HookResult { cmd_queue: vec![], pending_language_sets: vec![], grammar_sweeps: vec![] });
+            return Ok(HookResult { pending_language_sets: vec![], grammar_sweeps: vec![] });
         }
 
         let budget_ms = host.steel_command_budget_ms();
@@ -574,7 +549,7 @@ impl ScriptingHost {
             .or_insert_with(|| build_hook_program(args.len(), handler_procs.len()))
             .clone();
 
-        let (result, cmd_queue, pending_language_sets, grammar_sweeps) = {
+        let (result, pending_language_sets, grammar_sweeps) = {
             let (steel, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(
                 host,
@@ -585,7 +560,7 @@ impl ScriptingHost {
             );
 
             let result = run_steel(steel, &mut steel_ctx, program, budget_ms);
-            (result, steel_ctx.cmd_queue, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
+            (result, steel_ctx.pending_language_sets, steel_ctx.pending_grammar_sweeps)
         };
 
         // Null out arg and proc globals before returning — releases Arc references
@@ -598,7 +573,7 @@ impl ScriptingHost {
         }
 
         result?;
-        Ok(HookResult { cmd_queue, pending_language_sets, grammar_sweeps })
+        Ok(HookResult { pending_language_sets, grammar_sweeps })
     }
 }
 
@@ -617,7 +592,6 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
         self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
-            .map(|_| ())
     }
 
     /// Like [`eval_source`] but arms a real [`EvalWatchdog`] with the
@@ -635,7 +609,6 @@ impl ScriptingHost {
             budget.as_millis() as u64,
             host,
         )
-        .map(|_| ())
     }
 }
 

@@ -285,12 +285,11 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     host.set_data_dir(dir.path().to_path_buf());
     // Mirror real init_scripting order so the eager command reaches the
     // registry before register_lazy_command_stubs checks for collisions.
-    let cmds = {
+    {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — collision is caught at stub registration, not here");
-    ed.register_steel_cmds(cmds);
     let triggers: std::collections::HashMap<_, _> =
         host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
@@ -599,47 +598,46 @@ fn load_plugin_absent_top_level_silently_skips() {
     assert!(!host.has_any_loaded_plugin(), "no plugin must be Loaded when absent on disk");
 }
 
-/// `(load-plugin "user/tpa")` in a lazy plugin body (B) loads dependency A
-/// transitively at B's activation time — A is NOT promoted to eager at init.
+/// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
+/// The inline lazy-miss retry in `%dispatch-command` activates A on the fly and
+/// runs the command — no `(load-plugin)` needed.
 ///
-/// Flip: if `activate_plugin` did not drain `pending_plugin_loads` from the
-/// body's ctx (B3), A would remain `Declared` after B activates.
-/// If A were incorrectly activated at init, it would be `Loaded` before dispatch.
+/// Flip: remove the lazy-miss retry from `%dispatch-command` → `(call! "a-cmd")`
+/// falls through to `%call-native!` → `a-cmd` is unknown → logs warning → no move.
 #[test]
 #[cfg(not(windows))]
-fn load_plugin_transitive_in_body_is_lazy() {
+fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     use hume_scripting::attribution::PluginId;
-    
 
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         tempfile::tempdir().unwrap()
     };
-    // Plugin A — bare-lazy dep.
+    // Plugin A — defines "a-cmd" (move-right wrapper).
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
         dir_a.join("plugin.scm"),
-        r#"(define-command! "a-cmd" "doc" (lambda () (+ 1 0)))"#,
+        r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right")))"#,
     ).unwrap();
-    // Plugin B — on-command trigger; body requires A.
+    // Plugin B — on-command trigger; body calls "a-cmd" inline (no load-plugin).
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
-        "(load-plugin \"user/tpa\")\n\
-         (define-command! \"b-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
+        "(define-command! \"b-cmd\" \"doc\" (lambda () (call! \"a-cmd\")))",
     ).unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tpa\")\n\
+        "(declare-plugin \"user/tpa\" #:on-command '(\"a-cmd\"))\n\
          (declare-plugin \"user/tp\"  #:on-command '(\"b-cmd\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    host.set_data_dir(dir.path().to_path_buf());
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
@@ -648,40 +646,29 @@ fn load_plugin_transitive_in_body_is_lazy() {
     let id_a = PluginId::User { user: "user".to_string(), repo: "tpa".to_string() };
     let id_b = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
 
-    // After init: both Declared — A was not eagerly promoted.
+    // After init: both Declared.
     assert!(
-        matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
-            Some(PluginStatus::Declared)
-        ),
-        "dep A must be Declared after init (not promoted to eager)"
+        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_a), Some(PluginStatus::Declared)),
+        "dep A must be Declared after init"
     );
     assert!(
-        matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
-            Some(PluginStatus::Declared)
-        ),
+        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_b), Some(PluginStatus::Declared)),
         "plugin B must be Declared after init"
     );
 
-    // Dispatch B's command → B activates → B body requires A → A activates.
+    // Dispatch b-cmd → B activates → B body calls (call! "a-cmd") → lazy-miss
+    // retry activates A → a-cmd runs → cursor moves.
     let before = state(&ed);
     type_cmd(&mut ed, ":b-cmd");
 
-    assert_ne!(state(&ed), before, "b-cmd must have moved the cursor after activation");
+    assert_ne!(state(&ed), before, "b-cmd via (call! \"a-cmd\") must have moved the cursor");
     assert!(
-        matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
-            Some(PluginStatus::Loaded)
-        ),
+        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_b), Some(PluginStatus::Loaded)),
         "plugin B must be Loaded after dispatch"
     );
     assert!(
-        matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
-            Some(PluginStatus::Loaded)
-        ),
-        "dep A must be Loaded transitively after B activates"
+        matches!(ed.scripting.as_ref().unwrap().plugin_status(&id_a), Some(PluginStatus::Loaded)),
+        "dep A must be Loaded after B calls (call! \"a-cmd\")"
     );
 }
 
@@ -981,25 +968,18 @@ fn keymap_lint_warns_on_unknown_command() {
     );
 }
 
-/// A plugin that successfully defines its own commands but whose body loads a
-/// transitive dep that fails during activation: the parent must end up `Failed`
-/// (not `Loaded`), and the parent's own commands must NOT be registered.
+/// `(load-plugin …)` called from a plugin body during *runtime* activation
+/// (command trigger) is a hard error — `load-plugin` is init-context only.
+/// The parent plugin is marked `Failed` and an `Error` is logged.
 ///
-/// Before the fix, the parent was marked `Loaded` and its commands were built
-/// before the requires loop ran; a `?`-abort then discarded them, leaving a
-/// permanent Loaded-with-no-commands inconsistency.
-///
-/// Flip: without the fix, `bar` would be absent (lost) while the parent is
-/// `Loaded` — subsequent dispatches could never retry it.
+/// Flip: if `load_plugin` did not gate on `is_init`, the call would silently
+/// succeed or behave unpredictably at runtime rather than failing fast.
 #[test]
 #[cfg(not(windows))]
-fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
+fn load_plugin_in_runtime_plugin_body_fails_fast() {
     use hume_scripting::attribution::PluginId;
-    
     use crate::editor::Severity;
 
-    // Create parent (user/tp) that defines "bar" and then loads user/dep.
-    // user/dep exists on disk but its body raises an error at eval time.
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
@@ -1009,16 +989,11 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
         std::fs::create_dir_all(&dep_dir).unwrap();
         std::fs::write(
             tp_dir.join("plugin.scm"),
-            // Parent defines "bar" and then loads the failing dep.
-            r#"
-              (define-command! "bar" "doc" (lambda () (+ 1 0)))
-              (load-plugin "user/dep")
-            "#,
+            // Plugin body calls (load-plugin) at runtime — hard error expected.
+            r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))
+               (load-plugin "user/dep")"#,
         ).unwrap();
-        std::fs::write(
-            dep_dir.join("plugin.scm"),
-            r#"(error "intentional dep failure")"#,
-        ).unwrap();
+        std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
         let init = dir.path().join("init.scm");
         std::fs::write(&init, r#"(declare-plugin "user/tp" #:on-command '("bar"))"#).unwrap();
         dir
@@ -1026,34 +1001,27 @@ fn transitive_dep_failure_leaves_parent_failed_with_no_commands() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());    let init_path = dir.path().join("init.scm");
+    host.set_data_dir(dir.path().to_path_buf());
+    let init_path = dir.path().join("init.scm");
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
     let triggers: std::collections::HashMap<_, _> = host.command_triggers();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
-    // Dispatch "bar" to trigger lazy activation.
     type_cmd(&mut ed, ":bar");
 
     let tp_id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
-    // Parent must be Failed, not Loaded.
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
             Some(PluginStatus::Failed)
         ),
-        "parent plugin must be Failed when transitive dep fails"
+        "plugin must be Failed when body calls (load-plugin) at runtime"
     );
-    // Parent's own "bar" command must NOT be registered.
-    assert!(
-        ed.state.registry.get_mappable("bar").is_none(),
-        "parent command must not be registered after transitive dep failure"
-    );
-    // Error must have been logged.
     assert!(
         ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
-        "error must be logged for transitive dep failure"
+        "error must be logged when (load-plugin) is called from a runtime plugin body"
     );
 }
 
@@ -1092,11 +1060,11 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
 /// A lazy plugin whose body contains a top-level `(call! "move-right")` must
 /// have that command executed when the plugin is activated at runtime (command
-/// trigger).  Before the fix, the queued command was silently dropped because
-/// `activate_and_register` never drained `pending_startup_commands`.
+/// trigger).  `activate_plugin_inline` runs with `is_init = false` so
+/// `%call-native!` dispatches synchronously via `run_command_sync`.
 ///
-/// Flip: remove the `drain_command_queue(queued, …)` call in
-/// `activate_and_register` → cursor does not move → `assert_ne!` fails.
+/// Flip: change `new_activation` to `new_init` in `activate_plugin_inline`
+/// → `is_init = true` → `%call-native!` raises a hard error → cursor stays.
 #[test]
 #[cfg(not(windows))]
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {

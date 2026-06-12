@@ -9,14 +9,11 @@
 //! - **Activated plugin commands** (in `command_table`): applied directly as an
 //!   ordinary Steel funcall via `(apply proc args)` — never leaving the VM.
 //!   State reads after the call see its effects immediately.
-//! - **Native / lazy / unknown**: forwarded to `%call-native!`, the Rust leaf
-//!   builtin.  Native commands run **synchronously** (no queue-is-empty guard);
-//!   lazy commands are queued for post-eval activation; unknowns are queued and
-//!   produce a warning at drain time.
-//!
-//! During init mode (`is_init = true`) `%lookup-plugin-proc` always returns `#f`,
-//! so every `(call! …)` defers to `%call-native!` → queue, preserving the
-//! existing `pending_startup_commands` semantics.
+//! - **Lazy triggers** (unactivated plugin): `%dispatch-command` activates the
+//!   owner inline via `%activate-plugin-inline`, then retries.
+//! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
+//!   Init mode: hard error (buffer access not available during init).
+//! - **Unknown**: forwarded to `%call-native!` → warning logged, no-op.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
 //! current eval finishes, the editor enters WaitChar mode for the named command.
@@ -31,12 +28,13 @@
 //! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
 //! ```
 
-use steel::rerrs::SteelErr;
+use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
 use super::require_cmd_ctx;
 use crate::attribution::Owner;
-use crate::types::{QueuedCommand, SteelCmdDef};
+use crate::log::LogLevel;
+use crate::types::SteelCmdDef;
 use crate::SteelCtx;
 
 type SteelResult = Result<SteelVal, SteelErr>;
@@ -136,32 +134,24 @@ fn define_command_inner(
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);
     ctx.registries.cmd_owners.insert(name.clone(), current_owner.to_string());
-    // Collect the def for the caller (eval_source_raw / activate_plugin) to
-    // register in the editor's CommandRegistry after the eval succeeds.
-    // Doing this inline (not post-eval) lets later call! within the same eval
-    // find the proc in command_table, while keeping the editor registry in sync
-    // only on a clean completion (preserves transitive-dep-failure rollback).
-    ctx.registered_cmds.push(SteelCmdDef { name, doc, extendable, arity, is_variadic, inline_output });
+    // Register inline in the editor's CommandRegistry so subsequent keypresses
+    // find SteelBacked entries immediately — no post-eval second pass.
+    ctx.host.register_command(SteelCmdDef { name, doc, extendable, arity, is_variadic, inline_output })
+        .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)
 }
 
-/// `%call-native!` — Rust leaf for native/lazy/unknown commands.
+/// `%call-native!` — Rust leaf for native/unknown commands.
 ///
-/// Called by the Steel `%dispatch-command` function when a name is NOT found
-/// in the plugin `command_table` (i.e. not an activated plugin command).
+/// Called by `%dispatch-command` when `name` is NOT found in `command_table`
+/// and has no lazy-trigger owner (i.e. it is a native or unknown command).
 ///
-/// **Init mode**: always queues — deferred to `pending_startup_commands`.
-///
-/// **Command mode**:
-/// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): validates
-///   count/extend args (fail-fast), then runs **synchronously** via
-///   `run_command_sync`. No queue-is-empty guard — execution order is
-///   preserved by the Steel call stack, not a deferred queue.
-/// - **Lazy** (unactivated plugin) / **Unknown**: queued; lazy entries
-///   trigger plugin activation at drain; unknown names produce a warning.
-///
-/// Also registered as `%call!` for backward compatibility with any tooling
-/// that references the old primitive name directly.
+/// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
+///   validates count/extend args and runs synchronously via `run_command_sync`.
+///   In init mode, raises a hard error — native commands touch buffers which
+///   are not available during init.scm evaluation.
+/// - **Unknown / Steel-but-not-in-table**: logs a `Warning` and returns `#void`.
+///   This covers commands not yet registered (typo, missing plugin, unknown name).
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -169,30 +159,21 @@ pub(crate) fn call_command_primitive(
 ) -> SteelResult {
     let args_vec = steel_list_to_vec(args)?;
 
-    // Init mode: always queue; sync dispatch requires a live EditorHostImpl.
-    if ctx.is_init {
-        ctx.cmd_queue.push(QueuedCommand { name, args: args_vec, register: ctx.current_register_prefix });
-        return Ok(SteelVal::Void);
-    }
-
     match ctx.host.command_is_native(&name) {
         Ok(true) => {
-            // Native — validate count/extend first (fail-fast on malformed args).
+            if ctx.is_init {
+                steel::stop!(Generic =>
+                    "%call-native!: '{}' cannot run during init.scm — buffer access not available",
+                    name);
+            }
             let (count, extend) = parse_count_extend(&args_vec)
-                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call-native!: {e}")))?;
-            // Run synchronously — order is preserved by the Steel call stack.
+                .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))?;
             ctx.host.run_command_sync(&name, count, extend, ctx.current_register_prefix)
                 .map(|()| SteelVal::Void)
-                .map_err(|e| SteelErr::new(steel::rerrs::ErrorKind::Generic, format!("%call-native!: {e}")))
+                .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))
         }
-        // Lazy (unactivated plugin) or unknown — defer. Unknown names produce a
-        // warning at drain (execute_keymap_command); lazy names trigger activation.
         Err(_) | Ok(false) => {
-            ctx.cmd_queue.push(QueuedCommand {
-                name,
-                args: args_vec,
-                register: ctx.current_register_prefix,
-            });
+            ctx.log(LogLevel::Warning, format!("unknown command: {name}"));
             Ok(SteelVal::Void)
         }
     }
@@ -201,13 +182,10 @@ pub(crate) fn call_command_primitive(
 /// `%lookup-plugin-proc` — return the Steel closure for an activated plugin
 /// command, or `#f` if the name is not in the `command_table`.
 ///
-/// Returns `#f` unconditionally during init mode so that `%dispatch-command`
-/// falls through to `%call-native!` → queue, preserving `pending_startup_commands`
-/// semantics — plugin commands must not be applied inline before init completes.
+/// Works in both init and command mode: during init, `define-command!` populates
+/// `command_table` inline, so `(call! "cmd")` that follows a `(load-plugin …)`
+/// in the same init.scm body finds the closure immediately.
 pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    if ctx.is_init {
-        return Ok(SteelVal::BoolV(false));
-    }
     match ctx.registries.command_table.get(&name) {
         Some(val) => Ok(val.clone()),
         None => Ok(SteelVal::BoolV(false)),
@@ -323,80 +301,50 @@ pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::QueuedCommand;
     use crate::test_support::SteelCtxTestHarness;
 
     fn make_list(vals: Vec<SteelVal>) -> SteelVal {
         SteelVal::ListV(vals.into_iter().collect())
     }
 
+    /// NullHost returns `Ok(false)` for `command_is_native` → unknown path → warning logged.
     #[test]
-    fn call_bang_in_init_queues_to_cmd_queue() {
+    fn call_bang_unknown_command_logs_warning() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        call_command_primitive(&mut ctx, "plum-ensure-grammars".to_string(), make_list(vec![])).unwrap();
-        assert_eq!(
-            ctx.cmd_queue,
-            vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
+        {
+            let mut ctx = h.ctx_init();
+            call_command_primitive(&mut ctx, "plum-ensure-grammars".to_string(), make_list(vec![])).unwrap();
+        }
+        assert!(
+            h.pending_messages.iter().any(|(_, msg)| msg.contains("plum-ensure-grammars")),
+            "unknown command must log a warning; got: {:?}", h.pending_messages
         );
     }
 
     #[test]
-    fn call_bang_queues_multiple_names() {
+    fn call_bang_unknown_command_command_mode_logs_warning() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
-        call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
-        let names: Vec<&str> = ctx.cmd_queue.iter().map(|qc| qc.name.as_str()).collect();
-        assert_eq!(names, vec!["move-right", "move-left"]);
-    }
-
-    /// NullHost has no registry; `command_is_native` returns `Ok(false)` for every
-    /// name, so all commands are treated as Steel/forward-raw regardless of args.
-    #[test]
-    fn call_bang_command_mode_defers_when_host_has_no_registry() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
-        assert_eq!(
-            ctx.cmd_queue,
-            vec![QueuedCommand { name: "move-right".to_string(), args: vec![], register: None }]
+        {
+            let mut ctx = h.ctx();
+            call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
+        }
+        assert!(
+            h.pending_messages.iter().any(|(_, msg)| msg.contains("move-right")),
+            "unknown command in command mode must log a warning; got: {:?}", h.pending_messages
         );
     }
 
-    /// NullHost treats everything as Steel/forward-raw, so a count arg is forwarded
-    /// unchanged rather than stripped. The native count-strip path is exercised in
-    /// `editor/src/editor/tests/sync_dispatch.rs` where a real registry is available.
     #[test]
-    fn call_bang_count_arg_forwarded_raw_by_null_host() {
+    fn call_bang_multiple_unknown_commands_each_log_warning() {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let count_arg = SteelVal::IntV(5);
-        call_command_primitive(
-            &mut ctx,
-            "move-right".to_string(),
-            make_list(vec![count_arg.clone()]),
-        ).unwrap();
-        // NullHost = Steel/forward-raw: Int arg forwarded unchanged, not stripped.
-        assert_eq!(
-            ctx.cmd_queue,
-            vec![QueuedCommand { name: "move-right".to_string(), args: vec![count_arg], register: None }]
-        );
-    }
-
-    /// Steel-defined commands accept arbitrary positional args — a string is
-    /// forwarded unchanged. NullHost's `command_is_native → Ok(false)` makes this
-    /// the Steel branch regardless of name.
-    #[test]
-    fn call_bang_string_arg_forwarded_as_steel_args() {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        let arg = SteelVal::StringV("hello".into());
-        call_command_primitive(&mut ctx, "echo".to_string(), make_list(vec![arg.clone()])).unwrap();
-        assert_eq!(
-            ctx.cmd_queue,
-            vec![QueuedCommand { name: "echo".to_string(), args: vec![arg], register: None }]
-        );
+        {
+            let mut ctx = h.ctx();
+            call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
+            call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
+        }
+        let has_right = h.pending_messages.iter().any(|(_, msg)| msg.contains("move-right"));
+        let has_left = h.pending_messages.iter().any(|(_, msg)| msg.contains("move-left"));
+        assert!(has_right && has_left, "each unknown command must produce a warning");
     }
 
     #[test]

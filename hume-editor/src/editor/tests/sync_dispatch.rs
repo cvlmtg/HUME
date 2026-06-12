@@ -155,16 +155,15 @@ fn call_bang_count_arg_dispatches_synchronously() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#.to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("move-right-5".into(), 1, false, vec![]);
 
@@ -191,16 +190,15 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#.to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     // execute_keymap_command reports errors to the status bar rather than panicking;
@@ -238,8 +236,8 @@ fn case_b_sync_cursor_read_reflects_motion() {
     host.register_command_names(&name_refs);
 
     // Define a command that exercises the sync-read property.
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "test-case-b" "Case B probe"
                  (lambda ()
@@ -248,11 +246,10 @@ fn case_b_sync_cursor_read_reflects_motion() {
                      (move-right))))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     ed.execute_keymap_command("test-case-b".into(), 1, false, vec![]);
@@ -296,18 +293,17 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
                  (lambda () (call! "repeat-last-action")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     // Bind the Steel command to an unoccupied key (F2) in Normal mode.
@@ -435,8 +431,8 @@ fn steel_call_native_respects_register_prefix() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             // Register '0' is a valid named storage register (digit registers: 0–9).
             r#"(define-command! "yank-to-0" ""
@@ -445,11 +441,10 @@ fn steel_call_native_respects_register_prefix() {
                    (call! "yank")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("yank-to-0".into(), 1, false, vec![]);
 
@@ -480,18 +475,17 @@ fn steel_call_delete_sets_last_command_for_smart_p() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-delete" ""
                  (lambda () (call! "delete")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     // Execute the Steel delete.
@@ -521,17 +515,16 @@ fn steel_no_dispatch_cmd_stamps_own_name() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
     // "noop-cmd" dispatches no inner native — no (call! …) anywhere.
-    let defs = host
+    host
         .eval_source_returning_defs(
             r#"(define-command! "noop-cmd" "" (lambda () (+ 1 0)))"#.to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     // First: run a kill command to set last_command = "delete".
@@ -560,18 +553,17 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-delete" ""
                  (lambda () (call! "delete")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     ed.execute_keymap_command("steel-delete".into(), 1, false, vec![]);
@@ -609,18 +601,17 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-goto-end" ""
                  (lambda () (call! "goto-last-line")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
 
     let pane_id = ed.state.focused_pane_id;
@@ -656,8 +647,8 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "paste-and-move" ""
                  (lambda ()
@@ -665,11 +656,10 @@ fn steel_call_paste_then_motion_commits_paste_session() {
                    (call! "move-down")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("paste-and-move".into(), 1, false, vec![]);
 
@@ -711,8 +701,8 @@ fn steel_call_source_order_native_after_steel() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-move-right" ""
                  (lambda () (call! "move-right")))
@@ -722,11 +712,10 @@ fn steel_call_source_order_native_after_steel() {
                    (call! "delete")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("order-test".into(), 1, false, vec![]);
 
@@ -758,9 +747,9 @@ fn steel_deferred_native_uses_own_count() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
     // noop-steel executes inline (plugin); move-down 3 runs sync via %call-native!.
-    let defs = host
+    host
         .eval_source_returning_defs(
             r#"(define-command! "noop-steel" "" (lambda () #t))
                (define-command! "deferred-count-test" ""
@@ -769,11 +758,10 @@ fn steel_deferred_native_uses_own_count() {
                    (call! "move-down" 3)))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("deferred-count-test".into(), 1, false, vec![]);
 
@@ -798,8 +786,8 @@ fn steel_unknown_cmd_warns_and_continues() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "warn-test" ""
                  (lambda ()
@@ -808,11 +796,10 @@ fn steel_unknown_cmd_warns_and_continues() {
                    (call! "move-right")))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("warn-test".into(), 1, false, vec![]);
 
@@ -910,15 +897,14 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed_steel.state, view: &mut ed_steel.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
-    ed_steel.register_steel_cmds(defs);
     ed_steel.scripting = Some(host);
     let before_steel = snapshot_bookkeeping(&ed_steel);
     ed_steel.execute_keymap_command("steel-delete".into(), 1, false, vec![]);
@@ -954,15 +940,14 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
-    let mut mock = MockHost::new();
-    let defs = host
+    let mut init_host = EditorHostImpl { state: &mut ed_steel.state, view: &mut ed_steel.view };
+    host
         .eval_source_returning_defs(
             r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#.to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
-    ed_steel.register_steel_cmds(defs);
     ed_steel.scripting = Some(host);
     ed_steel.execute_keymap_command("steel-goto-end".into(), 1, false, vec![]);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1006,11 +991,11 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
 
-    let mut mock = MockHost::new();
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
     // inner-move: plugin command that wraps a single move-right.
     // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
     //   moves right again if cursor advanced past 0.
-    let defs = host
+    host
         .eval_source_returning_defs(
             r#"(define-command! "inner-move" ""
                  (lambda () (call! "move-right")))
@@ -1021,11 +1006,10 @@ fn plugin_calls_plugin_cursor_read_is_live() {
                      (call! "move-right"))))"#
                 .to_owned(),
             Default::default(),
-            &mut mock,
+            &mut init_host,
         )
         .expect("define-command! must succeed");
 
-    ed.register_steel_cmds(defs);
     ed.scripting = Some(host);
     ed.execute_keymap_command("outer-cmd".into(), 1, false, vec![]);
 

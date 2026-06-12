@@ -3,10 +3,9 @@ use std::borrow::Cow;
 use super::super::commands::{self, RING_CYCLE_CMDS};
 use super::super::keymap::WaitCharPending;
 use super::super::registry::MappableCommand;
-use super::super::{Editor, RegisterPrefix, Severity};
+use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 use crate::editor::host_impl::EditorHostImpl;
-use hume_scripting::QueuedCommand;
 
 impl Editor {
     /// Execute a named command with the given count and extend flag.
@@ -20,7 +19,7 @@ impl Editor {
     /// native-dispatch bookkeeping (paste session, jump list, dot-repeat,
     /// last_command).  Non-native commands (SteelBacked, Lazy) pre-stamp
     /// `last_command` to the outer command name; any inner native dispatch via
-    /// `dispatch_native` / `drain_command_queue` overrides it with the inner name.
+    /// `dispatch_native` overrides it with the inner name.
     pub(in super::super) fn execute_keymap_command(
         &mut self,
         name: Cow<'static, str>,
@@ -70,14 +69,13 @@ impl Editor {
                         };
                         host_scr.call_steel_cmd(name.as_ref(), char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
                     };
-                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps, reg_cmds) = match result {
-                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps, r.registered_cmds),
+                    let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+                        Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
                         Err(e) => {
                             self.report(Severity::Error, e);
                             return;
                         }
                     };
-                    self.register_steel_cmds(reg_cmds);
                     self.flush_script_messages();
                     for (bid, lang) in lang_sets {
                         self.set_buffer_language(bid, lang);
@@ -85,7 +83,6 @@ impl Editor {
                     if !grammar_sweeps.is_empty() {
                         self.sweep_buffers_for_grammars(grammar_sweeps);
                     }
-                    self.drain_command_queue(queue, count, extend);
                     if let Some(wc) = wait_char_cmd {
                         self.state.wait_char = Some(WaitCharPending {
                             cmd_name: wc.into(),
@@ -134,14 +131,13 @@ impl Editor {
                         self.state.force_full_redraw = true;
                     }
 
-                    let (queue, wait_char_cmd, lang_sets, grammar_sweeps, reg_cmds) = match result {
-                        Ok(r) => (r.cmd_queue, r.wait_char_request, r.pending_language_sets, r.grammar_sweeps, r.registered_cmds),
+                    let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+                        Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
                         Err(e) => {
                             self.report(Severity::Error, e);
                             return;
                         }
                     };
-                    self.register_steel_cmds(reg_cmds);
                     self.flush_script_messages();
                     for (bid, lang) in lang_sets {
                         self.set_buffer_language(bid, lang);
@@ -149,7 +145,6 @@ impl Editor {
                     if !grammar_sweeps.is_empty() {
                         self.sweep_buffers_for_grammars(grammar_sweeps);
                     }
-                    self.drain_command_queue(queue, count, extend);
                     if let Some(wc) = wait_char_cmd {
                         self.state.wait_char = Some(WaitCharPending {
                             cmd_name: wc.into(),
@@ -165,58 +160,6 @@ impl Editor {
         // Drain any hooks queued during command execution (mode changes, etc.).
         // Called after BOTH paths so hooks always fire after the full command.
         self.drain_hooks();
-    }
-
-    /// Dispatch every command in `queue`, re-arming the register prefix before
-    /// each entry that was captured with one.
-    ///
-    /// Entries whose `register` is `None` leave `self.state.register_prefix` untouched
-    /// (a user-typed `"5` prefix flows into the first non-prefixed command, matching
-    /// interactive behavior).  When at least one entry carried a register, the prefix
-    /// is cleared after the queue finishes so it does not bleed into the next
-    /// user keystroke.
-    ///
-    /// Native entries (`Motion`/`Selection`/`Edit`/`EditorCmd`) are dispatched
-    /// directly through `commands::dispatch_native` using the count/extend stored
-    /// in their own `args` (parsed via `hume_scripting::parse_count_extend`). This
-    /// ensures a deferred native command `(call! "move-down" 3)` moves 3 lines
-    /// regardless of the outer `count` passed to this function.  Non-native entries
-    /// continue to use the outer `count`/`extend` as before.
-    pub(in super::super) fn drain_command_queue(
-        &mut self,
-        queue: Vec<QueuedCommand>,
-        count: usize,
-        extend: bool,
-    ) {
-        let mut armed_any = false;
-        for qc in queue {
-            if let Some(r) = qc.register {
-                self.state.register_prefix = Some(RegisterPrefix::Selected(r));
-                armed_any = true;
-            }
-            // Classify: native commands run through dispatch_native (bookkeeping
-            // included); non-native (SteelBacked/Lazy) or unknown route through
-            // execute_keymap_command which will warn on unknown names.
-            match self.state.registry.get_mappable(&qc.name).cloned() {
-                Some(cmd) if cmd.is_native() => {
-                    match hume_scripting::parse_count_extend(&qc.args) {
-                        Ok((n, ext)) => commands::dispatch_native(
-                            &mut self.state, &mut self.view,
-                            cmd, Cow::Owned(qc.name), n, ext,
-                        ),
-                        Err(e) => self.report(
-                            Severity::Warning, format!("{}: {e}", qc.name),
-                        ),
-                    }
-                }
-                _ => self.execute_keymap_command(
-                    Cow::Owned(qc.name), count, extend, qc.args,
-                ),
-            }
-        }
-        if armed_any {
-            self.state.register_prefix = None;
-        }
     }
 
     // ── Selection helpers ─────────────────────────────────────────────────────

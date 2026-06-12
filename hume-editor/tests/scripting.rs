@@ -14,11 +14,6 @@ fn host() -> ScriptingHost {
     ScriptingHost::new()
 }
 
-/// Build a `QueuedCommand` with no args and no register — the common case in tests.
-fn q(name: &str) -> QueuedCommand {
-    QueuedCommand { name: name.to_string(), args: vec![], register: None }
-}
-
 // ── set-option! ───────────────────────────────────────────────────────────
 
 #[test]
@@ -370,24 +365,17 @@ fn define_command_extend_sets_extendable_flag() {
     let mut mock = MockHost::new();
 
 
-    let defs = h
-        .eval_source_returning_defs(
-            r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
+    h.eval_source_returning_defs(
+        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
            (define-command!        "plain-cmd" "doc" (lambda () (+ 1 0)))"#
-                .to_owned(),
-            Default::default(),
+            .to_owned(),
+        Default::default(),
         &mut mock,
-        )
-        .expect("eval should succeed");
+    )
+    .expect("eval should succeed");
 
-    let ext = defs
-        .iter()
-        .find(|d| d.name == "ext-cmd")
-        .expect("ext-cmd not found");
-    let plain = defs
-        .iter()
-        .find(|d| d.name == "plain-cmd")
-        .expect("plain-cmd not found");
+    let ext = mock.registered_cmds.iter().find(|d| d.name == "ext-cmd").expect("ext-cmd not found");
+    let plain = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
     assert!(
         ext.extendable,
         "define-command-extend! should set extendable = true"
@@ -408,24 +396,17 @@ fn define_command_inline_output_sets_flag() {
     let mut mock = MockHost::new();
 
 
-    let defs = h
-        .eval_source_returning_defs(
-            r#"(define-command-inline-output! "inline-cmd" "doc" (lambda () (+ 1 0)))
+    h.eval_source_returning_defs(
+        r#"(define-command-inline-output! "inline-cmd" "doc" (lambda () (+ 1 0)))
            (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#
-                .to_owned(),
-            Default::default(),
+            .to_owned(),
+        Default::default(),
         &mut mock,
-        )
-        .expect("eval should succeed");
+    )
+    .expect("eval should succeed");
 
-    let inline = defs
-        .iter()
-        .find(|d| d.name == "inline-cmd")
-        .expect("inline-cmd not found");
-    let plain = defs
-        .iter()
-        .find(|d| d.name == "plain-cmd")
-        .expect("plain-cmd not found");
+    let inline = mock.registered_cmds.iter().find(|d| d.name == "inline-cmd").expect("inline-cmd not found");
+    let plain = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
     assert!(
         inline.inline_output,
         "define-command-inline-output! should set inline_output = true"
@@ -599,7 +580,7 @@ fn call_steel_cmd_set_option_from_body_returns_steel_error() {
 /// The variadic `call!` macro desugars to `%call!` and correctly binds
 /// positional args as `*hume.ca{i}*` globals, passing them into the invoked
 /// lambda.  This is the independent oracle for the arg-binding splice in
-/// `call_steel_cmd`: the expected `cmd_queue` is derived from the input args,
+/// `call_steel_cmd`: the expected dispatch name is derived from the input arg,
 /// not from re-reading the implementation.
 ///
 /// Verification validity: changing "hello" in the assert to "world" makes the test fail.
@@ -611,35 +592,34 @@ fn call_bang_passes_args_to_command() {
 
 
     // Define a command that takes one arg x and calls (call! x).
-    // The lambda receives x as *hume.ca0*, then queues x as a command name.
+    // The lambda receives x as *hume.ca0*, then dispatches x as a command name.
     h.eval_source(
         r#"(define-command! "echo-arg" "" (lambda (x) (call! x)))"#,
         &mut mock,
     )
     .unwrap();
 
-    let result = h
-        .call_steel_cmd(
-            "echo-arg",
-            None,
-            vec![SteelVal::StringV("hello".into())],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
-            &mut mock,
-        )
-        .unwrap();
+    h.call_steel_cmd(
+        "echo-arg",
+        None,
+        vec![SteelVal::StringV("hello".into())],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .expect("call should succeed");
 
-    assert_eq!(
-        result.cmd_queue,
-        vec![q("hello")],
-        "call! should queue the arg value as a command name"
+    let msgs = h.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, m)| m.contains("hello")),
+        "call! must dispatch arg value as command name; got: {:?}", msgs
     );
 }
 
 #[test]
 fn call_bang_forwards_multiple_args_to_lambda() {
     // Tests the multi-arg *hume.ca{i}* splice for i > 0.
-    // Oracle: each queued command name equals the corresponding input arg.
+    // Oracle: each dispatched command name equals the corresponding input arg.
     // Verification: change "z" to "w" in the assert → test fails.
     use steel::rvals::SteelVal;
     let mut h = host();
@@ -652,25 +632,27 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     )
     .unwrap();
 
-    let result = h
-        .call_steel_cmd(
-            "route-three",
-            None,
-            vec![
-                SteelVal::StringV("x".into()),
-                SteelVal::StringV("y".into()),
-                SteelVal::StringV("z".into()),
-            ],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
-            &mut mock,
-        )
-        .unwrap();
+    h.call_steel_cmd(
+        "route-three",
+        None,
+        vec![
+            SteelVal::StringV("x".into()),
+            SteelVal::StringV("y".into()),
+            SteelVal::StringV("z".into()),
+        ],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .expect("call should succeed");
 
+    let msgs = h.take_pending_messages();
+    let warned: Vec<&str> = msgs.iter()
+        .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
+        .collect();
     assert_eq!(
-        result.cmd_queue,
-        vec![q("x"), q("y"), q("z")],
-        "each arg must reach the corresponding lambda parameter"
+        warned, vec!["x", "y", "z"],
+        "each arg must reach the corresponding lambda parameter; got: {:?}", msgs
     );
 }
 
@@ -720,11 +702,12 @@ fn register_hook_fires_on_buffer_open() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    let queue = h
-        .fire_hook(HookId::OnBufferOpen, &[val], PaneId::default(), bid, &mut mock)
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(queue, vec![q("move-right")]);
+    h.fire_hook(HookId::OnBufferOpen, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    let msgs = h.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, m)| m.contains("move-right")),
+        "hook handler must have dispatched move-right; got: {:?}", msgs
+    );
 }
 
 #[test]
@@ -739,11 +722,12 @@ fn register_hook_fires_on_buffer_close() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    let queue = h
-        .fire_hook(HookId::OnBufferClose, &[val], PaneId::default(), bid, &mut mock)
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(queue, vec![q("move-left")]);
+    h.fire_hook(HookId::OnBufferClose, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    let msgs = h.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, m)| m.contains("move-left")),
+        "hook handler must have dispatched move-left; got: {:?}", msgs
+    );
 }
 
 #[test]
@@ -758,11 +742,12 @@ fn register_hook_fires_on_buffer_save() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    let queue = h
-        .fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock)
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(queue, vec![q("move-right")]);
+    h.fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    let msgs = h.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, m)| m.contains("move-right")),
+        "hook handler must have dispatched move-right; got: {:?}", msgs
+    );
 }
 
 #[test]
@@ -780,17 +765,19 @@ fn register_hook_fires_on_mode_change() {
     use steel::rvals::IntoSteelVal as _;
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
-    let queue = h
-        .fire_hook(
-            HookId::OnModeChange,
-            &[old_val, new_val],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
-            &mut mock,
-        )
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(queue, vec![q("move-right")]);
+    h.fire_hook(
+        HookId::OnModeChange,
+        &[old_val, new_val],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
+    let msgs = h.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, m)| m.contains("move-right")),
+        "hook handler must have dispatched move-right; got: {:?}", msgs
+    );
 }
 
 #[test]
@@ -798,11 +785,9 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    let queue = h
-        .fire_hook(HookId::OnBufferOpen, &[], PaneId::default(), BufferId::default(), &mut mock)
-        .unwrap()
-        .cmd_queue;
-    assert!(queue.is_empty());
+    // No handlers registered — fire_hook must succeed without dispatching anything.
+    h.fire_hook(HookId::OnBufferOpen, &[], PaneId::default(), BufferId::default(), &mut mock)
+        .unwrap();
 }
 
 #[test]
@@ -820,11 +805,12 @@ fn register_hook_multiple_handlers_all_fire() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    let queue = h
-        .fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock)
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(queue, vec![q("move-right"), q("move-left")]);
+    h.fire_hook(HookId::OnBufferSave, &[val], PaneId::default(), bid, &mut mock).unwrap();
+    let msgs = h.take_pending_messages();
+    let warned: Vec<&str> = msgs.iter()
+        .filter_map(|(_, m)| m.strip_prefix("unknown command: "))
+        .collect();
+    assert_eq!(warned, vec!["move-right", "move-left"], "both handlers must have fired; got: {:?}", msgs);
 }
 
 #[test]
@@ -867,7 +853,7 @@ fn fire_hook_globals_cleared_between_fires() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    // Handler reads arg 0 and queues its string representation.
+    // Handler reads arg 1 (new mode) and dispatches it as a command name.
     h.eval_source(
         r#"(register-hook! 'on-mode-change (lambda (old new) (call! new)))"#,
         &mut mock,
@@ -876,37 +862,45 @@ fn fire_hook_globals_cleared_between_fires() {
     use steel::rvals::IntoSteelVal as _;
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
-    let q1 = h
-        .fire_hook(
-            HookId::OnModeChange,
-            &[old_val.clone(), new_val],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
-            &mut mock,
-        )
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(q1, vec![q("insert")]);
+    h.fire_hook(
+        HookId::OnModeChange,
+        &[old_val.clone(), new_val],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
+    let msgs1 = h.take_pending_messages();
+    assert!(
+        msgs1.iter().any(|(_, m)| m.contains("insert")),
+        "first fire must dispatch 'insert'; got: {:?}", msgs1
+    );
 
     // Second fire with different args — stale *hume.ha1* would give wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
-    let q2 = h
-        .fire_hook(
-            HookId::OnModeChange,
-            &[old_val, new_val2],
-            mock.focused_pane_id,
-            mock.focused_buffer_id,
-            &mut mock,
-        )
-        .unwrap()
-        .cmd_queue;
-    assert_eq!(q2, vec![q("normal")], "second fire must not see stale globals from first");
+    h.fire_hook(
+        HookId::OnModeChange,
+        &[old_val, new_val2],
+        mock.focused_pane_id,
+        mock.focused_buffer_id,
+        &mut mock,
+    )
+    .unwrap();
+    let msgs2 = h.take_pending_messages();
+    assert!(
+        msgs2.iter().any(|(_, m)| m.contains("normal")),
+        "second fire must dispatch 'normal'; got: {:?}", msgs2
+    );
+    assert!(
+        !msgs2.iter().any(|(_, m)| m.contains("insert")),
+        "second fire must NOT see stale 'insert' from first; got: {:?}", msgs2
+    );
 }
 
 // ── set-register-prefix! ─────────────────────────────────────────────────
 
 #[test]
-fn set_register_prefix_captured_in_call_queue() {
+fn set_register_prefix_passed_to_dispatch() {
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -916,14 +910,13 @@ fn set_register_prefix_captured_in_call_queue() {
         &mut mock,
     )
     .unwrap();
-    let result = h
-        .call_steel_cmd("paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+    mock.native_names.insert("paste-after".to_string());
+    h.call_steel_cmd("paste-ring", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
-    assert_eq!(
-        result.cmd_queue,
-        vec![QueuedCommand { name: "paste-after".to_string(), args: vec![], register: Some('k') }],
-        "set-register-prefix! must be captured in the queued command's register field"
-    );
+    assert_eq!(mock.dispatched_native.len(), 1, "paste-after must be dispatched once");
+    let (name, _, _, reg) = &mock.dispatched_native[0];
+    assert_eq!(name, "paste-after");
+    assert_eq!(*reg, Some('k'), "set-register-prefix! must pass register 'k' to dispatch");
 }
 
 #[test]
@@ -940,17 +933,17 @@ fn set_register_prefix_sticky_across_multiple_calls() {
         &mut mock,
     )
     .unwrap();
-    let result = h
-        .call_steel_cmd("multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+    mock.native_names.insert("yank".to_string());
+    mock.native_names.insert("delete".to_string());
+    h.call_steel_cmd("multi", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
-    assert_eq!(
-        result.cmd_queue,
-        vec![
-            QueuedCommand { name: "yank".to_string(), args: vec![], register: Some('5') },
-            QueuedCommand { name: "delete".to_string(), args: vec![], register: Some('5') },
-        ],
-        "register prefix must persist to all subsequent call!s until changed"
-    );
+    assert_eq!(mock.dispatched_native.len(), 2, "yank and delete must each be dispatched");
+    let (name0, _, _, reg0) = &mock.dispatched_native[0];
+    let (name1, _, _, reg1) = &mock.dispatched_native[1];
+    assert_eq!(name0, "yank");
+    assert_eq!(*reg0, Some('5'), "prefix must be '5' for yank");
+    assert_eq!(name1, "delete");
+    assert_eq!(*reg1, Some('5'), "prefix must persist to delete");
 }
 
 #[test]
@@ -968,17 +961,17 @@ fn set_register_prefix_change_mid_body() {
         &mut mock,
     )
     .unwrap();
-    let result = h
-        .call_steel_cmd("switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
+    mock.native_names.insert("yank".to_string());
+    mock.native_names.insert("paste-after".to_string());
+    h.call_steel_cmd("switch", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap();
-    assert_eq!(
-        result.cmd_queue,
-        vec![
-            QueuedCommand { name: "yank".to_string(), args: vec![], register: Some('5') },
-            QueuedCommand { name: "paste-after".to_string(), args: vec![], register: Some('6') },
-        ],
-        "changing register mid-body must route each call! to the active register at enqueue time"
-    );
+    assert_eq!(mock.dispatched_native.len(), 2);
+    let (name0, _, _, reg0) = &mock.dispatched_native[0];
+    let (name1, _, _, reg1) = &mock.dispatched_native[1];
+    assert_eq!(name0, "yank");
+    assert_eq!(*reg0, Some('5'), "first dispatch must use register '5'");
+    assert_eq!(name1, "paste-after");
+    assert_eq!(*reg1, Some('6'), "second dispatch must use changed register '6'");
 }
 
 #[test]
@@ -1501,13 +1494,12 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     writeln!(f, r#"(bind-keys! "normal" ("Q Q" "move-left") ("Q W" "move-right"))"#).unwrap();
 
     // Load prelude first, then init.scm — mirroring init_scripting's sequence.
-    let prelude_cmds = h
-        .eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
+    h.eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
         .expect("prelude eval_init must succeed");
     assert!(
-        prelude_cmds.is_empty(),
+        mock.registered_cmds.is_empty(),
         "prelude must define no commands; got {:?}",
-        prelude_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+        mock.registered_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
     );
 
     h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
@@ -1585,8 +1577,7 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     let mut mock = MockHost::new();
 
 
-    let cmds = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("eager load must succeed");
 
     let id = attribution::PluginId::User {
@@ -1599,9 +1590,9 @@ fn eager_load_no_keywords_reaches_loaded_state() {
         h.plugin_status(&id)
     );
     assert!(
-        cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must be in returned defs; got {:?}",
-        cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
+        mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be registered; got {:?}",
+        mock.registered_cmds.iter().map(|d| &d.name).collect::<Vec<_>>()
     );
 }
 
@@ -1620,8 +1611,7 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     let mut mock = MockHost::new();
 
 
-    let cmds = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy load must not error during init");
 
     let id = attribution::PluginId::User {
@@ -1634,8 +1624,8 @@ fn lazy_load_stays_declared_body_not_evaluated() {
         h.plugin_status(&id)
     );
     assert!(
-        !cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must NOT appear in init defs for a lazy plugin"
+        !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT be registered for a lazy plugin"
     );
 }
 
@@ -1654,8 +1644,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     let mut mock = MockHost::new();
 
 
-    let cmds = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("on-command declaration must not error during init");
 
     let id = attribution::PluginId::User {
@@ -1673,8 +1662,8 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
         "command_triggers must map my-cmd to the plugin"
     );
     assert!(
-        !cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must NOT appear in init defs for an on-command plugin"
+        !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT be registered for an on-command plugin"
     );
 }
 
@@ -1702,27 +1691,26 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
         repo: "tp".to_string(),
     };
 
-    // First activation: Declared → Loaded, returns the plugin's command.
-    let cmds = h
-        .activate_plugin(&id, 10_000, &mut mock, &Default::default())
-        .expect("activate_plugin must succeed");
+    // First activation: Declared → Loaded, registers the plugin's command.
+    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+        .expect("activate_plugin_inline must succeed");
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
-        "plugin must be Loaded after activate_plugin; got {:?}",
+        "plugin must be Loaded after activate_plugin_inline; got {:?}",
         h.plugin_status(&id)
     );
     assert!(
-        cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must be returned by activate_plugin"
+        mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be registered after activation"
     );
 
-    // Second activation: already Loaded → idempotent Ok(vec![]).
-    let cmds2 = h
-        .activate_plugin(&id, 10_000, &mut mock, &Default::default())
-        .expect("second activate_plugin must succeed");
-    assert!(
-        cmds2.is_empty(),
-        "second activate_plugin must return empty vec (idempotent)"
+    // Second activation: already Loaded → idempotent, no new registrations.
+    let count_after_first = mock.registered_cmds.len();
+    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+        .expect("second activate_plugin_inline must succeed");
+    assert_eq!(
+        mock.registered_cmds.len(), count_after_first,
+        "second activation must be idempotent (no new commands registered)"
     );
 }
 
@@ -1961,8 +1949,8 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     };
-    h.activate_plugin(&id, 10_000, &mut mock, &Default::default())
-        .expect("activate_plugin must succeed");
+    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+        .expect("activate_plugin_inline must succeed");
 
     // Trigger is removed after activation.
     assert!(
@@ -1990,8 +1978,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     let mut mock = MockHost::new();
 
 
-    let cmds = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("on-language declaration must not error during init");
 
     let id = attribution::PluginId::User {
@@ -2008,8 +1995,8 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
         "language_triggers must map \"rust\" to the plugin"
     );
     assert!(
-        !cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must NOT appear in init defs for an on-language plugin"
+        !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must NOT be registered for an on-language plugin"
     );
 }
 
@@ -2040,8 +2027,8 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     };
-    h.activate_plugin(&id, 10_000, &mut mock, &Default::default())
-        .expect("activate_plugin must succeed");
+    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+        .expect("activate_plugin_inline must succeed");
 
     assert!(
         h.language_trigger_plugins("rust").is_empty(),
@@ -2067,8 +2054,7 @@ fn load_plugin_force_activates_declared_plugin() {
     let mut mock = MockHost::new();
 
 
-    let cmds = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("force-activate must succeed");
 
     let id = attribution::PluginId::User {
@@ -2085,8 +2071,8 @@ fn load_plugin_force_activates_declared_plugin() {
         "command trigger must be cleared after activation"
     );
     assert!(
-        cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must be in returned defs after force-activate"
+        mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "tp-cmd must be registered after force-activate"
     );
 }
 

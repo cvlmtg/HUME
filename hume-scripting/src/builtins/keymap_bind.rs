@@ -36,7 +36,7 @@ fn bind_inner(
     kind: BindKind,
     force_extend: bool,
 ) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "{fn_name}: only valid during init.scm or plugin load, not from a Steel command body");
     }
@@ -98,7 +98,7 @@ pub(crate) fn bind_key_extend(
 /// Removes the binding for `key-sequence` in `mode`. Silent no-op if the
 /// sequence is already unbound. Only valid during `init.scm` or plugin load.
 pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode_str: String, key_str: String) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "unbind-key!: only valid during init.scm or plugin load, not from a Steel command body");
     }

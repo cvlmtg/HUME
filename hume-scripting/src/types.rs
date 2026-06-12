@@ -1,5 +1,3 @@
-use steel::rvals::SteelVal;
-
 use hume_engine::pipeline::BufferId;
 
 /// A Steel command that has been fully registered in the Steel engine and is ready
@@ -42,41 +40,21 @@ pub enum PendingLanguageReg {
 
 /// `set-buffer-language!` calls deferred during a command or hook eval.
 /// Each entry is `(buffer_id, language_name_or_none)`.
-/// Drained by consumers (mappings.rs, fire_hook_silent) BEFORE cmd_queue.
 pub type PendingLanguageSets = Vec<(BufferId, Option<String>)>;
-
-/// A command queued by `(call! …)` inside a Steel command body.
-///
-/// `register` captures the sticky prefix active when `(call! …)` was reached
-/// (set via `(set-register-prefix! …)`).  `None` means no register was
-/// active at enqueue time, so the editor's existing `register_prefix` is left
-/// untouched when this entry is dispatched.
-#[derive(Debug, Clone, PartialEq)]
-pub struct QueuedCommand {
-    pub name: String,
-    pub args: Vec<SteelVal>,
-    pub register: Option<char>,
-}
 
 /// Result returned by [`super::ScriptingHost::call_steel_cmd`].
 #[derive(Debug)]
 pub struct SteelCmdResult {
-    pub cmd_queue: Vec<QueuedCommand>,
     pub wait_char_request: Option<String>,
     pub pending_language_sets: PendingLanguageSets,
     /// Language names for which `(register-grammar! …)` just attached a grammar;
     /// drained by the executor into `sweep_buffers_for_grammars`.
     pub grammar_sweeps: Vec<String>,
-    /// Commands newly registered by inline plugin activation during this dispatch
-    /// (lazy-miss path in `%dispatch-command`).  The caller passes these to
-    /// `register_steel_cmds` so subsequent keypresses find `SteelBacked` entries.
-    pub registered_cmds: Vec<SteelCmdDef>,
 }
 
 /// Result returned by [`super::ScriptingHost::fire_hook`].
 #[derive(Debug)]
 pub struct HookResult {
-    pub cmd_queue: Vec<QueuedCommand>,
     pub pending_language_sets: PendingLanguageSets,
     pub grammar_sweeps: Vec<String>,
 }

@@ -228,8 +228,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
             return Err(format!("unknown command: {name}"));
         };
         // Arm the register prefix so register-aware commands (yank, delete,
-        // paste-after, …) route to the right destination. Mirrors what
-        // drain_command_queue does for each QueuedCommand that carries a register.
+        // paste-after, …) route to the right destination.
         if let Some(r) = register {
             self.state.register_prefix = Some(crate::editor::RegisterPrefix::Selected(r));
         }

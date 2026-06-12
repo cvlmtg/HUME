@@ -26,6 +26,14 @@ pub(crate) struct MockHost {
     pub(crate) focused_buffer_id: BufferId,
     #[allow(dead_code)]
     pub(crate) focused_pane_id: PaneId,
+    /// Commands registered via `(define-command! …)` during evals.
+    pub(crate) registered_cmds: Vec<hume_scripting::SteelCmdDef>,
+    /// Names treated as native by `command_is_native`.  Empty by default
+    /// (all commands return `Ok(false)`).  Tests populate this to exercise
+    /// the `run_command_sync` path.
+    pub(crate) native_names: std::collections::HashSet<String>,
+    /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
+    pub(crate) dispatched_native: Vec<(String, usize, bool, Option<char>)>,
 }
 
 impl MockHost {
@@ -36,6 +44,9 @@ impl MockHost {
             grammars: std::collections::HashSet::new(),
             focused_buffer_id: BufferId::default(),
             focused_pane_id: PaneId::default(),
+            registered_cmds: Vec::new(),
+            native_names: std::collections::HashSet::new(),
+            dispatched_native: Vec::new(),
         }
     }
 }
@@ -133,17 +144,15 @@ impl EditorHost for MockHost {
         hume::ops::register::is_valid_register_name(ch)
     }
     fn steel_command_budget_ms(&self) -> u64 { self.settings.steel_command_budget_ms as u64 }
-    fn command_is_native(&self, _name: &str) -> Result<bool, String> {
-        // No registry — treat every command as Steel/forward-raw.
-        Ok(false)
+    fn command_is_native(&self, name: &str) -> Result<bool, String> {
+        Ok(self.native_names.contains(name))
     }
-    fn run_command_sync(&mut self, _name: &str, _count: usize, _extend: bool, _register: Option<char>) -> Result<(), String> {
-        // MockHost has no command registry; command_is_native always returns Ok(false),
-        // so this is never called in practice.
-        Err("MockHost has no native command registry".into())
+    fn run_command_sync(&mut self, name: &str, count: usize, extend: bool, register: Option<char>) -> Result<(), String> {
+        self.dispatched_native.push((name.to_owned(), count, extend, register));
+        Ok(())
     }
-    fn register_command(&mut self, _def: hume_scripting::SteelCmdDef) -> Result<(), String> {
-        // MockHost has no command registry; init tests verify via command_table directly.
+    fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
+        self.registered_cmds.push(def);
         Ok(())
     }
     fn current_line_number(&self) -> Option<usize> { None }

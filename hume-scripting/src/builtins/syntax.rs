@@ -38,7 +38,7 @@ pub(crate) fn define_language(
     globs_val: SteelVal,
     shebangs_val: SteelVal,
 ) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic => "%define-language!: only callable during init (use define-language! in init.scm or a plugin)");
     }
     let name = match &name {

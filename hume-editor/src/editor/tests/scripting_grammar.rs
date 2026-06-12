@@ -272,8 +272,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let mut host = ScriptingHost::new();
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
-    let cmds = { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }.expect("eval_init");
-    ed.register_steel_cmds(cmds);
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }.expect("eval_init");
     ed.state.languages.register_identity("json", &["json"], &[], &[]).unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
     assert!(ed.state.buffers.get(bid).syntax.is_none(), "no grammar attached yet");
@@ -463,19 +462,18 @@ fn grammar_swap_clears_stale_in_flight() {
 // Startup command queue: (call! …) at init defers to pending_startup_commands
 // ---------------------------------------------------------------------------
 
-/// Passive load contract: an init that registers installed grammars directly
-/// (like plum/register-installed-grammars!) must NOT push anything to
-/// `pending_startup_commands`.  A separate `(call! "some-cmd")` call in the
-/// same init MUST push exactly one `QueuedCommand` into `pending_startup_commands`.
+/// Passive grammar registration: an init that registers installed grammars
+/// directly (like plum/register-installed-grammars!) succeeds without error
+/// and populates the pending language regs.  A `(call! "unknown-cmd")` in
+/// the same init logs a warning but does not abort — unknown commands are
+/// soft failures during init (buffer access unavailable; command not native).
 ///
-/// Flip: if passive load accidentally pushed, the startup drainer would fire an
-/// extra command.  If (call!) in init silently dropped the entry, the user's
-/// opt-in `(call! "plum-ensure-grammars")` would never run.
+/// Flip: if passive load crashed, `eval_init` would return `Err`.  If the
+/// unknown `(call!)` aborted the eval, the grammar registration that preceded
+/// it would not show up in `pending_language_regs`.
 #[test]
 #[cfg(not(windows))]
-fn passive_load_registers_installed_and_call_queues_startup_command() {
-    use hume_scripting::QueuedCommand;
-
+fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let (parser, hl) = grammar_fixture("json");
     let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
 
@@ -490,10 +488,6 @@ fn passive_load_registers_installed_and_call_queues_startup_command() {
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
-    // Mirrors the new plum/register-installed-grammars! contract:
-    //  - register "json" (installed on disk) — no side effects on startup queue
-    //  - skip "phantom" (missing) — passive, nothing queued
-    //  - call! "plum-ensure-grammars" — must land in pending_startup_commands
     std::fs::write(&init_path, format!(
         r#"
 (define hl-path "{hl}")
@@ -524,12 +518,14 @@ fn passive_load_registers_installed_and_call_queues_startup_command() {
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
 
-    // No grammar names are left in a separate queue — that field is gone.
-    // The (call!) call must have produced exactly one pending startup command.
-    assert_eq!(
-        host.take_startup_commands(),
-        vec![QueuedCommand { name: "plum-ensure-grammars".to_string(), args: vec![], register: None }],
-        "(call!) in init must push to pending_startup_commands"
+    // Passive registration populated pending_language_regs.
+    let regs = host.take_pending_language_regs();
+    assert!(!regs.is_empty(), "passive grammar registration must populate pending_language_regs");
+    // Unknown (call!) produced a warning, did not abort.
+    let msgs = host.take_pending_messages();
+    assert!(
+        msgs.iter().any(|(_, msg)| msg.contains("plum-ensure-grammars")),
+        "unknown command in init must log a warning; got: {:?}", msgs,
     );
 }
 
@@ -655,9 +651,8 @@ fn install_real_json_grammar_e2e() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir);
-    let cmds = { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
+    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init");
-    ed.register_steel_cmds(cmds);
     ed.state.languages.register_identity("json", &["json"], &[], &[]).unwrap();
     ed.set_buffer_language(bid, Some("json".to_owned()));
     ed.scripting = Some(host);

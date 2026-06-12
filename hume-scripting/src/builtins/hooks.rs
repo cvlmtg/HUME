@@ -15,7 +15,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// `on-buffer-open`, `on-buffer-close`, `on-buffer-save`, `on-edit`,
 /// `on-mode-change`.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
-    if !ctx.is_init {
+    if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic => "register-hook!: can only be called during init/plugin load");
     }
     let name_str = match &name {

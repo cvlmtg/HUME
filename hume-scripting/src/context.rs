@@ -10,7 +10,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use super::attribution::PluginStack;
 use super::host::EditorHost;
 use super::log::LogLevel;
-use super::types::{PendingLanguageReg, PendingLanguageSets, QueuedCommand, SteelCmdDef};
+use super::types::{PendingLanguageReg, PendingLanguageSets};
 use super::{HostBundle, ScriptingRegistries};
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
@@ -52,18 +52,9 @@ pub(crate) struct SteelCtx<'a> {
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: std::collections::HashSet<String>,
-    /// Commands fully registered inline (command_table + cmd_owners) during this
-    /// eval; callers use this list to register in the editor's `CommandRegistry`
-    /// after a successful eval.  Populated by `define_command_inner` in place of
-    /// the old `pending_steel_cmds` flow.
-    pub(crate) registered_cmds: Vec<SteelCmdDef>,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
-    // ── Queued commands and input state ──────────────────────────────────────
-    /// Commands queued by `(call! …)`, with their positional args.
-    /// In init mode, drained by the host into `pending_startup_commands` after
-    /// each eval; in command mode, returned in `SteelCmdResult`.
-    pub(crate) cmd_queue: Vec<QueuedCommand>,
+    // ── Input state and command side-effects ─────────────────────────────────
     /// Register prefix set by `(set-register-prefix! …)` and inherited by
     /// subsequent `(call! …)` calls until changed.  Resets per invocation
     /// (SteelCtx is rebuilt each time).
@@ -111,9 +102,7 @@ impl<'a> SteelCtx<'a> {
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names,
-            registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,
-            cmd_queue: Vec::new(),
             current_register_prefix: None,
             wait_char_request: None,
             pending_language_sets: Vec::new(),
@@ -123,6 +112,22 @@ impl<'a> SteelCtx<'a> {
             focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
             pending_grammar_sweeps: Vec::new(),
+        }
+    }
+
+    /// For Rust-side runtime plugin activation (lazy command/event/language triggers).
+    ///
+    /// Identical to `new_init` but with `is_init = false`: native `(call! …)` calls
+    /// inside the plugin body are allowed (they run synchronously via `run_command_sync`),
+    /// while `(load-plugin …)` is blocked (it requires `is_init`).
+    pub(super) fn new_activation(
+        host: &'a mut dyn EditorHost,
+        host_bundle: HostBundle<'a>,
+        builtin_cmd_names: std::collections::HashSet<String>,
+    ) -> Self {
+        Self {
+            is_init: false,
+            ..Self::new_init(host, host_bundle, builtin_cmd_names)
         }
     }
 
@@ -148,9 +153,7 @@ impl<'a> SteelCtx<'a> {
             data_dir: host_bundle.data_dir,
             runtime_dir: host_bundle.runtime_dir,
             builtin_cmd_names: std::collections::HashSet::new(),
-            registered_cmds: Vec::new(),
             interrupt_flag: host_bundle.interrupt_flag,
-            cmd_queue: Vec::new(),
             current_register_prefix: None,
             wait_char_request: None,
             pending_language_sets: Vec::new(),
