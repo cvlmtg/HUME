@@ -66,12 +66,19 @@ fn bind_key_does_not_error_on_valid_input() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    // A valid binding should succeed; the trie is verified via keymap's own tests.
     h.eval_source(
         "(bind-key! \"normal\" \"z\" \"move-right\")",
         &mut mock,
     )
     .unwrap();
+
+    use hume_editor::KeymapBindMode as BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let z_key = &[KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)];
+    let (name, _) = mock.keymap
+        .lookup_command(BindMode::Normal, z_key)
+        .expect("bind-key! must bind 'z' in the keymap");
+    assert_eq!(name, "move-right", "z must be bound to move-right");
 }
 
 #[test]
@@ -84,6 +91,15 @@ fn bind_key_multi_key_sequence_no_error() {
         &mut mock,
     )
     .unwrap();
+
+    use hume_editor::KeymapBindMode as BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+    let h_key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+    let (name, _) = mock.keymap
+        .lookup_command(BindMode::Normal, &[g_key, h_key])
+        .expect("bind-key! must bind the 'g h' sequence");
+    assert_eq!(name, "move-right", "g h must be bound to move-right");
 }
 
 #[test]
@@ -788,6 +804,12 @@ fn register_hook_no_fire_if_no_handlers() {
     // No handlers registered — fire_hook must succeed without dispatching anything.
     h.fire_hook(HookId::OnBufferOpen, &[], PaneId::default(), BufferId::default(), &mut mock)
         .unwrap();
+
+    // Proves no native dispatch occurred (would have been recorded in dispatched_native).
+    assert!(
+        mock.dispatched_native.is_empty(),
+        "no handlers → fire_hook must not dispatch any native commands"
+    );
 }
 
 #[test]
@@ -1172,9 +1194,23 @@ fn unbind_key_noop_on_already_unbound() {
     let mut h = host();
     let mut mock = MockHost::new();
 
+    use hume_editor::KeymapBindMode as BindMode;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let q_key = &[KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE)];
+
     // 'Q' is not in the default keymap.
-    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut mock)
-        .unwrap();
+    assert!(
+        mock.keymap.lookup_command(BindMode::Normal, q_key).is_none(),
+        "'Q' must not be bound before unbind-key! (baseline check)"
+    );
+
+    h.eval_source(r#"(unbind-key! "normal" "Q")"#, &mut mock).unwrap();
+
+    // The no-op must not corrupt the keymap — 'Q' remains absent.
+    assert!(
+        mock.keymap.lookup_command(BindMode::Normal, q_key).is_none(),
+        "'Q' must remain unbound after no-op unbind-key!"
+    );
 }
 
 #[test]

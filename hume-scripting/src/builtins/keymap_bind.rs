@@ -126,3 +126,141 @@ pub(crate) fn bind_wait_char(
 ) -> SteelResult {
     bind_inner(ctx, "bind-wait-char!", mode_str, key_str, cmd_name, BindKind::WaitChar, false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::SteelCtxTestHarness;
+
+    // ── Init-only guard ───────────────────────────────────────────────────────
+
+    /// `bind-key!` is blocked in plain command mode (is_init=false, plugin_stack empty).
+    ///
+    /// Fail oracle: remove the guard → a plugin command body could rebind keys at runtime.
+    #[test]
+    fn bind_key_blocked_in_command_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = bind_key(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        assert!(result.is_err(), "bind-key! must error in command mode");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+    }
+
+    /// `bind-key-extend!` is blocked in plain command mode.
+    #[test]
+    fn bind_key_extend_blocked_in_command_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = bind_key_extend(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        assert!(result.is_err(), "bind-key-extend! must error in command mode");
+    }
+
+    /// `unbind-key!` is blocked in plain command mode.
+    #[test]
+    fn unbind_key_blocked_in_command_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = unbind_key(&mut ctx, "normal".into(), "z".into());
+        assert!(result.is_err(), "unbind-key! must error in command mode");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+    }
+
+    /// `bind-wait-char!` is blocked in plain command mode.
+    #[test]
+    fn bind_wait_char_blocked_in_command_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = bind_wait_char(&mut ctx, "normal".into(), "f".into(), "wait-f".into());
+        assert!(result.is_err(), "bind-wait-char! must error in command mode");
+    }
+
+    // ── Mode validation ───────────────────────────────────────────────────────
+
+    /// `bind-key!` rejects an unknown mode name.
+    ///
+    /// Fail oracle: remove `mode_from_str` validation → "visual" silently picks an
+    /// arbitrary arm in the match and inserts into the wrong trie.
+    #[test]
+    fn bind_key_invalid_mode_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = bind_key(&mut ctx, "visual".into(), "z".into(), "move-right".into());
+        assert!(result.is_err(), "bind-key! must reject unknown mode");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("mode"), "error must mention 'mode'; got: {msg}");
+    }
+
+    /// `unbind-key!` rejects an unknown mode name.
+    #[test]
+    fn unbind_key_invalid_mode_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = unbind_key(&mut ctx, "visual".into(), "z".into());
+        assert!(result.is_err(), "unbind-key! must reject unknown mode");
+    }
+
+    // ── Key-sequence parsing ──────────────────────────────────────────────────
+
+    /// `bind-key!` rejects an invalid key-sequence string.
+    ///
+    /// Fail oracle: short-circuit key parsing to always return Ok([]) →
+    /// the binding is silently inserted under an empty key, which is unreachable.
+    #[test]
+    fn bind_key_invalid_key_sequence_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        // "<NOTAKEY>" is not a valid key name.
+        let result = bind_key(&mut ctx, "normal".into(), "<NOTAKEY>".into(), "move-right".into());
+        assert!(result.is_err(), "bind-key! must reject invalid key sequences");
+    }
+
+    /// `unbind-key!` also validates the key sequence.
+    #[test]
+    fn unbind_key_invalid_key_sequence_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = unbind_key(&mut ctx, "normal".into(), "<NOTAKEY>".into());
+        assert!(result.is_err(), "unbind-key! must reject invalid key sequences");
+    }
+
+    // ── Guard passes, host called ─────────────────────────────────────────────
+
+    /// In init mode with valid args, `bind-key!` passes the guard and reaches the
+    /// host.  NullHost returns Err("NullHost: bind_key not available"), which proves
+    /// the error is NOT the guard error.
+    #[test]
+    fn bind_key_init_mode_calls_host() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = bind_key(&mut ctx, "normal".into(), "z".into(), "move-right".into());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            !msg.contains("only valid during"),
+            "must reach the host, not the guard; got: {msg}"
+        );
+    }
+
+    // ── Plugin-load context (plugin_stack non-empty) ──────────────────────────
+
+    /// When `plugin_stack` is non-empty (inside a plugin body), all four bind
+    /// builtins are permitted even with `is_init = false`.
+    #[test]
+    fn bind_key_permitted_during_plugin_load() {
+        use crate::attribution::PluginId;
+        let mut h = SteelCtxTestHarness::new();
+        h.plugin_stack.push(PluginId::parse("core:myplugin").unwrap());
+        {
+            let mut ctx = h.ctx(); // is_init=false, plugin_stack non-empty → allowed
+            let result = bind_key(&mut ctx, "normal".into(), "z".into(), "cmd".into());
+            // Guard must pass; NullHost error is expected.
+            assert!(result.is_err());
+            assert!(
+                !result.unwrap_err().to_string().contains("only valid during"),
+                "bind-key! must not hit the init guard during plugin load"
+            );
+        }
+    }
+}

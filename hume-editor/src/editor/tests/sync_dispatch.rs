@@ -216,12 +216,12 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 ///
 /// The discriminating logic:
 /// - Start at position 0.  Call `(move-right)`.
-/// - If sync: cursor is now 1 — the `(when (= (cursor-char-index) 1) ...)` arm
+/// - Sync (current model): cursor is now 1 — the `(when (= (cursor-char-index) 1) ...)` arm
 ///   fires and calls `(move-right)` a second time → final position 2.
-/// - If deferred: cursor stays at 0 during the lambda — the `(when ...)` does
-///   not fire → one deferred `move-right` runs post-eval → final position 1.
+/// - Old deferral model (removed): cursor would have stayed at 0 — the `(when ...)` would
+///   not fire → only one `move-right` → final position 1.
 ///
-/// Sync path → cursor 2.  Deferred path → cursor 1.
+/// Fail oracle: restore asynchronous deferral → cursor lands at 1 instead of 2.
 #[test]
 fn case_b_sync_cursor_read_reflects_motion() {
     // "-[a]>bc\n" — cursor at position 0.
@@ -256,7 +256,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
 
     let final_state = state(&ed);
     // Sync: both moves ran inside the lambda → cursor at 2, "ab-[c]>\n".
-    // Deferred: only one move queued → cursor at 1, "a-[b]>c\n".
+    // (Old deferral model would have produced cursor at 1, "a-[b]>c\n".)
     assert_eq!(
         final_state, "ab-[c]>\n",
         "sync dispatch: (cursor-char-index) must reflect (move-right) effect within same eval"
@@ -947,14 +947,14 @@ fn steel_call_source_order_native_after_steel() {
 /// **Finding 7 — native count preserved across plugin→native chain**: a native
 /// command that follows a plugin command in the same body must use its own count.
 ///
-/// Under the in-Steel dispatch model: `noop-steel` is applied inline (no effect);
-/// `(call! "move-down" 3)` dispatches via `%call-native!` → `parse_count_extend`
-/// extracts `count=3` → `run_command_sync("move-down", 3, false)` → lands on line 4.
+/// `noop-steel` is applied inline (no effect); `(call! "move-down" 3)` dispatches
+/// via `%call-native!` → `parse_count_extend` extracts `count=3` →
+/// `run_command_sync("move-down", 3, false)` → lands on line 4.
 ///
 /// Fail oracle: replace `(call! "move-down" 3)` with `(call! "move-down" 1)` →
 /// cursor lands on line 2 instead of 4; the count-preservation assertion fails.
 #[test]
-fn steel_deferred_native_uses_own_count() {
+fn steel_native_via_call_preserves_own_count() {
     // Buffer with at least 5 lines; cursor starts at line 1.
     let content = "-[a]>\nb\nc\nd\ne\n";
     let mut ed = editor_from(content);
@@ -965,11 +965,11 @@ fn steel_deferred_native_uses_own_count() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
-    // noop-steel executes inline (plugin); move-down 3 runs sync via %call-native!.
+    // noop-steel is a no-op plugin command; move-down 3 runs sync via %call-native!.
     host
         .eval_source_returning_defs(
             r#"(define-command! "noop-steel" "" (lambda () #t))
-               (define-command! "deferred-count-test" ""
+               (define-command! "count-chain-test" ""
                  (lambda ()
                    (call! "noop-steel")
                    (call! "move-down" 3)))"#
@@ -980,7 +980,7 @@ fn steel_deferred_native_uses_own_count() {
         .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("deferred-count-test".into(), 1, false, vec![]);
+    ed.execute_keymap_command("count-chain-test".into(), 1, false, vec![]);
 
     let host = live_host!(ed);
     let line = host.current_line_number().expect("current_line_number");
@@ -1021,7 +1021,7 @@ fn steel_unknown_cmd_warns_and_continues() {
     ed.execute_keymap_command("warn-test".into(), 1, false, vec![]);
 
     let idx = live_host!(ed).cursor_char_index().expect("cursor_char_index");
-    // Both move-rights deferred after the unknown name — cursor ends at 2.
+    // Both move-rights run inline despite the unknown name — cursor ends at 2.
     assert_eq!(idx, 2, "both moves must execute despite unknown command in between; got {idx}");
 }
 

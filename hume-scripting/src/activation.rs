@@ -382,4 +382,47 @@ mod tests {
             "plugin must be Failed after failed finish"
         );
     }
+
+    // ── Partial-define consistency (D2) ──────────────────────────────────────
+
+    /// A plugin body that defines one command and then errors: the plugin
+    /// transitions to `Failed`, but the partial `define-command!` that completed
+    /// before the error stays in `command_table`.
+    ///
+    /// This documents the known non-transactional behaviour of Steel's eval —
+    /// `command_table` is always the authoritative dispatch table.  An orphaned
+    /// entry in `command_table` for a `Failed` plugin is inert: `%dispatch-command`
+    /// would find the closure but the plugin is marked `Failed` so the entry
+    /// is not re-activated.
+    ///
+    /// Fail oracle: if `define-command!` were rolled back on failure →
+    /// `command_table` would NOT contain "partial-cmd" → last assert fires.
+    #[test]
+    fn partial_define_before_failure_lands_in_command_table() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "partial.scm",
+            r#"(define-command! "partial-cmd" "doc" (lambda () 0))
+               (error "intentional mid-body error")"#,
+        );
+        let id = plugin_id("core:partial");
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+
+        assert!(result.is_err(), "activation must fail on intentional error");
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
+            "plugin must be Failed after mid-body error"
+        );
+        // The partial define completed before the error — it is in command_table.
+        assert!(
+            host.registries.command_table.contains_key("partial-cmd"),
+            "partial define-command! before the error must stay in command_table"
+        );
+    }
 }

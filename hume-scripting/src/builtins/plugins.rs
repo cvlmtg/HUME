@@ -392,4 +392,74 @@ mod tests {
         assert!(PluginId::parse("./b").is_err()); // slash without user
         assert!(PluginId::parse("a\0b/repo").is_err()); // NUL in user
     }
+
+    // ── Activation depth cap ──────────────────────────────────────────────────
+
+    /// `%begin-lazy-activation` refuses to start when `activation_depth` is at
+    /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
+    ///
+    /// Fail oracle: remove the depth-cap check from `begin_lazy_activation` →
+    /// an infinite cycle would stack-overflow instead of hard-erroring.
+    #[test]
+    fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
+        use std::io::Write as _;
+        use tempfile::TempDir;
+        use crate::{ScriptingHost, null_host::NullHost};
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("deep.scm");
+        std::fs::File::create(&path).unwrap().write_all(b"(define x 1)").unwrap();
+
+        let id = PluginId::parse("core:deep").unwrap();
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+        // Simulate maximum nesting depth already reached.
+        host.registries.activation_depth = MAX_ACTIVATION_DEPTH;
+
+        let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut NullHost);
+
+        assert!(result.is_err(), "depth cap must raise a Steel error; got Ok");
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id),
+                Some(PluginState::Failed)
+            ),
+            "plugin must be marked Failed when depth cap exceeded"
+        );
+    }
+
+    /// `%begin-lazy-activation` at depth cap − 1 succeeds (cap is exclusive).
+    ///
+    /// Confirms the off-by-one is correct: depth 15 of 16 is still allowed.
+    #[test]
+    fn begin_lazy_activation_below_depth_cap_succeeds() {
+        use std::io::Write as _;
+        use tempfile::TempDir;
+        use crate::{ScriptingHost, null_host::NullHost};
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("ok.scm");
+        std::fs::File::create(&path).unwrap().write_all(b"(define x 1)").unwrap();
+
+        let id = PluginId::parse("core:ok").unwrap();
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Declared { path });
+        // One below the cap — must still be allowed.
+        host.registries.activation_depth = MAX_ACTIVATION_DEPTH - 1;
+
+        // Transition to Loading and return the require-string (not an error).
+        let result = host.eval_source(r#"(%begin-lazy-activation "core:ok")"#, &mut NullHost);
+        assert!(result.is_ok(), "depth below cap must be allowed; got Err");
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id),
+                Some(PluginState::Loading)
+            ),
+            "plugin must be Loading after successful %begin-lazy-activation"
+        );
+    }
 }

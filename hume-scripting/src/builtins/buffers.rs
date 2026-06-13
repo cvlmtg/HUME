@@ -258,3 +258,202 @@ pub(crate) fn set_buffer_language_steel(
     Ok(SteelVal::Void)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use steel::rvals::IntoSteelVal;
+    use crate::test_support::SteelCtxTestHarness;
+    use crate::builtins::ids::SteelBufferId;
+    use hume_engine::pipeline::BufferId;
+
+    fn default_bid() -> SteelVal {
+        SteelBufferId(BufferId::default()).into_steelval().expect("SteelBufferId IntoSteelVal")
+    }
+
+    // ── require_cmd_ctx! guard (init mode rejection) ─────────────────────────
+
+    /// `current-buffer` is blocked in init mode.
+    ///
+    /// Fail oracle: remove `require_cmd_ctx!` → `focused_buffer_id` (which is
+    /// Default in init) would be returned, silently giving wrong data.
+    #[test]
+    fn current_buffer_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = current_buffer(&mut ctx);
+        assert!(result.is_err(), "current-buffer must error in init mode");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("init"), "error must mention 'init'; got: {msg}");
+    }
+
+    /// `current-pane` is blocked in init mode.
+    #[test]
+    fn current_pane_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(current_pane(&mut ctx).is_err());
+    }
+
+    /// `buffers` is blocked in init mode.
+    #[test]
+    fn buffers_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(buffers(&mut ctx).is_err());
+    }
+
+    /// `panes` is blocked in init mode.
+    #[test]
+    fn panes_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(panes(&mut ctx).is_err());
+    }
+
+    /// `buffer-path` is blocked in init mode.
+    #[test]
+    fn buffer_path_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(buffer_path(&mut ctx, default_bid()).is_err());
+    }
+
+    /// `buffer-name` is blocked in init mode.
+    #[test]
+    fn buffer_name_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(buffer_name(&mut ctx, default_bid()).is_err());
+    }
+
+    /// `buffer-dirty?` is blocked in init mode.
+    #[test]
+    fn buffer_dirty_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(buffer_dirty(&mut ctx, default_bid()).is_err());
+    }
+
+    /// `set-buffer-language!` is blocked in init mode.
+    #[test]
+    fn set_buffer_language_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let result = set_buffer_language_steel(&mut ctx, default_bid(), SteelVal::BoolV(false));
+        assert!(result.is_err(), "set-buffer-language! must error in init mode");
+    }
+
+    /// `current-line-number` is blocked in init mode.
+    #[test]
+    fn current_line_number_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(current_line_number(&mut ctx).is_err());
+    }
+
+    /// `cursor-char-index` is blocked in init mode.
+    #[test]
+    fn cursor_char_index_blocked_in_init_mode() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        assert!(cursor_char_index(&mut ctx).is_err());
+    }
+
+    // ── Type errors (wrong arg type) ──────────────────────────────────────────
+
+    /// `buffer-path` rejects a non-BufferId argument.
+    ///
+    /// Fail oracle: remove the `downcast_buffer_id` check → any SteelVal would be
+    /// accepted and a default BufferId would be used silently.
+    #[test]
+    fn buffer_path_wrong_type_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = buffer_path(&mut ctx, SteelVal::StringV("not-an-id".into()));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected buffer-id"));
+    }
+
+    /// `buffer-name` rejects a non-BufferId argument.
+    #[test]
+    fn buffer_name_wrong_type_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = buffer_name(&mut ctx, SteelVal::IntV(0));
+        assert!(result.is_err());
+    }
+
+    /// `buffer-dirty?` rejects a non-BufferId argument.
+    #[test]
+    fn buffer_dirty_wrong_type_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = buffer_dirty(&mut ctx, SteelVal::BoolV(true));
+        assert!(result.is_err());
+    }
+
+    // ── Invalid buffer ID (NullHost always returns buffer_exists=false) ───────
+
+    /// `buffer-path` with a valid BufferId but non-existent buffer raises an error.
+    ///
+    /// Fail oracle: remove the `buffer_exists` check → `buffer_path` is called
+    /// on a nonexistent buffer, which could panic or return garbage.
+    #[test]
+    fn buffer_path_invalid_id_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        // NullHost.buffer_exists always returns false.
+        let result = buffer_path(&mut ctx, default_bid());
+        assert!(result.is_err(), "non-existent buffer id must error");
+        assert!(result.unwrap_err().to_string().contains("invalid buffer id"));
+    }
+
+    // ── Command-mode success paths (NullHost read methods return None/empty) ──
+
+    /// `current-buffer` in command mode returns the focused buffer id as a SteelVal.
+    ///
+    /// Fail oracle: return a hardcoded or wrong id → the assert on the type fires.
+    #[test]
+    fn current_buffer_command_mode_returns_steel_buffer_id() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = current_buffer(&mut ctx);
+        assert!(result.is_ok(), "current-buffer must succeed in command mode");
+        // Must return a Custom value (SteelBufferId is opaque).
+        assert!(
+            matches!(result.unwrap(), SteelVal::Custom(_)),
+            "current-buffer must return a SteelVal::Custom (BufferId)"
+        );
+    }
+
+    /// `buffers` in command mode returns an empty list (NullHost has no buffers).
+    #[test]
+    fn buffers_command_mode_returns_empty_list() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = buffers(&mut ctx);
+        assert!(result.is_ok());
+        assert!(
+            matches!(result.unwrap(), SteelVal::ListV(lst) if lst.is_empty()),
+            "buffers must return an empty list when no buffers exist"
+        );
+    }
+
+    /// `current-line-number` returns `#f` when the host has no cursor (NullHost).
+    #[test]
+    fn current_line_number_returns_false_when_no_cursor() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = current_line_number(&mut ctx);
+        assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    }
+
+    /// `cursor-char-index` returns `#f` when the host has no cursor (NullHost).
+    #[test]
+    fn cursor_char_index_returns_false_when_no_cursor() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let result = cursor_char_index(&mut ctx);
+        assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    }
+}

@@ -170,3 +170,99 @@ impl<'a> SteelCtx<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::SteelCtxTestHarness;
+    use crate::log::LogLevel;
+
+    // ── Mode discriminant ─────────────────────────────────────────────────────
+
+    /// `new_init` sets `is_init = true`.
+    ///
+    /// Fail oracle: swap `is_init: true` → `false` in `new_init` → assert fires.
+    #[test]
+    fn new_init_has_is_init_true() {
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx_init();
+        assert!(ctx.is_init, "new_init must set is_init = true");
+    }
+
+    /// `new_command` sets `is_init = false`.
+    ///
+    /// Fail oracle: swap `is_init: false` → `true` in `new_command` → assert fires.
+    #[test]
+    fn new_command_has_is_init_false() {
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx();
+        assert!(!ctx.is_init, "new_command must set is_init = false");
+    }
+
+    /// `new_activation` sets `is_init = false` (same as command mode).
+    ///
+    /// Runtime-triggered plugin bodies use `new_activation` so `(call! …)` is
+    /// allowed inside them.  Fail oracle: set `is_init: true` → plugin bodies
+    /// would be blocked from calling native commands.
+    #[test]
+    fn new_activation_has_is_init_false() {
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx_activation();
+        assert!(!ctx.is_init, "new_activation must set is_init = false");
+    }
+
+    // ── Focus snapshot (new_command) ──────────────────────────────────────────
+
+    /// `new_command` stores the focus IDs passed in; `live_focused_buffer_id`
+    /// starts equal to `focused_buffer_id`.
+    #[test]
+    fn new_command_stores_focus_ids() {
+        let mut h = SteelCtxTestHarness::new();
+        // ctx() uses PaneId::default() and BufferId::default() as the focus IDs.
+        let ctx = h.ctx();
+        assert_eq!(ctx.focused_pane_id, PaneId::default());
+        assert_eq!(ctx.focused_buffer_id, BufferId::default());
+        assert_eq!(ctx.live_focused_buffer_id, ctx.focused_buffer_id,
+            "live_focused_buffer_id must start equal to focused_buffer_id");
+    }
+
+    /// `new_command` stores `pending_char` correctly.
+    ///
+    /// The harness passes `None`; test `new_command` directly for the `Some` case.
+    #[test]
+    fn new_command_stores_pending_char() {
+        // Use ctx() (None) and verify the field is None.
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx();
+        assert_eq!(ctx.pending_char, None, "default ctx has no pending_char");
+    }
+
+    // ── init mode: focus IDs are zeroed ───────────────────────────────────────
+
+    /// `new_init` leaves focus IDs at their defaults (not real buffer/pane IDs).
+    #[test]
+    fn new_init_focus_ids_are_default() {
+        let mut h = SteelCtxTestHarness::new();
+        let ctx = h.ctx_init();
+        assert_eq!(ctx.focused_pane_id, PaneId::default());
+        assert_eq!(ctx.focused_buffer_id, BufferId::default());
+    }
+
+    // ── log helper ────────────────────────────────────────────────────────────
+
+    /// `ctx.log(…)` appends to `pending_messages`.
+    ///
+    /// Fail oracle: make `log` a no-op → pending_messages stays empty → assert fires.
+    #[test]
+    fn log_pushes_to_pending_messages() {
+        let mut h = SteelCtxTestHarness::new();
+        {
+            let mut ctx = h.ctx_init();
+            ctx.log(LogLevel::Info, "hello".into());
+            ctx.log(LogLevel::Warning, "world".into());
+        }
+        assert_eq!(h.pending_messages.len(), 2);
+        assert_eq!(h.pending_messages[0].0, LogLevel::Info);
+        assert_eq!(h.pending_messages[1].0, LogLevel::Warning);
+    }
+}

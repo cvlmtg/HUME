@@ -79,6 +79,33 @@ impl SteelCtxTestHarness {
         )
     }
 
+    /// Build a `SteelCtx` in activation mode (`is_init = false`, plugin body context).
+    pub(crate) fn ctx_activation(&mut self) -> SteelCtx<'_> {
+        let Self {
+            host,
+            plugin_stack,
+            registries,
+            pending_messages,
+            pending_language_regs,
+            data_dir,
+            runtime_dir,
+            interrupt_flag,
+        } = self;
+        SteelCtx::new_activation(
+            host,
+            HostBundle {
+                registries,
+                plugin_stack,
+                pending_messages,
+                pending_language_regs,
+                data_dir: data_dir.as_deref(),
+                runtime_dir: runtime_dir.as_deref(),
+                interrupt_flag: Arc::clone(interrupt_flag),
+            },
+            Default::default(),
+        )
+    }
+
     /// Build a `SteelCtx` in command mode (`is_init = false`).
     pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
         let Self {
