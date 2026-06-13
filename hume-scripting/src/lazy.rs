@@ -32,7 +32,7 @@ pub enum PluginState {
 /// Persistent plugin state and trigger maps.
 ///
 /// Borrowed into [`super::SteelCtx`] for the duration of each eval so that
-/// `%declare-plugin!` can write directly without `mem::take`/put-back.
+/// `%declare-plugin!` can write directly.
 ///
 /// Keys are **not** stored here; they use the ordinary keymap as trie leaves
 /// that point to command names.  The command name appears in

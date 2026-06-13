@@ -17,8 +17,8 @@ use super::{HostBundle, ScriptingRegistries};
 /// or command call via Steel's `with_mut_reference` API.
 ///
 /// All persistent scripting state (hooks, attribution, etc.) is held directly
-/// on [`super::ScriptingHost`] and borrowed here by reference — no `mem::take`/put-back
-/// needed.  Transient per-eval state (accumulators, mode flags) is owned.
+/// on [`super::ScriptingHost`] and borrowed here by reference.  Transient
+/// per-eval state (accumulators, mode flags) is owned.
 ///
 /// Editor-domain state is accessed through [`EditorHost`], which is implemented
 /// by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in tests).  This

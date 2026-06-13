@@ -216,12 +216,10 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 ///
 /// The discriminating logic:
 /// - Start at position 0.  Call `(move-right)`.
-/// - Sync (current model): cursor is now 1 — the `(when (= (cursor-char-index) 1) ...)` arm
+/// - Cursor is immediately 1, so the `(when (= (cursor-char-index) 1) ...)` arm
 ///   fires and calls `(move-right)` a second time → final position 2.
-/// - Old deferral model (removed): cursor would have stayed at 0 — the `(when ...)` would
-///   not fire → only one `move-right` → final position 1.
 ///
-/// Fail oracle: restore asynchronous deferral → cursor lands at 1 instead of 2.
+/// Fail oracle: if dispatch defers commands → cursor lands at 1 instead of 2.
 #[test]
 fn case_b_sync_cursor_read_reflects_motion() {
     // "-[a]>bc\n" — cursor at position 0.
@@ -255,8 +253,8 @@ fn case_b_sync_cursor_read_reflects_motion() {
     ed.execute_keymap_command("test-case-b".into(), 1, false, vec![]);
 
     let final_state = state(&ed);
-    // Sync: both moves ran inside the lambda → cursor at 2, "ab-[c]>\n".
-    // (Old deferral model would have produced cursor at 1, "a-[b]>c\n".)
+    // Both moves ran inside the lambda → cursor at 2, "ab-[c]>\n".
+    // Fail oracle: if dispatch defers → cursor at 1, "a-[b]>c\n".
     assert_eq!(
         final_state, "ab-[c]>\n",
         "sync dispatch: (cursor-char-index) must reflect (move-right) effect within same eval"
@@ -629,10 +627,9 @@ fn classification_sites_all_agree() {
 
 // ── Bookkeeping regression tests (findings 1–5) ───────────────────────────────
 //
-// Each test verifies that a native command dispatched from Steel via (call!)
+// Each test verifies that a command dispatched from Steel via (call!)
 // produces the same bookkeeping as a direct keypress on the same command.
-// All nine tests must FAIL if you revert to the old run_command_sync body that
-// omitted the bookkeeping (flip the assertion to confirm).
+// Flip any assertion to confirm it catches a regression.
 
 /// **Finding 1 — register prefix**: `(set-register-prefix! "a") (call! "yank")` must
 /// route the yank to named register `a`, not to the kill ring or clipboard.
@@ -1177,23 +1174,16 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 
 // ── In-Steel plugin dispatch (core goal) ─────────────────────────────────────
 //
-// These tests verify the new synchronous dispatch model: plugin commands are
-// applied directly on the Steel call stack via (apply proc args), not deferred
-// to a post-eval queue. A state read after (call! plugin-cmd) within the SAME
-// body reflects the plugin's side-effects immediately.
+// Plugin commands are applied directly on the Steel call stack via (apply proc args).
+// A state read after (call! plugin-cmd) within the SAME body reflects the plugin's
+// side-effects immediately.
 
 /// **Core goal**: a plugin command that calls another plugin command can observe
 /// the inner command's effect via a state read in the same body.
 ///
-/// Under the old deferral model: `(call! inner-move)` queued both the plugin and
-/// any subsequent native, so `(cursor-char-index)` read BEFORE the queue drained
-/// → saw cursor=0, the `(when …)` branch never fired → cursor ended at 1.
-///
-/// Under in-Steel dispatch: `inner-move` is applied inline (plugin funcall in the
-/// VM), cursor=1 by the time `(cursor-char-index)` is evaluated → branch fires →
+/// `inner-move` is applied inline (plugin funcall in the VM), so cursor=1 by
+/// the time `(cursor-char-index)` is evaluated → the `(when …)` branch fires →
 /// second move-right → cursor=2.
-///
-/// Discriminant: cursor=2 means inline; cursor=1 means deferred.
 ///
 /// Fail oracle: comment out the `if proc { apply proc args }` branch in
 /// `%dispatch-command` so all commands fall through to `%call-native!` — the

@@ -38,81 +38,34 @@ Editor                         // thin app shell: lifecycle + three subtrees
 ├── scripting: Option<ScriptingHost>  // None until init_scripting
 │   ├── steel: Engine          // the Scheme VM handle — always "steel", never
 │   │                          //   bare "engine" (see D1)
-│   └── registries: ScriptingRegistries  // bundles cmd_owners, hooks,
-│                                        //   lazy_registry, declared_plugins
-│                                        //   (disjoint from steel — NLL split)
+│   ├── registries: ScriptingRegistries  // persistent scripting registries:
+│   │                                    //   command ownership, hooks,
+│   │                                    //   lazy/declared plugins, command
+│   │                                    //   table; disjoint from steel — NLL
+│   │                                    //   split
+│   └── …                      // infra fields: plugin_stack, pending_messages,
+│                               //   data_dir, interrupt_flag, etc.
 ├── state: EditorState         // document/command state — everything a command
-│                              //   can mutate (see D2 for full field partition)
+│                              //   can mutate (see D2)
 └── view: EngineView           // render/view state: full-fat panes, layout tree,
                                //   theme (hume-engine/ crate type, see D3)
 ```
 
-### `EditorState` — complete field partition
+### `EditorState` — the command-mutable boundary
 
-Everything a command can read or mutate lives here. No command-reachable state
-stays on the outer `Editor` (see D2).
+Everything a command can read or mutate lives on `EditorState`: buffers, mode,
+pending input, registers, kill ring, settings, command registry, keymap, search
+state, per-pane bookkeeping (`panes: PaneView`), the deferred-hook channel
+(`pending_hooks`), and so on. The struct definition
+(`hume-editor/src/editor/mod.rs`) is the authoritative field list.
 
-| Field | Notes |
-|---|---|
-| `buffers` | `BufferStore` |
-| `mode` | `Mode` |
-| `pending_keys` | `Vec<KeyEvent>` |
-| `count` | `Option<usize>` |
-| `wait_char` | `Option<WaitCharPending>` |
-| `pending_char` | `Option<char>` |
-| `registers` | `RegisterSet` |
-| `kill_ring` | `KillRing` |
-| `clipboard` | `SystemClipboard` — `!Send`; never passed to Steel |
-| `register_prefix` | `Option<RegisterPrefix>` |
-| `last_command` | `Option<Cow<'static, str>>` |
-| `last_paste` | `Option<Vec<String>>` |
-| `should_quit` | app-control flag |
-| `minibuf` | `Option<MiniBuffer>` |
-| `completion` | `Option<CompletionState>` |
-| `status_msg` | `Option<String>` |
-| `message_log` | `MessageLog` |
-| `settings` | `EditorSettings` |
-| `registry` | `CommandRegistry` — read-only at dispatch; `run_command_sync` clones the command out before running, ending the borrow before any `&mut state` access |
-| `keymap` | modified by `bind-key!` |
-| `last_find` | `Option<FindChar>` |
-| `search` | `SearchState` |
-| `focused_pane_id` | `PaneId` |
-| `history` | `HistoryStore` |
-| `languages` | `LanguageRegistry` — reset at `:reload-config` |
-| `cwd` | `PathBuf` — updated by `:cd` |
-| `force_full_redraw` | set by inline-output dispatch |
-| `motion_format_scratch` | per-command scratch; reused each keypress |
-| `visual_move_target_cols` | per-command scratch |
-| `last_repeatable_action` | `Option<RepeatableAction>` |
-| `pending_repeat` | `Option<PendingRepeat>` — per-command; set by `cmd_repeat`, consumed by `drain_pending_repeat` at tail of `handle_key` |
-| `insert_session` | `Option<InsertSession>` |
-| `explicit_count` | `bool` |
-| `macro_recording` | `Option<(char, Vec<KeyEvent>)>` |
-| `macro_pending` | `Option<MacroPending>` |
-| `replay_queue` | `VecDeque<KeyEvent>` |
-| `skip_macro_record` | `bool` |
-| `is_replaying` | `bool` |
-| `mouse_drag_anchor` | `Option<usize>` |
-| `panes` | `PaneView` — consolidates the three per-pane editor maps: `SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`, `SecondaryMap<PaneId, PaneTransient>`, `SecondaryMap<PaneId, JumpList>` |
-| `pending_hooks` | `Vec<(HookId, Vec<SteelVal>)>` — unified hook channel (see D5/D7) |
+Two kinds of state deliberately stay on the outer `Editor` instead:
 
-Arc-wrapped render comms (stay on outer `Editor` as `Arc` clones — no `&mut` borrow needed):
-
-| Field | Notes |
-|---|---|
-| `bracket_hl_data` | `Arc<RwLock<Vec<…>>>` |
-| `search_hl_data` | `Arc<RwLock<Vec<…>>>` |
-| `completion_view` | `Arc<RwLock<Option<CompletionView>>>` |
-
-Shell (`Editor` outer — lifecycle only; no command access):
-
-| Field | Notes |
-|---|---|
-| `scripting` | `Option<ScriptingHost>` |
-| `builtin_cmd_names` | `HashSet<String>` — set at init, immutable |
-| `kitty_enabled` | set at startup; read only by event loop |
-| `parse_worker` | `Box<dyn ParseBackend>` — lifecycle plumbing |
-| `parse_worker_disconnect_logged` | one-shot UI dedup flag |
+- **Arc-wrapped render comms** (`bracket_hl_data`, `search_hl_data`,
+  `completion_view`) — shared with the render thread as `Arc` clones, so no
+  `&mut` borrow of `EditorState` is needed to reach them.
+- **Lifecycle shell fields** (`scripting`, `parse_worker`, `kitty_enabled`, …) —
+  app plumbing no command touches.
 
 ## Borrow story at eval time
 
@@ -138,7 +91,7 @@ pub(crate) struct EditorHostImpl<'a> {
 
 Inside `ScriptingHost`, the `steel_and_bundle` helper performs the NLL field-split
 of `steel` vs. everything else, returning `(&mut Engine, HostBundle<'_>)`. `HostBundle`
-carries `registries: &mut ScriptingRegistries` alongside six infrastructure borrows
+carries `registries: &mut ScriptingRegistries` alongside the infrastructure borrows
 (`plugin_stack`, `pending_messages`, `pending_language_regs`, `data_dir`,
 `runtime_dir`, `interrupt_flag`) — all disjoint from `steel`, so the VM can run
 while the bundle is live.
@@ -179,7 +132,7 @@ fresh eval, no deferral. The routing lives in Steel (`%dispatch-command`).
 | `(call! "name")` | 1 | `false` |
 | `(call! "name" n)` | `n` (clamped to ≥ 1) | `false` |
 | `(call! "name" n #t)` | `n` (clamped to ≥ 1) | `true` |
-| any other shape | `steel::stop!` | — |
+| any other shape | error raised to Steel | — |
 
 For lazy/unknown (queued), args flow through unchanged.
 `register_command_names` emits `(define name (lambda () (call! "name")))` wrappers —
@@ -203,11 +156,11 @@ Rule:
 ### D2 — `EditorState` boundary: everything a command can mutate lives here
 
 If any command-reachable state is left on the outer `Editor`, that command needs
-`&mut Editor` again and re-creates blocker #2 in miniature. The field partition
-table above is the authoritative statement of this boundary. `EngineView` (full-fat
-panes, layout tree, theme) is the `view` sibling — not inside `EditorState`, because
-it is also render state, but still a disjoint field of the outer shell and reachable
-from sync `EditorCmd` handlers.
+`&mut Editor` again and re-creates blocker #2 in miniature. The `EditorState`
+struct definition is the authoritative statement of this boundary. `EngineView`
+(full-fat panes, layout tree, theme) is the `view` sibling — not inside
+`EditorState`, because it is also render state, but still a disjoint field of
+the outer shell and reachable from sync `EditorCmd` handlers.
 
 The outer `Editor` becomes a thin shell: `{ scripting, state, view }` plus pure
 app-lifecycle plumbing that no command touches.
@@ -265,10 +218,10 @@ The `EditorHost` trait (defined in the `hume-scripting/` crate) is kept for two 
 `view: &mut EngineView`). These back the trait interface — callers (builtins) see no
 change.
 
-`ScriptingRegistries` bundles the four persistent registry fields (`cmd_owners`,
-`hooks`, `lazy_registry`, `declared_plugins`) as one field of `ScriptingHost`.
-The NLL field-split is clean: `steel` vs. `registries` are two disjoint fields,
-borrowed separately by `steel_and_bundle`.
+`ScriptingRegistries` bundles the persistent scripting registries (command ownership,
+hooks, the lazy/declared-plugin tables, the activated-command table) as one field of
+`ScriptingHost`. The NLL field-split is clean: `steel` vs. `registries` are two
+disjoint fields, borrowed separately by `steel_and_bundle`.
 
 ### D7 — EditorCmd handler shape; TypedCommand exception
 
@@ -297,6 +250,6 @@ stays on `fn(&mut Editor, …)`**, for three reasons:
    `:bd`, `:split`, `:set language`) that legitimately span state + view + parse_worker
    + Steel together.
 
-The Phase-8 correctness gate (`rg 'fn cmd_.*&mut Editor[^S]'`) is scoped to `cmd_*`
-handlers. `typed_*` retaining `&mut Editor` is the ratified exception.
-
+The correctness gate (`rg 'fn cmd_.*&mut Editor[^S]'`) is scoped to `cmd_*`
+handlers. TypedCommand handlers (e.g. `write_file`) retaining `&mut Editor` are
+the ratified exception.

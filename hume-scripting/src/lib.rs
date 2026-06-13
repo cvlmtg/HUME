@@ -148,7 +148,7 @@ pub(crate) struct HostBundle<'a> {
 ///
 /// Owns the Steel `Engine` and all persistent scripting state.  Each eval or
 /// command call constructs a `SteelCtx` that borrows the persistent fields
-/// directly — no `mem::take`/put-back needed.
+/// directly.
 ///
 /// Constructed once during `Editor::init_scripting()` and held for the
 /// lifetime of the process.

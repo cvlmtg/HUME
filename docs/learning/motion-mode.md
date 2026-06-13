@@ -48,12 +48,6 @@ stayed put.
 `Move` always produces a collapsed single-character selection (anchor == head).
 `Extend` keeps the existing anchor, only moving the head.
 
-> **Historical note:** `MotionMode` originally had a third value — `Select`,
-> which set the anchor to the old *head*. This was the Kakoune model for word
-> motions: `w` accumulated the traversed span from cursor to next word start.
-> `Select` was removed when `w`/`b`/`W`/`B` were redesigned to select the
-> whole destination word — see [Word Motions](word-motions.md).
-
 ## Why separate the inner function from the mode
 
 The inner position function is a pure coordinate calculation — it knows

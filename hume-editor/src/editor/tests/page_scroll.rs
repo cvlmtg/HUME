@@ -3,8 +3,8 @@ use pretty_assertions::assert_eq;
 
 // ── Page scroll ───────────────────────────────────────────────────────────────
 //
-// page_scroll / half_page_scroll were refactored from Motion dispatch to
-// EditorCmd dispatch. These tests verify they still move by the right distance.
+// page_scroll / half_page_scroll are EditorCmd dispatches.
+// These tests verify they move by the right distance.
 //
 // Viewport height in for_testing = 24 → page = 24, half = 12.
 // Text: 30 single-char lines "a\n" (60 chars total). No wrap needed.

@@ -223,7 +223,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // %call-native! is the Rust leaf for native/lazy/unknown dispatch; the variadic
     // (call! name args…) macro desugars to (%dispatch-command …) which routes
     // activated plugin commands inline in Steel and falls back here for everything else.
-    // %call! is kept as an alias for any tooling that references the old primitive name.
+    // %call! is an alias of %call-native! for tooling compatibility.
     steel.register_fn_with_ctx(HUME_CTX, "%call-native!", commands::call_command_primitive);
     steel.register_fn_with_ctx(HUME_CTX, "%call!", commands::call_command_primitive);
     // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,

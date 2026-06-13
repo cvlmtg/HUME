@@ -1,4 +1,4 @@
-> **STATUS: IMPLEMENTED** — The engine described here shipped as part of the M7 multi-buffer migration (complete 2026-04-20). This document is preserved as a historical requirements brief.
+> **STATUS: IMPLEMENTED** — This requirements brief is what the rendering engine was built from; the engine shipped as part of the M7 multi-buffer migration (complete 2026-04-20). Preserved as a record of the engine's goals and constraints.
 
 ## GOAL
 
@@ -8,24 +8,15 @@ The core pipeline should be minimal — it orchestrates stages, owns no feature 
 
 Features belong in the core only when extracting them would force the pipeline to expose internal state, add an indirection hop in the per-grapheme hot path, or break the single-source-of-truth for position mapping.
 
-## ROLE OF THIS DOCUMENT
-
-This document is the **requirements input** for the design phase. It defines goals, features, performance constraints, and coding principles. It does not prescribe architecture — that is the design phase's job.
-
-## DESIGN PHASE
-
-Run two parallel agents. One designs the engine (pipeline stages, data structures, extension points, data flow). The other challenges every decision (simpler alternative? hidden coupling? allocation? SSOT violation?). The design phase continues until both agents converge on a final architecture, or it becomes clear they have reached an irresolvable disagreement (flag it for the user).
-
 ## ARCHITECTURAL CONSTRAINTS
 
 These are day-one requirements, not future additions. The engine must be designed to accommodate them from the first line of code — retrofitting is expensive.
 
-- **Clean-sheet design**: the existing codebase is not a constraint. Design the best possible engine from scratch — existing code will be adapted to the new engine, not the other way around. Do not preserve compatibility with current types, function signatures, or data flow. The design agents must ignore the current implementation entirely.
 - **Language**: the engine is written in Rust, 2024 edition. All design decisions must be idiomatic Rust — ownership, borrowing, and lifetime discipline are not afterthoughts. The architecture must be expressible without unsafe.
 - **Rope-backed buffer**: the editor uses the `ropey` crate as its rope data structure. The engine receives text via `ropey`'s API (`Rope`, `RopeSlice`, chunk iterators). All text access — grapheme walks, byte-to-char conversions, line indexing — must go through `ropey`'s interfaces. The engine must never assume a contiguous `&str` over the full buffer; it must be designed to work with chunked iteration from day one.
 - **Syntax highlighting via tree-sitter**: syntax highlighting is powered by tree-sitter. The engine consumes tree-sitter's incremental parse trees and highlight queries — it does not implement its own parser or regex-based highlighter. The design must account for tree-sitter's chunk-based `Input` API (which aligns naturally with `ropey` chunk iterators) and for incremental re-highlighting on edit (only the edited subtree is re-parsed).
 - **Terminal output via ratatui**: the engine writes into ratatui's `Buffer` (a flat grid of `Cell`s). This is the engine's output boundary — all style resolution must ultimately produce values expressible as ratatui's `Color` and `Modifier` types. The engine's internal style representation may be richer, but the final cell-write step is a mapping into ratatui's model. The engine must not bypass ratatui to write directly to the terminal.
-- **Split panes**: the engine must support multiple independent viewports (panes) from the start. Each pane owns its scroll state, cursor, and gutter config. The engine doesn't need to *implement* a split UI immediately, but its data model must make adding panes trivial — no global state that assumes a single content area.
+- **Split panes**: the engine must support multiple independent viewports (panes) from the start. Each pane owns its scroll state and selections; gutter columns and other per-pane decorations come from its provider set, and per-frame render settings (mode, wrap, tab width, whitespace) are supplied by the editor. The data model must make adding panes trivial — no global state that assumes a single content area.
 - **Composable pipeline**: the render pipeline is a sequence of stages. Each stage does one thing. New features slot in as providers/consumers at defined extension points, not as modifications to existing stages.
 - **Provider model for extensible features**: gutter columns, highlight sources, virtual line sources, and overlays are all registered providers. Adding a new git-signs column or a new diagnostic highlight source means adding a provider — not modifying the pipeline or existing providers.
 
