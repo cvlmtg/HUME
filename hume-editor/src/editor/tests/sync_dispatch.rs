@@ -1269,3 +1269,59 @@ fn command_table_populated_after_define_command() {
         "'move-right' (native) must not appear in command_table"
     );
 }
+
+/// **Issue 6 — native `(call!)` at init top-level warns and skips, not aborts**.
+///
+/// A top-level `(call! "move-right")` in init.scm must NOT abort evaluation:
+/// the command is skipped with a `Warning`, and lines that follow it are applied.
+///
+/// Three assertions lock in the full behavior:
+/// 1. `eval_source_returning_defs` returns `Ok` (no hard error, no abort).
+/// 2. `history-capacity` set after the native call is applied (eval continued past it).
+/// 3. The cursor did not move (command was skipped, not run).
+///
+/// Fail oracle: reinstate `steel::stop!` in `call_command_primitive` for the
+/// `is_init` branch → eval returns `Err`, the `(set-option! …)` is never reached,
+/// assertions 1 and 2 fail.
+#[test]
+fn native_call_bang_at_init_top_level_warns_and_skips() {
+    // Content is irrelevant — cursor stays at 0.
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    // Eval as init context: native call in the middle, set-option! after it.
+    let result = host.eval_source_returning_defs(
+        r#"(set-option! "history-capacity" 42)
+           (call! "move-right")
+           (set-option! "history-capacity" 77)"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    );
+
+    // 1. Eval must succeed — no hard abort.
+    assert!(result.is_ok(), "eval must not abort on native call at init top-level; got: {result:?}");
+
+    // 2. The line after the native call must have been applied.
+    ed.state.history.set_capacity(ed.state.settings.history_capacity);
+    assert_eq!(
+        ed.state.settings.history_capacity, 77,
+        "set-option! after native call must be applied (eval continued past it)"
+    );
+
+    // 3. The native command itself must have been skipped.
+    let idx = live_host!(ed).cursor_char_index().expect("cursor_char_index");
+    assert_eq!(idx, 0, "cursor must not move (native command skipped during init); got {idx}");
+
+    // 4. A warning must have been produced for the skipped command.
+    let msgs = host.take_pending_messages();
+    let has_warn = msgs.iter().any(|(lvl, txt)| {
+        matches!(lvl, hume_scripting::LogLevel::Warning) && txt.contains("move-right")
+    });
+    assert!(has_warn, "a Warning containing 'move-right' must be emitted; got: {msgs:?}");
+}

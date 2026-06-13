@@ -12,7 +12,7 @@
 //! - **Lazy triggers** (unactivated plugin): `%dispatch-command` activates the
 //!   owner inline via `%activate-plugin-inline`, then retries.
 //! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
-//!   Init mode: hard error (buffer access not available during init).
+//!   Init mode: warns and skips (buffer access not available during init).
 //! - **Unknown**: forwarded to `%call-native!` → warning logged, no-op.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
@@ -177,8 +177,8 @@ fn define_command_inner(
 ///
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
 ///   validates count/extend args and runs synchronously via `run_command_sync`.
-///   In init mode, raises a hard error — native commands touch buffers which
-///   are not available during init.scm evaluation.
+///   In init mode, logs a warning and skips — native commands touch buffers,
+///   which are not available during init.scm evaluation.
 /// - **Unknown / Steel-but-not-in-table**: logs a `Warning` and returns `#void`.
 ///   This covers commands not yet registered (typo, missing plugin, unknown name).
 pub(crate) fn call_command_primitive(
@@ -191,9 +191,11 @@ pub(crate) fn call_command_primitive(
     match ctx.host.command_is_native(&name) {
         Ok(true) => {
             if ctx.is_init {
-                steel::stop!(Generic =>
-                    "%call-native!: '{}' cannot run during init.scm — buffer access not available",
-                    name);
+                ctx.log(
+                    LogLevel::Warning,
+                    format!("init.scm: skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
+                );
+                return Ok(SteelVal::Void);
             }
             let (count, extend) = parse_count_extend(&args_vec)
                 .map_err(|e| SteelErr::new(ErrorKind::Generic, format!("%call-native!: {e}")))?;

@@ -1064,7 +1064,7 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 /// `%call-native!` dispatches synchronously via `run_command_sync`.
 ///
 /// Flip: change `new_activation` to `new_init` in `activate_plugin_inline`
-/// → `is_init = true` → `%call-native!` raises a hard error → cursor stays.
+/// → `is_init = true` → `%call-native!` warns and skips → cursor stays.
 #[test]
 #[cfg(not(windows))]
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
