@@ -65,6 +65,7 @@ impl EditorHost for NullHost {
         Err("stub host has no native command registry".into())
     }
     fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> { Ok(()) }
+    fn unregister_command(&mut self, _name: &str) {}
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }
 }

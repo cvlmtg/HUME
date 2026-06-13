@@ -155,6 +155,9 @@ impl EditorHost for MockHost {
         self.registered_cmds.push(def);
         Ok(())
     }
+    fn unregister_command(&mut self, name: &str) {
+        self.registered_cmds.retain(|d| d.name != name);
+    }
     fn current_line_number(&self) -> Option<usize> { None }
     fn cursor_char_index(&self) -> Option<usize> { None }
 }

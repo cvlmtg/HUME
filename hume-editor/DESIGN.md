@@ -123,7 +123,7 @@ fresh eval, no deferral. The routing lives in Steel (`%dispatch-command`).
 - **`%lookup-plugin-proc` returns `#f`** (native, lazy, or unknown): `%call-native!` —
   native commands run synchronously via `run_command_sync`; lazy/unknown commands are queued.
 
-`%call!` is retained as an alias for `%call-native!` for tooling compatibility.
+`%call-native!` is the Rust leaf; the `call!` macro always desugars to `%dispatch-command` which falls back to `%call-native!` for native/unknown commands.
 
 **Arg → count/extend mapping for native commands:**
 

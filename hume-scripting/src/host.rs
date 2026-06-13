@@ -157,6 +157,13 @@ pub trait EditorHost {
     /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
 
+    /// Remove a previously registered Steel command from the `CommandRegistry`.
+    ///
+    /// Called by `finish_lazy_activation` on the failure path to roll back
+    /// commands that a partially-evaluated plugin body registered before erroring.
+    /// No-op if the name is not present.
+    fn unregister_command(&mut self, name: &str);
+
     // ── Live cursor/selection reads ──────────────────────────────────────────
     /// Line number (1-indexed) of the primary cursor in the focused buffer.
     ///

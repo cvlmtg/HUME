@@ -50,7 +50,7 @@ type SteelResult = Result<SteelVal, SteelErr>;
 ///
 /// Raises a Steel error if:
 /// - `name` conflicts with a core built-in command.
-/// - The same name is defined twice within one eval session.
+/// - The same name is already defined by another plugin or in init.scm.
 /// - Called from a command body (only valid during init.scm or plugin load).
 pub(crate) fn define_command(
     ctx: &mut SteelCtx,
@@ -131,19 +131,30 @@ fn define_command_inner(
             "{}: only valid during init.scm or plugin load, not from a Steel command body",
             builtin_name);
     }
-    match &proc {
-        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => {}
-        _ => steel::stop!(TypeMismatch =>
-            "{}: third arg (proc) must be a callable, got {:?}", builtin_name, proc),
+    if name.contains('"') || name.contains('\\') {
+        steel::stop!(Generic =>
+            "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
     }
     if ctx.builtin_cmd_names.contains(&name) {
         steel::stop!(Generic =>
             "{}: '{}' conflicts with a built-in command and cannot be redefined",
             builtin_name, name);
     }
+    // Guard against true re-definition: command_table is set only when a
+    // command body is actually registered. cmd_owners is pre-seeded by
+    // declare_plugin for trigger ownership before the body runs, so checking
+    // cmd_owners here would falsely reject the plugin defining its own trigger.
     if ctx.registries.command_table.contains_key(&name) {
+        let owner = ctx.registries.cmd_owners.get(&name)
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
         steel::stop!(Generic =>
-            "{}: '{}' is already defined in this eval session", builtin_name, name);
+            "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
+    }
+    match &proc {
+        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => {}
+        _ => steel::stop!(TypeMismatch =>
+            "{}: third arg (proc) must be a callable, got {:?}", builtin_name, proc),
     }
     let (arity, is_variadic) = match &proc {
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
@@ -232,7 +243,7 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::Steel
     match val {
         SteelVal::ListV(list) => Ok(list.into_iter().collect()),
         other => steel::stop!(TypeMismatch =>
-            "%call!: second arg must be a list, got {:?}", other),
+            "%call-native!: second arg must be a list, got {:?}", other),
     }
 }
 
@@ -467,5 +478,73 @@ mod tests {
         let mut ctx = h.ctx();
         let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
         assert_eq!(result, SteelVal::StringV("core:plum".into()));
+    }
+
+    // ── define-command! validation ────────────────────────────────────────────
+
+    #[test]
+    fn define_command_name_with_double_quote_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let err = define_command(
+            &mut ctx,
+            "bad\"name".to_string(),
+            "doc".to_string(),
+            SteelVal::BoolV(false), // type check comes after name check
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("must not contain"),
+            "expected name rejection, got: {err}"
+        );
+    }
+
+    #[test]
+    fn define_command_name_with_backslash_errors() {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx_init();
+        let err = define_command(
+            &mut ctx,
+            "bad\\name".to_string(),
+            "doc".to_string(),
+            SteelVal::BoolV(false),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("must not contain"),
+            "expected name rejection, got: {err}"
+        );
+    }
+
+    #[test]
+    fn define_command_dup_names_error_names_existing_owner() {
+        let mut h = SteelCtxTestHarness::new();
+        // Simulate a command already fully defined by core:plum.
+        // Both command_table (actually defined) and cmd_owners (attribution)
+        // must be set — cmd_owners alone is pre-seeded by declare_plugin for
+        // trigger ownership, so the guard checks command_table.
+        h.registries
+            .command_table
+            .insert("my-cmd".to_string(), SteelVal::BoolV(false));
+        h.registries
+            .cmd_owners
+            .insert("my-cmd".to_string(), "core:plum".to_string());
+        let mut ctx = h.ctx_init();
+        let err = define_command(
+            &mut ctx,
+            "my-cmd".to_string(),
+            "doc".to_string(),
+            SteelVal::BoolV(false),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("core:plum"),
+            "error must name the existing owner; got: {msg}"
+        );
+        assert!(
+            msg.contains("my-cmd"),
+            "error must name the command; got: {msg}"
+        );
     }
 }

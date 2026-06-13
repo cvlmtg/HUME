@@ -1,11 +1,10 @@
 use hume_engine::pipeline::BufferId;
 
-/// A Steel command that has been fully registered in the Steel engine and is ready
-/// to be inserted into the `CommandRegistry`.
+/// A Steel command definition built by `define_command_inner` during init or plugin load.
 ///
-/// Returned by [`super::ScriptingHost::eval_init`] and
-/// [`super::ScriptingHost::activate_plugin`]; the editor layer registers
-/// the commands after a successful eval.
+/// Passed immediately to [`crate::host::EditorHost::register_command`] so the
+/// editor can insert a `SteelBacked` entry in its `CommandRegistry` inline — no
+/// deferred second pass after a successful eval.
 #[derive(Debug)]
 pub struct SteelCmdDef {
     pub name: String,

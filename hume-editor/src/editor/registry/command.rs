@@ -214,7 +214,7 @@ impl MappableCommand {
     /// (`Motion`/`Selection`/`Edit`/`EditorCmd`) rather than through the Steel
     /// dispatch queue (`SteelBacked`/`Lazy`).
     ///
-    /// Single source of truth for native-vs-scripted classification: the `%call!`
+    /// Single source of truth for native-vs-scripted classification: the `%call-native!`
     /// sync-dispatch gate, `run_command_sync`, and bare-binding registration all
     /// derive from this. The match is intentionally exhaustive (no `_`) so a new
     /// variant forces a decision here at compile time.

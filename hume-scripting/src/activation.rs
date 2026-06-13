@@ -383,22 +383,17 @@ mod tests {
         );
     }
 
-    // ── Partial-define consistency (D2) ──────────────────────────────────────
+    // ── Partial-define rollback (D2) ─────────────────────────────────────────
 
     /// A plugin body that defines one command and then errors: the plugin
-    /// transitions to `Failed`, but the partial `define-command!` that completed
-    /// before the error stays in `command_table`.
+    /// transitions to `Failed` and `finish_lazy_activation` rolls back the
+    /// partial `define-command!` — removing it from `command_table` and
+    /// `cmd_owners`.  A `Failed` plugin must not leave callable orphan commands.
     ///
-    /// This documents the known non-transactional behaviour of Steel's eval —
-    /// `command_table` is always the authoritative dispatch table.  An orphaned
-    /// entry in `command_table` for a `Failed` plugin is inert: `%dispatch-command`
-    /// would find the closure but the plugin is marked `Failed` so the entry
-    /// is not re-activated.
-    ///
-    /// Fail oracle: if `define-command!` were rolled back on failure →
-    /// `command_table` would NOT contain "partial-cmd" → last assert fires.
+    /// Fail oracle: without the rollback the key persists in `command_table` →
+    /// the `command_table` assert fires, exposing the orphan.
     #[test]
-    fn partial_define_before_failure_lands_in_command_table() {
+    fn partial_define_before_failure_is_rolled_back() {
         let dir = TempDir::new().unwrap();
         let path = write_plugin(
             &dir,
@@ -419,10 +414,14 @@ mod tests {
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Failed)),
             "plugin must be Failed after mid-body error"
         );
-        // The partial define completed before the error — it is in command_table.
+        // The partial define must be rolled back — no callable orphan left behind.
         assert!(
-            host.registries.command_table.contains_key("partial-cmd"),
-            "partial define-command! before the error must stay in command_table"
+            !host.registries.command_table.contains_key("partial-cmd"),
+            "partial define-command! must be removed from command_table on failure"
+        );
+        assert!(
+            !host.registries.cmd_owners.contains_key("partial-cmd"),
+            "partial define-command! must be removed from cmd_owners on failure"
         );
     }
 }

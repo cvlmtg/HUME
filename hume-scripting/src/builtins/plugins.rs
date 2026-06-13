@@ -277,11 +277,12 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// transitions the plugin to `Loaded` (success) or `Failed` (failure).
 /// `drop_triggers_for` runs on both paths so expired trigger entries are cleaned up.
 ///
-/// **Partial-failure note**: Steel's `eval-string` (used by
-/// `%activate-plugin-inline`) has no transactional semantics.  Any `define`
-/// that completed before the error stays in the VM's symbol table even when we
-/// transition to `Failed`.  These orphaned globals are harmless but visible;
-/// `command_table` is the authoritative dispatch table for HUME commands.
+/// On failure, any commands that a partially-evaluated body already registered via
+/// `define-command!` are rolled back: removed from `command_table`, `cmd_owners`,
+/// and the editor's `CommandRegistry`.  This prevents a `Failed` plugin from
+/// leaving callable orphan commands behind.  Steel globals defined before the
+/// error remain in the VM's symbol table (no rollback possible there) but are
+/// unreachable through HUME's command dispatch.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,
@@ -295,6 +296,23 @@ pub(crate) fn finish_lazy_activation(
     let new_state = if success { PluginState::Loaded } else { PluginState::Failed };
     ctx.registries.lazy_registry.plugins.insert(id.clone(), new_state);
     ctx.registries.lazy_registry.drop_triggers_for(&id);
+
+    if !success {
+        // Roll back any commands the failed body partially registered.
+        let id_str_owned = id.to_string();
+        let orphans: Vec<String> = ctx
+            .registries
+            .cmd_owners
+            .iter()
+            .filter(|(_, owner)| *owner == &id_str_owned)
+            .map(|(name, _)| name.clone())
+            .collect();
+        for name in orphans {
+            ctx.registries.command_table.remove(&name);
+            ctx.registries.cmd_owners.remove(&name);
+            ctx.host.unregister_command(&name);
+        }
+    }
 
     Ok(SteelVal::Void)
 }

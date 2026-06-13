@@ -199,6 +199,10 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         }
     }
 
+    fn unregister_command(&mut self, name: &str) {
+        self.state.registry.unregister(name);
+    }
+
     // ── Register validation ───────────────────────────────────────────────────
     fn is_valid_register_name(&self, ch: char) -> bool {
         crate::ops::register::is_valid_register_name(ch)

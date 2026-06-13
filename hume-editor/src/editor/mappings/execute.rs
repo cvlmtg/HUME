@@ -54,11 +54,8 @@ impl Editor {
             // it. The pre-body snapshot is therefore the right semantics, not
             // just a workaround.
             //
-            // We take unconditionally: for Lazy commands, repeatability is
-            // unknown until the post-eval re-query (Lazy::is_repeatable() is
-            // always false). If the command turns out non-repeatable the
-            // snapshot is dropped and we clear the live recipe in the `else`
-            // branch below, which is the same outcome as today.
+            // Snapshot the selection recipe before any Steel code runs so inner
+            // dispatches can't clobber the user's prior selection extent.
             let recipe_snapshot = std::mem::take(&mut self.state.selection_recipe);
 
             // Commit any open paste session before Steel eval; same invariant as
@@ -74,113 +71,89 @@ impl Editor {
             // preserving smart-p for Steel-wrapped kill cmds.
             self.state.last_command = Some(name.clone());
 
-            match reg_cmd {
-                MappableCommand::Lazy { .. } => {
-                    if self.scripting.is_none() {
-                        return;
-                    }
-                    let focused_pane_id = self.state.focused_pane_id;
-                    let focused_buffer_id = self.focused_buffer_id();
-                    let result = {
-                        let host_scr = self.scripting.as_mut().expect("checked above");
-                        let mut impl_host = EditorHostImpl {
-                            state: &mut self.state,
-                            view: &mut self.view,
-                        };
-                        host_scr.call_steel_cmd(name.as_ref(), char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
-                    };
-                    let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
-                        Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
-                        Err(e) => {
-                            self.report(Severity::Error, e);
-                            return;
-                        }
-                    };
-                    self.flush_script_messages();
-                    for (bid, lang) in lang_sets {
-                        self.set_buffer_language(bid, lang);
-                    }
-                    if !grammar_sweeps.is_empty() {
-                        self.sweep_buffers_for_grammars(grammar_sweeps);
-                    }
-                    if let Some(wc) = wait_char_cmd {
-                        self.state.wait_char = Some(WaitCharPending {
-                            cmd_name: wc.into(),
-                            ctrl_extend: false,
-                        });
-                    }
+            // For a Lazy stub, activate the owning plugin now so we can read
+            // `inline_output` from the resolved SteelBacked entry before dispatch.
+            // `activate_lazy_plugin` unregisters the stub if activation fails or
+            // the body never defined the command, so we always know the outcome.
+            if let MappableCommand::Lazy { plugin, .. } = &reg_cmd {
+                let plugin = plugin.clone();
+                if !self.activate_lazy_plugin(&plugin, name.as_ref()) {
+                    self.report(Severity::Warning, format!("unknown command: {name}"));
+                    return;
                 }
-                MappableCommand::SteelBacked { ref name, inline_output, .. } => {
-                    if self.scripting.is_none() {
-                        return;
-                    }
-                    let focused_pane_id = self.state.focused_pane_id;
-                    let focused_buffer_id = self.focused_buffer_id();
+            }
 
-                    if inline_output {
-                        let kitty = self.kitty_enabled;
-                        let mouse = self.state.settings.mouse_enabled;
-                        if let Err(e) = hume_platform::terminal::enter_inline_output(kitty, mouse) {
-                            self.report(Severity::Error, format!("inline-output enter failed: {e}"));
-                            return;
-                        }
-                        hume_platform::terminal::print_running_banner(name);
-                    }
+            if self.scripting.is_none() {
+                return;
+            }
 
-                    // `scripting` is disjoint from the other fields borrowed
-                    // here; Rust NLL splitting allows this simultaneous borrow.
-                    // `registry` is shared-borrowed alongside the exclusive
-                    // borrows of other fields — different fields, NLL allows it.
-                    let result = {
-                        let host_scr = self.scripting.as_mut().expect("checked above");
-                        let mut impl_host = EditorHostImpl {
-                            state: &mut self.state,
-                            view: &mut self.view,
-                        };
-                        host_scr.call_steel_cmd(name, char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
-                    };
+            // Re-query: a Lazy stub is now SteelBacked after activation above;
+            // a SteelBacked entry is unchanged.  One extra HashMap get is
+            // negligible next to a Scheme eval.
+            let inline_output = matches!(
+                self.state.registry.get_mappable(name.as_ref()),
+                Some(MappableCommand::SteelBacked { inline_output: true, .. })
+            );
+            let focused_pane_id = self.state.focused_pane_id;
+            let focused_buffer_id = self.focused_buffer_id();
 
-                    // Re-enter the alt-screen unconditionally — on both success and error.
-                    if inline_output {
-                        hume_platform::terminal::print_return_prompt();
-                        hume_platform::terminal::wait_for_keypress();
-                        let kitty = self.kitty_enabled;
-                        let mouse = self.state.settings.mouse_enabled;
-                        let mouse_select = self.state.settings.mouse_select;
-                        let _ = hume_platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
-                        self.state.force_full_redraw = true;
-                    }
-
-                    let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
-                        Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
-                        Err(e) => {
-                            self.report(Severity::Error, e);
-                            return;
-                        }
-                    };
-                    self.flush_script_messages();
-                    for (bid, lang) in lang_sets {
-                        self.set_buffer_language(bid, lang);
-                    }
-                    if !grammar_sweeps.is_empty() {
-                        self.sweep_buffers_for_grammars(grammar_sweeps);
-                    }
-                    if let Some(wc) = wait_char_cmd {
-                        self.state.wait_char = Some(WaitCharPending {
-                            cmd_name: wc.into(),
-                            ctrl_extend: false,
-                        });
-                    }
+            if inline_output {
+                let kitty = self.kitty_enabled;
+                let mouse = self.state.settings.mouse_enabled;
+                if let Err(e) = hume_platform::terminal::enter_inline_output(kitty, mouse) {
+                    self.report(Severity::Error, format!("inline-output enter failed: {e}"));
+                    return;
                 }
-                _ => unreachable!("non-native variants exhausted above"),
+                hume_platform::terminal::print_running_banner(&name);
+            }
+
+            // `scripting` is disjoint from the other fields borrowed here;
+            // Rust NLL splitting allows this simultaneous borrow.
+            let result = {
+                let host_scr = self.scripting.as_mut().expect("checked above");
+                let mut impl_host = EditorHostImpl {
+                    state: &mut self.state,
+                    view: &mut self.view,
+                };
+                host_scr.call_steel_cmd(name.as_ref(), char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
+            };
+
+            // Re-enter the alt-screen unconditionally — on both success and error.
+            if inline_output {
+                hume_platform::terminal::print_return_prompt();
+                hume_platform::terminal::wait_for_keypress();
+                let kitty = self.kitty_enabled;
+                let mouse = self.state.settings.mouse_enabled;
+                let mouse_select = self.state.settings.mouse_select;
+                let _ = hume_platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
+                self.state.force_full_redraw = true;
+            }
+
+            let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+                Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
+                Err(e) => {
+                    self.report(Severity::Error, e);
+                    return;
+                }
+            };
+            self.flush_script_messages();
+            for (bid, lang) in lang_sets {
+                self.set_buffer_language(bid, lang);
+            }
+            if !grammar_sweeps.is_empty() {
+                self.sweep_buffers_for_grammars(grammar_sweeps);
+            }
+            if let Some(wc) = wait_char_cmd {
+                self.state.wait_char = Some(WaitCharPending {
+                    cmd_name: wc.into(),
+                    ctrl_extend: false,
+                });
             }
 
         // Dot-repeat: record opt-in Steel commands on the success path.
         //
-        // Re-query the registry because a Lazy first-hit was replaced by its
-        // SteelBacked entry during %activate-plugin-inline above — `reg_cmd`
-        // (from the pre-dispatch lookup) still holds the Lazy variant. One
-        // extra HashMap get is negligible next to a Scheme eval.
+        // Re-query the registry: a Lazy stub was resolved to SteelBacked during
+        // the pre-activation above, so the entry now reflects the real command.
         //
         // Placed *after* call_steel_cmd returns: if the Steel wrapper internally
         // dispatched a native command via (call!), that inner dispatch set
@@ -189,19 +162,18 @@ impl Editor {
         if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
             // Use the pre-body recipe snapshot (taken before the Steel eval so
             // inner dispatches can't clobber the user's prior selection extent).
-            let recipe = recipe_snapshot;
             self.state.last_repeatable_action = Some(super::super::RepeatableAction {
                 command: name.clone(),
                 count,
                 char_arg,
                 insert_keys: Vec::new(),
-                selection_recipe: recipe,
+                selection_recipe: recipe_snapshot,
             });
-        } else {
-            // Non-repeatable Steel command: can't record its selection effect,
-            // so a stale recipe must not leak into the next edit.
-            self.state.selection_recipe.clear();
         }
+        // Whether repeatable or not, the live recipe must not leak into the next
+        // command — repeatable commands recorded the snapshot above; non-repeatable
+        // commands must not propagate a selection recipe they built internally.
+        self.state.selection_recipe.clear();
         }
 
         // Drain any hooks queued during command execution (mode changes, etc.).
