@@ -969,11 +969,11 @@ fn keymap_lint_warns_on_unknown_command() {
 }
 
 /// `(load-plugin …)` called from a plugin body during *runtime* activation
-/// (command trigger) is a hard error — `load-plugin` is init-context only.
+/// (command trigger) is rejected — registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.
 ///
-/// Flip: if `load_plugin` did not gate on `is_init`, the call would silently
-/// succeed or behave unpredictably at runtime rather than failing fast.
+/// Flip: remove `ensure_top_level` from `load_plugin` and the call succeeds
+/// at runtime instead of failing fast.
 #[test]
 #[cfg(not(windows))]
 fn load_plugin_in_runtime_plugin_body_fails_fast() {

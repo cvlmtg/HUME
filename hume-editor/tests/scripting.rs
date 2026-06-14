@@ -2112,20 +2112,53 @@ fn load_plugin_force_activates_declared_plugin() {
     );
 }
 
-/// `(load-plugin "absent-dep")` inside a plugin body (non-top-level) → hard error.
+/// `(load-plugin …)` inside an eager plugin body is rejected unconditionally —
+/// even when the dep is present on disk, the gate fires before path resolution.
 ///
-/// Flip: with top-level silent-skip applied everywhere, this would return `Ok`
-/// and the dependency would silently not load, breaking the dependent plugin.
+/// Flip: weaken the gate back to `!ctx.is_init` and the eager in-body call
+/// succeeds (is_init=true inside an eager body) instead of erroring.
 #[test]
 #[cfg(not(windows))]
-fn load_plugin_in_body_absent_dep_errors() {
-    // Plugin B calls (load-plugin "user/dep") in its body but dep doesn't exist.
+fn load_plugin_in_plugin_body_rejected() {
+    // Plugin pb calls (load-plugin "user/dep") in its body; dep IS present on
+    // disk so a missing-file error cannot mask the gate.
     let dir = tempfile::tempdir().unwrap();
-    let plugin_b_dir = dir.path().join("plugins").join("user").join("pb");
-    std::fs::create_dir_all(&plugin_b_dir).unwrap();
+    let pb_dir = dir.path().join("plugins").join("user").join("pb");
+    let dep_dir = dir.path().join("plugins").join("user").join("dep");
+    std::fs::create_dir_all(&pb_dir).unwrap();
+    std::fs::create_dir_all(&dep_dir).unwrap();
+    std::fs::write(pb_dir.join("plugin.scm"), r#"(load-plugin "user/dep")"#).unwrap();
+    std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(load-plugin "user/pb")"#).unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    let Err(msg) = h.eval_init(&init_path, 10_000, &mut mock, Default::default()) else {
+        panic!("load-plugin inside a plugin body must be rejected");
+    };
+    assert!(
+        msg.contains("top level") || msg.contains("init.scm"),
+        "error must mention top-level restriction; got: {msg}"
+    );
+}
+
+/// `(declare-plugin …)` inside an eager plugin body is rejected — plugins
+/// cannot register other plugins; both registration verbs are top-level only.
+///
+/// Flip: remove the `ensure_top_level` gate from `declare_plugin` and the call
+/// succeeds, silently registering a plugin from inside a plugin body.
+#[test]
+#[cfg(not(windows))]
+fn declare_plugin_in_plugin_body_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let pb_dir = dir.path().join("plugins").join("user").join("pb");
+    std::fs::create_dir_all(&pb_dir).unwrap();
     std::fs::write(
-        plugin_b_dir.join("plugin.scm"),
-        r#"(load-plugin "user/dep-absent")"#,
+        pb_dir.join("plugin.scm"),
+        r#"(declare-plugin "user/other" #:on-command '("other-cmd"))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
@@ -2136,11 +2169,11 @@ fn load_plugin_in_body_absent_dep_errors() {
     let mut mock = MockHost::new();
 
     let Err(msg) = h.eval_init(&init_path, 10_000, &mut mock, Default::default()) else {
-        panic!("load-plugin for absent dep inside plugin body must error");
+        panic!("declare-plugin inside a plugin body must be rejected");
     };
     assert!(
-        msg.contains("not found on disk") || msg.contains("dep-absent"),
-        "error must mention the absent dependency; got: {msg}"
+        msg.contains("top level") || msg.contains("init.scm"),
+        "error must mention top-level restriction; got: {msg}"
     );
 }
 
@@ -2215,17 +2248,16 @@ fn arity1_list_command_accepts_list_arg() {
 }
 
 /// `(load-plugin …)` raises a Steel error when called from a command body
-/// (`is_init = false`), mirroring the `register-hook!` guard.
+/// (`is_init = false`, `plugin_stack` empty) — the `ensure_top_level` gate rejects it.
 ///
-/// Flip: removing the `if !ctx.is_init` guard in `load_plugin` would let
-/// this return `Ok`, silently queuing a request that is never drained.
+/// Flip: remove `ensure_top_level` from `load_plugin` and the call returns `Ok`,
+/// silently queuing a load request that is never drained.
 #[test]
 fn load_plugin_runtime_guard_fires() {
-    // Test that (load-plugin ...) raises an error in command mode (is_init=false).
+    // (load-plugin ...) from a command body (is_init=false) must be rejected.
     let mut h = host();
     let mut mock = MockHost::new();
 
-    // Define a command that tries to call (load-plugin ...) at dispatch time.
     h.eval_source(
         r#"(define-command! "try-load" "" (lambda () (load-plugin "user/tp")))"#,
         &mut mock,
@@ -2236,7 +2268,7 @@ fn load_plugin_runtime_guard_fires() {
         .call_steel_cmd("try-load", None, vec![], mock.focused_pane_id, mock.focused_buffer_id, &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("init/plugin load"),
-        "error must mention init/plugin load context; got: {err}"
+        err.contains("top level") || err.contains("init.scm"),
+        "error must mention top-level restriction; got: {err}"
     );
 }

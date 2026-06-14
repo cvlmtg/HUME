@@ -175,8 +175,8 @@
 ;;     is called later, or never (PLUM installs it; config reloads automatically
 ;;     so the plugin activates in the same session).
 ;;
-;; Inside a plugin body, (load-plugin "user/dep") pulls in a dependency
-;; immediately.  If the dependency is absent on disk, init aborts with an error.
+;; Plugins cannot load or declare other plugins.  Declare every plugin you
+;; need — including dependencies — at the top level of this file.
 ;;
 ;; :plugin-status (alias :plugins)
 ;;   Open a scratch view listing every declared plugin with its current state

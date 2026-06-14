@@ -75,6 +75,10 @@ pub(crate) struct SteelCtx<'a> {
     /// `!is_init && plugin_stack.is_empty()`: permitted during plugin
     /// activation (plugin_stack non-empty) even when `is_init` is `false`,
     /// but blocked from plain command bodies (plugin_stack empty, is_init false).
+    ///
+    /// Registration verbs (`load-plugin`, `declare-plugin`) use the stricter
+    /// `!is_init || !plugin_stack.is_empty()` gate: both must be false, i.e.
+    /// only the init.scm top level (is_init=true, stack empty) is allowed.
     pub(crate) is_init: bool,
     // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
@@ -123,7 +127,8 @@ impl<'a> SteelCtx<'a> {
     ///
     /// Identical to `new_init` but with `is_init = false`: native `(call! …)` calls
     /// inside the plugin body are allowed (they run synchronously via `run_command_sync`),
-    /// while `(load-plugin …)` is blocked (it requires `is_init`).
+    /// while `(load-plugin …)` and `(declare-plugin …)` are rejected (registration
+    /// verbs are init.scm top-level only; a plugin can never load another plugin).
     pub(super) fn new_activation(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,

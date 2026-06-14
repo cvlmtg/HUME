@@ -21,23 +21,40 @@ fn steel_parse_err(e: String) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, e)
 }
 
+/// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
+///
+/// Both verbs are valid only at the top level of `init.scm`.  A plugin can
+/// never load or declare another plugin — dependency declarations are the
+/// user's / plugin-manager's responsibility, not a plugin's.
+///
+/// At init.scm top level: `is_init = true` and `plugin_stack` is empty.
+/// Inside any eager plugin body: `is_init = true` but `plugin_stack` is non-empty.
+/// Inside any lazy/runtime plugin body: `is_init = false`.
+fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
+    if !ctx.is_init || !ctx.plugin_stack.is_empty() {
+        return Err(SteelErr::new(
+            ErrorKind::Generic,
+            format!(
+                "{verb}: can only be called at the top level of init.scm, \
+                 not from a plugin body"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
 /// `(%declare-plugin! name on-command on-event on-language)` — Rust primitive
 /// backing the Scheme-side `declare-plugin` wrapper.
 ///
-/// Always lazy: the plugin body is never evaluated here.  `activate_plugin`
-/// runs it when a trigger fires or `(load-plugin name)` is called explicitly.
+/// Top-level only: valid only at the top level of `init.scm`.  A plugin can
+/// never declare another plugin — see `ensure_top_level`.
 ///
-/// A bare `(declare-plugin name)` with no triggers is *not* redundant with
-/// `(load-plugin name)`: both record the name for PLUM, but `declare-plugin`
-/// defers body evaluation.  The key case is an on-demand dependency whose only
-/// `(load-plugin "dep")` call sits inside another plugin's body — that in-body
-/// call records "dep" only when the parent activates, which is too late for a
-/// fresh machine where the absent dep causes a hard error before the parent can
-/// ever run.  A top-level bare `(declare-plugin "dep")` records it up front so
-/// PLUM installs it; after that the parent's in-body `(load-plugin "dep")`
-/// succeeds.
+/// Unlike `load-plugin` (eager: body evaluated immediately), `declare-plugin`
+/// defers body evaluation to the first trigger fire or an explicit later
+/// top-level `(load-plugin name)`.  Both are registration verbs that record
+/// the plugin for PLUM; the verb choice encodes eager vs. lazy body evaluation.
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
@@ -51,6 +68,7 @@ pub(crate) fn declare_plugin(
     on_event: SteelVal,
     on_language: SteelVal,
 ) -> SteelResult {
+    ensure_top_level(ctx, "declare-plugin")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
 
     // PLUM compat: declared_plugins always records every declared plugin.
@@ -168,21 +186,18 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// `(%load-plugin! "name")` — Rust primitive backing the Scheme-side
 /// `load-plugin` wrapper (eager).
 ///
-/// Load-time only: valid from `init.scm` and plugin bodies (`is_init = true`).
+/// Top-level only: valid only at the top level of `init.scm`.  A plugin can
+/// never load another plugin — see `ensure_top_level`.
 ///
 /// If the plugin is not yet declared, resolves its path and registers it now:
-/// - Top-level (`plugin_stack` empty): absent on disk → silent skip + record
-///   in `declared_plugins` for PLUM to install on the next `:plum-install`.
-/// - Inside a plugin body (`plugin_stack` non-empty): absent on disk → hard
-///   error, because a missing dependency cannot be silently ignored.
+/// absent on disk → silent skip + record in `declared_plugins` for PLUM to
+/// install on the next `:plum-install`.
 ///
 /// If already declared (lazy or otherwise), queues it for activation.
 /// If already `Loaded` or `Failed`, the `activate_plugin` idempotency guard
 /// handles it as a no-op.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    if !ctx.is_init {
-        steel::stop!(Generic => "load-plugin: can only be called during init/plugin load");
-    }
+    ensure_top_level(ctx, "load-plugin")?;
     let id = PluginId::parse(&name).map_err(steel_parse_err)?;
 
     // PLUM compat: record name regardless of disk presence.
@@ -205,12 +220,8 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
                     .insert(id.clone(), PluginState::Declared { path: p });
             }
             None => {
-                if ctx.plugin_stack.is_empty() {
-                    // Top-level: absent is PLUM-friendly; already recorded for install.
-                    return Ok(SteelVal::Void);
-                }
-                steel::stop!(Generic =>
-                    "load-plugin: dependency '{}' not found on disk", name);
+                // Absent at top level: PLUM-friendly; name already recorded above.
+                return Ok(SteelVal::Void);
             }
         }
     }
