@@ -61,8 +61,7 @@ impl LazyRegistry {
     /// - `path = None` → plugin absent on disk; skipped silently; triggers NOT
     ///   recorded (an absent plugin can never activate, so dangling trigger
     ///   entries would be dead weight until `:reload-config`).
-    /// - All plugins are inserted as `Declared`; they activate when a trigger
-    ///   fires or when `(load-plugin name)` is called explicitly.
+    /// - All plugins are inserted as `Declared`; they activate when a trigger fires.
     pub fn declare(
         &mut self,
         id: PluginId,
@@ -216,7 +215,9 @@ impl LazyRegistry {
         }
 
         if parts.is_empty() {
-            "\u{2014}".to_string() // — (em dash): bare declare-plugin, waits on explicit load-plugin
+            // Defensive fallback: policy in declare_plugin rejects zero-trigger declarations,
+            // but the data layer does not enforce this invariant.
+            "\u{2014}".to_string()
         } else {
             parts.join("  ")
         }
@@ -451,8 +452,11 @@ mod tests {
         assert!(out.contains("lang:rust"), "language trigger must appear");
     }
 
+    // The data layer accepts zero-trigger plugins (LazyRegistry::declare has no
+    // policy gate); the policy guard lives in declare_plugin (builtins layer).
+    // This test exercises the defensive em-dash fallback in pending_triggers.
     #[test]
-    fn format_status_bare_lazy_shows_em_dash() {
+    fn format_status_zero_trigger_shows_em_dash() {
         let mut reg = LazyRegistry::default();
         reg.declare(
             id_user("bob", "bare"),
@@ -464,8 +468,8 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("bob/bare"));
         assert!(out.contains("declared"));
-        assert!(out.contains('\u{2014}'), "bare lazy must show em dash");
-        assert!(!out.contains("cmd:"), "no cmd prefix for bare lazy");
+        assert!(out.contains('\u{2014}'), "zero-trigger plugin must show em dash");
+        assert!(!out.contains("cmd:"), "no cmd prefix for zero-trigger plugin");
     }
 
     #[test]

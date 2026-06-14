@@ -99,7 +99,7 @@ const BOOTSTRAP: &str = r#"
 (require-builtin steel/meta as hm.)
 
 ; declare-plugin — lazy registration; triggers forwarded to %declare-plugin!.
-; No triggers ⇒ bare-lazy: body runs only on an explicit (load-plugin name).
+; At least one trigger (#:on-command/#:on-event/#:on-language) is required.
 (define (declare-plugin name #:on-command  [on-command  '()]
                              #:on-event    [on-event    '()]
                              #:on-language [on-language '()])

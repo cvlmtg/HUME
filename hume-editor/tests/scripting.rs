@@ -1632,13 +1632,13 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     );
 }
 
-/// `(declare-plugin "user/tp")` bare → plugin stays `Declared`, body is
-/// NOT evaluated, and its commands are absent from the init result.
+/// `(declare-plugin "user/tp" #:on-command '("lazy-cmd"))` → plugin stays
+/// `Declared`, body is NOT evaluated, and its commands are absent from init result.
 #[test]
 #[cfg(not(windows))]
 fn lazy_load_stays_declared_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp")"#,
+        r#"(declare-plugin "user/tp" #:on-command '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1710,7 +1710,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 #[cfg(not(windows))]
 fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp")"#,
+        r#"(declare-plugin "user/tp" #:on-command '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1784,15 +1784,16 @@ fn eager_plugin_body_error_aborts_init() {
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
-/// `#:on-command '("move-right")` — name clashes with a built-in → colliding
-/// trigger is dropped, a `Severity::Error` is logged, init continues.
+/// `#:on-command '("move-right" "my-cmd")` — "move-right" clashes with a built-in →
+/// colliding trigger is dropped, a `Severity::Error` is logged, init continues with
+/// the remaining valid trigger "my-cmd".
 ///
 /// Flip: a non-builtin name produces no Error and the trigger is registered.
 #[test]
 #[cfg(not(windows))]
 fn manifest_collision_with_builtin_logs_error_continues() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("move-right"))"#,
+        r#"(declare-plugin "user/tp" #:on-command '("move-right" "my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1802,7 +1803,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     let builtin_names: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
     h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
-        .expect("builtin collision must NOT abort init");
+        .expect("partial builtin collision must NOT abort init");
 
     // Error logged for the dropped trigger.
     assert!(
@@ -1814,22 +1815,24 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         "expected an Error about 'move-right' conflicting with a built-in; got: {:?}",
         h.peek_pending_messages()
     );
-    // Trigger not written (no cmd_owners pollution, no command_triggers entry).
+    // Colliding trigger not written; valid trigger is.
     assert!(
         !h.command_triggers().contains_key("move-right"),
         "colliding trigger must not appear in command_triggers"
     );
-    // Plugin stays dead-lazy — Declared, body not evaluated.
+    assert!(
+        h.command_triggers().contains_key("my-cmd"),
+        "valid trigger must appear in command_triggers"
+    );
+    // Plugin stays Declared (body not evaluated), with the remaining trigger.
     let id = attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
     };
     assert!(
-        matches!(
-            h.plugin_status(&id),
-            Some(PluginStatus::Declared)
-        ),
-        "plugin must stay Declared (dead-lazy) after all-colliding on-command list"
+        matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
+        "plugin must stay Declared after partial-collision on-command list; got {:?}",
+        h.plugin_status(&id)
     );
 
     // Flip: non-colliding trigger produces no Error and is registered.
@@ -1876,7 +1879,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"
 (declare-plugin "user/pa" #:on-command '("bar"))
-(declare-plugin "user/pb" #:on-command '("bar"))
+(declare-plugin "user/pb" #:on-command '("bar" "pb-only"))
 "#).unwrap();
 
     let mut h = host();
@@ -2075,11 +2078,11 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
 /// `(load-plugin "x")` after `(declare-plugin "x" #:on-command …)` force-activates
 /// the plugin: state transitions to `Loaded` and the command trigger is cleared.
 ///
-/// Flip: without the pending_plugin_loads path in `load_plugin`, the plugin would
-/// stay `Declared` and the trigger would remain.
+/// Flip: without the %activate-plugin-inline call in the load-plugin wrapper,
+/// the plugin would stay `Declared` and the trigger would remain.
 #[test]
 #[cfg(not(windows))]
-fn load_plugin_force_activates_declared_plugin() {
+fn declare_then_load_activates_and_logs_soft_error() {
     let (dir, init_path) = plugin_fixture(
         "(declare-plugin \"user/tp\" #:on-command '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2089,9 +2092,8 @@ fn load_plugin_force_activates_declared_plugin() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("force-activate must succeed");
+        .expect("declare-then-load must succeed (soft error, not hard)");
 
     let id = attribution::PluginId::User {
         user: "user".to_string(),
@@ -2108,7 +2110,64 @@ fn load_plugin_force_activates_declared_plugin() {
     );
     assert!(
         mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must be registered after force-activate"
+        "tp-cmd must be registered after activation"
+    );
+    // Soft error: declare-then-load is contradictory and must be logged.
+    assert!(
+        h.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error)
+                && msg.contains("user/tp")
+                && msg.contains("declared lazily")
+        }),
+        "expected a soft error about declare-then-load contradiction; got: {:?}",
+        h.peek_pending_messages()
+    );
+}
+
+/// `(load-plugin "foo")` then `(declare-plugin "foo" …)` — load runs first,
+/// plugin is `Loaded`; the declare is ignored with a soft error.
+///
+/// Flip: remove the load-then-declare guard in declare_plugin and the declare
+/// silently no-ops (via the existing PluginState::Declared duplicate guard) without
+/// logging an error.
+#[test]
+#[cfg(not(windows))]
+fn load_then_declare_ignored_with_soft_error() {
+    let (dir, init_path) = plugin_fixture(
+        "(load-plugin \"user/tp\")\n(declare-plugin \"user/tp\" #:on-command '(\"my-cmd\"))",
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("load-then-declare must succeed (soft error, not hard)");
+
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
+        "plugin must remain Loaded; got {:?}",
+        h.plugin_status(&id)
+    );
+    // Soft error: the declare after load is contradictory and must be logged.
+    assert!(
+        h.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error)
+                && msg.contains("user/tp")
+                && msg.contains("already loaded")
+        }),
+        "expected a soft error about load-then-declare contradiction; got: {:?}",
+        h.peek_pending_messages()
+    );
+    // The declare was ignored: no command trigger for "my-cmd" should be registered.
+    assert!(
+        !h.command_triggers().contains_key("my-cmd"),
+        "my-cmd must not be registered as a trigger — declare was ignored"
     );
 }
 
@@ -2174,6 +2233,128 @@ fn declare_plugin_in_plugin_body_rejected() {
     assert!(
         msg.contains("top level") || msg.contains("init.scm"),
         "error must mention top-level restriction; got: {msg}"
+    );
+}
+
+// ── zero-trigger / duplicate no-op regressions ───────────────────────────────
+
+/// `(declare-plugin "foo")` with no triggers is a hard error even in the
+/// hume-scripting unit-test harness (no editor needed).
+///
+/// Flip: remove the zero-trigger guard in declare_plugin and eval_source succeeds.
+#[test]
+#[cfg(not(windows))]
+fn declare_plugin_no_triggers_hard_error_scripting_level() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, r#"(declare-plugin "user/tp")"#).unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
+    assert!(
+        result.is_err(),
+        "declare-plugin with no triggers must hard-error"
+    );
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("no usable triggers") || msg.contains("never activate"),
+        "error must describe the zero-trigger problem; got: {msg}"
+    );
+}
+
+/// `#:on-command` names that ALL collide with builtins leave zero effective
+/// triggers → hard error (the post-filter empty-trigger check fires).
+///
+/// Flip: check trigger emptiness before collision filtering (pre-filter) and
+/// this test passes with a misleading success.
+#[test]
+#[cfg(not(windows))]
+fn declare_plugin_all_commands_collide_is_hard_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
+    let init_path = dir.path().join("init.scm");
+    // "move-right" is a built-in — collision filter drops it, leaving zero triggers.
+    std::fs::write(
+        &init_path,
+        r#"(declare-plugin "user/tp" #:on-command '("move-right"))"#,
+    )
+    .unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    let builtin_names: std::collections::HashSet<String> =
+        ["move-right".to_string()].into_iter().collect();
+    let result = h.eval_init(&init_path, 10_000, &mut mock, builtin_names);
+    assert!(
+        result.is_err(),
+        "all-collide #:on-command with no other trigger must hard-error"
+    );
+}
+
+/// Duplicate `(declare-plugin …)` for the same name stays a silent no-op.
+///
+/// Flip: add a duplicate-declare error in LazyRegistry::declare and this errors.
+#[test]
+#[cfg(not(windows))]
+fn duplicate_declare_remains_silent_noop() {
+    let (dir, init_path) = plugin_fixture(
+        "(declare-plugin \"user/tp\" #:on-command '(\"tp-cmd\"))\n\
+         (declare-plugin \"user/tp\" #:on-command '(\"tp-cmd\"))",
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("duplicate declare must be a silent no-op, not an error");
+
+    // No error-level message about the duplicate declare.
+    assert!(
+        !h.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error) && msg.contains("user/tp")
+        }),
+        "duplicate declare must not log an error; got: {:?}",
+        h.peek_pending_messages()
+    );
+}
+
+/// Duplicate `(load-plugin …)` for the same name stays a silent no-op.
+///
+/// Flip: add a duplicate-load error and this panics on the second load.
+#[test]
+#[cfg(not(windows))]
+fn duplicate_load_remains_silent_noop() {
+    let (dir, init_path) = plugin_fixture(
+        "(load-plugin \"user/tp\")\n(load-plugin \"user/tp\")",
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("duplicate load must be a silent no-op, not an error");
+
+    // No error-level message about the duplicate load.
+    assert!(
+        !h.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error) && msg.contains("user/tp")
+        }),
+        "duplicate load must not log an error; got: {:?}",
+        h.peek_pending_messages()
     );
 }
 

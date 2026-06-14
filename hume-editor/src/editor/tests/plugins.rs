@@ -524,19 +524,15 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
 }
 
-// ── Phase 2 — load-plugin force-activation (editor-level) ────────────────────
+// ── Phase 2 — load-plugin / declare-plugin interaction (editor-level) ────────
 
-/// `(declare-plugin "name")` then `(load-plugin "name")` in `init.scm`
-/// force-activates the bare-lazy plugin at init time.
+/// `(declare-plugin "name")` with no triggers is a hard error — the plugin
+/// could never activate at runtime.
 ///
-/// Flip: without `load-plugin` activating inline, the plugin
-/// would remain `Declared` after init.
+/// Flip: remove the zero-trigger guard in declare_plugin and eval_init succeeds.
 #[test]
 #[cfg(not(windows))]
-fn load_plugin_loads_bare_declared() {
-    use hume_scripting::attribution::PluginId;
-    
-
+fn declare_plugin_no_triggers_is_hard_error() {
     let (dir, init_path) = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
@@ -547,24 +543,20 @@ fn load_plugin_loads_bare_declared() {
             r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
         ).unwrap();
         let init_path = dir.path().join("init.scm");
-        std::fs::write(
-            &init_path,
-            "(declare-plugin \"user/tp\")\n(load-plugin \"user/tp\")",
-        ).unwrap();
+        std::fs::write(&init_path, "(declare-plugin \"user/tp\")").unwrap();
         (dir, init_path)
     };
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
-    { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
-        .expect("eval_init must succeed");
-
-    let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    };
     assert!(
-        matches!(host.plugin_status(&id), Some(PluginStatus::Loaded)),
-        "bare-declared plugin must be Loaded after (load-plugin) in init.scm; got: {:?}",
-        host.plugin_status(&id)
+        result.is_err(),
+        "declare-plugin with no triggers must abort init with an error"
     );
 }
 

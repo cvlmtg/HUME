@@ -52,9 +52,10 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 /// never declare another plugin — see `ensure_top_level`.
 ///
 /// Unlike `load-plugin` (eager: body evaluated immediately), `declare-plugin`
-/// defers body evaluation to the first trigger fire or an explicit later
-/// top-level `(load-plugin name)`.  Both are registration verbs that record
-/// the plugin for PLUM; the verb choice encodes eager vs. lazy body evaluation.
+/// defers body evaluation to the first trigger fire.  Both are registration
+/// verbs that record the plugin for PLUM; the verb choice encodes eager vs.
+/// lazy body evaluation.  At least one trigger is required — a zero-trigger
+/// declaration hard-errors because the plugin could never activate.
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
@@ -70,6 +71,21 @@ pub(crate) fn declare_plugin(
 ) -> SteelResult {
     ensure_top_level(ctx, "declare-plugin")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // If the plugin is already in the registry, decide by state:
+    // - Loaded: soft error (prior load-plugin contradicts this declare).
+    // - Declared/Loading/Failed: silent no-op (first declaration wins; idempotency).
+    match ctx.registries.lazy_registry.plugins.get(&plugin_id) {
+        Some(PluginState::Loaded) => {
+            ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
+            );
+            return Ok(SteelVal::Void);
+        }
+        Some(_) => return Ok(SteelVal::Void), // Declared/Loading/Failed: first wins
+        None => {}
+    }
 
     // PLUM compat: declared_plugins always records every declared plugin.
     if !ctx
@@ -118,6 +134,15 @@ pub(crate) fn declare_plugin(
         }
     }
     let on_cmd = valid;
+
+    // Hard error: no usable triggers after collision filtering means the plugin
+    // can never activate at runtime.  Use load-plugin for eager loading instead.
+    if on_cmd.is_empty() && on_evt.is_empty() && on_lang.is_empty() {
+        return Err(steel_parse_err(format!(
+            "declare-plugin: '{name}' has no usable triggers; it could never activate. \
+             Add #:on-command/#:on-event/#:on-language, or use (load-plugin \"{name}\") for eager loading."
+        )));
+    }
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
@@ -199,6 +224,21 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     ensure_top_level(ctx, "load-plugin")?;
     let id = PluginId::parse(&name).map_err(steel_parse_err)?;
+
+    // Soft error: if this plugin was already declared lazily, loading it eagerly
+    // contradicts the declare.  Warn and fall through — the wrapper still activates it.
+    if matches!(
+        ctx.registries.lazy_registry.plugins.get(&id),
+        Some(PluginState::Declared { .. })
+    ) {
+        ctx.log(
+            crate::log::LogLevel::Error,
+            format!(
+                "load-plugin: '{name}' was already declared lazily; \
+                 load-plugin overrides and forces eager loading"
+            ),
+        );
+    }
 
     // PLUM compat: record name regardless of disk presence.
     if !ctx
