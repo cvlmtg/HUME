@@ -152,6 +152,21 @@ fn define_command_inner(
         steel::stop!(Generic =>
             "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
     }
+    // Guard against stealing a lazy plugin's activation command. A lazy plugin
+    // can still define its own activation command during its own body (the name
+    // stays in activation_commands until drop_activations_for runs at the end of
+    // finish_lazy_activation), so we exempt the self-ownership case.
+    if let Some(claimant) = ctx.registries.lazy_registry.activation_commands.get(&name) {
+        let is_self = matches!(
+            ctx.plugin_stack.current_owner(),
+            Owner::Plugin(ref cur) if cur == claimant
+        );
+        if !is_self {
+            steel::stop!(Generic =>
+                "{}: command '{}' is already claimed as an activation command by lazy plugin '{}'",
+                builtin_name, name, claimant);
+        }
+    }
     match &proc {
         SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => {}
         _ => steel::stop!(TypeMismatch =>

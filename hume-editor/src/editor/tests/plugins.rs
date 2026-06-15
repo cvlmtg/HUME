@@ -248,15 +248,18 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 }
 
 /// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
-/// plugin declares `#:commands '("foo")`.  The lazy stub is rejected (no
-/// shadow) and an Error is logged; the eager SteelBacked command survives.
+/// plugin declares `#:commands '("foo")`.  The collision is now caught at
+/// `declare-plugin` time (not at stub registration): the declaration fails
+/// with "no activation entries", the eager SteelBacked command survives, and
+/// no orphan entry is left in `activation_commands`.
 ///
-/// Flip: if the stub overwrote the eager command, `get_mappable("foo")` would
-/// be `Lazy` instead of `SteelBacked`.
+/// Flip: remove the `command_table` check from `declare_plugin`'s filter loop
+/// → declare-plugin succeeds, "foo" leaks into `activation_commands`, the
+/// plugin is stuck `Declared`, and the first assertion (eval_init returns Err)
+/// flips to Ok.
 #[test]
 #[cfg(not(windows))]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
-    use crate::editor::Severity;
     let dir = {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         tempfile::tempdir().unwrap()
@@ -268,8 +271,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         eager_dir.join("plugin.scm"),
         r#"(define-command! "foo" "doc" (lambda () (+ 1 0)))"#,
     ).unwrap();
-    // Lazy plugin — declares "foo" as an activation command; body never runs in
-    // this test (stub is rejected before activation).
+    // Lazy plugin — declares "foo" as its sole activation command, which
+    // conflicts with the eager plugin.  The declare hard-errors at init time.
     let lazy_dir = dir.path().join("plugins").join("user").join("lz");
     std::fs::create_dir_all(&lazy_dir).unwrap();
     std::fs::write(lazy_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
@@ -283,33 +286,35 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    // Mirror real init_scripting order so the eager command reaches the
-    // registry before register_lazy_command_stubs checks for collisions.
-    {
+    // Mirror real init_scripting order: eager command is in command_table
+    // before declare-plugin runs, so the filter loop rejects "foo".
+    let init_err = {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed — collision is caught at stub registration, not here");
-    let activation_commands: std::collections::HashMap<_, _> =
-        host.activation_commands();
+    };
+    // declare-plugin now hard-errors when all entries are filtered (collision
+    // caught at declaration, not at stub registration).
+    let err = init_err.expect_err("eval_init must fail: declare-plugin rejects 'foo' at declare time");
+    assert!(
+        err.contains("no activation entries") || err.contains("conflicted"),
+        "error must explain the cause; got: {err}"
+    );
+
+    // activation_commands must be clean — no orphan entry for "foo".
+    let activation_commands = host.activation_commands();
+    assert!(
+        !activation_commands.contains_key("foo"),
+        "activation_commands must not contain orphan 'foo'; got: {activation_commands:?}"
+    );
+    // Stub registration is a no-op (nothing in activation_commands).
     ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
-    // Eager command survives as SteelBacked — lazy stub never shadowed it.
+    // The eager command still registered correctly before the error.
     assert!(
         matches!(ed.state.registry.get_mappable("foo"), Some(MappableCommand::SteelBacked { .. })),
         "eager 'foo' must survive as SteelBacked; got: {:?}",
         ed.state.registry.get_mappable("foo").map(|c| c.name())
-    );
-    // An Error was logged for the rejected lazy stub.
-    assert!(
-        ed.state.message_log
-            .entries()
-            .any(|e| e.severity == Severity::Error
-                && e.text.contains("foo")
-                && e.text.contains("conflicts")),
-        "expected an Error about the lazy/eager 'foo' collision; messages: {:?}",
-        ed.state.message_log.entries().map(|e| &e.text).collect::<Vec<_>>()
     );
 }
 

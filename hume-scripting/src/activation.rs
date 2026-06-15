@@ -424,4 +424,43 @@ mod tests {
             "partial define-command! must be removed from cmd_owners on failure"
         );
     }
+
+    // ── G4: self-ownership exemption ──────────────────────────────────────────
+
+    /// A lazy plugin is allowed to call `define-command!` for its own activation
+    /// command inside its body, even though that name is still in
+    /// `activation_commands` at the time (it is only removed by
+    /// `drop_activations_for` *after* the body completes in `finish_lazy_activation`).
+    ///
+    /// Fail oracle: remove the `is_self` exemption from `define_command_inner` →
+    /// the plugin's `define-command!` call is rejected → activation returns Err.
+    #[test]
+    fn lazy_plugin_can_define_its_own_activation_command() {
+        let dir = TempDir::new().unwrap();
+        let path = write_plugin(
+            &dir,
+            "self-act.scm",
+            r#"(define-command! "self-act-cmd" "doc" (lambda () 0))"#,
+        );
+        let id = plugin_id("core:self-act");
+        let mut host = ScriptingHost::new();
+        // Simulate declare-plugin having registered self-act-cmd as the activation entry.
+        host.registries.lazy_registry.activation_commands.insert("self-act-cmd".to_string(), id.clone());
+        host.registries.lazy_registry.plugins.insert(id.clone(), PluginState::Declared { path });
+
+        let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+
+        assert!(
+            result.is_ok(),
+            "plugin defining its own activation command must activate successfully; got: {result:?}"
+        );
+        assert!(
+            matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
+            "plugin must be Loaded after activation"
+        );
+        assert!(
+            host.registries.command_table.contains_key("self-act-cmd"),
+            "self-act-cmd must be in command_table after activation"
+        );
+    }
 }
