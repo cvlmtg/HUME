@@ -107,7 +107,7 @@ fresh eval, no deferral. The routing lives in Steel (`%dispatch-command`).
 |---|---|
 | Motion / Selection / Edit | **sync** |
 | EditorCmd | **sync** |
-| EditorCmd that fires a hook | command **sync**; handler pushes to `EditorState::pending_hooks`; `drain_hooks` fires after command body (semantic defer — see D5) |
+| EditorCmd that fires a hook | command **sync**; handler pushes to `EditorState::pending_hooks`; `drain_hooks` fires after the input event completes (semantic defer — see D5) |
 | TypedCommand (`:` commands) | **sync** — but stays on `fn(&mut Editor, …)`, not Steel-dispatchable (see D7) |
 | SteelBacked (activated plugin) | **sync** — `%dispatch-command` applies the closure inline via `(apply proc args)` |
 | Lazy | **defer** — needs a fresh eval to activate |
@@ -200,8 +200,9 @@ not fire mid-command. **Do not optimize hooks to fire inline.** This decision is
 
 Hooks travel via the `EditorState::pending_hooks` single channel. Every producer routes
 here — `fire_hook_silent`, `enqueue_mode_change`, buffer open/close/save, language-set.
-`drain_hooks` fires the queue at every dispatch entry point: `execute_keymap_command`,
-the `handle_key` tail, startup, and `handle_mouse`.
+`drain_hooks` fires the queue from one interactive choke point — `handle_event`, which
+all key and mouse input (including macro replay) routes through — plus a one-time
+startup drain (`lib.rs`) before the event loop.
 
 ### D6 — `EditorHost` trait: kept, re-backed by two coarse borrows
 
