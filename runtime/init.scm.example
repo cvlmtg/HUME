@@ -171,10 +171,15 @@
 ;;
 ;;   #:languages '("lang-name" ...)
 ;;     Activate when the buffer language is first set to one of the given names.
-;;     The plugin body runs once on the first matching transition; to react on
-;;     every subsequent transition, call (register-hook! 'on-language-set …)
-;;     inside the body.  This is the key distinction: #:languages activates the
-;;     plugin (one-shot), while on-language-set is a hook that fires every time.
+;;     Prefer this over #:events '("on-language-set") for language-specific
+;;     plugins: a language-set event fires for EVERY language, so a Rust plugin
+;;     declared that way would load the moment you open a PHP file.  #:languages
+;;     names only the languages you care about, so the plugin stays dormant until
+;;     one of them appears.
+;;     The plugin body runs once on the first matching language set; to react on
+;;     every later language change, call (register-hook! 'on-language-set …)
+;;     inside the body — #:languages loads the plugin (one-shot), while
+;;     on-language-set is a hook that runs every time.
 ;;
 ;; Plugins cannot load or declare other plugins.  Declare every plugin you
 ;; need — including dependencies — at the top level of this file.
