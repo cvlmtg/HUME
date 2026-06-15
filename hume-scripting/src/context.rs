@@ -69,7 +69,7 @@ pub(crate) struct SteelCtx<'a> {
     // ── Mode discriminant ────────────────────────────────────────────────────
     /// `true` during `eval_source_raw` (init.scm); `false` during
     /// `call_steel_cmd` (command dispatch) and `activate_plugin_inline`
-    /// (runtime-triggered plugin bodies, which use `SteelCtx::new_activation`).
+    /// (runtime-activated plugin bodies, which use `SteelCtx::new_activation`).
     ///
     /// Config builtins (`set-option!`, `bind-key!`, etc.) gate on
     /// `!is_init && plugin_stack.is_empty()`: permitted during plugin
@@ -123,7 +123,7 @@ impl<'a> SteelCtx<'a> {
         }
     }
 
-    /// For Rust-side runtime plugin activation (lazy command/event/language triggers).
+    /// For Rust-side runtime plugin activation (lazy command/event/language activations).
     ///
     /// Identical to `new_init` but with `is_init = false`: native `(call! …)` calls
     /// inside the plugin body are allowed (they run synchronously via `run_command_sync`),
@@ -206,7 +206,7 @@ mod tests {
 
     /// `new_activation` sets `is_init = false` (same as command mode).
     ///
-    /// Runtime-triggered plugin bodies use `new_activation` so `(call! …)` is
+    /// Runtime-activated plugin bodies use `new_activation` so `(call! …)` is
     /// allowed inside them.  Fail oracle: set `is_init: true` → plugin bodies
     /// would be blocked from calling native commands.
     #[test]

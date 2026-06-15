@@ -90,7 +90,7 @@ pub fn typed_list_buffers(
 }
 
 /// `:plugin-status` / `:plugins` — show all declared plugins, their load
-/// state, and (for still-waiting plugins) which triggers they are waiting on.
+/// state, and (for still-waiting plugins) which activation entries they are waiting on.
 pub fn typed_plugin_status(
     ed: &mut Editor,
     _arg: Option<&str>,

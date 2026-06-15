@@ -35,9 +35,9 @@ fn setup_lazy_editor(
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed in setup_lazy_editor");
 
-    let triggers: std::collections::HashMap<_, _> =
+    let activation_commands: std::collections::HashMap<_, _> =
         host.activation_commands();
-    ed.register_lazy_command_stubs(&triggers);
+    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
     (ed, dir)
 }
@@ -242,7 +242,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     assert_ne!(state(&ed), before, "pressing 'z' must activate 'bar' and move the cursor");
     assert!(
         matches!(ed.state.registry.get_mappable("bar"), Some(MappableCommand::SteelBacked { .. })),
-        "stub must be replaced by SteelBacked after key-triggered activation; got: {:?}",
+        "stub must be replaced by SteelBacked after command-activated; got: {:?}",
         ed.state.registry.get_mappable("bar").map(|c| c.name())
     );
 }
@@ -261,7 +261,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         tempfile::tempdir().unwrap()
     };
-    // Eager plugin — loaded inline (no triggers), defines "foo".
+    // Eager plugin — loaded inline (no activation entries), defines "foo".
     let eager_dir = dir.path().join("plugins").join("user").join("eager");
     std::fs::create_dir_all(&eager_dir).unwrap();
     std::fs::write(
@@ -290,9 +290,9 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — collision is caught at stub registration, not here");
-    let triggers: std::collections::HashMap<_, _> =
+    let activation_commands: std::collections::HashMap<_, _> =
         host.activation_commands();
-    ed.register_lazy_command_stubs(&triggers);
+    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     // Eager command survives as SteelBacked — lazy stub never shadowed it.
@@ -313,10 +313,10 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     );
 }
 
-// ── Phase 2 lazy plugin loading — event triggers ──────────────────────────────
+// ── Phase 2 lazy plugin loading — event activations ──────────────────────────
 
 /// `#:events` plugin activates on first matching hook fire; its handler
-/// runs in the same fire that triggered activation.
+/// runs in the same fire that caused activation.
 ///
 /// Flip: without A3 (`activate_lazy_event_plugins` at the top of
 /// `fire_hook_silent`), the plugin stays `Declared` and the cursor never moves.
@@ -556,7 +556,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
     };
     assert!(
         result.is_err(),
-        "declare-plugin with no triggers must abort init with an error"
+        "declare-plugin with no activation entries must abort init with an error"
     );
 }
 
@@ -631,8 +631,8 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     host.set_data_dir(dir.path().to_path_buf());
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers = host.activation_commands();
-    ed.register_lazy_command_stubs(&triggers);
+    let activation_commands = host.activation_commands();
+    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     let id_a = PluginId::User { user: "user".to_string(), repo: "tpa".to_string() };
@@ -664,10 +664,10 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     );
 }
 
-// ── Phase 3b lazy plugin loading — language/filetype triggers ─────────────────
+// ── Phase 3b lazy plugin loading — language/filetype activations ──────────────
 
 /// `#:languages` plugin activates on first matching language set; its
-/// `on-language-set` handler runs in the same call that triggered activation.
+/// `on-language-set` handler runs in the same call that caused activation.
 ///
 /// Flip: without `activate_lazy_language_plugins` in `set_buffer_language`,
 /// the plugin stays `Declared` and the cursor never moves.
@@ -997,8 +997,8 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     let init_path = dir.path().join("init.scm");
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers: std::collections::HashMap<_, _> = host.activation_commands();
-    ed.register_lazy_command_stubs(&triggers);
+    let activation_commands: std::collections::HashMap<_, _> = host.activation_commands();
+    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":bar");

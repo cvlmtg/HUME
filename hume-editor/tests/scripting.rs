@@ -1689,7 +1689,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     };
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
-        "plugin with on-command trigger must stay Declared; got {:?}",
+        "plugin declared with #:commands must stay Declared; got {:?}",
         h.plugin_status(&id)
     );
     assert_eq!(
@@ -1779,16 +1779,16 @@ fn eager_plugin_body_error_aborts_init() {
     );
 }
 
-// ── Phase 1 lazy plugin loading — command triggers ────────────────────────
+// ── Phase 1 lazy plugin loading — command activations ────────────────────────
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
 /// `#:commands '("move-right" "my-cmd")` — "move-right" clashes with a built-in →
-/// colliding trigger is dropped, a `Severity::Error` is logged, init continues with
-/// the remaining valid trigger "my-cmd".
+/// colliding activation entry is dropped, a `Severity::Error` is logged, init continues with
+/// the remaining valid activation entry "my-cmd".
 ///
-/// Flip: a non-builtin name produces no Error and the trigger is registered.
+/// Flip: a non-builtin name produces no Error and the activation entry is registered.
 #[test]
 #[cfg(not(windows))]
 fn manifest_collision_with_builtin_logs_error_continues() {
@@ -1805,7 +1805,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("partial builtin collision must NOT abort init");
 
-    // Error logged for the dropped trigger.
+    // Error logged for the dropped activation entry.
     assert!(
         h.peek_pending_messages().iter().any(|(sev, msg)| {
             matches!(sev, hume_scripting::LogLevel::Error)
@@ -1815,16 +1815,16 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         "expected an Error about 'move-right' conflicting with a built-in; got: {:?}",
         h.peek_pending_messages()
     );
-    // Colliding trigger not written; valid trigger is.
+    // Colliding activation entry not written; valid one is.
     assert!(
         !h.activation_commands().contains_key("move-right"),
-        "colliding trigger must not appear in command_triggers"
+        "colliding activation entry must not appear in activation_commands"
     );
     assert!(
         h.activation_commands().contains_key("my-cmd"),
-        "valid trigger must appear in command_triggers"
+        "valid activation entry must appear in activation_commands"
     );
-    // Plugin stays Declared (body not evaluated), with the remaining trigger.
+    // Plugin stays Declared (body not evaluated), with the remaining activation entry.
     let id = attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
@@ -1848,24 +1848,24 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     let builtin_names2: std::collections::HashSet<String> =
         ["move-right".to_string()].into_iter().collect();
     h2.eval_init(&init_path2, 10_000, &mut mock2, builtin_names2)
-        .expect("non-colliding trigger must not error");
+        .expect("non-colliding activation entry must not error");
     assert!(
         !h2.peek_pending_messages()
             .iter()
             .any(|(sev, _)| matches!(sev, hume_scripting::LogLevel::Error)),
-        "non-colliding trigger must not log any Error"
+        "non-colliding activation entry must not log any Error"
     );
     assert!(
         h2.activation_commands().contains_key("not-a-builtin"),
-        "non-colliding trigger must appear in command_triggers"
+        "non-colliding activation entry must appear in activation_commands"
     );
 }
 
 /// Two plugins both declare `#:commands '("bar")` → second declaration's
-/// trigger is dropped, a `Severity::Error` is logged, first-writer-wins, init
+/// activation entry is dropped, a `Severity::Error` is logged, first-writer-wins, init
 /// continues.
 ///
-/// Flip: both plugins are Declared; only the first plugin owns the trigger.
+/// Flip: both plugins are Declared; only the first plugin owns the activation entry.
 #[test]
 #[cfg(not(windows))]
 fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
@@ -1889,7 +1889,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy-vs-lazy collision must NOT abort init");
 
-    // Error logged for pb's duplicate trigger.
+    // Error logged for pb's duplicate activation entry.
     assert!(
         h.peek_pending_messages().iter().any(|(sev, msg)| {
             matches!(sev, hume_scripting::LogLevel::Error)
@@ -1899,7 +1899,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
         "expected an Error about 'bar' already claimed; got: {:?}",
         h.peek_pending_messages()
     );
-    // First-writer (pa) owns the trigger.
+    // First-writer (pa) owns the activation entry.
     let pa_id = attribution::PluginId::User {
         user: "user".to_string(),
         repo: "pa".to_string(),
@@ -1907,9 +1907,9 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     assert_eq!(
         h.activation_commands().get("bar"),
         Some(&pa_id),
-        "command_triggers['bar'] must point to pa (first-writer-wins)"
+        "activation_commands[\"bar\"] must point to pa (first-writer-wins)"
     );
-    // Both plugins are Declared — pb stays declared even though its trigger was dropped.
+    // Both plugins are Declared — pb stays declared even though its activation entry was dropped.
     let pb_id = attribution::PluginId::User {
         user: "user".to_string(),
         repo: "pb".to_string(),
@@ -1926,7 +1926,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
             h.plugin_status(&pb_id),
             Some(PluginStatus::Declared)
         ),
-        "pb must be Declared even with its trigger dropped"
+        "pb must be Declared even with its activation entry dropped"
     );
 }
 
@@ -1978,10 +1978,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
-    // Trigger is present before activation.
+    // Activation entry is present before activation.
     assert!(
         h.activation_commands().contains_key("my-cmd"),
-        "trigger must be present before activation"
+        "activation entry must be present before activation"
     );
 
     let id = attribution::PluginId::User {
@@ -1991,10 +1991,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin_inline must succeed");
 
-    // Trigger is removed after activation.
+    // Activation entry is removed after activation.
     assert!(
         !h.activation_commands().contains_key("my-cmd"),
-        "trigger must be removed after activation"
+        "activation entry must be removed after activation"
     );
 }
 
@@ -2026,12 +2026,12 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     };
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
-        "plugin with on-language trigger must stay Declared; got {:?}",
+        "plugin declared with #:languages must stay Declared; got {:?}",
         h.plugin_status(&id)
     );
     assert!(
         h.activation_language_plugins("rust").contains(&id),
-        "language_triggers must map \"rust\" to the plugin"
+        "activation_languages must map \"rust\" to the plugin"
     );
     assert!(
         !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
@@ -2039,13 +2039,13 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     );
 }
 
-/// `activate_plugin` on a language-triggered plugin drops the trigger on success.
+/// `activate_plugin` on a language-matched plugin drops the activation entry on success.
 ///
-/// Flip: without the `language_triggers.retain` in the Ok branch, the trigger
-/// would survive activation and falsely appear pending on subsequent language sets.
+/// Flip: without the `activation_languages.retain` in the Ok branch, the activation
+/// entry would survive and falsely appear pending on subsequent language sets.
 #[test]
 #[cfg(not(windows))]
-fn activate_plugin_drops_language_trigger_on_loaded() {
+fn activate_plugin_drops_language_activation_on_loaded() {
     let (dir, init_path) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -2059,7 +2059,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
 
     assert!(
         !h.activation_language_plugins("rust").is_empty(),
-        "trigger must be present before activation"
+        "activation entry must be present before activation"
     );
 
     let id = attribution::PluginId::User {
@@ -2071,15 +2071,15 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
 
     assert!(
         h.activation_language_plugins("rust").is_empty(),
-        "trigger must be removed after activation"
+        "activation entry must be removed after activation"
     );
 }
 
 /// `(load-plugin "x")` after `(declare-plugin "x" #:commands …)` force-activates
-/// the plugin: state transitions to `Loaded` and the command trigger is cleared.
+/// the plugin: state transitions to `Loaded` and the activation command entry is cleared.
 ///
 /// Flip: without the %activate-plugin-inline call in the load-plugin wrapper,
-/// the plugin would stay `Declared` and the trigger would remain.
+/// the plugin would stay `Declared` and the activation entry would remain.
 #[test]
 #[cfg(not(windows))]
 fn declare_then_load_activates_and_logs_soft_error() {
@@ -2106,7 +2106,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
     );
     assert!(
         !h.activation_commands().contains_key("my-cmd"),
-        "command trigger must be cleared after activation"
+        "activation command entry must be cleared after activation"
     );
     assert!(
         mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
@@ -2164,10 +2164,10 @@ fn load_then_declare_ignored_with_soft_error() {
         "expected a soft error about load-then-declare contradiction; got: {:?}",
         h.peek_pending_messages()
     );
-    // The declare was ignored: no command trigger for "my-cmd" should be registered.
+    // The declare was ignored: no activation entry for "my-cmd" should be registered.
     assert!(
         !h.activation_commands().contains_key("my-cmd"),
-        "my-cmd must not be registered as a trigger — declare was ignored"
+        "my-cmd must not be registered as an activation entry — declare was ignored"
     );
 }
 
@@ -2297,7 +2297,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, builtin_names);
     assert!(
         result.is_err(),
-        "all-collide #:commands with no other trigger must hard-error"
+        "all-collide #:commands with no other activation entry must hard-error"
     );
 }
 

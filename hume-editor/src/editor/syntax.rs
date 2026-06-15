@@ -413,7 +413,7 @@ impl Editor {
         // during its own activation then sees the new value.
         let activate_name = new_lang.clone();
         self.state.buffers.get_mut(bid).language = new_lang;
-        // Activate language-triggered plugins after the write so handlers are
+        // Activate language-matched plugins after the write so handlers are
         // registered in time for the OnLanguageSet fire below.
         if let Some(name) = activate_name.as_deref() {
             self.activate_lazy_language_plugins(name);

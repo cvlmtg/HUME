@@ -181,7 +181,7 @@ pub(crate) fn declare_plugin(
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
 
     // When the plugin file is absent on disk, LazyRegistry::declare would silently
-    // skip it (no triggers, no state).  For user/ plugins, log Info — absent is
+    // skip it (no activation entries, no state).  For user/ plugins, log Info — absent is
     // expected before :plum-install.  For core: plugins, absent means a typo or
     // broken HUME_RUNTIME; PLUM never installs core: plugins, so it can't catch
     // the error.  `declared_plugins` is already recorded above for PLUM.

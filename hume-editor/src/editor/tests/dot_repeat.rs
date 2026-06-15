@@ -638,8 +638,8 @@ fn lazy_repeatable_round_trip() {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }.expect("eval_init must succeed");
-    let triggers = host.activation_commands();
-    ed.register_lazy_command_stubs(&triggers);
+    let activation_commands = host.activation_commands();
+    ed.register_lazy_command_stubs(&activation_commands);
     ed.scripting = Some(host);
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.

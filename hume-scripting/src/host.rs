@@ -153,7 +153,7 @@ pub trait EditorHost {
     ///
     /// Called inline from `define-command!` during init or plugin load.
     /// Overwrites a `Lazy` stub for the same name (expected path: a lazy plugin
-    /// body's `define-command!` replaces the stub it was triggered by).
+    /// body's `define-command!` replaces the activation command stub).
     /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
 
