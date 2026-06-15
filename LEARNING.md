@@ -50,6 +50,7 @@ text and paste.
 
 | Topic | File |
 |-------|------|
+| Plugin Architecture: Loading, Activation, and Isolation | [docs/learning/plugin-architecture.md](docs/learning/plugin-architecture.md) |
 | Plugin Attribution: Who Owns What | [docs/learning/plugin-attribution.md](docs/learning/plugin-attribution.md) |
 | Runaway-Script Protection: The Watchdog Timer | [docs/learning/runaway-script-protection.md](docs/learning/runaway-script-protection.md) |
 | Kill Ring and Smart-p: Two Sources of Paste | [docs/learning/kill-ring-and-smart-p.md](docs/learning/kill-ring-and-smart-p.md) |

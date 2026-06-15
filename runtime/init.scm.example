@@ -152,18 +152,18 @@
 ;;   command body.
 ;;
 ;; Available hooks and their lambda signatures:
-;;   on-buffer-open    (bid)           — a buffer was opened
-;;   on-buffer-close   (bid)           — a buffer was closed
-;;   on-buffer-save    (bid)           — a buffer was written to disk
-;;   on-mode-change    (old new)       — editor mode changed; old/new are strings:
-;;                                       "normal", "insert", or "extend"
-;;   on-language-set   (bid lang)      — buffer language changed; lang is a string
-;;                                       or #f when the language was cleared
+;;   on-buffer-open    (buffer-id)      — a buffer was opened
+;;   on-buffer-close   (buffer-id)      — a buffer was closed
+;;   on-buffer-save    (buffer-id)      — a buffer was written to disk
+;;   on-mode-change    (old new)        — editor mode changed; old/new are strings:
+;;                                        "normal", "insert", or "extend"
+;;   on-language-set   (buffer-id lang) — buffer language changed; lang is a string
+;;                                        or #f when the language was cleared
 ;;
 ;; Example — log every save:
 ;; (register-hook! 'on-buffer-save
-;;   (lambda (bid)
-;;     (log! 'info (string-append "saved buffer " (to-string bid)))))
+;;   (lambda (buffer-id)
+;;     (log! 'info (string-append "saved buffer " (to-string buffer-id)))))
 ;;
 ;; Example — log mode transitions (useful for debugging key bindings):
 ;; (register-hook! 'on-mode-change
@@ -172,20 +172,9 @@
 ;;
 ;; Example — auto-format on save when the buffer language is "rust":
 ;; (register-hook! 'on-buffer-save
-;;   (lambda (bid)
-;;     (when (equal? (buffer-language bid) "rust")
+;;   (lambda (buffer-id)
+;;     (when (equal? (buffer-language buffer-id) "rust")
 ;;       (call! "format-buffer"))))
-;;
-;; Example — two-stage language plugin pattern.
-;; #:languages activates the plugin (one-shot) on the first matching language set;
-;; register-hook! inside the body fires on every subsequent language set:
-;; (declare-plugin "alice/rust-tools" #:languages '("rust"))
-;; ; alice/rust-tools/plugin.scm:
-;; ;   (define-command! "rust-check" ...)
-;; ;   (register-hook! 'on-language-set
-;; ;     (lambda (bid lang)
-;; ;       (when (equal? lang "rust")
-;; ;         (call! "rust-check"))))
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;;
@@ -193,39 +182,17 @@
 ;;
 ;;   (load-plugin name) — eager: load now, at startup.
 ;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
-;;                               At least one keyword arg is required.
 ;;
 ;;   name — "core:name"   (bundled core plugin)
 ;;        — "user/repo"   (third-party plugin from
 ;;                         <data>/plugins/user/repo/plugin.scm)
 ;;
-;; declare-plugin is the plugin manifest — it declares what the plugin offers
-;; the editor.  HUME activates (loads) the plugin body the first time any
-;; declared entry is exercised, then the body registers hooks that fire forever.
+;;   #:commands '("cmd-name" ...)  — activate when one of these commands is first dispatched
+;;   #:events '("hook-name" ...)   — activate on first firing of a lifecycle hook
+;;   #:languages '("lang-name" ...) — activate when the buffer language first matches
 ;;
-;;   #:commands '("cmd-name" ...)
-;;     Activate when one of these command names is first dispatched (via the
-;;     command line or a key binding).
-;;
-;;   #:events '("hook-name" ...)
-;;     Activate when one of the named lifecycle hooks fires for the first time.
-;;     Valid hook names: on-buffer-open on-buffer-close on-buffer-save
-;;                       on-mode-change
-;;
-;;   #:languages '("lang-name" ...)
-;;     Activate when the buffer language is first set to one of the given names.
-;;     Prefer this over #:events '("on-language-set") for language-specific
-;;     plugins: a language-set event fires for EVERY language, so a Rust plugin
-;;     declared that way would load the moment you open a PHP file.  #:languages
-;;     names only the languages you care about, so the plugin stays dormant until
-;;     one of them appears.
-;;     The plugin body runs once on the first matching language set; to react on
-;;     every later language change, call (register-hook! 'on-language-set …)
-;;     inside the body — #:languages loads the plugin (one-shot), while
-;;     on-language-set is a hook that runs every time.
-;;
-;; Plugins cannot load or declare other plugins.  Declare every plugin you
-;; need — including dependencies — at the top level of this file.
+;; Declare every plugin at the top level of this file — including dependencies.
+;; See docs/learning/plugin-architecture.md for the full plugin model.
 ;;
 ;; :plugin-status (alias :plugins)
 ;;   Open a scratch view listing every declared plugin with its current state

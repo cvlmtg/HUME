@@ -55,13 +55,23 @@ activation.
 
 ## Conflict detection
 
-If two plugins try to claim the same command (via `#:commands`), the **first
-declarant wins**. The duplicate is dropped with a non-fatal error logged to `:messages`;
-init continues.
+Conflicts fall into two categories with different severity:
 
-The same first-wins rule applies to `define-command!` inside a plugin body: if a name is
-already registered (by a built-in or an earlier plugin), the later registration is rejected
-and the **first** definition stays live. There is no shadowing.
+**Soft conflict — manifest vs manifest.** If two plugins both list the same command name
+in their `#:commands`, the first declarant wins. The duplicate is silently dropped (a
+non-fatal error is logged to `:messages`) and `init.scm` continues loading.
+
+**Hard conflict — body vs existing.** When a plugin body calls `define-command!` for a
+name that is already registered — whether by a built-in, an earlier plugin body, or
+another lazy plugin's `#:commands` manifest — it raises a Steel error that aborts the
+plugin body. The plugin is marked as failed, any commands it partially registered are
+rolled back, and the originally registered command stays live. There is no shadowing; the
+first registration wins unconditionally.
+
+The reverse is also caught: if `declare-plugin` lists a `#:commands` entry that an eager
+command already occupies, that entry is dropped with a non-fatal error. If it was the
+sole activation entry, the declaration itself hard-errors (a plugin with no remaining
+activation entries can never load).
 
 ## Load-once model
 
