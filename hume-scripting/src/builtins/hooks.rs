@@ -12,8 +12,14 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// named hook.  Must be called during init / plugin load (`is_init = true`).
 ///
 /// `name` must be a symbol matching one of the known hook names:
-/// `on-buffer-open`, `on-buffer-close`, `on-buffer-save`, `on-edit`,
-/// `on-mode-change`.
+/// `on-buffer-open`, `on-buffer-close`, `on-buffer-save`, `on-mode-change`,
+/// `on-language-set`.
+///
+/// `on-language-set` fires `(lambda (bid lang-or-#f) …)` on every language
+/// transition.  For lazy-loaded language plugins the typical pattern is:
+/// `#:on-language '("lang")` in `declare-plugin` activates the body on the
+/// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
+/// to react on all subsequent transitions.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic => "register-hook!: can only be called during init/plugin load");

@@ -19,8 +19,15 @@ pub enum HookId {
     OnBufferOpen,
     OnBufferClose,
     OnBufferSave,
-    OnEdit,
     OnModeChange,
+    /// Fires on every language transition (including round-trips and clears).
+    ///
+    /// **For lazy-loading:** use `#:on-language` in `declare-plugin` instead.
+    /// `#:on-language` activates the plugin's body on the *first* matching
+    /// transition; the body then registers an `on-language-set` handler to
+    /// react on all subsequent transitions.  Using `on-language-set` directly
+    /// as a `#:on-event` trigger would activate the plugin on *any* language
+    /// transition, not just the ones it cares about.
     OnLanguageSet,
 }
 
@@ -29,7 +36,6 @@ const HOOKS: &[(HookId, &str)] = &[
     (HookId::OnBufferOpen, "on-buffer-open"),
     (HookId::OnBufferClose, "on-buffer-close"),
     (HookId::OnBufferSave, "on-buffer-save"),
-    (HookId::OnEdit, "on-edit"),
     (HookId::OnModeChange, "on-mode-change"),
     (HookId::OnLanguageSet, "on-language-set"),
 ];

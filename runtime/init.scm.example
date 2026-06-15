@@ -165,10 +165,13 @@
 ;;   #:on-event '("hook-name" ...)
 ;;     Activate when one of the named lifecycle hooks fires.
 ;;     Valid hook names: on-buffer-open on-buffer-close on-buffer-save
-;;                       on-edit on-mode-change
+;;                       on-mode-change
 ;;
 ;;   #:on-language '("lang-name" ...)
 ;;     Activate when the buffer language is set to one of the given names.
+;;     The plugin body runs once on the first matching transition; to react
+;;     on every subsequent transition, call (register-hook! 'on-language-set …)
+;;     inside the body.
 ;;
 ;; Plugins cannot load or declare other plugins.  Declare every plugin you
 ;; need — including dependencies — at the top level of this file.
