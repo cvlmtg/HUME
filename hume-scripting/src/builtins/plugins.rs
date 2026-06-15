@@ -101,6 +101,11 @@ pub(crate) fn declare_plugin(
     let on_evt_strs = list_to_strings(on_event, "on-event")?;
     let on_lang = list_to_strings(on_language, "on-language")?;
 
+    // Captured before the collision-filter loop moves `on_cmd`.  Used below to
+    // distinguish "all triggers collided" from "none were supplied" in the
+    // zero-trigger error message.
+    let had_on_cmd = !on_cmd.is_empty();
+
     let on_evt: Vec<HookId> = on_evt_strs
         .iter()
         .map(|s| {
@@ -138,17 +143,44 @@ pub(crate) fn declare_plugin(
     // Hard error: no usable triggers after collision filtering means the plugin
     // can never activate at runtime.  Use load-plugin for eager loading instead.
     if on_cmd.is_empty() && on_evt.is_empty() && on_lang.is_empty() {
-        return Err(steel_parse_err(format!(
-            "declare-plugin: '{name}' has no usable triggers; it could never activate. \
-             Add #:on-command/#:on-event/#:on-language, or use (load-plugin \"{name}\") for eager loading."
-        )));
+        let msg = if had_on_cmd {
+            // User supplied #:on-command triggers but all were filtered by collision
+            // checks.  Telling them to "Add #:on-command" would be misleading.
+            format!(
+                "declare-plugin: '{name}' has no usable triggers; \
+                 all #:on-command triggers conflicted with existing commands. \
+                 Fix the collision or use (load-plugin \"{name}\") for eager loading."
+            )
+        } else {
+            format!(
+                "declare-plugin: '{name}' has no usable triggers; it could never activate. \
+                 Add #:on-command/#:on-event/#:on-language, or use (load-plugin \"{name}\") for eager loading."
+            )
+        };
+        return Err(steel_parse_err(msg));
     }
 
     let path = resolve_path_for_name(&name, ctx.runtime_dir, ctx.data_dir)
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
 
+    // When the plugin file is absent on disk, LazyRegistry::declare would silently
+    // skip it (no triggers, no state).  Log an Info so the user knows why their
+    // declared plugin is inert this session; a :plum-install + reload will activate
+    // it.  `declared_plugins` is already recorded above for PLUM.
+    if path.is_none() {
+        ctx.log(
+            crate::log::LogLevel::Info,
+            format!("declare-plugin: '{name}' not found on disk; install and reload to activate."),
+        );
+        return Ok(SteelVal::Void);
+    }
+
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
-    // the plugin body is evaluated (before activation).
+    // the plugin body is evaluated (before activation).  Only reached when the
+    // plugin exists on disk: if it is absent, the early return above fires before
+    // this point and LazyRegistry::declare is never called — seeding here for a
+    // missing plugin would create orphan attribution entries that drop_triggers_for
+    // can never clean up (it only fires on load/fail, not on absent-path skips).
     for cmd in &on_cmd {
         ctx.registries.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
     }
@@ -529,6 +561,91 @@ mod tests {
                 Some(PluginState::Loading)
             ),
             "plugin must be Loading after successful %begin-lazy-activation"
+        );
+    }
+
+    // ── G1: cmd_owners not seeded for absent-path plugins ─────────────────────
+
+    /// When a declared plugin is absent on disk, `cmd_owners` must NOT be pre-seeded.
+    ///
+    /// The old bug: `cmd_owners` was seeded before the path check, so an absent
+    /// plugin left orphan attribution entries that could never be cleaned up by
+    /// `drop_triggers_for`.  The fix: the absent-path early-return fires before
+    /// the pre-seed loop.
+    ///
+    /// Fail oracle: remove the `if path.is_none() { return Ok(…) }` early-return →
+    /// cmd_owners gets seeded → assertion fires.
+    #[test]
+    fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        // `core:nonexistent-plugin` cannot exist on disk in any test environment.
+        let result = host.eval_source(
+            r#"(declare-plugin "core:nonexistent-plugin" #:on-command '("my-cmd"))"#,
+            &mut NullHost,
+        );
+        assert!(result.is_ok(), "absent-path declare-plugin must not error; got: {result:?}");
+        assert!(
+            !host.cmd_owners_for_test().contains_key("my-cmd"),
+            "cmd_owners must not be seeded when the plugin is absent on disk"
+        );
+    }
+
+    // ── G3: zero-trigger error distinguishes collided vs not-supplied ──────────
+
+    /// When ALL provided `#:on-command` triggers collide with built-ins, the
+    /// error message must mention "conflicted", not suggest adding #:on-command
+    /// (which the user already did).
+    ///
+    /// Fail oracle: remove the `had_on_cmd` branch → generic "Add #:on-command"
+    /// message → second assertion fires.
+    #[test]
+    fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
+        use std::collections::HashSet;
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        // Mark "insert-mode" as a built-in so collision filtering drops it.
+        let mut builtin_names = HashSet::new();
+        builtin_names.insert("insert-mode".to_string());
+
+        let result = host.eval_source_returning_defs(
+            r#"(declare-plugin "core:test-collision" #:on-command '("insert-mode"))"#.to_owned(),
+            builtin_names,
+            &mut NullHost,
+        );
+
+        let err = result.expect_err("must error when all triggers collide");
+        assert!(
+            err.contains("conflicted"),
+            "error must mention the collision; got: {err}"
+        );
+        assert!(
+            !err.contains("Add #:on-command"),
+            "must not suggest adding what user already provided; got: {err}"
+        );
+    }
+
+    // ── G4: info log when plugin absent on disk ────────────────────────────────
+
+    /// When a plugin is absent on disk, `declare-plugin` must emit an Info log
+    /// explaining that the plugin is inert until installed + reloaded.
+    ///
+    /// Fail oracle: remove the `ctx.log(Info, …)` call → no Info message → assertion fires.
+    #[test]
+    fn declare_plugin_absent_on_disk_logs_info() {
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        let result = host.eval_source(
+            r#"(declare-plugin "core:nonexistent-plugin" #:on-command '("my-cmd"))"#,
+            &mut NullHost,
+        );
+        assert!(result.is_ok());
+        let messages = host.peek_pending_messages();
+        assert!(
+            messages.iter().any(|(level, msg)| {
+                matches!(level, crate::log::LogLevel::Info) && msg.contains("not found on disk")
+            }),
+            "must log Info when plugin absent; messages: {messages:?}"
         );
     }
 }
