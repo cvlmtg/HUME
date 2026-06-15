@@ -97,6 +97,12 @@ impl Editor {
             let focused_pane_id = self.state.focused_pane_id;
             let focused_buffer_id = self.focused_buffer_id();
 
+            // Alt-screen bracketing is intentionally at this site only — the top-level
+            // keymap dispatch arm.  A nested `(call! "name")` routes through
+            // `%dispatch-command` → `(apply proc args)` inline inside the running Steel
+            // eval and never returns here, so a nested inline-output command runs its
+            // body without the alt-screen swap, banner, or return prompt.  Defined
+            // limitation, not an error.
             if inline_output {
                 let kitty = self.kitty_enabled;
                 let mouse = self.state.settings.mouse_enabled;
