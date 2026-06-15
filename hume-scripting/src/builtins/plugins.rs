@@ -21,6 +21,20 @@ fn steel_parse_err(e: String) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, e)
 }
 
+/// Log an `Error` for a `core:` plugin that is absent from the runtime dir.
+///
+/// For `core:` plugins, absent = typo or broken `HUME_RUNTIME`; PLUM never
+/// installs them (they are bundled), so there is no "install and reload" path.
+fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
+    ctx.log(
+        crate::log::LogLevel::Error,
+        format!(
+            "{verb}: unknown core plugin '{name}' — not found in runtime dir \
+             (typo, or HUME_RUNTIME misconfigured)"
+        ),
+    );
+}
+
 /// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
 ///
 /// Both verbs are valid only at the top level of `init.scm`.  A plugin can
@@ -164,14 +178,18 @@ pub(crate) fn declare_plugin(
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
 
     // When the plugin file is absent on disk, LazyRegistry::declare would silently
-    // skip it (no triggers, no state).  Log an Info so the user knows why their
-    // declared plugin is inert this session; a :plum-install + reload will activate
-    // it.  `declared_plugins` is already recorded above for PLUM.
+    // skip it (no triggers, no state).  For user/ plugins, log Info — absent is
+    // expected before :plum-install.  For core: plugins, absent means a typo or
+    // broken HUME_RUNTIME; PLUM never installs core: plugins, so it can't catch
+    // the error.  `declared_plugins` is already recorded above for PLUM.
     if path.is_none() {
-        ctx.log(
-            crate::log::LogLevel::Info,
-            format!("declare-plugin: '{name}' not found on disk; install and reload to activate."),
-        );
+        match &plugin_id {
+            PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
+            PluginId::User { .. } => ctx.log(
+                crate::log::LogLevel::Info,
+                format!("declare-plugin: '{name}' not found on disk; install and reload to activate."),
+            ),
+        }
         return Ok(SteelVal::Void);
     }
 
@@ -292,7 +310,11 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
                     .insert(id.clone(), PluginState::Declared { path: p });
             }
             None => {
-                // Absent at top level: PLUM-friendly; name already recorded above.
+                // core: absent → error (typo or HUME_RUNTIME broken; PLUM won't catch it).
+                // user/ absent → silent (PLUM installs it on :plum-install).
+                if matches!(&id, PluginId::Core(_)) {
+                    log_absent_core(ctx, &name, "load-plugin");
+                }
                 return Ok(SteelVal::Void);
             }
         }
@@ -625,27 +647,78 @@ mod tests {
         );
     }
 
-    // ── G4: info log when plugin absent on disk ────────────────────────────────
+    // ── G4: absent plugin logging ──────────────────────────────────────────────
 
-    /// When a plugin is absent on disk, `declare-plugin` must emit an Info log
-    /// explaining that the plugin is inert until installed + reloaded.
+    /// `declare-plugin "core:X"` absent on disk → `Error` log (typo / broken
+    /// HUME_RUNTIME; PLUM never installs core: plugins so it can't catch this).
     ///
-    /// Fail oracle: remove the `ctx.log(Info, …)` call → no Info message → assertion fires.
+    /// Fail oracle: remove `log_absent_core` call → no Error message → assertion fires.
     #[test]
-    fn declare_plugin_absent_on_disk_logs_info() {
+    fn declare_plugin_core_absent_logs_error() {
         use crate::{ScriptingHost, null_host::NullHost};
         let mut host = ScriptingHost::new();
         let result = host.eval_source(
             r#"(declare-plugin "core:nonexistent-plugin" #:on-command '("my-cmd"))"#,
             &mut NullHost,
         );
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "absent core: declare must be non-fatal; got: {result:?}");
+        let messages = host.peek_pending_messages();
+        assert!(
+            messages.iter().any(|(level, msg)| {
+                matches!(level, crate::log::LogLevel::Error)
+                    && msg.contains("unknown core plugin")
+                    && msg.contains("core:nonexistent-plugin")
+            }),
+            "must log Error for absent core: plugin; messages: {messages:?}"
+        );
+        assert!(
+            !messages.iter().any(|(_, msg)| msg.contains("install and reload")),
+            "must not suggest install for core: plugin; messages: {messages:?}"
+        );
+    }
+
+    /// `declare-plugin "user/X"` absent on disk → `Info` log (not yet installed;
+    /// PLUM will surface it on :plum-install — no change needed in HUME).
+    ///
+    /// Fail oracle: swap Info→Error → assertion fires.
+    #[test]
+    fn declare_plugin_user_absent_logs_info() {
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        let result = host.eval_source(
+            r#"(declare-plugin "user/definitely-absent-99" #:on-command '("my-cmd-2"))"#,
+            &mut NullHost,
+        );
+        assert!(result.is_ok(), "absent user/ declare must be non-fatal; got: {result:?}");
         let messages = host.peek_pending_messages();
         assert!(
             messages.iter().any(|(level, msg)| {
                 matches!(level, crate::log::LogLevel::Info) && msg.contains("not found on disk")
             }),
-            "must log Info when plugin absent; messages: {messages:?}"
+            "must log Info for absent user/ plugin; messages: {messages:?}"
+        );
+    }
+
+    /// `load-plugin "core:X"` absent on disk → `Error` log (was silently swallowed).
+    ///
+    /// Fail oracle: remove `log_absent_core` call in load_plugin → no Error message → assertion fires.
+    #[test]
+    fn load_plugin_core_absent_logs_error() {
+        use crate::{ScriptingHost, null_host::NullHost};
+        let mut host = ScriptingHost::new();
+        let result = host.eval_source(
+            r#"(load-plugin "core:nonexistent-plugin")"#,
+            &mut NullHost,
+        );
+        assert!(result.is_ok(), "absent core: load must be non-fatal; got: {result:?}");
+        let messages = host.peek_pending_messages();
+        assert!(
+            messages.iter().any(|(level, msg)| {
+                matches!(level, crate::log::LogLevel::Error)
+                    && msg.contains("unknown core plugin")
+                    && msg.contains("core:nonexistent-plugin")
+            }),
+            "must log Error for absent core: load-plugin; messages: {messages:?}"
         );
     }
 }
