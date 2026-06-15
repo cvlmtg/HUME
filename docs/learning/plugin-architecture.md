@@ -88,6 +88,22 @@ one language. A `on-language-set` event fires for *every* language, so a Rust pl
 declared that way would load the moment you open a PHP file. `#:languages` names only the
 languages you care about, keeping the plugin dormant until one of them appears.
 
+One caveat: the named language must already be known to the editor when a buffer is
+opened. If a plugin is the sole definer of its own activation language — registering it
+inside its own body with `define-language!` — it can never load. The body needs a buffer
+in that language to trigger activation, but the language can't be set on any buffer until
+the body runs. This is a permanent deadlock for the session; HUME will flag it at startup
+with a warning visible in `:messages`.
+
+The fix is to separate identity from behavior: define the language eagerly in `init.scm`
+so its identity exists from startup, then declare the tooling lazily:
+
+```scheme
+; init.scm
+(define-language! "mylang" '("ml"))                           ; identity — eager
+(declare-plugin "alice/mylang-tools" #:languages '("mylang")) ; behavior — lazy
+```
+
 Once the body has run (on the first match), register `on-language-set` *inside the body*
 if you need to respond to every subsequent language change — `#:languages` is a one-shot
 load trigger, not a recurring filter.
