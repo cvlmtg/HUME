@@ -144,6 +144,49 @@
 ;; (bind-key! "normal" "j" "move-down-select-word")
 ;; (bind-key! "normal" "k" "move-up-select-word")
 
+;; ── Hooks ────────────────────────────────────────────────────────────────────
+;;
+;; (register-hook! 'hook-name (lambda (arg ...) body...))
+;;   Register a handler that runs every time the named hook fires.
+;;   Must be called at the top level (or inside a plugin body) — not from a
+;;   command body.
+;;
+;; Available hooks and their lambda signatures:
+;;   on-buffer-open    (bid)           — a buffer was opened
+;;   on-buffer-close   (bid)           — a buffer was closed
+;;   on-buffer-save    (bid)           — a buffer was written to disk
+;;   on-mode-change    (old new)       — editor mode changed; old/new are strings:
+;;                                       "normal", "insert", or "extend"
+;;   on-language-set   (bid lang)      — buffer language changed; lang is a string
+;;                                       or #f when the language was cleared
+;;
+;; Example — log every save:
+;; (register-hook! 'on-buffer-save
+;;   (lambda (bid)
+;;     (log! 'info (string-append "saved buffer " (to-string bid)))))
+;;
+;; Example — log mode transitions (useful for debugging key bindings):
+;; (register-hook! 'on-mode-change
+;;   (lambda (old new)
+;;     (log! 'trace (string-append old " → " new))))
+;;
+;; Example — auto-format on save when the buffer language is "rust":
+;; (register-hook! 'on-buffer-save
+;;   (lambda (bid)
+;;     (when (equal? (buffer-language bid) "rust")
+;;       (call! "format-buffer"))))
+;;
+;; Example — two-stage language plugin pattern.
+;; #:languages activates the plugin (one-shot) on the first matching language set;
+;; register-hook! inside the body fires on every subsequent language set:
+;; (declare-plugin "alice/rust-tools" #:languages '("rust"))
+;; ; alice/rust-tools/plugin.scm:
+;; ;   (define-command! "rust-check" ...)
+;; ;   (register-hook! 'on-language-set
+;; ;     (lambda (bid lang)
+;; ;       (when (equal? lang "rust")
+;; ;         (call! "rust-check"))))
+
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;;
 ;; The verb encodes when the plugin loads:
