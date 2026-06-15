@@ -194,7 +194,10 @@ impl Editor {
         // plugins may have defined commands that would collide) and before
         // scripting=Some so the borrow of &host is independent.
         let activation_commands = host.activation_commands();
-        self.register_lazy_command_stubs(&activation_commands);
+        let collided = self.register_lazy_command_stubs(&activation_commands);
+        for name in collided {
+            host.drop_activation_command(&name);
+        }
         // Snapshot language activation entries before the second flush so the
         // post-init lint (below) can compare them against the final language registry.
         let lang_activations = host.activation_languages();
@@ -281,16 +284,22 @@ impl Editor {
     /// Called after `register_steel_cmds` (eager plugins run first) so a
     /// command defined eagerly is detected as a conflict before a lazy stub
     /// for the same name would shadow it.
+    ///
+    /// Returns the names that were skipped due to collision so the caller can
+    /// remove their declare-time entries from the scripting host's activation
+    /// maps — preventing stale attribution that would mis-route a future dispatch.
     pub(super) fn register_lazy_command_stubs(
         &mut self,
         activations: &std::collections::HashMap<String, hume_scripting::attribution::PluginId>,
-    ) {
+    ) -> Vec<String> {
+        let mut collided = Vec::new();
         for (name, plugin) in activations {
             if self.state.registry.contains(name) {
                 self.report(
                     Severity::Error,
                     format!("lazy command '{name}' conflicts with an existing command"),
                 );
+                collided.push(name.clone());
             } else {
                 self.state.registry.register(super::registry::MappableCommand::Lazy {
                     name: name.clone().into(),
@@ -298,6 +307,7 @@ impl Editor {
                 });
             }
         }
+        collided
     }
 }
 

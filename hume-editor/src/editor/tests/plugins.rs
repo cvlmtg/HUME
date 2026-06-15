@@ -1239,3 +1239,47 @@ fn keymap_lint_silent_for_known_command() {
             .collect::<Vec<_>>()
     );
 }
+
+// ── register_lazy_command_stubs — collision cleanup ───────────────────────────
+
+/// When a declared lazy command collides with an already-registered name,
+/// `register_lazy_command_stubs` must return that name as "collided" and NOT
+/// register a `Lazy` stub for it.
+///
+/// Flip: if collision detection were removed, `get_mappable("move-right")`
+/// would return `Some(Lazy {..})` (shadowing the built-in) and `collided`
+/// would be empty — both assertions would fire.
+#[test]
+fn lazy_stub_collision_returned_and_stub_not_registered() {
+    use hume_scripting::attribution::PluginId;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let plugin = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
+
+    // "move-right" is a native built-in guaranteed to be in the registry.
+    let activations: std::collections::HashMap<String, PluginId> =
+        [("move-right".to_string(), plugin)].into_iter().collect();
+
+    let collided = ed.register_lazy_command_stubs(&activations);
+
+    assert_eq!(
+        collided,
+        vec!["move-right".to_string()],
+        "colliding name must be returned"
+    );
+    assert!(
+        !matches!(
+            ed.state.registry.get_mappable("move-right"),
+            Some(crate::editor::registry::MappableCommand::Lazy { .. })
+        ),
+        "built-in must not be shadowed by a Lazy stub after collision"
+    );
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == crate::editor::Severity::Error
+                && e.text.contains("move-right")
+                && e.text.contains("conflicts with an existing command")
+        }),
+        "collision must produce an Error message"
+    );
+}

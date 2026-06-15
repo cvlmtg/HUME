@@ -775,7 +775,6 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn declare_plugin_drops_sole_command_conflicting_with_eager() {
-        use std::io::Write as _;
         use tempfile::TempDir;
         use crate::{ScriptingHost, null_host::NullHost};
         use steel::rvals::SteelVal;
@@ -808,6 +807,49 @@ mod tests {
         assert!(
             !host.registries.lazy_registry.activation_commands.contains_key("my-eager-cmd"),
             "activation_commands must not be polluted with the conflicting eager command name"
+        );
+    }
+
+    // ── ScriptingHost::drop_activation_command ────────────────────────────────
+
+    /// `drop_activation_command` removes the named command from both
+    /// `activation_commands` and `cmd_owners`, leaving unrelated entries intact.
+    ///
+    /// Flip: if the method cleared ALL entries instead of just the named one,
+    /// `"y"` would be absent and the second assertion would fire.  If it did
+    /// nothing, `"x"` would still be present and the first assertion would fire.
+    #[test]
+    fn drop_activation_command_removes_entry_and_leaves_others() {
+        use crate::ScriptingHost;
+
+        let id = PluginId::parse("user/tp").unwrap();
+        let id2 = PluginId::parse("user/other").unwrap();
+
+        let mut host = ScriptingHost::new();
+        // Seed two entries: only "x" will be dropped.
+        host.registries.lazy_registry.activation_commands.insert("x".to_string(), id.clone());
+        host.registries.cmd_owners.insert("x".to_string(), id.to_string());
+        host.registries.lazy_registry.activation_commands.insert("y".to_string(), id2.clone());
+        host.registries.cmd_owners.insert("y".to_string(), id2.to_string());
+
+        host.drop_activation_command("x");
+
+        assert!(
+            !host.activation_commands().contains_key("x"),
+            "activation_commands must not contain dropped entry 'x'"
+        );
+        assert!(
+            !host.cmd_owners_for_test().contains_key("x"),
+            "cmd_owners must not contain dropped entry 'x'"
+        );
+        // Unrelated entry must survive.
+        assert!(
+            host.activation_commands().contains_key("y"),
+            "unrelated entry 'y' must not be removed"
+        );
+        assert!(
+            host.cmd_owners_for_test().contains_key("y"),
+            "unrelated cmd_owner 'y' must not be removed"
         );
     }
 }

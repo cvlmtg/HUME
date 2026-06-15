@@ -325,6 +325,16 @@ impl ScriptingHost {
         self.registries.lazy_registry.activation_commands.clone()
     }
 
+    /// Drop a single command activation entry and its pre-seeded ownership.
+    ///
+    /// Called when the editor's command registry already owns `name`, so no
+    /// `Lazy` stub was registered — the declare-time claim (seeded in
+    /// `declare_plugin`) must not linger in the activation maps.
+    pub fn drop_activation_command(&mut self, name: &str) {
+        self.registries.lazy_registry.activation_commands.remove(name);
+        self.registries.cmd_owners.remove(name);
+    }
+
     /// A snapshot of the language activation entries declared during init (language → plugins).
     ///
     /// Used by the post-init lint in `init_scripting` to detect `#:languages` entries
