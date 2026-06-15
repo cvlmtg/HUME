@@ -176,9 +176,6 @@ impl Editor {
         self.state.selection_recipe.clear();
         }
 
-        // Drain any hooks queued during command execution (mode changes, etc.).
-        // Called after BOTH paths so hooks always fire after the full command.
-        self.drain_hooks();
     }
 
     // ── Selection helpers ─────────────────────────────────────────────────────

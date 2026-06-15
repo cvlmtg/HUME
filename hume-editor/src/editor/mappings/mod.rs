@@ -41,9 +41,6 @@ impl Editor {
         // but the replayed command executes as a fresh dispatch with &mut Editor.
         self.drain_pending_repeat();
 
-        // Drain any hooks enqueued by mode handlers (mode changes, `:write`, etc.)
-        // that did not go through execute_keymap_command's own drain call.
-        self.drain_hooks();
     }
 }
 

@@ -57,9 +57,10 @@ impl Editor {
 
     /// Fire every hook in `state.pending_hooks`, draining the queue.
     ///
-    /// Called by `execute_keymap_command` after each command and by the
-    /// Steel sync-dispatch path after `call_steel_cmd` returns. Inner hook
-    /// handlers may themselves enqueue more hooks; the outer loop handles that.
+    /// Called once per interactive input event by `handle_event` (the single
+    /// interactive drain boundary), and once at startup in `lib.rs` before the
+    /// event loop begins. Inner hook handlers may enqueue more hooks; the outer
+    /// loop re-drains until the queue is empty.
     pub(crate) fn drain_hooks(&mut self) {
         while !self.state.pending_hooks.is_empty() {
             let hooks = std::mem::take(&mut self.state.pending_hooks);

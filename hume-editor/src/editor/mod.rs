@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{Event, KeyEvent};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 #[cfg(test)]
@@ -449,7 +449,7 @@ impl Editor {
         let saved_action = self.state.last_repeatable_action.take();
         self.state.is_replaying = true;
         while let Some(key) = self.state.replay_queue.pop_front() {
-            self.handle_key(key);
+            self.handle_event(Event::Key(key));
             if self.state.should_quit {
                 break;
             }

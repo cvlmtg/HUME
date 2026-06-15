@@ -26,9 +26,8 @@ use super::{Editor, Mode};
 impl Editor {
     /// Dispatch a crossterm [`MouseEvent`] to the appropriate handler.
     ///
-    /// Drains `state.pending_hooks` after dispatching so that any hooks queued
-    /// during mouse handling (e.g. `OnModeChange` from a click that exits Insert
-    /// mode) fire on the click, not on the next keypress.
+    /// Hook draining happens in the caller (`handle_event`) — this method only
+    /// performs the dispatch.
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
@@ -44,7 +43,6 @@ impl Editor {
             MouseEventKind::ScrollDown => self.mouse_scroll_down(),
             _ => {}
         }
-        self.drain_hooks();
     }
 
     // ── Click ─────────────────────────────────────────────────────────────────

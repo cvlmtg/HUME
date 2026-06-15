@@ -201,6 +201,21 @@ impl Editor {
         })
     }
 
+    /// Single interactive input boundary: dispatch one terminal event and drain hooks.
+    ///
+    /// All interactive input flows through here — key events and mouse events alike.
+    /// Hooks enqueued during dispatch (mode changes, `:write`, buffer open/close,
+    /// language set) fire once at the tail, never mid-event. New input paths must
+    /// route through this method so they cannot accidentally skip the drain.
+    pub(crate) fn handle_event(&mut self, ev: Event) {
+        match ev {
+            Event::Key(k) => self.handle_key(k),
+            Event::Mouse(m) => self.handle_mouse(m),
+            _ => {}
+        }
+        self.drain_hooks();
+    }
+
     /// Run the editor event loop until the user quits.
     ///
     /// Each iteration:
@@ -326,12 +341,12 @@ impl Editor {
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
                 Event::Key(key) if key.kind != KeyEventKind::Release => {
-                    self.handle_key(key);
+                    self.handle_event(Event::Key(key));
                     self.sync_search_cache();
                 }
                 Event::Key(_) => {}
                 Event::Mouse(mouse) => {
-                    self.handle_mouse(mouse);
+                    self.handle_event(Event::Mouse(mouse));
                 }
                 Event::Resize(_, _) => {
                     // Drain any additional resize events that are already queued
@@ -344,13 +359,13 @@ impl Editor {
                         match event::read()? {
                             Event::Resize(_, _) => continue,
                             Event::Key(key) if key.kind != KeyEventKind::Release => {
-                                self.handle_key(key);
+                                self.handle_event(Event::Key(key));
                                 self.sync_search_cache();
                                 break;
                             }
                             Event::Key(_) => break,
                             Event::Mouse(mouse) => {
-                                self.handle_mouse(mouse);
+                                self.handle_event(Event::Mouse(mouse));
                                 break;
                             }
                             _ => break,
