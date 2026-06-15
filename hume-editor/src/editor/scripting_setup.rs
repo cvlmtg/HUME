@@ -194,6 +194,9 @@ impl Editor {
         // so the borrow of &host is independent.
         let triggers = host.command_triggers();
         self.register_lazy_command_stubs(&triggers);
+        // Snapshot language triggers before the second flush so the post-init lint
+        // (below) can compare them against the final language registry.
+        let lang_triggers = host.language_triggers();
         // Second flush: picks up any (define-language! …) calls from init.scm /
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
@@ -217,6 +220,26 @@ impl Editor {
                     self.report(
                         Severity::Warning,
                         format!("key bound to unknown command '{name}' — typo, or missing from #:on-command?"),
+                    );
+                }
+            }
+        }
+        // Post-init lint: warn on #:on-language triggers whose language name is not
+        // in the final LanguageRegistry.  Runs after the second flush (line 199) so
+        // both languages.scm and init.scm's own define-language! calls are visible.
+        // Uses by_name() (identity registered), not has_grammar() (grammar attached):
+        // a trigger is valid for any known language identity even without a grammar.
+        // Not a hard error: the trigger is inert but harmless, and language sets are
+        // open/dynamic (a future define-language! + reload may make the name valid).
+        for (lang, plugins) in &lang_triggers {
+            if self.state.languages.by_name(lang).is_none() {
+                for plugin in plugins {
+                    self.report(
+                        Severity::Warning,
+                        format!(
+                            "plugin '{plugin}' declares #:on-language trigger for unknown \
+                             language '{lang}' — typo, or missing (define-language!)?"
+                        ),
                     );
                 }
             }

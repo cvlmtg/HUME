@@ -1079,6 +1079,137 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     );
 }
 
+// ── G2: post-init language-trigger lint ───────────────────────────────────────
+
+/// Helper: create a `user/tp` plugin file, write init.scm, run `init_scripting`.
+///
+/// Parallels `setup_editor_with_init_scripting` but also puts a plugin on disk so
+/// `#:on-language` triggers for `"user/tp"` are actually recorded.  (Absent-path
+/// plugins early-return in `declare_plugin` and skip trigger registration.)
+#[cfg(not(windows))]
+fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    // Trivial plugin body — the lint checks trigger names, not plugin behaviour.
+    let plugin_dir = data_tmp.path().join("hume").join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), "(+ 1 0)").unwrap();
+
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), init_body).unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting();
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    (ed, vec![config_tmp, runtime_tmp, data_tmp])
+}
+
+/// Language-trigger lint warns when `#:on-language` names a language that no
+/// `define-language!` has registered.
+///
+/// Flip: remove the post-init language-trigger lint → no Warning produced →
+/// assertion fires.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_lint_warns_on_unknown_language() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_lang_lint_editor(
+        r#"(declare-plugin "user/tp" #:on-language '("rsut"))"#,
+    );
+
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("rsut")
+        }),
+        "expected Warning about unknown language 'rsut'; messages: {:?}",
+        ed.state.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Language-trigger lint is silent when the declared language was registered via
+/// `define-language!` earlier in the same init.scm.
+///
+/// Flip: running the lint before the second language flush (instead of after)
+/// would incorrectly warn here because the flush has not yet applied the
+/// `define-language!` call to `state.languages`.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_lint_silent_for_known_language() {
+    use crate::editor::Severity;
+
+    // %define-language! (the Rust primitive) works without prelude.scm
+    // (the macro wrapper in languages.scm is absent in the test environment).
+    let (ed, _dirs) = setup_lang_lint_editor(
+        r#"(%define-language! "foo" '() '() '())
+           (declare-plugin "user/tp" #:on-language '("foo"))"#,
+    );
+
+    assert!(
+        !ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("foo")
+        }),
+        "must not warn about known language 'foo'; messages: {:?}",
+        ed.state.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Forward-reference order-independence: `declare-plugin #:on-language '("foo")`
+/// appearing BEFORE `define-language! "foo"` in the same init.scm must not warn.
+///
+/// A declare-time check would see "foo" absent from the live registry and falsely
+/// reject it.  The post-init placement (after the second flush) makes the check
+/// order-independent.
+///
+/// Flip: move the lint before the second `flush_pending_language_regs` call →
+/// "foo" is not yet in `state.languages` → lint emits a spurious Warning →
+/// assertion fires.
+#[test]
+#[cfg(not(windows))]
+fn language_trigger_lint_silent_for_forward_defined_language() {
+    use crate::editor::Severity;
+
+    // declare-plugin BEFORE define-language! — the forward-reference case.
+    let (ed, _dirs) = setup_lang_lint_editor(
+        r#"(declare-plugin "user/tp" #:on-language '("foo"))
+           (%define-language! "foo" '() '() '())"#,
+    );
+
+    assert!(
+        !ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning && e.text.contains("foo")
+        }),
+        "forward-defined language must not warn; messages: {:?}",
+        ed.state.message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// Keymap lint is silent when every bound key targets a registered command.
 ///
 /// Flip: the test above binds an *unknown* name and asserts a Warning is

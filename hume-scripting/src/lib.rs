@@ -325,6 +325,16 @@ impl ScriptingHost {
         self.registries.lazy_registry.command_triggers.clone()
     }
 
+    /// A snapshot of the language triggers declared during init (language → plugins).
+    ///
+    /// Used by the post-init language-trigger lint in `init_scripting` to detect
+    /// `#:on-language` trigger names that don't match any registered language identity.
+    pub fn language_triggers(
+        &self,
+    ) -> std::collections::HashMap<String, Vec<attribution::PluginId>> {
+        self.registries.lazy_registry.language_triggers.clone()
+    }
+
     /// Plugin ids that should be activated when `hook_id` fires.
     pub fn event_trigger_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
         self.registries.lazy_registry
