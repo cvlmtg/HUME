@@ -22,12 +22,12 @@ pub enum HookId {
     OnModeChange,
     /// Fires on every language transition (including round-trips and clears).
     ///
-    /// **For lazy-loading:** use `#:on-language` in `declare-plugin` instead.
-    /// `#:on-language` activates the plugin's body on the *first* matching
-    /// transition; the body then registers an `on-language-set` handler to
-    /// react on all subsequent transitions.  Using `on-language-set` directly
-    /// as a `#:on-event` trigger would activate the plugin on *any* language
-    /// transition, not just the ones it cares about.
+    /// **For lazy-loading:** use `#:languages` in `declare-plugin` instead.
+    /// `#:languages` *activates* the plugin on the *first* matching transition;
+    /// the body then registers an `on-language-set` *hook* to react on every
+    /// subsequent transition.  Using `on-language-set` as a `#:events` activation
+    /// entry would activate the plugin on *any* language transition, not just the
+    /// ones it cares about.
     OnLanguageSet,
 }
 

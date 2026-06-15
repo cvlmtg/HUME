@@ -43,7 +43,7 @@ use the original casing.
 Command registrations are attributed at the time `(define-command! …)` is called: the
 current stack top is stored in an internal owner map (command name → owner string).
 
-For lazy plugins that declare command triggers with `(declare-plugin … #:on-command …)`,
+For lazy plugins that declare commands in their manifest with `(declare-plugin … #:commands …)`,
 the owner is pre-seeded immediately at declaration time — before the plugin body runs —
 so `(command-plugin "cmd")` resolves correctly even when queried before the first
 activation.
@@ -55,7 +55,7 @@ activation.
 
 ## Conflict detection
 
-If two plugins try to claim the same command trigger (via `#:on-command`), the **first
+If two plugins try to claim the same command (via `#:commands`), the **first
 declarant wins**. The duplicate is dropped with a non-fatal error logged to `:messages`;
 init continues.
 

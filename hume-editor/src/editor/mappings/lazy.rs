@@ -7,7 +7,7 @@ impl Editor {
 
     /// Shared core: activate `plugin` inline (or report the error), leaving
     /// messages unflushed.  Called by both the command-stub path and the
-    /// event-trigger path.
+    /// event-activation path.
     pub(super) fn activate_and_register(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
@@ -21,12 +21,12 @@ impl Editor {
     }
 
     /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
-    /// `Declared → Loaded`, and leave messages unflushed.  `trigger` is the
-    /// human-readable trigger description for the log line.
+    /// `Declared → Loaded`, and leave messages unflushed.  `activation` is the
+    /// human-readable activation description for the log line.
     pub(super) fn activate_and_trace(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
-        trigger: &str,
+        activation: &str,
     ) {
         let was_declared = self
             .scripting
@@ -41,7 +41,7 @@ impl Editor {
             if is_loaded {
                 self.report(
                     Severity::Trace,
-                    format!("plugin '{plugin}' loaded ({trigger})"),
+                    format!("plugin '{plugin}' activated ({activation})"),
                 );
             }
         }
@@ -63,7 +63,7 @@ impl Editor {
         if self.scripting.is_none() {
             return false;
         }
-        self.activate_and_trace(plugin, &format!("command trigger '{name}'"));
+        self.activate_and_trace(plugin, &format!("by command '{name}'"));
         self.flush_script_messages();
         // Loop guard: if name is still Lazy (body never defined it) or gone,
         // remove the stub and signal failure so the caller does not re-enter.
@@ -89,13 +89,13 @@ impl Editor {
     ) {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
-                let plugins = host.event_trigger_plugins(hook_id);
+                let plugins = host.activation_event_plugins(hook_id);
                 if plugins.is_empty() { return; }
                 plugins
             }
             None => return,
         };
-        self.activate_pending_plugins(pending, &format!("event trigger '{}'", hook_id.symbol()));
+        self.activate_pending_plugins(pending, &format!("by event '{}'", hook_id.symbol()));
     }
 
     /// Activate every still-`Declared` lazy plugin registered for language `lang`.
@@ -105,22 +105,22 @@ impl Editor {
     pub(in super::super) fn activate_lazy_language_plugins(&mut self, lang: &str) {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
-                let plugins = host.language_trigger_plugins(lang);
+                let plugins = host.activation_language_plugins(lang);
                 if plugins.is_empty() { return; }
                 plugins
             }
             None => return,
         };
-        self.activate_pending_plugins(pending, &format!("language trigger '{lang}'"));
+        self.activate_pending_plugins(pending, &format!("by language '{lang}'"));
     }
 
     fn activate_pending_plugins(
         &mut self,
         pending: Vec<hume_scripting::attribution::PluginId>,
-        trigger: &str,
+        activation: &str,
     ) {
         for plugin in &pending {
-            self.activate_and_trace(plugin, trigger);
+            self.activate_and_trace(plugin, activation);
         }
         self.flush_script_messages();
     }

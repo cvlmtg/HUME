@@ -188,15 +188,15 @@ impl Editor {
                 self.report(Severity::Error, format!("init.scm: {msg}"));
             }
         }
-        // Register lazy-command stubs for every #:on-command trigger declared
-        // during init.scm.  Must run after register_steel_cmds (eager plugins
-        // may have defined commands that would collide) and before scripting=Some
-        // so the borrow of &host is independent.
-        let triggers = host.command_triggers();
-        self.register_lazy_command_stubs(&triggers);
-        // Snapshot language triggers before the second flush so the post-init lint
-        // (below) can compare them against the final language registry.
-        let lang_triggers = host.language_triggers();
+        // Register lazy-command stubs for every #:commands activation entry
+        // declared during init.scm.  Must run after register_steel_cmds (eager
+        // plugins may have defined commands that would collide) and before
+        // scripting=Some so the borrow of &host is independent.
+        let activation_commands = host.activation_commands();
+        self.register_lazy_command_stubs(&activation_commands);
+        // Snapshot language activation entries before the second flush so the
+        // post-init lint (below) can compare them against the final language registry.
+        let lang_activations = host.activation_languages();
         // Second flush: picks up any (define-language! …) calls from init.scm /
         // plugins that ran during init.scm.
         self.flush_pending_language_regs(&mut host);
@@ -219,25 +219,25 @@ impl Editor {
                 if !self.state.registry.contains(name) {
                     self.report(
                         Severity::Warning,
-                        format!("key bound to unknown command '{name}' — typo, or missing from #:on-command?"),
+                        format!("key bound to unknown command '{name}' — typo, or missing from #:commands?"),
                     );
                 }
             }
         }
-        // Post-init lint: warn on #:on-language triggers whose language name is not
-        // in the final LanguageRegistry.  Runs after the second flush (line 199) so
-        // both languages.scm and init.scm's own define-language! calls are visible.
+        // Post-init lint: warn on #:languages activation entries whose language name
+        // is not in the final LanguageRegistry.  Runs after the second flush (line 199)
+        // so both languages.scm and init.scm's own define-language! calls are visible.
         // Uses by_name() (identity registered), not has_grammar() (grammar attached):
-        // a trigger is valid for any known language identity even without a grammar.
-        // Not a hard error: the trigger is inert but harmless, and language sets are
+        // an activation entry is valid for any known language identity even without a
+        // grammar.  Not a hard error: inert but harmless, and language sets are
         // open/dynamic (a future define-language! + reload may make the name valid).
-        for (lang, plugins) in &lang_triggers {
+        for (lang, plugins) in &lang_activations {
             if self.state.languages.by_name(lang).is_none() {
                 for plugin in plugins {
                     self.report(
                         Severity::Warning,
                         format!(
-                            "plugin '{plugin}' declares #:on-language trigger for unknown \
+                            "plugin '{plugin}' declares #:languages activation for unknown \
                              language '{lang}' — typo, or missing (define-language!)?"
                         ),
                     );
@@ -275,16 +275,16 @@ impl Editor {
         )
     }
 
-    /// Register a `Lazy` stub for each command trigger from the init manifest.
+    /// Register a `Lazy` stub for each command activation entry from the plugin manifests.
     ///
     /// Called after `register_steel_cmds` (eager plugins run first) so a
     /// command defined eagerly is detected as a conflict before a lazy stub
     /// for the same name would shadow it.
     pub(super) fn register_lazy_command_stubs(
         &mut self,
-        triggers: &std::collections::HashMap<String, hume_scripting::attribution::PluginId>,
+        activations: &std::collections::HashMap<String, hume_scripting::attribution::PluginId>,
     ) {
-        for (name, plugin) in triggers {
+        for (name, plugin) in activations {
             if self.state.registry.contains(name) {
                 self.report(
                     Severity::Error,

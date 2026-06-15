@@ -9,8 +9,8 @@
 //! - **Activated plugin commands** (in `command_table`): applied directly as an
 //!   ordinary Steel funcall via `(apply proc args)` — never leaving the VM.
 //!   State reads after the call see its effects immediately.
-//! - **Lazy triggers** (unactivated plugin): `%dispatch-command` activates the
-//!   owner inline via `%activate-plugin-inline`, then retries.
+//! - **Lazy activation commands** (unactivated plugin): `%dispatch-command`
+//!   activates the owner inline via `%activate-plugin-inline`, then retries.
 //! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
 //!   Init mode: warns and skips (buffer access not available during init).
 //! - **Unknown**: forwarded to `%call-native!` → warning logged, no-op.
@@ -142,8 +142,9 @@ fn define_command_inner(
     }
     // Guard against true re-definition: command_table is set only when a
     // command body is actually registered. cmd_owners is pre-seeded by
-    // declare_plugin for trigger ownership before the body runs, so checking
-    // cmd_owners here would falsely reject the plugin defining its own trigger.
+    // declare_plugin for activation command ownership before the body runs, so
+    // checking cmd_owners here would falsely reject a plugin defining its own
+    // activation command.
     if ctx.registries.command_table.contains_key(&name) {
         let owner = ctx.registries.cmd_owners.get(&name)
             .map(|s| s.as_str())
@@ -173,7 +174,7 @@ fn define_command_inner(
 /// `%call-native!` — Rust leaf for native/unknown commands.
 ///
 /// Called by `%dispatch-command` when `name` is NOT found in `command_table`
-/// and has no lazy-trigger owner (i.e. it is a native or unknown command).
+/// and has no lazy activation command owner (i.e. it is a native or unknown command).
 ///
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
 ///   validates count/extend args and runs synchronously via `run_command_sync`.
@@ -524,7 +525,7 @@ mod tests {
         // Simulate a command already fully defined by core:plum.
         // Both command_table (actually defined) and cmd_owners (attribution)
         // must be set — cmd_owners alone is pre-seeded by declare_plugin for
-        // trigger ownership, so the guard checks command_table.
+        // activation command ownership, so the guard checks command_table.
         h.registries
             .command_table
             .insert("my-cmd".to_string(), SteelVal::BoolV(false));

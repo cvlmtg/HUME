@@ -628,7 +628,7 @@ fn lazy_repeatable_round_trip() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(declare-plugin "user/tp" #:on-command '("tp-del"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("tp-del"))"#,
     ).unwrap();
 
     let mut ed = editor_from("-[foo]> bar\n");
@@ -638,7 +638,7 @@ fn lazy_repeatable_round_trip() {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }.expect("eval_init must succeed");
-    let triggers = host.command_triggers();
+    let triggers = host.activation_commands();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 

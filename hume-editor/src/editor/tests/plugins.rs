@@ -36,7 +36,7 @@ fn setup_lazy_editor(
         .expect("eval_init must succeed in setup_lazy_editor");
 
     let triggers: std::collections::HashMap<_, _> =
-        host.command_triggers();
+        host.activation_commands();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
     (ed, dir)
@@ -50,7 +50,7 @@ fn setup_lazy_editor(
 #[cfg(not(windows))]
 fn lazy_stub_present_after_init() {
     let (ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     assert!(
@@ -69,7 +69,7 @@ fn lazy_stub_present_after_init() {
 #[cfg(not(windows))]
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
     );
     let before = state(&ed);
@@ -95,7 +95,7 @@ fn first_dispatch_activates_plugin_and_runs() {
 #[cfg(not(windows))]
 fn loop_guard_removes_stub_when_body_never_defines_command() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         // Plugin body exists but never defines "bar".
         r#"(define-command! "other-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -127,7 +127,7 @@ fn body_error_removes_stub_and_marks_failed() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
@@ -160,7 +160,7 @@ fn body_error_removes_stub_and_marks_failed() {
 #[cfg(not(windows))]
 fn unregister_dynamic_commands_clears_lazy_stubs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -197,7 +197,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
     // verify that after activation the command is SteelBacked (i.e. arg was
     // accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda (x) (+ 1 0)))"#,
     );
 
@@ -229,7 +229,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
 fn key_press_activates_lazy_plugin_via_keymap() {
     use crate::editor::keymap::BindMode;
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
@@ -248,7 +248,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 }
 
 /// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
-/// plugin declares `#:on-command '("foo")`.  The lazy stub is rejected (no
+/// plugin declares `#:commands '("foo")`.  The lazy stub is rejected (no
 /// shadow) and an Error is logged; the eager SteelBacked command survives.
 ///
 /// Flip: if the stub overwrote the eager command, `get_mappable("foo")` would
@@ -268,7 +268,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         eager_dir.join("plugin.scm"),
         r#"(define-command! "foo" "doc" (lambda () (+ 1 0)))"#,
     ).unwrap();
-    // Lazy plugin — declares "foo" as a command trigger; body never runs in
+    // Lazy plugin — declares "foo" as an activation command; body never runs in
     // this test (stub is rejected before activation).
     let lazy_dir = dir.path().join("plugins").join("user").join("lz");
     std::fs::create_dir_all(&lazy_dir).unwrap();
@@ -277,7 +277,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/eager\")\n(declare-plugin \"user/lz\" #:on-command '(\"foo\"))",
+        "(load-plugin \"user/eager\")\n(declare-plugin \"user/lz\" #:commands '(\"foo\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
@@ -291,7 +291,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     }
     .expect("eval_init must succeed — collision is caught at stub registration, not here");
     let triggers: std::collections::HashMap<_, _> =
-        host.command_triggers();
+        host.activation_commands();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -315,7 +315,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 
 // ── Phase 2 lazy plugin loading — event triggers ──────────────────────────────
 
-/// `#:on-event` plugin activates on first matching hook fire; its handler
+/// `#:events` plugin activates on first matching hook fire; its handler
 /// runs in the same fire that triggered activation.
 ///
 /// Flip: without A3 (`activate_lazy_event_plugins` at the top of
@@ -327,7 +327,7 @@ fn event_trigger_activates_on_first_fire() {
     
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -340,7 +340,7 @@ fn event_trigger_activates_on_first_fire() {
         "plugin must be Declared before first fire"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
+        !ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be populated before first fire"
     );
 
@@ -358,7 +358,7 @@ fn event_trigger_activates_on_first_fire() {
         "plugin must be Loaded after first fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be cleared after plugin loads"
     );
 }
@@ -375,7 +375,7 @@ fn event_trigger_idempotent_on_second_fire() {
     
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -384,7 +384,7 @@ fn event_trigger_idempotent_on_second_fire() {
     ed.fire_hook_buffer_save(bid);  // first fire — activates
     ed.drain_hooks();
     assert!(
-        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be empty after first fire"
     );
 
@@ -402,10 +402,10 @@ fn event_trigger_idempotent_on_second_fire() {
     );
 }
 
-/// 1:many: two plugins both declare `#:on-event '("on-buffer-save")`; a single
+/// 1:many: two plugins both declare `#:events '("on-buffer-save")`; a single
 /// fire activates both.
 ///
-/// Flip: if only the first plugin in the trigger Vec were activated, the second
+/// Flip: if only the first plugin in the activation Vec were activated, the second
 /// would stay `Declared` with its handler never registering.
 #[test]
 #[cfg(not(windows))]
@@ -432,8 +432,8 @@ fn event_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:on-event '(\"on-buffer-save\"))\n\
-         (declare-plugin \"user/tp2\" #:on-event '(\"on-buffer-save\"))",
+        "(declare-plugin \"user/tp\"  #:events '(\"on-buffer-save\"))\n\
+         (declare-plugin \"user/tp2\" #:events '(\"on-buffer-save\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
@@ -463,15 +463,15 @@ fn event_trigger_one_to_many_activates_all() {
         "plugin B must be Loaded after fire"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be fully cleared after both plugins load"
     );
 }
 
-/// Body error: plugin raises at load time → `Failed`, error reported, trigger
-/// cleared — no retry on a second fire.
+/// Body error: plugin raises at load time → `Failed`, error reported, activation
+/// entry cleared — no retry on a second fire.
 ///
-/// Flip: without `event_triggers` drop in `activate_plugin`'s failure branch,
+/// Flip: without `activation_events` drop in `activate_plugin`'s failure branch,
 /// the same plugin would attempt activation on every fire.
 #[test]
 #[cfg(not(windows))]
@@ -481,7 +481,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-event '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -498,7 +498,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
         "plugin must be Failed after body error"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().event_trigger_plugins(HookId::OnBufferSave).is_empty(),
+        ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
         "event_triggers must be cleared even after failure"
     );
     assert!(
@@ -526,10 +526,10 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
 // ── Phase 2 — load-plugin / declare-plugin interaction (editor-level) ────────
 
-/// `(declare-plugin "name")` with no triggers is a hard error — the plugin
+/// `(declare-plugin "name")` with no activation entries is a hard error — the plugin
 /// could never activate at runtime.
 ///
-/// Flip: remove the zero-trigger guard in declare_plugin and eval_init succeeds.
+/// Flip: remove the zero-activation guard in declare_plugin and eval_init succeeds.
 #[test]
 #[cfg(not(windows))]
 fn declare_plugin_no_triggers_is_hard_error() {
@@ -612,7 +612,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
         dir_a.join("plugin.scm"),
         r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right")))"#,
     ).unwrap();
-    // Plugin B — on-command trigger; body calls "a-cmd" inline (no load-plugin).
+    // Plugin B — command activation entry; body calls "a-cmd" inline (no load-plugin).
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
@@ -622,8 +622,8 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tpa\" #:on-command '(\"a-cmd\"))\n\
-         (declare-plugin \"user/tp\"  #:on-command '(\"b-cmd\"))",
+        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
+         (declare-plugin \"user/tp\"  #:commands '(\"b-cmd\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
@@ -631,7 +631,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     host.set_data_dir(dir.path().to_path_buf());
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers = host.command_triggers();
+    let triggers = host.activation_commands();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -666,7 +666,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 
 // ── Phase 3b lazy plugin loading — language/filetype triggers ─────────────────
 
-/// `#:on-language` plugin activates on first matching language set; its
+/// `#:languages` plugin activates on first matching language set; its
 /// `on-language-set` handler runs in the same call that triggered activation.
 ///
 /// Flip: without `activate_lazy_language_plugins` in `set_buffer_language`,
@@ -678,7 +678,7 @@ fn language_trigger_activates_on_set() {
     
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -691,7 +691,7 @@ fn language_trigger_activates_on_set() {
         "plugin must be Declared before first language set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers must be populated before first set"
     );
 
@@ -709,7 +709,7 @@ fn language_trigger_activates_on_set() {
         "plugin must be Loaded after first language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers must be cleared after plugin loads"
     );
 }
@@ -726,7 +726,7 @@ fn language_trigger_idempotent_on_round_trip() {
     
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -735,7 +735,7 @@ fn language_trigger_idempotent_on_round_trip() {
     ed.set_buffer_language(bid, Some("rust".into()));  // first set — activates
     ed.drain_hooks();
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers must be empty after first set"
     );
 
@@ -754,15 +754,15 @@ fn language_trigger_idempotent_on_round_trip() {
         "plugin must remain Loaded after round-trip (not re-enter Declared or fail)"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers must remain cleared after round-trip"
     );
 }
 
-/// 1:many: two plugins both declare `#:on-language '("rust")`; a single language
+/// 1:many: two plugins both declare `#:languages '("rust")`; a single language
 /// set activates both.
 ///
-/// Flip: if only the first plugin in the trigger Vec were activated, the second
+/// Flip: if only the first plugin in the activation Vec were activated, the second
 /// would stay `Declared` with its handler never registering.
 #[test]
 #[cfg(not(windows))]
@@ -789,8 +789,8 @@ fn language_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:on-language '(\"rust\"))\n\
-         (declare-plugin \"user/tp2\" #:on-language '(\"rust\"))",
+        "(declare-plugin \"user/tp\"  #:languages '(\"rust\"))\n\
+         (declare-plugin \"user/tp2\" #:languages '(\"rust\"))",
     ).unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
@@ -819,7 +819,7 @@ fn language_trigger_one_to_many_activates_all() {
         "plugin B must be Loaded after language set"
     );
     assert!(
-        ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers must be fully cleared after both plugins load"
     );
 }
@@ -835,7 +835,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
     );
     let id = PluginId::User { user: "user".to_string(), repo: "tp".to_string() };
@@ -851,15 +851,15 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
         "plugin must stay Declared when an unrelated language is set"
     );
     assert!(
-        !ed.scripting.as_ref().unwrap().language_trigger_plugins("rust").is_empty(),
+        !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
         "language_triggers[\"rust\"] must remain intact after an unrelated set"
     );
 }
 
 // ── Phase 4 Polish — load-time activation reporting ──────────────────────────
 
-/// Command trigger: first dispatch of a lazy command logs a Trace entry naming
-/// the triggering command.
+/// Command activation: first dispatch of a lazy command logs a Trace entry naming
+/// the activating command.
 ///
 /// Flip: before dispatch, no such Trace exists — confirming the entry is
 /// produced by the activation path, not during init.
@@ -869,14 +869,14 @@ fn command_trigger_logs_trace_on_activation() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
     assert!(
         !ed.state.message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text.contains("command trigger")),
+            .any(|e| e.severity == Severity::Trace && e.text.contains("by command")),
         "no activation Trace before dispatch; messages: {:?}",
         ed.state.message_log
             .entries()
@@ -890,9 +890,9 @@ fn command_trigger_logs_trace_on_activation() {
         ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Trace
                 && e.text.contains("bar")
-                && e.text.contains("command trigger")
+                && e.text.contains("by command")
         }),
-        "expected Trace entry naming command trigger 'bar' after dispatch; messages: {:?}",
+        "expected Trace entry naming command activation 'bar' after dispatch; messages: {:?}",
         ed.state.message_log
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
@@ -961,7 +961,7 @@ fn keymap_lint_warns_on_unknown_command() {
 }
 
 /// `(load-plugin …)` called from a plugin body during *runtime* activation
-/// (command trigger) is rejected — registration verbs are top-level-only.
+/// (command activation) is rejected — registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.
 ///
 /// Flip: remove `ensure_top_level` from `load_plugin` and the call succeeds
@@ -987,7 +987,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
         ).unwrap();
         std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
         let init = dir.path().join("init.scm");
-        std::fs::write(&init, r#"(declare-plugin "user/tp" #:on-command '("bar"))"#).unwrap();
+        std::fs::write(&init, r#"(declare-plugin "user/tp" #:commands '("bar"))"#).unwrap();
         dir
     };
 
@@ -997,7 +997,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     let init_path = dir.path().join("init.scm");
     { let mut ih = make_init_host(&mut ed.state, &mut ed.view); host.eval_init(&init_path, 10_000, &mut ih, Default::default()) }
         .expect("eval_init must succeed");
-    let triggers: std::collections::HashMap<_, _> = host.command_triggers();
+    let triggers: std::collections::HashMap<_, _> = host.activation_commands();
     ed.register_lazy_command_stubs(&triggers);
     ed.scripting = Some(host);
 
@@ -1052,7 +1052,7 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 
 /// A lazy plugin whose body contains a top-level `(call! "move-right")` must
 /// have that command executed when the plugin is activated at runtime (command
-/// trigger).  `activate_plugin_inline` runs with `is_init = false` so
+/// activation).  `activate_plugin_inline` runs with `is_init = false` so
 /// `%call-native!` dispatches synchronously via `run_command_sync`.
 ///
 /// Flip: change `new_activation` to `new_init` in `activate_plugin_inline`
@@ -1064,7 +1064,7 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // load time.  When "trigger-me" is dispatched, the plugin activates and the
     // body-level (call! "move-right") should execute.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:on-command '("trigger-me"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("trigger-me"))"#,
         r#"(define-command! "trigger-me" "doc" (lambda () (+ 1 0)))
            (call! "move-right")"#,
     );
@@ -1079,13 +1079,13 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     );
 }
 
-// ── G2: post-init language-trigger lint ───────────────────────────────────────
+// ── G2: post-init language-activation lint ───────────────────────────────────────
 
 /// Helper: create a `user/tp` plugin file, write init.scm, run `init_scripting`.
 ///
 /// Parallels `setup_editor_with_init_scripting` but also puts a plugin on disk so
-/// `#:on-language` triggers for `"user/tp"` are actually recorded.  (Absent-path
-/// plugins early-return in `declare_plugin` and skip trigger registration.)
+/// `#:languages` activation entries for `"user/tp"` are actually recorded.  (Absent-path
+/// plugins early-return in `declare_plugin` and skip activation registration.)
 #[cfg(not(windows))]
 fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -1094,7 +1094,7 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     let runtime_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
 
-    // Trivial plugin body — the lint checks trigger names, not plugin behaviour.
+    // Trivial plugin body — the lint checks activation entry names, not plugin behaviour.
     let plugin_dir = data_tmp.path().join("hume").join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), "(+ 1 0)").unwrap();
@@ -1121,18 +1121,18 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 
-/// Language-trigger lint warns when `#:on-language` names a language that no
+/// Language-activation lint warns when `#:languages` names a language that no
 /// `define-language!` has registered.
 ///
-/// Flip: remove the post-init language-trigger lint → no Warning produced →
+/// Flip: remove the post-init language-activation lint → no Warning produced →
 /// assertion fires.
 #[test]
 #[cfg(not(windows))]
-fn language_trigger_lint_warns_on_unknown_language() {
+fn language_activation_lint_warns_on_unknown_language() {
     use crate::editor::Severity;
 
     let (ed, _dirs) = setup_lang_lint_editor(
-        r#"(declare-plugin "user/tp" #:on-language '("rsut"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rsut"))"#,
     );
 
     assert!(
@@ -1147,7 +1147,7 @@ fn language_trigger_lint_warns_on_unknown_language() {
     );
 }
 
-/// Language-trigger lint is silent when the declared language was registered via
+/// Language-activation lint is silent when the declared language was registered via
 /// `define-language!` earlier in the same init.scm.
 ///
 /// Flip: running the lint before the second language flush (instead of after)
@@ -1162,7 +1162,7 @@ fn language_trigger_lint_silent_for_known_language() {
     // (the macro wrapper in languages.scm is absent in the test environment).
     let (ed, _dirs) = setup_lang_lint_editor(
         r#"(%define-language! "foo" '() '() '())
-           (declare-plugin "user/tp" #:on-language '("foo"))"#,
+           (declare-plugin "user/tp" #:languages '("foo"))"#,
     );
 
     assert!(
@@ -1177,7 +1177,7 @@ fn language_trigger_lint_silent_for_known_language() {
     );
 }
 
-/// Forward-reference order-independence: `declare-plugin #:on-language '("foo")`
+/// Forward-reference order-independence: `declare-plugin #:languages '("foo")`
 /// appearing BEFORE `define-language! "foo"` in the same init.scm must not warn.
 ///
 /// A declare-time check would see "foo" absent from the live registry and falsely
@@ -1194,7 +1194,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 
     // declare-plugin BEFORE define-language! — the forward-reference case.
     let (ed, _dirs) = setup_lang_lint_editor(
-        r#"(declare-plugin "user/tp" #:on-language '("foo"))
+        r#"(declare-plugin "user/tp" #:languages '("foo"))
            (%define-language! "foo" '() '() '())"#,
     );
 

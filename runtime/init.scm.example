@@ -149,38 +149,41 @@
 ;; The verb encodes when the plugin loads:
 ;;
 ;;   (load-plugin name) — eager: load now, at startup.
-;;   (declare-plugin name keyword-args...) — lazy: load on first trigger.
+;;   (declare-plugin name keyword-args...) — lazy: load on first activation.
 ;;                               At least one keyword arg is required.
 ;;
 ;;   name — "core:name"   (bundled core plugin)
 ;;        — "user/repo"   (third-party plugin from
 ;;                         <data>/plugins/user/repo/plugin.scm)
 ;;
-;; declare-plugin keyword args (all imply lazy loading):
+;; declare-plugin is the plugin manifest — it declares what the plugin offers
+;; the editor.  HUME activates (loads) the plugin body the first time any
+;; declared entry is exercised, then the body registers hooks that fire forever.
 ;;
-;;   #:on-command '("cmd-name" ...)
+;;   #:commands '("cmd-name" ...)
 ;;     Activate when one of these command names is first dispatched (via the
 ;;     command line or a key binding).
 ;;
-;;   #:on-event '("hook-name" ...)
-;;     Activate when one of the named lifecycle hooks fires.
+;;   #:events '("hook-name" ...)
+;;     Activate when one of the named lifecycle hooks fires for the first time.
 ;;     Valid hook names: on-buffer-open on-buffer-close on-buffer-save
 ;;                       on-mode-change
 ;;
-;;   #:on-language '("lang-name" ...)
-;;     Activate when the buffer language is set to one of the given names.
-;;     The plugin body runs once on the first matching transition; to react
-;;     on every subsequent transition, call (register-hook! 'on-language-set …)
-;;     inside the body.
+;;   #:languages '("lang-name" ...)
+;;     Activate when the buffer language is first set to one of the given names.
+;;     The plugin body runs once on the first matching transition; to react on
+;;     every subsequent transition, call (register-hook! 'on-language-set …)
+;;     inside the body.  This is the key distinction: #:languages activates the
+;;     plugin (one-shot), while on-language-set is a hook that fires every time.
 ;;
 ;; Plugins cannot load or declare other plugins.  Declare every plugin you
 ;; need — including dependencies — at the top level of this file.
 ;;
 ;; :plugin-status (alias :plugins)
 ;;   Open a scratch view listing every declared plugin with its current state
-;;   (waiting / loading / loaded / failed) and, for waiting plugins, the
-;;   triggers still pending.  Use this to inspect lazy-load behaviour at
-;;   runtime.
+;;   (declared / loading / loaded / failed) and, for declared plugins, the
+;;   activation entries still pending.  Use this to inspect lazy-load behaviour
+;;   at runtime.
 ;;
 ;; core:plum           — plugin manager + grammar installer
 ;;                       Plugin commands: :plum-install, :plum-update, :plum-cleanup
@@ -218,5 +221,5 @@
 ;; Example: lazy-load a plugin when "my-cmd" is first dispatched.
 ;; The bind-key! below ensures pressing <space>m in Normal mode runs my-cmd,
 ;; which activates the plugin on first press.
-;; (declare-plugin "alice/lazy-thing" #:on-command '("my-cmd"))
+;; (declare-plugin "alice/lazy-thing" #:commands '("my-cmd"))
 ;; (bind-key! "normal" "<space>m" "my-cmd")

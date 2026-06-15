@@ -80,9 +80,10 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 
 /// Scheme bootstrap evaluated once during Steel engine init.
 ///
-/// Defines `load-plugin`, `declare-plugin`, and the inline activation machinery
-/// (`%activate-plugin-inline`, `%dispatch-command`) in terms of the Rust builtins
-/// registered below and Steel's `eval-string` (imported from `steel/meta`).
+/// Defines `load-plugin`, `declare-plugin` (plugin manifest), and the inline
+/// activation machinery (`%activate-plugin-inline`, `%dispatch-command`) in
+/// terms of the Rust builtins registered below and Steel's `eval-string`
+/// (imported from `steel/meta`).
 ///
 /// Inline activation: `%activate-plugin-inline` drives the mid-eval plugin load.
 /// `%begin-lazy-activation` (Rust) transitions the plugin to `Loading` and returns
@@ -93,17 +94,17 @@ pub(crate) fn one_string(args: &[SteelVal], name: &'static str) -> Result<String
 ///
 /// `%dispatch-command` routes by command type:
 ///   - activated plugin command → `command_table` lookup → apply closure inline;
-///   - lazy trigger command     → activate inline, then retry;
+///   - lazy activation command  → activate inline, then retry;
 ///   - native / unknown         → `%call-native!` (Rust, sync for native).
 const BOOTSTRAP: &str = r#"
 (require-builtin steel/meta as hm.)
 
-; declare-plugin — lazy registration; triggers forwarded to %declare-plugin!.
-; At least one trigger (#:on-command/#:on-event/#:on-language) is required.
-(define (declare-plugin name #:on-command  [on-command  '()]
-                             #:on-event    [on-event    '()]
-                             #:on-language [on-language '()])
-  (%declare-plugin! name on-command on-event on-language))
+; declare-plugin — plugin manifest; activation entries forwarded to %declare-plugin!.
+; At least one activation entry (#:commands/#:events/#:languages) is required.
+(define (declare-plugin name #:commands  [commands  '()]
+                             #:events    [events    '()]
+                             #:languages [languages '()])
+  (%declare-plugin! name commands events languages))
 
 ; load-plugin — eager init-context activation; delegates to the shared
 ; inline-activation helper after declaring/resolving the plugin.
@@ -125,7 +126,7 @@ const BOOTSTRAP: &str = r#"
 
 ; %dispatch-command — routes by command type:
 ;   activated plugin command → apply closure inline (stays in Steel, synchronous);
-;   lazy trigger miss         → activate inline, retry, then fall through to native;
+;   lazy activation miss      → activate inline, retry, then fall through to native;
 ;   native / unknown          → %call-native! (Rust leaf, sync for native).
 (define (%dispatch-command name args)
   (let ((proc (%lookup-plugin-proc name)))

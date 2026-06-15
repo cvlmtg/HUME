@@ -17,9 +17,9 @@ type SteelResult = Result<SteelVal, SteelErr>;
 ///
 /// `on-language-set` fires `(lambda (bid lang-or-#f) …)` on every language
 /// transition.  For lazy-loaded language plugins the typical pattern is:
-/// `#:on-language '("lang")` in `declare-plugin` activates the body on the
+/// `#:languages '("lang")` in `declare-plugin` *activates* the body on the
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
-/// to react on all subsequent transitions.
+/// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic => "register-hook!: can only be called during init/plugin load");

@@ -118,7 +118,7 @@ impl CommandRegistry {
     /// `init.scm` with a fresh engine — otherwise those names would appear in
     /// `builtin_cmd_names` and cause every `(define-command!)` to raise a
     /// phantom "conflicts with a built-in command" error. `Lazy` stubs must
-    /// also be cleared so re-declared trigger names do not collide.
+    /// also be cleared so re-declared activation command names do not collide.
     pub(crate) fn unregister_dynamic_commands(&mut self) {
         self.commands.retain(|_, cmd| {
             !matches!(cmd, Command::Mappable(mc) if !mc.is_native())

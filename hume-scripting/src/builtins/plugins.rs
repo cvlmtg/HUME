@@ -59,29 +59,32 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(%declare-plugin! name on-command on-event on-language)` — Rust primitive
+/// `(%declare-plugin! name commands events languages)` — Rust primitive
 /// backing the Scheme-side `declare-plugin` wrapper.
 ///
 /// Top-level only: valid only at the top level of `init.scm`.  A plugin can
 /// never declare another plugin — see `ensure_top_level`.
 ///
+/// `declare-plugin` is the plugin **manifest**: it records what the plugin
+/// offers the editor (commands it provides, languages/events it reacts to).
 /// Unlike `load-plugin` (eager: body evaluated immediately), `declare-plugin`
-/// defers body evaluation to the first trigger fire.  Both are registration
-/// verbs that record the plugin for PLUM; the verb choice encodes eager vs.
-/// lazy body evaluation.  At least one trigger is required — a zero-trigger
-/// declaration hard-errors because the plugin could never activate.
+/// defers body evaluation until the first activation entry is exercised.  Both
+/// are registration verbs that record the plugin for PLUM; the verb choice
+/// encodes eager vs. lazy body evaluation.  At least one activation entry is
+/// required — a manifest with no entries hard-errors because the plugin could
+/// never be activated.
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
-/// - Parses trigger lists; converts event names to `HookId` variants.
-/// - Filters colliding trigger names (logs `Severity::Error`, continues).
+/// - Parses activation entry lists; converts event names to `HookId` variants.
+/// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
-    on_command: SteelVal,
-    on_event: SteelVal,
-    on_language: SteelVal,
+    commands: SteelVal,
+    events: SteelVal,
+    languages: SteelVal,
 ) -> SteelResult {
     ensure_top_level(ctx, "declare-plugin")?;
     let plugin_id = PluginId::parse(&name).map_err(steel_parse_err)?;
@@ -111,64 +114,64 @@ pub(crate) fn declare_plugin(
         ctx.registries.declared_plugins.push(name.clone());
     }
 
-    let on_cmd = list_to_strings(on_command, "on-command")?;
-    let on_evt_strs = list_to_strings(on_event, "on-event")?;
-    let on_lang = list_to_strings(on_language, "on-language")?;
+    let cmd_list = list_to_strings(commands, "commands")?;
+    let evt_strs = list_to_strings(events, "events")?;
+    let lang_list = list_to_strings(languages, "languages")?;
 
-    // Captured before the collision-filter loop moves `on_cmd`.  Used below to
-    // distinguish "all triggers collided" from "none were supplied" in the
-    // zero-trigger error message.
-    let had_on_cmd = !on_cmd.is_empty();
+    // Captured before the collision-filter loop moves `cmd_list`.  Used below to
+    // distinguish "all commands collided" from "none were supplied" in the
+    // zero-entry error message.
+    let had_commands = !cmd_list.is_empty();
 
-    let on_evt: Vec<HookId> = on_evt_strs
+    let evt_list: Vec<HookId> = evt_strs
         .iter()
         .map(|s| {
             HookId::from_symbol(s).ok_or_else(|| {
                 let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
                 steel_parse_err(format!(
-                    "on-event: unknown hook '{}'; valid: {}",
+                    "events: unknown hook '{}'; valid: {}",
                     s, valid
                 ))
             })
         })
         .collect::<Result<_, _>>()?;
 
-    // Filter colliding trigger names before writing any state.  Each collision
+    // Filter colliding command names before writing any state.  Each collision
     // logs a non-fatal Error (visible in :messages) and the name is dropped, so
-    // cmd_owners and command_triggers stay consistent.
-    let mut valid = Vec::with_capacity(on_cmd.len());
-    for cmd in on_cmd {
+    // cmd_owners and activation_commands stay consistent.
+    let mut valid = Vec::with_capacity(cmd_list.len());
+    for cmd in cmd_list {
         if ctx.builtin_cmd_names.contains(&cmd) {
             ctx.log(
                 crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' conflicts with a built-in; trigger ignored"),
+                format!("declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"),
             );
-        } else if ctx.registries.lazy_registry.command_triggers.contains_key(&cmd) {
+        } else if ctx.registries.lazy_registry.activation_commands.contains_key(&cmd) {
             ctx.log(
                 crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; trigger ignored"),
+                format!("declare-plugin: command '{cmd}' already claimed by another lazy plugin; activation entry ignored"),
             );
         } else {
             valid.push(cmd);
         }
     }
-    let on_cmd = valid;
+    let cmd_list = valid;
 
-    // Hard error: no usable triggers after collision filtering means the plugin
-    // can never activate at runtime.  Use load-plugin for eager loading instead.
-    if on_cmd.is_empty() && on_evt.is_empty() && on_lang.is_empty() {
-        let msg = if had_on_cmd {
-            // User supplied #:on-command triggers but all were filtered by collision
-            // checks.  Telling them to "Add #:on-command" would be misleading.
+    // Hard error: no usable activation entries after collision filtering means
+    // the plugin can never be activated at runtime.  Use load-plugin instead.
+    if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
+        let msg = if had_commands {
+            // User supplied #:commands entries but all were filtered by collision
+            // checks.  Telling them to "Add #:commands" would be misleading.
             format!(
-                "declare-plugin: '{name}' has no usable triggers; \
-                 all #:on-command triggers conflicted with existing commands. \
+                "declare-plugin: '{name}' declares no activation entries; \
+                 all #:commands entries conflicted with existing commands. \
                  Fix the collision or use (load-plugin \"{name}\") for eager loading."
             )
         } else {
             format!(
-                "declare-plugin: '{name}' has no usable triggers; it could never activate. \
-                 Add #:on-command/#:on-event/#:on-language, or use (load-plugin \"{name}\") for eager loading."
+                "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
+                 Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
             )
         };
         return Err(steel_parse_err(msg));
@@ -197,14 +200,14 @@ pub(crate) fn declare_plugin(
     // the plugin body is evaluated (before activation).  Only reached when the
     // plugin exists on disk: if it is absent, the early return above fires before
     // this point and LazyRegistry::declare is never called — seeding here for a
-    // missing plugin would create orphan attribution entries that drop_triggers_for
+    // missing plugin would create orphan attribution entries that drop_activations_for
     // can never clean up (it only fires on load/fail, not on absent-path skips).
-    for cmd in &on_cmd {
+    for cmd in &cmd_list {
         ctx.registries.cmd_owners.insert(cmd.clone(), plugin_id.to_string());
     }
 
     ctx.registries.lazy_registry
-        .declare(plugin_id, path, on_cmd, on_evt, on_lang);
+        .declare(plugin_id, path, cmd_list, evt_list, lang_list);
 
     Ok(SteelVal::Void)
 }
@@ -380,7 +383,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// Called from `%activate-plugin-inline` after `(hm.eval-string …)` completes
 /// (or fails).  Pops `plugin_stack`, decrements `activation_depth`, and
 /// transitions the plugin to `Loaded` (success) or `Failed` (failure).
-/// `drop_triggers_for` runs on both paths so expired trigger entries are cleaned up.
+/// `drop_activations_for` runs on both paths so expired activation entries are cleaned up.
 ///
 /// On failure, any commands that a partially-evaluated body already registered via
 /// `define-command!` are rolled back: removed from `command_table`, `cmd_owners`,
@@ -400,7 +403,7 @@ pub(crate) fn finish_lazy_activation(
 
     let new_state = if success { PluginState::Loaded } else { PluginState::Failed };
     ctx.registries.lazy_registry.plugins.insert(id.clone(), new_state);
-    ctx.registries.lazy_registry.drop_triggers_for(&id);
+    ctx.registries.lazy_registry.drop_activations_for(&id);
 
     if !success {
         // Roll back any commands the failed body partially registered.
@@ -423,10 +426,10 @@ pub(crate) fn finish_lazy_activation(
 }
 
 /// `(%lazy-command-owner name)` — return the owning plugin's id string if `name`
-/// is a registered command trigger, or `#f` if not.  Used by `%dispatch-command`
+/// is a registered activation command, or `#f` if not.  Used by `%dispatch-command`
 /// to decide whether a `command_table` miss should trigger inline activation.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    match ctx.registries.lazy_registry.command_triggers.get(&name) {
+    match ctx.registries.lazy_registry.activation_commands.get(&name) {
         Some(id) => Ok(SteelVal::StringV(id.to_string().into())),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -592,7 +595,7 @@ mod tests {
     ///
     /// The old bug: `cmd_owners` was seeded before the path check, so an absent
     /// plugin left orphan attribution entries that could never be cleaned up by
-    /// `drop_triggers_for`.  The fix: the absent-path early-return fires before
+    /// `drop_activations_for`.  The fix: the absent-path early-return fires before
     /// the pre-seed loop.
     ///
     /// Fail oracle: remove the `if path.is_none() { return Ok(…) }` early-return →
@@ -603,7 +606,7 @@ mod tests {
         let mut host = ScriptingHost::new();
         // `core:nonexistent-plugin` cannot exist on disk in any test environment.
         let result = host.eval_source(
-            r#"(declare-plugin "core:nonexistent-plugin" #:on-command '("my-cmd"))"#,
+            r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
             &mut NullHost,
         );
         assert!(result.is_ok(), "absent-path declare-plugin must not error; got: {result:?}");
@@ -613,13 +616,13 @@ mod tests {
         );
     }
 
-    // ── G3: zero-trigger error distinguishes collided vs not-supplied ──────────
+    // ── G3: zero-entry error distinguishes collided vs not-supplied ───────────
 
-    /// When ALL provided `#:on-command` triggers collide with built-ins, the
-    /// error message must mention "conflicted", not suggest adding #:on-command
+    /// When ALL provided `#:commands` entries collide with built-ins, the
+    /// error message must mention "conflicted", not suggest adding #:commands
     /// (which the user already did).
     ///
-    /// Fail oracle: remove the `had_on_cmd` branch → generic "Add #:on-command"
+    /// Fail oracle: remove the `had_commands` branch → generic "Add #:commands"
     /// message → second assertion fires.
     #[test]
     fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
@@ -631,18 +634,18 @@ mod tests {
         builtin_names.insert("insert-mode".to_string());
 
         let result = host.eval_source_returning_defs(
-            r#"(declare-plugin "core:test-collision" #:on-command '("insert-mode"))"#.to_owned(),
+            r#"(declare-plugin "core:test-collision" #:commands '("insert-mode"))"#.to_owned(),
             builtin_names,
             &mut NullHost,
         );
 
-        let err = result.expect_err("must error when all triggers collide");
+        let err = result.expect_err("must error when all entries collide");
         assert!(
             err.contains("conflicted"),
             "error must mention the collision; got: {err}"
         );
         assert!(
-            !err.contains("Add #:on-command"),
+            !err.contains("Add #:commands"),
             "must not suggest adding what user already provided; got: {err}"
         );
     }
@@ -658,7 +661,7 @@ mod tests {
         use crate::{ScriptingHost, null_host::NullHost};
         let mut host = ScriptingHost::new();
         let result = host.eval_source(
-            r#"(declare-plugin "core:nonexistent-plugin" #:on-command '("my-cmd"))"#,
+            r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
             &mut NullHost,
         );
         assert!(result.is_ok(), "absent core: declare must be non-fatal; got: {result:?}");
@@ -686,7 +689,7 @@ mod tests {
         use crate::{ScriptingHost, null_host::NullHost};
         let mut host = ScriptingHost::new();
         let result = host.eval_source(
-            r#"(declare-plugin "user/definitely-absent-99" #:on-command '("my-cmd-2"))"#,
+            r#"(declare-plugin "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
             &mut NullHost,
         );
         assert!(result.is_ok(), "absent user/ declare must be non-fatal; got: {result:?}");

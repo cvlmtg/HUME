@@ -2,7 +2,7 @@
 //!
 //! [`LazyRegistry`] is held on [`super::ScriptingHost`] and borrowed into
 //! [`super::SteelCtx`] during every eval.  It tracks each plugin's lifecycle
-//! state and the three trigger maps consulted by dispatch, event firing, and
+//! state and the three activation maps consulted by dispatch, event firing, and
 //! language-set to activate lazy plugins on demand.
 
 use std::collections::HashMap;
@@ -19,7 +19,7 @@ pub enum PluginState {
     /// Declared and located on disk, waiting for activation.
     Declared { path: PathBuf },
     /// Body is currently being evaluated.  Prevents re-entrant activation
-    /// (trigger cycle A→B→A sees `Loading` and skips without looping).
+    /// (activation cycle A→B→A sees `Loading` and skips without looping).
     Loading,
     /// Body evaluated and commands registered successfully.
     Loaded,
@@ -29,14 +29,14 @@ pub enum PluginState {
 
 // ── LazyRegistry ──────────────────────────────────────────────────────────────
 
-/// Persistent plugin state and trigger maps.
+/// Persistent plugin state and activation maps.
 ///
 /// Borrowed into [`super::SteelCtx`] for the duration of each eval so that
 /// `%declare-plugin!` can write directly.
 ///
 /// Keys are **not** stored here; they use the ordinary keymap as trie leaves
 /// that point to command names.  The command name appears in
-/// `command_triggers`, so dispatch finds the lazy stub without any
+/// `activation_commands`, so dispatch finds the lazy stub without any
 /// key-specific machinery.
 #[derive(Debug, Default)]
 pub struct LazyRegistry {
@@ -47,65 +47,65 @@ pub struct LazyRegistry {
     ///
     /// Duplicate command name → first claimant wins; the collision is logged
     /// as a non-fatal error visible in `:messages`.
-    pub command_triggers: HashMap<String, PluginId>,
-    /// 1:many map: hook event → plugins that load on that event.
-    pub event_triggers: HashMap<HookId, Vec<PluginId>>,
-    /// 1:many map: language name → plugins that load when the language is set.
-    pub language_triggers: HashMap<String, Vec<PluginId>>,
+    pub activation_commands: HashMap<String, PluginId>,
+    /// 1:many map: hook event → plugins that activate on that event.
+    pub activation_events: HashMap<HookId, Vec<PluginId>>,
+    /// 1:many map: language name → plugins that activate when the language is set.
+    pub activation_languages: HashMap<String, Vec<PluginId>>,
 }
 
 impl LazyRegistry {
     /// Record a plugin from a `%declare-plugin!` call (always lazy).
     ///
     /// - Duplicate `id` (case-insensitive) → no-op (first declaration wins).
-    /// - `path = None` → plugin absent on disk; skipped silently; triggers NOT
-    ///   recorded (an absent plugin can never activate, so dangling trigger
+    /// - `path = None` → plugin absent on disk; skipped silently; activation
+    ///   entries NOT recorded (an absent plugin can never activate, so dangling
     ///   entries would be dead weight until `:reload-config`).
-    /// - All plugins are inserted as `Declared`; they activate when a trigger fires.
+    /// - All plugins are inserted as `Declared`; they activate when an entry is exercised.
     pub fn declare(
         &mut self,
         id: PluginId,
         path: Option<PathBuf>,
-        on_command: Vec<String>,
-        on_event: Vec<HookId>,
-        on_language: Vec<String>,
+        commands: Vec<String>,
+        events: Vec<HookId>,
+        languages: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
             return; // already declared — duplicate declare-plugin call, ignore
         }
         let Some(path) = path else {
-            return; // absent on disk — silently skip, no triggers
+            return; // absent on disk — silently skip, no activation entries
         };
         self.plugins.insert(id.clone(), PluginState::Declared { path });
 
-        for cmd in on_command {
-            // Collisions already filtered by declare_plugin; on_command is clean.
-            self.command_triggers.insert(cmd, id.clone());
+        for cmd in commands {
+            // Collisions already filtered by declare_plugin; commands list is clean.
+            self.activation_commands.insert(cmd, id.clone());
         }
-        for hook in on_event {
-            self.event_triggers.entry(hook).or_default().push(id.clone());
+        for hook in events {
+            self.activation_events.entry(hook).or_default().push(id.clone());
         }
-        for lang in on_language {
-            self.language_triggers
+        for lang in languages {
+            self.activation_languages
                 .entry(lang)
                 .or_default()
                 .push(id.clone());
         }
     }
 
-    /// Drop all trigger-map entries owned by `id` (called on load or fail).
+    /// Drop all activation-map entries owned by `id` (called on load or fail).
     ///
     /// After `activate_plugin` completes (success or error), the plugin's
     /// lazy stubs are superseded by real commands or cleaned up entirely.
-    /// Dangling trigger entries would re-fire activation, so they must be
+    /// Dangling activation entries would re-fire activation, so they must be
     /// removed unconditionally on both code paths.
-    pub(super) fn drop_triggers_for(&mut self, id: &PluginId) {
-        self.command_triggers.retain(|_, p| p != id);
-        self.event_triggers.retain(|_, plugins| {
+    pub(super) fn drop_activations_for(&mut self, id: &PluginId) {
+        self.activation_commands.retain(|_, p| p != id);
+        self.activation_events.retain(|_, plugins| {
             plugins.retain(|p| p != id);
             !plugins.is_empty()
         });
-        self.language_triggers.retain(|_, plugins| {
+        self.activation_languages.retain(|_, plugins| {
             plugins.retain(|p| p != id);
             !plugins.is_empty()
         });
@@ -114,10 +114,10 @@ impl LazyRegistry {
     /// Build a human-readable status table for `:plugin-status`.
     ///
     /// Rows are sorted by plugin id for stable output.  For plugins still in
-    /// the `Declared` state (not yet loaded), the pending trigger lists are
-    /// read from the live maps — exactly the triggers the plugin is still
-    /// waiting on.  Once a plugin loads or fails, `activate_plugin` drops its
-    /// entries from the maps, so `Loaded`/`Failed` rows show no triggers.
+    /// the `Declared` state (not yet loaded), the pending activation entries are
+    /// read from the live maps — exactly the entries the plugin is still waiting
+    /// on.  Once a plugin loads or fails, `activate_plugin` drops its entries
+    /// from the maps, so `Loaded`/`Failed` rows show no activations.
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
@@ -137,12 +137,12 @@ impl LazyRegistry {
                     PluginState::Loaded => "loaded",
                     PluginState::Failed => "failed",
                 };
-                let triggers = if matches!(state, PluginState::Declared { .. }) {
-                    self.pending_triggers(id)
+                let activations = if matches!(state, PluginState::Declared { .. }) {
+                    self.pending_activations(id)
                 } else {
                     String::new()
                 };
-                (id_s, state_label, triggers)
+                (id_s, state_label, activations)
             })
             .collect();
 
@@ -159,30 +159,30 @@ impl LazyRegistry {
             "{:<w$}  {:<8}  {}\n",
             "plugin",
             "state",
-            "triggers",
+            "activations",
             w = id_width
         );
-        for (id, state, triggers) in &rows {
+        for (id, state, activations) in &rows {
             out.push_str(&format!(
                 "{:<w$}  {:<8}  {}\n",
                 id,
                 state,
-                triggers,
+                activations,
                 w = id_width
             ));
         }
         out
     }
 
-    /// Invert the three live trigger maps to collect the pending triggers for `id`.
+    /// Invert the three live activation maps to collect the pending entries for `id`.
     ///
     /// Only meaningful for `Declared` plugins — on load/fail `activate_plugin`
     /// drops the plugin's entries, so a non-`Declared` id yields nothing.
-    fn pending_triggers(&self, id: &PluginId) -> String {
+    fn pending_activations(&self, id: &PluginId) -> String {
         let mut parts = Vec::new();
 
         let mut cmds: Vec<&str> = self
-            .command_triggers
+            .activation_commands
             .iter()
             .filter(|(_, p)| *p == id)
             .map(|(c, _)| c.as_str())
@@ -193,7 +193,7 @@ impl LazyRegistry {
         }
 
         let mut evts: Vec<&str> = self
-            .event_triggers
+            .activation_events
             .iter()
             .filter(|(_, ps)| ps.contains(id))
             .map(|(h, _)| h.symbol())
@@ -204,7 +204,7 @@ impl LazyRegistry {
         }
 
         let mut langs: Vec<&str> = self
-            .language_triggers
+            .activation_languages
             .iter()
             .filter(|(_, ps)| ps.contains(id))
             .map(|(l, _)| l.as_str())
@@ -215,8 +215,8 @@ impl LazyRegistry {
         }
 
         if parts.is_empty() {
-            // Defensive fallback: policy in declare_plugin rejects zero-trigger declarations,
-            // but the data layer does not enforce this invariant.
+            // Defensive fallback: policy in declare_plugin rejects zero-activation-entry
+            // declarations, but the data layer does not enforce this invariant.
             "\u{2014}".to_string()
         } else {
             parts.join("  ")
@@ -278,9 +278,9 @@ mod tests {
             vec![HookId::OnBufferOpen],
             vec!["rust".to_string()],
         );
-        assert!(reg.command_triggers.is_empty());
-        assert!(reg.event_triggers.is_empty());
-        assert!(reg.language_triggers.is_empty());
+        assert!(reg.activation_commands.is_empty());
+        assert!(reg.activation_events.is_empty());
+        assert!(reg.activation_languages.is_empty());
     }
 
     // ── Dedup ─────────────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ mod tests {
             vec![],
             vec![],
         );
-        // Second declare with a different path and additional trigger — both ignored.
+        // Second declare with a different path and additional activation entry — both ignored.
         reg.declare(
             id.clone(),
             Some(PathBuf::from("/other/plugin.scm")),
@@ -306,8 +306,8 @@ mod tests {
         );
         // State unchanged from first declare.
         assert!(reg.plugins.len() == 1);
-        // Second command trigger not recorded.
-        assert!(!reg.command_triggers.contains_key("cmd2"));
+        // Second command activation entry not recorded.
+        assert!(!reg.activation_commands.contains_key("cmd2"));
     }
 
     #[test]
@@ -331,7 +331,7 @@ mod tests {
         reg.declare(a.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
         reg.declare(b.clone(), Some(fake_path()), vec!["foo".to_string()], vec![], vec![]);
         // Second declare overwrites — collisions are caught before this is called.
-        assert_eq!(reg.command_triggers["foo"], b);
+        assert_eq!(reg.activation_commands["foo"], b);
     }
 
     #[test]
@@ -353,7 +353,7 @@ mod tests {
             vec![HookId::OnBufferSave],
             vec![],
         );
-        let handlers = &reg.event_triggers[&HookId::OnBufferSave];
+        let handlers = &reg.activation_events[&HookId::OnBufferSave];
         assert_eq!(handlers.len(), 2, "two plugins must both register for the hook");
         assert!(handlers.contains(&a));
         assert!(handlers.contains(&b));
@@ -366,7 +366,7 @@ mod tests {
         let b = id_user("b", "y");
         reg.declare(a.clone(), Some(fake_path()), vec![], vec![], vec!["rust".to_string()]);
         reg.declare(b.clone(), Some(fake_path()), vec![], vec![], vec!["rust".to_string()]);
-        let handlers = &reg.language_triggers["rust"];
+        let handlers = &reg.activation_languages["rust"];
         assert_eq!(handlers.len(), 2);
         assert!(handlers.contains(&a));
         assert!(handlers.contains(&b));
@@ -383,8 +383,8 @@ mod tests {
             vec![],
             vec![],
         );
-        assert_eq!(reg.command_triggers["cmd-a"], id);
-        assert_eq!(reg.command_triggers["cmd-b"], id);
+        assert_eq!(reg.activation_commands["cmd-a"], id);
+        assert_eq!(reg.activation_commands["cmd-b"], id);
     }
 
     #[test]
@@ -398,8 +398,8 @@ mod tests {
             vec![HookId::OnBufferOpen, HookId::OnBufferSave],
             vec![],
         );
-        assert!(reg.event_triggers[&HookId::OnBufferOpen].contains(&id));
-        assert!(reg.event_triggers[&HookId::OnBufferSave].contains(&id));
+        assert!(reg.activation_events[&HookId::OnBufferOpen].contains(&id));
+        assert!(reg.activation_events[&HookId::OnBufferSave].contains(&id));
     }
 
     // ── Loaded-plugins derivation (used by (loaded-plugins) builtin) ──────
@@ -447,14 +447,14 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("alice/lazy"), "plugin id must appear");
         assert!(out.contains("declared"), "state must be 'declared'");
-        assert!(out.contains("cmd:my-cmd"), "command trigger must appear");
-        assert!(out.contains("event:on-buffer-save"), "event trigger must appear");
-        assert!(out.contains("lang:rust"), "language trigger must appear");
+        assert!(out.contains("cmd:my-cmd"), "command activation entry must appear");
+        assert!(out.contains("event:on-buffer-save"), "event activation entry must appear");
+        assert!(out.contains("lang:rust"), "language activation entry must appear");
     }
 
-    // The data layer accepts zero-trigger plugins (LazyRegistry::declare has no
+    // The data layer accepts zero-activation plugins (LazyRegistry::declare has no
     // policy gate); the policy guard lives in declare_plugin (builtins layer).
-    // This test exercises the defensive em-dash fallback in pending_triggers.
+    // This test exercises the defensive em-dash fallback in pending_activations.
     #[test]
     fn format_status_zero_trigger_shows_em_dash() {
         let mut reg = LazyRegistry::default();
@@ -468,8 +468,8 @@ mod tests {
         let out = reg.format_status();
         assert!(out.contains("bob/bare"));
         assert!(out.contains("declared"));
-        assert!(out.contains('\u{2014}'), "zero-trigger plugin must show em dash");
-        assert!(!out.contains("cmd:"), "no cmd prefix for zero-trigger plugin");
+        assert!(out.contains('\u{2014}'), "zero-entry plugin must show em dash");
+        assert!(!out.contains("cmd:"), "no cmd prefix for zero-entry plugin");
     }
 
     #[test]
@@ -483,15 +483,15 @@ mod tests {
             vec![],
             vec![],
         );
-        // Simulate activate_plugin: drop the plugin's trigger-map entries and
+        // Simulate activate_plugin: drop the plugin's activation-map entries and
         // set Loaded, mirroring what mod.rs:activate_plugin does.
-        reg.command_triggers.retain(|_, p| p != &id);
+        reg.activation_commands.retain(|_, p| p != &id);
         *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
 
         let out = reg.format_status();
         assert!(out.contains("carol/eager"), "plugin id must appear");
         assert!(out.contains("loaded"), "state must be 'loaded'");
-        assert!(!out.contains("eager-cmd"), "loaded plugin must not show its old trigger");
+        assert!(!out.contains("eager-cmd"), "loaded plugin must not show its old activation entry");
     }
 
     #[test]
@@ -505,13 +505,13 @@ mod tests {
             vec![],
             vec![],
         );
-        reg.command_triggers.retain(|_, p| p != &id);
+        reg.activation_commands.retain(|_, p| p != &id);
         *reg.plugins.get_mut(&id).unwrap() = PluginState::Failed;
 
         let out = reg.format_status();
         assert!(out.contains("core:broken"));
         assert!(out.contains("failed"));
-        assert!(!out.contains("broken-cmd"), "failed plugin must not show trigger");
+        assert!(!out.contains("broken-cmd"), "failed plugin must not show activation entry");
     }
 
     #[test]

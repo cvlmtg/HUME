@@ -1632,13 +1632,13 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     );
 }
 
-/// `(declare-plugin "user/tp" #:on-command '("lazy-cmd"))` → plugin stays
+/// `(declare-plugin "user/tp" #:commands '("lazy-cmd"))` → plugin stays
 /// `Declared`, body is NOT evaluated, and its commands are absent from init result.
 #[test]
 #[cfg(not(windows))]
 fn lazy_load_stays_declared_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("lazy-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1665,13 +1665,13 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     );
 }
 
-/// `(declare-plugin "user/tp" #:on-command '("my-cmd"))` → plugin stays lazy,
+/// `(declare-plugin "user/tp" #:commands '("my-cmd"))` → plugin stays lazy,
 /// `command_triggers["my-cmd"]` maps to the plugin, body not evaluated.
 #[test]
 #[cfg(not(windows))]
 fn on_command_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1693,7 +1693,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
         h.plugin_status(&id)
     );
     assert_eq!(
-        h.command_triggers().get("my-cmd"),
+        h.activation_commands().get("my-cmd"),
         Some(&id),
         "command_triggers must map my-cmd to the plugin"
     );
@@ -1710,7 +1710,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 #[cfg(not(windows))]
 fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("lazy-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1784,7 +1784,7 @@ fn eager_plugin_body_error_aborts_init() {
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
-/// `#:on-command '("move-right" "my-cmd")` — "move-right" clashes with a built-in →
+/// `#:commands '("move-right" "my-cmd")` — "move-right" clashes with a built-in →
 /// colliding trigger is dropped, a `Severity::Error` is logged, init continues with
 /// the remaining valid trigger "my-cmd".
 ///
@@ -1793,7 +1793,7 @@ fn eager_plugin_body_error_aborts_init() {
 #[cfg(not(windows))]
 fn manifest_collision_with_builtin_logs_error_continues() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("move-right" "my-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("move-right" "my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1817,11 +1817,11 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     );
     // Colliding trigger not written; valid trigger is.
     assert!(
-        !h.command_triggers().contains_key("move-right"),
+        !h.activation_commands().contains_key("move-right"),
         "colliding trigger must not appear in command_triggers"
     );
     assert!(
-        h.command_triggers().contains_key("my-cmd"),
+        h.activation_commands().contains_key("my-cmd"),
         "valid trigger must appear in command_triggers"
     );
     // Plugin stays Declared (body not evaluated), with the remaining trigger.
@@ -1837,7 +1837,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
     // Flip: non-colliding trigger produces no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("not-a-builtin"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h2 = host();
@@ -1856,12 +1856,12 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         "non-colliding trigger must not log any Error"
     );
     assert!(
-        h2.command_triggers().contains_key("not-a-builtin"),
+        h2.activation_commands().contains_key("not-a-builtin"),
         "non-colliding trigger must appear in command_triggers"
     );
 }
 
-/// Two plugins both declare `#:on-command '("bar")` → second declaration's
+/// Two plugins both declare `#:commands '("bar")` → second declaration's
 /// trigger is dropped, a `Severity::Error` is logged, first-writer-wins, init
 /// continues.
 ///
@@ -1878,8 +1878,8 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
     std::fs::write(pb.join("plugin.scm"), r#"(define-command! "tp-b" "doc" (lambda () (+ 1 0)))"#).unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"
-(declare-plugin "user/pa" #:on-command '("bar"))
-(declare-plugin "user/pb" #:on-command '("bar" "pb-only"))
+(declare-plugin "user/pa" #:commands '("bar"))
+(declare-plugin "user/pb" #:commands '("bar" "pb-only"))
 "#).unwrap();
 
     let mut h = host();
@@ -1905,7 +1905,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
         repo: "pa".to_string(),
     };
     assert_eq!(
-        h.command_triggers().get("bar"),
+        h.activation_commands().get("bar"),
         Some(&pa_id),
         "command_triggers['bar'] must point to pa (first-writer-wins)"
     );
@@ -1938,7 +1938,7 @@ fn manifest_collision_lazy_vs_lazy_logs_error_continues() {
 #[cfg(not(windows))]
 fn cmd_owners_pre_seeded_before_activation() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1968,7 +1968,7 @@ fn cmd_owners_pre_seeded_before_activation() {
 #[cfg(not(windows))]
 fn activate_plugin_drops_command_trigger_on_loaded() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-command '("my-cmd"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -1980,7 +1980,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 
     // Trigger is present before activation.
     assert!(
-        h.command_triggers().contains_key("my-cmd"),
+        h.activation_commands().contains_key("my-cmd"),
         "trigger must be present before activation"
     );
 
@@ -1993,13 +1993,13 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 
     // Trigger is removed after activation.
     assert!(
-        !h.command_triggers().contains_key("my-cmd"),
+        !h.activation_commands().contains_key("my-cmd"),
         "trigger must be removed after activation"
     );
 }
 
 
-/// `(declare-plugin "user/tp" #:on-language '("rust"))` → plugin stays lazy,
+/// `(declare-plugin "user/tp" #:languages '("rust"))` → plugin stays lazy,
 /// `language_triggers["rust"]` contains the plugin, body not evaluated.
 ///
 /// Flip: if on-language were not threaded through `%declare-plugin!`, the
@@ -2008,7 +2008,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 #[cfg(not(windows))]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -2030,7 +2030,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
         h.plugin_status(&id)
     );
     assert!(
-        h.language_trigger_plugins("rust").contains(&id),
+        h.activation_language_plugins("rust").contains(&id),
         "language_triggers must map \"rust\" to the plugin"
     );
     assert!(
@@ -2047,7 +2047,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 #[cfg(not(windows))]
 fn activate_plugin_drops_language_trigger_on_loaded() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:on-language '("rust"))"#,
+        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -2058,7 +2058,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
         .expect("init must succeed");
 
     assert!(
-        !h.language_trigger_plugins("rust").is_empty(),
+        !h.activation_language_plugins("rust").is_empty(),
         "trigger must be present before activation"
     );
 
@@ -2070,12 +2070,12 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
         .expect("activate_plugin_inline must succeed");
 
     assert!(
-        h.language_trigger_plugins("rust").is_empty(),
+        h.activation_language_plugins("rust").is_empty(),
         "trigger must be removed after activation"
     );
 }
 
-/// `(load-plugin "x")` after `(declare-plugin "x" #:on-command …)` force-activates
+/// `(load-plugin "x")` after `(declare-plugin "x" #:commands …)` force-activates
 /// the plugin: state transitions to `Loaded` and the command trigger is cleared.
 ///
 /// Flip: without the %activate-plugin-inline call in the load-plugin wrapper,
@@ -2084,7 +2084,7 @@ fn activate_plugin_drops_language_trigger_on_loaded() {
 #[cfg(not(windows))]
 fn declare_then_load_activates_and_logs_soft_error() {
     let (dir, init_path) = plugin_fixture(
-        "(declare-plugin \"user/tp\" #:on-command '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
+        "(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -2105,7 +2105,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
         h.plugin_status(&id)
     );
     assert!(
-        !h.command_triggers().contains_key("my-cmd"),
+        !h.activation_commands().contains_key("my-cmd"),
         "command trigger must be cleared after activation"
     );
     assert!(
@@ -2134,7 +2134,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
 #[cfg(not(windows))]
 fn load_then_declare_ignored_with_soft_error() {
     let (dir, init_path) = plugin_fixture(
-        "(load-plugin \"user/tp\")\n(declare-plugin \"user/tp\" #:on-command '(\"my-cmd\"))",
+        "(load-plugin \"user/tp\")\n(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -2166,7 +2166,7 @@ fn load_then_declare_ignored_with_soft_error() {
     );
     // The declare was ignored: no command trigger for "my-cmd" should be registered.
     assert!(
-        !h.command_triggers().contains_key("my-cmd"),
+        !h.activation_commands().contains_key("my-cmd"),
         "my-cmd must not be registered as a trigger — declare was ignored"
     );
 }
@@ -2217,7 +2217,7 @@ fn declare_plugin_in_plugin_body_rejected() {
     std::fs::create_dir_all(&pb_dir).unwrap();
     std::fs::write(
         pb_dir.join("plugin.scm"),
-        r#"(declare-plugin "user/other" #:on-command '("other-cmd"))"#,
+        r#"(declare-plugin "user/other" #:commands '("other-cmd"))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
@@ -2236,12 +2236,12 @@ fn declare_plugin_in_plugin_body_rejected() {
     );
 }
 
-// ── zero-trigger / duplicate no-op regressions ───────────────────────────────
+// ── zero-entry / duplicate no-op regressions ─────────────────────────────────
 
-/// `(declare-plugin "foo")` with no triggers is a hard error even in the
-/// hume-scripting unit-test harness (no editor needed).
+/// `(declare-plugin "foo")` with no activation entries is a hard error even in
+/// the hume-scripting unit-test harness (no editor needed).
 ///
-/// Flip: remove the zero-trigger guard in declare_plugin and eval_source succeeds.
+/// Flip: remove the zero-entry guard in declare_plugin and eval_source succeeds.
 #[test]
 #[cfg(not(windows))]
 fn declare_plugin_no_triggers_hard_error_scripting_level() {
@@ -2259,19 +2259,19 @@ fn declare_plugin_no_triggers_hard_error_scripting_level() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
     assert!(
         result.is_err(),
-        "declare-plugin with no triggers must hard-error"
+        "declare-plugin with no activation entries must hard-error"
     );
     let msg = result.unwrap_err();
     assert!(
-        msg.contains("no usable triggers") || msg.contains("never activate"),
-        "error must describe the zero-trigger problem; got: {msg}"
+        msg.contains("no activation entries") || msg.contains("never be activated"),
+        "error must describe the zero-entry problem; got: {msg}"
     );
 }
 
-/// `#:on-command` names that ALL collide with builtins leave zero effective
-/// triggers → hard error (the post-filter empty-trigger check fires).
+/// `#:commands` names that ALL collide with builtins leave zero effective
+/// activation entries → hard error (the post-filter zero-entry check fires).
 ///
-/// Flip: check trigger emptiness before collision filtering (pre-filter) and
+/// Flip: check entry emptiness before collision filtering (pre-filter) and
 /// this test passes with a misleading success.
 #[test]
 #[cfg(not(windows))]
@@ -2281,10 +2281,10 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init_path = dir.path().join("init.scm");
-    // "move-right" is a built-in — collision filter drops it, leaving zero triggers.
+    // "move-right" is a built-in — collision filter drops it, leaving zero activation entries.
     std::fs::write(
         &init_path,
-        r#"(declare-plugin "user/tp" #:on-command '("move-right"))"#,
+        r#"(declare-plugin "user/tp" #:commands '("move-right"))"#,
     )
     .unwrap();
 
@@ -2297,7 +2297,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, builtin_names);
     assert!(
         result.is_err(),
-        "all-collide #:on-command with no other trigger must hard-error"
+        "all-collide #:commands with no other trigger must hard-error"
     );
 }
 
@@ -2308,8 +2308,8 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
 #[cfg(not(windows))]
 fn duplicate_declare_remains_silent_noop() {
     let (dir, init_path) = plugin_fixture(
-        "(declare-plugin \"user/tp\" #:on-command '(\"tp-cmd\"))\n\
-         (declare-plugin \"user/tp\" #:on-command '(\"tp-cmd\"))",
+        "(declare-plugin \"user/tp\" #:commands '(\"tp-cmd\"))\n\
+         (declare-plugin \"user/tp\" #:commands '(\"tp-cmd\"))",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 

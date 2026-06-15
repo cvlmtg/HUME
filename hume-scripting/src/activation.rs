@@ -14,7 +14,7 @@
 //!   (declare/record) then `%activate-plugin-inline` (inline body eval via `hm.eval-string`).
 //! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
 //!   `command_table` miss, then retries.
-//! - Event/language triggers: `activate_plugin_inline` (Rust) bounces into
+//! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
 //!   `(%activate-plugin-inline id)` via `run_steel`, using its own watchdog.
 
 use std::collections::HashSet;
@@ -90,7 +90,7 @@ impl ScriptingHost {
 
     /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel`.
     ///
-    /// Used by event- and language-trigger paths (`activate_and_register`) that
+    /// Used by event- and language-activation paths (`activate_and_register`) that
     /// fire outside any running eval and need their own watchdog.  The plugin body
     /// runs inside `hm.eval-string` (VM-aware, no `&mut Engine` borrow), sharing
     /// the same `ctx.registries` as any concurrent eval.  `define-command!` calls

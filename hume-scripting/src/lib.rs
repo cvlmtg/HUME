@@ -14,22 +14,22 @@
 //!   `%activate-plugin-inline` (body evaluated via `hm.eval-string` inside the
 //!   running VM — no `&mut Engine` borrow needed).  Self-declares: no prior
 //!   `declare-plugin` needed.
-//! - `(declare-plugin name #:on-command #:on-event #:on-language)` — **lazy**.
-//!   Records a `Declared` state + trigger maps in `LazyRegistry`; body is NOT run.
-//! - Triggers (command / event / language) are one-shot: the first one to fire
-//!   calls `%activate-plugin-inline` (body via `(require)`), flips state to
-//!   `Loaded`, and drops that plugin's entries from all trigger maps.
-//! - A **bare** `(declare-plugin name)` (no triggers) stays `Declared` until an
-//!   init.scm `(load-plugin name)` activates it, or a `(call! "cmd")` lazy-miss
-//!   auto-activates it at runtime.
+//! - `(declare-plugin name #:commands #:events #:languages)` — **lazy**.
+//!   The plugin **manifest**: records a `Declared` state + activation maps in
+//!   `LazyRegistry`; body is NOT run.  At least one keyword arg is required —
+//!   a manifest with no activation entries can never be activated and hard-errors.
+//! - Activation entries (command / event / language) are one-shot: the first one
+//!   exercised calls `%activate-plugin-inline` (body via `(require)`), flips state
+//!   to `Loaded`, and drops that plugin's entries from all activation maps.  The
+//!   body then typically registers **hooks** (`register-hook!`) that fire on every
+//!   subsequent event — hooks and activation entries are distinct.
 //! - Activation states: `Declared → Loading → Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles (A→B→A); `Failed` does not retry until `:reload-config`.
 //! - PLUM (`core:plum`) reads `(declared-plugins)` (non-`core:` only) to install
 //!   third-party plugins. Both `load-plugin` and `declare-plugin` record the name
-//!   in `declared_plugins` (persistent on `ScriptingHost`). The point of a top-level
-//!   bare declare is the fresh-machine chicken-and-egg: if a dep were only declared
-//!   inside another plugin's body it would never be visible to PLUM. Declaring it
-//!   at init top-level records it up front so PLUM can install it.
+//!   in `declared_plugins` (persistent on `ScriptingHost`). Declaring a dep at
+//!   init top-level records it up front so PLUM can install it, even before any
+//!   plugin body runs.
 //!
 //! ## Modules
 //! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
@@ -107,7 +107,7 @@ pub(crate) struct ScriptingRegistries {
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
-    /// trigger maps consulted by command dispatch, event firing, and language-set.
+    /// activation maps consulted by command dispatch, event firing, and language-set.
     pub(crate) lazy_registry: LazyRegistry,
     /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
     /// including plugins absent on disk.
@@ -318,36 +318,36 @@ impl ScriptingHost {
         !self.registries.hooks.is_empty_for(hook_id)
     }
 
-    /// A snapshot of the command triggers declared during init.
-    pub fn command_triggers(
+    /// A snapshot of the command activation entries declared during init.
+    pub fn activation_commands(
         &self,
     ) -> std::collections::HashMap<String, attribution::PluginId> {
-        self.registries.lazy_registry.command_triggers.clone()
+        self.registries.lazy_registry.activation_commands.clone()
     }
 
-    /// A snapshot of the language triggers declared during init (language → plugins).
+    /// A snapshot of the language activation entries declared during init (language → plugins).
     ///
-    /// Used by the post-init language-trigger lint in `init_scripting` to detect
-    /// `#:on-language` trigger names that don't match any registered language identity.
-    pub fn language_triggers(
+    /// Used by the post-init lint in `init_scripting` to detect `#:languages` entries
+    /// that don't match any registered language identity.
+    pub fn activation_languages(
         &self,
     ) -> std::collections::HashMap<String, Vec<attribution::PluginId>> {
-        self.registries.lazy_registry.language_triggers.clone()
+        self.registries.lazy_registry.activation_languages.clone()
     }
 
     /// Plugin ids that should be activated when `hook_id` fires.
-    pub fn event_trigger_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
+    pub fn activation_event_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
         self.registries.lazy_registry
-            .event_triggers
+            .activation_events
             .get(&hook_id)
             .cloned()
             .unwrap_or_default()
     }
 
     /// Plugin ids that should be activated when `language` is set on a buffer.
-    pub fn language_trigger_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
+    pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
         self.registries.lazy_registry
-            .language_triggers
+            .activation_languages
             .get(language)
             .cloned()
             .unwrap_or_default()
