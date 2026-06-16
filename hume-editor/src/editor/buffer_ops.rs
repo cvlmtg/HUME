@@ -1,7 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::Buffer;
 use hume_scripting::SteelBufferId;
@@ -98,6 +98,76 @@ impl Editor {
         // Fire with the ID that was closed, not the new current buffer.
         let val = SteelBufferId::new(id).into_steel_val();
         self.fire_hook_silent(HookId::OnBufferClose, &[val]);
+    }
+
+    /// Replace buffer `id` with `new_doc` in-place, preserving the primary cursor
+    /// line/column across the reload.
+    ///
+    /// Wraps [`replace_buffer_in_place`](Self::replace_buffer_in_place) (which
+    /// resets selections to 0,0) by capturing each pane's primary cursor
+    /// as `(line, col)` before the reset and restoring it against the new content.
+    ///
+    /// Multi-selections collapse to the primary — they are stale against fresh
+    /// content. Cursor is clamped if the file shrank: past-end lines land on the
+    /// new last line; past-end columns land on the line's `\n`. The viewport's
+    /// `top_line` is also clamped so a shrunken file can't leave the scroll past
+    /// the new last line.
+    ///
+    /// Used by the no-arg `:e`/`:e!` reload branch.
+    pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
+        use hume_editing::{Selection, SelectionSet, snap_to_grapheme_boundary};
+
+        // ── Phase 1: capture (line, col) for every pane viewing this buffer ───
+        // All borrows on self.view and self.state closed before the mutable reset.
+        let pane_ids: Vec<PaneId> = self
+            .view
+            .panes
+            .iter()
+            .filter(|(_, p)| p.buffer_id == id)
+            .map(|(pid, _)| pid)
+            .collect();
+        let cursor_coords: Vec<(PaneId, usize, usize)> = {
+            let text = self.state.buffers.get(id).text();
+            pane_ids
+                .iter()
+                .map(|&pid| {
+                    let head = self.state.panes.state[pid][id].selections.primary().head();
+                    let line = text.char_to_line(head);
+                    let col = head - text.line_to_char(line);
+                    (pid, line, col)
+                })
+                .collect()
+        }; // borrows on text and panes.state end here
+
+        // ── Phase 2: reset (reseeds pane state to 0,0, clears engine syntax) ─
+        self.replace_buffer_in_place(id, new_doc);
+
+        // ── Phase 3: restore positions against new content ────────────────────
+        // Compute positions while holding the text borrow, then apply.
+        let new_text = self.state.buffers.get(id).text();
+        let last_line = new_text.len_lines().saturating_sub(2);
+        let positions: Vec<(PaneId, usize)> = cursor_coords
+            .into_iter()
+            .map(|(pid, line, col)| {
+                let target_line = line.min(last_line);
+                let line_start = new_text.line_to_char(target_line);
+                // line_end: position of the \n that terminates target_line.
+                // target_line <= last_line = len_lines - 2, so target_line + 1
+                // < len_lines — line_to_char is safe.
+                let line_end = new_text.line_to_char(target_line + 1).saturating_sub(1);
+                let target = (line_start + col).min(line_end);
+                let head = snap_to_grapheme_boundary(new_text, line_start, target);
+                (pid, head)
+            })
+            .collect(); // new_text borrow ends at ;
+
+        for (pid, head) in positions {
+            self.state.panes.state[pid][id].selections =
+                SelectionSet::single(Selection::collapsed(head));
+            // Clamp scroll: a shrunken file must not leave top_line past last_line.
+            let top = self.view.panes[pid].viewport.top_line;
+            self.view.panes[pid].viewport.top_line = top.min(last_line);
+        }
     }
 
     /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.

@@ -285,6 +285,168 @@ fn p6_edit_deduplicates_open_file() {
     );
 }
 
+// ── reload_buffer_in_place cursor-preservation tests ─────────────────────────
+
+/// `reload_buffer_in_place` preserves the primary cursor line/column when the
+/// reloaded content is identical.
+#[test]
+fn p6_reload_preserves_cursor_same_content() {
+    use hume_editing::selection::Selection;
+
+    // Five content lines: line 0..4, each "lineN\n" (6 chars).
+    let content = "line0\nline1\nline2\nline3\nline4\n";
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from(content),
+        SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+
+    // Place cursor at line 2, col 3 (char offset = 6+6+3 = 15).
+    let expected_head = 15usize;
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
+        SelectionSet::single(Selection::collapsed(expected_head))
+    });
+
+    // Reload with identical content.
+    let replacement = Buffer::new(Text::from(content), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        expected_head,
+        "cursor preserved at same position after reload with identical content",
+    );
+}
+
+/// `reload_buffer_in_place` clamps the cursor to the last line when the
+/// reloaded file has fewer lines than the original cursor position.
+#[test]
+fn p6_reload_clamps_cursor_to_last_line() {
+    use hume_editing::selection::Selection;
+
+    // Five content lines; cursor on line 4.
+    let content = "line0\nline1\nline2\nline3\nline4\n";
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from(content),
+        SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+
+    // line 4 starts at char 24.
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
+        SelectionSet::single(Selection::collapsed(24))
+    });
+
+    // Reload with a 1-line file.
+    let replacement = Buffer::new(Text::from("short\n"), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    // last_line=0, target_line=0, col=0 → head=0.
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        0,
+        "cursor clamped to line 0 after reload with fewer lines",
+    );
+}
+
+/// `reload_buffer_in_place` clamps a col that exceeds the new line length to
+/// the line's terminating `\n`.
+#[test]
+fn p6_reload_clamps_col_to_line_end() {
+    use hume_editing::selection::Selection;
+
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from("hello world\n"),
+        SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+
+    // Cursor at col 10 ('d' in "hello world\n"). head=10.
+    doc_ops::apply_doc_motion(&ed.state.buffers, &mut ed.state.panes.state, focused, bid, |_, _| {
+        SelectionSet::single(Selection::collapsed(10))
+    });
+
+    // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
+    let replacement = Buffer::new(Text::from("hi\n"), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    // line_end=2 (\n), target=(0+10).min(2)=2 → head=2.
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        2,
+        "cursor clamped to \\n when col exceeds new line length",
+    );
+}
+
+/// `reload_buffer_in_place` snaps a col that lands inside a grapheme cluster
+/// back to the cluster's start.
+#[test]
+fn p6_reload_snaps_col_to_grapheme_boundary() {
+    use hume_editing::selection::Selection;
+
+    // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
+    // Grapheme boundaries: 0,1,2,3,5,6 — é occupies chars 3..5.
+    let content = "caf\u{0065}\u{0301}\n";
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from(content),
+        SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+
+    // Place cursor mid-cluster at char 4 (the combining acute U+0301).
+    // Normal motions won't do this; set directly.
+    ed.state.panes.state[focused][bid].selections =
+        SelectionSet::single(Selection::collapsed(4));
+
+    // Reload with identical content — col=4 is mid-cluster.
+    let replacement = Buffer::new(Text::from(content), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    // snap_to_grapheme_boundary(text, 0, 4) should land at 3 (start of é).
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "cursor snapped back to grapheme cluster start",
+    );
+}
+
+/// `reload_buffer_in_place` collapses multi-cursor selections to the primary.
+#[test]
+fn p6_reload_collapses_multi_selection_to_primary() {
+    use hume_editing::selection::Selection;
+
+    // "line0\nline1\nline2\n": line 0 starts at 0, line 1 at 6, line 2 at 12.
+    let content = "line0\nline1\nline2\n";
+    let mut ed = Editor::for_testing(Buffer::new(
+        Text::from(content),
+        SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+
+    // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
+    ed.state.panes.state[focused][bid].selections = SelectionSet::from_vec(
+        vec![Selection::collapsed(6), Selection::collapsed(12)],
+        0, // primary index
+    );
+    assert_eq!(ed.current_selections().len(), 2, "sanity: two selections set");
+
+    let replacement = Buffer::new(Text::from(content), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    let sels = ed.current_selections();
+    assert_eq!(sels.len(), 1, "multi-selection collapsed to single after reload");
+    assert_eq!(
+        sels.primary().head(),
+        6,
+        "primary cursor preserved at line 1 col 0",
+    );
+}
+
 /// `:e!` reloads the current file even when dirty.
 #[test]
 #[cfg(not(windows))]

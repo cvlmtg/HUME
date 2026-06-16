@@ -64,7 +64,7 @@ pub fn typed_edit(
         let doc = crate::editor::buffer::Buffer::from_file(&path)
             .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let id = ed.focused_buffer_id();
-        ed.replace_buffer_in_place(id, doc);
+        ed.reload_buffer_in_place(id, doc);
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
