@@ -1666,7 +1666,7 @@ fn lazy_load_stays_declared_body_not_evaluated() {
 }
 
 /// `(declare-plugin "user/tp" #:commands '("my-cmd"))` → plugin stays lazy,
-/// `command_triggers["my-cmd"]` maps to the plugin, body not evaluated.
+/// `activation_commands["my-cmd"]` maps to the plugin, body not evaluated.
 #[test]
 #[cfg(not(windows))]
 fn on_command_trigger_populates_registry_body_not_evaluated() {
@@ -1681,7 +1681,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("on-command declaration must not error during init");
+        .expect("#:commands declaration must not error during init");
 
     let id = attribution::PluginId::User {
         user: "user".to_string(),
@@ -1695,11 +1695,11 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     assert_eq!(
         h.activation_commands().get("my-cmd"),
         Some(&id),
-        "command_triggers must map my-cmd to the plugin"
+        "activation_commands must map my-cmd to the plugin"
     );
     assert!(
         !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must NOT be registered for an on-command plugin"
+        "tp-cmd must NOT be registered for a #:commands plugin"
     );
 }
 
@@ -1831,11 +1831,11 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     };
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
-        "plugin must stay Declared after partial-collision on-command list; got {:?}",
+        "plugin must stay Declared after partial-collision #:commands list; got {:?}",
         h.plugin_status(&id)
     );
 
-    // Flip: non-colliding trigger produces no Error and is registered.
+    // Flip: non-colliding entry produces no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:commands '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -1962,7 +1962,7 @@ fn cmd_owners_pre_seeded_before_activation() {
     );
 }
 
-/// `activate_plugin` drops the plugin's `command_triggers` entry after the
+/// `activate_plugin` drops the plugin's `activation_commands` entry after the
 /// plugin body is evaluated successfully.
 #[test]
 #[cfg(not(windows))]
@@ -2000,10 +2000,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 
 
 /// `(declare-plugin "user/tp" #:languages '("rust"))` → plugin stays lazy,
-/// `language_triggers["rust"]` contains the plugin, body not evaluated.
+/// `activation_languages["rust"]` contains the plugin, body not evaluated.
 ///
-/// Flip: if on-language were not threaded through `%declare-plugin!`, the
-/// plugin would stay Declared but with an empty language_triggers map.
+/// Flip: if the `#:languages` list were not threaded through `%declare-plugin!`, the
+/// plugin would stay Declared but with an empty activation_languages map.
 #[test]
 #[cfg(not(windows))]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
@@ -2018,7 +2018,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("on-language declaration must not error during init");
+        .expect("#:languages declaration must not error during init");
 
     let id = attribution::PluginId::User {
         user: "user".to_string(),
@@ -2035,7 +2035,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     );
     assert!(
         !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must NOT be registered for an on-language plugin"
+        "tp-cmd must NOT be registered for a #:languages plugin"
     );
 }
 

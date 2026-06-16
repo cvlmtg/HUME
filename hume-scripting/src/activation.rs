@@ -298,7 +298,7 @@ mod tests {
     }
 
     /// `%begin-lazy-activation` on a `Declared` plugin transitions to `Loading`,
-    /// increments `activation_depth`, and returns the require-string.
+    /// pushes onto `plugin_stack`, and returns the require-string.
     #[test]
     fn begin_lazy_activation_declared_returns_require_string() {
         let dir = TempDir::new().unwrap();

@@ -523,7 +523,7 @@ mod tests {
 
     // ── Activation depth cap ──────────────────────────────────────────────────
 
-    /// `%begin-lazy-activation` refuses to start when `activation_depth` is at
+    /// `%begin-lazy-activation` refuses to start when `plugin_stack` depth is at
     /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
     ///
     /// Fail oracle: remove the depth-cap check from `begin_lazy_activation` →

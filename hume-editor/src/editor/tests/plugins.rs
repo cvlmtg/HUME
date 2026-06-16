@@ -346,7 +346,7 @@ fn event_trigger_activates_on_first_fire() {
     );
     assert!(
         !ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
-        "event_triggers must be populated before first fire"
+        "activation_events must be populated before first fire"
     );
 
     let before = state(&ed);
@@ -364,13 +364,13 @@ fn event_trigger_activates_on_first_fire() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
-        "event_triggers must be cleared after plugin loads"
+        "activation_events must be cleared after plugin loads"
     );
 }
 
 /// Second fire: handler still runs (plugin already `Loaded`); no re-activation.
 ///
-/// Flip: if `event_triggers` were not cleared after load, `activate_plugin`'s
+/// Flip: if `activation_events` were not cleared after load, `activate_plugin`'s
 /// `Loaded` guard would still fire harmlessly — but the test documents that
 /// the fast path is taken (no spurious activation attempt).
 #[test]
@@ -390,7 +390,7 @@ fn event_trigger_idempotent_on_second_fire() {
     ed.drain_hooks();
     assert!(
         ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
-        "event_triggers must be empty after first fire"
+        "activation_events must be empty after first fire"
     );
 
     let after_first = state(&ed);
@@ -469,14 +469,14 @@ fn event_trigger_one_to_many_activates_all() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
-        "event_triggers must be fully cleared after both plugins load"
+        "activation_events must be fully cleared after both plugins load"
     );
 }
 
 /// Body error: plugin raises at load time → `Failed`, error reported, activation
 /// entry cleared — no retry on a second fire.
 ///
-/// Flip: without `activation_events` drop in `activate_plugin`'s failure branch,
+/// Flip: without `activation_events` drop in `drop_activations_for`'s failure path,
 /// the same plugin would attempt activation on every fire.
 #[test]
 #[cfg(not(windows))]
@@ -504,7 +504,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_event_plugins(HookId::OnBufferSave).is_empty(),
-        "event_triggers must be cleared even after failure"
+        "activation_events must be cleared even after failure"
     );
     assert!(
         ed.state.message_log.entries().any(|e| e.severity == Severity::Error),
@@ -697,7 +697,7 @@ fn language_trigger_activates_on_set() {
     );
     assert!(
         !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers must be populated before first set"
+        "activation_languages must be populated before first set"
     );
 
     let before = state(&ed);
@@ -715,13 +715,13 @@ fn language_trigger_activates_on_set() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers must be cleared after plugin loads"
+        "activation_languages must be cleared after plugin loads"
     );
 }
 
 /// Second set to the same language: handler still runs; no re-activation.
 ///
-/// Flip: if `language_triggers` were not cleared on load, a second matching set
+/// Flip: if `activation_languages` were not cleared on load, a second matching set
 /// would attempt activation again — `activate_plugin`'s `Loaded` guard prevents
 /// a crash, but the test documents the intended fast path.
 #[test]
@@ -741,7 +741,7 @@ fn language_trigger_idempotent_on_round_trip() {
     ed.drain_hooks();
     assert!(
         ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers must be empty after first set"
+        "activation_languages must be empty after first set"
     );
 
     let after_first = state(&ed);
@@ -760,7 +760,7 @@ fn language_trigger_idempotent_on_round_trip() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers must remain cleared after round-trip"
+        "activation_languages must remain cleared after round-trip"
     );
 }
 
@@ -825,7 +825,7 @@ fn language_trigger_one_to_many_activates_all() {
     );
     assert!(
         ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers must be fully cleared after both plugins load"
+        "activation_languages must be fully cleared after both plugins load"
     );
 }
 
@@ -857,7 +857,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     );
     assert!(
         !ed.scripting.as_ref().unwrap().activation_language_plugins("rust").is_empty(),
-        "language_triggers[\"rust\"] must remain intact after an unrelated set"
+        "activation_languages[\"rust\"] must remain intact after an unrelated set"
     );
 }
 

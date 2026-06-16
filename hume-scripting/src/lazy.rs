@@ -319,10 +319,10 @@ mod tests {
         assert_eq!(reg.plugins.len(), 1, "case-insensitive dedup must fire");
     }
 
-    // ── Trigger recording ─────────────────────────────────────────────────
+    // ── Activation map recording ───────────────────────────────────────────
 
     #[test]
-    fn command_triggers_insert_overwrites() {
+    fn activation_commands_insert_overwrites() {
         // declare() unconditionally inserts; collision prevention lives in
         // declare_plugin (one layer up) before this function is called.
         let mut reg = LazyRegistry::default();
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn event_triggers_are_one_to_many() {
+    fn activation_events_are_one_to_many() {
         let mut reg = LazyRegistry::default();
         let a = id_user("a", "x");
         let b = id_user("b", "y");
@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn language_triggers_are_one_to_many() {
+    fn activation_languages_are_one_to_many() {
         let mut reg = LazyRegistry::default();
         let a = id_user("a", "x");
         let b = id_user("b", "y");

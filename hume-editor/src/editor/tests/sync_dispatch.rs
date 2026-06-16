@@ -1022,14 +1022,20 @@ fn steel_unknown_cmd_warns_and_continues() {
     assert_eq!(idx, 2, "both moves must execute despite unknown command in between; got {idx}");
 }
 
-/// **Finding 6 — mouse hooks drain immediately**: an `OnModeChange` hook registered
-/// before a left-click-in-Insert must fire on the click, not be deferred.
+/// **Finding 6 — mouse input drains pending hooks via `handle_event`**: any hooks that
+/// are sitting in `state.pending_hooks` before a mouse event must be drained by
+/// `handle_event`, which is the single interactive drain choke point.
 ///
-/// Fail oracle: remove `self.drain_hooks()` from `handle_mouse`
-/// → `pending_hooks` is non-empty after the click (handler never ran).
+/// Setup: a hook is seeded directly into `pending_hooks` via `fire_hook_silent`.
+/// No scripting host is needed — `drain_hooks` skips hooks with no registered handlers
+/// while still clearing the queue.
+///
+/// Fail oracle: remove `self.drain_hooks()` from `handle_event`
+/// → `pending_hooks` is non-empty after the click (the pending hook was never cleared).
 #[test]
 fn mouse_click_drains_hooks_immediately() {
-    use crate::editor::scripting_setup::make_init_host;
+    use crossterm::event::Event;
+    use hume_scripting::hooks::HookId;
 
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
         hume_editing::text::Text::from("hello\n"),
@@ -1039,44 +1045,28 @@ fn mouse_click_drains_hooks_immediately() {
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
     ed.view.panes[ed.state.focused_pane_id].viewport = hume_engine::pane::ViewportState::new(80, 24);
 
-    let mut host_scr = hume_scripting::ScriptingHost::new();
-    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    host_scr.register_command_names(&name_refs);
+    // Seed a pending hook (OnBufferSave with no args — no handler registered, so
+    // drain_hooks skips the Steel call but still removes it from the queue).
+    ed.fire_hook_silent(HookId::OnBufferSave, &[]);
+    assert!(
+        !ed.state.pending_hooks.is_empty(),
+        "pending_hooks must be non-empty before the event — drain has not run yet"
+    );
 
-    // Register an OnModeChange hook that pushes a mode to a shared buffer so we can observe it.
-    {
-        let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
-        host_scr
-            .eval_source(
-                r#"(register-hook! 'on-mode-change (lambda (old new) #t))"#,
-                &mut init_host,
-            )
-            .expect("register-hook! must succeed");
-    }
-    ed.scripting = Some(host_scr);
-
-    // Enter Insert mode via a real keypress so begin_insert_session opens an
-    // edit group. Directly setting state.mode skips that and causes
-    // end_insert_session to panic on commit_edit_group.
-    ed.feed_key(key('i'));
-
-    // Simulate a left-click at (0, 0) — triggers mouse_left_down → set_mode → hook queued.
+    // Simulate a left-click at (0, 0) via handle_event so the drain choke point runs.
     let click = crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
         column: 0,
         row: 0,
         modifiers: crossterm::event::KeyModifiers::NONE,
     };
-    ed.handle_mouse(click);
+    ed.handle_event(Event::Mouse(click));
 
-    // After handle_mouse, pending_hooks must be empty — drain_hooks ran.
+    // drain_hooks ran at the tail of handle_event — all pending hooks must be gone.
     assert!(
         ed.state.pending_hooks.is_empty(),
-        "pending_hooks must be empty after handle_mouse; got {:?}", ed.state.pending_hooks
+        "pending_hooks must be empty after handle_event; got {:?}", ed.state.pending_hooks
     );
-    // Mode must be Normal (the click exited Insert).
-    assert_eq!(ed.state.mode, crate::editor::Mode::Normal);
 }
 
 // ── Dual-path parity tests ────────────────────────────────────────────────────
