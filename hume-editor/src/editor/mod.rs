@@ -205,7 +205,8 @@ pub(crate) struct EditorState {
     pub(crate) buffers: BufferStore,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state. Mode is the single source of truth for whether extend is active.
-    pub(crate) mode: Mode,
+    /// Private: all transitions go through [`EditorState::set_mode`].
+    mode: Mode,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     pub(super) pending_keys: Vec<KeyEvent>,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
@@ -295,6 +296,33 @@ pub(crate) struct EditorState {
 }
 
 impl EditorState {
+    // ── Mode ──────────────────────────────────────────────────────────────────
+
+    pub(crate) fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// Single write path for all mode transitions.
+    ///
+    /// Captures the old mode, writes the new one, and enqueues `OnModeChange`
+    /// for firing by `Editor::drain_hooks` after the command returns. The
+    /// no-op guard prevents spurious hook fires when mode is already correct.
+    ///
+    /// The `mode` field is private so the compiler enforces that every
+    /// transition goes through here.
+    pub(crate) fn set_mode(&mut self, new: Mode) {
+        use hume_scripting::hooks::HookId;
+        use steel::rvals::IntoSteelVal;
+        let old = self.mode;
+        if old == new {
+            return;
+        }
+        self.mode = new;
+        let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
+        let new_val = mode_name(new).into_steelval().expect("mode str into_steelval");
+        self.pending_hooks.push((HookId::OnModeChange, vec![old_val, new_val]));
+    }
+
     // ── Status messages ───────────────────────────────────────────────────────
 
     /// Record a status message / warning / error on this state.
@@ -324,6 +352,17 @@ impl EditorState {
         if let Some(s) = self.insert_session.as_mut() {
             s.step_back_on_exit = true;
         }
+    }
+}
+
+fn mode_name(m: Mode) -> &'static str {
+    match m {
+        Mode::Normal  => "normal",
+        Mode::Insert  => "insert",
+        Mode::Extend  => "extend",
+        Mode::Command => "command",
+        Mode::Search  => "search",
+        Mode::Select  => "select",
     }
 }
 
@@ -361,7 +400,7 @@ impl std::fmt::Debug for Editor {
             f,
             "Editor(buf={:?}, mode={:?})",
             self.doc().text().to_string(),
-            self.state.mode
+            self.state.mode()
         )
     }
 }
@@ -509,7 +548,7 @@ impl Editor {
 
         // Close the edit group: insert commands → end_insert_session commits it;
         // non-insert commands → the group is empty and commit is a no-op.
-        if self.state.mode == Mode::Insert {
+        if self.state.mode() == Mode::Insert {
             self.end_insert_session();
         } else {
             self.commit_edit_group_current();
@@ -652,9 +691,9 @@ impl Editor {
     /// bound in Normal mode; mode-changing commands must not switch panes.
     pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
         debug_assert!(
-            self.state.mode == Mode::Normal,
+            self.state.mode() == Mode::Normal,
             "focus-switch must only happen in Normal mode, got {:?}",
-            self.state.mode,
+            self.state.mode(),
         );
         self.state.focused_pane_id = target;
         if !self.state.panes.transient.contains_key(target) {

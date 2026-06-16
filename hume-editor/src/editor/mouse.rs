@@ -56,7 +56,7 @@ impl Editor {
 
         if let Some(char_off) = self.click_to_char(col, row) {
             // Move to Normal mode on click, regardless of current mode.
-            if self.state.mode == Mode::Insert {
+            if self.state.mode() == Mode::Insert {
                 self.end_insert_session();
             }
             // Collapse the primary selection to the clicked position.

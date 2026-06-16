@@ -15,7 +15,7 @@ use crate::ops::text_object::inner_word_impl;
 use super::super::{MiniBuffer, Mode, SearchDirection, EditorState};
 use crate::editor::error::CommandError;
 use super::{
-    current_selections, doc, set_mode, focused_buffer_id,
+    current_selections, doc, focused_buffer_id,
     search_pattern, set_current_selections, set_primary_selection,
 };
 
@@ -32,13 +32,13 @@ pub fn cmd_search_forward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
-    let extend = state.mode == hume_engine::types::EditorMode::Extend;
+    let extend = state.mode() == hume_engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
     state.search.direction = SearchDirection::Forward;
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    set_mode(state, Mode::Search);
+    state.set_mode(Mode::Search);
     state.minibuf = Some(MiniBuffer {
         prompt: '/',
         input: String::new(),
@@ -55,13 +55,13 @@ pub fn cmd_search_backward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
-    let extend = state.mode == hume_engine::types::EditorMode::Extend;
+    let extend = state.mode() == hume_engine::types::EditorMode::Extend;
     let pid = state.focused_pane_id;
     state.search.direction = SearchDirection::Backward;
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    set_mode(state, Mode::Search);
+    state.set_mode(Mode::Search);
     state.minibuf = Some(MiniBuffer {
         prompt: '?',
         input: String::new(),
@@ -297,7 +297,7 @@ pub fn cmd_select_within(
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focused_pane_id;
     state.panes.transient[pid].pre_select_sels = Some(pre_sels);
-    set_mode(state, Mode::Select);
+    state.set_mode(Mode::Select);
     state.minibuf = Some(MiniBuffer {
         prompt: '⫽',
         input: String::new(),

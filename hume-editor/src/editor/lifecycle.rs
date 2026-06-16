@@ -249,7 +249,7 @@ impl Editor {
                 // in the statusline at the minibuf edit position.
                 let statusline_row = size.height.saturating_sub(1);
                 Some((mb.statusline_cursor_col(), statusline_row))
-            } else if self.state.mode.cursor_is_bar() {
+            } else if self.state.mode().cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document head.
                 let cursor_char = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
@@ -315,14 +315,14 @@ impl Editor {
             // Emitted *after* draw so it's the last escape sequence the terminal
             // sees before we block — ratatui's ShowCursor flush can otherwise
             // reset the shape on some terminals.
-            let _ = hume_platform::terminal::set_cursor_shape(self.state.mode.cursor_is_bar());
-            if last_cursor_color_mode != Some(self.state.mode) {
+            let _ = hume_platform::terminal::set_cursor_shape(self.state.mode().cursor_is_bar());
+            if last_cursor_color_mode != Some(self.state.mode()) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.
                 let black =
-                    matches!(self.state.mode, EditorMode::Command | EditorMode::Search);
+                    matches!(self.state.mode(), EditorMode::Command | EditorMode::Search);
                 let _ = hume_platform::terminal::set_cursor_color(black);
-                last_cursor_color_mode = Some(self.state.mode);
+                last_cursor_color_mode = Some(self.state.mode());
             }
             // Close the synchronized-output envelope: the terminal now atomically
             // paints the complete frame — clear + cells + cursor shape in one shot.
@@ -417,7 +417,7 @@ impl Editor {
         let wrap_mode = raw_wrap.resolve(content_width);
         let tab_width = self.doc().overrides.tab_width(&self.state.settings);
         let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-        (PaneRenderSettings { mode: self.state.mode, wrap_mode, tab_width, whitespace }, gutter_w)
+        (PaneRenderSettings { mode: self.state.mode(), wrap_mode, tab_width, whitespace }, gutter_w)
     }
 
     /// Paint one frame immediately — called before `init_scripting` so the
@@ -607,7 +607,7 @@ impl Editor {
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
-            if self.state.mode != EditorMode::Insert {
+            if self.state.mode() != EditorMode::Insert {
                 // Matches are sorted by document order. Binary-search to the first
                 // match that starts at or after `top_line` to skip pre-viewport entries.
                 let top_char = buf.line_to_char(top_line.min(buf.len_lines().saturating_sub(1)));
@@ -635,7 +635,7 @@ impl Editor {
         {
             let mut data = self.bracket_hl_data.write().expect("RwLock not poisoned");
             data.clear();
-            if self.state.mode != EditorMode::Insert {
+            if self.state.mode() != EditorMode::Insert {
                 let head = self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()]
                     .selections
                     .primary()
@@ -713,7 +713,7 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
-        super::commands::set_mode(&mut self.state, mode);
+        self.state.set_mode(mode);
     }
 }
 

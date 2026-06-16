@@ -401,7 +401,7 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
             step_back_on_exit: false,
         });
     }
-    set_mode(state, Mode::Insert);
+    state.set_mode(Mode::Insert);
 }
 
 /// Exit Insert mode and finalise the undo/repeat state.
@@ -435,39 +435,7 @@ pub(super) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
             },
         );
     }
-    set_mode(state, Mode::Normal);
-}
-
-/// Single funnel for all mode transitions.
-///
-/// Captures the old mode, writes the new one, and enqueues `OnModeChange`
-/// (drained by `Editor::drain_hooks` after the command returns). The no-op
-/// guard prevents spurious hook fires when the mode is already correct.
-///
-/// Every mode change must go through here — direct `state.mode =` writes
-/// outside this file are forbidden by the `mode_writes_go_through_funnel` lint.
-pub(super) fn set_mode(state: &mut EditorState, new: Mode) {
-    use hume_scripting::hooks::HookId;
-    use steel::rvals::IntoSteelVal;
-    let old = state.mode;
-    if old == new {
-        return;
-    }
-    state.mode = new;
-    let old_val = mode_name(old).into_steelval().expect("mode str into_steelval");
-    let new_val = mode_name(new).into_steelval().expect("mode str into_steelval");
-    state.pending_hooks.push((HookId::OnModeChange, vec![old_val, new_val]));
-}
-
-fn mode_name(m: Mode) -> &'static str {
-    match m {
-        Mode::Normal => "normal",
-        Mode::Insert => "insert",
-        Mode::Extend => "extend",
-        Mode::Command => "command",
-        Mode::Search => "search",
-        Mode::Select => "select",
-    }
+    state.set_mode(Mode::Normal);
 }
 
 mod mode;

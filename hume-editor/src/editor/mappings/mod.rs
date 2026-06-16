@@ -18,7 +18,7 @@ impl Editor {
         // Any keypress dismisses the previous transient status message.
         self.state.status_msg = None;
 
-        match self.state.mode {
+        match self.state.mode() {
             Mode::Normal | Mode::Extend => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
             Mode::Command => self.handle_command(key),

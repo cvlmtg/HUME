@@ -342,7 +342,7 @@ fn render_element(
 ) -> (Cow<'static, str>, Style) {
     match seg {
         StatusElement::Mode => {
-            let (label, style) = match editor.state.mode {
+            let (label, style) = match editor.state.mode() {
                 EditorMode::Normal => ("NOR", colors.status_normal),
                 EditorMode::Extend => ("EXT", colors.status_extend),
                 EditorMode::Insert => ("INS", colors.status_insert),

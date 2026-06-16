@@ -65,7 +65,7 @@ impl Editor {
                 self.state.pending_char = Some(ch);
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
-                let extend = (self.state.mode == EditorMode::Extend) || wc.ctrl_extend;
+                let extend = (self.state.mode() == EditorMode::Extend) || wc.ctrl_extend;
                 self.execute_keymap_command(wc.cmd_name.clone(), count, extend, vec![]);
             }
             // Non-char key (e.g. Esc after pressing `f`): cancel the wait.
@@ -81,7 +81,7 @@ impl Editor {
             self.state.macro_pending = None; // cancel any pending q/Q register-name prompt
             self.state.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
-            if self.state.mode == EditorMode::Extend {
+            if self.state.mode() == EditorMode::Extend {
                 self.set_mode(EditorMode::Normal);
             }
             let _ = cmd_clear_search(&mut self.state, &mut self.view, 0, MotionMode::Move);
@@ -245,7 +245,7 @@ impl Editor {
         // only `Interior` commits the key (so the sequence accumulates correctly
         // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
         // so the normal-trie path below can push it as usual.
-        if self.state.mode == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
+        if self.state.mode() == EditorMode::Extend && !key.modifiers.contains(KeyModifiers::CONTROL) {
             let mut seq = self.state.pending_keys.clone();
             seq.push(key);
             match self.state.keymap.extend.walk(&seq) {
@@ -363,7 +363,7 @@ impl Editor {
         // Both inputs are now available: sticky extend from editor mode, and
         // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
         // `extend` is passed as a parameter — no mode transition occurs.
-        let extend = (self.state.mode == EditorMode::Extend) || ctrl_extend;
+        let extend = (self.state.mode() == EditorMode::Extend) || ctrl_extend;
 
         match result {
             WalkResult::Leaf(cmd) => {
