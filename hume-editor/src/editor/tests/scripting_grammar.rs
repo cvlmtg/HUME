@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
+use super::render_snapshot::render_to_styled_string;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -661,6 +662,10 @@ fn install_real_json_grammar_e2e() {
         ed.view.buffers[bid].syntax.is_some(),
         "syntax must be set after e2e install + sweep; log={errors:#?}",
     );
+
+    // Styled-frame snapshot: locks down token colours after the full e2e pipeline.
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 5);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
 /// `grammar_source` / `helix_pin` must parse real values out of the runtime
@@ -679,4 +684,59 @@ fn catalog_parsing_extracts_json_pins() {
     let pin = helix_pin();
     assert!(!pin.is_empty(), "helix pin must be non-empty");
     assert!(pin.chars().all(|c| c.is_ascii_hexdigit()), "helix pin must be hex: {pin}");
+}
+
+/// Attach the pre-built Rust grammar fixture and snapshot the styled render output.
+///
+/// Locks down that token colours actually reach the screen — not just that
+/// highlight spans are emitted.  The cursor sits on the trailing `\n` so no
+/// content cell is reverse-video.
+///
+/// Requires `scripts/fetch-test-grammars.sh` (handled by `grammar_fixture`).
+///
+/// Flip: remove `theme.bake` and this snapshot fails because all scopes resolve
+/// to the default style — proving the assertion is not a zero-effect check.
+#[test]
+fn rust_function_highlight_snapshot() {
+    use hume_engine::providers::{HighlightSource, SourceContext};
+
+    let (parser, hl) = grammar_fixture("rust");
+    // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
+    let mut ed = editor_from("// hi\nfn main() {\n    let x: u32 = 1;\n}-[\n]>");
+    ed.doc_mut().set_path(Some(PathBuf::from("test.rs")));
+
+    let bid = ed.focused_buffer_id();
+    ed.state.languages.register_identity("rust", &["rs"], &[], &[]).unwrap();
+    ed.state.languages
+        .attach_grammar("rust", &parser, "tree_sitter_rust", &hl, &mut ed.view.registry)
+        .expect("attach rust grammar");
+    // Bake after scopes are interned so theme.resolve() returns correct styles.
+    ed.view.theme.bake(&ed.view.registry);
+
+    ed.set_buffer_language(bid, Some("rust".to_owned()));
+    // Drain the parse result posted synchronously inside setup_buffer_syntax
+    // (InlineParseBackend completes the parse inside post; drain installs the tree).
+    ed.reparse_stale_buffers();
+
+    // Sanity: line 1 ("fn main() {") must emit at least one `keyword` span.
+    // Runs the highlight pipeline directly so the test fails even if the snapshot
+    // renderer masks absent colours behind cursor/selection background.
+    {
+        let shared = &ed.view.buffers[bid];
+        let rope = ed.state.buffers.get(bid).text().rope();
+        let hl_src = shared.syntax.as_ref().expect("TreeSitterHighlighter must be set");
+        let line_start_byte = rope.line_to_byte(1);
+        let ctx = SourceContext { rope, tree: shared.tree.as_ref(), line_start_byte };
+        let mut spans = Vec::new();
+        hl_src.highlights_for_line(1, &ctx, &mut spans);
+        assert!(!spans.is_empty(), "line 1 must emit at least one highlight span");
+        assert!(
+            spans.iter().any(|&(_, _, id)| ed.view.registry.name_of(id).contains("keyword")),
+            "expected a 'keyword' scope for `fn`; got: {:?}",
+            spans.iter().map(|&(_, _, id)| ed.view.registry.name_of(id)).collect::<Vec<_>>(),
+        );
+    }
+
+    let rect = ratatui::layout::Rect::new(0, 0, 30, 8);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }

@@ -455,6 +455,35 @@ impl Editor {
         Ok(())
     }
 
+    /// Render the current frame into a ratatui `Buffer` without a live terminal.
+    ///
+    /// Calls `prepare_frame` so pane mirrors are synced and parse trees are up
+    /// to date before rendering.  Used by snapshot tests to lock down styled
+    /// output without a live terminal.
+    #[cfg(test)]
+    pub(crate) fn render_to_buf(
+        &mut self,
+        rect: ratatui::layout::Rect,
+    ) -> ratatui::buffer::Buffer {
+        let mut buf = ratatui::buffer::Buffer::empty(rect);
+        let mut ctx = RenderContext::new();
+        self.prepare_frame(rect.width, rect.height, &mut ctx);
+        let rope = self.doc().text().rope();
+        let buffer_id = self.focused_buffer_id();
+        let pane_id = self.state.focused_pane_id;
+        let (pane_settings, _) = self.resolve_focused_pane_settings();
+        let engine_view = &self.view;
+        engine_view.render(
+            rect,
+            &mut buf,
+            |bid| if bid == buffer_id { Some(rope) } else { None },
+            |pid| if pid == pane_id { pane_settings.clone() } else { PaneRenderSettings::default() },
+            None,
+            &mut ctx,
+        );
+        buf
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///

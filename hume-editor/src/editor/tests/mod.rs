@@ -304,6 +304,7 @@ mod multi_pane;
 mod page_scroll;
 mod pane_sync;
 mod per_pane_jumps;
+mod render_snapshot;
 mod scripting_grammar;
 mod search;
 mod select_all;
