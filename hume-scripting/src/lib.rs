@@ -118,10 +118,6 @@ pub(crate) struct ScriptingRegistries {
     /// Populated by `define_command_inner` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
     pub(crate) command_table: std::collections::HashMap<String, SteelVal>,
-    /// Nesting depth of inline plugin activations currently in progress.
-    /// Incremented by `%begin-lazy-activation`, decremented by
-    /// `%finish-lazy-activation`. Used for diagnostics / cap enforcement.
-    pub(crate) activation_depth: usize,
 }
 
 // ── HostBundle ────────────────────────────────────────────────────────────────
@@ -205,7 +201,6 @@ impl ScriptingHost {
                 lazy_registry: LazyRegistry::default(),
                 declared_plugins: Vec::new(),
                 command_table: std::collections::HashMap::new(),
-                activation_depth: 0,
             },
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
@@ -410,6 +405,21 @@ impl ScriptingHost {
     #[cfg(any(test, feature = "test-util"))]
     pub fn interrupt_flag_for_test(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         std::sync::Arc::clone(&self.interrupt_flag)
+    }
+
+    /// Current plugin activation nesting depth (number of bodies on the call
+    /// stack).  Replaces the retired `activation_depth` field in tests that
+    /// verify `%begin-lazy-activation` / `%finish-lazy-activation` side effects.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn plugin_stack_depth_for_test(&self) -> usize {
+        self.plugin_stack.len()
+    }
+
+    /// Push a fake plugin id onto the attribution stack.  Used by tests that
+    /// need to pre-seed the stack depth before calling `%begin-lazy-activation`.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn push_plugin_for_test(&mut self, id: attribution::PluginId) {
+        self.plugin_stack.push(id);
     }
 
 

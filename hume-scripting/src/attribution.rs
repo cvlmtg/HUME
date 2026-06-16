@@ -189,6 +189,11 @@ impl PluginStack {
         self.stack.is_empty()
     }
 
+    /// Current nesting depth: number of plugin bodies on the call stack.
+    pub(crate) fn len(&self) -> usize {
+        self.stack.len()
+    }
+
     /// The [`Owner`] to attribute to the next mutation.
     pub(crate) fn current_owner(&self) -> Owner {
         match self.stack.last() {

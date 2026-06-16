@@ -317,8 +317,8 @@ mod tests {
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loading)),
             "Declared plugin must be Loading after %begin-lazy-activation"
         );
-        // activation_depth must be incremented.
-        assert_eq!(host.registries.activation_depth, 1, "activation_depth must be 1");
+        // plugin_stack must have grown by one — begin pushed the id.
+        assert_eq!(host.plugin_stack_depth_for_test(), 1, "plugin_stack depth must be 1");
     }
 
     /// `%begin-lazy-activation` on a `Loading` plugin returns `#f` (cycle guard).
@@ -352,7 +352,8 @@ mod tests {
         host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loading);
-        host.registries.activation_depth = 1;
+        // Seed the stack as begin_lazy_activation would have done.
+        host.push_plugin_for_test(id.clone());
 
         let program = r#"(%finish-lazy-activation "core:finishing" #t)"#;
         host.eval_source(program, &mut NullHost).unwrap();
@@ -361,7 +362,7 @@ mod tests {
             matches!(host.registries.lazy_registry.plugins.get(&id), Some(PluginState::Loaded)),
             "plugin must be Loaded after successful finish"
         );
-        assert_eq!(host.registries.activation_depth, 0, "activation_depth must return to 0");
+        assert_eq!(host.plugin_stack_depth_for_test(), 0, "plugin_stack must be empty after finish");
     }
 
     /// `%finish-lazy-activation` with success=false transitions to `Failed`.
@@ -372,7 +373,7 @@ mod tests {
         host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loading);
-        host.registries.activation_depth = 1;
+        host.push_plugin_for_test(id.clone());
 
         let program = r#"(%finish-lazy-activation "core:failing" #f)"#;
         host.eval_source(program, &mut NullHost).unwrap();

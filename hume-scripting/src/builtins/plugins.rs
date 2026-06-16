@@ -342,10 +342,9 @@ const MAX_ACTIVATION_DEPTH: usize = 16;
 ///
 /// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
 /// `(hm.eval-string require-string)`.  If the plugin is `Declared`, transitions
-/// to `Loading`, pushes `plugin_stack`, increments `activation_depth`, and
-/// returns the `(require "<abs>")` string.  Returns `#f` for the cycle/idempotency
-/// guard (Loading/Loaded/Failed/absent) so `%activate-plugin-inline` becomes a
-/// no-op without error.
+/// to `Loading`, pushes `plugin_stack`, and returns the `(require "<abs>")` string.
+/// Returns `#f` for the cycle/idempotency guard (Loading/Loaded/Failed/absent) so
+/// `%activate-plugin-inline` becomes a no-op without error.
 pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> SteelResult {
     let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
 
@@ -356,7 +355,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
         }
     };
 
-    if ctx.registries.activation_depth >= MAX_ACTIVATION_DEPTH {
+    if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
         ctx.registries.lazy_registry.plugins.insert(id.clone(), PluginState::Failed);
         steel::stop!(Generic =>
             "%begin-lazy-activation: activation depth limit ({}) exceeded — \
@@ -378,7 +377,6 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
         .plugins
         .insert(id.clone(), PluginState::Loading);
     ctx.plugin_stack.push(id);
-    ctx.registries.activation_depth += 1;
 
     Ok(SteelVal::StringV(require_program.into()))
 }
@@ -386,8 +384,8 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// `(%finish-lazy-activation id-str success?)` — Rust primitive for inline activation.
 ///
 /// Called from `%activate-plugin-inline` after `(hm.eval-string …)` completes
-/// (or fails).  Pops `plugin_stack`, decrements `activation_depth`, and
-/// transitions the plugin to `Loaded` (success) or `Failed` (failure).
+/// (or fails).  Pops `plugin_stack` and transitions the plugin to `Loaded`
+/// (success) or `Failed` (failure).
 /// `drop_activations_for` runs on both paths so expired activation entries are cleaned up.
 ///
 /// On failure, any commands that a partially-evaluated body already registered via
@@ -404,7 +402,6 @@ pub(crate) fn finish_lazy_activation(
     let id = PluginId::parse(&id_str).map_err(steel_parse_err)?;
 
     ctx.plugin_stack.pop();
-    ctx.registries.activation_depth = ctx.registries.activation_depth.saturating_sub(1);
 
     let new_state = if success { PluginState::Loaded } else { PluginState::Failed };
     ctx.registries.lazy_registry.plugins.insert(id.clone(), new_state);
@@ -546,8 +543,11 @@ mod tests {
         host.registries.lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
-        // Simulate maximum nesting depth already reached.
-        host.registries.activation_depth = MAX_ACTIVATION_DEPTH;
+        // Simulate maximum nesting depth already reached by seeding the stack.
+        let dummy = PluginId::parse("core:dummy").unwrap();
+        for _ in 0..MAX_ACTIVATION_DEPTH {
+            host.push_plugin_for_test(dummy.clone());
+        }
 
         let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut NullHost);
 
@@ -580,7 +580,10 @@ mod tests {
             .plugins
             .insert(id.clone(), PluginState::Declared { path });
         // One below the cap — must still be allowed.
-        host.registries.activation_depth = MAX_ACTIVATION_DEPTH - 1;
+        let dummy = PluginId::parse("core:dummy").unwrap();
+        for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
+            host.push_plugin_for_test(dummy.clone());
+        }
 
         // Transition to Loading and return the require-string (not an error).
         let result = host.eval_source(r#"(%begin-lazy-activation "core:ok")"#, &mut NullHost);
