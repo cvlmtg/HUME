@@ -139,6 +139,7 @@ pub fn cmd_open_line_below(
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
+    state.mark_insert_step_back();
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
@@ -158,6 +159,7 @@ pub fn cmd_open_line_above(
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     begin_insert_session(state, view);
+    state.mark_insert_step_back();
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });

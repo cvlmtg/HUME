@@ -515,6 +515,59 @@ fn i_esc_does_not_step_cursor_back() {
     assert_eq!(state(&ed), "X-[h]>ello\n");
 }
 
+// ── `o` / `O` step-back on Esc ───────────────────────────────────────────────
+
+/// After `o` + typing + Esc the cursor must land on the last typed character
+/// (same as `a`), not on the trailing `\n` of the new line.
+///
+/// Regression: without `mark_insert_step_back`, pressing `x` after `o+text+Esc`
+/// selected the *next* line rather than the just-created one.
+#[test]
+fn o_esc_steps_cursor_back_to_last_typed_char() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.handle_key(key('o'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+
+    // Cursor on 'c', not on the new line's trailing '\n'.
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello\nab-[c]>\nworld\n");
+}
+
+/// After `O` + typing + Esc the cursor must land on the last typed character.
+#[test]
+fn capital_o_esc_steps_cursor_back_to_last_typed_char() {
+    let mut ed = editor_from("hello\n-[w]>orld\n");
+
+    ed.handle_key(key('O'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+
+    // Cursor on 'c', not on the new line's trailing '\n'.
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello\nab-[c]>\nworld\n");
+}
+
+/// `o` + immediate Esc (nothing typed): cursor must stay on the new blank
+/// line's `\n` and must NOT step back onto the preceding line.
+#[test]
+fn o_esc_on_empty_line_does_not_step_to_previous_line() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.handle_key(key('o'));
+    ed.handle_key(key_esc());
+
+    // New blank line inserted; cursor on its '\n' (head == line_start so no
+    // step-back occurs — the empty-line guard in end_insert_session applies).
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello\n-[\n]>world\n");
+}
+
 // ── multi-cursor `a` collision (merge edge cases) ─────────────────────────────
 
 /// `a` on two cursors where one sits on the last character and the other on the

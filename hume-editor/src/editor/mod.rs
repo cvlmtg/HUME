@@ -84,7 +84,7 @@ pub(crate) use message_log::Severity;
 /// `begin_insert_session` that recording should be suppressed.
 pub(super) struct InsertSession {
     keystrokes: Vec<KeyEvent>,
-    /// Step cursor back one grapheme on exit (set for `a` / `A` entry).
+    /// Step cursor back one grapheme on exit (set for `a` / `A` / `o` / `O` entry).
     step_back_on_exit: bool,
 }
 
