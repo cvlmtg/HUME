@@ -32,26 +32,19 @@ new_key_type! {
 pub struct SharedBuffer {
     /// Incremental tree-sitter parse tree, rebuilt on each edit.
     pub tree: Option<tree_sitter::Tree>,
-    /// Full-text byte snapshot corresponding to `tree`.
-    ///
-    /// Written together with `tree` in `install_parse_done` so they are always
-    /// consistent with each other: `tree_source` reflects exactly the bytes
-    /// that produced `tree`. Passed to the highlighter at render time via
-    /// `SourceContext.source`.
-    pub tree_source: Vec<u8>,
     /// Tree-sitter highlight provider for this buffer's language, if configured.
     ///
     /// Stored here (not per-pane) because highlights are a pure function of
     /// the buffer content, not the viewport. All panes sharing this buffer share
-    /// the same highlighter. The parse tree and its corresponding source bytes
-    /// are both owned by `SharedBuffer` and passed at query time via
-    /// `SourceContext`.
+    /// the same highlighter. The tree is owned by `SharedBuffer` and passed at
+    /// query time via `SourceContext`; byte text is fed from the live rope via
+    /// `RopeProvider` inside the highlighter itself.
     pub syntax: Option<Arc<TreeSitterHighlighter>>,
 }
 
 impl SharedBuffer {
     pub fn new() -> Self {
-        Self { tree: None, tree_source: Vec::new(), syntax: None }
+        Self { tree: None, syntax: None }
     }
 }
 
@@ -338,7 +331,6 @@ impl EngineView {
                 pane,
                 rope,
                 tree: buffer.tree.as_ref(),
-                tree_source: &buffer.tree_source,
                 syntax: buffer.syntax.as_ref(),
                 theme: &self.theme,
                 rect,
@@ -394,9 +386,6 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub rope: &'a ropey::Rope,
     /// Tree-sitter parse tree from `SharedBuffer`, if available.
     pub tree: Option<&'a tree_sitter::Tree>,
-    /// Full-text byte snapshot that produced `tree`.  Passed to the highlighter
-    /// so tree and source are always in sync (both live on `SharedBuffer`).
-    pub tree_source: &'a [u8],
     /// Tree-sitter syntax highlighter from `SharedBuffer`, if language is configured.
     pub syntax: Option<&'a Arc<TreeSitterHighlighter>>,
     pub theme: &'a Theme,
@@ -648,7 +637,6 @@ fn render_buffer_line(
             &pane_ctx.pane.providers.highlights,
             pane_ctx.rope,
             pane_ctx.tree,
-            pane_ctx.tree_source,
             &mut scratch.style,
         );
 

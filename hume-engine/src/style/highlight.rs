@@ -143,7 +143,6 @@ pub(crate) fn rebuild_tier_bufs(
     providers: &[Box<dyn HighlightSource>],
     rope: &ropey::Rope,
     tree: Option<&tree_sitter::Tree>,
-    tree_source: &[u8],
     scratch: &mut StyleScratch,
 ) {
     scratch.tier_bufs.clear();
@@ -151,7 +150,6 @@ pub(crate) fn rebuild_tier_bufs(
     let ctx = SourceContext {
         rope,
         tree,
-        source: tree_source,
         line_start_byte: rope.line_to_byte(line_idx),
     };
     if let Some(hl) = syntax {

@@ -251,6 +251,36 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     }
 }
 
+// ── Grammar fixture paths ─────────────────────────────────────────────────────
+
+/// Absolute path to the pre-built grammar shared library for `name`.
+///
+/// Callers that require the file to exist should check or load it immediately
+/// after calling this — the helper does not verify presence.
+///
+/// Fixtures are installed by `scripts/fetch-test-grammars.sh`.
+pub(crate) fn grammar_parser_path(name: &str) -> PathBuf {
+    let suffix = if cfg!(target_os = "macos") { "dylib" }
+                 else if cfg!(windows) { "dll" }
+                 else { "so" };
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/grammars")
+        .join(name)
+        .join(format!("parser.{suffix}"))
+}
+
+/// Absolute path to the highlights query file for `name`.
+pub(crate) fn grammar_query_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/grammars")
+        .join(name)
+        .join("queries/highlights.scm")
+}
+
 mod alternate;
 mod auto_pairs;
 mod buffer;

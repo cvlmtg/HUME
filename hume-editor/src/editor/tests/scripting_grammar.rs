@@ -59,25 +59,14 @@ fn helix_pin() -> String {
 }
 
 fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/grammars");
-    let suffix = if cfg!(target_os = "macos") {
-        "dylib"
-    } else if cfg!(windows) {
-        "dll"
-    } else {
-        "so"
-    };
-    let parser = base.join(name).join(format!("parser.{suffix}"));
+    let parser = grammar_parser_path(name);
     if !parser.exists() {
         panic!(
             "grammar fixture missing: {}\ninstall the tree-sitter CLI (npm i -g tree-sitter-cli) and run scripts/fetch-test-grammars.sh from the repo root",
             parser.display()
         );
     }
-    (parser, base.join(name).join("queries/highlights.scm"))
+    (parser, grammar_query_path(name))
 }
 
 // ---------------------------------------------------------------------------

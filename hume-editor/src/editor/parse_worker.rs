@@ -34,9 +34,9 @@ pub(super) struct ParseRequest {
 }
 
 pub(super) enum ParseOutcome {
-    /// Parse succeeded.  Carries the fresh tree and the serialised source bytes
-    /// needed to keep `SharedBuffer.tree_source` consistent with the new tree.
-    Ok(tree_sitter::Tree, Vec<u8>),
+    /// Parse succeeded.  Carries the fresh tree; byte text is read from the
+    /// live rope at render time via `RopeProvider` in the engine highlighter.
+    Ok(tree_sitter::Tree),
     /// `Parser::parse` returned `None` (transient; currently unreachable without
     /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
     ParseFailed,
@@ -118,9 +118,7 @@ fn do_parse(
             Some(options),
         );
         match result {
-            // Materialise source bytes here (worker thread) for the highlighter.
-            // On ParseFailed we skip the allocation entirely.
-            Some(tree) => ParseOutcome::Ok(tree, req.text.to_bytes()),
+            Some(tree) => ParseOutcome::Ok(tree),
             None => ParseOutcome::ParseFailed,
         }
     };
@@ -377,7 +375,6 @@ impl ParseBackend for InlineParseBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -389,20 +386,10 @@ mod tests {
     use super::{LanguageConfig, ParseOutcome, ParseRequest, ThreadedParseBackend, Text, coalesce_one};
     use super::ParseBackend as _;
     use crate::editor::syntax::GrammarBundle;
-
-    fn grammar_path(name: &str) -> PathBuf {
-        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("tests/fixtures/grammars");
-        let suffix = if cfg!(target_os = "macos") { "dylib" }
-                     else if cfg!(windows) { "dll" }
-                     else { "so" };
-        base.join(name).join(format!("parser.{suffix}"))
-    }
+    use crate::editor::tests::{grammar_parser_path};
 
     fn make_lang(name: &str, symbol: &str) -> Arc<LanguageConfig> {
-        let path = grammar_path(name);
+        let path = grammar_parser_path(name);
         if !path.exists() {
             panic!(
                 "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",

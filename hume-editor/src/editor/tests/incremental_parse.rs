@@ -8,35 +8,11 @@
 
 use super::*;
 
-use std::path::PathBuf;
-
 use hume_engine::grammar::LoadedGrammar;
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use crate::editor::buffer::Buffer;
-
-// ── Setup ─────────────────────────────────────────────────────────────────────
-
-fn grammar_path(name: &str) -> PathBuf {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/grammars");
-    let suffix = if cfg!(target_os = "macos") { "dylib" }
-                 else if cfg!(windows) { "dll" }
-                 else { "so" };
-    base.join(name).join(format!("parser.{suffix}"))
-}
-
-fn grammar_highlights(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/grammars")
-        .join(name)
-        .join("queries/highlights.scm")
-}
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
 /// Runs `reparse_stale_buffers()` once to complete the initial (full) parse.
@@ -44,14 +20,14 @@ fn grammar_highlights(name: &str) -> PathBuf {
 /// `reparse_stale_buffers` call — InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
-    let parser_path = grammar_path("json");
+    let parser_path = grammar_parser_path("json");
     if !parser_path.exists() {
         panic!(
             "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh",
             parser_path.display()
         );
     }
-    let hl_path = grammar_highlights("json");
+    let hl_path = grammar_query_path("json");
     let buf = Buffer::new(Text::from(source), SelectionSet::default());
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
@@ -170,7 +146,7 @@ fn incremental_tree_matches_full_reparse() {
 
     // Full reparse of the same source bytes that the incremental parse used.
     let source = ed.state.buffers.get(bid).text().to_bytes();
-    let parser_path = grammar_path("json");
+    let parser_path = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json")
         .expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();
@@ -195,7 +171,7 @@ fn incremental_tree_matches_full_reparse() {
 /// - the precise parse is queued but NOT yet installed (parsed_gen < text_gen)
 ///
 /// Flip: without the bake the tree's root end_byte would still equal the
-/// pre-edit byte count, and tree_source would lag the live rope.
+/// pre-edit byte count.
 #[test]
 fn bake_aligns_committed_tree_before_precise_install() {
     let (mut ed, bid) = json_editor("{}\n");
@@ -234,13 +210,6 @@ fn bake_aligns_committed_tree_before_precise_install() {
          pre-fix this would equal {} (stale)", old_byte_len,
     );
 
-    // tree_source must match the live rope.
-    let live_bytes = ed.state.buffers.get(bid).text().to_bytes();
-    assert_eq!(
-        ed.view.buffers[bid].tree_source,
-        live_bytes,
-        "tree_source must be refreshed to live bytes after bake",
-    );
 }
 
 /// Two edits without an intervening drain: the bake must handle a chain of
@@ -292,8 +261,8 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     // Simulate a grammar re-attach: detach → re-attach → re-enable.
     // set_buffer_language(None) clears syntax (and pending_edits via BufferSyntax drop).
     // Then re-attaching re-creates BufferSyntax::new() which starts with empty pending_edits.
-    let parser_path = grammar_path("json");
-    let hl_path = grammar_highlights("json");
+    let parser_path = grammar_parser_path("json");
+    let hl_path = grammar_query_path("json");
     ed.set_buffer_language(bid, None);
     ed.state.languages
         .attach_grammar("json", &parser_path, "tree_sitter_json", &hl_path, &mut ed.view.registry)

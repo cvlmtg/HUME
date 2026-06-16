@@ -8,6 +8,31 @@ use crate::theme::ScopeRegistry;
 use crate::types::{Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
+// RopeProvider
+// ---------------------------------------------------------------------------
+
+/// Feeds rope chunks to tree-sitter query matching as a `TextProvider`.
+///
+/// Replaces a materialised `Vec<u8>` snapshot: the rope is the single source
+/// of truth for buffer bytes.  Node byte ranges are expected to align with the
+/// live rope at render time (the editor bakes the tree before each render).
+/// `get_byte_slice` returns `None` on an out-of-range request, so a misaligned
+/// range degrades to empty text rather than panicking.
+struct RopeProvider<'a>(&'a ropey::Rope);
+
+impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
+    type I = std::iter::Map<ropey::iter::Chunks<'a>, fn(&str) -> &[u8]>;
+
+    fn text(&mut self, node: tree_sitter::Node) -> Self::I {
+        let slice = self
+            .0
+            .get_byte_slice(node.start_byte()..node.end_byte())
+            .unwrap_or_else(|| self.0.byte_slice(0..0));
+        slice.chunks().map(str::as_bytes)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // TreeSitterHighlighter
 // ---------------------------------------------------------------------------
 
@@ -16,9 +41,8 @@ use crate::types::{Scope, ScopeId};
 /// # Usage
 ///
 /// 1. Create with `TreeSitterHighlighter::new(language, query_source)`.
-/// 2. After each re-parse, write the new tree and source bytes to `SharedBuffer`
-///    together.  Pass them to `highlights_for_line` via `SourceContext` at render
-///    time — neither is stored here.
+/// 2. After each re-parse, write the new tree to `SharedBuffer`.  Pass it via
+///    `SourceContext` at render time — it is not stored here.
 /// 3. Register with `ProviderSet::add_highlight_source`.
 ///
 /// # Byte offsets
@@ -140,7 +164,6 @@ impl HighlightSource for TreeSitterHighlighter {
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
         let Some(tree) = ctx.tree else { return };
-        let source_bytes = ctx.source;
         let mut state = self.state.lock().expect("highlight state lock poisoned");
 
         // Compute the absolute byte range for this line.
@@ -161,7 +184,7 @@ impl HighlightSource for TreeSitterHighlighter {
         raw.clear();
 
         let root = tree.root_node();
-        let mut matches = cursor.matches(&self.query, root, source_bytes);
+        let mut matches = cursor.matches(&self.query, root, RopeProvider(ctx.rope));
         while let Some(m) = matches.next() {
             for cap in m.captures {
                 let Some(scope) = self
