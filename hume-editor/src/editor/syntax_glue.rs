@@ -3,7 +3,7 @@ use std::sync::Arc;
 use hume_engine::builtins::tree_sitter_hl::TreeSitterHighlighter;
 use hume_engine::pipeline::BufferId;
 
-use super::Editor;
+use super::{Editor, Severity};
 use super::buffer::Buffer;
 use super::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use super::syntax::BufferSyntax;
@@ -395,14 +395,19 @@ impl Editor {
             syn.tree_gen = text_gen;
             syn.pending_edits.clear();
         } else {
-            // pending_edits chain is broken — a text mutation bypassed doc_ops
-            // without recording edits.  Full reparse required.
-            debug_assert!(
-                false,
-                "pending_edits chain broken: tree_gen={tree_gen}, \
-                 text_gen={text_gen}, first={:?}, last={:?}",
-                pending.first().map(|(g, _)| *g),
-                pending.last().map(|(g, _)| *g),
+            // pending_edits chain is broken: a text mutation bumped text_gen
+            // without recording an InputEdit (e.g. set_view_content on a buffer
+            // that unexpectedly had a syntax attachment).  Clear pending edits so
+            // the caller's old_tree == None path posts a full reparse.
+            self.report(
+                Severity::Trace,
+                format!(
+                    "bake_pending_edits: chain broken for {bid:?} — \
+                     tree_gen={tree_gen}, text_gen={text_gen}, \
+                     first={:?}, last={:?}; full reparse triggered",
+                    pending.first().map(|(g, _)| *g),
+                    pending.last().map(|(g, _)| *g),
+                ),
             );
             self.state.buffers.get_mut(bid).syntax.as_mut()
                 .expect("syntax checked above")
