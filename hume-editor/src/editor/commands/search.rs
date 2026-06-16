@@ -15,7 +15,7 @@ use crate::ops::text_object::inner_word_impl;
 use super::super::{MiniBuffer, Mode, SearchDirection, EditorState};
 use crate::editor::error::CommandError;
 use super::{
-    current_selections, doc, enqueue_mode_change, focused_buffer_id,
+    current_selections, doc, set_mode, focused_buffer_id,
     search_pattern, set_current_selections, set_primary_selection,
 };
 
@@ -38,9 +38,7 @@ pub fn cmd_search_forward(
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    let old_mode = state.mode;
-    state.mode = Mode::Search;
-    enqueue_mode_change(state, old_mode, Mode::Search);
+    set_mode(state, Mode::Search);
     state.minibuf = Some(MiniBuffer {
         prompt: '/',
         input: String::new(),
@@ -63,9 +61,7 @@ pub fn cmd_search_backward(
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    let old_mode = state.mode;
-    state.mode = Mode::Search;
-    enqueue_mode_change(state, old_mode, Mode::Search);
+    set_mode(state, Mode::Search);
     state.minibuf = Some(MiniBuffer {
         prompt: '?',
         input: String::new(),
@@ -301,9 +297,7 @@ pub fn cmd_select_within(
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focused_pane_id;
     state.panes.transient[pid].pre_select_sels = Some(pre_sels);
-    let old_mode = state.mode;
-    state.mode = Mode::Select;
-    enqueue_mode_change(state, old_mode, Mode::Select);
+    set_mode(state, Mode::Select);
     state.minibuf = Some(MiniBuffer {
         prompt: '⫽',
         input: String::new(),

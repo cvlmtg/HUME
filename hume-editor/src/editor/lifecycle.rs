@@ -713,9 +713,7 @@ impl Editor {
     /// [`end_insert_session`] instead — they manage the undo group and
     /// dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: EditorMode) {
-        let old = self.state.mode;
-        self.state.mode = mode;
-        super::commands::enqueue_mode_change(&mut self.state, old, mode);
+        super::commands::set_mode(&mut self.state, mode);
     }
 }
 

@@ -48,7 +48,7 @@ impl Editor {
         }
         // Do not clear search state — the previous search should survive a
         // cancelled select-within.
-        self.state.mode = Mode::Normal;
+        self.set_mode(Mode::Normal);
         self.close_minibuf();
     }
 

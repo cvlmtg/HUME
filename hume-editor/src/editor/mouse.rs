@@ -58,7 +58,6 @@ impl Editor {
             // Move to Normal mode on click, regardless of current mode.
             if self.state.mode == Mode::Insert {
                 self.end_insert_session();
-                self.set_mode(Mode::Normal);
             }
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);

@@ -1,5 +1,96 @@
 use super::*;
 
+// ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
+
+/// `cmd_exit_insert` (Esc) must fire `OnModeChange` for the Insert→Normal
+/// transition.  Before the fix, `end_insert_session` wrote `state.mode`
+/// directly, bypassing the funnel, so the hook never reached script handlers.
+///
+/// Verification: install an `on-mode-change` handler that calls `move-right`;
+/// the cursor advances only if the hook fired.
+#[test]
+fn exit_insert_via_esc_fires_on_mode_change() {
+    use crossterm::event::Event;
+    use hume_scripting::ScriptingHost;
+    use crate::testing::MockHost;
+
+    // Two-char buffer; cursor starts at col 0.
+    let mut ed = editor_from("-[a]>b\n");
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    // Enter Insert via `i` (no step-back on exit). Use handle_event so the
+    // Normal→Insert hook is drained before we capture the before state.
+    ed.handle_event(Event::Key(key('i')));
+    assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
+
+    let before = state(&ed);
+
+    // Exit via Esc. handle_event drains hooks after dispatch, so the
+    // on-mode-change handler fires within this call.
+    ed.handle_event(Event::Key(key_esc()));
+
+    assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-mode-change handler (move-right) must have fired on Insert→Normal via Esc"
+    );
+}
+
+/// A left mouse click while in Insert mode must fire `OnModeChange` for the
+/// Insert→Normal transition.  The click path calls `end_insert_session` which
+/// now goes through the funnel; the formerly-redundant `set_mode(Normal)` after
+/// it has been removed, so the hook fires exactly once.
+#[test]
+fn mouse_click_in_insert_fires_on_mode_change() {
+    use crossterm::event::Event;
+    use hume_scripting::ScriptingHost;
+    use crate::testing::MockHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.view.panes[ed.state.focused_pane_id].viewport =
+        hume_engine::pane::ViewportState::new(80, 24);
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    // Enter Insert mode.
+    ed.handle_key(key('i'));
+    assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
+
+    let before = state(&ed);
+
+    // Left-click at (col=1, row=0) — lands in content, triggers exit-insert.
+    let click = crossterm::event::MouseEvent {
+        kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        column: 1,
+        row: 0,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    };
+    ed.handle_event(Event::Mouse(click));
+
+    assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after click");
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-mode-change handler (move-right) must have fired on Insert→Normal via click"
+    );
+}
+
 // ── Startup hook drain ────────────────────────────────────────────────────────
 
 /// `fire_hook_silent` only enqueues; hooks must be drained explicitly via

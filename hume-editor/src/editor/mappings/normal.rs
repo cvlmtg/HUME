@@ -82,7 +82,7 @@ impl Editor {
             self.state.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
             if self.state.mode == EditorMode::Extend {
-                self.state.mode = EditorMode::Normal;
+                self.set_mode(EditorMode::Normal);
             }
             let _ = cmd_clear_search(&mut self.state, &mut self.view, 0, MotionMode::Move);
             return;

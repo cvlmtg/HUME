@@ -99,7 +99,7 @@ impl Editor {
         }
         let bid = self.focused_buffer_id();
         search_ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
-        self.state.mode = Mode::Normal;
+        self.set_mode(Mode::Normal);
         self.close_minibuf();
     }
 

@@ -14,7 +14,7 @@ use crate::ops::selection_cmd::cmd_collapse_selection;
 use super::super::{doc_ops, EditorState, MiniBuffer, Mode, PendingRepeat};
 use crate::editor::error::CommandError;
 use super::{
-    begin_insert_session, end_insert_session, enqueue_mode_change,
+    begin_insert_session, end_insert_session, set_mode,
     focused_buffer_id,
 };
 
@@ -178,15 +178,13 @@ pub fn cmd_command_mode(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let old_mode = state.mode;
     state.history.begin_session_all();
-    state.mode = Mode::Command;
     state.minibuf = Some(MiniBuffer {
         prompt: ':',
         input: String::new(),
         cursor: 0,
     });
-    enqueue_mode_change(state, old_mode, Mode::Command);
+    set_mode(state, Mode::Command);
     Ok(())
 }
 
@@ -208,11 +206,8 @@ pub fn cmd_toggle_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    state.mode = if state.mode == EditorMode::Extend {
-        EditorMode::Normal
-    } else {
-        EditorMode::Extend
-    };
+    let target = if state.mode == EditorMode::Extend { EditorMode::Normal } else { EditorMode::Extend };
+    set_mode(state, target);
     Ok(())
 }
 
@@ -226,7 +221,7 @@ pub fn cmd_collapse_and_exit_extend(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     // Mode is SSOT for extend state; setting Normal implicitly clears Extend.
-    state.mode = EditorMode::Normal;
+    set_mode(state, EditorMode::Normal);
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, |b, s| {
