@@ -464,7 +464,8 @@ covers how to create and manage them.
   everything, then narrow it down with a pattern.
 
   >> Press `%` and observe the selection covers every character. Then
-     press `;` to collapse back to a single-character selection.
+     press `;` to collapse back to a single-character selection. Press
+     Ctrl-o to jump back to where you were before `%`.
 
 7.2  SPLIT BY PATTERN
 
