@@ -44,6 +44,16 @@ pub enum StatusElement {
     Separator,
     /// The file's basename, or `"[scratch]"` for unnamed buffers.
     FileName,
+    /// Full path to the focused file, with the home prefix collapsed to `~`.
+    ///
+    /// Shows the path as the user typed it (symlinks **not** resolved). When the
+    /// terminal row is too narrow the path is progressively shortened: leading
+    /// directory components are abbreviated to their first grapheme cluster
+    /// left-to-right; the filename is truncated with `…` only as a last resort.
+    ///
+    /// Intended for the `left` section where it has the most available space.
+    /// For scratch and synthetic buffers this element renders as empty.
+    FilePath,
     /// Current working directory, with the home prefix replaced by `~`.
     ///
     /// Read from `editor.state.cwd`, which is cached at startup and updated by `:cd`.
@@ -83,16 +93,6 @@ pub enum StatusElement {
     Language,
     /// Read-only indicator: `"[RO]"` when the buffer is read-only, empty otherwise.
     ReadOnly,
-    /// Full path to the focused file, with the home prefix collapsed to `~`.
-    ///
-    /// Shows the path as the user typed it (symlinks **not** resolved). When the
-    /// terminal row is too narrow the path is progressively shortened: leading
-    /// directory components are abbreviated to their first grapheme cluster
-    /// left-to-right; the filename is truncated with `…` only as a last resort.
-    ///
-    /// Intended for the `left` section where it has the most available space.
-    /// For scratch and synthetic buffers this element renders as empty.
-    FilePath,
 }
 
 impl fmt::Display for StatusElement {
@@ -101,6 +101,7 @@ impl fmt::Display for StatusElement {
             StatusElement::Mode => "Mode",
             StatusElement::Separator => "Separator",
             StatusElement::FileName => "FileName",
+            StatusElement::FilePath => "FilePath",
             StatusElement::Cwd => "Cwd",
             StatusElement::Position => "Position",
             StatusElement::Selections => "Selections",
@@ -112,7 +113,6 @@ impl fmt::Display for StatusElement {
             StatusElement::MacroRecording => "MacroRecording",
             StatusElement::Language => "Language",
             StatusElement::ReadOnly => "ReadOnly",
-            StatusElement::FilePath => "FilePath",
         })
     }
 }
@@ -125,6 +125,7 @@ impl FromStr for StatusElement {
             "Mode" => Ok(StatusElement::Mode),
             "Separator" => Ok(StatusElement::Separator),
             "FileName" => Ok(StatusElement::FileName),
+            "FilePath" => Ok(StatusElement::FilePath),
             "Cwd" => Ok(StatusElement::Cwd),
             "Position" => Ok(StatusElement::Position),
             "Selections" => Ok(StatusElement::Selections),
@@ -136,7 +137,6 @@ impl FromStr for StatusElement {
             "MacroRecording" => Ok(StatusElement::MacroRecording),
             "Language" => Ok(StatusElement::Language),
             "ReadOnly" => Ok(StatusElement::ReadOnly),
-            "FilePath" => Ok(StatusElement::FilePath),
             _ => Err(format!(
                 "unknown element '{s}'; valid names: Cwd DirtyIndicator FilePath FileName \
                  KittyProtocol Language LineEnding MacroRecording MiniBuf Mode Position \
@@ -174,7 +174,7 @@ impl Default for StatusLineConfig {
         Self {
             left: vec![
                 StatusElement::Position,
-                StatusElement::FileName,
+                StatusElement::FilePath,
                 StatusElement::Language,
                 StatusElement::ReadOnly,
                 StatusElement::DirtyIndicator,
@@ -494,6 +494,11 @@ fn render_element(
         StatusElement::FileName => {
             (Cow::Owned(editor.doc().display_name()), colors.statusline)
         }
+        StatusElement::FilePath => {
+            // `filepath_text` is computed and optionally shortened by `render_statusline`
+            // before this is called. Empty string in the measure pass → zero width.
+            (Cow::Owned(filepath_text.to_owned()), colors.statusline)
+        }
         StatusElement::Position => {
             let buf = editor.doc().text();
             let head = editor.current_selections().primary().head();
@@ -567,11 +572,6 @@ fn render_element(
         StatusElement::ReadOnly => {
             let label = if editor.doc().is_read_only() { "[RO]" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
-        }
-        StatusElement::FilePath => {
-            // `filepath_text` is computed and optionally shortened by `render_statusline`
-            // before this is called. Empty string in the measure pass → zero width.
-            (Cow::Owned(filepath_text.to_owned()), colors.statusline)
         }
     }
 }
