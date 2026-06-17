@@ -76,7 +76,8 @@ react to buffer events globally (not just for a specific language):
 ```
 
 **`#:languages`** defers loading until the buffer language is set to one of the named
-languages. This is the preferred pattern for language-specific plugins:
+languages. This is the preferred pattern for language-specific plugins (see
+[Language Identity and Detection](language-identity.md) for how languages are detected):
 
 ```scheme
 (declare-plugin "alice/rust-tools" #:languages '("rust"))

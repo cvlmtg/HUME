@@ -94,7 +94,11 @@ further allocation.
 Colours are resolved through a scope hierarchy (inspired by TextMate grammars,
 identical to Helix). A scope is a dot-separated string like
 `keyword.function` or `ui.cursor.match`. The theme maps scope *prefixes* to
-style values. A grapheme tagged with `keyword.function` will match first
+style values. Syntax scope names come from tree-sitter highlight queries; see
+[Tree-sitter: Grammars, Queries, and Plum](tree-sitter-pipeline.md) for how
+grammars and queries are installed and applied.
+
+A grapheme tagged with `keyword.function` will match first
 against the exact `keyword.function` scope, then `keyword`, then the base
 scope — using the most specific match found.
 

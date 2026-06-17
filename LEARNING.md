@@ -43,6 +43,16 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
 | Display Lines and Soft Wrap | [docs/learning/display-lines-and-soft-wrap.md](docs/learning/display-lines-and-soft-wrap.md) |
 
+### Languages & syntax
+
+How buffers learn their language, and how tree-sitter grammars produce
+syntax highlighting.
+
+| Topic | File |
+|-------|------|
+| Language Identity and Detection | [docs/learning/language-identity.md](docs/learning/language-identity.md) |
+| Tree-sitter: Grammars, Queries, and Plum | [docs/learning/tree-sitter-pipeline.md](docs/learning/tree-sitter-pipeline.md) |
+
 ### Plugins & registers
 
 How plugins interact with editor state, and how HUME thinks about captured
