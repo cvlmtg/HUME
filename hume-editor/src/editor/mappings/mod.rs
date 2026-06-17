@@ -63,6 +63,7 @@ mod tests {
             "search-prev",
             "page-down",
             "page-up",
+            "select-all",
         ];
         for name in must_be_jump {
             assert!(

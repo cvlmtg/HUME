@@ -54,6 +54,15 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     fun: $fun,
+                    jump: false,
+                })
+            };
+            ($name:literal, $doc:literal, $fun:expr, jump) => {
+                self.register(MappableCommand::Selection {
+                    name: Cow::Borrowed($name),
+                    doc: Cow::Borrowed($doc),
+                    fun: $fun,
+                    jump: true,
                 })
             };
         }
@@ -244,7 +253,7 @@ impl CommandRegistry {
             "Remove all selections except the primary.",
             cmd_keep_primary_selection
         );
-        selection!("select-all", "Select the entire buffer.", cmd_select_all);
+        selection!("select-all", "Select the entire buffer.", cmd_select_all, jump);
         selection!(
             "remove-primary-selection",
             "Remove the primary selection, promoting the next.",

@@ -58,6 +58,9 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: fn(&Text, SelectionSet, MotionMode) -> SelectionSet,
+        /// Whether this command always records a jump list entry before executing,
+        /// regardless of how far the cursor moves. Used for `select-all` (`%`).
+        jump: bool,
     },
     /// Text-modifying edit with no extra arguments.
     ///
@@ -191,9 +194,10 @@ impl MappableCommand {
     /// there is no parallel `JUMP_COMMANDS` list.
     pub(crate) fn is_jump(&self) -> bool {
         match self {
-            Self::Motion { jump, .. } | Self::EditorCmd { jump, .. } => *jump,
-            Self::Selection { .. }
-            | Self::Edit { .. }
+            Self::Motion { jump, .. }
+            | Self::Selection { jump, .. }
+            | Self::EditorCmd { jump, .. } => *jump,
+            Self::Edit { .. }
             | Self::SteelBacked { .. }
             | Self::Lazy { .. } => false,
         }

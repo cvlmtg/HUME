@@ -209,6 +209,39 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     );
 }
 
+/// `%` (select-all) records a jump so Ctrl-o returns to the pre-`%` position.
+///
+/// Before this fix, `select-all` was a `Selection` command with no jump flag,
+/// so the dispatch path never captured a pre-command snapshot and Ctrl-o would
+/// land at whatever stale entry was already in the list.
+#[test]
+fn select_all_records_jump() {
+    // Start on line 5 of a 20-line buffer.
+    let mut ed = jump_editor(5);
+    let before = state(&ed);
+
+    // `%` — select entire buffer; cursor moves to the last character (line 19).
+    ed.handle_key(key('%'));
+    let after_select_all = state(&ed);
+    assert_ne!(after_select_all, before, "% must move the cursor");
+    // The cursor must be on the last line (line 19 in a 20-line buffer).
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        19,
+        "% should place the cursor at the last line"
+    );
+
+    // Ctrl-o must restore the position we were at before `%` (line 5).
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        state(&ed),
+        before,
+        "jump-backward should restore the pre-% position"
+    );
+}
+
 /// search-next + jump-backward + jump-forward round-trip, all matches on different lines.
 #[test]
 fn search_n_ctrl_o_ctrl_i_different_lines() {
