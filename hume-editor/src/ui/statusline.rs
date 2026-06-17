@@ -5,6 +5,7 @@ use std::str::FromStr;
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use hume_engine::render::fill_rect_bg;
@@ -82,6 +83,16 @@ pub enum StatusElement {
     Language,
     /// Read-only indicator: `"[RO]"` when the buffer is read-only, empty otherwise.
     ReadOnly,
+    /// Full path to the focused file, with the home prefix collapsed to `~`.
+    ///
+    /// Shows the path as the user typed it (symlinks **not** resolved). When the
+    /// terminal row is too narrow the path is progressively shortened: leading
+    /// directory components are abbreviated to their first grapheme cluster
+    /// left-to-right; the filename is truncated with `…` only as a last resort.
+    ///
+    /// Intended for the `left` section where it has the most available space.
+    /// For scratch and synthetic buffers this element renders as empty.
+    FilePath,
 }
 
 impl fmt::Display for StatusElement {
@@ -101,6 +112,7 @@ impl fmt::Display for StatusElement {
             StatusElement::MacroRecording => "MacroRecording",
             StatusElement::Language => "Language",
             StatusElement::ReadOnly => "ReadOnly",
+            StatusElement::FilePath => "FilePath",
         })
     }
 }
@@ -124,9 +136,11 @@ impl FromStr for StatusElement {
             "MacroRecording" => Ok(StatusElement::MacroRecording),
             "Language" => Ok(StatusElement::Language),
             "ReadOnly" => Ok(StatusElement::ReadOnly),
+            "FilePath" => Ok(StatusElement::FilePath),
             _ => Err(format!(
-                "unknown element '{s}'; valid names: Cwd DirtyIndicator FileName KittyProtocol \
-                 Language LineEnding MacroRecording MiniBuf Mode Position ReadOnly SearchMatches Selections Separator"
+                "unknown element '{s}'; valid names: Cwd DirtyIndicator FilePath FileName \
+                 KittyProtocol Language LineEnding MacroRecording MiniBuf Mode Position \
+                 ReadOnly SearchMatches Selections Separator"
             )),
         }
     }
@@ -278,6 +292,106 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
     }
 }
 
+// ── FilePath helpers ──────────────────────────────────────────────────────────
+
+/// Returns the display path for the `FilePath` element: `display_path` (user-typed,
+/// symlinks unresolved) when set, falling back to the canonical `path`. Both are
+/// `~`-collapsed for display. Returns `""` for scratch and synthetic buffers.
+fn statusline_display_path(editor: &Editor) -> String {
+    let doc = editor.doc();
+    let path = doc
+        .display_path()
+        .or_else(|| doc.path());
+    match path {
+        Some(p) => shorten_home(p),
+        None => String::new(),
+    }
+}
+
+/// Shorten `display` (a `~`-collapsed path string) to fit within `max_cols`
+/// terminal columns by abbreviating leading directory components.
+///
+/// Algorithm:
+/// 1. If it already fits, return as-is.
+/// 2. Replace leading dir components with their first grapheme cluster,
+///    left-to-right, re-checking width each time.
+/// 3. If still too wide after all dirs are abbreviated, truncate the filename
+///    with a trailing `…`, shrinking until it fits or only `…` remains.
+fn shorten_path_to_width(display: &str, max_cols: usize) -> String {
+    if UnicodeWidthStr::width(display) <= max_cols {
+        return display.to_owned();
+    }
+    if max_cols == 0 {
+        return String::new();
+    }
+
+    // Split into components on '/'. Works on the `~`-collapsed string where
+    // the separator is always '/'.
+    let parts: Vec<&str> = display.split('/').collect();
+    let n = parts.len();
+    if n == 0 {
+        return String::new();
+    }
+
+    // Build a mutable copy of the components. The last part is the filename;
+    // abbreviate the leading dirs (all but the last) one by one.
+    let mut components: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
+
+    for i in 0..n.saturating_sub(1) {
+        // Skip components that are already at minimum width: empty, "~", or
+        // single-grapheme entries (abbreviated in a previous run).
+        let grapheme_count = components[i].graphemes(true).count();
+        if grapheme_count <= 1 {
+            continue;
+        }
+        // Abbreviate to the first grapheme cluster.
+        let first = components[i]
+            .graphemes(true)
+            .next()
+            .unwrap_or("")
+            .to_owned();
+        components[i] = first;
+
+        let candidate = components.join("/");
+        if UnicodeWidthStr::width(candidate.as_str()) <= max_cols {
+            return candidate;
+        }
+    }
+
+    // All dirs abbreviated — still too wide. Truncate the filename with `…`.
+    let ellipsis = "…"; // U+2026, 1 col wide
+    let ellipsis_w = UnicodeWidthStr::width(ellipsis);
+    let prefix = components[..n.saturating_sub(1)].join("/");
+    let sep = if n > 1 { "/" } else { "" };
+    // Available columns for the filename (after prefix + sep + ellipsis).
+    let prefix_w = UnicodeWidthStr::width(prefix.as_str());
+    let sep_w = sep.len(); // '/' is always 1 col
+    let available = max_cols.saturating_sub(prefix_w + sep_w + ellipsis_w);
+
+    let filename = &components[n - 1];
+    let mut truncated = String::new();
+    let mut cols_used = 0usize;
+    for g in filename.graphemes(true) {
+        let gw = UnicodeWidthStr::width(g);
+        if cols_used + gw > available {
+            break;
+        }
+        truncated.push_str(g);
+        cols_used += gw;
+    }
+
+    if truncated.is_empty() {
+        // Not even one grapheme of filename fits; just show the ellipsis.
+        if prefix.is_empty() {
+            ellipsis.to_owned()
+        } else {
+            format!("{prefix}{sep}{ellipsis}")
+        }
+    } else {
+        format!("{prefix}{sep}{truncated}{ellipsis}")
+    }
+}
+
 fn fill_row_colors(buf: &mut ScreenBuf, colors: &EditorColors, area: Rect, y: u16) {
     fill_rect_bg(buf, Rect::new(area.x, y, area.width, 1), colors.statusline);
 }
@@ -303,9 +417,30 @@ fn render_statusline(
 
     fill_row_colors(screen_buf, colors, area, y);
 
-    let left_spans = pad_left(render_section(left_elems, editor, colors), colors);
-    let center_spans = render_section(center_elems, editor, colors);
-    let right_spans = pad_right(render_section(right_elems, editor, colors), colors);
+    // ── FilePath two-pass sizing ──────────────────────────────────────────────
+    // The FilePath element is flexible: it shrinks when the row is narrow.
+    // Measure pass: render with FilePath = "" to find the total fixed width.
+    // Final pass: shorten the path to the remaining budget, then render for real.
+    let filepath_full = statusline_display_path(editor);
+    let filepath_display: String = if filepath_full.is_empty() {
+        String::new()
+    } else {
+        // Measure pass — FilePath contributes no width.
+        let m_left = pad_left(render_section(left_elems, editor, colors, ""), colors);
+        let m_center = render_section(center_elems, editor, colors, "");
+        let m_right = pad_right(render_section(right_elems, editor, colors, ""), colors);
+        let fixed_w = section_width(&m_left) as usize
+            + section_width(&m_center) as usize
+            + section_width(&m_right) as usize;
+        // Subtract 1 for the inter-element space that render_section inserts
+        // before a non-empty FilePath span (conservatively safe for all cases).
+        let budget = (area.width as usize).saturating_sub(fixed_w + 1);
+        shorten_path_to_width(&filepath_full, budget)
+    };
+
+    let left_spans = pad_left(render_section(left_elems, editor, colors, &filepath_display), colors);
+    let center_spans = render_section(center_elems, editor, colors, &filepath_display);
+    let right_spans = pad_right(render_section(right_elems, editor, colors, &filepath_display), colors);
 
     let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);
@@ -339,6 +474,9 @@ fn render_element(
     seg: StatusElement,
     editor: &Editor,
     colors: &EditorColors,
+    // Pre-computed text for the FilePath element. "" = render as empty (measure
+    // pass); any other string = use verbatim (already shortened by caller).
+    filepath_text: &str,
 ) -> (Cow<'static, str>, Style) {
     match seg {
         StatusElement::Mode => {
@@ -430,6 +568,11 @@ fn render_element(
             let label = if editor.doc().is_read_only() { "[RO]" } else { "" };
             (Cow::Borrowed(label), colors.statusline)
         }
+        StatusElement::FilePath => {
+            // `filepath_text` is computed and optionally shortened by `render_statusline`
+            // before this is called. Empty string in the measure pass → zero width.
+            (Cow::Owned(filepath_text.to_owned()), colors.statusline)
+        }
     }
 }
 
@@ -437,11 +580,12 @@ fn render_section(
     elements: &[StatusElement],
     editor: &Editor,
     colors: &EditorColors,
+    filepath_text: &str,
 ) -> Vec<(Cow<'static, str>, Style)> {
     let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
 
     for &seg in elements {
-        let (text, style) = render_element(seg, editor, colors);
+        let (text, style) = render_element(seg, editor, colors, filepath_text);
         if text.is_empty() {
             continue;
         }
@@ -557,7 +701,7 @@ mod tests {
         // When not recording, MacroRecording should contribute an empty string.
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors, "");
         assert!(
             text.is_empty(),
             "expected empty string when not recording, got {:?}",
@@ -571,7 +715,7 @@ mod tests {
         let mut ed = test_editor();
         ed.state.macro_recording = Some(('q', vec![]));
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors, "");
         assert_eq!(text.as_ref(), "[recording @q]");
     }
 
@@ -581,7 +725,7 @@ mod tests {
         let mut ed = test_editor();
         ed.state.macro_recording = Some(('3', vec![]));
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors);
+        let (text, _) = render_element(StatusElement::MacroRecording, &ed, &colors, "");
         assert_eq!(text.as_ref(), "[recording @3]");
     }
 
@@ -602,7 +746,7 @@ mod tests {
     fn line_ending_element_lf() {
         let ed = test_editor_with_text("hello\n");
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors);
+        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors, "");
         assert_eq!(text.as_ref(), "LF");
     }
 
@@ -610,7 +754,7 @@ mod tests {
     fn line_ending_element_crlf() {
         let ed = test_editor_with_text("hello\r\n");
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors);
+        let (text, _) = render_element(StatusElement::LineEnding, &ed, &colors, "");
         assert_eq!(text.as_ref(), "CRLF");
     }
 
@@ -621,7 +765,7 @@ mod tests {
         // Smoke test: current_dir() succeeds in a normal test run.
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::Cwd, &ed, &colors);
+        let (text, _) = render_element(StatusElement::Cwd, &ed, &colors, "");
         assert!(
             !text.is_empty(),
             "Cwd rendered empty; expected a path string"
@@ -634,7 +778,7 @@ mod tests {
     fn language_element_empty_when_none() {
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::Language, &ed, &colors);
+        let (text, _) = render_element(StatusElement::Language, &ed, &colors, "");
         assert!(
             text.is_empty(),
             "expected empty string for undetected language, got {:?}",
@@ -647,7 +791,7 @@ mod tests {
         let mut ed = test_editor();
         ed.doc_mut().language = Some("rust".to_string());
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::Language, &ed, &colors);
+        let (text, _) = render_element(StatusElement::Language, &ed, &colors, "");
         assert_eq!(text.as_ref(), "[rust]");
     }
 
@@ -657,7 +801,7 @@ mod tests {
     fn readonly_element_empty_for_normal_buffer() {
         let ed = test_editor();
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors);
+        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors, "");
         assert!(text.is_empty(), "expected empty for writable buffer, got {text:?}");
     }
 
@@ -670,7 +814,7 @@ mod tests {
         );
         let ed = crate::editor::Editor::for_testing(buf);
         let colors = crate::ui::theme::EditorColors::default();
-        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors);
+        let (text, _) = render_element(StatusElement::ReadOnly, &ed, &colors, "");
         assert_eq!(text.as_ref(), "[RO]");
     }
 
@@ -686,5 +830,114 @@ mod tests {
         let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
         // Should not panic and should produce a value ≤ left_end (saturated to 0 at best).
         assert!(center_x <= left_end);
+    }
+
+    // ── shorten_path_to_width ─────────────────────────────────────────────────
+
+    #[test]
+    fn shorten_path_fits_unchanged() {
+        // Path that already fits — returned verbatim.
+        let path = "~/dev/foo.txt";
+        let result = shorten_path_to_width(path, 50);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn shorten_path_exactly_at_limit_is_unchanged() {
+        let path = "~/foo/bar.txt"; // width = 13
+        let result = shorten_path_to_width(path, 13);
+        assert_eq!(result, path, "path at exact limit should not be shortened");
+    }
+
+    #[test]
+    fn shorten_path_abbreviates_first_dir() {
+        // "~/foo/bar/baz.txt" → "~/f/bar/baz.txt" when narrowed enough.
+        let path = "~/foo/bar/baz.txt";
+        // Full width = 17. At 15 we expect first dir abbreviated.
+        // Independent oracle: "~/f/bar/baz.txt" = 15 chars = 15 cols.
+        let result = shorten_path_to_width(path, 15);
+        assert_eq!(result, "~/f/bar/baz.txt");
+    }
+
+    #[test]
+    fn shorten_path_abbreviates_multiple_dirs() {
+        // "~/foo/bar/baz.txt" → "~/f/b/baz.txt" when even narrower.
+        let path = "~/foo/bar/baz.txt";
+        // "~/f/b/baz.txt" = 13 cols.
+        let result = shorten_path_to_width(path, 13);
+        assert_eq!(result, "~/f/b/baz.txt");
+    }
+
+    #[test]
+    fn shorten_path_abbreviation_stops_early_when_it_fits() {
+        // Should abbreviate minimally — stop as soon as it fits.
+        // "~/foo/bar/baz.txt" = 17.  At budget 16: first dir abbreviated →
+        // "~/f/bar/baz.txt" = 15 ≤ 16 → done (second dir NOT abbreviated).
+        let path = "~/foo/bar/baz.txt";
+        let result = shorten_path_to_width(path, 16);
+        assert_eq!(result, "~/f/bar/baz.txt");
+    }
+
+    #[test]
+    fn shorten_path_ellipsis_on_very_narrow() {
+        // When even all dirs abbreviated still too wide, truncate filename.
+        // "~/foo/bar/baz.txt" fully abbreviated dirs = "~/f/b/baz.txt" = 13.
+        // At budget 10: "~/f/b/" (6) + "…" (1) = 7; filename available = 3.
+        // "baz" = 3, so result = "~/f/b/baz…".
+        let path = "~/foo/bar/baz.txt";
+        let result = shorten_path_to_width(path, 10);
+        assert_eq!(result, "~/f/b/baz…");
+    }
+
+    #[test]
+    fn shorten_path_zero_budget_returns_empty() {
+        // Fail oracle: if budget logic doesn't check for 0, could produce garbage.
+        let result = shorten_path_to_width("~/foo/bar.txt", 0);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn shorten_path_no_dirs_abbreviates_only_filename() {
+        // Flat filename with no directory component — only ellipsis can help.
+        // "readme.txt" = 10. At budget 6: need to truncate. "readm" (5) + "…" (1) = 6.
+        let result = shorten_path_to_width("readme.txt", 6);
+        assert_eq!(result, "readm…");
+    }
+
+    #[test]
+    fn shorten_path_tilde_alone_not_abbreviated() {
+        // "~" is a 1-grapheme component and must not be shortened further.
+        let path = "~/very-long-filename.txt";
+        // All dirs abbreviated: "~" stays "~", filename gets truncated if needed.
+        // Width of "~/very-long-filename.txt" = 24. At budget 10:
+        // dirs fully abbreviated → still "~/very-long-filename.txt" (~ is the only dir)
+        // Truncate filename to fit budget 10: "~/…" prefix = 3; available = 7.
+        // "very-lon" = 8 > 7, "very-lo" = 7 → result = "~/very-lo…"
+        let result = shorten_path_to_width(path, 10);
+        assert_eq!(result, "~/very-lo…");
+    }
+
+    #[test]
+    fn shorten_path_unicode_dir_name() {
+        // A CJK dir name (each char = 2 display cols). "中文" = 4 cols.
+        // Path: "/中文/foo/bar.txt". Full width = 1+4+1+3+1+7 = 17.
+        // At budget 13: abbreviate /中文/ to its first grapheme → "/中/foo/bar.txt"
+        // = 1 + 2 + 1 + 3 + 1 + 7 = 15. Still too wide.
+        // Abbreviate /foo/ → "/中/f/bar.txt" = 1+2+1+1+1+7 = 13. Fits.
+        let path = "/中文/foo/bar.txt";
+        let result = shorten_path_to_width(path, 13);
+        assert_eq!(result, "/中/f/bar.txt");
+    }
+
+    #[test]
+    fn shorten_path_actually_abbreviates_when_too_wide() {
+        // Flip-a-condition check: path would fail if we just returned input.
+        let path = "~/aaaa/bbbb/cccc.txt"; // 20 cols
+        let result = shorten_path_to_width(path, 15);
+        assert_ne!(result, path, "path was not shortened when it should have been");
+        assert!(
+            unicode_width::UnicodeWidthStr::width(result.as_str()) <= 15,
+            "shortened path {result:?} exceeds budget of 15 cols"
+        );
     }
 }

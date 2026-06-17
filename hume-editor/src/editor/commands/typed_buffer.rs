@@ -36,6 +36,7 @@ pub fn typed_edit(
         }
 
         let path = Path::new(expanded.as_ref());
+        let display = hume_platform::path::absolute_unresolved(path, &ed.state.cwd);
         let canonical = hume_platform::fs::canonicalize(path)
             .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let (bid, is_new) = ed
@@ -48,21 +49,25 @@ pub fn typed_edit(
                 .unwrap_or(path_str)
                 .to_string();
             ed.switch_to_buffer_with_jump(bid);
+            ed.doc_mut().set_display_path(Some(display));
             ed.report(Severity::Info, format!("Opened {name}"));
         } else if bid != ed.focused_buffer_id() {
             ed.switch_to_buffer_with_jump(bid);
         }
         Ok(())
     } else {
-        // Reload current file.
+        // Reload current file. Preserve the display_path across the reload (the fresh
+        // Buffer from from_file has None, since from_file only knows the canonical path).
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
             return Err(CommandError::new("no file name"));
         };
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
-        let doc = crate::editor::buffer::Buffer::from_file(&path)
+        let saved_display = ed.doc().display_path().map(Path::to_path_buf);
+        let mut doc = crate::editor::buffer::Buffer::from_file(&path)
             .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
+        doc.set_display_path(saved_display);
         let id = ed.focused_buffer_id();
         ed.reload_buffer_in_place(id, doc);
         let name = path

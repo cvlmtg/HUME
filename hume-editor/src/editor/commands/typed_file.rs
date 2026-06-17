@@ -212,6 +212,11 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             // so `:w relpath` is stable regardless of how the process cwd drifts.
             if p.is_relative() { ed.state.cwd.join(p) } else { p.to_owned() }
         };
+        // Lexically-normalized absolute path without symlink resolution, recorded for
+        // the FilePath statusline element so it shows the user-typed path, not the
+        // canonicalized one.  `normalize_lexical` is used here because `path` was
+        // already made absolute above (via cwd.join or identity).
+        let display_path = hume_platform::path::normalize_lexical(&path);
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
         let result = match hume_platform::io::read_file_meta(&path) {
@@ -227,6 +232,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // the write dumps content to disk but the buffer itself is unaffected.
                 if !ed.doc().is_synthetic() {
                     ed.doc_mut().set_path(Some(meta.resolved_path().to_path_buf()));
+                    ed.doc_mut().set_display_path(Some(display_path));
                     ed.doc_mut().file_meta = Some(meta);
                 }
                 ed.doc_mut().mark_saved();

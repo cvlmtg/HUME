@@ -35,6 +35,11 @@ pub(crate) struct Buffer {
     saved_revision: RevisionId,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
+    /// Absolute path as supplied by the user (symlinks NOT resolved). Display-only;
+    /// `path` is the canonical identity for dedup and I/O. `None` when the buffer
+    /// was not opened via a user-typed path (scratch, synthetic, startup arg without
+    /// recording). `FilePath` statusline element falls back to `path` when absent.
+    pub(super) display_path: Option<PathBuf>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
     pub(crate) file_meta: Option<FileMeta>,
@@ -85,6 +90,7 @@ impl Buffer {
             history,
             saved_revision,
             path: None,
+            display_path: None,
             file_meta: None,
             search_pattern: None,
             search_matches: SearchMatches::default(),
@@ -187,6 +193,18 @@ impl Buffer {
     /// Canonical backing-file path, or `None` for scratch buffers.
     pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    /// Set the display path (user-supplied, symlinks unresolved). Pass `None` to clear.
+    pub(crate) fn set_display_path(&mut self, path: Option<PathBuf>) {
+        self.display_path = path;
+    }
+
+    /// Absolute path as supplied by the user (symlinks NOT resolved), or `None` when
+    /// the buffer was not opened via a typed path. The `FilePath` statusline element
+    /// falls back to `self.path()` when this returns `None`.
+    pub(crate) fn display_path(&self) -> Option<&Path> {
+        self.display_path.as_deref()
     }
 
     /// First line of buffer content, capped at 64 bytes, stripped of trailing newlines.

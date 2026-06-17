@@ -59,9 +59,13 @@ impl Editor {
     fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
         let lossy = path.to_string_lossy();
         let expanded = hume_platform::path::expand(&lossy);
-        let canonical = hume_platform::fs::canonicalize(std::path::Path::new(expanded.as_ref()))?;
-        // open_or_dedup handles dedup internally; it does not switch focus.
-        self.open_or_dedup(&canonical)?;
+        let expanded_path = std::path::Path::new(expanded.as_ref());
+        let display = hume_platform::path::absolute_unresolved(expanded_path, &self.state.cwd);
+        let canonical = hume_platform::fs::canonicalize(expanded_path)?;
+        let (bid, is_new) = self.open_or_dedup(&canonical)?;
+        if is_new {
+            self.state.buffers.get_mut(bid).set_display_path(Some(display));
+        }
         Ok(())
     }
 

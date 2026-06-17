@@ -10,10 +10,20 @@
 //!
 //! ```scheme
 //! (configure-statusline!
-//!   '("Position" "FileName" "DirtyIndicator")  ; left section
-//!   '()                                         ; center section (empty)
+//!   '("Position" "FileName" "FilePath" "DirtyIndicator")  ; left section
+//!   '()                                                    ; center section (empty)
 //!   '("MacroRecording" "SearchMatches" "Separator" "Mode"))  ; right section
 //! ```
+//!
+//! Valid element names: `Cwd`, `DirtyIndicator`, `FilePath`, `FileName`,
+//! `KittyProtocol`, `Language`, `LineEnding`, `MacroRecording`, `MiniBuf`,
+//! `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Selections`, `Separator`.
+//!
+//! `FilePath` shows the full path to the focused file with the home prefix
+//! collapsed to `~`.  When the terminal row is too narrow the path is
+//! progressively shortened: leading directory components are abbreviated to
+//! their first character, and the filename is truncated with `…` as a last
+//! resort.  It renders as empty for scratch and synthetic buffers.
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;

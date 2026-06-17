@@ -66,10 +66,20 @@ impl Editor {
         use super::message_log::MessageLog;
         use super::clipboard;
 
-        let doc = match file_path {
+        let startup_cwd = std::env::current_dir().unwrap_or_default();
+        let mut doc = match file_path {
             Some(ref path) => Buffer::from_file(path)?,
             None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
         };
+        // Record the user-typed path (symlinks unresolved) for the FilePath statusline
+        // element. Buffer::from_file only stores the canonicalized path; we capture the
+        // original here before it is discarded.
+        if let Some(ref path) = file_path {
+            doc.set_display_path(Some(hume_platform::path::absolute_unresolved(
+                path,
+                &startup_cwd,
+            )));
+        }
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::ui::theme::build_default_theme();

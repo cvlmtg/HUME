@@ -306,6 +306,17 @@ pub fn has_dotdot(path: &Path) -> bool {
     path.components().any(|c| c == Component::ParentDir)
 }
 
+/// Make `typed` absolute by joining it against `cwd` when relative, then
+/// normalize `.` and `..` lexically without touching the filesystem.
+///
+/// Symlinks are intentionally **not** resolved — this is for display purposes
+/// where the user expects to see the path as they typed it (e.g. inside a
+/// symlinked project root).
+pub fn absolute_unresolved(typed: &Path, cwd: &Path) -> PathBuf {
+    let joined = if typed.is_relative() { cwd.join(typed) } else { typed.to_owned() };
+    normalize_lexical(&joined)
+}
+
 /// Normalize a path lexically (without filesystem access) by collapsing `.`
 /// and `..` components.
 ///
@@ -760,5 +771,42 @@ mod tests {
     #[test]
     fn is_safe_segment_plain_name_is_valid() {
         assert!(is_safe_segment("helix-surround"));
+    }
+
+    // ── absolute_unresolved ───────────────────────────────────────────────────
+
+    #[test]
+    fn absolute_unresolved_relative_joins_cwd() {
+        let cwd = PathBuf::from("/home/user/projects");
+        let result = absolute_unresolved(std::path::Path::new("foo/bar.txt"), &cwd);
+        assert_eq!(result, PathBuf::from("/home/user/projects/foo/bar.txt"));
+    }
+
+    #[test]
+    fn absolute_unresolved_absolute_is_unchanged() {
+        let cwd = PathBuf::from("/home/user/projects");
+        let result = absolute_unresolved(std::path::Path::new("/tmp/foo.txt"), &cwd);
+        assert_eq!(result, PathBuf::from("/tmp/foo.txt"));
+    }
+
+    #[test]
+    fn absolute_unresolved_collapses_dots() {
+        let cwd = PathBuf::from("/home/user");
+        // `./foo/../bar` → `/home/user/bar`
+        let result =
+            absolute_unresolved(std::path::Path::new("./foo/../bar.txt"), &cwd);
+        assert_eq!(result, PathBuf::from("/home/user/bar.txt"));
+    }
+
+    #[test]
+    fn absolute_unresolved_does_not_canonicalize_symlinks() {
+        // We can't make a symlink in a pure unit test, but we can verify that
+        // a directory name that looks like it could be a symlink (e.g. "link")
+        // is passed through unchanged — no fs access occurs.
+        let cwd = PathBuf::from("/real/path");
+        let result =
+            absolute_unresolved(std::path::Path::new("../symlink-dir/file.txt"), &cwd);
+        // `../` from `/real/path` → `/real` (lexical pop), then `symlink-dir/file.txt`
+        assert_eq!(result, PathBuf::from("/real/symlink-dir/file.txt"));
     }
 }
