@@ -82,8 +82,8 @@ fn star_on_cursor_expands_to_word() {
     assert_eq!(ed.state.mode, Mode::Normal);
     // Selection expanded to cover "hello".
     assert_eq!(state(&ed), "-[hello]> world\n");
-    // Pattern in search register is the escaped word.
-    assert_eq!(reg(&ed, 's'), vec!["hello"]);
+    // Pattern in search register is the word with whole-word boundaries.
+    assert_eq!(reg(&ed, 's'), vec![r"\bhello\b"]);
     // Search direction set to forward.
     assert_eq!(ed.state.search.direction, SearchDirection::Forward);
     assert!(ed.search_pattern().is_some());
@@ -96,7 +96,8 @@ fn star_on_selection_uses_selected_text() {
     ed.handle_key(key('*'));
     // Selection unchanged (non-cursor, no expansion).
     assert_eq!(state(&ed), "a-[b c]>d\n");
-    assert_eq!(reg(&ed, 's'), vec!["b c"]);
+    // Edges are both Word-class → whole-word boundaries applied.
+    assert_eq!(reg(&ed, 's'), vec![r"\bb c\b"]);
 }
 
 /// `*` on a `\n` cursor is a noop — no word to search for.
@@ -128,5 +129,58 @@ fn star_escapes_metacharacters() {
     ed.set_current_selections(sels);
 
     ed.handle_key(key('*'));
-    assert_eq!(reg(&ed, 's'), vec!["foo\\.bar"]);
+    // Edges are both Word-class (f…r), so whole-word boundaries are applied.
+    assert_eq!(reg(&ed, 's'), vec![r"\bfoo\.bar\b"]);
+}
+
+/// `*` on a word matches whole words only — the `as` in `"last"` must not match.
+#[test]
+fn star_whole_word_skips_substring_matches() {
+    // Buffer: "as last\n". Cursor on 'a' (position 0).
+    let mut ed = editor_from("-[a]>s last\n");
+    ed.handle_key(key('*'));
+
+    assert_eq!(reg(&ed, 's'), vec![r"\bas\b"], "register should be whole-word pattern");
+
+    // The pattern must match standalone "as" (position 0) but NOT the "as"
+    // inside "last" (positions 4-5). Expected matches: exactly one, at char 0.
+    let sp = ed.search_pattern().expect("search pattern must be set");
+    let buf = ed.doc().text();
+    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    assert_eq!(matches, vec![(0, 1)], "only standalone 'as' must match");
+}
+
+/// `*` on a punctuation run adds no word boundaries (regex \\b is meaningless there).
+#[test]
+fn star_punctuation_run_stays_literal() {
+    // Buffer: "a -> b\n". Collapsed cursor on '-' (position 2).
+    let mut ed = editor_from("-[a]>b\n");
+    let buf = hume_editing::text::Text::from("a -> b\n");
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(2),
+    );
+    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('*'));
+    let r = reg(&ed, 's');
+    // '-' and '>' are both Punctuation — no \b boundaries should be added.
+    assert_eq!(r, vec!["->"]);
+}
+
+/// `*` on an explicit selection ending in punctuation adds no word boundaries.
+#[test]
+fn star_selection_trailing_punctuation_stays_literal() {
+    // Buffer: "foo. bar\n". Select "foo." (positions 0-3 inclusive).
+    let mut ed = editor_from("-[a]>b\n");
+    let buf = hume_editing::text::Text::from("foo. bar\n");
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::new(0, 3),
+    );
+    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('*'));
+    // Last edge is '.' (Punctuation) → literal match, no \b.
+    assert_eq!(reg(&ed, 's'), vec![r"foo\."]);
 }

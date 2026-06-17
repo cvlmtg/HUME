@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hume_editing::grapheme::next_grapheme_boundary;
+use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use super::super::search_state::SearchPattern;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::word::{CharClass, classify_char, is_word_boundary};
@@ -318,44 +318,63 @@ pub fn cmd_use_selection_as_search(
     let primary = current_selections(state, view).primary();
 
     // If cursor (1-char selection), expand to inner word first.
-    let (text, new_sel): (String, Option<Selection>) = if primary.is_collapsed() {
-        // Noop on \n — no word to search for (matches Vim/Helix behaviour).
-        // inner_word_impl would otherwise expand the cursor to the adjacent \n
-        // run and set a useless newline regex.
-        if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
-            return Ok(());
-        }
-        let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
-            return Ok(());
+    let (text, start, end_incl, new_sel): (String, usize, usize, Option<Selection>) =
+        if primary.is_collapsed() {
+            // Noop on \n — no word to search for (matches Vim/Helix behaviour).
+            // inner_word_impl would otherwise expand the cursor to the adjacent \n
+            // run and set a useless newline regex.
+            if classify_char(buf.char_at(primary.head()).unwrap_or('\n')) == CharClass::Eol {
+                return Ok(());
+            }
+            let Some((start, end)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
+                return Ok(());
+            };
+            let word_text = buf.slice(start..end + 1).to_string();
+            (word_text, start, end, Some(Selection::new(start, end)))
+        } else {
+            let start = primary.start();
+            let end_incl = primary.end_inclusive(buf);
+            let text = buf.slice(start..end_incl + 1).to_string();
+            (text, start, end_incl, None)
         };
-        let word_text = buf.slice(start..end + 1).to_string();
-        (word_text, Some(Selection::new(start, end)))
-    } else {
-        let text = buf
-            .slice(primary.start()..primary.end_inclusive(buf) + 1)
-            .to_string();
-        (text, None)
-    };
 
     if text.is_empty() {
         return Ok(());
     }
+
+    // Wrap in `\b…\b` when both edges are Word-class characters, matching Vim's
+    // whole-word `*` behaviour. Classifying via grapheme bases (not raw chars) keeps
+    // combining sequences (e.g. e + U+0301) correct: prev_grapheme_boundary gives
+    // the start of the final grapheme so we classify its base codepoint, not a
+    // combining mark. Punctuation runs and mixed-class selections stay literal.
+    //
+    // Computed here (before set_primary_selection) so the immutable `buf` borrow
+    // ends before we mutably borrow state.
+    let first_class = classify_char(buf.char_at(start).unwrap_or('\n'));
+    let last_base = prev_grapheme_boundary(buf, end_incl + 1);
+    let last_class = classify_char(buf.char_at(last_base).unwrap_or('\n'));
+    let whole_word = first_class == CharClass::Word && last_class == CharClass::Word;
 
     if let Some(sel) = new_sel {
         set_primary_selection(state, view, sel);
     }
 
     let escaped = escape_regex(&text);
-    let Some(regex) = compile_search_regex(&escaped) else {
+    let pattern = if whole_word {
+        format!(r"\b{escaped}\b")
+    } else {
+        escaped
+    };
+    let Some(regex) = compile_search_regex(&pattern) else {
         return Ok(());
     };
 
-    state.registers.write_text(SEARCH_REGISTER, vec![escaped.clone()]);
+    state.registers.write_text(SEARCH_REGISTER, vec![pattern.clone()]);
     state.search.direction = SearchDirection::Forward;
     let bid = focused_buffer_id(state, view);
     state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
         regex: Arc::new(regex),
-        pattern_str: escaped,
+        pattern_str: pattern,
     });
     Ok(())
 }
