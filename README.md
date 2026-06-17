@@ -8,7 +8,19 @@ I have written this editor for my own use, and release it without expectation. I
 
 ---
 
-This project is built for the joy of building, guided by curiosity rather than roadmap. There is no expectation that it will ever reach production, but feel free to try it out. Use with caution.
+**The pragmatic modal editor.**
+
+Zero friction, maximum output. HUME is built on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
+
+This project is driven by curiosity and the pure joy of hacking, not by deadlines. It is shared as-is for anyone who wants to explore a different pragmatic approach. Feel free to try it out, and expect a few rough edges.
+
+## Why try it
+
+- **Less typing for what you do most.** Selections come first, so acting on text is short and direct.
+- **Paste that does the obvious thing.** `p` reaches for what you most likely meant.
+- **Batteries included.** Plugins and language support work out of the box — no extra tooling to set up.
+- **Comfortable with real text.** Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
+- **Usable immediately, yours to shape.** Sensible defaults on day one; customize everything in a single language when you're ready.
 
 ---
 
