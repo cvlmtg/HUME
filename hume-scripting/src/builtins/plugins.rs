@@ -371,7 +371,10 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
         steel::stop!(Generic =>
             "plugin path contains '\"' — cannot embed in require: {}", path.display());
     }
-    let require_program = format!("(require \"{abs_str}\")");
+    // Escape backslashes so Windows paths (e.g. `C:\Users\…`) survive
+    // embedding inside a Steel string literal — `\U` etc. are invalid escapes.
+    let escaped = abs_str.replace('\\', "\\\\");
+    let require_program = format!("(require \"{escaped}\")");
 
     ctx.registries.lazy_registry
         .plugins
@@ -853,6 +856,58 @@ mod tests {
         assert!(
             host.cmd_owners_for_test().contains_key("y"),
             "unrelated cmd_owner 'y' must not be removed"
+        );
+    }
+
+    // ── Windows path escaping ────────────────────────────────────────────────
+
+    /// `%begin-lazy-activation` must escape backslashes in the plugin path so
+    /// a Windows-style path (e.g. `C:\Users\x\plugin.scm`) survives embedding
+    /// inside a Steel string literal without producing an invalid-escape error.
+    ///
+    /// This test inserts a synthetic backslash-bearing path without creating a
+    /// real file; it checks only the returned require-string by comparing against
+    /// the hand-computed expected value via Steel's `equal?`.
+    ///
+    /// Fail oracle: remove the `replace('\\', "\\\\")` call from
+    /// `begin_lazy_activation` → the returned string is
+    /// `(require "C:\Users\x\plugin.scm")` (raw backslashes) while the expected
+    /// literal is `(require "C:\\Users\\x\\plugin.scm")` → `equal?` is `#f` →
+    /// `error` fires → `eval_source` returns `Err` → `unwrap` panics.
+    #[test]
+    fn begin_lazy_activation_escapes_backslashes_in_path() {
+        use std::path::PathBuf;
+        use crate::{ScriptingHost, null_host::NullHost};
+
+        let id = PluginId::parse("core:winpath").unwrap();
+        let mut host = ScriptingHost::new();
+        host.registries.lazy_registry.plugins.insert(
+            id.clone(),
+            PluginState::Declared {
+                path: PathBuf::from(r"C:\Users\x\plugin.scm"),
+            },
+        );
+
+        // Oracle: each `\` in the path is doubled by the fix, so the Steel string
+        // value held in `__result` is:
+        //   (require "C:\\Users\\x\\plugin.scm")
+        // To express that as a Steel string literal we double every `\` again:
+        //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
+        // In a Rust raw string (r#"…"#) there is no further Rust escaping.
+        let program = r#"
+(define __result (%begin-lazy-activation "core:winpath"))
+(when (not (equal? __result "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"))
+  (error (string-append "backslash escaping wrong; got: " __result)))
+"#;
+        host.eval_source(program, &mut NullHost)
+            .expect("backslashes in path must be doubled for Steel string embedding");
+
+        assert!(
+            matches!(
+                host.registries.lazy_registry.plugins.get(&id),
+                Some(PluginState::Loading)
+            ),
+            "plugin must be Loading after %begin-lazy-activation"
         );
     }
 }
