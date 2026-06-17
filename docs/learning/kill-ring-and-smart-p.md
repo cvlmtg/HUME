@@ -128,6 +128,16 @@ model:
 pressing `[` and reach the oldest entry, further presses do nothing. Clamping
 makes the boundary apparent; wrapping would hide it.
 
+**Cycling can't return to a clipboard paste.** When the session was opened by a
+clipboard paste — bare `p` with no preceding delete or change — the clipboard
+text is the *opener*, not a ring entry. The first `[` steps into the ring at
+its head; from there `[` and `]` move among ring entries only. Because the
+clipboard value has no place in the ring, `]` clamps at the ring head and can
+never step back out to the original clipboard paste. To paste the clipboard
+again, start a fresh paste with the explicit clipboard register (`"cp`). This
+falls out of the model directly: the cycle position is a position within the
+ring's history, and the clipboard lives outside that history.
+
 **`[` and `]` without an open session are noops.** To cycle, you must first
 paste with `p` or `P`.
 
