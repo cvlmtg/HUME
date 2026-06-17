@@ -16,10 +16,9 @@
 //! | [`with_data_plugins`]         | `shell.rs` git/curl operations    |
 //! | [`with_data_grammars`]        | `shell.rs`, `grammar.rs`          |
 //! | [`with_data_grammars_or_subpath`] | `grammar.rs`                  |
-//! | [`has_dotdot`]                | `shell.rs`, `grammar.rs`, `fs.rs` |
 
 use std::cell::RefCell;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use steel::rerrs::{ErrorKind, SteelErr};
 
@@ -46,39 +45,6 @@ struct ScriptDirs {
 
 thread_local! {
     static SCRIPT_DIRS: RefCell<Option<ScriptDirs>> = const { RefCell::new(None) };
-}
-
-// ── UNC prefix stripping ──────────────────────────────────────────────────────
-
-/// Strip the `\\?\` extended-length prefix from a Windows path so that the
-/// result is a plain drive-letter path (e.g. `C:\Users\…\hume`).
-///
-/// Plain drive paths accept forward slashes from Scheme's `string-append`;
-/// `\\?\`-prefixed paths go through the NT object manager directly and are
-/// strict about backslashes.  Scheme plugins build paths via `(path-join …)`
-/// which uses the native separator, but the display form must be prefix-free
-/// so that even old-style string concatenation doesn't produce malformed paths.
-///
-/// Only strips verbatim drive prefixes (`\\?\C:\…`).  Verbatim UNC paths
-/// (`\\?\UNC\…`) are left unchanged; they are rare and the `\\` prefix they
-/// collapse to is already a valid UNC path.
-///
-/// On non-Windows targets this is a no-op.
-#[cfg(windows)]
-fn strip_unc_prefix(p: PathBuf) -> PathBuf {
-    const VERBATIM: &str = r"\\?\";
-    match p.to_str() {
-        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
-            PathBuf::from(&s[VERBATIM.len()..])
-        }
-        _ => p,
-    }
-}
-
-#[cfg(not(windows))]
-#[inline]
-fn strip_unc_prefix(p: PathBuf) -> PathBuf {
-    p
 }
 
 /// Initialize the directory TLS.  Must be called exactly once during
@@ -115,12 +81,12 @@ pub fn init_dirs(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) {
         data_dir.map(|d| hume_platform::fs::canonicalize(&d).unwrap_or(d));
     // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
     // segments on Windows without producing malformed extended-length paths.
-    let data_dir_display = canonical_data.map(strip_unc_prefix);
+    let data_dir_display = canonical_data.map(hume_platform::path::strip_unc_prefix);
 
     let canonical_runtime = runtime_dir.and_then(|rt| hume_platform::fs::canonicalize(&rt).ok());
     let runtime_dir_display = canonical_runtime
         .as_ref()
-        .map(|rt| strip_unc_prefix(rt.clone()));
+        .map(|rt| hume_platform::path::strip_unc_prefix(rt.clone()));
     let runtime_plugins = canonical_runtime
         .as_ref()
         .and_then(|rt| hume_platform::fs::canonicalize(&rt.join("plugins")).ok());
@@ -183,19 +149,13 @@ pub(crate) fn with_data_grammars<R>(f: impl FnOnce(&Path) -> R) -> Result<R, Ste
     })
 }
 
-/// Call `f` with `<data>/grammars/<seg>` where `seg` must be a single Normal
+/// Call `f` with `<data>/grammars/<seg>` where `seg` must be a safe, single
 /// path component (no `..`, no `.`, no separators).
 pub(crate) fn with_data_grammars_or_subpath<R>(
     seg: &str,
     f: impl FnOnce(&Path) -> R,
 ) -> Result<R, SteelErr> {
-    let seg_path = std::path::Path::new(seg);
-    let mut comps = seg_path.components();
-    let valid = matches!(
-        (comps.next(), comps.next()),
-        (Some(Component::Normal(_)), None)
-    );
-    if !valid {
+    if !hume_platform::path::is_safe_segment(seg) {
         return Err(SteelErr::new(
             ErrorKind::Generic,
             format!("invalid path segment '{seg}': must be a single normal component (no '..' / '.' / separators)"),
@@ -239,34 +199,10 @@ pub(crate) fn is_under_read_sandbox(canonical: &Path) -> bool {
         })
 }
 
-/// Returns `true` if `path` contains any `..` (ParentDir) components.
-///
-/// Used for write-path ops where the target may not exist yet — we cannot
-/// call `canonicalize` on a non-existent path, so we reject `..` components
-/// explicitly before the `starts_with` prefix check.
-pub(crate) fn has_dotdot(path: &Path) -> bool {
-    path.components().any(|c| c == Component::ParentDir)
-}
-
-/// Normalize a path lexically (without filesystem access) by collapsing `.`
-/// and `..` components.
-///
-/// **Not a security substitute for `canonicalize`** (symlinks are not
-/// resolved).  Safe to use only when combined with an explicit `..`-rejection
-/// check via [`has_dotdot`].
-pub(crate) fn normalize_lexical(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    out
-}
+// Thin re-exports so crate-internal callers resolve without import churn until
+// the call sites are updated in a follow-on step.
+pub(crate) use hume_platform::path::has_dotdot;
+pub(crate) use hume_platform::path::normalize_lexical;
 
 /// Canonicalize the deepest existing ancestor of `path`, then rejoin any
 /// non-existing suffix components.
@@ -311,60 +247,6 @@ mod tests {
         assert!(data_dir.join("plugins").is_dir());
         assert!(data_dir.join("grammars").is_dir());
         assert!(data_dir.join("grammars/sources").is_dir());
-    }
-
-    // ── has_dotdot ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn has_dotdot_detects_bare_parent() {
-        assert!(has_dotdot(Path::new("..")));
-    }
-
-    #[test]
-    fn has_dotdot_detects_mid_path_parent() {
-        assert!(has_dotdot(Path::new("foo/../bar")));
-    }
-
-    #[test]
-    fn has_dotdot_does_not_flag_cur_dir() {
-        // "." is CurDir, not ParentDir — has_dotdot only guards against "..".
-        assert!(!has_dotdot(Path::new(".")));
-        assert!(!has_dotdot(Path::new("foo/./bar")));
-    }
-
-    #[test]
-    fn has_dotdot_clean_path_is_false() {
-        assert!(!has_dotdot(Path::new("foo/bar/baz")));
-    }
-
-    // ── normalize_lexical ─────────────────────────────────────────────────────
-
-    #[test]
-    fn normalize_lexical_removes_cur_dir() {
-        assert_eq!(normalize_lexical(Path::new("a/./b")), PathBuf::from("a/b"));
-    }
-
-    #[test]
-    fn normalize_lexical_pops_parent_dir() {
-        assert_eq!(
-            normalize_lexical(Path::new("a/b/../c")),
-            PathBuf::from("a/c")
-        );
-    }
-
-    #[test]
-    fn normalize_lexical_pop_on_empty_is_safe() {
-        // Leading ".." when the output is empty: pop() on an empty PathBuf is a
-        // no-op, so the ".." is silently discarded and only "a" survives.
-        assert_eq!(normalize_lexical(Path::new("../a")), PathBuf::from("a"));
-    }
-
-    #[test]
-    fn normalize_lexical_normal_path_unchanged() {
-        assert_eq!(
-            normalize_lexical(Path::new("a/b/c")),
-            PathBuf::from("a/b/c")
-        );
     }
 
     // ── canonical_ancestor_join ───────────────────────────────────────────────

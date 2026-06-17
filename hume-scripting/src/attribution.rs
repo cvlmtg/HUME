@@ -34,12 +34,12 @@ impl PluginId {
     ///
     /// Segments must be non-empty, must not be `.` or `..`, and must not
     /// contain `/`, `\`, or NUL — ensuring the components are safe to use as
-    /// filesystem path segments.
+    /// filesystem path segments.  Validated by [`hume_platform::path::is_safe_segment`].
     ///
     /// Returns `Err(message)` for any other form.
     pub fn parse(name: &str) -> Result<Self, String> {
         if let Some(core_name) = name.strip_prefix("core:") {
-            if !is_valid_segment(core_name) {
+            if !hume_platform::path::is_safe_segment(core_name) {
                 return Err(format!(
                     "invalid plugin name '{name}': core name must be a non-empty path segment"
                 ));
@@ -52,7 +52,7 @@ impl PluginId {
                     "invalid plugin name '{name}': expected user/repo with exactly one slash"
                 ));
             }
-            if !is_valid_segment(user) || !is_valid_segment(repo) {
+            if !hume_platform::path::is_safe_segment(user) || !hume_platform::path::is_safe_segment(repo) {
                 return Err(format!(
                     "invalid plugin name '{name}': user and repo must be non-empty valid path segments"
                 ));
@@ -66,18 +66,6 @@ impl PluginId {
             "invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'"
         ))
     }
-}
-
-/// A valid path segment is non-empty, not `.` or `..`, and contains no
-/// `/`, `\`, or NUL.  Dots elsewhere are permitted (e.g. `v1.2`).
-///
-/// Used by [`PluginId::parse`] to validate each name component before storing
-/// it — ensures all stored strings are safe to use as filesystem path segments.
-fn is_valid_segment(s: &str) -> bool {
-    if s.is_empty() || s == "." || s == ".." {
-        return false;
-    }
-    s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
 }
 
 impl fmt::Display for PluginId {

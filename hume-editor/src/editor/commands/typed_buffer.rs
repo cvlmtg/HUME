@@ -36,7 +36,7 @@ pub fn typed_edit(
         }
 
         let path = Path::new(expanded.as_ref());
-        let canonical = std::fs::canonicalize(path)
+        let canonical = hume_platform::fs::canonicalize(path)
             .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let (bid, is_new) = ed
             .open_or_dedup(&canonical)
@@ -158,7 +158,7 @@ pub fn typed_buffer(
 /// cwd, removes `.`/`..`, no filesystem access). The fallback keeps buffers
 /// reachable after their backing file has been deleted.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    if let Ok(canonical) = std::fs::canonicalize(arg)
+    if let Ok(canonical) = hume_platform::fs::canonicalize(std::path::Path::new(arg))
         && let Some(bid) = ed.state.buffers.find_by_path(&canonical)
     {
         return Some(bid);

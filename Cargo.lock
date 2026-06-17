@@ -990,6 +990,7 @@ name = "hume-engine"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.11.0",
+ "hume-platform",
  "libloading",
  "ratatui",
  "ropey",

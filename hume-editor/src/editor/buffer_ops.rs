@@ -18,7 +18,7 @@ impl Editor {
     /// `self.state.cwd` and the process cwd so that relative paths in `:e` and
     /// subprocesses resolve consistently.
     pub(super) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
-        let canonical = std::fs::canonicalize(path)?;
+        let canonical = hume_platform::fs::canonicalize(path)?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,
@@ -59,7 +59,7 @@ impl Editor {
     fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
         let lossy = path.to_string_lossy();
         let expanded = hume_platform::path::expand(&lossy);
-        let canonical = std::fs::canonicalize(expanded.as_ref())?;
+        let canonical = hume_platform::fs::canonicalize(std::path::Path::new(expanded.as_ref()))?;
         // open_or_dedup handles dedup internally; it does not switch focus.
         self.open_or_dedup(&canonical)?;
         Ok(())

@@ -11,6 +11,7 @@
 //! `$VAR` / `${VAR}` on Unix, `%VAR%` on Windows.
 
 use std::borrow::Cow;
+use std::path::{Component, Path, PathBuf};
 
 // ── Path expansion ────────────────────────────────────────────────────────────
 
@@ -259,6 +260,88 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
         Some(i) => (&s[..=i], &s[i + 1..]),
         None => ("", s),
     }
+}
+
+// ── Windows UNC prefix ───────────────────────────────────────────────────────
+
+/// Strip the `\\?\` extended-length prefix from a Windows path so that the
+/// result is a plain drive-letter path (e.g. `C:\Users\…\hume`).
+///
+/// Plain drive paths accept forward slashes from Scheme's `string-append`;
+/// `\\?\`-prefixed paths go through the NT object manager directly and are
+/// strict about backslashes.  Scheme plugins build paths via `(path-join …)`
+/// which uses the native separator, but the display form must be prefix-free
+/// so that even old-style string concatenation doesn't produce malformed paths.
+///
+/// Only strips verbatim drive prefixes (`\\?\C:\…`).  Verbatim UNC paths
+/// (`\\?\UNC\…`) are left unchanged; they are rare and the `\\` prefix they
+/// collapse to is already a valid UNC path.
+///
+/// On non-Windows targets this is a no-op.
+#[cfg(windows)]
+pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
+    const VERBATIM: &str = r"\\?\";
+    match p.to_str() {
+        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
+            PathBuf::from(&s[VERBATIM.len()..])
+        }
+        _ => p,
+    }
+}
+
+#[cfg(not(windows))]
+#[inline]
+pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
+    p
+}
+
+// ── Path safety helpers ───────────────────────────────────────────────────────
+
+/// Returns `true` if `path` contains any `..` (`ParentDir`) components.
+///
+/// Used for write-path operations where the target may not yet exist — we
+/// cannot call `canonicalize` on a non-existent path, so `..` components are
+/// rejected explicitly before a `starts_with` prefix check.
+pub fn has_dotdot(path: &Path) -> bool {
+    path.components().any(|c| c == Component::ParentDir)
+}
+
+/// Normalize a path lexically (without filesystem access) by collapsing `.`
+/// and `..` components.
+///
+/// **Not a security substitute for `canonicalize`** (symlinks are not
+/// resolved).  Safe to use only when combined with an explicit `..`-rejection
+/// check via [`has_dotdot`].
+pub fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Returns `true` if `s` is a valid, safe filesystem path segment.
+///
+/// A valid segment is:
+/// - Non-empty
+/// - Not `.` or `..`
+/// - Contains no `/`, `\`, or NUL character
+///
+/// Dots elsewhere are permitted (e.g. `v1.2.3`).  The `\` rejection is
+/// cross-platform intentional: on Unix `\` is technically a valid filename
+/// character but is unsafe to use in portable paths.
+///
+/// Used to validate plugin-name components and path arguments before they are
+/// joined onto sandboxed base directories.
+pub fn is_safe_segment(s: &str) -> bool {
+    !s.is_empty() && s != "." && s != ".."
+        && s.chars().all(|c| c != '/' && c != '\\' && c != '\0')
 }
 
 #[cfg(test)]
@@ -581,5 +664,101 @@ mod tests {
             Some(PathBuf::from("/home/user"))
         });
         assert_eq!(got, "/home/userx/foo");
+    }
+
+    // ── has_dotdot ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn has_dotdot_detects_bare_parent() {
+        assert!(has_dotdot(Path::new("..")));
+    }
+
+    #[test]
+    fn has_dotdot_detects_mid_path_parent() {
+        assert!(has_dotdot(Path::new("foo/../bar")));
+    }
+
+    #[test]
+    fn has_dotdot_does_not_flag_cur_dir() {
+        assert!(!has_dotdot(Path::new(".")));
+        assert!(!has_dotdot(Path::new("foo/./bar")));
+    }
+
+    #[test]
+    fn has_dotdot_clean_path_is_false() {
+        assert!(!has_dotdot(Path::new("foo/bar/baz")));
+    }
+
+    // ── normalize_lexical ─────────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_lexical_removes_cur_dir() {
+        assert_eq!(normalize_lexical(Path::new("a/./b")), PathBuf::from("a/b"));
+    }
+
+    #[test]
+    fn normalize_lexical_pops_parent_dir() {
+        assert_eq!(
+            normalize_lexical(Path::new("a/b/../c")),
+            PathBuf::from("a/c")
+        );
+    }
+
+    #[test]
+    fn normalize_lexical_pop_on_empty_is_safe() {
+        // Leading ".." when the output is empty: pop() on an empty PathBuf is a
+        // no-op, so the ".." is silently discarded and only "a" survives.
+        assert_eq!(normalize_lexical(Path::new("../a")), PathBuf::from("a"));
+    }
+
+    #[test]
+    fn normalize_lexical_normal_path_unchanged() {
+        assert_eq!(
+            normalize_lexical(Path::new("a/b/c")),
+            PathBuf::from("a/b/c")
+        );
+    }
+
+    // ── is_safe_segment ───────────────────────────────────────────────────────
+
+    #[test]
+    fn is_safe_segment_empty_is_rejected() {
+        assert!(!is_safe_segment(""));
+    }
+
+    #[test]
+    fn is_safe_segment_dot_is_rejected() {
+        assert!(!is_safe_segment("."));
+    }
+
+    #[test]
+    fn is_safe_segment_dotdot_is_rejected() {
+        assert!(!is_safe_segment(".."));
+    }
+
+    #[test]
+    fn is_safe_segment_forward_slash_is_rejected() {
+        assert!(!is_safe_segment("a/b"));
+    }
+
+    #[test]
+    fn is_safe_segment_backslash_is_rejected() {
+        assert!(!is_safe_segment(r"a\b"));
+    }
+
+    #[test]
+    fn is_safe_segment_nul_is_rejected() {
+        assert!(!is_safe_segment("a\0b"));
+    }
+
+    #[test]
+    fn is_safe_segment_version_string_is_valid() {
+        // Dots within a segment are fine (e.g. "v1.2.3").
+        assert!(is_safe_segment("v1.2.3"));
+    }
+
+    #[test]
+    fn is_safe_segment_plain_name_is_valid() {
+        assert!(is_safe_segment("helix-surround"));
     }
 }
