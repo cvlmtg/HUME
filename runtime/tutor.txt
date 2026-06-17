@@ -60,11 +60,10 @@ act. Every lesson builds on this idea.
   whitespace divides WORDs).
 
   >> Try `w` on the line below and watch it step through each piece.
-     Then navigate back to the start of the line and try `W`:
+     Then navigate back to the start of the line with `b` and try `W`,
+     then navigate back once more with `B`.
 
   config.toml log-file backup.zip
-
-  `b` and `B` move in the opposite direction.
 
 1.3  LINE MOTION
 
@@ -73,20 +72,36 @@ act. Every lesson builds on this idea.
   $   or  End     go to end of line (last character)
 
   >> Navigate to the start and end of this intentionally long line:
+
   Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed eiusmod.
 
 1.4  JUMPING AROUND
 
   gg  go to the FIRST line of the buffer
-  ge  go to the LAST line of the buffer   (NOT  G  — that is not bound)
+  ge  go to the LAST line of the buffer
 
   {   jump to the previous blank line (paragraph start)
   }   jump to the next blank line (paragraph end)
 
   >> Press `ge` now to jump to the end of the tutor, then `gg` to
-     return to the top. Confirm you land on the title line.
+     return to the top, then press `Ctrl+o` twice to return here.
 
-1.5  COUNT PREFIXES
+1.5  THE JUMP LIST
+
+  Ctrl+o   jump backward through your movement history
+  Ctrl+i   jump forward through your movement history
+
+  Opening a file, jumping to search results, or switching buffers all
+  record an entry. Use `Ctrl+o` to retrace your steps — for instance,
+  to return from a tutor exercise to wherever you were before.
+
+  Some Ctrl key combinations — including `Ctrl+i` — require the Kitty
+  keyboard protocol to work correctly. Without it, the terminal cannot
+  distinguish `Ctrl+i` from Tab, so the forward-jump command will not
+  fire. To check whether the protocol is active, look for the cat
+  glyph (ᓚᘏᗢ) in the statusline.
+
+1.6  COUNT PREFIXES
 
   Prefix a motion with digits to repeat it:
 
@@ -94,9 +109,7 @@ act. Every lesson builds on this idea.
     5j   move five lines down
     2{   jump two paragraphs back
 
-  Counts work on motions, find/till (`3f.` finds the third dot),
-  search (`3n`), and the dot-repeat (`3.`). Counts apply to motions,
-  not edits.
+  Counts apply to motions, not edits.
 
   Note: `0` alone jumps to line start; with a count already pending,
   it becomes a digit (so `10w`, `20j`).
@@ -110,10 +123,11 @@ act. Every lesson builds on this idea.
      on `two`.
 
   ── Lesson 1 Summary ──────────────────────────────────────────────
-  h j k l    basic motion         gg / ge   first / last line
-  w / W      next word / WORD     0 ^ $     line start / end
-  b / B      prev word / WORD     { }       paragraph motion
-  3w / 5j    count + motion       3f. / 3n  count + find / search
+  h j k l    basic motion         gg / ge      first / last line
+  w / W      next word / WORD     0 ^ $        line start / end
+  b / B      prev word / WORD     { }          paragraph motion
+  3w / 5j    count + motion       3f. / 3n     count + find / search
+  Ctrl+o / Ctrl+i   jump backward / forward in movement history
   ──────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -179,7 +193,7 @@ system) and the KILL RING (internal to the editor).
 
   y   yank (copy) the selection to the clipboard and kill ring
   p   smart-paste after the selection
-  P   paste before the selection
+  P   smart-paste before the selection
 
 3.1  YANK AND PASTE
 
@@ -303,21 +317,21 @@ start inserting, each placing the cursor at a slightly different spot.
 
 5.1  FIND
 
-  f<char>   extend selection to include the next occurrence of <char>
-  F<char>   extend selection backward to include <char>
-  t<char>   extend selection to just BEFORE the next <char>
-  T<char>   extend selection to just BEFORE the previous <char>
+  f<char>   move the selection onto the next occurrence of <char>
+  F<char>   move backward onto the previous <char>
+  t<char>   move to just BEFORE the next <char>
+  T<char>   move to just AFTER the previous <char>
 
   These are single-key commands followed by one character. The selection
-  extends — it does not teleport the cursor independently.
+  lands on (or just before/after) the target — a fresh 1-char selection.
+  To select a range up to a char, use Extend mode (see Lesson 7.4).
 
-  >> Press `f.` (find dot) to extend the selection to the period in
-     this sentence. Then press `d` to delete everything you selected.
+  >> Press `f.` (find dot) to jump the selection onto the period in
+     this sentence. The selection shrinks to just the period.
 
-  Delete everything up to here. Keep this part.
+  Navigation example. Land on a period.
 
-  >> Press `t,` (till comma) to select up to (not including) the comma,
-     then `c` and type "CHANGED":
+  >> Press `t,` (till comma) to land just before the comma below:
 
   original text, keep the rest.
 
@@ -376,6 +390,10 @@ start inserting, each placing the cursor at a slightly different spot.
   >> Search for "needle" below using `/needle` Enter:
 
   There is a needle in this haystack needle and another needle here.
+
+  To clear the search highlights, press `Esc`. The highlights
+  disappear, but the pattern is remembered — pressing `n` or `N`
+  brings it back.
 
   >> Navigate onto the word `apple` below and press `*` to use it as
      the search pattern. Press `n` to jump to the next `apple`, then
@@ -471,27 +489,60 @@ covers how to create and manage them.
 
   Repeated `x` walks selection down through multiple lines.
 
-  >> Press `x` three times to select three consecutive lines below.
+  >> Navigate onto the first line of the exercise, press `x` to select
+     it, then press `Ctrl+x` twice to extend to all three lines.
      Then press `d` to delete all three at once:
 
   Line alpha — select and delete me.
   Line beta  — select and delete me.
   Line gamma — select and delete me.
 
-  >> Pressing `x` gives you a line selection; then `d` deletes the line.
-
 7.4  EXTEND MODE
 
-  e   toggle Extend mode (status bar shows  EXT )
+  e   toggle Extend mode (statusline shows  EXT )
 
   In Extend mode, every motion ADDS to the selection rather than
-  replacing it. Press `e` again to leave Extend mode.
+  replacing it. Press `e` again to leave Extend mode. Check the
+  bottom-right corner of the window — it shows the current mode
+  ( EXT  when active,  NOR  when not).
 
   >> Press `e` to enter Extend mode, then press `w` several times to
      grow the selection across multiple words. Press `d` to delete the
      entire extended selection, then `e` again to leave Extend mode:
 
   Extend: remove all of these words right here.
+
+  ONE-SHOT EXTEND WITH CTRL
+
+  You can extend the selection for a single motion without entering
+  Extend mode by holding Ctrl. Every motion supports it:
+
+  Ctrl+w     extend to the next word (parallel to `e` then `w`)
+  Ctrl+f<c>  extend forward to <char> (inclusive)
+  Ctrl+t<c>  extend forward to just before <char>
+  Ctrl+F<c>  extend backward to <char>
+  Ctrl+T<c>  extend backward to just after <char>
+
+  The idiomatic delete-to-char pattern:
+
+    Ctrl+f.   (extend the selection to the next period)
+    d         (delete the entire span)
+
+  NOTE: one-shot Ctrl extend requires the kitty keyboard protocol
+  (look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
+  Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
+
+  >> (Kitty) Press `Ctrl+w` a few times to grow the selection across
+     words below, then `d` to delete the span.
+  >> (Legacy) Press `e` then `w` repeatedly to the same effect.
+
+  grow this selection word by word then delete it
+
+  >> (Kitty) Press `Ctrl+f,` to extend the selection to the comma
+     below, then `d` to delete the selected span.
+  >> (Legacy) Press `e` then `f,` to the same effect.
+
+  Select everything up to this comma, then delete it.
 
 7.5  COLLAPSING AND PRUNING SELECTIONS
 
@@ -534,7 +585,7 @@ covers how to create and manage them.
   _   trim whitespace from the start and end of each selection
   S   split a selection that spans multiple lines into per-line pieces
 
-  >> Select the three lines below with `x` three times, then press
+  >> Select the three lines below with `Ctrl+x` three times, then press
      `S` to split into one cursor per line. With those three cursors
      active, press `_` to trim the trailing whitespace from each
      line at once:
@@ -549,6 +600,7 @@ covers how to create and manage them.
   ;           collapse to head          ,       keep primary only
   ( / )       cycle primary             C       copy on next line
   _           trim whitespace           S       split on newlines
+  Ctrl+w / Ctrl+f<c> / Ctrl+t<c>   one-shot extend (kitty only)
   ──────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -598,24 +650,12 @@ argument), then Enter. Many have short aliases.
   file's path and `#` expands to the alternate (previously focused)
   file's path. For example: `:e #` reopens the alternate buffer.
 
-8.4  THE JUMP LIST
-
-  Ctrl+o   jump backward in your movement history
-  Ctrl+i   jump forward
-
-  Opening a file, jumping to search results, or switching buffers all
-  record an entry. Use `Ctrl+o` to retrace your steps — for instance,
-  to return from a tutor exercise to wherever you were before.
-
-  If your terminal supports the Kitty keyboard protocol, `Ctrl+6` is
-  a shortcut to switch to the alternate buffer.
-
-8.5  OTHER USEFUL COMMANDS
+8.4  OTHER USEFUL COMMANDS
 
   :version  :ver    show the editor version
   :messages :mes    review the message and error log
   :theme <name>     load a theme (dark / light / ember / gruvbox)
-  :reload-config    reload  init.scm  without restarting
+  :reload-config    reload the editor configuration file without restarting
   :pwd              print the working directory
   :cd <path>        change the working directory
 
@@ -626,7 +666,6 @@ argument), then Enter. Many have short aliases.
   :q / :q!         close buffer / discard :ls         list buffers
   :qa / :qa!       quit all / force       :wq         save and quit
   :bn / :bp / :b   navigate buffers    :bd / :bd!  close buffer
-  Ctrl+o / Ctrl+i  jump backward / forward
   % = current file, # = alternate file in command args
   ──────────────────────────────────────────────────────────────────
 
@@ -670,12 +709,7 @@ SOFT WRAP
 
   :wrap   :toggle-soft-wrap   toggle line wrapping in the current pane
 
-WHERE TO GO FROM HERE
-
-  README.md     Overview and philosophy — worth one read.
-  ROADMAP.md    Design decisions and what is planned next.
-  :messages     Check warnings from your session.
-  :version      Confirm your build.
+CLOSING NOTE
 
   Thank you for reading. "What we call a mind is nothing but a heap
   or collection of different perceptions … It is a succession of
@@ -683,6 +717,6 @@ WHERE TO GO FROM HERE
   — D. Hume (paraphrased)
 
  =====================================================================
-  End of the HUME Tutor. Press `Ctrl+o` to jump back, or `:bd!` to
-  close this buffer.
+  End of the HUME Tutor. Press `gg` to jump back to the beginning,
+  or `:bd!` to close this buffer.
  =====================================================================
