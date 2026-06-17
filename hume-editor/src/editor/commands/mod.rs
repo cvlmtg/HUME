@@ -162,6 +162,10 @@ pub(super) fn dispatch_native(
     // Snapshot pending_char before dispatch — commands consume it via `.take()`.
     let char_arg = state.pending_char;
 
+    // Smart-p gate: capture mode before dispatch so the post-dispatch stamp
+    // (below) can tell whether this command ran inside an insert session.
+    let pre_mode = state.mode();
+
     // Jump list: pre-command snapshot for motions and explicit jump commands.
     let pre_jump = (is_jump || is_visual || is_motion).then(|| {
         let bid = focused_buffer_id(state, view);
@@ -265,8 +269,12 @@ pub(super) fn dispatch_native(
     }
 
     // Smart-p: update last_command so `p`/`P` knows whether to read the
-    // kill ring (after delete/change) or the clipboard.
-    state.last_command = Some(name);
+    // kill ring (after delete/change) or the clipboard. Skip while in Insert
+    // mode so the insert-session tail (exit-insert, in-insert navigation)
+    // doesn't clobber the change/delete marker that `p` reads.
+    if pre_mode != Mode::Insert {
+        state.last_command = Some(name);
+    }
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────

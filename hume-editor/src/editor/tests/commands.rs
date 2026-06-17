@@ -1194,6 +1194,32 @@ fn smart_p_dp_reads_ring() {
     );
 }
 
+/// `c` <text> Esc then `p` reads the kill ring, not the clipboard.
+///
+/// Regression: `exit-insert` (Esc) ran through `dispatch_native` and
+/// overwrote `last_command = "exit-insert"` ∉ `SMART_P_LAST_CMDS`, so
+/// smart-`p` fell through to the clipboard. Fix: stamp `last_command` only
+/// when `pre_mode != Mode::Insert`.
+///
+/// Fail oracle: revert the `pre_mode != Mode::Insert` gate in
+/// `commands/mod.rs` → `last_command` becomes "exit-insert" → `p` pastes
+/// "CLIP" → `contains('a')` fails.
+#[test]
+fn smart_p_after_change_reads_ring() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('c'));     // change 'a' → ring=["a"], enter Insert
+    ed.feed_key(key('x'));     // type replacement (doesn't touch last_command)
+    ed.feed_key(key_esc());    // exit-insert — must NOT clobber last_command
+    ed.feed_key(key('p'));     // smart-p → must read ring head ("a"), not "CLIP"
+    let text = ed.doc().text().to_string();
+    assert!(text.contains('a'), "p after change must paste ring content ('a')");
+    assert!(!text.contains("CLIP"), "p after change must not paste clipboard");
+}
+
 /// `d` then `j` (motion) then `p` reads from clipboard, not ring.
 /// Motion is NOT in `SMART_P_LAST_CMDS`, so `p` falls back to clipboard.
 #[test]
