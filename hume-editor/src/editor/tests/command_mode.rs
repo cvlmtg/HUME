@@ -269,18 +269,48 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
 }
 
 #[test]
-fn colon_q_real_buffer_with_editable_scratch_switches_not_quits() {
-    // An editable scratch buffer (no path, not read-only) is a "real" buffer —
-    // :q on a file buffer should switch to it rather than exit.
+fn colon_q_real_buffer_with_clean_scratch_quits() {
+    // An empty scratch buffer is disposable — :q on the last file buffer should
+    // exit rather than parking on the scratch.
+    // Validity: revert the predicate to `|| !is_read_only()` and this test fails
+    // (should_quit stays false).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
-    let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.open_buffer(crate::editor::buffer::Buffer::scratch());
     ed.switch_to_buffer_without_jump(file_buf);
 
     type_cmd(&mut ed, ":q");
 
-    assert!(!ed.state.should_quit, ":q must not exit when an editable scratch buffer remains");
-    assert_eq!(ed.focused_buffer_id(), scratch_id, "must switch to the scratch buffer");
+    assert!(ed.state.should_quit, ":q must exit when the only remaining buffer is an empty scratch");
+}
+
+#[test]
+fn colon_q_with_dirty_scratch_remaining_stays() {
+    // A scratch buffer with unsaved edits is worth preserving — :q on the file
+    // buffer must switch to the dirty scratch rather than discard it.
+    // Validity: drop the `|| buf.is_dirty()` clause and this test fails
+    // (should_quit becomes true, silently discarding the scratch content).
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let file_buf = ed.focused_buffer_id();
+    let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+
+    // Dirty the scratch by switching to it and typing into it.
+    ed.switch_to_buffer_without_jump(scratch_id);
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "scratch must be dirty");
+
+    ed.switch_to_buffer_without_jump(file_buf);
+
+    type_cmd(&mut ed, ":q");
+
+    assert!(!ed.state.should_quit, ":q must not exit when a dirty scratch remains");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        scratch_id,
+        ":q must switch to the dirty scratch buffer"
+    );
 }
 
 #[test]
@@ -334,9 +364,9 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
 #[test]
 fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     // :q! on a dirty file buffer must discard changes and close the buffer —
-    // not quit — when another real buffer is open.
+    // not quit — when another real (file-backed) buffer is open.
     // Validity: remove the `any_other_real` branch from typed_quit and this
-    // test fails (should_quit becomes true, discarding the scratch buffer).
+    // test fails (should_quit becomes true).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let dirty_buf = ed.focused_buffer_id();
 
@@ -346,8 +376,17 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     ed.handle_key(key_esc());
     assert!(ed.doc().is_dirty(), "buffer must be dirty before :q!");
 
-    // Open a second real buffer (editable scratch).
-    let scratch_id = ed.open_buffer(Buffer::scratch());
+    // Open a second real file-backed buffer.
+    let tmp2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp2.path(), "world\n").unwrap();
+    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
+    let mut buf2 = crate::editor::buffer::Buffer::new(
+        hume_editing::text::Text::from("world\n"),
+        SelectionSet::default(),
+    );
+    buf2.set_path(Some(tmp2.path().to_path_buf()));
+    buf2.file_meta = Some(meta2);
+    let other_buf = ed.open_buffer(buf2);
     ed.switch_to_buffer_without_jump(dirty_buf);
 
     type_cmd(&mut ed, ":q!");
@@ -355,7 +394,7 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     assert!(!ed.state.should_quit, ":q! must not quit when another real buffer remains");
     assert_eq!(
         ed.focused_buffer_id(),
-        scratch_id,
+        other_buf,
         ":q! must switch focus to the remaining real buffer"
     );
     assert_eq!(ed.state.buffers.len(), 1, "dirty buffer must be removed");

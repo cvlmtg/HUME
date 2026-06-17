@@ -14,13 +14,15 @@ pub fn typed_quit(
     }
 
     let current = ed.focused_buffer_id();
-    // "Real" = has a backing file OR is editable (a writable scratch buffer).
-    // Pure read-only view buffers like [messages] are ephemeral — not worth staying for.
+    // Stay only for a buffer worth returning to: a real editable file, or any
+    // buffer with unsaved edits (rescues a scratch the user has typed into).
+    // Empty scratch buffers and read-only views (e.g. [messages]) are disposable —
+    // :q exits rather than parking on them.
     let any_other_real = ed
         .state.buffers
         .iter()
         .filter(|(id, _)| *id != current)
-        .any(|(_, buf)| buf.path().is_some() || !buf.is_read_only());
+        .any(|(_, buf)| (buf.path().is_some() && !buf.is_read_only()) || buf.is_dirty());
 
     if !any_other_real {
         ed.state.should_quit = true;
