@@ -614,7 +614,7 @@ argument), then Enter. Many have short aliases.
 
   :w              save (write) the current buffer to its file
   :w <path>       save to a different path (save-as)
-  :q              close the current buffer; quit when it is the last open buffer
+  :q              close the current buffer; quit when no real file buffers remain
   :q!             close and discard unsaved changes
   :wq             save and quit
   :qa             quit the editor (refuses if any buffer is unsaved; use :qa! to force)
