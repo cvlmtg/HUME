@@ -12,7 +12,7 @@
 "ui.help" = { fg = "fg", bg = "surface" }
 "ui.selection" = { fg = "fg", bg = "bright_muted" }
 "ui.selection.primary" = { fg = "fg", bg = "plum" }
-"ui.selection.search" = { fg = "bg", bg = "gold" }
+"ui.selection.search" = { fg = "bg", bg = "ember" }
 "ui.cursor" = { fg = "fg", bg = "muted" }
 "ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
 "ui.cursor.select" = { bg = "plum" }
@@ -20,11 +20,11 @@
 "ui.cursorline.primary" = { bg = "surface" }
 "ui.cursorline.secondary" = { bg = "surface" }
 "ui.linenr" = { fg = "muted" }
-"ui.linenr.selected" = { fg = "gold" }
-"ui.statusline" = { fg = "bg", bg = "gold" }
+"ui.linenr.selected" = { fg = "ember" }
+"ui.statusline" = { fg = "bg", bg = "ember" }
 "ui.statusline.inactive" = { fg = "muted", bg = "bg" }
 "ui.statusline.separator" = { fg = "surface" }
-"ui.statusline.mode.normal" = { fg = "bg", bg = "gold" }
+"ui.statusline.mode.normal" = { fg = "bg", bg = "ember" }
 "ui.statusline.mode.insert" = { fg = "bg", bg = "plum" }
 "ui.statusline.mode.extend" = { fg = "bg", bg = "blue" }
 "ui.statusline.mode.search" = { fg = "bg", bg = "red" }
@@ -41,16 +41,16 @@
 "ui.virtual.inlay-hint.type" = { fg = "muted" }
 "ui.virtual.ruler" = { fg = "surface" }
 "ui.virtual.wrap" = { fg = "muted" }
-"ui.virtual.jump-label" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
+"ui.virtual.jump-label" = { fg = "bg", bg = "ember", modifiers = [ "bold" ] }
 "ui.gutter" = { bg = "bg" }
 "ui.gutter.selected" = { bg = "surface" }
 "diagnostic.error" = "red"
-"diagnostic.warning" = "gold"
+"diagnostic.warning" = "ember"
 "diagnostic.info" = "blue"
 "diagnostic.hint" = "green"
 "diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
 "error" = { fg = "red" }
-"warning" = { fg = "gold" }
+"warning" = { fg = "ember" }
 "info" = { fg = "blue" }
 "hint" = { fg = "green" }
 "diff.plus" = { fg = "green" }
@@ -59,12 +59,12 @@
 "diff.plus.gutter" = { fg = "green" }
 "diff.minus.gutter" = { fg = "red" }
 "diff.delta.gutter" = { fg = "blue" }
-"markup.heading" = { fg = "gold", modifiers = [ "bold" ] }
-"markup.heading.1" = { fg = "gold", modifiers = [ "bold" ] }
-"markup.heading.2" = { fg = "gold", modifiers = [ "bold" ] }
-"markup.heading.3" = { fg = "gold" }
-"markup.heading.4" = { fg = "gold" }
-"markup.heading.5" = { fg = "gold" }
+"markup.heading" = { fg = "ember", modifiers = [ "bold" ] }
+"markup.heading.1" = { fg = "ember", modifiers = [ "bold" ] }
+"markup.heading.2" = { fg = "ember", modifiers = [ "bold" ] }
+"markup.heading.3" = { fg = "ember" }
+"markup.heading.4" = { fg = "ember" }
+"markup.heading.5" = { fg = "ember" }
 "markup.heading.6" = { fg = "muted" }
 "markup.heading.marker" = { fg = "muted" }
 "markup.bold" = { modifiers = [ "bold" ] }
@@ -78,19 +78,19 @@
 "markup.raw" = { fg = "plum" }
 "markup.raw.block" = { fg = "fg" }
 "markup.raw.inline" = { fg = "plum" }
-"markup.list" = { fg = "gold" }
+"markup.list" = { fg = "ember" }
 "markup.list.checked" = { fg = "green" }
 "markup.list.unchecked" = { fg = "muted" }
-"attribute" = { fg = "gold" }
-"type" = { fg = "gold" }
-"type.builtin" = { fg = "gold" }
-"type.parameter" = { fg = "gold" }
-"type.enum" = { fg = "gold" }
-"type.enum.variant" = { fg = "gold" }
-"constructor" = { fg = "gold" }
-"constant" = { fg = "gold", modifiers = [ "bold" ] }
-"constant.builtin" = { fg = "gold", modifiers = [ "bold" ] }
-"constant.builtin.boolean" = { fg = "gold", modifiers = [ "bold" ] }
+"attribute" = { fg = "ember" }
+"type" = { fg = "ember" }
+"type.builtin" = { fg = "ember" }
+"type.parameter" = { fg = "ember" }
+"type.enum" = { fg = "ember" }
+"type.enum.variant" = { fg = "ember" }
+"constructor" = { fg = "ember" }
+"constant" = { fg = "ember", modifiers = [ "bold" ] }
+"constant.builtin" = { fg = "ember", modifiers = [ "bold" ] }
+"constant.builtin.boolean" = { fg = "ember", modifiers = [ "bold" ] }
 "constant.character" = { fg = "plum" }
 "constant.character.escape" = { fg = "plum" }
 "constant.numeric" = { fg = "plum" }
@@ -107,51 +107,51 @@
 "comment.block" = { fg = "muted", modifiers = [ "italic" ] }
 "comment.block.documentation" = { fg = "muted", modifiers = [ "italic" ] }
 "variable" = { fg = "fg" }
-"variable.builtin" = { fg = "gold" }
+"variable.builtin" = { fg = "ember" }
 "variable.parameter" = { fg = "fg" }
 "variable.other" = { fg = "fg" }
 "variable.other.member" = { fg = "fg" }
-"label" = { fg = "gold" }
+"label" = { fg = "ember" }
 "punctuation" = { fg = "muted" }
 "punctuation.bracket" = "muted"
 "punctuation.delimiter" = "muted"
-"punctuation.special" = { fg = "gold" }
-"keyword" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control.conditional" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control.repeat" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control.import" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control.return" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.control.exception" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.operator" = { fg = "gold" }
-"keyword.directive" = { fg = "gold" }
-"keyword.function" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.storage" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.storage.type" = { fg = "gold", modifiers = [ "bold" ] }
-"keyword.storage.modifier" = { fg = "gold", modifiers = [ "bold" ] }
-"operator" = { fg = "gold" }
-"function" = { fg = "gold" }
-"function.builtin" = { fg = "gold" }
-"function.method" = { fg = "gold" }
-"function.macro" = { fg = "gold" }
-"function.special" = { fg = "gold" }
-"tag" = { fg = "gold" }
-"tag.builtin" = { fg = "gold" }
-"tag.attribute" = { fg = "gold" }
+"punctuation.special" = { fg = "ember" }
+"keyword" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control.conditional" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control.repeat" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control.import" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control.return" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.control.exception" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.operator" = { fg = "ember" }
+"keyword.directive" = { fg = "ember" }
+"keyword.function" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.storage" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.storage.type" = { fg = "ember", modifiers = [ "bold" ] }
+"keyword.storage.modifier" = { fg = "ember", modifiers = [ "bold" ] }
+"operator" = { fg = "ember" }
+"function" = { fg = "ember" }
+"function.builtin" = { fg = "ember" }
+"function.method" = { fg = "ember" }
+"function.macro" = { fg = "ember" }
+"function.special" = { fg = "ember" }
+"tag" = { fg = "ember" }
+"tag.builtin" = { fg = "ember" }
+"tag.attribute" = { fg = "ember" }
 "namespace" = { fg = "fg" }
 "module" = { fg = "fg" }
-"special" = { fg = "gold" }
+"special" = { fg = "ember" }
 
 [palette]
 "bg" = "#191810"
 "surface" = "#2E2B3E"
 "fg" = "#e9e7e2"
 "muted" = "#6E6A5E"
-"gold" = "#e6af51"
+"ember" = "#DC6532"
 "plum" = "#C586C0"
 "dark_plum" = "#8B4B87"
 "bright_muted" = "#9A9690"
-"red" = "#E06060"
+"red" = "#FF4040"
 "green" = "#7EBD7E"
 "blue" = "#6CA6D4"
 "bright_fg" = "#EBE8E0"
