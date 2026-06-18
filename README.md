@@ -1,4 +1,6 @@
-# HUME
+<p align="center">
+  <img src="manual/docs/public/HUME-logo.svg" alt="HUME logo" width="200" />
+</p>
 
 **HUME's Unfinished Modal Editor**
 
