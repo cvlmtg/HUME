@@ -74,18 +74,7 @@ whitespace divides WORDs).
 
   Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed eiusmod.
 
-1.4  JUMPING AROUND
-
-  gg  go to the FIRST line of the buffer
-  ge  go to the LAST line of the buffer
-
-  {   jump to the previous blank line (paragraph start)
-  }   jump to the next blank line (paragraph end)
-
-  >> Press `ge` now to jump to the end of the tutor, then `gg` to
-     return to the top, then press `Ctrl+o` twice to return here.
-
-1.5  THE JUMP LIST
+1.4  THE JUMP LIST
 
   Ctrl+o   jump backward through your movement history
   Ctrl+i   jump forward through your movement history
@@ -99,6 +88,17 @@ keyboard protocol to work correctly. Without it, the terminal cannot
 distinguish `Ctrl+i` from Tab, so the forward-jump command will not
 fire. To check whether the protocol is active, look for the cat
 glyph (ᓚᘏᗢ) in the statusline.
+
+1.5  JUMPING AROUND
+
+  gg  go to the FIRST line of the buffer
+  ge  go to the LAST line of the buffer
+
+  {   jump to the previous blank line (paragraph start)
+  }   jump to the next blank line (paragraph end)
+
+  >> Press `ge` now to jump to the end of the tutor, then `gg` to
+     return to the top, then press `Ctrl+o` twice to return here.
 
 1.6  COUNT PREFIXES
 
@@ -168,7 +168,25 @@ under the cursor.
 
   This word is wrong.
 
-2.3  UNDO AND REDO
+2.3  REPLACE
+
+  r<char>   replace every character in the selection with <char>
+
+Unlike `c`, replace stays in Normal mode — no Insert, no Esc needed.
+On a 1-char selection it swaps the single character under the cursor.
+On a wider selection it overwrites every character in the range
+(newlines are preserved to keep line structure intact).
+
+  >> Navigate onto the `X` below and press `r!` to swap it:
+
+  Hello X World
+
+  >> Press `w` to select the word "aaaaa", then press `r-` to replace
+     every character with a dash:
+
+  remove aaaaa this
+
+2.4  UNDO AND REDO
 
   u   undo    U   redo    (Ctrl+r also redos)
 
@@ -178,6 +196,7 @@ under the cursor.
 
   ── Lesson 2 Summary ─────────────────────────────────────────────
   d   delete selection      c   change selection
+  r<char>  replace each selected char (stays in Normal mode)
   u   undo                  U   redo
   Select first, then act — the selection is always ready.
   ─────────────────────────────────────────────────────────────────
@@ -196,21 +215,32 @@ system) and the KILL RING (internal to the editor).
 
 3.1  YANK AND PASTE
 
-  >> Yank the word "fruit" with `w y`, then paste it twice with `p p`:
+`y` copies the selection but leaves it selected. Because `p` pastes
+OVER a multi-character selection (replacing it), pressing `p` right
+after `y` silently overwrites the selection with an identical copy —
+it looks like nothing happened.
+
+To paste a separate copy, collapse the selection to a single character
+first with `;`, then press `p`. After the first paste, each further
+`p` stacks another copy adjacent to it.
+
+`d` and `c` remove their text, so the selection is already collapsed
+when you paste — only after `y` do you need the explicit `;`.
+
+  >> Yank the word "fruit" with `w y`. Press `;` to collapse the
+     selection, then `p` to paste a copy after it. Press `p` again
+     to add a second copy:
 
   I like fruit very much.
 
-  >> Select the line "COPY ME" with `x`, yank it with `y`, then paste
-     it below with `p`:
+  >> Select the line "COPY ME" with `x`, yank with `y`. Press `;` to
+     collapse the selection, then `p` to paste the line below:
 
   COPY ME
 
-If the selection is a single character, `p` inserts the clipboard
-contents right after it. If the yanked text was a whole line (selected
-with `x`), `p` inserts a new line below.
-
-Repeating `p` pastes the same text again, stacking copies — `p p p`
-pastes three times in a row.
+When the cursor covers a single character, `p` inserts after it.
+When the yanked text was a whole line (selected with `x`), `p` inserts
+a new line below.
 
 3.2  THE KILL RING
 
@@ -247,6 +277,7 @@ the most recent kill so there is always something to paste.
   y         yank to clipboard + kill ring   p / P  paste after / before
   c / d     push to kill ring (10)          [ / ]  cycle ring (after paste)
   p reads from kill ring after c/d, from clipboard otherwise
+  y leaves the selection — press `;` to collapse before pasting a copy
   ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
