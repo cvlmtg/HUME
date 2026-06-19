@@ -135,7 +135,9 @@ fn define_command_inner(
     }
     let (arity, is_variadic) = match &proc {
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
-        _ => (0, true),
+        // FuncV/MutFunc arity is not introspectable; treat as 0-arg non-variadic so
+        // keymap injection passes no leading args rather than blindly injecting 2.
+        _ => (0, false),
     };
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);

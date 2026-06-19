@@ -1278,3 +1278,291 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     });
     assert!(has_warn, "a Warning containing 'move-right' must be emitted; got: {msgs:?}");
 }
+
+// ── Steel insert-mode dot-repeat ─────────────────────────────────────────────
+
+/// Helper: register all native command names, eval a Steel snippet, attach the
+/// host, and bind the named command to F2 in Normal mode.
+fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
+    use crate::editor::keymap::BindMode;
+    use crossterm::event::KeyCode;
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host
+        .eval_source_returning_defs(snippet.to_owned(), Default::default(), &mut init_host)
+        .expect("Steel snippet must compile and evaluate without error");
+
+    ed.scripting = Some(host);
+
+    let f2 = crossterm::event::KeyEvent::new(KeyCode::F(2), crossterm::event::KeyModifiers::NONE);
+    ed.state.keymap.bind_user_with_extend(
+        BindMode::Normal, &[f2], std::borrow::Cow::Owned(cmd_name.to_owned()), false,
+    );
+}
+
+/// A Steel `#:repeatable` command that calls `(call! "insert-before")` must
+/// record typed text in `insert_keys` and replay it on `.`.
+///
+/// Fail oracle:
+/// - If `end_insert_session` did NOT back-fill `insert_keys` for Steel actions,
+///   `insert_keys` would be empty → `.` inserts nothing → final buffer differs.
+/// - If the pre-body snapshot fix were reverted, `.` would still insert but only
+///   at the raw cursor position instead of the recipe-established one.
+#[test]
+fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[x]>\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before"))
+             #:repeatable #t)"#,
+        "steel-ins",
+    );
+
+    // F2 → enters Insert at selection start.
+    ed.feed_key(f2);
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc()); // back to Normal; buffer is "abx\n"
+    assert_eq!(ed.doc().text().to_string(), "abx\n", "setup: 'ab' must be inserted before 'x'");
+
+    // White-box: insert_keys must be back-filled by end_insert_session.
+    {
+        let action = ed.state.last_repeatable_action.as_ref()
+            .expect("last_repeatable_action must be set after steel-ins");
+        assert_eq!(action.command.as_ref(), "steel-ins");
+        assert_eq!(action.insert_keys.len(), 2, "insert_keys must contain both typed chars");
+    }
+
+    // Move selection to 'x' and replay with `.`.
+    ed.feed_key(key('w')); // select 'x'
+    ed.feed_key(key('.')); // replay: enter insert before 'x', retype "ab"
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ababx\n",
+        "`.` must re-enter insert and retype 'ab' before the selection"
+    );
+}
+
+/// The `selection_recipe` snapshot taken before the Steel body runs must NOT be
+/// clobbered by an inner `(call! "insert-before")` dispatch.
+///
+/// Fail oracle (Gap A): without the pre-body `mem::take` snapshot in execute.rs,
+/// `insert-before`'s inner dispatch takes `selection_recipe` via `dispatch_native`,
+/// leaving it empty. The white-box assertion `selection_recipe.len() == 1` catches
+/// this — it passes with the snapshot, fails without it.
+#[test]
+fn steel_repeatable_insert_preserves_prior_selection_recipe() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    // "w" from 'f' in "foo bar\n" selects "bar".
+    let mut ed = editor_from("-[f]>oo bar\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before"))
+             #:repeatable #t)"#,
+        "steel-ins",
+    );
+
+    // `w` establishes a real selection → recipe non-empty.
+    ed.feed_key(key('w'));
+    assert_eq!(ed.state.selection_recipe.len(), 1, "pre-condition: w must push a recipe step");
+
+    // F2 → steel-ins → insert 'X' before "bar".
+    ed.feed_key(f2);
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "foo Xbar\n");
+
+    // White-box: the pre-body snapshot must survive the inner insert-before dispatch.
+    let action = ed.state.last_repeatable_action.as_ref()
+        .expect("last_repeatable_action must be set after steel-ins");
+    assert_eq!(
+        action.selection_recipe.len(), 1,
+        "selection_recipe must not be clobbered by inner (call! \"insert-before\")"
+    );
+    assert!(!action.selection_recipe[0].extend, "w step must be a Move (establish)");
+}
+
+/// After `.` replays a Steel insert action, a single `u` must undo the entire
+/// replay as one step — proving `drain_pending_repeat`'s edit-group bracketing
+/// works correctly for the Steel insert path.
+///
+/// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.
+#[test]
+fn steel_repeatable_insert_dot_repeat_single_undo() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[x]>y\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-ins" "enter insert before selection"
+             (lambda () (call! "insert-before"))
+             #:repeatable #t)"#,
+        "steel-ins",
+    );
+
+    // F2, type "AB", Esc → "ABxy\n"
+    ed.feed_key(f2);
+    ed.feed_key(key('A'));
+    ed.feed_key(key('B'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "ABxy\n");
+
+    // `w` from 'x' selects "xy"; `.` replay inserts "AB" before → "ABABxy\n".
+    ed.feed_key(key('w'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ABABxy\n");
+
+    // One undo must revert the entire replay as a single step.
+    ed.feed_key(key('u'));
+    assert_eq!(ed.doc().text().to_string(), "ABxy\n", "one undo must revert the full replay");
+}
+
+/// The `change` command opens its undo group through `begin_insert_session` (the
+/// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
+/// must create an InsertSession and record `insert_keys` correctly.
+///
+/// This guards that the edit-then-insert undo-group path remains safe.
+#[test]
+fn steel_repeatable_change_via_call_records_insert_keys() {
+    let f2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::F(2),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let mut ed = editor_from("-[foo]> bar\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-chg" "change selection"
+             (lambda () (call! "change"))
+             #:repeatable #t)"#,
+        "steel-chg",
+    );
+
+    // F2 (steel-chg = change), type "hi", Esc → "hi bar\n"
+    ed.feed_key(f2);
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "hi bar\n");
+
+    // White-box: insert_keys must be back-filled.
+    {
+        let action = ed.state.last_repeatable_action.as_ref()
+            .expect("last_repeatable_action must be set after steel-chg");
+        assert_eq!(action.command.as_ref(), "steel-chg");
+        assert_eq!(action.insert_keys.len(), 2, "insert_keys must have 'h' and 'i'");
+    }
+
+    // Move to "bar" and replay: change "bar", retype "hi".
+    ed.feed_key(key('w'));
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hi hi\n",
+        "`.` must change the next selection and retype 'hi'"
+    );
+}
+
+// ── Lazy command extend forwarding ───────────────────────────────────────────
+
+/// When a Lazy command stub is dispatched with extend=true (e.g. Ctrl+key), the
+/// injection must forward extend=true to the resolved SteelBacked lambda body.
+///
+/// The lambda here distinguishes extend by branching: extend=true → move-right,
+/// extend=false → move-down. Dispatching with extend=true must move the cursor
+/// right, not down.
+///
+/// Fail oracle: if the Lazy path did not forward extend correctly (e.g. always
+/// injected extend=false), the cursor would move down instead of right.
+#[test]
+#[cfg(not(windows))]
+fn lazy_command_first_dispatch_forwards_extend() {
+    use crate::editor::scripting_setup::make_init_host;
+
+    let dir = {
+        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        tempfile::tempdir().unwrap()
+    };
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        r#"(define-command! "tp-branch" ""
+             (lambda (count extend)
+               (if extend
+                   (call! "move-right")
+                   (call! "move-down"))))"#,
+    ).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        r#"(declare-plugin "user/tp" #:commands '("tp-branch"))"#,
+    ).unwrap();
+
+    // Buffer with 2 lines so move-down doesn't go to the structural newline.
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }.expect("eval_init must succeed");
+    let activation_commands = host.activation_commands();
+    ed.register_lazy_command_stubs(&activation_commands);
+    ed.scripting = Some(host);
+
+    let before = live_host!(ed).cursor_char_index().expect("cursor before");
+
+    // Dispatch with extend=true on the first (Lazy) call.
+    ed.execute_keymap_command("tp-branch".into(), 1, true, vec![]);
+
+    let after = live_host!(ed).cursor_char_index().expect("cursor after");
+    // move-right advances by 1 char; move-down would change line.
+    assert_eq!(after, before + 1, "extend=true must forward to lambda → move-right, not move-down");
+}
+
+/// A 3-param non-variadic lambda can be *registered* (it is valid for `call!`
+/// invocations with explicit args) but must produce a graceful error when
+/// dispatched via keymap injection — which supplies at most 2 args.
+///
+/// Fail oracle: remove the `cmd_arity > 2` guard in `execute_keymap_command` —
+/// the dispatch falls through to Steel with too few args, producing a raw
+/// Steel arity-mismatch error instead of a friendly editor message.
+#[test]
+fn keymap_dispatch_arity_over_2_reports_error() {
+    let mut ed = editor_from("-[a]>b\n");
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host.eval_source_returning_defs(
+        r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#.to_owned(),
+        Default::default(),
+        &mut init_host,
+    ).expect("registration must succeed — 3-param lambda is valid for call! use");
+    ed.scripting = Some(host);
+
+    ed.execute_keymap_command("three-params".into(), 1, false, vec![]);
+
+    assert!(
+        ed.state.message_log.entries().any(|e| e.severity == crate::editor::Severity::Error),
+        "dispatch of arity-3 command via keymap must report a user-facing error"
+    );
+}

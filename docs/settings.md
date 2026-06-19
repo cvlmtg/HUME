@@ -132,7 +132,7 @@ When triggered from a key binding, the lambda receives `count` and `extend` as l
 
 | Lambda signature | Receives |
 |---|---|
-| `(lambda ())` | nothing — 0-arg commands work as before |
+| `(lambda ())` | nothing |
 | `(lambda (count))` | the repeat count (integer ≥ 1) |
 | `(lambda (count extend))` | count and extend flag (`#t`/`#f`) |
 

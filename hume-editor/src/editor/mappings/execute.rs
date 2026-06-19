@@ -95,33 +95,24 @@ impl Editor {
             let focused_pane_id = self.state.focused_pane_id;
             let focused_buffer_id = self.focused_buffer_id();
 
-            // When the keymap triggers a Steel command with no explicit args (the
-            // usual case — only the `:command` path at `command_mode.rs` passes
-            // explicit steel_args), inject count and extend as leading lambda args
-            // based on what the lambda's arity declares it wants:
-            //   arity 0, non-variadic → []              (existing 0-arg commands)
+            // Inject count and extend as leading lambda args based on declared arity
+            // (only when the keymap triggers with no explicit args; the `:command` path
+            // passes its own steel_args):
+            //   arity 0, non-variadic → []
             //   arity 1, non-variadic → [count]
             //   arity ≥ 2 or variadic → [count, extend]
-            // The author then forwards them explicitly in (call! "name" count extend).
+            if steel_args.is_empty() && cmd_arity > 2 {
+                self.report(
+                    Severity::Error,
+                    format!("{name}: lambda declares {cmd_arity} required params; \
+                             keymap injection supplies at most 2 (count, extend)"),
+                );
+                return;
+            }
             let effective_args = if steel_args.is_empty() {
-                // A non-variadic lambda with more than 2 required params can't receive
-                // all its args from keymap injection — it would always fail with an
-                // arity error.  Catch this early with a helpful message.
-                if !cmd_is_variadic && cmd_arity > 2 {
-                    self.report(
-                        Severity::Error,
-                        format!(
-                            "{name}: lambda declares {cmd_arity} required params but keymap \
-                             injection supplies at most 2 (count, extend). \
-                             Use a variadic lambda or reduce to ≤ 2 params."
-                        ),
-                    );
-                    return;
-                }
-                let n = if cmd_is_variadic { 2 } else { cmd_arity as usize };
-                match n {
-                    0 => vec![],
-                    1 => vec![SteelVal::IntV(count as isize)],
+                match (cmd_arity, cmd_is_variadic) {
+                    (0, false) => vec![],
+                    (1, false) => vec![SteelVal::IntV(count as isize)],
                     _ => vec![SteelVal::IntV(count as isize), SteelVal::BoolV(extend)],
                 }
             } else {

@@ -1874,10 +1874,12 @@ fn minibuffer_arity_rule_forwards_string_arg_to_arity_1() {
     assert_ne!(state(&ed), before, "arity-1 rule must forward arg as StringV; cursor must have moved");
 }
 
-/// arity-1 + no arg: the rule passes `BoolV(false)`.  The lambda checks
-/// `(string? x)`, gets `#f`, and does nothing — cursor stays put.
+/// arity-1 + no arg: the rule passes `IntV(1)` as default count.  A string-type
+/// lambda that checks `(string? x)` gets an integer, fails the check, and does
+/// nothing — cursor stays put.  A count-type lambda `(lambda (count) ...)` gets
+/// a valid count=1 rather than a type-mismatch boolean.
 #[test]
-fn minibuffer_arity_rule_passes_false_when_no_arg() {
+fn minibuffer_arity_rule_passes_default_count_when_no_arg() {
     let mut ed = setup_arity_test(
         r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
         "echo-cmd",
@@ -1886,14 +1888,14 @@ fn minibuffer_arity_rule_passes_false_when_no_arg() {
     );
 
     let before = state(&ed);
-    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes #f.
+    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes IntV(1); string guard rejects it.
     ed.handle_key(key(':'));
     for ch in "echo-cmd".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
 
-    assert_eq!(state(&ed), before, "arity-1 with no arg must pass #f (not crash or move)");
+    assert_eq!(state(&ed), before, "arity-1 with no arg must not crash or move cursor");
 }
 
 /// arity-2 + one arg (the most the minibuffer can supply): the rule reports an

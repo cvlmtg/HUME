@@ -295,7 +295,9 @@ impl Editor {
                 } else if *arity == 1 || *is_variadic {
                     match expanded {
                         Some(ref s) => vec![SteelVal::StringV(s.clone().into())],
-                        None => vec![SteelVal::BoolV(false)],
+                        // No arg typed: default count=1 for count-type lambdas; string-type
+                        // lambdas reject IntV(1) via their own (string? x) guard.
+                        None => vec![SteelVal::IntV(1)],
                     }
                 } else {
                     self.report(
