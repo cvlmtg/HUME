@@ -464,27 +464,17 @@ mod tests {
     }
 
     #[test]
-    fn is_extendable_steel_backed_reflects_flag() {
-        let cmd_t = MappableCommand::SteelBacked {
+    fn is_extendable_steel_backed_always_true() {
+        // All Steel commands participate in Ctrl+key one-shot extend; the
+        // body receives `extend` as a lambda arg and decides what to do.
+        let cmd = MappableCommand::SteelBacked {
             name: "x".into(),
             doc: "".into(),
-            extendable: true,
             arity: 0,
             is_variadic: false,
             inline_output: false,
-            repeatable: false,
         };
-        let cmd_f = MappableCommand::SteelBacked {
-            name: "y".into(),
-            doc: "".into(),
-            extendable: false,
-            arity: 0,
-            is_variadic: false,
-            inline_output: false,
-            repeatable: false,
-        };
-        assert!(cmd_t.is_extendable());
-        assert!(!cmd_f.is_extendable());
+        assert!(cmd.is_extendable());
     }
 
     #[test]
@@ -581,20 +571,16 @@ mod tests {
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("my-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
-            extendable: false,
             arity: 0,
             is_variadic: false,
             inline_output: false,
-            repeatable: false,
         });
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("another-steel-cmd".to_string()),
             doc: Cow::Borrowed("doc"),
-            extendable: false,
             arity: 0,
             is_variadic: false,
             inline_output: false,
-            repeatable: false,
         });
         // An EditorCmd with a name that could be mistaken for a Steel proc —
         // the helper must still filter it out by variant, not by name shape.
@@ -631,11 +617,9 @@ mod tests {
         reg.register(MappableCommand::SteelBacked {
             name: Cow::Owned("plugin-cmd-a".to_string()),
             doc: Cow::Borrowed("doc"),
-            extendable: false,
             arity: 0,
             is_variadic: false,
             inline_output: false,
-            repeatable: false,
         });
         reg.register(MappableCommand::Lazy {
             name: Cow::Owned("lazy-cmd".to_string()),

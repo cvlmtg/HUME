@@ -1,6 +1,6 @@
 use hume_engine::pipeline::BufferId;
 
-/// A Steel command definition built by `define_command_inner` during init or plugin load.
+/// A Steel command definition built by `define-command!` during init or plugin load.
 ///
 /// Passed immediately to [`crate::host::EditorHost::register_command`] so the
 /// editor can insert a `SteelBacked` entry in its `CommandRegistry` inline — no
@@ -9,7 +9,6 @@ use hume_engine::pipeline::BufferId;
 pub struct SteelCmdDef {
     pub name: String,
     pub doc: String,
-    pub extendable: bool,
     /// Number of required positional parameters the lambda accepts.
     /// Introspected once at `define-command!` time from the closure's arity.
     pub arity: u16,
@@ -18,11 +17,6 @@ pub struct SteelCmdDef {
     /// `true` if dispatch should bracket this command with an alt-screen exit
     /// so subprocess output streams live to the terminal.
     pub inline_output: bool,
-    /// `true` if this command should be recorded for `.` repeat.
-    ///
-    /// Opt in via `(define-command-repeatable! …)`.  Non-edit commands
-    /// (pickers, toggles, jumps) should leave this `false`.
-    pub repeatable: bool,
 }
 
 /// Language identity registration queued during `eval_init` and flushed by

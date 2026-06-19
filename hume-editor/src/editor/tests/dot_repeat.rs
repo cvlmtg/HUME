@@ -484,42 +484,37 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
     ed
 }
 
-/// `define-command-repeatable!` opts the command into dot-repeat.
+/// Steel commands are never repeatable — they must not overwrite
+/// `last_repeatable_action` set by a prior native edit.
 ///
-/// Run the Steel command, verify `last_repeatable_action` carries the Steel
-/// command name (not the inner native), then press `.` and confirm the edit
-/// is applied a second time.
-///
-/// Fail oracle: if `is_repeatable()` returns `false` for `SteelBacked`,
-/// `last_repeatable_action` would carry `"delete"` (from the inner native
-/// dispatch) rather than `"del-sel"`, and the name assertion fails.
+/// Fail oracle: if `is_repeatable()` returned `true` for `SteelBacked`,
+/// running the Steel command would stamp `last_repeatable_action` with its
+/// name; the subsequent `.` would replay the Steel command instead of the
+/// native delete.
 #[test]
-fn steel_dot_repeatable_round_trip() {
+fn steel_command_is_not_repeatable() {
     let mut ed = editor_with_steel(
         "-[foo]> bar\n",
-        r#"(define-command-repeatable! "del-sel" "" (lambda () (call! "delete")))"#,
+        r#"(define-command! "del-sel" "" (lambda () (call! "delete")))"#,
     );
 
-    // Run the Steel repeatable command: deletes "foo".
-    ed.execute_keymap_command("del-sel".into(), 1, false, vec![]);
+    // Establish a known repeatable native action first.
+    ed.feed_key(key('d')); // delete "foo" → " bar\n"
     assert_eq!(ed.doc().text().to_string(), " bar\n");
-
-    // last_repeatable_action must name the outer Steel command, not "delete".
     assert_eq!(
         ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
-        Some("del-sel"),
-        "last_repeatable_action must point to the Steel command, not the inner native"
+        Some("delete"),
+        "setup: last_repeatable_action must be 'delete' after d"
     );
 
-    // Move to "bar" and press `.`.
-    ed.feed_key(key('w'));
-    ed.feed_key(key('.'));
+    // Run the Steel command — it calls (call! "delete") internally.
+    ed.execute_keymap_command("del-sel".into(), 1, false, vec![]);
 
-    // Independent oracle: "foo" was deleted first; "bar" must be deleted by `.`.
+    // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
-        ed.doc().text().to_string(),
-        " \n",
-        "dot-repeat must replay the Steel command, deleting 'bar'"
+        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        Some("delete"),
+        "Steel command must not overwrite last_repeatable_action"
     );
 }
 
@@ -565,99 +560,3 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 }
 
-/// When a repeatable Steel command internally calls a native repeatable command
-/// via `(call! …)`, the OUTER Steel name must win the repeat slot, not the inner
-/// native name.
-///
-/// Without the post-dispatch recording in execute.rs, the inner native
-/// dispatch would write `last_repeatable_action.command = "delete"`;
-/// the outer Steel recording overwrites it with `"wrap-del"`.
-///
-/// Fail oracle: remove the post-dispatch recording block — `last_repeatable_action`
-/// would be `Some("delete")` instead of `Some("wrap-del")`.
-#[test]
-fn repeatable_steel_wrapper_wins_over_inner_native() {
-    let mut ed = editor_with_steel(
-        "-[foo]> bar\n",
-        r#"(define-command-repeatable! "wrap-del" "" (lambda () (call! "delete")))"#,
-    );
-
-    ed.execute_keymap_command("wrap-del".into(), 1, false, vec![]);
-    assert_eq!(ed.doc().text().to_string(), " bar\n");
-
-    // The outer Steel wrapper must own the repeat slot.
-    assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
-        Some("wrap-del"),
-        "outer repeatable Steel wrapper must win over inner 'delete' in last_repeatable_action"
-    );
-
-    // Verify `.` still applies the correct edit.
-    ed.feed_key(key('w'));
-    ed.feed_key(key('.'));
-    assert!(
-        !ed.doc().text().to_string().contains("bar"),
-        "dot-repeat via Steel wrapper must delete 'bar'"
-    );
-}
-
-/// A `define-command-repeatable!` defined inside a lazy plugin is recorded for
-/// dot-repeat on its FIRST dispatch (after Lazy → SteelBacked activation).
-///
-/// The re-query in execute.rs covers the Lazy→SteelBacked swap: `reg_cmd`
-/// still holds the pre-dispatch `Lazy` variant (is_repeatable = false), but
-/// after `call_steel_cmd` the registry entry is `SteelBacked { repeatable: true }`.
-///
-/// Not on Windows: Scheme `require` strings embed OS paths with forward slashes.
-#[test]
-#[cfg(not(windows))]
-fn lazy_repeatable_round_trip() {
-    use crate::editor::scripting_setup::make_init_host;
-    use hume_scripting::ScriptingHost;
-
-    let dir = {
-        let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        tempfile::tempdir().unwrap()
-    };
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
-        r#"(define-command-repeatable! "tp-del" "" (lambda () (call! "delete")))"#,
-    ).unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        r#"(declare-plugin "user/tp" #:commands '("tp-del"))"#,
-    ).unwrap();
-
-    let mut ed = editor_from("-[foo]> bar\n");
-    let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }.expect("eval_init must succeed");
-    let activation_commands = host.activation_commands();
-    ed.register_lazy_command_stubs(&activation_commands);
-    ed.scripting = Some(host);
-
-    // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), 1, false, vec![]);
-    assert_eq!(ed.doc().text().to_string(), " bar\n");
-
-    // The re-query must see the now-activated SteelBacked repeatable entry.
-    assert_eq!(
-        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
-        Some("tp-del"),
-        "lazy-activated repeatable command must be recorded on first dispatch"
-    );
-
-    // `.` must replay via the activated SteelBacked entry.
-    ed.feed_key(key('w'));
-    ed.feed_key(key('.'));
-    assert!(
-        !ed.doc().text().to_string().contains("bar"),
-        "dot-repeat must replay the lazy-activated Steel command"
-    );
-}

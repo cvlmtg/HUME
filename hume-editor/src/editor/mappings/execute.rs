@@ -6,6 +6,7 @@ use super::super::registry::MappableCommand;
 use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 use crate::editor::host_impl::EditorHostImpl;
+use steel::rvals::SteelVal;
 
 impl Editor {
     /// Execute a named command with the given count and extend flag.
@@ -90,12 +91,34 @@ impl Editor {
             // Re-query: a Lazy stub is now SteelBacked after activation above;
             // a SteelBacked entry is unchanged.  One extra HashMap get is
             // negligible next to a Scheme eval.
-            let inline_output = matches!(
-                self.state.registry.get_mappable(name.as_ref()),
-                Some(MappableCommand::SteelBacked { inline_output: true, .. })
-            );
+            let (inline_output, cmd_arity, cmd_is_variadic) =
+                match self.state.registry.get_mappable(name.as_ref()) {
+                    Some(MappableCommand::SteelBacked { inline_output, arity, is_variadic, .. }) => {
+                        (*inline_output, *arity, *is_variadic)
+                    }
+                    _ => (false, 0, true),
+                };
             let focused_pane_id = self.state.focused_pane_id;
             let focused_buffer_id = self.focused_buffer_id();
+
+            // When the keymap triggers a Steel command with no explicit args (the
+            // usual case — only the `:command` path at `command_mode.rs` passes
+            // explicit steel_args), inject count and extend as leading lambda args
+            // based on what the lambda's arity declares it wants:
+            //   arity 0, non-variadic → []              (existing 0-arg commands)
+            //   arity 1, non-variadic → [count]
+            //   arity ≥ 2 or variadic → [count, extend]
+            // The author then forwards them explicitly in (call! "name" count extend).
+            let effective_args = if steel_args.is_empty() {
+                let n = if cmd_is_variadic { 2 } else { cmd_arity.min(2) as usize };
+                match n {
+                    0 => vec![],
+                    1 => vec![SteelVal::IntV(count as isize)],
+                    _ => vec![SteelVal::IntV(count as isize), SteelVal::BoolV(extend)],
+                }
+            } else {
+                steel_args
+            };
 
             // Alt-screen bracketing is intentionally at this site only — the top-level
             // keymap dispatch arm.  A nested `(call! "name")` routes through
@@ -121,7 +144,7 @@ impl Editor {
                     state: &mut self.state,
                     view: &mut self.view,
                 };
-                host_scr.call_steel_cmd(name.as_ref(), char_arg, steel_args, focused_pane_id, focused_buffer_id, &mut impl_host)
+                host_scr.call_steel_cmd(name.as_ref(), char_arg, effective_args, focused_pane_id, focused_buffer_id, &mut impl_host)
             };
 
             // Re-enter the alt-screen unconditionally — on both success and error.
@@ -156,18 +179,11 @@ impl Editor {
                 });
             }
 
-        // Dot-repeat: record opt-in Steel commands on the success path.
-        //
-        // Re-query the registry: a Lazy stub was resolved to SteelBacked during
-        // the pre-activation above, so the entry now reflects the real command.
-        //
-        // Placed *after* call_steel_cmd returns: if the Steel wrapper internally
-        // dispatched a native command via (call!), that inner dispatch set
-        // last_repeatable_action to the inner command name. We unconditionally
-        // overwrite it here so the outer Steel command wins the repeat slot.
+        // Steel commands are never repeatable (is_repeatable() always returns false
+        // for SteelBacked). The guard below keeps the pattern symmetric with
+        // dispatch_native in case a future variant reintroduces repeatability, but
+        // for now it never fires.
         if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
-            // Use the pre-body recipe snapshot (taken before the Steel eval so
-            // inner dispatches can't clobber the user's prior selection extent).
             self.state.last_repeatable_action = Some(super::super::RepeatableAction {
                 command: name.clone(),
                 count,

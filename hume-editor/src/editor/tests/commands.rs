@@ -1841,11 +1841,9 @@ fn setup_arity_test(
     ed.state.registry.register(MappableCommand::SteelBacked {
         name: name.to_owned().into(),
         doc: std::borrow::Cow::Borrowed(""),
-        extendable: false,
         arity,
         is_variadic,
         inline_output: false,
-        repeatable: false,
     });
     ed.scripting = Some(host);
     ed
@@ -1908,11 +1906,9 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
     ed.state.registry.register(MappableCommand::SteelBacked {
         name: "needs-two".to_owned().into(),
         doc: std::borrow::Cow::Borrowed(""),
-        extendable: false,
         arity: 2,
         is_variadic: false,
         inline_output: false,
-        repeatable: false,
     });
 
     let before = state(&ed);

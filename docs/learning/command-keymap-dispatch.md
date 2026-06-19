@@ -61,8 +61,15 @@ Some commands should *always* extend when invoked via a Ctrl+key shortcut —
 they declare themselves extendable at registration time. Commands that should
 not extend (like undo or quit) carry the flag as false.
 
-For Steel-defined commands, use `(define-command-extend! …)` to opt in. Use
-this for composite commands whose last step is a motion or selection.
+All Steel-defined commands are extendable automatically. When Ctrl+key delivers
+extend to your command, the lambda receives `extend = #t` as its second argument
+(if the lambda declares a second parameter). The body can then forward it:
+
+```scheme
+(define-command! "step-right" "Move right N times, optionally extending."
+  (lambda (count extend)
+    (call! "move-right" count extend)))
+```
 
 ### Typed commands (`:` commands)
 

@@ -128,14 +128,41 @@ Bind a key sequence to a wait-char node. The next keypress after the sequence is
 
 Register a Steel lambda as a named mappable command. The command can then be bound with `bind-key!` or invoked via `(call! ...)`.
 
+When triggered from a key binding, the lambda receives `count` and `extend` as leading arguments based on how many parameters it declares:
+
+| Lambda signature | Receives |
+|---|---|
+| `(lambda ())` | nothing — 0-arg commands work as before |
+| `(lambda (count))` | the repeat count (integer ≥ 1) |
+| `(lambda (count extend))` | count and extend flag (`#t`/`#f`) |
+
+The lambda decides what to repeat and how to extend; it forwards these values explicitly via `(call! name count extend)`. Ctrl+key always delivers `extend = #t`, enabling one-shot extend on any key-bound command.
+
 ```scheme
 (define-command! "my-command" "Description shown in command help."
   (lambda ()
     (call! "move-right")
     (call! "delete")))
+
+;; With count and extend support:
+(define-command! "step-right" "Move right N times."
+  (lambda (count extend)
+    (call! "move-right" count extend)))
 ```
 
 Command names must be unique; duplicate registrations are rejected.
+
+### `(define-command-inline-output! name doc lambda)`
+
+Like `(define-command! …)` but brackets the command with a terminal exit so subprocess output streams live to the terminal instead of the message bar. Use for shell-outs (formatters, linters, installers). The editor returns to its normal screen after a keypress.
+
+The lambda signature follows the same `count`/`extend` injection rules as `(define-command! …)`.
+
+```scheme
+(define-command-inline-output! "run-check" "Run cargo check."
+  (lambda ()
+    (call! "shell-command" "cargo check")))
+```
 
 ### `(call! command-name args…)`
 

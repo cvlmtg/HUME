@@ -371,34 +371,26 @@ fn command_plugin_unknown_returns_hume() {
     assert!(!h.cmd_owners_for_test().contains_key("move-right"));
 }
 
-// ── define-command-extend! ────────────────────────────────────────────────
+// ── define-command! — no extendable flag ─────────────────────────────────
+// All Steel commands participate in Ctrl+key one-shot extend; the body
+// receives `extend` as a lambda arg. There is no separate define-command-extend!.
 
-/// `define-command-extend!` sets `extendable: true` on the returned SteelCmdDef;
-/// plain `define-command!` sets it to `false`.
+/// `define-command!` registers the command; `define-command-extend!` has been
+/// removed.  Verifies the old name is not a recognised builtin by checking that
+/// calling it produces a Steel FreeIdentifier error.
 #[test]
-fn define_command_extend_sets_extendable_flag() {
+fn define_command_extend_builtin_removed() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
-    h.eval_source_returning_defs(
-        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))
-           (define-command!        "plain-cmd" "doc" (lambda () (+ 1 0)))"#
-            .to_owned(),
+    let result = h.eval_source_returning_defs(
+        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))"#.to_owned(),
         Default::default(),
         &mut mock,
-    )
-    .expect("eval should succeed");
-
-    let ext = mock.registered_cmds.iter().find(|d| d.name == "ext-cmd").expect("ext-cmd not found");
-    let plain = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
-    assert!(
-        ext.extendable,
-        "define-command-extend! should set extendable = true"
     );
     assert!(
-        !plain.extendable,
-        "define-command! should set extendable = false"
+        result.is_err(),
+        "define-command-extend! must be gone; expected an error, got Ok"
     );
 }
 

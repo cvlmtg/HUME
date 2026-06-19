@@ -126,20 +126,21 @@
 ;;   (set-register-prefix! "k")
 ;;   (call! "paste-after")      ; pastes from kill ring
 
-;; Move down/up and immediately select the word under the new cursor position.
-;; Uses define-command-extend! so Ctrl-J / Ctrl-K still work (one-shot extend).
+;; Move down/up N lines and immediately select the word under the new cursor position.
+;; The lambda declares (count extend) so numeric prefixes (3j) and Ctrl-J one-shot
+;; extend both work automatically.
 ;;
-;; (define-command-extend! "move-down-select-word"
-;;   "Move down one visual line, then select the nearest word on that line."
-;;   (lambda ()
-;;     (call! "move-down")
-;;     (call! "select-word-nearest-on-line")))
+;; (define-command! "move-down-select-word"
+;;   "Move down N visual lines, then select the nearest word on that line."
+;;   (lambda (count extend)
+;;     (call! "move-down" count extend)
+;;     (call! "select-word-nearest-on-line" 1 extend)))
 ;;
-;; (define-command-extend! "move-up-select-word"
-;;   "Move up one visual line, then select the nearest word on that line."
-;;   (lambda ()
-;;     (call! "move-up")
-;;     (call! "select-word-nearest-on-line")))
+;; (define-command! "move-up-select-word"
+;;   "Move up N visual lines, then select the nearest word on that line."
+;;   (lambda (count extend)
+;;     (call! "move-up" count extend)
+;;     (call! "select-word-nearest-on-line" 1 extend)))
 ;;
 ;; (bind-key! "normal" "j" "move-down-select-word")
 ;; (bind-key! "normal" "k" "move-up-select-word")

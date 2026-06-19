@@ -113,27 +113,24 @@ pub(crate) enum MappableCommand {
     /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
     /// routes through `%dispatch-command` → `command_table` → `(apply proc args)`.
     ///
-    /// Dot-repeat opt-in via `repeatable`.  Not jump, not visual-line.
+    /// All Steel commands are extendable (Ctrl+key delivers `extend = #t` to the
+    /// lambda body) and non-repeatable (`.` does not replay Steel commands).
     SteelBacked {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        /// If `true`, this command participates in sticky-Ctrl one-shot extend
-        /// (strip-Ctrl fallback).  Set via `(define-command-extend! …)`.
-        extendable: bool,
         /// Number of required positional parameters.
+        ///
+        /// Used at dispatch time to inject the right number of `[count, extend]`
+        /// leading args (0, 1, or 2) when the keymap calls the command with no
+        /// explicit arguments. Introspected from the closure arity at define time.
         arity: u16,
         /// `true` if the lambda accepts a rest parameter.
         is_variadic: bool,
         /// `true` if dispatch should bracket the call with an alt-screen exit
         /// so subprocess output streams live to the terminal.
         inline_output: bool,
-        /// `true` if pressing `.` should repeat this command.
-        ///
-        /// Opt in via `(define-command-repeatable! …)`.  Non-edit commands
-        /// must leave this `false` to avoid clobbering the user's repeat target.
-        repeatable: bool,
     },
     /// A placeholder for a lazy plugin command that has not yet been loaded.
     ///
@@ -175,15 +172,15 @@ impl MappableCommand {
     /// Returns `true` if this command should be recorded for `.` repeat.
     ///
     /// Motions and selections are never repeatable — they don't mutate the
-    /// buffer.  Edit, EditorCmd, and SteelBacked commands opt in explicitly
-    /// at registration.  Lazy stubs are never repeatable — they become
-    /// `SteelBacked` on first dispatch, after which the flag is read correctly.
+    /// buffer.  Edit and EditorCmd commands opt in explicitly at registration.
+    /// Steel commands are never repeatable.  Lazy stubs are never repeatable.
     pub(crate) fn is_repeatable(&self) -> bool {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::Lazy { .. } => false,
-            Self::Edit { repeatable, .. }
-            | Self::EditorCmd { repeatable, .. }
-            | Self::SteelBacked { repeatable, .. } => *repeatable,
+            Self::Motion { .. }
+            | Self::Selection { .. }
+            | Self::SteelBacked { .. }
+            | Self::Lazy { .. } => false,
+            Self::Edit { repeatable, .. } | Self::EditorCmd { repeatable, .. } => *repeatable,
         }
     }
 
@@ -236,12 +233,13 @@ impl MappableCommand {
     /// as a one-shot extend via Ctrl+key.
     ///
     /// Motion and Selection are always extendable. Edit is never extendable.
-    /// EditorCmd has an explicit `extendable` flag set at registration time.
+    /// EditorCmd has an explicit flag set at registration time.
+    /// Steel commands are always extendable — the body receives `extend` as its
+    /// second lambda argument and decides what to do with it.
     pub(crate) fn is_extendable(&self) -> bool {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } => true,
+            Self::Motion { .. } | Self::Selection { .. } | Self::SteelBacked { .. } => true,
             Self::Edit { .. } | Self::Lazy { .. } => false,
-            Self::SteelBacked { extendable, .. } => *extendable,
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }

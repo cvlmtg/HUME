@@ -184,11 +184,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
                 self.state.registry.register(MappableCommand::SteelBacked {
                     name: def.name.into(),
                     doc: def.doc.into(),
-                    extendable: def.extendable,
                     arity: def.arity,
                     is_variadic: def.is_variadic,
                     inline_output: def.inline_output,
-                    repeatable: def.repeatable,
                 });
                 Ok(())
             }
