@@ -200,10 +200,7 @@ impl Editor {
     /// whose correctness depends on the per-key ordering — e.g. Smart-p logic
     /// that reads `last_command`, which an idle drain must not clobber (432c24f).
     fn feed_key(&mut self, key: KeyEvent) {
-        self.handle_key(key);
-        self.sync_search_cache();
-        self.drain_replay_queue();
-        self.sync_search_cache();
+        self.step(key);
     }
 
     fn feed_keys(&mut self, keys: impl IntoIterator<Item = KeyEvent>) {

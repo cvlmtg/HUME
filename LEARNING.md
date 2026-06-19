@@ -64,3 +64,11 @@ text and paste.
 | Plugin Attribution: Who Owns What | [docs/learning/plugin-attribution.md](docs/learning/plugin-attribution.md) |
 | Runaway-Script Protection: The Watchdog Timer | [docs/learning/runaway-script-protection.md](docs/learning/runaway-script-protection.md) |
 | Kill Ring and Smart-p: Two Sources of Paste | [docs/learning/kill-ring-and-smart-p.md](docs/learning/kill-ring-and-smart-p.md) |
+
+### Vimgolf
+
+How HUME's editing model compares on real challenges, and what the idioms look like in practice.
+
+| Topic | File |
+|-------|------|
+| HUME as a Golf Club | [docs/learning/vimgolf.md](docs/learning/vimgolf.md) |

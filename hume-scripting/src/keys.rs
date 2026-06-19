@@ -99,8 +99,9 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
     match lower.as_str() {
         "space" => return Ok(KeyCode::Char(' ')),
         "tab" => return Ok(KeyCode::Tab),
-        "enter" | "return" | "cr" => return Ok(KeyCode::Enter),
+        "enter" | "return" | "cr" | "ret" => return Ok(KeyCode::Enter),
         "esc" | "escape" => return Ok(KeyCode::Esc),
+        "lt" => return Ok(KeyCode::Char('<')),
         "backspace" | "bs" => return Ok(KeyCode::Backspace),
         "delete" | "del" => return Ok(KeyCode::Delete),
         "insert" | "ins" => return Ok(KeyCode::Insert),
@@ -135,6 +136,108 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
     Ok(KeyCode::Char(ch))
 }
 
+/// Parse a continuous golf-style key stream into a `Vec<KeyEvent>`.
+///
+/// Unlike [`parse_key_sequence`] (whitespace-separated tokens where space is a
+/// separator), this format is a raw stream where every character is a
+/// keystroke.  Space is a literal `Char(' ')`.
+///
+/// ## Format
+///
+/// - Bare printable characters → `Char(c)` each.
+/// - `<name>` → named or modified key, using the same names as
+///   [`parse_key_sequence`] plus the following additions and shorthands:
+///   - `<ret>` → Enter (alias for `<enter>` / `<cr>`).
+///   - `<lt>` → literal `<`.
+///   - Short modifier prefixes: `c-` (Ctrl), `a-` (Alt), `s-` (Shift).
+///   - Long forms also accepted: `ctrl-`, `alt-`, `shift-`.
+///
+/// ## Examples
+///
+/// ```text
+/// "i"           → [Char('i')]
+/// "wbc<esc>"    → [Char('w'), Char('b'), Char('c'), Esc]
+/// "<c-a>"       → [Char('a') | CONTROL]
+/// "a b"         → [Char('a'), Char(' '), Char('b')]   (space is literal)
+/// "<lt>"        → [Char('<')]
+/// "<ret>"       → [Enter]
+/// ```
+pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
+    let mut keys = Vec::new();
+    let mut i = 0;
+    let bytes = s.as_bytes();
+    while i < s.len() {
+        if bytes[i] == b'<' {
+            // Scan forward for the closing '>'.  Both '<' and '>' are ASCII
+            // (one byte), so byte indexing into the str slice is safe here.
+            let start = i + 1;
+            let close = bytes[start..]
+                .iter()
+                .position(|&b| b == b'>')
+                .ok_or_else(|| format!("unclosed '<' at position {i}"))?;
+            let inner = &s[start..start + close];
+            keys.push(parse_stream_token(inner)?);
+            i = start + close + 1; // advance past '>'
+        } else {
+            // Literal character — may be multi-byte UTF-8.
+            let ch = s[i..].chars().next().unwrap();
+            keys.push(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+            i += ch.len_utf8();
+        }
+    }
+    Ok(keys)
+}
+
+/// Parse the content inside `<…>` from a golf key stream.
+///
+/// Expands the short modifier prefixes `c-`, `a-`, `s-` to the long forms
+/// (`ctrl-`, `alt-`, `shift-`) that [`parse_single_key`] understands, then
+/// delegates.  `<lt>` is handled before expansion as it would otherwise be
+/// mistaken for a single-char key.
+fn parse_stream_token(inner: &str) -> Result<KeyEvent, String> {
+    // `<lt>` is the self-escape for a literal '<'.  Handle it first because
+    // it is two characters and would fall through to parse_single_key as an
+    // unknown name otherwise.
+    if inner.eq_ignore_ascii_case("lt") {
+        return Ok(KeyEvent::new(KeyCode::Char('<'), KeyModifiers::NONE));
+    }
+    let expanded = expand_short_modifiers(inner);
+    parse_single_key(&expanded)
+}
+
+/// Expand short modifier prefixes used in golf `<…>` notation to the long
+/// forms that [`parse_single_key`] expects.
+///
+/// `c-` → `ctrl-`, `a-` → `alt-`, `s-` → `shift-`.  The key-name portion
+/// (everything after all modifiers) is preserved with its original case so
+/// that `<c-X>` maps to `Ctrl+X` rather than `Ctrl+x`.
+fn expand_short_modifiers(token: &str) -> String {
+    let lower = token.to_ascii_lowercase();
+    let mut lo = lower.as_str();
+    let mut orig = token;
+    let mut result = String::new();
+
+    loop {
+        if lo.starts_with("c-") {
+            result.push_str("ctrl-");
+            lo = &lo[2..];
+            orig = &orig[2..];
+        } else if lo.starts_with("a-") {
+            result.push_str("alt-");
+            lo = &lo[2..];
+            orig = &orig[2..];
+        } else if lo.starts_with("s-") {
+            result.push_str("shift-");
+            lo = &lo[2..];
+            orig = &orig[2..];
+        } else {
+            break;
+        }
+    }
+    result.push_str(orig);
+    result
+}
+
 /// Crossterm uses `BackTab` (not `Tab | SHIFT`) for Shift+Tab.
 fn normalise_shift_tab(code: KeyCode, mods: KeyModifiers) -> (KeyCode, KeyModifiers) {
     if code == KeyCode::Tab && mods.contains(KeyModifiers::SHIFT) {
@@ -152,6 +255,10 @@ mod tests {
 
     fn parse(s: &str) -> Result<Vec<KeyEvent>, String> {
         parse_key_sequence(s)
+    }
+
+    fn stream(s: &str) -> Result<Vec<KeyEvent>, String> {
+        parse_key_stream(s)
     }
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -301,5 +408,114 @@ mod tests {
     fn empty_sequence_errors() {
         assert!(parse("").is_err());
         assert!(parse("   ").is_err());
+    }
+
+    #[test]
+    fn ret_alias() {
+        assert_eq!(parse("ret").unwrap(), vec![key(KeyCode::Enter)]);
+    }
+
+    #[test]
+    fn lt_alias() {
+        assert_eq!(parse("lt").unwrap(), vec![key(KeyCode::Char('<'))]);
+    }
+
+    // ── parse_key_stream tests ────────────────────────────────────────────────
+
+    #[test]
+    fn stream_single_char() {
+        assert_eq!(stream("i").unwrap(), vec![key(KeyCode::Char('i'))]);
+    }
+
+    #[test]
+    fn stream_multi_char() {
+        assert_eq!(
+            stream("wbc").unwrap(),
+            vec![
+                key(KeyCode::Char('w')),
+                key(KeyCode::Char('b')),
+                key(KeyCode::Char('c')),
+            ],
+        );
+    }
+
+    #[test]
+    fn stream_named_key_in_brackets() {
+        assert_eq!(
+            stream("a<esc>b").unwrap(),
+            vec![
+                key(KeyCode::Char('a')),
+                key(KeyCode::Esc),
+                key(KeyCode::Char('b')),
+            ],
+        );
+    }
+
+    #[test]
+    fn stream_ret_alias_in_brackets() {
+        assert_eq!(stream("<ret>").unwrap(), vec![key(KeyCode::Enter)]);
+        assert_eq!(stream("<enter>").unwrap(), vec![key(KeyCode::Enter)]);
+    }
+
+    #[test]
+    fn stream_lt_escape() {
+        assert_eq!(stream("<lt>").unwrap(), vec![key(KeyCode::Char('<'))]);
+    }
+
+    #[test]
+    fn stream_space_is_literal() {
+        // Space in a stream is Char(' '), unlike parse_key_sequence where it separates tokens.
+        assert_eq!(
+            stream("a b").unwrap(),
+            vec![
+                key(KeyCode::Char('a')),
+                key(KeyCode::Char(' ')),
+                key(KeyCode::Char('b')),
+            ],
+        );
+    }
+
+    #[test]
+    fn stream_short_ctrl_modifier() {
+        assert_eq!(stream("<c-a>").unwrap(), vec![ctrl(KeyCode::Char('a'))]);
+        assert_eq!(stream("<c-x>").unwrap(), vec![ctrl(KeyCode::Char('x'))]);
+    }
+
+    #[test]
+    fn stream_short_alt_modifier() {
+        assert_eq!(stream("<a-b>").unwrap(), vec![alt(KeyCode::Char('b'))]);
+    }
+
+    #[test]
+    fn stream_short_shift_modifier() {
+        assert_eq!(stream("<s-tab>").unwrap(), vec![shift(KeyCode::BackTab)]);
+    }
+
+    #[test]
+    fn stream_long_modifier_still_works() {
+        assert_eq!(stream("<ctrl-x>").unwrap(), vec![ctrl(KeyCode::Char('x'))]);
+        assert_eq!(stream("<alt-b>").unwrap(), vec![alt(KeyCode::Char('b'))]);
+    }
+
+    #[test]
+    fn stream_uppercase_literal_char() {
+        assert_eq!(stream("G").unwrap(), vec![key(KeyCode::Char('G'))]);
+    }
+
+    #[test]
+    fn stream_uppercase_in_brackets() {
+        // <c-X> → Ctrl+X (uppercase preserved in key name).
+        assert_eq!(stream("<c-X>").unwrap(), vec![ctrl(KeyCode::Char('X'))]);
+    }
+
+    #[test]
+    fn stream_unclosed_bracket_errors() {
+        assert!(stream("<esc").is_err());
+        assert!(stream("a<b").is_err());
+    }
+
+    #[test]
+    fn stream_empty_is_ok() {
+        assert_eq!(stream("").unwrap(), vec![]);
     }
 }

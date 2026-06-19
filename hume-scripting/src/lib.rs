@@ -67,6 +67,7 @@ pub use builtins::ids::SteelBufferId;
 pub use builtins::sandbox::init_dirs;
 pub use hooks::HookId;
 pub use host::{BindMode, EditorHost};
+pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{HookResult, PendingLanguageReg, SteelCmdDef, SteelCmdResult};
 pub use watchdog::EvalWatchdog;

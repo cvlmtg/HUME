@@ -219,6 +219,20 @@ impl Editor {
         })
     }
 
+    /// Process one key event — dispatch it, sync the search cache, drain any
+    /// macro replay, sync again.
+    ///
+    /// This is the single, non-test path for feeding one keystroke to the editor
+    /// from outside the interactive event loop (e.g. headless key-runner).  The
+    /// interactive loop handles hook draining itself via [`handle_event`]; here
+    /// we use [`handle_key`] directly so the caller doesn't need a scripting host.
+    pub(crate) fn step(&mut self, key: crossterm::event::KeyEvent) {
+        self.handle_key(key);
+        self.sync_search_cache();
+        self.drain_replay_queue();
+        self.sync_search_cache();
+    }
+
     /// Single interactive input boundary: dispatch one terminal event and drain hooks.
     ///
     /// All interactive input flows through here — key events and mouse events alike.

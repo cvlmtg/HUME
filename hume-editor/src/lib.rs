@@ -24,6 +24,39 @@ mod proptest_editor;
 #[cfg(test)]
 pub(crate) mod testing;
 
+/// Run a key sequence against a file without entering the interactive terminal.
+///
+/// Opens `input`, feeds every key in `keys` (golf-stream notation — see
+/// [`hume_scripting::parse_key_stream`]) through the editor's normal dispatch
+/// path, then writes the final buffer content to `output`.  No terminal is
+/// initialised and no `init.scm` is loaded.
+///
+/// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
+/// editor sets `should_quit`); the buffer is written to `output` regardless.
+pub fn run_keys(
+    input: std::path::PathBuf,
+    keys: &str,
+    output: std::path::PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = hume_scripting::parse_key_stream(keys)
+        .map_err(|e| format!("invalid key stream: {e}"))?;
+
+    let mut editor = editor::Editor::open(Some(input))?;
+    // The pane viewport defaults to 80×24 (from Pane::new) and is never
+    // updated without a terminal, so scores are reproducible.
+
+    for key in parsed {
+        editor.step(key);
+        if editor.state.should_quit {
+            break;
+        }
+    }
+
+    let content = editor.doc().text().to_string();
+    std::fs::write(&output, content)?;
+    Ok(())
+}
+
 /// Start the editor.
 ///
 /// Initialises the terminal, runs the event loop, and restores the terminal
