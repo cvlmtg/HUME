@@ -15,8 +15,28 @@ impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
 
     pub(crate) fn handle_key(&mut self, key: KeyEvent) {
+        // How many keystrokes the message-log summary stays visible after
+        // `status_msg` clears. Chosen for UX, not technical constraint.
+        const SUMMARY_TTL: u8 = 3;
+
         // Any keypress dismisses the previous transient status message.
-        self.state.status_msg = None;
+        // When it clears with unseen log entries the summary becomes visible —
+        // arm its countdown. On later keypresses tick it down and auto-dismiss
+        // at zero. The countdown only runs when the minibuffer is closed so
+        // typing a long `:` command doesn't burn the budget invisibly.
+        let had_status = self.state.status_msg.take().is_some();
+        if self.state.minibuf.is_none() {
+            if had_status {
+                if self.state.message_log.has_unseen() {
+                    self.state.summary_ttl = SUMMARY_TTL;
+                }
+            } else if self.state.summary_ttl > 0 {
+                self.state.summary_ttl -= 1;
+                if self.state.summary_ttl == 0 {
+                    self.state.message_log.mark_all_seen();
+                }
+            }
+        }
 
         match self.state.mode() {
             Mode::Normal | Mode::Extend => self.handle_normal(key),
@@ -91,6 +111,42 @@ mod tests {
                 "'{name}' should have visual_move: false"
             );
         }
+    }
+
+    /// The message-log summary auto-dismisses after exactly 2 keystrokes of visibility.
+    ///
+    /// Timeline:
+    ///   - report() → status_msg set, summary hidden behind it
+    ///   - key 1 → status_msg cleared, summary appears, TTL armed (2)
+    ///   - key 2 → TTL ticks 2→1, summary still visible
+    ///   - key 3 → TTL ticks 1→0 → mark_all_seen() fires, summary gone
+    #[test]
+    fn message_log_summary_ttl() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use super::super::{Editor, Severity};
+
+        let noop = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+
+        let (buf, sels) = crate::testing::parse_state("-[a]>\n");
+        let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(buf, sels));
+
+        // report() sets status_msg AND logs to message_log.
+        ed.report(Severity::Error, "boom".to_string());
+        assert!(ed.state.status_msg.is_some());
+        assert!(ed.state.message_log.has_unseen());
+
+        // Key 1: status_msg clears, TTL armed — summary visible.
+        ed.handle_key(noop);
+        assert!(ed.state.status_msg.is_none());
+        assert!(ed.state.message_log.has_unseen(), "summary should still be visible after key 1");
+
+        // Key 2: TTL ticks 2→1 — summary still visible.
+        ed.handle_key(noop);
+        assert!(ed.state.message_log.has_unseen(), "summary should still be visible after key 2");
+
+        // Key 3: TTL ticks 1→0 → auto-dismissed.
+        ed.handle_key(noop);
+        assert!(!ed.state.message_log.has_unseen(), "summary should be gone after key 3");
     }
 
     #[test]

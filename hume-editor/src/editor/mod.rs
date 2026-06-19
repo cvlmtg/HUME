@@ -233,6 +233,9 @@ pub(crate) struct EditorState {
     pub(crate) completion: Option<completion::CompletionState>,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
+    /// Keystrokes the message-log summary stays visible before auto-dismissing.
+    /// Armed when `status_msg` clears with unseen entries; ticked down in `handle_key`.
+    pub(crate) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
     /// All editor settings — global defaults and per-buffer-overridable values.
@@ -613,6 +616,7 @@ impl Editor {
                 minibuf: None,
                 completion: None,
                 status_msg: None,
+                summary_ttl: 0,
                 message_log: MessageLog::new(),
                 settings,
                 registry: registry::CommandRegistry::with_defaults(),

@@ -166,6 +166,7 @@ impl Editor {
                 minibuf: None,
                 completion: None,
                 status_msg: None,
+                summary_ttl: 0,
                 message_log: MessageLog::new(),
                 settings,
                 registry: CommandRegistry::with_defaults(),

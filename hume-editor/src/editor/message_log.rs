@@ -117,7 +117,10 @@ impl MessageLog {
             })
     }
 
-    /// Mark all current entries as seen. Called when the user opens `:messages`.
+    /// Mark all current entries as seen.
+    ///
+    /// Called when the user opens `:messages`, or automatically after the
+    /// statusline summary's keystroke budget elapses.
     pub(crate) fn mark_all_seen(&mut self) {
         self.seen_up_to = self.entries.len();
     }
