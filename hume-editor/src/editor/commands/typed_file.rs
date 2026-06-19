@@ -37,10 +37,24 @@ pub fn typed_quit_all(
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    if !force && ed.state.buffers.iter().any(|(_, buf)| buf.is_dirty()) {
-        return Err(CommandError::new(
-            "Unsaved changes in open buffers (add ! to override)"
-        ));
+    if !force {
+        // Find the first dirty buffer in open-order.
+        let dirty_id = ed.state.buffers.iter()
+            .find(|(_, buf)| buf.is_dirty())
+            .map(|(id, _)| id);
+
+        if let Some(dirty_id) = dirty_id {
+            // Jump to it only when the focused buffer is clean — if the user is
+            // already sitting on an unsaved buffer, stay there so a save + :qa
+            // cycle walks through dirty buffers one at a time.
+            if !ed.doc().is_dirty() {
+                ed.switch_to_buffer_with_jump(dirty_id);
+            }
+            let name = ed.state.buffers.get(ed.focused_buffer_id()).display_name();
+            return Err(CommandError::new(format!(
+                "Unsaved changes in {name} (add ! to override)"
+            )));
+        }
     }
     ed.state.should_quit = true;
     Ok(())

@@ -424,7 +424,8 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 
 #[test]
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
-    // :qa must check ALL buffers, not just the focused one.
+    // :qa must check ALL buffers, not just the focused one — and it must switch
+    // focus to the first unsaved buffer so the user knows where to look.
     // Validity: swap `ed.state.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
     // this test fails — the dirty background buffer would be silently ignored.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -454,9 +455,16 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     type_cmd(&mut ed, ":qa");
 
     assert!(!ed.state.should_quit, ":qa must be refused when any buffer is dirty");
+    // Focus must have jumped to the dirty buffer.
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Unsaved changes in open buffers (add ! to override)"),
+        ed.focused_buffer_id(),
+        bg_buf,
+        ":qa must switch focus to the first unsaved buffer"
+    );
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(
+        msg.starts_with("Unsaved changes in ") && msg.ends_with(" (add ! to override)"),
+        "status message must name the unsaved buffer, got: {msg:?}"
     );
 }
 
@@ -472,6 +480,131 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
     type_cmd(&mut ed, ":qa!");
 
     assert!(ed.state.should_quit, ":qa! must quit despite dirty buffer");
+}
+
+#[test]
+fn colon_qa_stays_on_focused_dirty_buffer() {
+    // When the focused buffer is already dirty, :qa must stay on it — not jump
+    // to another buffer — and still refuse to quit.
+    // Validity: remove the `!ed.doc().is_dirty()` guard and the editor would
+    // jump away from the already-unsaved focused buffer.
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let dirty_buf = ed.focused_buffer_id();
+
+    // Dirty the focused buffer.
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty());
+
+    type_cmd(&mut ed, ":qa");
+
+    assert!(!ed.state.should_quit, ":qa must refuse when focused buffer is dirty");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        dirty_buf,
+        ":qa must not move focus when the focused buffer is already dirty"
+    );
+}
+
+#[test]
+fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
+    // With multiple dirty buffers and a clean focused buffer, :qa must land on
+    // the first dirty buffer in open-order, not just any dirty buffer.
+    // Validity: change find → find last and this test fails.
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let clean_buf = ed.focused_buffer_id();
+
+    // Open two more buffers and dirty them both; open-order = clean_buf, buf2, buf3.
+    let mk_dirty_buf = |ed: &mut Editor| {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "content\n").unwrap();
+        let (_, meta) = hume_platform::io::read_file(tmp.path()).unwrap();
+        let mut buf = crate::editor::buffer::Buffer::new(
+            hume_editing::text::Text::from("content\n"),
+            SelectionSet::default(),
+        );
+        buf.set_path(Some(tmp.path().to_path_buf()));
+        buf.file_meta = Some(meta);
+        let id = ed.open_buffer(buf);
+        ed.switch_to_buffer_without_jump(id);
+        ed.handle_key(key('i'));
+        ed.handle_key(key('x'));
+        ed.handle_key(key_esc());
+        assert!(ed.doc().is_dirty());
+        id
+    };
+
+    let first_dirty = mk_dirty_buf(&mut ed);
+    let _second_dirty = mk_dirty_buf(&mut ed);
+
+    ed.switch_to_buffer_without_jump(clean_buf);
+    assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
+
+    type_cmd(&mut ed, ":qa");
+
+    assert!(!ed.state.should_quit);
+    assert_eq!(
+        ed.focused_buffer_id(),
+        first_dirty,
+        ":qa must land on the first dirty buffer in open-order"
+    );
+}
+
+#[test]
+fn colon_qa_walk_through_dirty_buffers() {
+    // Save the first unsaved buffer and run :qa again — it should move to the
+    // next dirty buffer, verifying the "first in open-order" iteration works
+    // across multiple :qa invocations.
+    let (mut ed, tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let clean_buf = ed.focused_buffer_id();
+
+    // Open two dirty file buffers.
+    let mk_dirty_buf = |ed: &mut Editor| {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "content\n").unwrap();
+        let (_, meta) = hume_platform::io::read_file(tmp.path()).unwrap();
+        let mut buf = crate::editor::buffer::Buffer::new(
+            hume_editing::text::Text::from("content\n"),
+            SelectionSet::default(),
+        );
+        buf.set_path(Some(tmp.path().to_path_buf()));
+        buf.file_meta = Some(meta);
+        let id = ed.open_buffer(buf);
+        ed.switch_to_buffer_without_jump(id);
+        ed.handle_key(key('i'));
+        ed.handle_key(key('x'));
+        ed.handle_key(key_esc());
+        assert!(ed.doc().is_dirty());
+        (id, tmp)
+    };
+
+    let (first_dirty, tmp2) = mk_dirty_buf(&mut ed);
+    let (second_dirty, _tmp3) = mk_dirty_buf(&mut ed);
+
+    // Start from the clean buffer.
+    ed.switch_to_buffer_without_jump(clean_buf);
+
+    // First :qa → lands on first_dirty.
+    type_cmd(&mut ed, ":qa");
+    assert!(!ed.state.should_quit);
+    assert_eq!(ed.focused_buffer_id(), first_dirty, "first :qa must land on first dirty buffer");
+
+    // Save first_dirty, then :qa → lands on second_dirty.
+    let save_path = tmp2.path().to_path_buf();
+    let cmd = format!(":w {}", save_path.display());
+    for ch in cmd.chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert!(!ed.doc().is_dirty(), "first buffer must be clean after :w");
+
+    type_cmd(&mut ed, ":qa");
+    assert!(!ed.state.should_quit);
+    assert_eq!(ed.focused_buffer_id(), second_dirty, "second :qa must land on second dirty buffer");
+
+    // Suppress unused-variable warnings from the tempfiles.
+    let _ = tmp1;
 }
 
 #[test]
