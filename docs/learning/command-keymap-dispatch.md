@@ -71,6 +71,17 @@ extend to your command, the lambda receives `extend = #t` as its second argument
     (call! "move-right" count extend)))
 ```
 
+Steel commands can also opt in to dot-repeat (`.`) via `#:repeatable #t`. By
+default they are non-repeatable — only the author knows whether re-running the
+full command body at a new cursor position is meaningful. Shell-out commands
+(`#:inline-output #t`) cannot be repeatable; passing both flags is an error.
+
+```scheme
+(define-command! "delete-selection" "Delete current selection; repeatable."
+  (lambda () (call! "delete"))
+  #:repeatable #t)
+```
+
 ### Typed commands (`:` commands)
 
 The registry also holds commands invoked from the `:` command line. They share

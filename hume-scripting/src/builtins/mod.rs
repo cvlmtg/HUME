@@ -124,6 +124,21 @@ const BOOTSTRAP: &str = r#"
         (lambda (e) (%finish-lazy-activation id #f) (raise-error e))
         (begin (hm.eval-string prog) (%finish-lazy-activation id #t))))))
 
+; define-command! — register a Steel lambda as a keymap command.
+;
+; Positional args: name (string), doc (string), proc (lambda).
+; Optional keyword args (after proc):
+;   #:repeatable #t    — pressing `.` replays this command at the new cursor.
+;                        Use only for self-contained buffer edits. Mutually
+;                        exclusive with #:inline-output.
+;   #:inline-output #t — bracket dispatch with an alt-screen exit so shell
+;                        output streams live to the terminal. Mutually exclusive
+;                        with #:repeatable.
+(define (define-command! name doc proc
+                         #:repeatable    [repeatable    #f]
+                         #:inline-output [inline-output #f])
+  (%define-command! name doc proc repeatable inline-output))
+
 ; %dispatch-command — routes by command type:
 ;   activated plugin command → apply closure inline (stays in Steel, synchronous);
 ;   lazy activation miss      → activate inline, retry, then fall through to native;
@@ -204,13 +219,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // Hook registration — init-only
     steel.register_fn_with_ctx(HUME_CTX, "register-hook!", hooks::register_hook);
 
-    // Steel command definition and composition
-    steel.register_fn_with_ctx(HUME_CTX, "define-command!", commands::define_command);
-    steel.register_fn_with_ctx(
-        HUME_CTX,
-        "define-command-inline-output!",
-        commands::define_command_inline_output,
-    );
+    // Steel command definition.
+    // %define-command! is the native primitive; the (define-command! …) Steel wrapper
+    // in BOOTSTRAP exposes keyword args (#:repeatable, #:inline-output).
+    steel.register_fn_with_ctx(HUME_CTX, "%define-command!", commands::define_command);
     // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
     // (call! name args…) macro desugars to (%dispatch-command …) which routes
     // activated plugin commands inline in Steel and falls back here for everything else.

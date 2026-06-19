@@ -41,11 +41,15 @@ type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(define-command! name doc proc)`
+/// `(%define-command! name doc proc repeatable inline-output)`
 ///
+/// Native primitive behind the `(define-command! …)` Steel wrapper.
 /// Registers `proc` (a Steel lambda) as a mappable command with the given
 /// `name` and `doc` string.  The command can then be bound to a key via
 /// `(bind-key! …)`.
+///
+/// `repeatable` and `inline_output` are mutually exclusive — passing both
+/// `#t` raises a Steel error.
 ///
 /// When triggered by a key binding the lambda receives leading `count` and
 /// `extend` arguments based on its declared arity:
@@ -53,9 +57,6 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// - `(lambda (count))` — receives the repeat count (integer ≥ 1).
 /// - `(lambda (count extend))` — receives count and `#t`/`#f` extend flag.
 /// - Variadic lambdas receive both count and extend.
-///
-/// The author forwards these explicitly to inner `(call! …)` calls, deciding
-/// what to repeat and whether to extend.
 ///
 /// Raises a Steel error if:
 /// - `name` conflicts with a core built-in command.
@@ -66,28 +67,10 @@ pub(crate) fn define_command(
     name: String,
     doc: String,
     proc: SteelVal,
+    repeatable: bool,
+    inline_output: bool,
 ) -> SteelResult {
-    define_command_inner(ctx, name, doc, proc, false)
-}
-
-/// `(define-command-inline-output! name doc proc)`
-///
-/// Like `(define-command! …)` but brackets dispatch with an alt-screen exit so
-/// the command's subprocess output streams live to the terminal rather than
-/// dumping to the message bar. Use for shell-outs (plum install, formatters,
-/// linters). The editor re-enters the alt-screen after a keypress.
-///
-/// The lambda receives `count` and `extend` leading args by arity, exactly as
-/// in `(define-command! …)`.
-///
-/// Same error conditions as `(define-command! …)`.
-pub(crate) fn define_command_inline_output(
-    ctx: &mut SteelCtx,
-    name: String,
-    doc: String,
-    proc: SteelVal,
-) -> SteelResult {
-    define_command_inner(ctx, name, doc, proc, true)
+    define_command_inner(ctx, name, doc, proc, repeatable, inline_output)
 }
 
 fn define_command_inner(
@@ -95,9 +78,15 @@ fn define_command_inner(
     name: String,
     doc: String,
     proc: SteelVal,
+    repeatable: bool,
     inline_output: bool,
 ) -> SteelResult {
-    let builtin_name = if inline_output { "define-command-inline-output!" } else { "define-command!" };
+    if repeatable && inline_output {
+        steel::stop!(Generic =>
+            "define-command!: '#:repeatable #t' and '#:inline-output #t' are mutually exclusive \
+             — shell-out commands must not participate in dot-repeat");
+    }
+    let builtin_name = "define-command!";
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "{}: only valid during init.scm or plugin load, not from a Steel command body",
@@ -153,7 +142,7 @@ fn define_command_inner(
     ctx.registries.cmd_owners.insert(name.clone(), current_owner.to_string());
     // Register inline in the editor's CommandRegistry so subsequent keypresses
     // find SteelBacked entries immediately — no post-eval second pass.
-    ctx.host.register_command(SteelCmdDef { name, doc, arity, is_variadic, inline_output })
+    ctx.host.register_command(SteelCmdDef { name, doc, arity, is_variadic, inline_output, repeatable })
         .map_err(|e| SteelErr::new(ErrorKind::Generic, e))?;
     Ok(SteelVal::Void)
 }
@@ -481,6 +470,7 @@ mod tests {
             "bad\"name".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false), // type check comes after name check
+            false, false,
         )
         .unwrap_err();
         assert!(
@@ -498,6 +488,7 @@ mod tests {
             "bad\\name".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false),
+            false, false,
         )
         .unwrap_err();
         assert!(
@@ -525,6 +516,7 @@ mod tests {
             "my-cmd".to_string(),
             "doc".to_string(),
             SteelVal::BoolV(false),
+            false, false,
         )
         .unwrap_err();
         let msg = err.to_string();

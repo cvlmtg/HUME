@@ -72,21 +72,22 @@
 
 ;; ── Custom commands ───────────────────────────────────────────────────────────
 ;;
-;; (define-command! name doc-string (lambda () body...))
-;; (define-command! name doc-string (lambda (count) body...))
-;; (define-command! name doc-string (lambda (count extend) body...))
+;; (define-command! name doc-string lambda [keyword-args...])
 ;;   Register a Steel lambda as a named command.  When triggered from a key
 ;;   binding, the lambda receives leading args based on how many params it
 ;;   declares: 0 params → nothing; 1 param → repeat count (integer ≥ 1);
 ;;   2 params → count and extend flag (#t/#f).  Ctrl+key always delivers
 ;;   extend = #t.  Forward them explicitly via (call! "name" count extend).
 ;;   All Steel commands participate in Ctrl+key one-shot extend automatically.
-;; (define-command-inline-output! name doc-string (lambda () body...))
-;;   Same as define-command!, but exits the alt-screen before the command runs
-;;   so that subprocess output (install scripts, formatters, linters) streams
-;;   live to the terminal.  After the command finishes, press any key to return
-;;   to the editor.  Use this for any command that shells out with output you
-;;   want to read (e.g. plum install, cargo fmt).
+;;
+;;   Optional keywords (pass after the lambda):
+;;     #:repeatable #t    — opt in to dot-repeat (`.`).  Use only for
+;;                          self-contained buffer edits.
+;;     #:inline-output #t — exit the alt-screen before the command runs so
+;;                          subprocess output streams live to the terminal.
+;;                          After the command finishes, press any key to return.
+;;                          Use for shell-outs (plum install, cargo fmt, etc.).
+;;   These two flags are mutually exclusive.
 ;;
 ;; The command becomes available as ":name" in the command bar.
 ;; Use (call! "other-command") or (call! "cmd" arg1 arg2…) to invoke any

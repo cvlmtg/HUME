@@ -42,10 +42,16 @@ impl Editor {
             // via `.take()`, and `call_steel_cmd` passes it as `pending_char`.
             let char_arg = self.state.pending_char;
 
-            // Clear selection_recipe before the body runs so pre-body steps
-            // (e.g. a `w` the user pressed before this command) don't bleed
-            // into inner (call! ...) dispatches.
-            self.state.selection_recipe.clear();
+            // Snapshot the selection recipe built by the user's prior native
+            // selection commands before the Steel body runs. Inner (call! …)
+            // dispatches may overwrite selection_recipe; the snapshot captures
+            // the pre-body extent for dot-repeat.
+            //
+            // Correctness: drain_pending_repeat replays the recipe AND
+            // re-dispatches the whole Steel body, so any selection the body
+            // builds internally via (call! …) is rebuilt automatically during
+            // replay — including it in the recorded recipe would double-apply it.
+            let recipe_snapshot = std::mem::take(&mut self.state.selection_recipe);
 
             // Commit any open paste session before Steel eval; same invariant as
             // the native path (ring-cycle commands bypass this).
@@ -110,7 +116,6 @@ impl Editor {
                              Use a variadic lambda or reduce to ≤ 2 params."
                         ),
                     );
-                    self.state.selection_recipe.clear();
                     return;
                 }
                 let n = if cmd_is_variadic { 2 } else { cmd_arity as usize };
@@ -183,8 +188,25 @@ impl Editor {
                 });
             }
 
-        // Steel commands are never repeatable; clear any recipe entries written
-        // by inner (call! ...) dispatches so they don't leak into the next command.
+        // Dot-repeat: record opt-in Steel commands on the success path.
+        //
+        // Re-query the registry — a Lazy stub resolved to SteelBacked above,
+        // so the entry now reflects the real command.
+        //
+        // Outer-name-wins: if an inner (call! …) dispatched a native repeatable
+        // command and set last_repeatable_action, we overwrite it here so the
+        // outer Steel command wins the repeat slot.
+        if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
+            self.state.last_repeatable_action = Some(super::super::RepeatableAction {
+                command: name.clone(),
+                count,
+                char_arg,
+                insert_keys: Vec::new(),
+                selection_recipe: recipe_snapshot,
+            });
+        }
+        // Clear any recipe entries written by inner dispatches so they don't
+        // leak into the next command.
         self.state.selection_recipe.clear();
         }
 

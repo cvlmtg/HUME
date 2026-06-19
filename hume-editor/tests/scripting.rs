@@ -394,19 +394,18 @@ fn define_command_extend_builtin_removed() {
     );
 }
 
-// ── define-command-inline-output! ─────────────────────────────────────────
+// ── define-command! keywords ──────────────────────────────────────────────
 
-/// `define-command-inline-output!` sets `inline_output: true` on the returned
-/// SteelCmdDef; plain `define-command!` sets it to `false`.
+/// `#:inline-output #t` sets `inline_output: true`; plain `define-command!`
+/// sets it to `false`.
 #[test]
 fn define_command_inline_output_sets_flag() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-
     h.eval_source_returning_defs(
-        r#"(define-command-inline-output! "inline-cmd" "doc" (lambda () (+ 1 0)))
-           (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#
+        r#"(define-command! "inline-cmd" "doc" (lambda () (+ 1 0)) #:inline-output #t)
+           (define-command! "plain-cmd"  "doc" (lambda () (+ 1 0)))"#
             .to_owned(),
         Default::default(),
         &mut mock,
@@ -414,14 +413,55 @@ fn define_command_inline_output_sets_flag() {
     .expect("eval should succeed");
 
     let inline = mock.registered_cmds.iter().find(|d| d.name == "inline-cmd").expect("inline-cmd not found");
+    let plain  = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
+    assert!(inline.inline_output, "#:inline-output #t should set inline_output = true");
+    assert!(!plain.inline_output, "plain define-command! should set inline_output = false");
+}
+
+/// `#:repeatable #t` sets `repeatable: true`; plain `define-command!` does not.
+#[test]
+fn define_command_repeatable_sets_flag() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source_returning_defs(
+        r#"(define-command! "rep-cmd"   "doc" (lambda () (+ 1 0)) #:repeatable #t)
+           (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#
+            .to_owned(),
+        Default::default(),
+        &mut mock,
+    )
+    .expect("eval should succeed");
+
+    let rep   = mock.registered_cmds.iter().find(|d| d.name == "rep-cmd").expect("rep-cmd not found");
     let plain = mock.registered_cmds.iter().find(|d| d.name == "plain-cmd").expect("plain-cmd not found");
-    assert!(
-        inline.inline_output,
-        "define-command-inline-output! should set inline_output = true"
+    assert!(rep.repeatable,   "#:repeatable #t should set repeatable = true");
+    assert!(!plain.repeatable, "plain define-command! should set repeatable = false");
+}
+
+/// `#:repeatable #t` and `#:inline-output #t` together must raise a Steel error
+/// and must not register the command.
+///
+/// Fail oracle: remove the mutual-exclusion guard in define_command_inner —
+/// the eval would succeed and register the command with both flags set.
+#[test]
+fn repeatable_and_inline_output_mutually_exclusive() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    let result = h.eval_source_returning_defs(
+        r#"(define-command! "bad-cmd" "doc" (lambda () (+ 1 0)) #:repeatable #t #:inline-output #t)"#
+            .to_owned(),
+        Default::default(),
+        &mut mock,
     );
     assert!(
-        !plain.inline_output,
-        "define-command! should set inline_output = false"
+        result.is_err(),
+        "#:repeatable + #:inline-output must raise an error; got Ok"
+    );
+    assert!(
+        mock.registered_cmds.is_empty(),
+        "failed define-command! must not register the command"
     );
 }
 

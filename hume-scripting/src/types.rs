@@ -17,6 +17,11 @@ pub struct SteelCmdDef {
     /// `true` if dispatch should bracket this command with an alt-screen exit
     /// so subprocess output streams live to the terminal.
     pub inline_output: bool,
+    /// `true` if pressing `.` should repeat this command.
+    ///
+    /// Opt in via `#:repeatable #t` in `(define-command! …)`.
+    /// Mutually exclusive with `inline_output` — enforced at definition time.
+    pub repeatable: bool,
 }
 
 /// Language identity registration queued during `eval_init` and flushed by

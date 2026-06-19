@@ -1844,6 +1844,7 @@ fn setup_arity_test(
         arity,
         is_variadic,
         inline_output: false,
+        repeatable: false,
     });
     ed.scripting = Some(host);
     ed
@@ -1909,6 +1910,7 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
         arity: 2,
         is_variadic: false,
         inline_output: false,
+        repeatable: false,
     });
 
     let before = state(&ed);

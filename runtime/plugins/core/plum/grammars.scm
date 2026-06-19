@@ -141,7 +141,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-(define-command-inline-output! "plum-install-grammar"
+(define-command! "plum-install-grammar"
   "Install the tree-sitter grammar for the current buffer's language."
   (lambda ()
     (let ((name (buffer-language (current-buffer))))
@@ -152,9 +152,10 @@
             (with-handler
               (lambda (err)
                 (log! 'error (string-append "PLUM: install failed: " (to-string err))))
-              (plum/install-grammar name)))))))
+              (plum/install-grammar name))))))
+  #:inline-output #t)
 
-(define-command-inline-output! "plum-update-grammar"
+(define-command! "plum-update-grammar"
   "Re-clone and recompile the grammar for the current buffer's language."
   (lambda ()
     (let ((name (buffer-language (current-buffer))))
@@ -169,9 +170,10 @@
             (with-handler
               (lambda (err)
                 (log! 'error (string-append "PLUM: update failed: " (to-string err))))
-              (plum/install-grammar name)))))))
+              (plum/install-grammar name)))))
+  #:inline-output #t)
 
-(define-command-inline-output! "plum-ensure-grammars"
+(define-command! "plum-ensure-grammars"
   "Install the named grammars (a list) that are not yet compiled."
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
@@ -179,7 +181,8 @@
     (let ((missing (filter (lambda (name) (not (plum/grammar-installed? name))) grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
-          (plum/batch-run "installed grammar" missing plum/install-grammar)))))
+          (plum/batch-run "installed grammar" missing plum/install-grammar))))
+  #:inline-output #t)
 
 (define-command! "plum-list-grammars"
   "Log declared, installed, orphan, and missing grammar lists."

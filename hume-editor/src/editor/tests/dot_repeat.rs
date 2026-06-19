@@ -484,7 +484,55 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
     ed
 }
 
-/// Steel commands are never repeatable — they must not overwrite
+/// A Steel command registered with `#:repeatable #t` must overwrite
+/// `last_repeatable_action` with its own name so `.` replays the outer
+/// Steel body, not the inner native command.
+///
+/// Independent oracle: buffer is "foo bar\n", initial selection is "foo".
+/// Run `del-sel` (repeatable Steel command that calls delete internally) →
+/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar", then `.`
+/// — `.` must replay `del-sel` on the current selection ("bar"), leaving " \n".
+///
+/// Fail oracle 1: if `is_repeatable()` returned `false` for `SteelBacked`,
+/// `last_repeatable_action` would be `None` (no prior recording) — `.` would
+/// be a no-op and "bar" would survive.
+///
+/// Fail oracle 2: if the outer name didn't win the slot, `last_repeatable_action`
+/// would be `"delete"` (the inner native) — the result would be the same but
+/// the name assertion below would catch the missing outer-name record.
+#[test]
+fn steel_dot_repeatable_round_trip() {
+    let mut ed = editor_with_steel(
+        "-[foo]> bar\n",
+        r#"(define-command! "del-sel" ""
+             (lambda () (call! "delete"))
+             #:repeatable #t)"#,
+    );
+
+    // Run the repeatable Steel command.
+    ed.execute_keymap_command("del-sel".into(), 1, false, vec![]);
+    // "foo" deleted; buffer is " bar\n".
+    assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
+
+    // last_repeatable_action must name the outer Steel command, not inner "delete".
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().map(|a| a.command.as_ref()),
+        Some("del-sel"),
+        "outer Steel command must win the repeat slot over the inner 'delete'"
+    );
+
+    // Select "bar" then press `.` — replay must delete the current selection.
+    ed.feed_key(key('w')); // select "bar"
+    ed.feed_key(key('.'));  // replay "del-sel" → delete "bar"
+    // Oracle: " bar\n" → " \n" after "bar" is deleted.
+    assert_eq!(
+        ed.doc().text().to_string(),
+        " \n",
+        "`.` must replay the Steel command and delete the current selection"
+    );
+}
+
+/// A plain `define-command!` (non-repeatable) must not overwrite
 /// `last_repeatable_action` set by a prior native edit.
 ///
 /// Fail oracle: if `is_repeatable()` returned `true` for `SteelBacked`,
