@@ -67,7 +67,7 @@ pub(crate) fn define_command(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command!", name, doc, proc, false)
+    define_command_inner(ctx, name, doc, proc, false)
 }
 
 /// `(define-command-inline-output! name doc proc)`
@@ -87,17 +87,17 @@ pub(crate) fn define_command_inline_output(
     doc: String,
     proc: SteelVal,
 ) -> SteelResult {
-    define_command_inner(ctx, "define-command-inline-output!", name, doc, proc, true)
+    define_command_inner(ctx, name, doc, proc, true)
 }
 
 fn define_command_inner(
     ctx: &mut SteelCtx,
-    builtin_name: &str,
     name: String,
     doc: String,
     proc: SteelVal,
     inline_output: bool,
 ) -> SteelResult {
+    let builtin_name = if inline_output { "define-command-inline-output!" } else { "define-command!" };
     if !ctx.is_init && ctx.plugin_stack.is_empty() {
         steel::stop!(Generic =>
             "{}: only valid during init.scm or plugin load, not from a Steel command body",

@@ -42,22 +42,10 @@ impl Editor {
             // via `.take()`, and `call_steel_cmd` passes it as `pending_char`.
             let char_arg = self.state.pending_char;
 
-            // Snapshot the selection recipe built by the user's *prior* native
-            // selection commands (e.g. a `w` before this command). We take it
-            // now, before the body runs, so inner `(call! "insert-before")` or
-            // any other inner dispatch that clears/overwrites `selection_recipe`
-            // does not destroy the pre-body extent.
-            //
-            // Correctness: `drain_pending_repeat` replays the recipe AND
-            // re-dispatches the whole Steel body, so any selection the body
-            // builds internally via `call!` is rebuilt automatically during
-            // replay — including it in the recorded recipe would double-apply
-            // it. The pre-body snapshot is therefore the right semantics, not
-            // just a workaround.
-            //
-            // Snapshot the selection recipe before any Steel code runs so inner
-            // dispatches can't clobber the user's prior selection extent.
-            let recipe_snapshot = std::mem::take(&mut self.state.selection_recipe);
+            // Clear selection_recipe before the body runs so pre-body steps
+            // (e.g. a `w` the user pressed before this command) don't bleed
+            // into inner (call! ...) dispatches.
+            self.state.selection_recipe.clear();
 
             // Commit any open paste session before Steel eval; same invariant as
             // the native path (ring-cycle commands bypass this).
@@ -96,7 +84,7 @@ impl Editor {
                     Some(MappableCommand::SteelBacked { inline_output, arity, is_variadic, .. }) => {
                         (*inline_output, *arity, *is_variadic)
                     }
-                    _ => (false, 0, true),
+                    _ => unreachable!("Lazy stub must be replaced by SteelBacked before re-query"),
                 };
             let focused_pane_id = self.state.focused_pane_id;
             let focused_buffer_id = self.focused_buffer_id();
@@ -110,7 +98,22 @@ impl Editor {
             //   arity ≥ 2 or variadic → [count, extend]
             // The author then forwards them explicitly in (call! "name" count extend).
             let effective_args = if steel_args.is_empty() {
-                let n = if cmd_is_variadic { 2 } else { cmd_arity.min(2) as usize };
+                // A non-variadic lambda with more than 2 required params can't receive
+                // all its args from keymap injection — it would always fail with an
+                // arity error.  Catch this early with a helpful message.
+                if !cmd_is_variadic && cmd_arity > 2 {
+                    self.report(
+                        Severity::Error,
+                        format!(
+                            "{name}: lambda declares {cmd_arity} required params but keymap \
+                             injection supplies at most 2 (count, extend). \
+                             Use a variadic lambda or reduce to ≤ 2 params."
+                        ),
+                    );
+                    self.state.selection_recipe.clear();
+                    return;
+                }
+                let n = if cmd_is_variadic { 2 } else { cmd_arity as usize };
                 match n {
                     0 => vec![],
                     1 => vec![SteelVal::IntV(count as isize)],
@@ -162,6 +165,7 @@ impl Editor {
                 Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
                 Err(e) => {
                     self.report(Severity::Error, e);
+                    self.state.selection_recipe.clear();
                     return;
                 }
             };
@@ -179,22 +183,8 @@ impl Editor {
                 });
             }
 
-        // Steel commands are never repeatable (is_repeatable() always returns false
-        // for SteelBacked). The guard below keeps the pattern symmetric with
-        // dispatch_native in case a future variant reintroduces repeatability, but
-        // for now it never fires.
-        if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
-            self.state.last_repeatable_action = Some(super::super::RepeatableAction {
-                command: name.clone(),
-                count,
-                char_arg,
-                insert_keys: Vec::new(),
-                selection_recipe: recipe_snapshot,
-            });
-        }
-        // Whether repeatable or not, the live recipe must not leak into the next
-        // command — repeatable commands recorded the snapshot above; non-repeatable
-        // commands must not propagate a selection recipe they built internally.
+        // Steel commands are never repeatable; clear any recipe entries written
+        // by inner (call! ...) dispatches so they don't leak into the next command.
         self.state.selection_recipe.clear();
         }
 

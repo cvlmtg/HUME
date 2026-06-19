@@ -290,7 +290,7 @@ impl Editor {
             } = &mappable
             {
                 use steel::rvals::SteelVal;
-                if *arity == 0 {
+                if *arity == 0 && !*is_variadic {
                     vec![]
                 } else if *arity == 1 || *is_variadic {
                     match expanded {

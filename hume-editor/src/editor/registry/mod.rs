@@ -478,6 +478,19 @@ mod tests {
     }
 
     #[test]
+    fn is_extendable_lazy_stub_true() {
+        use hume_scripting::attribution::PluginId;
+        // Lazy stubs resolve to SteelBacked; the keymap must treat them as
+        // extendable on first Ctrl+key press so extend=true is forwarded even
+        // before the plugin is activated.
+        let cmd = MappableCommand::Lazy {
+            name: "lazy-cmd".into(),
+            plugin: PluginId::User { user: "u".to_string(), repo: "r".to_string() },
+        };
+        assert!(cmd.is_extendable());
+    }
+
+    #[test]
     fn all_names_are_unique() {
         // HashMap insertion silently overwrites duplicates — verify the final
         // count matches the number of distinct registered names.

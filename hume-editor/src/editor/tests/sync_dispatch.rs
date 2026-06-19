@@ -993,6 +993,45 @@ fn explicit_steel_args_not_overwritten_by_injection() {
     assert_eq!(after, before + 1, "explicit StringV arg must reach the lambda unchanged");
 }
 
+/// A `(lambda (count))` command receives only the repeat count — no extend arg.
+///
+/// Fail oracle: if the arity-1 branch injected `[count, extend]` instead of
+/// `[count]`, Steel would call `(apply proc (list 4 #f))` on a 1-param lambda
+/// and raise an arity error; the cursor would not move.
+#[test]
+fn steel_arity_1_lambda_receives_count_only() {
+    let mut ed = editor_from("-[a]>bcdefghij\n");
+
+    let names: Vec<String> = ed.state.registry.native_mappable_names().map(str::to_owned).collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+
+    let mut init_host = EditorHostImpl { state: &mut ed.state, view: &mut ed.view };
+    host.eval_source_returning_defs(
+        r#"(define-command! "step-count-only" ""
+             (lambda (count) (call! "move-right" count)))"#
+            .to_owned(),
+        Default::default(),
+        &mut init_host,
+    ).expect("define-command! must succeed");
+    ed.scripting = Some(host);
+
+    // Dispatch with count=3: cursor must land 3 positions to the right.
+    ed.execute_keymap_command("step-count-only".into(), 3, false, vec![]);
+    let idx = ed.state.panes.state
+        .get(ed.state.focused_pane_id).unwrap()
+        .values().next().unwrap()
+        .selections.primary().head();
+    assert_eq!(idx, 3, "count=3 must move cursor 3 positions; got {idx}");
+
+    // No arity error was produced.
+    assert!(
+        ed.state.message_log.entries().all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
+        "arity-1 Steel command must not produce an error on injection"
+    );
+}
+
 // ── Dual-path parity tests ────────────────────────────────────────────────────
 //
 // The original regression: `run_command_sync` executed native commands naked —

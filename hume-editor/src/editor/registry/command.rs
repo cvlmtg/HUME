@@ -234,12 +234,15 @@ impl MappableCommand {
     ///
     /// Motion and Selection are always extendable. Edit is never extendable.
     /// EditorCmd has an explicit flag set at registration time.
-    /// Steel commands are always extendable — the body receives `extend` as its
-    /// second lambda argument and decides what to do with it.
+    /// Steel commands (SteelBacked and Lazy stubs) are always extendable —
+    /// the resolved lambda receives `extend` as its second arg.
     pub(crate) fn is_extendable(&self) -> bool {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::SteelBacked { .. } => true,
-            Self::Edit { .. } | Self::Lazy { .. } => false,
+            Self::Motion { .. }
+            | Self::Selection { .. }
+            | Self::SteelBacked { .. }
+            | Self::Lazy { .. } => true,
+            Self::Edit { .. } => false,
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
