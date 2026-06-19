@@ -1,19 +1,18 @@
-
- =====================================================================
+===================================================================
   H U M E   T U T O R
- =====================================================================
+===================================================================
   A hands-on introduction to HUME — Hume's Unfinished Modal Editor.
- =====================================================================
+===================================================================
 
-  Welcome. This buffer is your practice space. Every lesson has
-  exercises with text you are meant to edit. Do so freely — you cannot
-  break anything here. To reset this buffer to its original state,
-  close it with `:bd!` and re-open it with `:tutor`.
+Welcome. This buffer is your practice space. Every lesson has
+exercises with text you are meant to edit. Do so freely — you cannot
+break anything here. To reset this buffer to its original state,
+close it with `:bd!` and re-open it with `:tutor`.
 
-  When you are ready, move to the Introduction below. Press `j` to
-  move down.
+When you are ready, move to the Introduction below. Press `j` to
+move down.
 
-  To quit at any time, type `:q` and press Enter.
+To quit at any time, type `:q` and press Enter.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   I N T R O D U C T I O N
@@ -41,8 +40,8 @@ act. Every lesson builds on this idea.
   h   move left       l   move right
   j   move down       k   move up
 
-  The arrow keys also work, but `h j k l` keep your hands on the home
-  row. Try them now on the practice text below.
+The arrow keys also work, but `h j k l` keep your hands on the home
+row. Try them now on the practice text below.
 
   >> Navigate to every word in this sentence and read it carefully.
 
@@ -53,11 +52,11 @@ act. Every lesson builds on this idea.
   b   select the previous word
   B   select the previous WORD
 
-  The difference: in `config.toml log-file`, pressing `w` repeatedly
-  selects `config`, then `.`, then `toml`, then `log`, then `-`, then
-  `file` (six steps — dots and dashes are boundaries). Pressing `W`
-  instead selects `config.toml`, then `log-file` (two steps — only
-  whitespace divides WORDs).
+The difference: in `config.toml log-file`, pressing `w` repeatedly
+selects `config`, then `.`, then `toml`, then `log`, then `-`, then
+`file` (six steps — dots and dashes are boundaries). Pressing `W`
+instead selects `config.toml`, then `log-file` (two steps — only
+whitespace divides WORDs).
 
   >> Try `w` on the line below and watch it step through each piece.
      Then navigate back to the start of the line with `b` and try `W`,
@@ -91,15 +90,15 @@ act. Every lesson builds on this idea.
   Ctrl+o   jump backward through your movement history
   Ctrl+i   jump forward through your movement history
 
-  Opening a file, jumping to search results, or switching buffers all
-  record an entry. Use `Ctrl+o` to retrace your steps — for instance,
-  to return from a tutor exercise to wherever you were before.
+Opening a file, jumping to search results, or switching buffers all
+record an entry. Use `Ctrl+o` to retrace your steps — for instance,
+to return from a tutor exercise to wherever you were before.
 
-  Some Ctrl key combinations — including `Ctrl+i` — require the Kitty
-  keyboard protocol to work correctly. Without it, the terminal cannot
-  distinguish `Ctrl+i` from Tab, so the forward-jump command will not
-  fire. To check whether the protocol is active, look for the cat
-  glyph (ᓚᘏᗢ) in the statusline.
+Some Ctrl key combinations — including `Ctrl+i` — require the Kitty
+keyboard protocol to work correctly. Without it, the terminal cannot
+distinguish `Ctrl+i` from Tab, so the forward-jump command will not
+fire. To check whether the protocol is active, look for the cat
+glyph (ᓚᘏᗢ) in the statusline.
 
 1.6  COUNT PREFIXES
 
@@ -109,26 +108,26 @@ act. Every lesson builds on this idea.
     5j   move five lines down
     2{   jump two paragraphs back
 
-  Counts apply to motions, not edits.
+Counts apply to motions, not edits.
 
-  Note: `0` alone jumps to line start; with a count already pending,
-  it becomes a digit (so `10w`, `20j`).
+Note: `0` alone jumps to line start; with a count already pending,
+it becomes a digit (so `10w`, `20j`).
 
   >> Place the cursor on `one` in the line below, then press `3w` to
      jump three words forward. You should land on `four`:
 
-  one two three four five six
+one two three four five six
 
   >> Now press `2b` to jump two words backward. You should land back
      on `two`.
 
-  ── Lesson 1 Summary ──────────────────────────────────────────────
+  ── Lesson 1 Summary ─────────────────────────────────────────────
   h j k l    basic motion         gg / ge      first / last line
   w / W      next word / WORD     0 ^ $        line start / end
   b / B      prev word / WORD     { }          paragraph motion
   3w / 5j    count + motion       3f. / 3n     count + find / search
   Ctrl+o / Ctrl+i   jump backward / forward in movement history
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   2 — E D I T I N G   W I T H   S E L E C T I O N S
@@ -142,8 +141,8 @@ immediately without making an additional selection first.
 
   d   delete the current selection
 
-  With a fresh 1-char selection, pressing `d` deletes the character
-  under the cursor.
+With a fresh 1-char selection, pressing `d` deletes the character
+under the cursor.
 
   >> Delete every `X` in the line below using `d`:
 
@@ -177,11 +176,11 @@ immediately without making an additional selection first.
      then press `Esc`. Press `u` to undo the entire insert — the new
      line disappears. Press `U` to redo it.
 
-  ── Lesson 2 Summary ──────────────────────────────────────────────
+  ── Lesson 2 Summary ─────────────────────────────────────────────
   d   delete selection      c   change selection
   u   undo                  U   redo
   Select first, then act — the selection is always ready.
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   3 — Y A N K ,   P A S T E ,
@@ -206,25 +205,25 @@ system) and the KILL RING (internal to the editor).
 
   COPY ME
 
-  If the selection is a single character, `p` inserts the clipboard
-  contents right after it. If the yanked text was a whole line (selected
-  with `x`), `p` inserts a new line below.
+If the selection is a single character, `p` inserts the clipboard
+contents right after it. If the yanked text was a whole line (selected
+with `x`), `p` inserts a new line below.
 
-  Repeating `p` pastes the same text again, stacking copies —
-  `p p p` pastes three times in a row.
+Repeating `p` pastes the same text again, stacking copies — `p p p`
+pastes three times in a row.
 
 3.2  THE KILL RING
 
-  `c` and `d` (change and delete) push their result into the kill ring
-  separately from the clipboard. The ring keeps the 10 most recent
-  kills; the oldest drops off when an eleventh arrives.
+`c` and `d` (change and delete) push their result into the kill ring
+separately from the clipboard. The ring keeps the 10 most recent
+kills; the oldest drops off when an eleventh arrives.
 
   [   cycle to the older kill-ring entry and paste it
   ]   cycle to the newer kill-ring entry and paste it
 
-  `[` and `]` only work right after a paste — while the paste is still
-  "live". Pressed otherwise they do nothing. The whole paste-and-cycle
-  sequence collapses into one undo step: a single `u` reverts all of it.
+`[` and `]` only work right after a paste — while the paste is still
+"live". Pressed otherwise they do nothing. The whole paste-and-cycle
+sequence collapses into one undo step: a single `u` reverts all of it.
 
   >> Delete the word "OLD" below with `w d`, then delete "ALSO" with
      `w d`. Now press `p` — smart-paste gives you the last kill. Press
@@ -234,21 +233,21 @@ system) and the KILL RING (internal to the editor).
 
 3.3  SMART PASTE
 
-  `p` is context-aware:
+`p` is context-aware:
   - after `c` or `d` (a kill), it reads from the kill ring
   - otherwise it reads from the clipboard
 
-  This means you can delete something with `d` and immediately `p`
-  to paste the deleted text, without switching registers manually.
+This means you can delete something with `d` and immediately `p`
+to paste the deleted text, without switching registers manually.
 
-  If the clipboard is empty when `p` would read it, it falls back to
-  the most recent kill so there is always something to paste.
+If the clipboard is empty when `p` would read it, it falls back to
+the most recent kill so there is always something to paste.
 
-  ── Lesson 3 Summary ──────────────────────────────────────────────
+  ── Lesson 3 Summary ─────────────────────────────────────────────
   y         yank to clipboard + kill ring   p / P  paste after / before
   c / d     push to kill ring (10)          [ / ]  cycle ring (after paste)
   p reads from kill ring after c/d, from clipboard otherwise
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   4 — I N S E R T I N G   T E X T
@@ -292,11 +291,11 @@ start inserting, each placing the cursor at a slightly different spot.
 
 4.3  REPLACE A WORD
 
-  The canonical "change a word" workflow:
-    1.  w   (select the whole next word)
-    2.  c   (delete it and enter Insert)
-    3. type the replacement
-    4.  Esc
+The canonical "change a word" workflow:
+  1.  w   (select the whole next word)
+  2.  c   (delete it and enter Insert)
+  3. type the replacement
+  4.  Esc
 
   >> Navigate onto the word "placeholder", press `w` to select it,
      press `c`, type `42`, press `Esc`. The line should read:
@@ -304,12 +303,12 @@ start inserting, each placing the cursor at a slightly different spot.
 
   The value is placeholder.
 
-  ── Lesson 4 Summary ──────────────────────────────────────────────
+  ── Lesson 4 Summary ─────────────────────────────────────────────
   i / a    insert at start / end of selection
   I / A    insert at line start / end
   o / O    open new line below / above
   Esc      return to Normal mode
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   5 — F I N D ,   T I L L ,   A N D   R E P E A T
@@ -322,9 +321,9 @@ start inserting, each placing the cursor at a slightly different spot.
   t<char>   move to just BEFORE the next <char>
   T<char>   move to just AFTER the previous <char>
 
-  These are single-key commands followed by one character. The selection
-  lands on (or just before/after) the target — a fresh 1-char selection.
-  To select a range up to a char, use Extend mode (see Lesson 7.4).
+These are single-key commands followed by one character. The selection
+lands on (or just before/after) the target — a fresh 1-char selection.
+To select a range up to a char, use Extend mode (see Lesson 7.4).
 
   >> Press `f.` (find dot) to jump the selection onto the period in
      this sentence. The selection shrinks to just the period.
@@ -349,29 +348,29 @@ start inserting, each placing the cursor at a slightly different spot.
 
   .   repeats the last edit action (delete, change, insert sequence)
 
-  Important: the dot command repeats the ACTION only — not the preceding
-  motion. After `.` you are on whatever the current selection is.
+Important: the dot command repeats the ACTION only — not the preceding
+motion. After `.` you are on whatever the current selection is.
 
-  The idiomatic pattern for repeating an edit across several words:
-    w   (select next word)
-    c   (change it, type replacement)
-    Esc
-    w   (select next word)
-    .   (repeat the change on the new selection)
-    w
-    .   ...and so on.
+The idiomatic pattern for repeating an edit across several words:
+  w   (select next word)
+  c   (change it, type replacement)
+  Esc
+  w   (select next word)
+  .   (repeat the change on the new selection)
+  w
+  .   ...and so on.
 
   >> Change the first "OLD" to "NEW" below, then use `w .` (or `w .`
      again) to change the remaining occurrences:
 
   OLD word and OLD word and OLD word.
 
-  ── Lesson 5 Summary ──────────────────────────────────────────────
+  ── Lesson 5 Summary ─────────────────────────────────────────────
   f<c> / F<c>   find char forward / backward (inclusive)
   t<c> / T<c>   till char forward / backward (exclusive)
   = / -         repeat find in same / opposite direction
   .             repeat last action (not motion — re-select manually)
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   6 — S E A R C H   A N D   T E X T   O B J E C T S
@@ -385,27 +384,27 @@ start inserting, each placing the cursor at a slightly different spot.
   N   jump to the previous match
   *   use the CURRENT SELECTION as the search pattern
 
-  The selection lands on the match. Press `n` to advance.
+The selection lands on the match. Press `n` to advance.
 
   >> Search for "needle" below using `/needle` Enter:
 
   There is a needle in this haystack needle and another needle here.
 
-  To clear the search highlights, press `Esc`. The highlights
-  disappear, but the pattern is remembered — pressing `n` or `N`
-  brings it back.
+To clear the search highlights, press `Esc`. The highlights
+disappear, but the pattern is remembered — pressing `n` or `N`
+brings it back.
 
   >> Navigate onto the word `apple` below and press `*` to use it as
      the search pattern. Press `n` to jump to the next `apple`, then
      `n` again for the third one:
 
-  I had an apple for breakfast, an apple for lunch, and a third apple
-  for dinner.
+I had an apple for breakfast, an apple for lunch, and a third apple
+for dinner.
 
 6.2  TEXT OBJECTS
 
-  Text objects select structured regions. Prefix `mi` for INNER (without
-  delimiters) or `ma` for AROUND (including delimiters):
+Text objects select structured regions. Prefix `mi` for INNER (without
+delimiters) or `ma` for AROUND (including delimiters):
 
   mi(  mi)    inner parentheses     ma(  ma)  around parentheses
   mi[  mi]    inner brackets        ma[  ma]  around brackets
@@ -430,24 +429,24 @@ start inserting, each placing the cursor at a slightly different spot.
 
   ms<char>   select the TWO surrounding delimiter characters as cursors
 
-  This selects both the opening AND closing delimiter, giving you two
-  independent cursors. You can then delete both with `d`, or change them
-  with `r` + a new delimiter character.
+This selects both the opening AND closing delimiter, giving you two
+independent cursors. You can then delete both with `d`, or change them
+with `r` + a new delimiter character.
 
-  Note: if you have the `core:helix-surround` plugin loaded, the `ms`
-  binding has different semantics — consult that plugin's docs.
+Note: if you have the `core:helix-surround` plugin loaded, the `ms`
+binding has different semantics — consult that plugin's docs.
 
   >> Navigate into the parentheses below and press `ms(` to select both
      delimiters, then `d` to delete them (the parens, not the content):
 
   This (surrounded text) needs its parentheses removed.
 
-  ── Lesson 6 Summary ──────────────────────────────────────────────
+  ── Lesson 6 Summary ─────────────────────────────────────────────
   / ? n N    search forward / backward / next / prev
   *          use selection as search pattern
   mi<d> / ma<d>  inner / around text object
   ms<d>      select surrounding delimiter pair
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   7 — M U L T I - S E L E C T I O N
@@ -460,8 +459,8 @@ covers how to create and manage them.
 
   %   select the entire buffer as a single selection
 
-  This is the starting point for many multi-cursor workflows: select
-  everything, then narrow it down with a pattern.
+This is the starting point for many multi-cursor workflows: select
+everything, then narrow it down with a pattern.
 
   >> Press `%` and observe the selection covers every character. Then
      press `;` to collapse back to a single-character selection. Press
@@ -471,16 +470,16 @@ covers how to create and manage them.
 
   s   split the current selection(s) by a regex pattern
 
-  Each match within the selection becomes its own cursor. Works on any
-  selection, not just the whole buffer.
+Each match within the selection becomes its own cursor. Works on any
+selection, not just the whole buffer.
 
   >> Press `%` to select all, then `s` and type "MARK" and press Enter
      to put a cursor on every occurrence:
 
   First MARK here and second MARK there and a final MARK at the end.
 
-  The canonical multi-cursor entry: `%` (select all) → `s<pattern>`
-  (collect matches) → edit (applies to all cursors simultaneously).
+The canonical multi-cursor entry: `%` (select all) → `s<pattern>`
+(collect matches) → edit (applies to all cursors simultaneously).
 
 7.3  LINE SELECTION
 
@@ -488,7 +487,7 @@ covers how to create and manage them.
   X   select the line in the backward direction
   Ctrl+x   like  x , but EXTENDS (accumulates) rather than replaces
 
-  Repeated `x` walks selection down through multiple lines.
+Repeated `x` walks selection down through multiple lines.
 
   >> Navigate onto the first line of the exercise, press `x` to select
      it, then press `Ctrl+x` twice to extend to all three lines.
@@ -502,10 +501,10 @@ covers how to create and manage them.
 
   e   toggle Extend mode (statusline shows  EXT )
 
-  In Extend mode, every motion ADDS to the selection rather than
-  replacing it. Press `e` again to leave Extend mode. Check the
-  bottom-right corner of the window — it shows the current mode
-  ( EXT  when active,  NOR  when not).
+In Extend mode, every motion ADDS to the selection rather than
+replacing it. Press `e` again to leave Extend mode. Check the
+bottom-right corner of the window — it shows the current mode
+( EXT  when active,  NOR  when not).
 
   >> Press `e` to enter Extend mode, then press `w` several times to
      grow the selection across multiple words. Press `d` to delete the
@@ -513,10 +512,10 @@ covers how to create and manage them.
 
   Extend: remove all of these words right here.
 
-  ONE-SHOT EXTEND WITH CTRL
+ONE-SHOT EXTEND WITH CTRL
 
-  You can extend the selection for a single motion without entering
-  Extend mode by holding Ctrl. Every motion supports it:
+You can extend the selection for a single motion without entering
+Extend mode by holding Ctrl. Every motion supports it:
 
   Ctrl+w     extend to the next word (parallel to `e` then `w`)
   Ctrl+f<c>  extend forward to <char> (inclusive)
@@ -524,14 +523,13 @@ covers how to create and manage them.
   Ctrl+F<c>  extend backward to <char>
   Ctrl+T<c>  extend backward to just after <char>
 
-  The idiomatic delete-to-char pattern:
+The idiomatic delete-to-char pattern:
+  Ctrl+f.   (extend the selection to the next period)
+  d         (delete the entire span)
 
-    Ctrl+f.   (extend the selection to the next period)
-    d         (delete the entire span)
-
-  NOTE: one-shot Ctrl extend requires the kitty keyboard protocol
-  (look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
-  Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
+NOTE: one-shot Ctrl extend requires the kitty keyboard protocol
+(look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
+Ctrl+w / Ctrl+f / Ctrl+t do nothing — use Extend mode instead.
 
   >> (Kitty) Press `Ctrl+w` a few times to grow the selection across
      words below, then `d` to delete the span.
@@ -550,8 +548,8 @@ covers how to create and manage them.
   ;   collapse the selection to a single-character selection at HEAD
   ,   keep only the PRIMARY selection (discard all others)
 
-  After a multi-cursor operation (e.g. `%` then `s`), you may have
-  many cursors. Use `,` to get back to just one.
+After a multi-cursor operation (e.g. `%` then `s`), you may have
+many cursors. Use `,` to get back to just one.
 
   >> Press `%` then `s` and type "TARGET" and press Enter to put a
      cursor on each occurrence, then press `,` to keep only the
@@ -564,15 +562,15 @@ covers how to create and manage them.
   (   cycle primary selection backward
   )   cycle primary selection forward
 
-  After multi-cursor operations, you can walk through which cursor is
-  "primary" (the one that anchors pastes, messages, etc.).
+After multi-cursor operations, you can walk through which cursor is
+"primary" (the one that anchors pastes, messages, etc.).
 
 7.7  COPY SELECTION ON NEXT LINE
 
   C   duplicate the current selection on the NEXT line at the same column
 
-  This is useful for block editing — duplicate a cursor down through
-  several lines, then make the same edit on all of them at once.
+This is useful for block editing — duplicate a cursor down through
+several lines, then make the same edit on all of them at once.
 
   >> Press `C` twice to duplicate the cursor on the next two lines,
      then press `c` and type "REPLACED" `Esc`. All three lines change:
@@ -595,14 +593,14 @@ covers how to create and manage them.
   line two also  
   line three 
 
-  ── Lesson 7 Summary ──────────────────────────────────────────────
+  ── Lesson 7 Summary ─────────────────────────────────────────────
   %           select all                s       split by pattern
   x / X       select line down / up     e       extend mode toggle
   ;           collapse to head          ,       keep primary only
   ( / )       cycle primary             C       copy on next line
   _           trim whitespace           S       split on newlines
   Ctrl+w / Ctrl+f<c> / Ctrl+t<c>   one-shot extend (kitty only)
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   L E S S O N   8 — F I L E S   A N D   C O M M A N D S
@@ -620,11 +618,11 @@ argument), then Enter. Many have short aliases.
   :wq             save and quit
   :qa             quit the editor (refuses if any buffer is unsaved; use :qa! to force)
 
-  The tutor is opened as a sandboxed copy in a temporary directory
-  (something like `/tmp/hume-1234/tutor.txt`), so `:w` saves only to
-  that copy — the installed `runtime/tutor.txt` is never touched.
-  To get a fresh tutor, close this buffer with `:bd!` then reopen
-  with `:tutor`.
+The tutor is opened as a sandboxed copy in a temporary directory
+(something like `/tmp/hume-1234/tutor.txt`), so `:w` saves only to
+that copy — the installed `runtime/tutor.txt` is never touched.
+To get a fresh tutor, close this buffer with `:bd!` then reopen
+with `:tutor`.
 
   >> Try `:w` now to confirm the path in the statusline is a tmp path,
      not your runtime directory.
@@ -635,8 +633,8 @@ argument), then Enter. Many have short aliases.
   :e              reload the current file from disk (prompts if dirty)
   :e!             reload and DISCARD unsaved changes
 
-  If you open a path that is already in a buffer, `:e` switches to that
-  buffer instead of opening a duplicate.
+If you open a path that is already in a buffer, `:e` switches to that
+buffer instead of opening a duplicate.
 
 8.3  MANAGING BUFFERS
 
@@ -647,9 +645,9 @@ argument), then Enter. Many have short aliases.
   :bd             close (delete) the current buffer
   :bd!            close even if unsaved
 
-  In any typed command that takes a path, `%` expands to the current
-  file's path and `#` expands to the alternate (previously focused)
-  file's path. For example: `:e #` reopens the alternate buffer.
+In any typed command that takes a path, `%` expands to the current
+file's path and `#` expands to the alternate (previously focused)
+file's path. For example: `:e #` reopens the alternate buffer.
 
 8.4  OTHER USEFUL COMMANDS
 
@@ -662,13 +660,13 @@ argument), then Enter. Many have short aliases.
 
   >> Try `:version` to confirm which build you are running.
 
-  ── Lesson 8 Summary ──────────────────────────────────────────────
+  ── Lesson 8 Summary ─────────────────────────────────────────────
   :w / :w <path>   save / save-as         :e <path>   open file
   :q / :q!         close buffer / discard :ls         list buffers
   :qa / :qa!       quit all / force       :wq         save and quit
   :bn / :bp / :b   navigate buffers    :bd / :bd!  close buffer
   % = current file, # = alternate file in command args
-  ──────────────────────────────────────────────────────────────────
+  ─────────────────────────────────────────────────────────────────
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   A P P E N D I X — A   T A S T E   O F   M O R E
@@ -678,8 +676,8 @@ This appendix sketches features not covered in the main lessons.
 
 REGISTERS
 
-  Prefixing a yank, delete, or paste with `"<char>` stores into or
-  reads from a specific register. Valid register names:
+Prefixing a yank, delete, or paste with `"<char>` stores into or
+reads from a specific register. Valid register names:
 
   "cy   yank into the system clipboard register  c
   "cp   paste from the system clipboard
@@ -700,11 +698,11 @@ MACROS
   q<r>   replay register <r>                 (qq  replays  q )
   <n>q<r>  replay <n> times
 
-  HUME uses uppercase to record and lowercase to replay.
+HUME uses uppercase to record and lowercase to replay.
 
 UNDO TREE
 
-  Undo is linear: `u` steps back, `U` / `Ctrl+r` step forward.
+Undo is linear: `u` steps back, `U` / `Ctrl+r` step forward.
 
 SOFT WRAP
 
@@ -712,12 +710,12 @@ SOFT WRAP
 
 CLOSING NOTE
 
-  Thank you for reading. "What we call a mind is nothing but a heap
-  or collection of different perceptions … It is a succession of
-  patches … connected by habit rather than necessity."
-  — D. Hume (paraphrased)
+Thank you for reading. "What we call a mind is nothing but a heap
+or collection of different perceptions … It is a succession of
+patches … connected by habit rather than necessity."
+— D. Hume (paraphrased)
 
- =====================================================================
+=====================================================================
   End of the HUME Tutor. Press `gg` to jump back to the beginning,
   or `:bd!` to close this buffer.
- =====================================================================
+=====================================================================
