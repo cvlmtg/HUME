@@ -132,7 +132,7 @@ pub(super) fn run_native_body(
 
 // ── Shared steps (used by both native and Steel dispatch paths) ──────────────
 
-/// (1) Commit paste session unless the command is a ring-cycle paste.
+/// Commit paste session unless the command is a ring-cycle paste.
 pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory) {
     if !matches!(category, CmdCategory::Paste { family: PasteFamily::RingCycle }) {
         state.commit_paste_session();
@@ -141,7 +141,7 @@ pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory)
 
 // ── Native-only pre-body steps ─────────────────────────────────────────────────
 
-/// (2) Capture pre-jump cursor position for jump-list recording.
+/// Capture pre-jump cursor position for jump-list recording.
 pub(super) fn step_capture_pre_jump(
     state: &EditorState,
     view: &EngineView,
@@ -160,12 +160,12 @@ pub(super) fn step_capture_pre_jump(
     })
 }
 
-/// (3) Snapshot pending_char before body (commands consume via .take()).
+/// Snapshot pending_char before body (commands consume via .take()).
 pub(super) fn step_capture_pending_char(state: &EditorState) -> Option<char> {
     state.pending_char
 }
 
-/// (4) Snapshot selection recipe before body for dot-repeat recording.
+/// Snapshot selection recipe before body for dot-repeat recording.
 ///
 /// The snapshot captures the selection extent the user built before the edit,
 /// so `.` can re-establish it.  Inner dispatches (Steel `call!`) may overwrite
@@ -183,23 +183,23 @@ pub(super) fn step_snapshot_recipe(
 
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
-/// (6) Stamp last_command after body.  Skip in Insert mode to preserve the
-///     prior kill marker for smart-p.
+/// Stamp last_command after body.  Skip in Insert mode to preserve the
+/// prior kill marker for smart-p.
 ///
 /// Called **after** body for native (paste smart-p reads old value), **before**
 /// body for Steel (outer name pre-stamped; inner dispatch overrides).
 pub(super) fn step_stamp_last_command(
     state: &mut EditorState,
-    name: &Cow<'static, str>,
+    name: Cow<'static, str>,
     pre_mode: Mode,
 ) {
     if pre_mode != Mode::Insert {
-        state.last_command = Some(name.clone());
+        state.last_command = Some(name);
     }
 }
 
-/// (7) Record jump list entry if the command is a jump or the cursor moved
-///     past the threshold.
+/// Record jump list entry if the command is a jump or the cursor moved
+/// past the threshold.
 pub(super) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
@@ -217,8 +217,8 @@ pub(super) fn step_record_jump(
     }
 }
 
-/// (8) Record last_repeatable_action for dot-repeat from the pre-body
-///     selection recipe snapshot.
+/// Record last_repeatable_action for dot-repeat from the pre-body
+/// selection recipe snapshot.
 pub(super) fn step_stamp_repeatable(
     state: &mut EditorState,
     meta: &CmdMeta,
@@ -237,7 +237,7 @@ pub(super) fn step_stamp_repeatable(
     }
 }
 
-/// (9) Update the selection recipe buffer after a command dispatch.
+/// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule (matching the behavior at `replay_dot`):
 ///   sel-builder + extend              → append step
@@ -290,7 +290,18 @@ pub(super) fn run_dispatch_pipeline(
     ctx: CmdCtx,
 ) {
     let meta = cmd.meta();
+    // A command cannot be both repeatable (an edit that modifies the buffer)
+    // and a selection-builder (a pure cursor movement). If this ever fires,
+    // a new variant broke the invariant that step_stamp_repeatable and
+    // step_update_recipe rely on for their unconditional sequencing.
+    debug_assert!(
+        !(meta.repeatable && meta.category.tracks_selection()),
+        "command '{}' is both repeatable and selection-tracking — \
+         step_stamp_repeatable and step_update_recipe would both fire",
+        meta.name,
+    );
     let pre_mode = state.mode();
+    let is_jump   = cmd.is_jump();
 
     // BEFORE
     step_paste_commit(state, &meta.category);
@@ -298,12 +309,12 @@ pub(super) fn run_dispatch_pipeline(
     let char_arg = step_capture_pending_char(state);
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
 
-    // BODY
-    run_native_body(state, view, cmd.clone(), ctx.count, ctx.extend);
+    // BODY — cmd moved in; bools captured above so no clone needed.
+    run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_stamp_last_command(state, &meta.name, pre_mode);
-    step_record_jump(state, view, pre_jump, cmd.is_jump());
+    step_stamp_last_command(state, meta.name.clone(), pre_mode);
+    step_record_jump(state, view, pre_jump, is_jump);
     step_stamp_repeatable(state, &meta, ctx.count, char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &ctx, char_arg);
 }

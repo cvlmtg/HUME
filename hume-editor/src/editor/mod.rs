@@ -15,7 +15,7 @@ use search_state::SearchPattern;
 #[cfg(test)]
 use slotmap::SecondaryMap;
 
-use self::registry::{CmdCategory, CommandRegistry, MappableCommand};
+use self::registry::{CommandRegistry, MappableCommand};
 use hume_editing::selection::SelectionSet;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
@@ -517,9 +517,13 @@ impl Editor {
         // BEFORE
         commands::step_paste_commit(&mut self.state, &meta.category);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
-        commands::step_stamp_last_command(&mut self.state, &meta.name, pre_mode);
+        commands::step_stamp_last_command(&mut self.state, meta.name.clone(), pre_mode);
         let char_arg = commands::step_capture_pending_char(&self.state);
-        let pre_recipe = commands::step_snapshot_recipe(&mut self.state, meta.repeatable);
+        // Always snapshot the recipe before the body — inner dispatches via `call!`
+        // overwrite selection_recipe during the body, so the snapshot must be taken
+        // before they run (the native path uses step_snapshot_recipe, which gates on
+        // repeatable; here we snapshot unconditionally and decide after the body).
+        let pre_recipe = std::mem::take(&mut self.state.selection_recipe);
 
         // BODY — consumes `cmd`.
         if !self.run_steel_command(cmd, &ctx, char_arg) {
@@ -527,30 +531,18 @@ impl Editor {
             return;
         }
 
-        // AFTER — re-query (Lazy may have become SteelBacked).
-        let resolved = self.state.registry.get_mappable(meta.name.as_ref())
-            .cloned()
-            .unwrap_or(MappableCommand::EditorCmd {
-                name: meta.name.clone(),
-                doc: Cow::Borrowed(""),
-                fun: |_, _, _, _| Ok(()),
-                category: CmdCategory::EditorAction,
-                repeatable: false,
-                jump: false,
-                visual_move: false,
-                extendable: false,
-            });
-        let resolved_meta = resolved.meta();
-        if let Some(recipe) = pre_recipe {
-            // Outer command IS repeatable — outer-name-wins.
-            commands::step_stamp_repeatable(&mut self.state, &resolved_meta, ctx.count, char_arg, Some(recipe));
-        } else if resolved_meta.repeatable {
-            // Lazy→SteelBacked transition: pre-recipe was taken from the Lazy
-            // stub (repeatable=false), but resolved command IS repeatable.
-            let recipe = std::mem::take(&mut self.state.selection_recipe);
-            commands::step_stamp_repeatable(&mut self.state, &resolved_meta, ctx.count, char_arg, Some(recipe));
+        // AFTER — re-query to get the resolved command's repeatable flag.
+        // A Lazy stub becomes SteelBacked after activation; a SteelBacked entry
+        // is unchanged. We only need the repeatable flag — no need to clone the
+        // whole command or fabricate a fallback.
+        if self.state.registry.get_mappable(meta.name.as_ref())
+            .is_some_and(|c| c.meta().repeatable)
+        {
+            // Outer-name-wins: stamp the outer command so `.` replays it, not
+            // any inner native command the body dispatched via `call!`.
+            commands::step_stamp_repeatable(&mut self.state, &meta, ctx.count, char_arg, Some(pre_recipe));
         }
-        // Non-repeatable outer: leave inner dispatch's repeatable action.
+        // Non-repeatable outer: leave inner dispatch's repeatable action intact.
         self.state.selection_recipe.clear();
     }
 
@@ -685,7 +677,7 @@ impl Editor {
 
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
     ///
-    /// Runs the selection recipe motions and edit body with [`Editor::run_native_body`]
+    /// Runs the selection recipe motions and edit body with [`commands::run_native_body`]
     /// (avoiding pipeline re-entry), then feeds insert keys through `handle_insert`.
     ///
     /// After replay, neutralizes `last_command` so bare `p` reads the clipboard,
