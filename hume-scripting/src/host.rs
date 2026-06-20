@@ -127,9 +127,9 @@ pub trait EditorHost {
     ///
     /// All four native variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) apply
     /// their effect immediately; a subsequent read in the same eval sees the new
-    /// state. Only call this after `command_is_native` returned `Ok(true)` for the
-    /// same name — the caller's classification gate is what prevents non-native
-    /// names from reaching here. An unknown name returns `Err(msg)`.
+    /// state. Non-native names (`SteelBacked`, `Lazy`) return `Err` — the
+    /// implementation self-guards, so the caller need not pre-check via
+    /// `command_is_native` (though doing so avoids a wasted lookup).
     ///
     /// `register` arms `state.register_prefix` before dispatch so register-aware
     /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
@@ -137,7 +137,7 @@ pub trait EditorHost {
     ///
     /// Returns `Ok(())` on success (includes `EditorCmd` errors, which are reported
     /// to the user and treated as success for the Steel caller).
-    /// Returns `Err(msg)` when the name is not found in the registry.
+    /// Returns `Err(msg)` when the name is not found or is not a native command.
     ///
     /// Valid only in command mode; guarded by `require_cmd_ctx!` in the caller.
     fn run_command_sync(

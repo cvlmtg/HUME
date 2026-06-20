@@ -1244,15 +1244,15 @@ fn smart_p_motion_resets_to_clipboard() {
 /// A subsequent `p` (no preceding `c`/`d`) reads from the clipboard.
 #[test]
 fn smart_p_after_yank_reads_clipboard() {
-    use crate::editor::commands::SMART_P_LAST_CMDS;
+    const KILL_CMDS: &[&str] = &["change", "delete"];
 
     let mut ed = editor_from("-[hello]> world\n");
     ed.feed_key(key('y')); // yank → clipboard="hello" + ring="hello"
 
-    // Verify yank did not set last_command to anything in SMART_P_LAST_CMDS.
+    // Verify yank did not set last_command to anything in the kill set.
     assert!(
-        !ed.state.last_command.as_deref().is_some_and(|c| SMART_P_LAST_CMDS.contains(&c)),
-        "last_command after bare y is not in SMART_P_LAST_CMDS"
+        !ed.state.last_command.as_deref().is_some_and(|c| KILL_CMDS.contains(&c)),
+        "last_command after bare y is a kill command"
     );
 
     // Push a distinct value to ring so ring-head ≠ clipboard.
@@ -1310,8 +1310,8 @@ fn xdp_pastes_ring_head_not_clipboard() {
     );
 }
 
-/// Regression: `drain_replay_queue` ran unconditionally after every key, emitting
-/// `Provenance::Replay` even when the queue was empty. A bare `p` after `x d`
+/// Regression: `drain_replay_queue` ran unconditionally after every key, setting
+/// `last_command = None` even when the queue was empty. A bare `p` after `x d`
 /// must still read the ring head — the idle drain must not neutralize `last_command`
 /// (pre-432c24f bug: pasted the clipboard instead). `feed_key` / `feed_keys` include
 /// the idle drain so this invariant is checked automatically by all paste tests now.

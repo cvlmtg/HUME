@@ -215,7 +215,7 @@ impl Editor {
 ///
 /// Scope: the four effects that `dispatch_native` is exclusively responsible for
 /// (commands/mod.rs:147–221).  Register routing (caller-armed) and handle_key-tail
-/// concerns (drain_pending_repeat, hooks, search-cache) are intentionally excluded —
+/// concerns (replay_dot, hooks, search-cache) are intentionally excluded —
 /// the former is seeding-dependent, the latter has dedicated tests.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {

@@ -25,7 +25,7 @@ use crate::ops::text_object::{
     cmd_inner_paren, cmd_inner_single_quote, cmd_inner_word,
 };
 
-use super::{CommandRegistry, EditorCmdFn, MappableCommand, TypedCommand};
+use super::{CmdCategory, CommandRegistry, EditorCmdFn, MappableCommand, PasteFamily, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {
@@ -92,6 +92,7 @@ impl CommandRegistry {
             name: &'static str,
             doc: &'static str,
             fun: EditorCmdFn,
+            category: CmdCategory,
             repeatable: bool,
             jump: bool,
             visual_move: bool,
@@ -114,11 +115,16 @@ impl CommandRegistry {
                 self.extendable = true;
                 self
             }
+            fn paste(mut self, family: PasteFamily) -> Self {
+                self.category = CmdCategory::Paste { family };
+                self
+            }
             fn reg(self, r: &mut CommandRegistry) {
                 r.register(MappableCommand::EditorCmd {
                     name: Cow::Borrowed(self.name),
                     doc: Cow::Borrowed(self.doc),
                     fun: self.fun,
+                    category: self.category,
                     repeatable: self.repeatable,
                     jump: self.jump,
                     visual_move: self.visual_move,
@@ -129,7 +135,7 @@ impl CommandRegistry {
         // Construct a builder for an EditorCmd. All handlers share one shape:
         // fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>.
         let ecmd = |name: &'static str, doc: &'static str, fun: EditorCmdFn| {
-            EditorCmdBuilder { name, doc, fun, repeatable: false, jump: false, visual_move: false, extendable: false }
+            EditorCmdBuilder { name, doc, fun, category: CmdCategory::EditorAction, repeatable: false, jump: false, visual_move: false, extendable: false }
         };
 
         // ── Character motions ─────────────────────────────────────────────────
@@ -574,6 +580,7 @@ impl CommandRegistry {
             "Paste register contents after the selection.",
             cmd_paste_after,
         )
+        .paste(PasteFamily::Normal)
         .repeatable()
         .reg(self);
         ecmd(
@@ -581,6 +588,7 @@ impl CommandRegistry {
             "Paste register contents before the selection.",
             cmd_paste_before,
         )
+        .paste(PasteFamily::Normal)
         .repeatable()
         .reg(self);
         ecmd(
@@ -588,6 +596,7 @@ impl CommandRegistry {
             "Cycle kill ring one step older and re-paste.",
             cmd_paste_ring_older,
         )
+        .paste(PasteFamily::RingCycle)
         .repeatable()
         .reg(self);
         ecmd(
@@ -595,6 +604,7 @@ impl CommandRegistry {
             "Cycle kill ring one step newer and re-paste.",
             cmd_paste_ring_newer,
         )
+        .paste(PasteFamily::RingCycle)
         .repeatable()
         .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
@@ -720,7 +730,7 @@ impl CommandRegistry {
 
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
-        // The handler sets EditorState::pending_repeat; drain_pending_repeat does
+        // The handler sets EditorState::pending_repeat; replay_dot does
         // the actual replay with &mut Editor after handle_key returns (D7-safe).
         ecmd(
             "repeat-last-action",

@@ -15,7 +15,7 @@ use search_state::SearchPattern;
 #[cfg(test)]
 use slotmap::SecondaryMap;
 
-use self::registry::CommandRegistry;
+use self::registry::{CmdCategory, CommandRegistry, MappableCommand};
 use hume_editing::selection::SelectionSet;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer_store::BufferStore;
@@ -72,6 +72,21 @@ pub(crate) use minibuf::MiniBuffer;
 use message_log::MessageLog;
 pub(crate) use message_log::Severity;
 
+// ── Command dispatch context ──────────────────────────────────────────────────
+
+/// Per-dispatch context assembled by the key handler and passed through
+/// [`Editor::dispatch`].
+#[derive(Debug, Clone)]
+pub(super) struct CmdCtx {
+    /// Numeric count prefix (default 1).
+    pub count: usize,
+    /// Whether this command runs in Extend mode.
+    pub extend: bool,
+    /// Pre-computed Steel lambda arguments (supplied by keymap trie leaf).
+    /// Empty for native commands and keymap-navigated Steel commands.
+    pub steel_args: Vec<steel::rvals::SteelVal>,
+}
+
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
 /// State for an active insert session (entered via a repeatable command).
@@ -91,7 +106,7 @@ pub(super) struct InsertSession {
 /// One selection-building step in a dot-repeat recipe.
 ///
 /// Recorded by `dispatch_native` as Motion/Selection commands run, so that
-/// `drain_pending_repeat` can replay them before the edit, rebuilding the
+/// `replay_dot` can replay them before the edit, rebuilding the
 /// extent the edit originally acted on.
 #[derive(Debug, Clone)]
 pub(super) struct SelectionStep {
@@ -137,7 +152,7 @@ pub(super) struct RepeatableAction {
 // ── Deferred dot-repeat ───────────────────────────────────────────────────────
 
 /// Deferred dot-repeat job, set by `cmd_repeat` and consumed by
-/// `drain_pending_repeat` at the end of the enclosing `handle_key` call.
+/// `replay_dot` at the end of the enclosing `handle_key` call.
 ///
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
 /// lets `cmd_repeat` satisfy the D7 invariant while still reaching
@@ -270,7 +285,7 @@ pub(crate) struct EditorState {
     /// `[Move-establish, Extend*]`.
     pub(super) selection_recipe: Vec<SelectionStep>,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
-    /// `drain_pending_repeat` at the tail of `handle_key`.
+    /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
     /// Active insert session, present between begin/end_insert_session.
     pub(super) insert_session: Option<InsertSession>,
@@ -476,6 +491,260 @@ impl Editor {
         commands::end_insert_session(&mut self.state, &self.view);
     }
 
+    // ── Unified command dispatch pipeline ──────────────────────────────────────
+
+    /// Execute a `MappableCommand` through the unified dispatch pipeline.
+    ///
+    /// Native commands delegate to [`commands::run_dispatch_pipeline`].  Steel-backed
+    /// commands run the pipeline's BEFORE/AFTER stages inline, with the body
+    /// executed via [`Editor::run_steel_command`] (which needs `&mut Editor` for
+    /// `self.scripting`).
+    ///
+    /// Dot-repeat replay bypasses this entirely — it calls
+    /// [`commands::run_native_body`] directly.
+    pub(crate) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
+        let is_steel = matches!(&cmd, MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. });
+        if !is_steel {
+            // Native path — delegate to the standalone pipeline.
+            commands::run_dispatch_pipeline(&mut self.state, &mut self.view, cmd, ctx);
+            return;
+        }
+
+        // Steel path — composed from shared step functions.
+        let meta = cmd.meta();
+        let pre_mode = self.state.mode();
+
+        // BEFORE
+        commands::step_paste_commit(&mut self.state, &meta.category);
+        // Pre-stamp last_command — inner dispatches via `call!` override it.
+        commands::step_stamp_last_command(&mut self.state, &meta.name, pre_mode);
+        let char_arg = commands::step_capture_pending_char(&self.state);
+        let pre_recipe = commands::step_snapshot_recipe(&mut self.state, meta.repeatable);
+
+        // BODY — consumes `cmd`.
+        if !self.run_steel_command(cmd, &ctx, char_arg) {
+            self.state.selection_recipe.clear();
+            return;
+        }
+
+        // AFTER — re-query (Lazy may have become SteelBacked).
+        let resolved = self.state.registry.get_mappable(meta.name.as_ref())
+            .cloned()
+            .unwrap_or(MappableCommand::EditorCmd {
+                name: meta.name.clone(),
+                doc: Cow::Borrowed(""),
+                fun: |_, _, _, _| Ok(()),
+                category: CmdCategory::EditorAction,
+                repeatable: false,
+                jump: false,
+                visual_move: false,
+                extendable: false,
+            });
+        let resolved_meta = resolved.meta();
+        if let Some(recipe) = pre_recipe {
+            // Outer command IS repeatable — outer-name-wins.
+            commands::step_stamp_repeatable(&mut self.state, &resolved_meta, ctx.count, char_arg, Some(recipe));
+        } else if resolved_meta.repeatable {
+            // Lazy→SteelBacked transition: pre-recipe was taken from the Lazy
+            // stub (repeatable=false), but resolved command IS repeatable.
+            let recipe = std::mem::take(&mut self.state.selection_recipe);
+            commands::step_stamp_repeatable(&mut self.state, &resolved_meta, ctx.count, char_arg, Some(recipe));
+        }
+        // Non-repeatable outer: leave inner dispatch's repeatable action.
+        self.state.selection_recipe.clear();
+    }
+
+    /// Run the body of a Steel-backed or Lazy command.
+    ///
+    /// Returns `false` if the command aborted (lazy activation failure, scripting
+    /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
+    fn run_steel_command(&mut self, cmd: MappableCommand, ctx: &CmdCtx, char_arg: Option<char>) -> bool {
+        let name = cmd.meta().name;
+        let count = ctx.count;
+        let extend = ctx.extend;
+
+        // For a Lazy stub, activate the owning plugin now so we can read
+        // `inline_output` from the resolved SteelBacked entry before dispatch.
+        if let MappableCommand::Lazy { plugin, .. } = &cmd {
+            let plugin = plugin.clone();
+            if !self.activate_lazy_plugin(&plugin, name.as_ref()) {
+                self.report(Severity::Warning, format!("unknown command: {name}"));
+                return false;
+            }
+        }
+
+        let focused_pane_id = self.state.focused_pane_id;
+        let focused_buffer_id = self.focused_buffer_id();
+
+        let scripting = match self.scripting.as_mut() {
+            Some(s) => s,
+            None => return false,
+        };
+
+        // Re-query: a Lazy stub is now SteelBacked after activation above;
+        // a SteelBacked entry is unchanged.
+        let (inline_output, cmd_arity, cmd_is_variadic) =
+            match self.state.registry.get_mappable(name.as_ref()) {
+                Some(MappableCommand::SteelBacked {
+                    inline_output, arity, is_variadic, ..
+                }) => (*inline_output, *arity, *is_variadic),
+                _ => {
+                    self.report(
+                        Severity::Error,
+                        format!("{name}: internal error — command lost after activation"),
+                    );
+                    return false;
+                }
+            };
+
+        // Inject count and extend as leading lambda args based on declared arity.
+        let steel_args = &ctx.steel_args;
+        if steel_args.is_empty() && cmd_arity > 2 {
+            self.report(
+                Severity::Error,
+                format!(
+                    "{name}: lambda declares {cmd_arity} required params; \
+                     keymap injection supplies at most 2 (count, extend)"
+                ),
+            );
+            return false;
+        }
+        let effective_args = if steel_args.is_empty() {
+            match (cmd_arity, cmd_is_variadic) {
+                (0, false) => vec![],
+                (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
+                _ => vec![
+                    steel::rvals::SteelVal::IntV(count as isize),
+                    steel::rvals::SteelVal::BoolV(extend),
+                ],
+            }
+        } else {
+            steel_args.clone()
+        };
+
+        // Alt-screen bracketing for inline-output commands.
+        if inline_output {
+            let kitty = self.kitty_enabled;
+            let mouse = self.state.settings.mouse_enabled;
+            if let Err(e) = hume_platform::terminal::enter_inline_output(kitty, mouse) {
+                self.report(Severity::Error, format!("inline-output enter failed: {e}"));
+                return false;
+            }
+            hume_platform::terminal::print_running_banner(&name);
+        }
+
+        let result = {
+            let mut impl_host = crate::editor::host_impl::EditorHostImpl {
+                state: &mut self.state,
+                view: &mut self.view,
+            };
+            scripting.call_steel_cmd(
+                name.as_ref(),
+                char_arg,
+                effective_args,
+                focused_pane_id,
+                focused_buffer_id,
+                &mut impl_host,
+            )
+        };
+
+        if inline_output {
+            hume_platform::terminal::print_return_prompt();
+            hume_platform::terminal::wait_for_keypress();
+            let kitty = self.kitty_enabled;
+            let mouse = self.state.settings.mouse_enabled;
+            let mouse_select = self.state.settings.mouse_select;
+            let _ = hume_platform::terminal::leave_inline_output(kitty, mouse, mouse_select);
+            self.state.force_full_redraw = true;
+        }
+
+        let (wait_char_cmd, lang_sets, grammar_sweeps) = match result {
+            Ok(r) => (r.wait_char_request, r.pending_language_sets, r.grammar_sweeps),
+            Err(e) => {
+                self.report(Severity::Error, e);
+                return false;
+            }
+        };
+
+        self.flush_script_messages();
+        for (bid, lang) in lang_sets {
+            self.set_buffer_language(bid, lang);
+        }
+        if !grammar_sweeps.is_empty() {
+            self.sweep_buffers_for_grammars(grammar_sweeps);
+        }
+        if let Some(wc) = wait_char_cmd {
+            self.state.wait_char = Some(crate::editor::keymap::WaitCharPending {
+                cmd_name: wc.into(),
+                ctrl_extend: false,
+            });
+        }
+
+        true
+    }
+
+    /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
+    ///
+    /// Runs the selection recipe motions and edit body with [`Editor::run_native_body`]
+    /// (avoiding pipeline re-entry), then feeds insert keys through `handle_insert`.
+    ///
+    /// After replay, neutralizes `last_command` so bare `p` reads the clipboard,
+    /// but preserves `last_repeatable_action` so `.` chains.
+    pub(crate) fn replay_dot(&mut self, count: usize) {
+        let Some(action) = self.state.last_repeatable_action.take() else { return };
+
+        // Pre-open the edit group — the "replay signal" used by
+        // begin_insert_session to suppress keystroke recording.
+        self.begin_edit_group_current();
+
+        // Rebuild the selection extent the edit originally acted on.
+        for step in &action.selection_recipe {
+            self.state.pending_char = step.char_arg;
+            let Some(cmd) = self.state.registry.get_mappable(step.command.as_ref()).cloned() else {
+                continue;
+            };
+            commands::run_native_body(&mut self.state, &mut self.view, cmd, step.count, step.extend);
+        }
+
+        // Restore the edit's own char arg.
+        self.state.pending_char = action.char_arg;
+
+        // Run the edit body.
+        let Some(cmd) = self.state.registry.get_mappable(action.command.as_ref()).cloned() else {
+            self.state.last_repeatable_action = Some(action);
+            return;
+        };
+        match &cmd {
+            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+                let ctx = CmdCtx { count, extend: false, steel_args: vec![] };
+                if !self.run_steel_command(cmd, &ctx, action.char_arg) {
+                    self.state.last_repeatable_action = Some(action);
+                    return;
+                }
+            }
+            _ => {
+                commands::run_native_body(&mut self.state, &mut self.view, cmd, count, false);
+            }
+        }
+
+        // Feed recorded insert keystrokes through the insert handler.
+        for key in &action.insert_keys {
+            self.handle_insert(*key);
+        }
+
+        // Close the edit group.
+        if self.state.mode() == Mode::Insert {
+            self.end_insert_session();
+        } else {
+            self.commit_edit_group_current();
+        }
+
+        // Restore the action so `.` can be pressed again.
+        self.state.last_repeatable_action = Some(action);
+        // Neutralize last_command after replay so a bare `p` reads the clipboard.
+        self.state.last_command = None;
+    }
+
     /// Drain the macro replay queue, executing each key in order.
     ///
     /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
@@ -499,70 +768,8 @@ impl Editor {
         self.state.is_replaying = false;
         // Neutralize last_command after replay so a bare `p` reads the clipboard
         // rather than whatever kill command ran last inside the macro.
-        self.state.record_command(commands::Provenance::Replay);
+        self.state.last_command = None;
         self.state.last_repeatable_action = saved_action;
-    }
-
-    /// Replay the pending dot-repeat action, if any.
-    ///
-    /// Called at the tail of every `handle_key` so the replay runs with
-    /// `&mut Editor` — outside any Steel eval and able to re-enter the VM if
-    /// the recorded command is (or becomes) SteelBacked.
-    ///
-    /// The heavy work (edit-group bracketing, re-dispatch, insert-key replay)
-    /// lives here rather than in `cmd_repeat` so that handler can be a pure
-    /// `fn(&mut EditorState, &mut EngineView)` satisfying the D7 invariant.
-    fn drain_pending_repeat(&mut self) {
-        let Some(PendingRepeat { count }) = self.state.pending_repeat.take() else {
-            return;
-        };
-        let Some(action) = self.state.last_repeatable_action.take() else {
-            return;
-        };
-
-        // Pre-open the edit group — the "replay signal" used by begin_insert_session
-        // to suppress both the redundant begin_edit_group call and keystroke recording
-        // (insert_session is only created when no group is open).
-        self.begin_edit_group_current();
-
-        // Rebuild the selection extent the edit originally acted on. Selection
-        // commands don't mutate the doc, so running them inside the edit-group
-        // bracket is inert. Each step carries its own char arg and extend flag.
-        for step in &action.selection_recipe {
-            self.state.pending_char = step.char_arg;
-            self.execute_keymap_command(
-                step.command.clone(), step.count, step.extend, vec![],
-            );
-        }
-
-        // Restore the edit's own char arg (recipe steps may have overwritten
-        // pending_char) so wait-char edits (replace, find/till) still work.
-        self.state.pending_char = action.char_arg;
-
-        // Re-dispatch through the full keymap dispatcher: any command kind —
-        // including SteelBacked repeatable commands — fires correctly here.
-        self.execute_keymap_command(action.command.clone(), count, false, vec![]);
-
-        // Feed recorded insert keystrokes through the insert handler.
-        for key in &action.insert_keys {
-            self.handle_insert(*key);
-        }
-
-        // Close the edit group: insert commands → end_insert_session commits it;
-        // non-insert commands → the group is empty and commit is a no-op.
-        if self.state.mode() == Mode::Insert {
-            self.end_insert_session();
-        } else {
-            self.commit_edit_group_current();
-        }
-
-        // Restore the action so `.` can be pressed again. execute_keymap_command
-        // may have overwritten last_repeatable_action during replay; this
-        // assignment ensures the stored action is always the one the user performed.
-        self.state.last_repeatable_action = Some(action);
-        // Neutralize last_command after replay so a bare `p` reads the clipboard
-        // rather than whatever kill command ran last inside the replayed recipe.
-        self.state.record_command(commands::Provenance::Replay);
     }
 
 }

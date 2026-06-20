@@ -18,105 +18,23 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 use std::borrow::Cow;
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_editing::selection::SelectionSet;
+use hume_editing::selection::{Selection, SelectionSet};
+
+use super::registry::MappableCommand;
 
 use super::{register_ops, Severity};
 use super::{EditorState, InsertSession, Mode, RegisterPrefix, RepeatableAction, SelectionStep};
 use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::JumpEntry;
-use super::registry::MappableCommand;
+use super::registry::{CmdCategory, CmdMeta, PasteFamily};
 use super::search_state::SearchPattern;
+use super::CmdCtx;
 use crate::ops::MotionMode;
-
-// ── Kill-ring command name sets ───────────────────────────────────────────────
-// Three sets, kept adjacent so they're maintained together:
-//
-//  SMART_P_LAST_CMDS — allow-list for Smart-p: bare `p`/`P` reads the ring
-//    head when `last_command` is in this set; otherwise reads the clipboard.
-//
-//  RING_CYCLE_CMDS — commands that must NOT commit the paste session before
-//    dispatch; every other command commits first so cycles fold into one undo
-//    step.
-//
-//  PASTE_FAMILY_CMDS — all four paste/cycle commands; used for append detection:
-//    a fresh `p`/`P` collapses the previous paste output rather than replacing
-//    it when `last_command` is in this set.
-
-/// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
-/// head when `last_command` is one of these; otherwise reads the clipboard.
-///
-/// Only `change` and `delete` belong here. Paste-family commands are handled
-/// via the append path in `do_paste` (which re-uses `last_paste` verbatim);
-/// they never reach this check.
-pub(crate) const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
-
-/// Commands that must not commit the open paste session before dispatch.
-/// `[` and `]` re-paste from the same snapshot and should fold into one undo step.
-pub(super) const RING_CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-newer"];
-
-/// All paste-family commands (paste + cycle). A fresh `p`/`P` appends (rather
-/// than replaces) when `last_command` is one of these.
-pub(super) const PASTE_FAMILY_CMDS: &[&str] =
-    &["paste-after", "paste-before", "paste-ring-older", "paste-ring-newer"];
-
-// ── Command provenance classifier ────────────────────────────────────────────
-
-/// Why a command ran — determines how `last_command` (the smart-p / paste-append
-/// marker) is updated after dispatch.
-///
-/// Consumers (`do_paste`, paste-append detection) only care about whether the
-/// most-recent command was a user-initiated kill (→ ring) or anything else (→
-/// clipboard). Encoding *why* something ran here keeps that decision in one place
-/// instead of spread across replay + insert-tail + native dispatch sites.
-pub(super) enum Provenance {
-    /// Direct user keypress in Normal/Extend mode. Becomes the new `last_command`.
-    User(Cow<'static, str>),
-    /// Command ran during an active insert session (exit-insert, in-insert nav).
-    /// Preserves the prior kill marker so `change`/`delete` before the session still
-    /// routes `p` to the ring — skip the update entirely.
-    InsertTail,
-    /// Output of macro or dot-repeat replay. Neutralize `last_command` to `None`
-    /// so a bare `p` after replay reads the clipboard rather than whatever kill
-    /// command happened to run last inside the replay.
-    Replay,
-}
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
 
 impl EditorState {
-    /// Update `last_command` according to how a command was triggered.
-    ///
-    /// Call once per dispatch, after the command body runs. This is the single
-    /// site that classifies command provenance for smart-p and paste-append.
-    pub(super) fn record_command(&mut self, provenance: Provenance) {
-        match provenance {
-            Provenance::User(name) => self.last_command = Some(name),
-            Provenance::InsertTail => {} // keep the prior kill marker
-            Provenance::Replay     => self.last_command = None,
-        }
-    }
-
-    /// Record a repeatable action for dot-repeat.
-    ///
-    /// Shared by the native dispatch path (`dispatch_native`) and the Steel path
-    /// (`execute_keymap_command`) so the struct literal is not duplicated.
-    pub(super) fn record_repeatable(
-        &mut self,
-        command: Cow<'static, str>,
-        count: usize,
-        char_arg: Option<char>,
-        selection_recipe: Vec<SelectionStep>,
-    ) {
-        self.last_repeatable_action = Some(RepeatableAction {
-            command,
-            count,
-            char_arg,
-            insert_keys: Vec::new(),
-            selection_recipe,
-        });
-    }
-
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
     /// or `None` if no prefix was typed (bare default case).
     pub(super) fn take_register_prefix(&mut self) -> Option<char> {
@@ -137,21 +55,6 @@ impl EditorState {
     pub(super) fn write_clipboard(&mut self, values: &[String]) {
         if let Some(w) = register_ops::write_clipboard(&mut self.registers, &mut self.clipboard, values) {
             self.report(Severity::Warning, w);
-        }
-    }
-
-    /// Commit the open paste session unless `name` is a ring-cycle command.
-    ///
-    /// Ring-cycle commands (`[`/`]`) re-paste from the same snapshot so every
-    /// cycle folds into one undo step — they must NOT commit between pastes.
-    /// Every other command commits first so `undo` sees a committed revision.
-    ///
-    /// This is the single SSOT for the cycle-exclusion rule; both the native
-    /// dispatch path (`dispatch_native`) and the Steel path
-    /// (`execute_keymap_command`) call this instead of open-coding the guard.
-    pub(super) fn commit_paste_unless_cycle(&mut self, name: &str) {
-        if !RING_CYCLE_CMDS.contains(&name) {
-            self.commit_paste_session();
         }
     }
 
@@ -178,67 +81,23 @@ impl EditorState {
     }
 }
 
-// ── Native command dispatch funnel ────────────────────────────────────────────
+// ── Native command body execution ───────────────────────────────────────────
 
-/// Execute a native command (`Motion`/`Selection`/`Edit`/`EditorCmd`).
+/// Run the body of a native command (Motion/Selection/Edit/EditorCmd) with
+/// no dispatch bookkeeping.  Infallible — EditorCmd errors are reported but
+/// never propagated.
 ///
-/// This is the **single** dispatch funnel for native commands. Both the
-/// interactive keypress path (`execute_keymap_command`) and the Steel sync path
-/// (`run_command_sync`) delegate here so bookkeeping never diverges:
-///
-/// - Paste session committed before dispatch (except ring-cycle commands).
-/// - Jump-list: pre/post snapshot for all motions and explicit jump commands.
-/// - Dot-repeat: `last_repeatable_action` updated for repeatable commands.
-/// - Smart-p: `last_command` updated via `record_command` — `User` in Normal/Extend,
-///   skipped during the insert-session tail so the prior kill marker is preserved.
-///
-/// Register-prefix is **not** armed here — the caller is responsible (`run_command_sync`
-/// arms `state.register_prefix` before calling; the keypress path relies on the
-/// normal prefix-key path). Commands consume the prefix via `take_register_prefix`.
-///
-/// `cmd` must be a native variant (`Motion`/`Selection`/`Edit`/`EditorCmd`); passing
-/// `SteelBacked` or `Lazy` triggers `unreachable!`.
-pub(super) fn dispatch_native(
+/// Called by both the unified pipeline ([`run_dispatch_pipeline`]) and the
+/// dot-repeat replay path ([`Editor::replay_dot`]).
+pub(super) fn run_native_body(
     state: &mut EditorState,
     view: &mut EngineView,
     cmd: MappableCommand,
-    name: Cow<'static, str>,
     count: usize,
     extend: bool,
 ) {
     let motion_mode = if extend { MotionMode::Extend } else { MotionMode::Move };
-
-    // Capture classifier bools BEFORE the by-value match consumes `cmd`.
-    let is_jump       = cmd.is_jump();
-    let is_visual     = cmd.is_visual_move();
-    let is_motion     = matches!(cmd, MappableCommand::Motion { .. });
-    let is_repeatable = cmd.is_repeatable();
-    // Motion and Selection commands are potential selection-builders. EditorCmd,
-    // Edit, Steel, etc. are NOT — gating on variant prevents undo/redo (which are
-    // non-repeatable EditorCmds that can leave a non-collapsed selection) from
-    // polluting the recipe buffer.
-    let is_sel_builder = matches!(
-        cmd,
-        MappableCommand::Motion { .. } | MappableCommand::Selection { .. }
-    );
-
-    state.commit_paste_unless_cycle(name.as_ref());
-
-    // Snapshot pending_char before dispatch — commands consume it via `.take()`.
-    let char_arg = state.pending_char;
-
-    // Smart-p gate: capture mode before dispatch so the post-dispatch stamp
-    // (below) can tell whether this command ran inside an insert session.
-    let pre_mode = state.mode();
-
-    // Jump list: pre-command snapshot for motions and explicit jump commands.
-    let pre_jump = (is_jump || is_visual || is_motion).then(|| {
-        let bid = focused_buffer_id(state, view);
-        let primary = current_selections(state, view).primary();
-        (primary, doc(state, view).text().char_to_line(primary.head()), bid)
-    });
-
-    let buf     = focused_buffer_id(state, view);
+    let buf = focused_buffer_id(state, view);
     let focused = state.focused_pane_id;
     match cmd {
         MappableCommand::Motion { fun, .. } => {
@@ -259,20 +118,94 @@ pub(super) fn dispatch_native(
             );
         }
         MappableCommand::EditorCmd { fun, .. } => {
-            // EditorCmd errors are surfaced to the user, NOT propagated to the caller.
-            // Intentional: keeps the Steel sync path (`run_command_sync`) identical to
-            // the keypress path, where a failed EditorCmd reports and dispatch completes.
-            // Do not "fix" this into a `Result` return — it would be a semantic change.
             if let Err(e) = fun(state, view, count, motion_mode) {
                 state.report(Severity::Error, e.message().to_owned());
             }
         }
         MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-            unreachable!("dispatch_native called on non-native command '{name}'");
+            unreachable!("run_native_body called on non-native command");
         }
     }
+}
 
-    // Jump list: record if this was a large enough jump / explicit jump command.
+// ── Dispatch step functions ─────────────────────────────────────────────────
+
+// ── Shared steps (used by both native and Steel dispatch paths) ──────────────
+
+/// (1) Commit paste session unless the command is a ring-cycle paste.
+pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory) {
+    if !matches!(category, CmdCategory::Paste { family: PasteFamily::RingCycle }) {
+        state.commit_paste_session();
+    }
+}
+
+// ── Native-only pre-body steps ─────────────────────────────────────────────────
+
+/// (2) Capture pre-jump cursor position for jump-list recording.
+pub(super) fn step_capture_pre_jump(
+    state: &EditorState,
+    view: &EngineView,
+    cmd: &MappableCommand,
+    meta: &CmdMeta,
+) -> Option<(Selection, usize, BufferId)> {
+    let is_motion_or_sel = matches!(
+        meta.category,
+        CmdCategory::Motion { .. } | CmdCategory::Selection { .. }
+    );
+    (cmd.is_jump() || cmd.is_visual_move() || is_motion_or_sel).then(|| {
+        let bid = focused_buffer_id(state, view);
+        let primary = current_selections(state, view).primary();
+        let line = doc(state, view).text().char_to_line(primary.head());
+        (primary, line, bid)
+    })
+}
+
+/// (3) Snapshot pending_char before body (commands consume via .take()).
+pub(super) fn step_capture_pending_char(state: &EditorState) -> Option<char> {
+    state.pending_char
+}
+
+/// (4) Snapshot selection recipe before body for dot-repeat recording.
+///
+/// The snapshot captures the selection extent the user built before the edit,
+/// so `.` can re-establish it.  Inner dispatches (Steel `call!`) may overwrite
+/// `selection_recipe` during the body; the snapshot is taken before they run.
+pub(super) fn step_snapshot_recipe(
+    state: &mut EditorState,
+    repeatable: bool,
+) -> Option<Vec<SelectionStep>> {
+    if repeatable {
+        Some(std::mem::take(&mut state.selection_recipe))
+    } else {
+        None
+    }
+}
+
+// ── AFTER (native steps) ────────────────────────────────────────────────────
+
+/// (6) Stamp last_command after body.  Skip in Insert mode to preserve the
+///     prior kill marker for smart-p.
+///
+/// Called **after** body for native (paste smart-p reads old value), **before**
+/// body for Steel (outer name pre-stamped; inner dispatch overrides).
+pub(super) fn step_stamp_last_command(
+    state: &mut EditorState,
+    name: &Cow<'static, str>,
+    pre_mode: Mode,
+) {
+    if pre_mode != Mode::Insert {
+        state.last_command = Some(name.clone());
+    }
+}
+
+/// (7) Record jump list entry if the command is a jump or the cursor moved
+///     past the threshold.
+pub(super) fn step_record_jump(
+    state: &mut EditorState,
+    view: &EngineView,
+    pre_jump: Option<(Selection, usize, BufferId)>,
+    is_jump: bool,
+) {
     if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
         let post_line = doc(state, view)
             .text()
@@ -282,59 +215,97 @@ pub(super) fn dispatch_native(
                 .push(JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid));
         }
     }
+}
 
-    // Dot-repeat: record repeatable commands and maintain the selection recipe.
-    //
-    // The recipe buffer (`state.selection_recipe`) tracks how the current selection
-    // was built: Motion/Selection commands append/reset it; a repeatable edit
-    // snapshots it (via mem::take) into `RepeatableAction::selection_recipe` so
-    // `.` can re-establish the same extent before replaying the edit.
-    //
-    // Accumulation rule (variant-gated to exclude undo/redo/mode-changes):
-    //   repeatable edit/paste  → snapshot + clear
-    //   sel-builder, Extend    → append (grew the selection)
-    //   sel-builder, Move, non-collapsed → reset (fresh real selection)
-    //   sel-builder, Move, collapsed     → clear (plain navigation)
-    //   everything else        → clear
-    if is_repeatable {
-        let recipe = std::mem::take(&mut state.selection_recipe);
-        state.record_repeatable(name.clone(), count, char_arg, recipe);
-    } else if is_sel_builder {
-        if extend {
-            // Grew the existing selection — append this step.
+/// (8) Record last_repeatable_action for dot-repeat from the pre-body
+///     selection recipe snapshot.
+pub(super) fn step_stamp_repeatable(
+    state: &mut EditorState,
+    meta: &CmdMeta,
+    count: usize,
+    char_arg: Option<char>,
+    pre_recipe: Option<Vec<SelectionStep>>,
+) {
+    if let Some(recipe) = pre_recipe {
+        state.last_repeatable_action = Some(RepeatableAction {
+            command: meta.name.clone(),
+            count,
+            char_arg,
+            insert_keys: Vec::new(),
+            selection_recipe: recipe,
+        });
+    }
+}
+
+/// (9) Update the selection recipe buffer after a command dispatch.
+///
+/// Accumulation rule (matching the behavior at `replay_dot`):
+///   sel-builder + extend              → append step
+///   sel-builder + move + non-collapsed → reset + push
+///   sel-builder + move + collapsed     → clear
+///   everything else                     → clear
+pub(super) fn step_update_recipe(
+    state: &mut EditorState,
+    view: &EngineView,
+    meta: &CmdMeta,
+    ctx: &CmdCtx,
+    char_arg: Option<char>,
+) {
+    if meta.category.tracks_selection() {
+        let sels = current_selections(state, view);
+        if ctx.extend {
             state.selection_recipe.push(SelectionStep {
-                command: name.clone(),
-                count,
+                command: meta.name.clone(),
+                count: ctx.count,
                 char_arg,
                 extend: true,
             });
-        } else if !current_selections(state, view).primary().is_collapsed() {
-            // Move-mode established a real (non-collapsed) selection: start fresh.
+        } else if !sels.primary().is_collapsed() {
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
-                command: name.clone(),
-                count,
+                command: meta.name.clone(),
+                count: ctx.count,
                 char_arg,
                 extend: false,
             });
         } else {
-            // Plain navigation — collapsed cursor, nothing to rebuild.
             state.selection_recipe.clear();
         }
     } else {
-        // Non-repeatable EditorCmd (undo, redo, mode-changes, …): not a
-        // selection-builder; any in-progress recipe is now stale.
         state.selection_recipe.clear();
     }
+}
 
-    // Smart-p: classify provenance and update last_command via record_command.
-    // InsertTail preserves the prior kill marker; User stamps the new name.
-    let prov = if pre_mode == Mode::Insert {
-        Provenance::InsertTail
-    } else {
-        Provenance::User(name)
-    };
-    state.record_command(prov);
+// ── Native dispatch pipeline (composed from step functions) ────────────────
+
+/// Execute a native command through the full dispatch pipeline.
+///
+/// Composed from the step functions above.  Both the keypress path
+/// (`Editor::dispatch` → native branch) and the Steel sync path
+/// (`EditorHostImpl::run_command_sync`) delegate here.
+pub(super) fn run_dispatch_pipeline(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    cmd: MappableCommand,
+    ctx: CmdCtx,
+) {
+    let meta = cmd.meta();
+    let pre_mode = state.mode();
+
+    // BEFORE
+    step_paste_commit(state, &meta.category);
+    let pre_jump = step_capture_pre_jump(state, view, &cmd, &meta);
+    let char_arg = step_capture_pending_char(state);
+    let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
+
+    // BODY
+    run_native_body(state, view, cmd.clone(), ctx.count, ctx.extend);
+
+    // AFTER
+    step_stamp_last_command(state, &meta.name, pre_mode);
+    step_record_jump(state, view, pre_jump, cmd.is_jump());
+    step_stamp_repeatable(state, &meta, ctx.count, char_arg, pre_recipe);
+    step_update_recipe(state, view, &meta, &ctx, char_arg);
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
@@ -452,7 +423,7 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
         state.report(Severity::Info, "Buffer is read-only".to_string());
         return;
     }
-    // Guard is load-bearing for dot-repeat replay: `drain_pending_repeat` opens
+    // Guard is load-bearing for dot-repeat replay: `replay_dot` opens
     // an edit group before re-dispatching the command, so a group already being
     // open here means "we are replaying" → skip session creation and re-type from
     // `insert_keys` instead of recording fresh. Do NOT weaken this into a separate

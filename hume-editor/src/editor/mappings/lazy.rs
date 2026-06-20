@@ -55,7 +55,7 @@ impl Editor {
     /// the plugin body never defined `name`; in that case the stub is removed
     /// (preventing an infinite retry loop) and the caller should report an
     /// "unknown command" warning.
-    pub(super) fn activate_lazy_plugin(
+    pub(crate) fn activate_lazy_plugin(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
         name: &str,

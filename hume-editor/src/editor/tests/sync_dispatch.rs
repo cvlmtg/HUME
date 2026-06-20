@@ -268,13 +268,13 @@ fn case_b_sync_cursor_read_reflects_motion() {
 ///
 /// `(call! "repeat-last-action")` is a sync EditorCmd dispatch: it calls
 /// `run_command_sync("repeat-last-action")`, which runs `cmd_repeat` and sets
-/// `state.pending_repeat`. The replay then fires in `drain_pending_repeat` at the
+/// `state.pending_repeat`. The replay then fires in `replay_dot` at the
 /// tail of the enclosing `handle_key` call — NOT during the Steel eval.
 ///
 /// The test drives the key through `feed_key` so the full `handle_key` tail
-/// (including `drain_pending_repeat`) executes before we inspect the buffer.
+/// (including `replay_dot`) executes before we inspect the buffer.
 ///
-/// Fail oracle: if `drain_pending_repeat` were not called at `handle_key`'s tail,
+/// Fail oracle: if `replay_dot` were not called at `handle_key`'s tail,
 /// `pending_repeat` would be set but never consumed, and the buffer would be
 /// unchanged after pressing the Steel key.
 #[test]
@@ -1398,7 +1398,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 }
 
 /// After `.` replays a Steel insert action, a single `u` must undo the entire
-/// replay as one step — proving `drain_pending_repeat`'s edit-group bracketing
+/// replay as one step — proving `replay_dot`'s edit-group bracketing
 /// works correctly for the Steel insert path.
 ///
 /// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.

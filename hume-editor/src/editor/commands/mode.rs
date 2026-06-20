@@ -240,16 +240,16 @@ pub fn cmd_collapse_and_exit_extend(
 ///
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in
-/// `drain_pending_repeat` at the tail of `handle_key`, where `&mut Editor`
-/// is available for `execute_keymap_command` and `handle_insert`. This satisfies
-/// the D7 invariant: no EditorCmd handler takes `&mut Editor`.
+/// `replay_dot` at the tail of `handle_key`, where `&mut Editor` is available
+/// for `execute_keymap_command` and `handle_insert`. This satisfies the D7
+/// invariant: no EditorCmd handler takes `&mut Editor`.
 pub fn cmd_repeat(
     state: &mut EditorState,
     _view: &mut EngineView,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    // Peek without taking — drain_pending_repeat owns the take so it can
+    // Peek without taking — replay_dot owns the take so it can
     // restore the action after replay.
     let Some(orig_count) = state.last_repeatable_action.as_ref().map(|a| a.count) else {
         return Ok(());

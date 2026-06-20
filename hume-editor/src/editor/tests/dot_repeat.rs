@@ -81,7 +81,7 @@ fn dot_repeats_replace() {
 /// The original count must survive so that a subsequent plain `.` can still
 /// reproduce the original repetition count.
 ///
-/// Fail oracle: if `drain_pending_repeat` wrote `PendingRepeat.count` back into
+/// Fail oracle: if `replay_dot` wrote `PendingRepeat.count` back into
 /// `last_repeatable_action.count`, the final `assert_eq!` would fail.
 #[test]
 fn explicit_count_on_dot_does_not_corrupt_stored_count() {
@@ -427,16 +427,15 @@ fn dot_after_find_is_noop() {
     assert_eq!(state(&ed), state_after_find);
 }
 
-/// After `.`, `last_command` must be neutralized to `None` (Provenance::Replay),
+/// After `.`, `last_command` must be neutralized to `None`,
 /// NOT left as the name of the replayed command (`"delete"`, `"change"`, …).
 ///
-/// `drain_pending_repeat` emits `Provenance::Replay` so that smart-p
+/// `replay_dot` sets `last_command = None` so that smart-p
 /// (`SMART_P_LAST_CMDS = ["change","delete"]`) correctly routes a bare `p`/`P`
 /// to the clipboard rather than the kill-ring after a dot-repeat.
 ///
-/// Fail oracle: removing the `Provenance::Replay` call at the end of
-/// `drain_pending_repeat` makes this test fail (last_command stays `"delete"`
-/// after the inner replay).
+/// Fail oracle: removing `last_command = None` at the end of `replay_dot` makes
+/// this test fail (last_command stays `"delete"` after the inner replay).
 ///
 /// Behavior assertion: a `p` pressed after `.` must paste from the clipboard,
 /// not the ring, confirming the neutralization has the correct semantic effect.
@@ -456,13 +455,13 @@ fn dot_restamps_last_command() {
     );
 
     ed.feed_key(key('w')); // move to "bar"
-    ed.feed_key(key('.')); // repeat; drain_pending_repeat fires and emits Replay
+    ed.feed_key(key('.')); // repeat; replay_dot fires and emits Replay
 
     // White-box: last_command is neutralized to None after dot-repeat replay.
     assert_eq!(
         ed.state.last_command,
         None,
-        "drain_pending_repeat must neutralize last_command to None (Provenance::Replay)"
+        "replay_dot must neutralize last_command to None"
     );
 
     // Black-box: a subsequent bare `p` reads the clipboard, not the ring.

@@ -7,8 +7,17 @@ use crate::ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_RE
 use crate::ops::surround::wrap_each_selection;
 
 use super::super::{doc_ops, register_ops, EditorState, Severity};
-use super::{PASTE_FAMILY_CMDS, SMART_P_LAST_CMDS, focused_buffer_id, begin_insert_session};
+use super::{focused_buffer_id, begin_insert_session};
 use crate::editor::error::CommandError;
+
+/// Commands that keep Smart-p in "ring" mode: bare `p`/`P` reads the ring
+/// head when `last_command` is one of these; otherwise reads the clipboard.
+const SMART_P_LAST_CMDS: &[&str] = &["change", "delete"];
+
+/// All paste-family commands (paste + cycle). A fresh `p`/`P` appends (rather
+/// than replaces) when `last_command` is one of these.
+const PASTE_FAMILY_CMDS: &[&str] =
+    &["paste-after", "paste-before", "paste-ring-older", "paste-ring-newer"];
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 

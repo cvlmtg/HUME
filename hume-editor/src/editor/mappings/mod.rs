@@ -10,7 +10,6 @@ mod normal;
 mod search_mode;
 mod select_mode;
 
-
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
 
@@ -59,7 +58,9 @@ impl Editor {
         // Replay a pending dot-repeat action, if cmd_repeat set one.
         // Runs after macro recording so the `.` key itself is captured,
         // but the replayed command executes as a fresh dispatch with &mut Editor.
-        self.drain_pending_repeat();
+        if let Some(pending) = self.state.pending_repeat.take() {
+            self.replay_dot(pending.count);
+        }
 
     }
 }

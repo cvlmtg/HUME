@@ -7,6 +7,55 @@ use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 use crate::ops::MotionMode;
 
+// ── Command metadata for dispatch bookkeeping ────────────────────────────────
+
+/// Semantic category of a command — drives which bookkeeping stages run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CmdCategory {
+    /// Cursor movement. Records jumps (if is_jump) and tracks selection recipe.
+    Motion { is_jump: bool },
+    /// Selection builder. Always records jumps and tracks selection recipe.
+    Selection { is_jump: bool },
+    /// Buffer-modifying edit. Snapshots dot-repeat (if repeatable).
+    Edit { repeatable: bool },
+    /// Paste-family command (p, P, [, ]).
+    Paste { family: PasteFamily },
+    /// Editor action (undo, redo, mode changes, …). Clears selection recipe.
+    EditorAction,
+    /// Steel-backed or Lazy command.
+    Lazy { repeatable: bool },
+}
+
+/// Distinguishes normal paste from ring-cycle commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PasteFamily {
+    /// p / P — commit paste session before next command.
+    Normal,
+    /// [ / ] — must NOT commit paste session (cycles fold into one undo step).
+    RingCycle,
+}
+
+impl CmdCategory {
+    /// Whether this command type should update the selection recipe.
+    pub(crate) fn tracks_selection(&self) -> bool {
+        matches!(self, CmdCategory::Motion { .. } | CmdCategory::Selection { .. })
+    }
+}
+
+/// Declarative metadata extracted from a MappableCommand variant.
+///
+/// Drives the dispatch pipeline — the pipeline reads this instead of matching
+/// on variant type or checking string sets.
+#[derive(Debug, Clone)]
+pub(crate) struct CmdMeta {
+    /// Command name (for `last_command` stamping, dot-repeat recording).
+    pub name: Cow<'static, str>,
+    /// Semantic category — drives bookkeeping stages.
+    pub category: CmdCategory,
+    /// Whether `.` should replay this command.
+    pub repeatable: bool,
+}
+
 /// Function pointer for an [`EditorCmd`] handler.
 ///
 /// All handlers share one shape: `(&mut EditorState, &mut EngineView, usize, MotionMode)`.
@@ -93,6 +142,9 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: EditorCmdFn,
+        /// Semantic category used by the dispatch pipeline instead of
+        /// string-matching on the command name.
+        category: CmdCategory,
         /// Whether `.` should replay this command.
         repeatable: bool,
         /// Whether this command always records a jump list entry before executing.
@@ -174,18 +226,41 @@ impl MappableCommand {
         }
     }
 
-    /// Returns `true` if this command should be recorded for `.` repeat.
+    /// Declarative metadata for the dispatch pipeline.
     ///
-    /// Motions and selections are never repeatable — they don't mutate the
-    /// buffer.  Edit, EditorCmd, and SteelBacked commands opt in explicitly
-    /// at registration.  Lazy stubs are never repeatable — they become
-    /// `SteelBacked` on first dispatch, after which the flag is read correctly.
-    pub(crate) fn is_repeatable(&self) -> bool {
+    /// This is the single source of truth for bookkeeping properties. The
+    /// pipeline reads `CmdMeta` — it never matches on variant or checks
+    /// string sets to decide what bookkeeping to run.
+    pub(crate) fn meta(&self) -> CmdMeta {
         match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::Lazy { .. } => false,
-            Self::Edit { repeatable, .. }
-            | Self::EditorCmd { repeatable, .. }
-            | Self::SteelBacked { repeatable, .. } => *repeatable,
+            Self::Motion { name, jump, .. } => CmdMeta {
+                name: name.clone(),
+                category: CmdCategory::Motion { is_jump: *jump },
+                repeatable: false,
+            },
+            Self::Selection { name, jump, .. } => CmdMeta {
+                name: name.clone(),
+                category: CmdCategory::Selection { is_jump: *jump },
+                repeatable: false,
+            },
+            Self::Edit { name, repeatable, .. } => CmdMeta {
+                name: name.clone(),
+                category: CmdCategory::Edit { repeatable: *repeatable },
+                repeatable: *repeatable,
+            },
+            Self::EditorCmd { name, category, repeatable, .. } => {
+                CmdMeta { name: name.clone(), category: *category, repeatable: *repeatable }
+            }
+            Self::SteelBacked { name, repeatable, .. } => CmdMeta {
+                name: name.clone(),
+                category: CmdCategory::Lazy { repeatable: *repeatable },
+                repeatable: *repeatable,
+            },
+            Self::Lazy { name, .. } => CmdMeta {
+                name: name.clone(),
+                category: CmdCategory::Lazy { repeatable: false },
+                repeatable: false,
+            },
         }
     }
 

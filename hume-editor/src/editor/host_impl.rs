@@ -231,21 +231,26 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
+        if !cmd.is_native() {
+            return Err(format!("{name} is not a native command — use call! instead of call-native!"));
+        }
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
         if let Some(r) = register {
             self.state.register_prefix = Some(crate::editor::RegisterPrefix::Selected(r));
         }
-        // Delegate to the shared funnel — all bookkeeping (paste session, jump
+        // Delegate to the shared pipeline — all bookkeeping (paste session, jump
         // list, dot-repeat, last_command) lives there so the sync path is
         // identical to the keypress path.
-        crate::editor::commands::dispatch_native(
+        crate::editor::commands::run_dispatch_pipeline(
             self.state,
             self.view,
             cmd,
-            std::borrow::Cow::Owned(name.to_owned()),
-            count,
-            extend,
+            crate::editor::CmdCtx {
+                count,
+                extend,
+                steel_args: vec![],
+            },
         );
         // Clear the prefix when we armed it, so it does not bleed into the
         // next interactive command.
