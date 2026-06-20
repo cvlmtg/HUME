@@ -1197,7 +1197,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 fn command_table_populated_after_define_command() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
-    let _defs = host
+    host
         .eval_source_returning_defs(
             r#"(define-command! "ping" "" (lambda () #t))
                (define-command! "pong" "" (lambda () #t))"#

@@ -286,7 +286,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Err(e) => Err(CommandError::new(e.to_string())),
         }
     } else {
-        return write_buffer_by_id(ed, ed.focused_buffer_id(), content, line_count, force);
+        write_buffer_by_id(ed, ed.focused_buffer_id(), content, line_count, force)
     }
 }
 

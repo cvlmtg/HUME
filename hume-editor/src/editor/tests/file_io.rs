@@ -365,7 +365,7 @@ fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::TempPath, Buff
 fn wa_saves_all_dirty_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
     assert!(ed.doc().is_dirty());
@@ -388,7 +388,7 @@ fn wa_saves_all_dirty_buffers() {
 fn wa_skips_clean_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     // bid1 stays clean.
 
@@ -405,7 +405,7 @@ fn wa_skips_clean_buffers() {
 
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(msg.starts_with("Written 2"), "expected 2 files written, got: {msg}");
-    assert_eq!(std::fs::read_to_string(&*_tmp1).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(&_tmp1).unwrap(), "hello\n");
     assert_eq!(std::fs::read_to_string(&*tmp2_path).unwrap(), "xtwo\n");
     assert_eq!(std::fs::read_to_string(&*tmp3_path).unwrap(), "xthree\n");
 }
@@ -415,7 +415,7 @@ fn wa_skips_clean_buffers() {
 fn wa_skips_pathless_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
 
@@ -442,7 +442,7 @@ fn wa_skips_pathless_buffers() {
 #[cfg(not(windows))]
 fn wa_is_noop_if_nothing_dirty() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
 
     ed.execute_typed("wa", None).unwrap();
@@ -455,7 +455,7 @@ fn wa_is_noop_if_nothing_dirty() {
 fn wa_does_not_change_focus() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
 
@@ -474,7 +474,7 @@ fn wa_does_not_change_focus() {
 fn wa_preserves_focus_on_single_buffer() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
 
