@@ -1,3 +1,5 @@
+use hume_engine::pipeline::BufferId;
+
 use super::super::{ops, Severity};
 use super::super::Editor;
 use crate::editor::error::CommandError;
@@ -185,6 +187,47 @@ pub fn typed_set(
     result.map_err(CommandError::new)
 }
 
+/// Extract content and line count from a buffer by ID.
+fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
+    let buf = ed.state.buffers.get(bid);
+    let text = buf.text();
+    let content = if text.line_ending() == hume_editing::text::LineEnding::CrLf {
+        text.to_string().replace('\n', "\r\n")
+    } else {
+        text.to_string()
+    };
+    let line_count = text.len_lines().saturating_sub(1);
+    (content, line_count)
+}
+
+/// Write a specific buffer to its file path. No save-as — only writes to the
+/// buffer's own `file_meta` path. Used by `:wa` and the no-arg path of `:w`.
+fn write_buffer_by_id(
+    ed: &mut Editor,
+    bid: BufferId,
+    content: String,
+    line_count: usize,
+    force: bool,
+) -> Result<(), CommandError> {
+    let buf = ed.state.buffers.get(bid);
+    if buf.is_read_only() {
+        return Err(CommandError::new("Buffer is read-only"));
+    }
+    let Some(meta) = buf.file_meta.as_ref() else {
+        return Err(CommandError::new("no file name"));
+    };
+    let retried = hume_platform::io::write_file_atomic(&content, meta, force);
+    match retried {
+        Ok(retried) => {
+            ed.state.buffers.get_mut(bid).mark_saved();
+            ed.report(write_severity(retried), write_msg(line_count, retried));
+            ed.fire_hook_buffer_save(bid);
+            Ok(())
+        }
+        Err(e) => Err(CommandError::new(e.to_string())),
+    }
+}
+
 /// Serialize the buffer and write it to disk.
 ///
 /// If `arg` is `Some(path)`, performs a save-as: writes to the specified
@@ -202,21 +245,7 @@ pub fn typed_set(
 /// On success, calls `ed.doc_mut().mark_saved()` and sets a status message.
 /// Returns `Ok(())` on success, `Err(CommandError)` on any error.
 fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
-    let (content, line_count) = {
-        let buf = ed.doc().text();
-        // The rope is always stored LF-normalized; restore CRLF for files that
-        // originally used it so we don't silently change line endings on save.
-        let content = if buf.line_ending() == hume_editing::text::LineEnding::CrLf {
-            buf.to_string().replace('\n', "\r\n")
-        } else {
-            buf.to_string()
-        };
-        // The buffer always ends with a structural '\n', so len_lines() returns
-        // one more than the number of visible lines (ropey counts the empty
-        // string after the final newline as an extra line).
-        let line_count = buf.len_lines().saturating_sub(1);
-        (content, line_count)
-    };
+    let (content, line_count) = serialize_buffer(ed, ed.focused_buffer_id());
 
     if let Some(path_str) = arg {
         let expanded = hume_platform::path::expand(path_str);
@@ -257,23 +286,35 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Err(e) => Err(CommandError::new(e.to_string())),
         }
     } else {
-        if ed.doc().is_read_only() {
-            return Err(CommandError::new("Buffer is read-only"));
-        }
-        // Write to the current file.
-        let Some(meta) = ed.doc().file_meta.as_ref() else {
-            return Err(CommandError::new("no file name"));
-        };
-        match hume_platform::io::write_file_atomic(&content, meta, force) {
-            Ok(retried) => {
-                ed.doc_mut().mark_saved();
-                ed.report(write_severity(retried), write_msg(line_count, retried));
-                ed.fire_hook_buffer_save(ed.focused_buffer_id());
-                Ok(())
-            }
-            Err(e) => Err(CommandError::new(e.to_string())),
-        }
+        return write_buffer_by_id(ed, ed.focused_buffer_id(), content, line_count, force);
     }
+}
+
+pub fn typed_write_all(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    let dirty_savable: Vec<BufferId> = ed
+        .state
+        .buffers
+        .iter()
+        .filter(|(_, buf)| buf.is_dirty() && buf.file_meta.is_some())
+        .map(|(id, _)| id)
+        .collect();
+
+    if dirty_savable.is_empty() {
+        return Ok(());
+    }
+
+    let mut count = 0;
+    for bid in dirty_savable {
+        let (content, line_count) = serialize_buffer(ed, bid);
+        write_buffer_by_id(ed, bid, content, line_count, force)?;
+        count += 1;
+    }
+    ed.report(Severity::Info, format!("Written {count} file(s)"));
+    Ok(())
 }
 
 fn write_severity(forced: bool) -> Severity {

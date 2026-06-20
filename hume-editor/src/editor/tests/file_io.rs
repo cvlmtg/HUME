@@ -1,3 +1,7 @@
+use hume_engine::pipeline::BufferId;
+use hume_editing::selection::Selection;
+use hume_editing::text::Text;
+
 use super::*;
 use pretty_assertions::assert_eq;
 
@@ -328,6 +332,156 @@ fn open_extra_files_deduplicates() {
     ed.open_extra_files(&[canonical.clone(), canonical]);
 
     assert_eq!(ed.state.buffers.len(), 1, "duplicate paths must not open new buffers");
+}
+
+// ── :wa (write all) ────────────────────────────────────────────────────────────
+
+/// Make the focused buffer dirty by inserting 'x' at cursor.
+fn dirty_focused(ed: &mut Editor) {
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+}
+
+/// Create a temp file and open it as one more buffer. The buffer starts clean
+/// (same content as the file). Caller must dirty it themselves after switching.
+fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::TempPath, BufferId) {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), content).unwrap();
+    let path = tmp.path().to_path_buf();
+    let tmp_path = tmp.into_temp_path();
+    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
+    let text = Text::from(content);
+    let sels = SelectionSet::single(Selection::collapsed(0));
+    let mut buf = Buffer::new(text, sels);
+    buf.set_path(Some(path));
+    buf.file_meta = Some(meta);
+    let bid = ed.open_buffer(buf);
+    (tmp_path, bid)
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_saves_all_dirty_buffers() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid1 = ed.focused_buffer_id();
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+    dirty_focused(&mut ed);
+    assert!(ed.doc().is_dirty());
+
+    let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
+    ed.switch_to_buffer_without_jump(bid2);
+    dirty_focused(&mut ed);
+
+    ed.switch_to_buffer_without_jump(bid1);
+    ed.execute_typed("wa", None).unwrap();
+
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(msg.starts_with("Written"), "got: {msg}");
+    assert!(!ed.state.buffers.get(bid1).is_dirty());
+    assert_eq!(ed.focused_buffer_id(), bid1);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_skips_clean_buffers() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid1 = ed.focused_buffer_id();
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+    // bid1 stays clean.
+
+    let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
+    ed.switch_to_buffer_without_jump(bid2);
+    dirty_focused(&mut ed);
+
+    let (tmp3_path, _bid3) = open_file_buffer(&mut ed, "three\n");
+    ed.switch_to_buffer_without_jump(_bid3);
+    dirty_focused(&mut ed);
+
+    ed.switch_to_buffer_without_jump(bid1);
+    ed.execute_typed("wa", None).unwrap();
+
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(msg.starts_with("Written 2"), "expected 2 files written, got: {msg}");
+    assert_eq!(std::fs::read_to_string(&*_tmp1).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(&*tmp2_path).unwrap(), "xtwo\n");
+    assert_eq!(std::fs::read_to_string(&*tmp3_path).unwrap(), "xthree\n");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_skips_pathless_buffers() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid1 = ed.focused_buffer_id();
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+    dirty_focused(&mut ed);
+
+    // Only one file buffer — scratch shouldn't add to the count.
+    let scratch_bid = {
+        let scratch = Buffer::new(Text::from("scratch\n"), SelectionSet::default());
+        let bid = ed.open_buffer(scratch);
+        ed.switch_to_buffer_without_jump(bid);
+        dirty_focused(&mut ed);
+        bid
+    };
+    assert!(ed.state.buffers.get(scratch_bid).is_dirty());
+    assert!(ed.state.buffers.get(scratch_bid).path().is_none());
+
+    ed.execute_typed("wa", None).unwrap();
+
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(msg.starts_with("Written 1"), "expected 1 file, got: {msg}");
+    assert!(ed.state.buffers.get(scratch_bid).is_dirty());
+    assert!(!ed.state.buffers.get(bid1).is_dirty());
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_is_noop_if_nothing_dirty() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+
+    ed.execute_typed("wa", None).unwrap();
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    assert!(!msg.starts_with("Written"), "no-op must not report written, got: {msg}");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_does_not_change_focus() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid1 = ed.focused_buffer_id();
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+    dirty_focused(&mut ed);
+
+    let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
+    ed.switch_to_buffer_without_jump(bid2);
+    dirty_focused(&mut ed);
+
+    ed.switch_to_buffer_without_jump(bid1);
+    let before = ed.focused_buffer_id();
+    ed.execute_typed("wa", None).unwrap();
+    assert_eq!(ed.focused_buffer_id(), before);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wa_preserves_focus_on_single_buffer() {
+    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid1 = ed.focused_buffer_id();
+    let (_, meta) = hume_platform::io::read_file(&*_tmp1).unwrap();
+    ed.doc_mut().file_meta = Some(meta);
+    dirty_focused(&mut ed);
+
+    let before = ed.focused_buffer_id();
+    ed.execute_typed("wa", None).unwrap();
+    assert_eq!(ed.focused_buffer_id(), before);
+    assert!(!ed.state.buffers.get(bid1).is_dirty());
 }
 
 #[test]

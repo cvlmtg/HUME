@@ -863,6 +863,12 @@ impl CommandRegistry {
             typed_write_quit
         );
         typed_cmd!(
+            "write-all",
+            "Write all modified buffers to disk.",
+            &["wa"],
+            typed_write_all
+        );
+        typed_cmd!(
             "toggle-soft-wrap",
             "Toggle soft line wrapping.",
             &["wrap"],
