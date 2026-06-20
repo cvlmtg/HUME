@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::super::commands::{self, RING_CYCLE_CMDS};
+use super::super::commands;
 use super::super::keymap::WaitCharPending;
 use super::super::registry::MappableCommand;
 use super::super::{Editor, Severity};
@@ -53,11 +53,7 @@ impl Editor {
             // replay — including it in the recorded recipe would double-apply it.
             let recipe_snapshot = std::mem::take(&mut self.state.selection_recipe);
 
-            // Commit any open paste session before Steel eval; same invariant as
-            // the native path (ring-cycle commands bypass this).
-            if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
-                self.state.commit_paste_session();
-            }
+            self.state.commit_paste_unless_cycle(name.as_ref());
 
             // Pre-stamp last_command with the outer name so that a SteelBacked
             // command that dispatches no inner native leaves a fresh name rather

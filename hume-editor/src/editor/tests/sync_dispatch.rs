@@ -628,7 +628,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// `(call! "move-down")` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
-/// Fail oracle: remove `state.commit_paste_session()` from `dispatch_native`
+/// Fail oracle: remove the `commit_paste_unless_cycle` call from `dispatch_native`
 /// → after undo, the paste text is still present.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {

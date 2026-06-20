@@ -140,6 +140,21 @@ impl EditorState {
         }
     }
 
+    /// Commit the open paste session unless `name` is a ring-cycle command.
+    ///
+    /// Ring-cycle commands (`[`/`]`) re-paste from the same snapshot so every
+    /// cycle folds into one undo step — they must NOT commit between pastes.
+    /// Every other command commits first so `undo` sees a committed revision.
+    ///
+    /// This is the single SSOT for the cycle-exclusion rule; both the native
+    /// dispatch path (`dispatch_native`) and the Steel path
+    /// (`execute_keymap_command`) call this instead of open-coding the guard.
+    pub(super) fn commit_paste_unless_cycle(&mut self, name: &str) {
+        if !RING_CYCLE_CMDS.contains(&name) {
+            self.commit_paste_session();
+        }
+    }
+
     /// Commit the open paste session on every pane/buffer pair that has one.
     ///
     /// Records exactly one history revision for the entire paste + all cycles.
@@ -207,12 +222,7 @@ pub(super) fn dispatch_native(
         MappableCommand::Motion { .. } | MappableCommand::Selection { .. }
     );
 
-    // Commit any open paste session before non-cycle dispatch so all `[`/`]`
-    // cycles fold into a single undo step. Must happen before the actual dispatch
-    // so that `undo` sees a committed revision.
-    if !RING_CYCLE_CMDS.contains(&name.as_ref()) {
-        state.commit_paste_session();
-    }
+    state.commit_paste_unless_cycle(name.as_ref());
 
     // Snapshot pending_char before dispatch — commands consume it via `.take()`.
     let char_arg = state.pending_char;
