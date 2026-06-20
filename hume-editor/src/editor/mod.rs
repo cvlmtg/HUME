@@ -685,6 +685,14 @@ impl Editor {
     pub(crate) fn replay_dot(&mut self, count: usize) {
         let Some(action) = self.state.last_repeatable_action.take() else { return };
 
+        // Resolve the edit body before opening the edit group: a missing command
+        // must return while there is still no cleanup obligation, so this path
+        // cannot leak an open group.
+        let Some(edit_cmd) = self.state.registry.get_mappable(action.command.as_ref()).cloned() else {
+            self.state.last_repeatable_action = Some(action);
+            return;
+        };
+
         // Pre-open the edit group — the "replay signal" used by
         // begin_insert_session to suppress keystroke recording.
         self.begin_edit_group_current();
@@ -702,20 +710,29 @@ impl Editor {
         self.state.pending_char = action.char_arg;
 
         // Run the edit body.
-        let Some(cmd) = self.state.registry.get_mappable(action.command.as_ref()).cloned() else {
-            self.state.last_repeatable_action = Some(action);
-            return;
-        };
-        match &cmd {
+        match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
                 let ctx = CmdCtx { count, extend: false, steel_args: vec![] };
-                if !self.run_steel_command(cmd, &ctx, action.char_arg) {
+                // A Steel command can succeed when first run yet fail on dot-repeat:
+                // the buffer state differs (no match at the new cursor, a guard that
+                // now throws), so replay must handle failure even though the original
+                // run didn't.
+                if !self.run_steel_command(edit_cmd, &ctx, action.char_arg) {
+                    // Close the group opened above so it can't leak. commit drops
+                    // an empty group (clean noop) and records a partial one (a
+                    // failure mid-edit stays undoable).
+                    self.commit_edit_group_current();
                     self.state.last_repeatable_action = Some(action);
                     return;
                 }
+                // Inner call! dispatches inside the Steel body run through
+                // run_dispatch_pipeline → step_update_recipe, which may append to
+                // selection_recipe. Clear it so stale steps don't contaminate the
+                // next command's recipe accumulation.
+                self.state.selection_recipe.clear();
             }
             _ => {
-                commands::run_native_body(&mut self.state, &mut self.view, cmd, count, false);
+                commands::run_native_body(&mut self.state, &mut self.view, edit_cmd, count, false);
             }
         }
 

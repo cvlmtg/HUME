@@ -142,17 +142,20 @@ pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory)
 // ── Native-only pre-body steps ─────────────────────────────────────────────────
 
 /// Capture pre-jump cursor position for jump-list recording.
+///
+/// Selection commands are excluded: a large text-object selection is a
+/// select-then-act staging step, not deliberate navigation, so it must not
+/// pollute the jump list on a threshold-exceeding extent. Jump-flagged
+/// selections (e.g. `%` select-all, `jump: true`) still record via the
+/// `cmd.is_jump()` arm.
 pub(super) fn step_capture_pre_jump(
     state: &EditorState,
     view: &EngineView,
     cmd: &MappableCommand,
     meta: &CmdMeta,
 ) -> Option<(Selection, usize, BufferId)> {
-    let is_motion_or_sel = matches!(
-        meta.category,
-        CmdCategory::Motion { .. } | CmdCategory::Selection { .. }
-    );
-    (cmd.is_jump() || cmd.is_visual_move() || is_motion_or_sel).then(|| {
+    let is_motion = matches!(meta.category, CmdCategory::Motion { .. });
+    (cmd.is_jump() || cmd.is_visual_move() || is_motion).then(|| {
         let bid = focused_buffer_id(state, view);
         let primary = current_selections(state, view).primary();
         let line = doc(state, view).text().char_to_line(primary.head());
