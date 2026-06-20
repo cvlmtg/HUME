@@ -64,7 +64,7 @@ impl Editor {
             // than a stale one from the previous command. If any inner native runs
             // via dispatch_native it overrides this with the inner command's name —
             // preserving smart-p for Steel-wrapped kill cmds.
-            self.state.last_command = Some(name.clone());
+            self.state.record_command(commands::Provenance::User(name.clone()));
 
             // For a Lazy stub, activate the owning plugin now so we can read
             // `inline_output` from the resolved SteelBacked entry before dispatch.
@@ -194,13 +194,7 @@ impl Editor {
         // command and set last_repeatable_action, we overwrite it here so the
         // outer Steel command wins the repeat slot.
         if self.state.registry.get_mappable(name.as_ref()).is_some_and(|c| c.is_repeatable()) {
-            self.state.last_repeatable_action = Some(super::super::RepeatableAction {
-                command: name.clone(),
-                count,
-                char_arg,
-                insert_keys: Vec::new(),
-                selection_recipe: recipe_snapshot,
-            });
+            self.state.record_repeatable(name.clone(), count, char_arg, recipe_snapshot);
         }
         // Clear any recipe entries written by inner dispatches so they don't
         // leak into the next command.

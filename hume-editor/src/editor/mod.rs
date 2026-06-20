@@ -497,10 +497,9 @@ impl Editor {
             }
         }
         self.state.is_replaying = false;
-        // After replay, reset Smart-p to clipboard mode so a bare `p` typed
-        // immediately after a macro reads the clipboard rather than whatever
-        // delete/change happened to be the last command inside the macro.
-        self.state.last_command = Some(Cow::Borrowed("macro-replay"));
+        // Neutralize last_command after replay so a bare `p` reads the clipboard
+        // rather than whatever kill command ran last inside the macro.
+        self.state.record_command(commands::Provenance::Replay);
         self.state.last_repeatable_action = saved_action;
     }
 
@@ -561,9 +560,9 @@ impl Editor {
         // may have overwritten last_repeatable_action during replay; this
         // assignment ensures the stored action is always the one the user performed.
         self.state.last_repeatable_action = Some(action);
-        // Re-stamp last_command: the outer dispatcher saw "repeat-last-action",
-        // which would wrongly suppress clipboard paste for smart-p (p after c/d).
-        self.state.last_command = Some(Cow::Borrowed("repeat-last-action"));
+        // Neutralize last_command after replay so a bare `p` reads the clipboard
+        // rather than whatever kill command ran last inside the replayed recipe.
+        self.state.record_command(commands::Provenance::Replay);
     }
 
 }

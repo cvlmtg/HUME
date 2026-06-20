@@ -60,9 +60,63 @@ pub(super) const RING_CYCLE_CMDS: &[&str] = &["paste-ring-older", "paste-ring-ne
 pub(super) const PASTE_FAMILY_CMDS: &[&str] =
     &["paste-after", "paste-before", "paste-ring-older", "paste-ring-newer"];
 
+// ── Command provenance classifier ────────────────────────────────────────────
+
+/// Why a command ran — determines how `last_command` (the smart-p / paste-append
+/// marker) is updated after dispatch.
+///
+/// Consumers (`do_paste`, paste-append detection) only care about whether the
+/// most-recent command was a user-initiated kill (→ ring) or anything else (→
+/// clipboard). Encoding *why* something ran here keeps that decision in one place
+/// instead of spread across replay + insert-tail + native dispatch sites.
+pub(super) enum Provenance {
+    /// Direct user keypress in Normal/Extend mode. Becomes the new `last_command`.
+    User(Cow<'static, str>),
+    /// Command ran during an active insert session (exit-insert, in-insert nav).
+    /// Preserves the prior kill marker so `change`/`delete` before the session still
+    /// routes `p` to the ring — skip the update entirely.
+    InsertTail,
+    /// Output of macro or dot-repeat replay. Neutralize `last_command` to `None`
+    /// so a bare `p` after replay reads the clipboard rather than whatever kill
+    /// command happened to run last inside the replay.
+    Replay,
+}
+
 // ── EditorState helpers ───────────────────────────────────────────────────────
 
 impl EditorState {
+    /// Update `last_command` according to how a command was triggered.
+    ///
+    /// Call once per dispatch, after the command body runs. This is the single
+    /// site that classifies command provenance for smart-p and paste-append.
+    pub(super) fn record_command(&mut self, provenance: Provenance) {
+        match provenance {
+            Provenance::User(name) => self.last_command = Some(name),
+            Provenance::InsertTail => {} // keep the prior kill marker
+            Provenance::Replay     => self.last_command = None,
+        }
+    }
+
+    /// Record a repeatable action for dot-repeat.
+    ///
+    /// Shared by the native dispatch path (`dispatch_native`) and the Steel path
+    /// (`execute_keymap_command`) so the struct literal is not duplicated.
+    pub(super) fn record_repeatable(
+        &mut self,
+        command: Cow<'static, str>,
+        count: usize,
+        char_arg: Option<char>,
+        selection_recipe: Vec<SelectionStep>,
+    ) {
+        self.last_repeatable_action = Some(RepeatableAction {
+            command,
+            count,
+            char_arg,
+            insert_keys: Vec::new(),
+            selection_recipe,
+        });
+    }
+
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
     /// or `None` if no prefix was typed (bare default case).
     pub(super) fn take_register_prefix(&mut self) -> Option<char> {
@@ -120,7 +174,8 @@ impl EditorState {
 /// - Paste session committed before dispatch (except ring-cycle commands).
 /// - Jump-list: pre/post snapshot for all motions and explicit jump commands.
 /// - Dot-repeat: `last_repeatable_action` updated for repeatable commands.
-/// - Smart-p: `last_command` updated unconditionally.
+/// - Smart-p: `last_command` updated via `record_command` — `User` in Normal/Extend,
+///   skipped during the insert-session tail so the prior kill marker is preserved.
 ///
 /// Register-prefix is **not** armed here — the caller is responsible (`run_command_sync`
 /// arms `state.register_prefix` before calling; the keypress path relies on the
@@ -233,13 +288,7 @@ pub(super) fn dispatch_native(
     //   everything else        → clear
     if is_repeatable {
         let recipe = std::mem::take(&mut state.selection_recipe);
-        state.last_repeatable_action = Some(RepeatableAction {
-            command: name.clone(),
-            count,
-            char_arg,
-            insert_keys: Vec::new(),
-            selection_recipe: recipe,
-        });
+        state.record_repeatable(name.clone(), count, char_arg, recipe);
     } else if is_sel_builder {
         if extend {
             // Grew the existing selection — append this step.
@@ -268,13 +317,14 @@ pub(super) fn dispatch_native(
         state.selection_recipe.clear();
     }
 
-    // Smart-p: update last_command so `p`/`P` knows whether to read the
-    // kill ring (after delete/change) or the clipboard. Skip while in Insert
-    // mode so the insert-session tail (exit-insert, in-insert navigation)
-    // doesn't clobber the change/delete marker that `p` reads.
-    if pre_mode != Mode::Insert {
-        state.last_command = Some(name);
-    }
+    // Smart-p: classify provenance and update last_command via record_command.
+    // InsertTail preserves the prior kill marker; User stamps the new name.
+    let prov = if pre_mode == Mode::Insert {
+        Provenance::InsertTail
+    } else {
+        Provenance::User(name)
+    };
+    state.record_command(prov);
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────

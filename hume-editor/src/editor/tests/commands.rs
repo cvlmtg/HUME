@@ -1310,9 +1310,9 @@ fn xdp_pastes_ring_head_not_clipboard() {
     );
 }
 
-/// Regression: `drain_replay_queue` ran unconditionally after every key, writing the
-/// `"macro-replay"` sentinel even when the queue was empty. A bare `p` after `x d`
-/// must still read the ring head — the idle drain must not clobber `last_command`
+/// Regression: `drain_replay_queue` ran unconditionally after every key, emitting
+/// `Provenance::Replay` even when the queue was empty. A bare `p` after `x d`
+/// must still read the ring head — the idle drain must not neutralize `last_command`
 /// (pre-432c24f bug: pasted the clipboard instead). `feed_key` / `feed_keys` include
 /// the idle drain so this invariant is checked automatically by all paste tests now.
 #[test]

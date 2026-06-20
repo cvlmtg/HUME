@@ -427,20 +427,28 @@ fn dot_after_find_is_noop() {
     assert_eq!(state(&ed), state_after_find);
 }
 
-/// After `.`, `last_command` must be re-stamped to `"repeat-last-action"`, NOT
-/// to the name of the replayed command (`"delete"`, `"change"`, …).
+/// After `.`, `last_command` must be neutralized to `None` (Provenance::Replay),
+/// NOT left as the name of the replayed command (`"delete"`, `"change"`, …).
 ///
-/// `drain_pending_repeat` (`mod.rs:482`) does this re-stamp so that smart-p
+/// `drain_pending_repeat` emits `Provenance::Replay` so that smart-p
 /// (`SMART_P_LAST_CMDS = ["change","delete"]`) correctly routes a bare `p`/`P`
 /// to the clipboard rather than the kill-ring after a dot-repeat.
 ///
-/// Fail oracle: commenting the re-stamp at `drain_pending_repeat`'s last line
-/// makes this test fail (last_command would be "delete" after the inner replay).
+/// Fail oracle: removing the `Provenance::Replay` call at the end of
+/// `drain_pending_repeat` makes this test fail (last_command stays `"delete"`
+/// after the inner replay).
+///
+/// Behavior assertion: a `p` pressed after `.` must paste from the clipboard,
+/// not the ring, confirming the neutralization has the correct semantic effect.
 #[test]
 fn dot_restamps_last_command() {
-    let mut ed = editor_from("-[foo]> bar\n");
+    use crate::ops::register::CLIPBOARD_REGISTER;
 
-    ed.feed_key(key('d')); // delete "foo"; last_command = "delete"
+    let mut ed = editor_from("-[foo]> bar\n");
+    // Seed the clipboard with a sentinel value distinct from the kill-ring head.
+    ed.state.registers.write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+
+    ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"], last_command = "delete"
     assert_eq!(
         ed.state.last_command.as_deref(),
         Some("delete"),
@@ -448,12 +456,20 @@ fn dot_restamps_last_command() {
     );
 
     ed.feed_key(key('w')); // move to "bar"
-    ed.feed_key(key('.')); // repeat; drain_pending_repeat fires and re-stamps
+    ed.feed_key(key('.')); // repeat; drain_pending_repeat fires and emits Replay
 
+    // White-box: last_command is neutralized to None after dot-repeat replay.
     assert_eq!(
-        ed.state.last_command.as_deref(),
-        Some("repeat-last-action"),
-        "drain_pending_repeat must re-stamp last_command to 'repeat-last-action'"
+        ed.state.last_command,
+        None,
+        "drain_pending_repeat must neutralize last_command to None (Provenance::Replay)"
+    );
+
+    // Black-box: a subsequent bare `p` reads the clipboard, not the ring.
+    ed.feed_key(key('p'));
+    assert!(
+        state(&ed).contains("CLIP"),
+        "p after dot-repeat must paste clipboard, not ring head"
     );
 }
 
