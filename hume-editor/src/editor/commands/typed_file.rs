@@ -299,7 +299,10 @@ pub fn typed_write_all(
         .state
         .buffers
         .iter()
-        .filter(|(_, buf)| buf.is_dirty() && buf.file_meta.is_some())
+        // Skip read-only buffers; write_buffer_by_id would error and abort the
+        // whole batch after partial saves. A read-only dirty buffer is unusual
+        // (only set-text can do it), but handle it gracefully.
+        .filter(|(_, buf)| buf.is_dirty() && buf.file_meta.is_some() && !buf.is_read_only())
         .map(|(id, _)| id)
         .collect();
 

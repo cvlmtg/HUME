@@ -484,6 +484,43 @@ fn wa_preserves_focus_on_single_buffer() {
     assert!(!ed.state.buffers.get(bid1).is_dirty());
 }
 
+/// `:wa` must skip a read-only dirty buffer (e.g. one dirtied by set-text) and
+/// still save the remaining writable dirty buffers — no mid-batch abort.
+///
+/// Fail oracle: remove `&& !buf.is_read_only()` from the typed_write_all filter —
+/// write_buffer_by_id returns Err("Buffer is read-only") and the loop propagates
+/// it via `?`, leaving bid2 unsaved.
+#[test]
+#[cfg(not(windows))]
+fn wa_skips_read_only_dirty_buffer() {
+    let mut ed = Editor::open(None).unwrap();
+    // bid1 — writable dirty buffer backed by a file.
+    let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
+    ed.switch_to_buffer_without_jump(bid1);
+    dirty_focused(&mut ed);
+    assert!(ed.state.buffers.get(bid1).is_dirty());
+
+    // bid2 — a buffer that's been made read-only while dirty.
+    let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
+    ed.switch_to_buffer_without_jump(bid2);
+    dirty_focused(&mut ed);
+    // Simulate the unusual case: set read_only after editing (e.g. set-text path).
+    ed.state.buffers.get_mut(bid2).read_only = true;
+    assert!(ed.state.buffers.get(bid2).is_dirty());
+    assert!(ed.state.buffers.get(bid2).is_read_only());
+
+    ed.switch_to_buffer_without_jump(bid1);
+    ed.execute_typed("wa", None).unwrap();
+
+    // bid1 must be saved; bid2 must remain dirty (was skipped, not aborted).
+    assert!(!ed.state.buffers.get(bid1).is_dirty(), "writable buffer must be saved");
+    assert!(ed.state.buffers.get(bid2).is_dirty(), "read-only buffer must remain dirty");
+    // File on disk: bid2 content unchanged.
+    assert_eq!(std::fs::read_to_string(&*tmp2_path).unwrap(), "two\n",
+        "read-only buffer file must not be touched");
+    drop((tmp1_path, tmp2_path));
+}
+
 #[test]
 #[cfg(not(windows))]
 fn open_extra_files_nonexistent_logs_warning() {

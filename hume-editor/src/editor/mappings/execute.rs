@@ -90,7 +90,13 @@ impl Editor {
                     Some(MappableCommand::SteelBacked { inline_output, arity, is_variadic, .. }) => {
                         (*inline_output, *arity, *is_variadic)
                     }
-                    _ => unreachable!("Lazy stub must be replaced by SteelBacked before re-query"),
+                    _ => {
+                        // Should not happen: activate_lazy_plugin's contract guarantees the
+                        // stub is replaced by SteelBacked on success, and we returned early
+                        // on failure. Degrade gracefully rather than panic with unsaved buffers.
+                        self.report(Severity::Error, format!("{name}: internal error — command lost after activation"));
+                        return;
+                    }
                 };
             let focused_pane_id = self.state.focused_pane_id;
             let focused_buffer_id = self.focused_buffer_id();

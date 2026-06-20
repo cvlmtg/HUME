@@ -161,8 +161,12 @@ The lambda decides how to act on these; it forwards them explicitly via `(call! 
 **`#:inline-output #t`** — bracket dispatch with a terminal exit so subprocess output streams live to the terminal instead of the message bar. Use for shell-outs (formatters, linters, installers). The editor returns to its normal screen after a keypress.
 
 ```scheme
-(define-command! "run-check" "Run cargo check."
-  (lambda () (call! "shell-command" "cargo check"))
+;; #:inline-output is typically used in plugin code that shells out.
+;; See runtime/plugins/core/plum/grammars.scm for real-world examples.
+(define-command! "my-build-command" "Run a build step inline."
+  (lambda ()
+    ; body calls plugin builtins that run subprocesses
+    (my-plugin/run-build))
   #:inline-output #t)
 ```
 
