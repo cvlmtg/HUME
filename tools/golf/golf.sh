@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+if ! command -v curl &>/dev/null; then
+    echo "golf: curl is required for fetching kakoune scores" >&2
+    exit 1
+fi
+
 CHALLENGES_DIR="${1:-$(dirname "$0")/challenges}"
 
 # Build the hume binary unconditionally.
@@ -52,8 +57,8 @@ count_keys() {
 pass=0
 fail=0
 
-printf "%-28s  %6s  %s\n" "CHALLENGE" "SCORE" "RESULT"
-printf "%s\n" "------------------------------------------------------------"
+printf "%-28s  %5s  %7s  %s\n" "CHALLENGE" "HUME" "KAKOUNE" "RESULT"
+printf "%s\n" "----------------------------------------------------------------------"
 
 for dir in "$CHALLENGES_DIR"/*/; do
     [[ -d "$dir" ]] || continue
@@ -63,22 +68,33 @@ for dir in "$CHALLENGES_DIR"/*/; do
     cmd_file="$dir/cmd"
 
     if [[ ! -f "$in_file" || ! -f "$out_file" || ! -f "$cmd_file" ]]; then
-        printf "%-28s  %6s  %s\n" "$name" "-" "SKIP (missing in/out/cmd)"
+        printf "%-28s  %5s  %7s  %s\n" "$name" "-" "-" "SKIP (missing in/out/cmd)"
         continue
     fi
 
     keys="$(cat "$cmd_file")"
     score="$(count_keys "$keys")"
 
+    kakoune_score="-"
+    kakoune_cmd_file="$dir/kakoune_cmd"
+    if [[ ! -f "$kakoune_cmd_file" ]]; then
+        curl -fsSL --connect-timeout 5 \
+            "https://raw.githubusercontent.com/mawww/golf/master/$name/cmd" \
+            > "$kakoune_cmd_file" 2>/dev/null || rm -f "$kakoune_cmd_file"
+    fi
+    if [[ -f "$kakoune_cmd_file" ]]; then
+        kakoune_score="$(count_keys "$(cat "$kakoune_cmd_file")")"
+    fi
+
     tmp="$(mktemp)"
     cp "$in_file" "$tmp"
 
     if "$HUME" --keys "$keys" --output "$tmp" "$tmp" 2>/dev/null \
        && cmp -s "$out_file" "$tmp"; then
-        printf "%-28s  %6s  %s\n" "$name" "$score" "OK"
+        printf "%-28s  %5s  %7s  %s\n" "$name" "$score" "$kakoune_score" "OK"
         pass=$((pass + 1))
     else
-        printf "%-28s  %6s  %s\n" "$name" "$score" "FAIL"
+        printf "%-28s  %5s  %7s  %s\n" "$name" "$score" "$kakoune_score" "FAIL"
         fail=$((fail + 1))
     fi
     rm -f "$tmp"
