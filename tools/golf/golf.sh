@@ -11,23 +11,17 @@
 #   4. Counts keystrokes (each bare char = 1; each <...> token = 1).
 #   5. Prints a results table.
 #
-# Requires `hume` to be on PATH or built in ../../target/release/hume.
+# Requires Rust toolchain; builds hume-editor from source on each run.
 
 set -euo pipefail
 
 CHALLENGES_DIR="${1:-$(dirname "$0")/challenges}"
 
-# Locate the hume binary.
-if command -v hume &>/dev/null; then
-    HUME="hume"
-elif [[ -x "$(dirname "$0")/../../target/release/hume" ]]; then
-    HUME="$(realpath "$(dirname "$0")/../../target/release/hume")"
-elif [[ -x "$(dirname "$0")/../../target/debug/hume" ]]; then
-    HUME="$(realpath "$(dirname "$0")/../../target/debug/hume")"
-else
-    echo "golf: cannot find hume binary. Run 'cargo build' first." >&2
-    exit 1
-fi
+# Build the hume binary unconditionally.
+PROJECT_ROOT="$(realpath "$(dirname "$0")/../..")"
+echo "golf: building hume-editor ..."
+cargo build --package hume-editor --manifest-path "$PROJECT_ROOT/Cargo.toml"
+HUME="$PROJECT_ROOT/target/debug/hume"
 
 # Count keystrokes: each bare char = 1; each <...> token = 1.
 # Pure-bash implementation — no `expr`, safe with special characters.
