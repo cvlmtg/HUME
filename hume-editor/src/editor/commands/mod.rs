@@ -147,15 +147,14 @@ pub(super) fn step_paste_commit(state: &mut EditorState, category: &CmdCategory)
 /// select-then-act staging step, not deliberate navigation, so it must not
 /// pollute the jump list on a threshold-exceeding extent. Jump-flagged
 /// selections (e.g. `%` select-all, `jump: true`) still record via the
-/// `cmd.is_jump()` arm.
+/// `meta.is_jump` arm.
 pub(super) fn step_capture_pre_jump(
     state: &EditorState,
     view: &EngineView,
-    cmd: &MappableCommand,
     meta: &CmdMeta,
 ) -> Option<(Selection, usize, BufferId)> {
-    let is_motion = matches!(meta.category, CmdCategory::Motion { .. });
-    (cmd.is_jump() || cmd.is_visual_move() || is_motion).then(|| {
+    let is_motion = matches!(meta.category, CmdCategory::Motion);
+    (meta.is_jump || meta.is_visual_move || is_motion).then(|| {
         let bid = focused_buffer_id(state, view);
         let primary = current_selections(state, view).primary();
         let line = doc(state, view).text().char_to_line(primary.head());
@@ -304,11 +303,11 @@ pub(super) fn run_dispatch_pipeline(
          step_stamp_repeatable and step_update_recipe would both fire",
         meta.name,
     );
-    let is_jump = cmd.is_jump();
+    let is_jump = meta.is_jump;
 
     // BEFORE
     step_paste_commit(state, &meta.category);
-    let pre_jump = step_capture_pre_jump(state, view, &cmd, &meta);
+    let pre_jump = step_capture_pre_jump(state, view, &meta);
     let char_arg = step_capture_pending_char(state);
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);
 

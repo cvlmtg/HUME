@@ -1196,7 +1196,7 @@ fn smart_p_dp_reads_ring() {
 
 /// `c` <text> Esc then `p` reads the kill ring, not the clipboard.
 ///
-/// Regression: `exit-insert` (Esc) ran through `dispatch_native` and
+/// Regression: `exit-insert` (Esc) ran through the dispatch pipeline and
 /// overwrote `last_command = "exit-insert"` ∉ `SMART_P_LAST_CMDS`, so
 /// smart-`p` fell through to the clipboard. Fix: `step_stamp_last_command`
 /// skips stamping when the command name is `"exit-insert"`.

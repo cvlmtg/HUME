@@ -12,10 +12,10 @@ use crate::ops::MotionMode;
 /// Semantic category of a command — drives which bookkeeping stages run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CmdCategory {
-    /// Cursor movement. Records jumps (if is_jump) and tracks selection recipe.
-    Motion { is_jump: bool },
-    /// Selection builder. Always records jumps and tracks selection recipe.
-    Selection { is_jump: bool },
+    /// Cursor movement. Tracks the selection recipe.
+    Motion,
+    /// Selection builder. Tracks the selection recipe.
+    Selection,
     /// Buffer-modifying edit. Snapshots dot-repeat (if repeatable).
     Edit { repeatable: bool },
     /// Paste-family command (p, P, [, ]).
@@ -38,7 +38,7 @@ pub(crate) enum PasteFamily {
 impl CmdCategory {
     /// Whether this command type should update the selection recipe.
     pub(crate) fn tracks_selection(&self) -> bool {
-        matches!(self, CmdCategory::Motion { .. } | CmdCategory::Selection { .. })
+        matches!(self, CmdCategory::Motion | CmdCategory::Selection)
     }
 }
 
@@ -52,6 +52,18 @@ pub(crate) struct CmdMeta {
     pub name: Cow<'static, str>,
     /// Semantic category — drives bookkeeping stages.
     pub category: CmdCategory,
+    /// Whether this command always records a jump-list entry before executing,
+    /// regardless of how far the cursor moves (goto / search / page-scroll /
+    /// `select-all`).
+    ///
+    /// Single source of truth for jump-command classification — there is no
+    /// parallel `JUMP_COMMANDS` list, and the dispatch pipeline reads this rather
+    /// than matching on the command variant.
+    pub is_jump: bool,
+    /// Whether this command is a visual-line motion (`move-down`/`move-up`).
+    /// The preferred display column is preserved across consecutive visual-line
+    /// moves and cleared for any other command.
+    pub is_visual_move: bool,
     /// Whether `.` should replay this command.
     pub repeatable: bool,
 }
@@ -235,59 +247,46 @@ impl MappableCommand {
         match self {
             Self::Motion { name, jump, .. } => CmdMeta {
                 name: name.clone(),
-                category: CmdCategory::Motion { is_jump: *jump },
+                category: CmdCategory::Motion,
+                is_jump: *jump,
+                is_visual_move: false,
                 repeatable: false,
             },
             Self::Selection { name, jump, .. } => CmdMeta {
                 name: name.clone(),
-                category: CmdCategory::Selection { is_jump: *jump },
+                category: CmdCategory::Selection,
+                is_jump: *jump,
+                is_visual_move: false,
                 repeatable: false,
             },
             Self::Edit { name, repeatable, .. } => CmdMeta {
                 name: name.clone(),
                 category: CmdCategory::Edit { repeatable: *repeatable },
+                is_jump: false,
+                is_visual_move: false,
                 repeatable: *repeatable,
             },
-            Self::EditorCmd { name, category, repeatable, .. } => {
-                CmdMeta { name: name.clone(), category: *category, repeatable: *repeatable }
-            }
+            Self::EditorCmd { name, category, repeatable, jump, visual_move, .. } => CmdMeta {
+                name: name.clone(),
+                category: *category,
+                is_jump: *jump,
+                is_visual_move: *visual_move,
+                repeatable: *repeatable,
+            },
             Self::SteelBacked { name, repeatable, .. } => CmdMeta {
                 name: name.clone(),
                 category: CmdCategory::Lazy { repeatable: *repeatable },
+                is_jump: false,
+                is_visual_move: false,
                 repeatable: *repeatable,
             },
             Self::Lazy { name, .. } => CmdMeta {
                 name: name.clone(),
                 category: CmdCategory::Lazy { repeatable: false },
+                is_jump: false,
+                is_visual_move: false,
                 repeatable: false,
             },
-        }
-    }
-
-    /// Returns `true` if this command always records a jump list entry before
-    /// executing, regardless of how far the cursor moves.
-    ///
-    /// This is the single source of truth for jump-command classification —
-    /// there is no parallel `JUMP_COMMANDS` list.
-    pub(crate) fn is_jump(&self) -> bool {
-        match self {
-            Self::Motion { jump, .. }
-            | Self::Selection { jump, .. }
-            | Self::EditorCmd { jump, .. } => *jump,
-            Self::Edit { .. }
-            | Self::SteelBacked { .. }
-            | Self::Lazy { .. } => false,
-        }
-    }
-
-    /// Returns `true` if this command is a visual-line motion.
-    ///
-    /// The editor preserves the preferred display column across consecutive
-    /// visual-line moves and clears it for any other command.
-    pub(crate) fn is_visual_move(&self) -> bool {
-        match self {
-            Self::EditorCmd { visual_move, .. } => *visual_move,
-            _ => false,
         }
     }
 

@@ -5,8 +5,8 @@
 //! Steel VM (`scripting.steel`) to take `&mut Engine` simultaneously without
 //! aliasing editor data. Two construction sites create this:
 //!
-//! - **Command dispatch** (`mappings/execute.rs`): called with the live editor
-//!   state and view from the focused pane.
+//! - **Command dispatch** (`editor/mod.rs`, `run_steel_command`): called with the
+//!   live editor state and view from the focused pane.
 //! - **Init dispatch** (`scripting_setup.rs`): called with the same fields
 //!   during `init_scripting`; init-only builtins set settings/keymap.
 

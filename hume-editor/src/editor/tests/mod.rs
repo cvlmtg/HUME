@@ -213,13 +213,13 @@ impl Editor {
 /// Captures the entire funnel-owned side-effect cluster in one shot so a test
 /// can assert all bookkeeping in one `assert_eq!` without missing a field.
 ///
-/// Scope: the four effects that `dispatch_native` is exclusively responsible for
-/// (commands/mod.rs:147–221).  Register routing (caller-armed) and handle_key-tail
+/// Scope: the four effects that `run_dispatch_pipeline` is exclusively responsible
+/// for.  Register routing (caller-armed) and handle_key-tail
 /// concerns (replay_dot, hooks, search-cache) are intentionally excluded —
 /// the former is seeding-dependent, the latter has dedicated tests.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
-    /// `ed.state.last_command` — name stamped by `dispatch_native` for smart-p.
+    /// `ed.state.last_command` — name stamped by `step_stamp_last_command` for smart-p.
     pub last_command: Option<String>,
     /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.
     /// `insert_keys` is excluded: it is always empty at dispatch time and only

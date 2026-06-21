@@ -169,5 +169,5 @@ fn goto_alternate_file_is_registered_as_jump() {
     let cmd = reg
         .get_mappable("goto-alternate-file")
         .expect("goto-alternate-file must be registered");
-    assert!(cmd.is_jump(), "goto-alternate-file must have jump:true");
+    assert!(cmd.meta().is_jump, "goto-alternate-file must have jump:true");
 }

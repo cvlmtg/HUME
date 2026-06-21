@@ -23,10 +23,11 @@
 //! # Single native-dispatch funnel
 //!
 //! All native command variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) must
-//! be executed **exclusively** through `commands::dispatch_native`
+//! be executed **exclusively** through `commands::run_native_body`
 //! (`src/editor/commands/mod.rs`).  That function is the single place that
-//! performs all post-dispatch bookkeeping: paste-session commit, jump-list update,
-//! dot-repeat recording, and `last_command` stamping.
+//! destructures a native variant to call its `fun` pointer; the surrounding
+//! `run_dispatch_pipeline` performs all post-dispatch bookkeeping: paste-session
+//! commit, jump-list update, dot-repeat recording, and `last_command` stamping.
 //!
 //! The original regression: a second dispatch path copied only the bare `match`
 //! arms and none of the bookkeeping.  Commands ran correctly but silently dropped
@@ -216,11 +217,11 @@ mod tests {
     /// `Edit { fun`, `EditorCmd { fun`).
     ///
     /// These patterns mean "I am reaching into a native variant to call its
-    /// function pointer."  Only `dispatch_native` in `commands/mod.rs` is
-    /// allowed to do that — it is the single funnel that carries all
-    /// post-dispatch bookkeeping.  A second naked match would silently drop
-    /// the bookkeeping cluster (jump list, last_command, dot-repeat, paste
-    /// session) exactly as happened in the original regression.
+    /// function pointer."  Only `run_native_body` in `commands/mod.rs` is
+    /// allowed to do that — it is the single funnel that the dispatch pipeline
+    /// wraps with all post-dispatch bookkeeping.  A second naked match would
+    /// silently drop the bookkeeping cluster (jump list, last_command,
+    /// dot-repeat, paste session) exactly as happened in the original regression.
     ///
     /// Opt-out: annotate the line with `// single-funnel-exempt: <reason>`.
     ///
@@ -314,7 +315,7 @@ mod tests {
 
         assert!(
             violations.is_empty(),
-            "\nNative-command `fun` binding found outside `dispatch_native` in `commands/mod.rs`.\n\
+            "\nNative-command `fun` binding found outside `run_native_body` in `commands/mod.rs`.\n\
              Only that function may destructure and call native MappableCommand variants.\n\
              All bookkeeping (jump list, last_command, dot-repeat, paste session) lives\n\
              there — a second dispatch path silently drops the entire cluster.\n\

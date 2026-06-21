@@ -105,7 +105,7 @@ pub(super) struct InsertSession {
 
 /// One selection-building step in a dot-repeat recipe.
 ///
-/// Recorded by `dispatch_native` as Motion/Selection commands run, so that
+/// Recorded by `step_update_recipe` as Motion/Selection commands run, so that
 /// `replay_dot` can replay them before the edit, rebuilding the
 /// extent the edit originally acted on.
 #[derive(Debug, Clone)]

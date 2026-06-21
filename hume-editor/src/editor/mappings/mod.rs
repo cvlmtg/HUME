@@ -69,7 +69,7 @@ impl Editor {
 
 #[cfg(test)]
 mod tests {
-    /// Guard: every jump command has `is_jump() == true` in the registry.
+    /// Guard: every jump command has `meta().is_jump == true` in the registry.
     ///
     /// The registry is the single source of truth — there is no separate
     /// `JUMP_COMMANDS` list to keep in sync.
@@ -88,7 +88,7 @@ mod tests {
         ];
         for name in must_be_jump {
             assert!(
-                reg.get_mappable(name).expect(name).is_jump(),
+                reg.get_mappable(name).expect(name).meta().is_jump,
                 "'{name}' should have jump: true"
             );
         }
@@ -96,7 +96,7 @@ mod tests {
         let must_be_visual_move = ["move-down", "move-up"];
         for name in must_be_visual_move {
             assert!(
-                reg.get_mappable(name).expect(name).is_visual_move(),
+                reg.get_mappable(name).expect(name).meta().is_visual_move,
                 "'{name}' should have visual_move: true"
             );
         }
@@ -104,11 +104,11 @@ mod tests {
         // Spot-check non-jump commands.
         for name in ["move-left", "move-right", "delete", "undo", "insert-before"] {
             assert!(
-                !reg.get_mappable(name).expect(name).is_jump(),
+                !reg.get_mappable(name).expect(name).meta().is_jump,
                 "'{name}' should have jump: false"
             );
             assert!(
-                !reg.get_mappable(name).expect(name).is_visual_move(),
+                !reg.get_mappable(name).expect(name).meta().is_visual_move,
                 "'{name}' should have visual_move: false"
             );
         }

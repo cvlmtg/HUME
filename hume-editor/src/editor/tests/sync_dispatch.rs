@@ -44,7 +44,7 @@ fn run_command_sync_motion_moves_cursor() {
 /// its effect immediately — not queue it.
 ///
 /// Fail oracle: return `Ok(())` from `run_command_sync` without calling
-/// `dispatch_native` → `undo` never reverts the deletion → assertion fails.
+/// `run_dispatch_pipeline` → `undo` never reverts the deletion → assertion fails.
 #[test]
 fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
@@ -461,7 +461,7 @@ fn steel_call_native_respects_register_prefix() {
 /// **Finding 2 — last_command (smart-p)**: after `(call! "delete")` from Steel,
 /// `last_command` must be `"delete"` so a subsequent `p` reads the kill ring.
 ///
-/// Fail oracle: comment out `state.last_command = Some(name)` in `dispatch_native`
+/// Fail oracle: comment out `state.last_command = Some(name)` in `step_stamp_last_command`
 /// → last_command stays stale (prior command) instead of "delete".
 #[test]
 fn steel_call_delete_sets_last_command_for_smart_p() {
@@ -540,7 +540,7 @@ fn steel_no_dispatch_cmd_stamps_own_name() {
 /// **Finding 3 — dot-repeat**: a repeatable native command invoked via Steel must
 /// set `last_repeatable_action` so `.` can replay it.
 ///
-/// Fail oracle: comment out the `is_repeatable` block in `dispatch_native`
+/// Fail oracle: comment out the `step_stamp_repeatable` call in `run_dispatch_pipeline`
 /// → `last_repeatable_action` is None after the call.
 #[test]
 fn steel_call_repeatable_cmd_sets_dot_repeat() {
@@ -586,7 +586,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 /// **Finding 4 — jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
 /// via Steel must push a `JumpEntry` so Ctrl+O can return.
 ///
-/// Fail oracle: comment out the `pre_jump` capture in `dispatch_native`
+/// Fail oracle: comment out the `step_capture_pre_jump` call in `run_dispatch_pipeline`
 /// → jump list is empty after the call.
 #[test]
 fn steel_call_jump_cmd_records_jump_entry() {
@@ -628,7 +628,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// `(call! "move-down")` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
-/// Fail oracle: remove the `commit_paste_unless_cycle` call from `dispatch_native`
+/// Fail oracle: remove the `step_paste_commit` call from `run_dispatch_pipeline`
 /// → after undo, the paste text is still present.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
@@ -1040,7 +1040,7 @@ fn steel_arity_1_lambda_receives_count_only() {
 // that dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 //
-// Each test documents a fail oracle: which single line in `dispatch_native`
+// Each test documents a fail oracle: which single line in `run_dispatch_pipeline`
 // (commands/mod.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
@@ -1357,9 +1357,10 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// The `selection_recipe` snapshot taken before the Steel body runs must NOT be
 /// clobbered by an inner `(call! "insert-before")` dispatch.
 ///
-/// Fail oracle (Gap A): without the pre-body `mem::take` snapshot in execute.rs,
-/// `insert-before`'s inner dispatch takes `selection_recipe` via `dispatch_native`,
-/// leaving it empty. The white-box assertion `selection_recipe.len() == 1` catches
+/// Fail oracle (Gap A): without the pre-body `mem::take` snapshot in the Steel
+/// `dispatch` path, `insert-before`'s inner dispatch takes `selection_recipe` via
+/// `run_dispatch_pipeline`, leaving it empty. The white-box assertion
+/// `selection_recipe.len() == 1` catches
 /// this — it passes with the snapshot, fails without it.
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
