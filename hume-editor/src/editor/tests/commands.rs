@@ -1198,10 +1198,10 @@ fn smart_p_dp_reads_ring() {
 ///
 /// Regression: `exit-insert` (Esc) ran through `dispatch_native` and
 /// overwrote `last_command = "exit-insert"` ∉ `SMART_P_LAST_CMDS`, so
-/// smart-`p` fell through to the clipboard. Fix: stamp `last_command` only
-/// when `pre_mode != Mode::Insert`.
+/// smart-`p` fell through to the clipboard. Fix: `step_stamp_last_command`
+/// skips stamping when the command name is `"exit-insert"`.
 ///
-/// Fail oracle: revert the `pre_mode != Mode::Insert` gate in
+/// Fail oracle: remove the `name != EXIT_INSERT_CMD` guard in
 /// `commands/mod.rs` → `last_command` becomes "exit-insert" → `p` pastes
 /// "CLIP" → `contains('a')` fails.
 #[test]
@@ -1218,6 +1218,71 @@ fn smart_p_after_change_reads_ring() {
     let text = ed.doc().text().to_string();
     assert!(text.contains('a'), "p after change must paste ring content ('a')");
     assert!(!text.contains("CLIP"), "p after change must not paste clipboard");
+}
+
+/// `exit-insert` must never overwrite `last_command`, regardless of what it held.
+///
+/// Directly pins the sole exception in `step_stamp_last_command`: a command
+/// named `"exit-insert"` is skipped.
+///
+/// Fail oracle: remove the `name != EXIT_INSERT_CMD` guard → marker becomes
+/// `Some("exit-insert")`.
+#[test]
+fn exit_insert_does_not_stamp() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.feed_key(key('i'));    // enter Insert (stamps "insert-at-selection-start")
+    // Override last_command with a known kill marker — simulates a kill having
+    // happened inside the insert session (e.g. via call! delete in Steel).
+    ed.state.last_command = Some(std::borrow::Cow::Borrowed("delete"));
+    ed.feed_key(key_esc());   // exit-insert — must NOT overwrite "delete"
+    assert_eq!(
+        ed.state.last_command.as_deref(),
+        Some("delete"),
+        "exit-insert must not stamp last_command",
+    );
+}
+
+/// A native kill dispatched while in Insert mode stamps `last_command`.
+///
+/// Only `exit-insert` is exempt from stamping; all other commands — including
+/// kills inside Insert — write their name. A future `Ctrl-w`-style command
+/// (Steel body doing `call! delete`) therefore correctly informs smart-`p`.
+///
+/// Fail oracle: add `if pre_mode != Mode::Insert` back to `step_stamp_last_command` →
+/// `last_command` stays `Some("insert-at-selection-start")` and the assertion fails.
+#[test]
+fn delete_in_insert_mode_stamps_marker() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.feed_key(key('i'));    // enter Insert, last_command = Some("enter-insert")
+    // Dispatch delete by name — 'd' in Insert self-inserts.
+    ed.execute_keymap_command("delete".into(), 1, false, vec![]);
+    assert_eq!(
+        ed.state.last_command.as_deref(),
+        Some("delete"),
+        "native delete dispatched in Insert must stamp last_command",
+    );
+}
+
+/// `c` <text> <Left> Esc `p` reads the clipboard, not the ring.
+///
+/// An arrow key in Insert mode stamps `"move-left"` ∉ `SMART_P_LAST_CMDS`,
+/// resetting smart-p to clipboard — consistent with Normal-mode motion
+/// behavior (`d j p` → clipboard).
+#[test]
+fn smart_p_insert_motion_resets_to_clipboard() {
+    use crate::ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('c'));        // change 'a' → ring=["a"], enter Insert
+    ed.feed_key(key('x'));        // type replacement
+    ed.feed_key(key_left());      // move-left in Insert → stamps "move-left"
+    ed.feed_key(key_esc());       // exit-insert — transparent
+    ed.feed_key(key('p'));        // smart-p → must read clipboard ("CLIP")
+    let text = ed.doc().text().to_string();
+    assert!(text.contains("CLIP"), "motion in Insert resets smart-p to clipboard");
+    assert!(!text.contains('a'), "ring head must not be pasted after insert motion");
 }
 
 /// `d` then `j` (motion) then `p` reads from clipboard, not ring.

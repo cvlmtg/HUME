@@ -512,12 +512,11 @@ impl Editor {
 
         // Steel path — composed from shared step functions.
         let meta = cmd.meta();
-        let pre_mode = self.state.mode();
 
         // BEFORE
         commands::step_paste_commit(&mut self.state, &meta.category);
         // Pre-stamp last_command — inner dispatches via `call!` override it.
-        commands::step_stamp_last_command(&mut self.state, meta.name.clone(), pre_mode);
+        commands::step_stamp_last_command(&mut self.state, meta.name.clone());
         let char_arg = commands::step_capture_pending_char(&self.state);
         // Always snapshot the recipe before the body — inner dispatches via `call!`
         // overwrite selection_recipe during the body, so the snapshot must be taken

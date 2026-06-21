@@ -186,17 +186,18 @@ pub(super) fn step_snapshot_recipe(
 
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
-/// Stamp last_command after body.  Skip in Insert mode to preserve the
-/// prior kill marker for smart-p.
+/// The one command that must stay transparent to smart-p: it closes an insert
+/// session that a kill (`c`) may have opened, so stamping it would clobber the
+/// `"change"` marker and break `c <text> Esc p` → ring.
+const EXIT_INSERT_CMD: &str = "exit-insert";
+
+/// Stamp last_command after the body. Skip only for `exit-insert` — every
+/// other command stamps, including kills dispatched inside Insert mode.
 ///
-/// Called **after** body for native (paste smart-p reads old value), **before**
-/// body for Steel (outer name pre-stamped; inner dispatch overrides).
-pub(super) fn step_stamp_last_command(
-    state: &mut EditorState,
-    name: Cow<'static, str>,
-    pre_mode: Mode,
-) {
-    if pre_mode != Mode::Insert {
+/// Called **after** body for native (smart-p reads old value during body),
+/// **before** body for Steel (outer name pre-stamped; inner `call!` overrides).
+pub(super) fn step_stamp_last_command(state: &mut EditorState, name: Cow<'static, str>) {
+    if name.as_ref() != EXIT_INSERT_CMD {
         state.last_command = Some(name);
     }
 }
@@ -303,8 +304,7 @@ pub(super) fn run_dispatch_pipeline(
          step_stamp_repeatable and step_update_recipe would both fire",
         meta.name,
     );
-    let pre_mode = state.mode();
-    let is_jump   = cmd.is_jump();
+    let is_jump = cmd.is_jump();
 
     // BEFORE
     step_paste_commit(state, &meta.category);
@@ -316,7 +316,7 @@ pub(super) fn run_dispatch_pipeline(
     run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_stamp_last_command(state, meta.name.clone(), pre_mode);
+    step_stamp_last_command(state, meta.name.clone());
     step_record_jump(state, view, pre_jump, is_jump);
     step_stamp_repeatable(state, &meta, ctx.count, char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &ctx, char_arg);
