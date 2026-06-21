@@ -90,3 +90,71 @@ pub(crate) fn write_register(
 fn clipboard_warn(err: &str) -> String {
     format!("system clipboard unavailable ({err}), using in-memory 'c'")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::read_register_text;
+    use crate::editor::clipboard::SystemClipboard;
+    use crate::ops::register::{RegisterSet, CLIPBOARD_REGISTER};
+
+    fn seeded_registers(values: &[&str]) -> RegisterSet {
+        let mut regs = RegisterSet::new();
+        regs.write_text(CLIPBOARD_REGISTER, values.iter().map(|s| s.to_string()).collect());
+        regs
+    }
+
+    fn mock_clipboard(content: &str) -> SystemClipboard {
+        let mut cb = SystemClipboard::new_unavailable();
+        cb.set_mock_content(content);
+        cb
+    }
+
+    #[test]
+    fn clipboard_in_sync_prefers_structured() {
+        let mut regs = seeded_registers(&["a", "b", "c"]);
+        regs.set_clipboard_blob("a\nb\nc".to_string());
+        let mut cb = mock_clipboard("a\nb\nc");
+
+        let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+        let values = values.unwrap();
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0], "a");
+        assert_eq!(values[1], "b");
+        assert_eq!(values[2], "c");
+    }
+
+    #[test]
+    fn clipboard_externally_modified_uses_clipboard() {
+        let mut regs = seeded_registers(&["a", "b", "c"]);
+        regs.set_clipboard_blob("a\nb\nc".to_string());
+        let mut cb = mock_clipboard("xyz");
+
+        let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+        let values = values.unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], "xyz");
+    }
+
+    #[test]
+    fn clipboard_no_blob_fresh_session_uses_clipboard() {
+        let regs = RegisterSet::new();
+        let mut cb = mock_clipboard("xyz");
+
+        let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+        let values = values.unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], "xyz");
+    }
+
+    #[test]
+    fn clipboard_in_sync_in_memory_missing_falls_through() {
+        let mut regs = RegisterSet::new();
+        regs.set_clipboard_blob("xyz".to_string());
+        let mut cb = mock_clipboard("xyz");
+
+        let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+        let values = values.unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], "xyz");
+    }
+}
